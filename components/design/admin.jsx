@@ -1,0 +1,650 @@
+'use client'
+// @ts-nocheck
+import React from 'react'
+import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+
+const ALL_USERS = [
+  { id: 'U001', name: 'Omar Hassan', role: 'student', email: 'omar@email.com', country: 'Pakistan', joined: 'Apr 10', status: 'active', orders: 4, spend: '£726' },
+  { id: 'U002', name: 'Priya Sharma', role: 'student', email: 'priya@email.com', country: 'India', joined: 'Apr 16', status: 'active', orders: 1, spend: '£99' },
+  { id: 'U003', name: 'Carlos Mendez', role: 'student', email: 'carlos@email.com', country: 'Colombia', joined: 'Mar 20', status: 'active', orders: 2, spend: '£398' },
+  { id: 'U004', name: 'Aisha Rahman', role: 'student', email: 'aisha@email.com', country: 'Bangladesh', joined: 'Mar 5', status: 'active', orders: 1, spend: '£199' },
+  { id: 'U005', name: 'Liu Wei', role: 'student', email: 'liu@email.com', country: 'China', joined: 'Apr 19', status: 'pending', orders: 1, spend: '£149' },
+  { id: 'C001', name: 'Dr. Sarah Ahmed', role: 'consultant', email: 'sarah@yousafe.com', country: 'UK', joined: 'Jan 2025', status: 'active', orders: 12, spend: '£3,240 earned' },
+  { id: 'C002', name: 'James Okafor', role: 'consultant', email: 'james@yousafe.com', country: 'UK', joined: 'Feb 2025', status: 'active', orders: 8, spend: '£1,860 earned' },
+  { id: 'C003', name: 'Aisha Malik', role: 'consultant', email: 'amalik@yousafe.com', country: 'Pakistan', joined: 'Mar 2025', status: 'active', orders: 5, spend: '£980 earned' },
+];
+
+const ALL_ORDERS = [
+  { id: 'ORD-001', service: 'University Selection Package', student: 'Omar Hassan', consultant: 'Dr. Sarah Ahmed', date: 'Apr 10', status: 'active', amount: '£299', escrow: 'held', consultantPay: '£179', adminCut: '£120' },
+  { id: 'ORD-002', service: 'SOP Review & Editing', student: 'Omar Hassan', consultant: 'James Okafor', date: 'Apr 18', status: 'review', amount: '£99', escrow: 'held', consultantPay: '£59', adminCut: '£40' },
+  { id: 'ORD-003', service: 'UK Visa Support', student: 'Omar Hassan', consultant: 'Aisha Malik', date: 'Mar 28', status: 'completed', amount: '£199', escrow: 'released', consultantPay: '£119', adminCut: '£80' },
+  { id: 'ORD-004', service: 'IELTS Preparation Plan', student: 'Omar Hassan', consultant: 'Dr. Sarah Ahmed', date: 'May 1', status: 'pending', amount: '£79', escrow: 'held', consultantPay: '£47', adminCut: '£32' },
+  { id: 'ORD-005', service: 'SOP Review & Editing', student: 'Priya Sharma', consultant: 'James Okafor', date: 'Apr 16', status: 'new', amount: '£99', escrow: 'held', consultantPay: '£59', adminCut: '£40' },
+  { id: 'ORD-007', service: 'Visa Support — Canada', student: 'Carlos Mendez', consultant: 'Dr. Sarah Ahmed', date: 'Apr 5', status: 'review', amount: '£199', escrow: 'held', consultantPay: '£119', adminCut: '£80' },
+  { id: 'ORD-009', service: 'UK Visa Guidance', student: 'Aisha Rahman', consultant: 'Aisha Malik', date: 'Mar 20', status: 'completed', amount: '£199', escrow: 'released', consultantPay: '£119', adminCut: '£80' },
+  { id: 'ORD-010', service: 'University Selection', student: 'Liu Wei', consultant: 'Dr. Sarah Ahmed', date: 'Apr 19', status: 'pending', amount: '£149', escrow: 'held', consultantPay: '£89', adminCut: '£60' },
+];
+
+function AdminApp({ onLogout }) {
+  const [page, setPage] = React.useState('dashboard');
+  const [userFilter, setUserFilter] = React.useState('all');
+  const [orderFilter, setOrderFilter] = React.useState('all');
+  const [selectedUser, setSelectedUser] = React.useState(null);
+  const [notifOpen, setNotifOpen] = React.useState(false);
+
+  const totalRevenue = ALL_ORDERS.filter(o => o.escrow === 'released').reduce((a, o) => a + parseInt(o.adminCut.replace('£', '')), 0);
+  const pendingEscrow = ALL_ORDERS.filter(o => o.escrow === 'held').reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0);
+  const totalStudents = ALL_USERS.filter(u => u.role === 'student').length;
+  const totalConsultants = ALL_USERS.filter(u => u.role === 'consultant').length;
+  const pendingOrders = ALL_ORDERS.filter(o => o.status === 'new' || o.status === 'pending').length;
+
+  const filteredUsers = userFilter === 'all' ? ALL_USERS : ALL_USERS.filter(u => u.role === userFilter);
+  const filteredOrders = orderFilter === 'all' ? ALL_ORDERS : ALL_ORDERS.filter(o => o.status === orderFilter);
+
+  // ── SIDEBAR ──
+  const Sidebar = () => (
+    <div style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
+      <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
+        <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+        <Badge color="red" style={{ fontSize: '10px', padding: '2px 8px' }}>Admin</Badge>
+      </div>
+      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
+        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} />
+        <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
+        <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
+        <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
+        <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
+        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
+        <NavItem icon="🛒" label="Services" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
+      </div>
+      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
+          <Avatar name="Admin" size={32} color={C.red} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>Super Admin</div>
+            <div style={{ fontSize: '11px', color: C.textMuted }}>admin@yousafe.com</div>
+          </div>
+          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }}>⏻</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── TOPBAR ──
+  const TopBar = ({ title }) => (
+    <div style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
+      <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <Badge color="orange">{pendingOrders} pending</Badge>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
+          <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
+          {notifOpen && (
+            <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Admin Alerts</div>
+              {[
+                { text: 'New student registration — Liu Wei', time: '10 min ago', dot: C.cyan },
+                { text: 'ORD-007 awaiting student approval', time: '1 hr ago', dot: C.orange },
+                { text: 'Escrow release: £199 — Aisha Rahman', time: 'Yesterday', dot: C.green },
+                { text: 'Consultant payout due — Dr. Sarah Ahmed', time: 'Yesterday', dot: C.purple },
+              ].map((n, i) => (
+                <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot, marginTop: '5px', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
+                    <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <Avatar name="Admin" size={32} color={C.red} />
+      </div>
+    </div>
+  );
+
+  // ── DASHBOARD ──
+  const Dashboard = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Admin Overview</h2>
+        <p style={{ color: C.textMuted, fontSize: '14px' }}>Full platform visibility — all users, orders and funds.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+        <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3" />
+        <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
+        <StatCard label="In Escrow" value={`£${pendingEscrow}`} icon="🔒" color={C.orange} />
+        <StatCard label="Admin Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} delta="+£160" />
+        <StatCard label="Active Orders" value={ALL_ORDERS.filter(o => o.status === 'active').length} icon="📦" color={C.cyan} />
+        <StatCard label="Completed" value={ALL_ORDERS.filter(o => o.status === 'completed').length} icon="✅" color={C.green} />
+      </div>
+
+      {/* Escrow alerts */}
+      <div>
+        <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Pending Escrow Releases</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {ALL_ORDERS.filter(o => o.status === 'completed' && o.escrow === 'held').length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No pending escrow releases</div>
+          ) : ALL_ORDERS.filter(o => o.status === 'completed' && o.escrow === 'held').map(order => (
+            <Card key={order.id} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>{order.service}</div>
+                <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.student} → {order.consultant}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 700, color: C.orange }}>{order.amount} held</div>
+                <div style={{ fontSize: '12px', color: C.textMuted }}>{order.consultantPay} / {order.adminCut}</div>
+              </div>
+              <Btn variant="success" size="sm">Release</Btn>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent orders */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '15px' }}>Recent Orders</h3>
+          <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {ALL_ORDERS.slice(0, 5).map(order => (
+            <Card key={order.id} style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{order.service}</div>
+                  <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.id} · {order.student} · {order.consultant}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <StatusBadge status={order.status} />
+                  <Badge color={order.escrow === 'released' ? 'green' : 'orange'}>{order.escrow === 'released' ? 'Released' : 'In escrow'}</Badge>
+                  <span style={{ fontWeight: 700, fontSize: '14px' }}>{order.amount}</span>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Revenue split summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue Split (all time)</div>
+          {[
+            { label: 'Total collected', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0), color: C.text },
+            { label: 'Consultant share (60%)', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.consultantPay.replace('£', '')), 0), color: C.cyan },
+            { label: 'Platform share (40%)', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.adminCut.replace('£', '')), 0), color: C.green },
+          ].map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: r.color }}>£{r.value}</span>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Platform Health</div>
+          {[
+            { label: 'Avg order value', value: `£${Math.round(ALL_ORDERS.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0) / ALL_ORDERS.length)}` },
+            { label: 'Completion rate', value: '78%' },
+            { label: 'Avg response time', value: '18h' },
+            { label: 'Student satisfaction', value: '4.8 / 5' },
+          ].map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: C.text }}>{r.value}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+
+  // ── USERS ──
+  const Users = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Users</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>{ALL_USERS.length} total · {totalStudents} students · {totalConsultants} consultants</p>
+        </div>
+        <Btn variant="primary" size="sm">+ Invite user</Btn>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {['all', 'student', 'consultant'].map(f => (
+          <button key={f} onClick={() => setUserFilter(f)} style={{
+            padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
+            background: userFilter === f ? `${C.cyan}18` : C.surface2,
+            color: userFilter === f ? C.cyan : C.textMuted,
+            fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
+          }}>{f === 'all' ? 'All users' : f === 'student' ? `Students (${totalStudents})` : `Consultants (${totalConsultants})`}</button>
+        ))}
+      </div>
+      <Card style={{ padding: '0', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+              {['User', 'Role', 'Country', 'Joined', 'Orders', 'Financials', 'Status', 'Actions'].map(h => (
+                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.map((u, i) => (
+              <tr key={u.id} style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                <td style={{ padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Avatar name={u.name} size={32} color={u.role === 'consultant' ? C.purple : C.cyan} />
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600 }}>{u.name}</div>
+                      <div style={{ fontSize: '12px', color: C.textMuted }}>{u.email}</div>
+                    </div>
+                  </div>
+                </td>
+                <td style={{ padding: '14px 16px' }}><Badge color={u.role === 'consultant' ? 'purple' : 'cyan'}>{u.role}</Badge></td>
+                <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.country}</td>
+                <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.joined}</td>
+                <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{u.orders}</td>
+                <td style={{ padding: '14px 16px', fontSize: '13px', color: u.role === 'consultant' ? C.green : C.text, fontWeight: 600 }}>{u.spend}</td>
+                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : 'orange'}>{u.status}</Badge></td>
+                <td style={{ padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <Btn variant="ghost" size="sm">View</Btn>
+                    <Btn variant="danger" size="sm">{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+
+  // ── ALL ORDERS ──
+  const Orders = () => {
+    const [orders, setOrders] = React.useState(ALL_ORDERS);
+    const [assignModal, setAssignModal] = React.useState(null);
+    const CONSULTANTS = ['Dr. Sarah Ahmed', 'James Okafor', 'Aisha Malik'];
+    const filtered = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
+    const handleAssign = (orderId, consultant) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant, status: o.status === 'pending' ? 'active' : o.status } : o)); setAssignModal(null); };
+    const handleUnassign = (orderId) => setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant: null, status: 'pending' } : o));
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div><h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>All Orders</h2><p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p></div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {['all','new','active','review','pending','completed'].map(f => (
+            <button key={f} onClick={() => setOrderFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter===f?C.cyan:C.border}`, background: orderFilter===f?`${C.cyan}18`:C.surface2, color: orderFilter===f?C.cyan:C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter===f?600:400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
+          ))}
+        </div>
+        <Card style={{ padding: '0', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['Order','Service','Student','Consultant','Amount','Split','Escrow','Status','Actions'].map(h=><th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {filtered.map((o, i) => (
+                <tr key={o.id} style={{ borderBottom: i < filtered.length-1 ? `1px solid ${C.border}` : 'none' }}>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600, color: C.cyan }}>{o.id}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', maxWidth: '150px' }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div></td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{o.student}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: o.consultant ? C.text : C.textDim, fontStyle: o.consultant ? 'normal' : 'italic' }}>{o.consultant || 'Unassigned'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 700 }}>{o.amount}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '12px' }}><span style={{ color: C.cyan }}>{o.consultantPay}</span> / <span style={{ color: C.green }}>{o.adminCut}</span></td>
+                  <td style={{ padding: '14px 16px' }}><Badge color={o.escrow==='released'?'green':'orange'}>{o.escrow==='released'?'✓ Released':'🔒 Held'}</Badge></td>
+                  <td style={{ padding: '14px 16px' }}><StatusBadge status={o.status} /></td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm">Release</Btn>}
+                      {o.consultant ? (
+                        <><Btn variant="secondary" size="sm" onClick={() => setAssignModal(o)}>Reassign</Btn><Btn variant="danger" size="sm" onClick={() => handleUnassign(o.id)}>Unassign</Btn></>
+                      ) : (
+                        <Btn variant="primary" size="sm" onClick={() => setAssignModal(o)}>Assign</Btn>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+        {assignModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '440px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div><h3 style={{ fontSize: '17px', fontWeight: 800 }}>{assignModal.consultant ? 'Reassign' : 'Assign'} consultant</h3><div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{assignModal.id} · {assignModal.service}</div></div>
+                <button onClick={() => setAssignModal(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              </div>
+              {assignModal.consultant && <div style={{ background: C.surface2, borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: C.textMuted }}>Current: <strong style={{ color: C.text }}>{assignModal.consultant}</strong></div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                {CONSULTANTS.filter(c => c !== assignModal.consultant).map(c => (
+                  <div key={c} style={{ padding: '14px 16px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}`, cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <Avatar name={c} size={36} color={C.purple} />
+                    <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: '14px' }}>{c}</div><div style={{ fontSize: '12px', color: C.green }}>● Available · 4.9 ⭐</div></div>
+                    <Btn variant="primary" size="sm" onClick={() => handleAssign(assignModal.id, c)}>Assign</Btn>
+                  </div>
+                ))}
+              </div>
+              <Btn variant="ghost" fullWidth onClick={() => setAssignModal(null)}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── ESCROW ──
+  const Escrow = () => {
+    const held = ALL_ORDERS.filter(o => o.escrow === 'held');
+    const released = ALL_ORDERS.filter(o => o.escrow === 'released');
+    const totalHeld = held.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0);
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Escrow Management</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released 60% to consultant, 40% to platform.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+          <StatCard label="Total Held" value={`£${totalHeld}`} icon="🔒" color={C.orange} />
+          <StatCard label="Orders in Escrow" value={held.length} icon="📦" color={C.cyan} />
+          <StatCard label="Released All Time" value={`£${released.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0)}`} icon="✅" color={C.green} />
+        </div>
+        <div>
+          <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Held — Awaiting Student Approval</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {held.map(o => (
+              <Card key={o.id} style={{ padding: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '220px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '14px' }}>{o.service}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{o.id} · {o.student} → {o.consultant}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: C.orange }}>{o.amount}</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>Total held</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: C.cyan }}>{o.consultantPay}</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>60% → consultant</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: C.green }}>{o.adminCut}</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>40% → platform</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <StatusBadge status={o.status} />
+                      {o.status === 'completed' && <Btn variant="success" size="sm">Force release</Btn>}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Released</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {released.map(o => (
+              <Card key={o.id} style={{ padding: '16px', opacity: 0.7 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '14px' }}>{o.service}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px' }}>{o.student} → {o.consultant}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: C.green }}>{o.consultantPay} paid out</span>
+                    <span style={{ fontWeight: 700, color: C.text }}>{o.adminCut} received</span>
+                    <Badge color="green">Released</Badge>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── PAYOUTS ──
+  const Payouts = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Payouts</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+        <StatCard label="Platform Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} />
+        <StatCard label="Paid to Consultants" value="£477" icon="👤" color={C.cyan} />
+        <StatCard label="Pending Payouts" value="£318" icon="⏳" color={C.orange} />
+      </div>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Consultant Payout Queue</div>
+        {[
+          { name: 'Dr. Sarah Ahmed', pending: '£179', due: 'May 1' },
+          { name: 'James Okafor', pending: '£59', due: 'May 2' },
+          { name: 'Aisha Malik', pending: '£80', due: 'May 5' },
+        ].map((c, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
+            <Avatar name={c.name} size={36} color={C.purple} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: '14px' }}>{c.name}</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Due: {c.due}</div>
+            </div>
+            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{c.pending}</span>
+            <Btn variant="primary" size="sm">Pay out</Btn>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+
+  // ── ANALYTICS ──
+  const Analytics = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Analytics</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue by month</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: '120px', marginBottom: '12px' }}>
+            {[['Jan', 35], ['Feb', 55], ['Mar', 62], ['Apr', 90]].map(([m, h]) => (
+              <div key={m} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '100%', height: `${h}%`, background: m === 'Apr' ? C.cyan : `${C.cyan}40`, borderRadius: '6px 6px 0 0' }} />
+                <span style={{ fontSize: '12px', color: C.textMuted }}>{m}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Services by volume</div>
+          {[
+            { name: 'University Selection', pct: 82 },
+            { name: 'Visa Support', pct: 65 },
+            { name: 'SOP Review', pct: 48 },
+            { name: 'Accommodation', pct: 30 },
+          ].map(s => (
+            <div key={s.name} style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}>
+                <span style={{ color: C.textMuted }}>{s.name}</span>
+                <span style={{ fontWeight: 600 }}>{s.pct}%</span>
+              </div>
+              <ProgressBar value={s.pct} />
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Students by origin country</div>
+          {[['Pakistan', 35], ['India', 25], ['Nigeria', 15], ['China', 12], ['Other', 13]].map(([c, p]) => (
+            <div key={c} style={{ marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
+                <span style={{ color: C.textMuted }}>{c}</span><span>{p}%</span>
+              </div>
+              <ProgressBar value={p} color={C.purple} />
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Key metrics</div>
+          {[
+            ['Total GMV', '£1,571'],
+            ['Platform take', `£${totalRevenue} (40%)`],
+            ['Consultant payout', '£795 (60%)'],
+            ['Avg time to complete', '8.4 days'],
+            ['Student return rate', '62%'],
+            ['Net promoter score', '72'],
+          ].map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
+              <span style={{ color: C.textMuted }}>{k}</span>
+              <span style={{ fontWeight: 700 }}>{v}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+
+  // ── SERVICES MANAGEMENT ──
+  const ServicesAdmin = () => {
+    const [services, setServices] = React.useState([
+      { id: 1, name: 'University Selection Package', category: 'Applications', price: 299, active: true, orders: 18 },
+      { id: 2, name: 'SOP & Personal Statement Review', category: 'Writing', price: 149, active: true, orders: 24 },
+      { id: 3, name: 'UK Student Visa Support', category: 'Visa', price: 249, active: true, orders: 14 },
+      { id: 4, name: 'Canada Student Visa Support', category: 'Visa', price: 249, active: true, orders: 9 },
+      { id: 5, name: 'Australia Student Visa Support', category: 'Visa', price: 249, active: true, orders: 7 },
+      { id: 6, name: 'IELTS Preparation Plan', category: 'Test Prep', price: 79, active: true, orders: 31 },
+      { id: 7, name: 'Accommodation Assistance', category: 'Housing', price: 99, active: true, orders: 12 },
+      { id: 8, name: 'CV & LinkedIn Optimisation', category: 'Career', price: 129, active: true, orders: 8 },
+      { id: 9, name: 'Scholarship Search Service', category: 'Finance', price: 179, active: false, orders: 5 },
+      { id: 10, name: 'Full Application Package', category: 'Bundle', price: 599, active: true, orders: 6 },
+    ]);
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Service Catalogue</h2>
+            <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage all services available to students.</p>
+          </div>
+          <Btn variant="primary" size="sm">+ Add service</Btn>
+        </div>
+        <Card style={{ padding: '0', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {['Service', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', ''].map(h => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {services.map((s, i) => (
+                <tr key={s.id} style={{ borderBottom: i < services.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>{s.name}</td>
+                  <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
+                  <td style={{ padding: '14px 16px', fontWeight: 700 }}>£{s.price}</td>
+                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>£{Math.round(s.price * 0.6)}</td>
+                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>£{Math.round(s.price * 0.4)}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <button onClick={() => setServices(prev => prev.map(sv => sv.id === s.id ? { ...sv, active: !sv.active } : sv))} style={{
+                      width: '40px', height: '22px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+                      background: s.active ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
+                    }}>
+                      <div style={{ position: 'absolute', top: '3px', left: s.active ? '20px' : '3px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                    </button>
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <Btn variant="ghost" size="sm">Edit</Btn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    );
+  };
+
+  // ── SETTINGS ──
+  const Settings = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Platform Settings</h2>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Revenue Split</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Consultant share</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <input type="range" min="50" max="80" defaultValue="60" style={{ flex: 1, accentColor: C.cyan }} />
+              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>60%</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: C.surface2, borderRadius: '10px', fontSize: '14px' }}>
+            <span style={{ color: C.textMuted }}>Platform receives</span>
+            <span style={{ fontWeight: 700, color: C.green }}>40%</span>
+          </div>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save split</Btn>
+        </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Escrow Rules</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Select label="Auto-release escrow after" value="14 days" onChange={() => {}} options={['7 days', '14 days', '21 days', '30 days', 'Never (manual only)'].map(v => ({ value: v, label: v }))} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>Allow admin force-release</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Admin can release escrow without student approval</div>
+            </div>
+            <button style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: C.cyan, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: '3px', left: '22px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
+            </button>
+          </div>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save rules</Btn>
+        </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Platform Info</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Input label="Platform name" value="YouSafe Consultancy" onChange={() => {}} />
+          <Input label="Support email" value="support@yousafeconsultancy.com" onChange={() => {}} />
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save</Btn>
+        </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Stripe Integration</div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>stripe</span>
+          All payments and payouts processed via Stripe Connect.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <Input label="Stripe publishable key" value="pk_live_••••••••••••••••••••••" onChange={() => {}} />
+          <Input label="Stripe secret key" value="sk_live_••••••••••••••••••••••" onChange={() => {}} type="password" />
+          <Input label="Webhook signing secret" value="whsec_••••••••••••••••" onChange={() => {}} type="password" />
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save Stripe config</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', services: 'Service Catalogue', settings: 'Settings' };
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+      <Sidebar />
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <TopBar title={pages[page] || 'Admin'} />
+        <div style={{ flex: 1 }}>
+          {page === 'dashboard' && <Dashboard />}
+          {page === 'users' && <Users />}
+          {page === 'orders' && <Orders />}
+          {page === 'escrow' && <Escrow />}
+          {page === 'payouts' && <Payouts />}
+          {page === 'analytics' && <Analytics />}
+          {page === 'services' && <ServicesAdmin />}
+          {page === 'settings' && <Settings />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default AdminApp;
