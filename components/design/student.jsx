@@ -799,7 +799,10 @@ function StudentApp({ onLogout, userId, userName }) {
     const [services, setServices] = React.useState([]);
     const [servicesLoading, setServicesLoading] = React.useState(true);
     const [servicesError, setServicesError] = React.useState(null);
-    const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet'
+    const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet' | 'saved_card'
+    const [savedCards, setSavedCards] = React.useState([]);
+    const [cardsLoading, setCardsLoading] = React.useState(false);
+    const [selectedCardId, setSelectedCardId] = React.useState('');
     const [walletBalance, setWalletBalance] = React.useState(null);
     const [paying, setPaying] = React.useState(false);
     const [payError, setPayError] = React.useState(null);
@@ -826,6 +829,17 @@ function StudentApp({ onLogout, userId, userName }) {
         .then(r => r.json())
         .then(d => setWalletBalance(d.available?.usd ?? 0))
         .catch(() => setWalletBalance(0));
+
+      setCardsLoading(true);
+      fetch('/api/wallet/payment-methods')
+        .then(r => r.json())
+        .then(d => {
+          const cards = d.cards ?? [];
+          setSavedCards(cards);
+          setSelectedCardId(current => current || cards[0]?.id || '');
+        })
+        .catch(() => setSavedCards([]))
+        .finally(() => setCardsLoading(false));
     }, [showCheckout]);
 
     if (showCheckout && cart) {
@@ -836,6 +850,8 @@ function StudentApp({ onLogout, userId, userName }) {
       const usdPriceNum = Number(cart.usd_price || (isUsdService ? priceNum : 0));
       const hasUsdEquivalent = !isUsdService && usdPriceNum > 0;
       const canUseWallet = isUsdService && walletBalance !== null && walletBalance >= priceNum;
+      const selectedCard = savedCards.find(card => card.id === selectedCardId);
+      const canUseSavedCard = Boolean(selectedCardId);
 
       const handleWalletPay = async () => {
         setPaying(true); setPayError(null);
@@ -847,6 +863,45 @@ function StudentApp({ onLogout, userId, userName }) {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
+          setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          setTimeout(() => setOrderPlaced(false), 6000);
+        } catch (e) {
+          setPayError(e.message);
+        } finally { setPaying(false); }
+      };
+
+      const handleSavedCardPay = async () => {
+        if (!selectedCardId) {
+          setPayError('Choose a saved card first.');
+          return;
+        }
+
+        setPaying(true); setPayError(null);
+        try {
+          const res = await fetch('/api/checkout/card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serviceId: cart.id, paymentMethodId: selectedCardId }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Payment failed');
+
+          if (data.requiresAction) {
+            if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.');
+            const stripe = await loadStripe(STRIPE_PUB_KEY);
+            if (!stripe) throw new Error('Unable to load Stripe.');
+            const result = await stripe.confirmCardPayment(data.clientSecret);
+            if (result.error) throw new Error(result.error.message);
+
+            const completeRes = await fetch('/api/checkout/card', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ paymentIntentId: data.paymentIntentId }),
+            });
+            const completeData = await completeRes.json();
+            if (!completeRes.ok) throw new Error(completeData.error || 'Payment confirmation failed');
+          }
+
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
           setTimeout(() => setOrderPlaced(false), 6000);
         } catch (e) {
@@ -899,6 +954,46 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
               {payMethod === 'wallet' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
             </div>
+            {/* Saved card option */}
+            <div
+              onClick={() => canUseSavedCard && setPayMethod('saved_card')}
+              style={{
+                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'saved_card' ? C.cyan : C.border}`,
+                background: payMethod === 'saved_card' ? `${C.cyan}10` : C.surface2,
+                cursor: canUseSavedCard ? 'pointer' : 'not-allowed', opacity: canUseSavedCard ? 1 : 0.55,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <span style={{ fontSize: '20px' }}>💳</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Saved Card</div>
+                  <div style={{ fontSize: '12px', color: C.textMuted }}>
+                    {cardsLoading ? 'Loading saved cards…' : selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'}
+                  </div>
+                </div>
+              </div>
+              {payMethod === 'saved_card' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
+            </div>
+            {payMethod === 'saved_card' && savedCards.length > 0 && (
+              <div style={{ display: 'grid', gap: '8px', margin: '-2px 0 10px 0' }}>
+                {savedCards.map(card => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => setSelectedCardId(card.id)}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${selectedCardId === card.id ? C.cyan : C.border}`,
+                      background: selectedCardId === card.id ? `${C.cyan}0f` : '#fff', display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', cursor: 'pointer', color: C.text,
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 600 }}>{card.brand?.toUpperCase?.() || 'CARD'} •••• {card.last4}</span>
+                    <span style={{ fontSize: '12px', color: C.textMuted }}>Exp {card.exp_month}/{card.exp_year}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Stripe option */}
             <div
               onClick={() => setPayMethod('stripe')}
@@ -911,8 +1006,8 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <span style={{ fontSize: '20px' }}>💳</span>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Card</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>Secure checkout via Stripe</div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Stripe Hosted Checkout</div>
+                  <div style={{ fontSize: '12px', color: C.textMuted }}>Open the secure hosted payment page</div>
                 </div>
               </div>
               {payMethod === 'stripe' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
@@ -940,6 +1035,10 @@ function StudentApp({ onLogout, userId, userName }) {
           {payMethod === 'wallet' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
               {paying ? 'Processing…' : `Pay ${formatMoney(cart.price, serviceCurrency)} from Wallet`}
+            </Btn>
+          ) : payMethod === 'saved_card' ? (
+            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard}>
+              {paying ? 'Processing…' : selectedCard ? `Pay ${formatMoney(cart.price, serviceCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
