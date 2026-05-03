@@ -5,6 +5,8 @@ export function getStripe(): Stripe {
   if (!stripeSecretKey) {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable')
   }
-  // Use the SDK's pinned default API version — passing undefined here breaks the client
-  return new Stripe(stripeSecretKey)
+  // Cloudflare Workers don't support Node's http/https modules — must use Fetch
+  return new Stripe(stripeSecretKey, {
+    httpClient: Stripe.createFetchHttpClient(),
+  })
 }

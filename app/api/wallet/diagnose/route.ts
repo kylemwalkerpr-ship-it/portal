@@ -63,7 +63,7 @@ export async function GET() {
   if (process.env.STRIPE_SECRET_KEY) {
     try {
       const Stripe = (await import('stripe')).default
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() })
       // Verify the secret key works by listing one customer (account.retrieve() requires no-arg overload not available)
       const list = await stripe.customers.list({ limit: 1 })
       report.stripeAccount = { ok: true, hasObject: list.object === 'list' }
@@ -78,7 +78,7 @@ export async function GET() {
   if (process.env.STRIPE_SECRET_KEY && (basicSelect.data?.email || fullSelect.data?.email)) {
     try {
       const Stripe = (await import('stripe')).default
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() })
       const profile: { email?: string; full_name?: string | null; stripe_customer_id?: string } | null =
         (fullSelect.data as Record<string, unknown> as never) || (basicSelect.data as Record<string, unknown> as never)
       const customerId = profile?.stripe_customer_id

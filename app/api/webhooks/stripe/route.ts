@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     return new Response('Stripe not configured', { status: 500 })
   }
 
-  const stripe = new Stripe(secret)
+  const stripe = new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() })
   const body = await req.text()
   const signature = req.headers.get('stripe-signature')
 
