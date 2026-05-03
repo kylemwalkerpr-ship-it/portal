@@ -148,10 +148,7 @@ function EscrowApprovalCard({ order }) {
 
 // ─── Stripe Payment Method Component ─────────────────────────────────────────
 function StripePaymentSection() {
-  const [cards, setCards] = React.useState([
-    { id: 1, brand: 'Visa', last4: '4242', exp: '12/26', default: true },
-    { id: 2, brand: 'Mastercard', last4: '5555', exp: '08/27', default: false },
-  ]);
+  const [cards, setCards] = React.useState([]);
   const [addingCard, setAddingCard] = React.useState(false);
   const [cardNum, setCardNum] = React.useState('');
   const [expiry, setExpiry] = React.useState('');
@@ -290,27 +287,14 @@ function StudentApp({ onLogout, userId, userName }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
-          <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Notifications</div>
-              {[
-                { text: 'Dr. Sarah sent a message on ORD-001', time: '5 min ago', dot: C.cyan },
-                { text: 'Your SOP review is under final check', time: '2 hrs ago', dot: C.orange },
-                { text: 'ORD-003 marked as completed', time: 'Yesterday', dot: C.green },
-              ].map((n, i) => (
-                <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < 2 ? `1px solid ${C.border}` : 'none' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot, marginTop: '5px', flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
-                    <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
-                  </div>
-                </div>
-              ))}
+              <div style={{ padding: '28px 16px', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>No notifications yet.</div>
             </div>
           )}
         </div>
-        <Avatar name="Omar Hassan" size={32} />
+        <Avatar name={userName || 'User'} size={32} />
       </div>
     </div>
   );
@@ -319,16 +303,18 @@ function StudentApp({ onLogout, userId, userName }) {
   const Dashboard = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Good morning, Omar 👋</h2>
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>You have {activeOrders} active order{activeOrders !== 1 ? 's' : ''} in progress.</p>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome, {userName || 'there'} 👋</h2>
+        <p style={{ color: C.textMuted, fontSize: '14px' }}>
+          {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services and place your first order to get started.'}
+        </p>
       </div>
-      {/* Stats */}
+      {/* Stats — only shown once there's real activity */}
+      {STUDENT_ORDERS.length > 0 && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
-        <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} delta="+1" />
+        <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} />
         <StatCard label="Completed" value={completedOrders} icon="✅" color={C.green} />
-        <StatCard label="Messages" value="5" icon="💬" color={C.purple} delta="+3" />
-        <StatCard label="Documents" value="12" icon="📋" color={C.orange} />
       </div>
+      )}
       {/* Active Orders */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -657,26 +643,11 @@ function StudentApp({ onLogout, userId, userName }) {
         </div>
         <Btn variant="primary" size="sm">+ Upload</Btn>
       </div>
-      {[
-        { name: 'Academic Transcript', file: 'Transcript_2024.pdf', size: '1.2 MB', date: 'Apr 8', status: 'Verified', color: 'green' },
-        { name: 'Curriculum Vitae', file: 'CV_Omar_Hassan.pdf', size: '0.4 MB', date: 'Apr 10', status: 'Verified', color: 'green' },
-        { name: 'Passport Copy', file: 'Passport.pdf', size: '2.1 MB', date: 'Apr 10', status: 'Pending', color: 'orange' },
-        { name: 'IELTS Certificate', file: 'IELTS_2024.pdf', size: '0.8 MB', date: 'Apr 14', status: 'Verified', color: 'green' },
-        { name: 'Personal Statement', file: 'SOP_Draft_v2.pdf', size: '0.3 MB', date: 'Apr 18', status: 'In review', color: 'cyan' },
-      ].map((d, i) => (
-        <Card key={i} style={{ padding: '18px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '40px', height: '40px', background: C.surface2, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>📄</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '14px' }}>{d.name}</div>
-            <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{d.file} · {d.size} · Uploaded {d.date}</div>
-          </div>
-          <Badge color={d.color}>{d.status}</Badge>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="ghost" size="sm">↓</Btn>
-            <Btn variant="ghost" size="sm">✕</Btn>
-          </div>
-        </Card>
-      ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '260px', flexDirection: 'column', gap: '12px', color: C.textMuted }}>
+        <span style={{ fontSize: '40px' }}>📄</span>
+        <p style={{ fontSize: '15px' }}>No documents uploaded yet.</p>
+        <p style={{ fontSize: '13px', color: C.textDim }}>Upload your transcripts, passport, or other documents to get started.</p>
+      </div>
     </div>
   );
 
@@ -684,43 +655,11 @@ function StudentApp({ onLogout, userId, userName }) {
   const Billing = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(34,211,238,0.05))`, border: `1px solid ${C.cyan}33` }}>
-          <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '8px' }}>Current Plan</div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: C.cyan, marginBottom: '4px' }}>Scholar</div>
-          <div style={{ fontSize: '28px', fontWeight: 800 }}>£129<span style={{ fontSize: '14px', color: C.textMuted }}>/mo</span></div>
-          <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '8px' }}>Renews May 30, 2025</div>
-          <Btn variant="outline" size="sm" style={{ marginTop: '16px' }}>Upgrade plan</Btn>
-        </Card>
-        <Card>
-          <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '8px' }}>Total Spent</div>
-          <div style={{ fontSize: '32px', fontWeight: 800, color: C.text, marginBottom: '4px' }}>£726</div>
-          <div style={{ color: C.textMuted, fontSize: '13px' }}>Across 4 orders</div>
-          <ProgressBar value={55} style={{ marginTop: '16px' }} />
-          <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>55% of annual budget used</div>
-        </Card>
-      </div>
       <StripePaymentSection />
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {[
-            { desc: 'SOP Review & Editing', date: 'Apr 18, 2025', amount: '£99', status: 'Paid' },
-            { desc: 'Scholar Plan — April', date: 'Apr 1, 2025', amount: '£129', status: 'Paid' },
-            { desc: 'University Selection', date: 'Apr 10, 2025', amount: '£299', status: 'Paid' },
-            { desc: 'Scholar Plan — March', date: 'Mar 1, 2025', amount: '£129', status: 'Paid' },
-          ].map((p, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>{p.desc}</div>
-                <div style={{ fontSize: '12px', color: C.textMuted }}>{p.date}</div>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Badge color="green">{p.status}</Badge>
-                <span style={{ fontWeight: 700, fontSize: '14px' }}>{p.amount}</span>
-              </div>
-            </div>
-          ))}
+        <div style={{ padding: '28px 0', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>
+          No payments yet. Your order history will appear here once you place an order.
         </div>
       </Card>
     </div>
@@ -735,17 +674,16 @@ function StudentApp({ onLogout, userId, userName }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <Avatar name="Omar Hassan" size={60} />
+            <Avatar name={userName || 'User'} size={60} />
             <div>
-              <div style={{ fontWeight: 700 }}>Omar Hassan</div>
-              <div style={{ color: C.textMuted, fontSize: '13px' }}>omar.hassan@email.com</div>
+              <div style={{ fontWeight: 700 }}>{userName || 'User'}</div>
               <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }}>Change photo</Btn>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Input label="Full name" value="Omar Hassan" onChange={() => {}} />
-            <Input label="Email" type="email" value="omar.hassan@email.com" onChange={() => {}} />
-            <Input label="Phone" value="+44 7700 900123" onChange={() => {}} />
+            <Input label="Full name" value={userName || ''} onChange={() => {}} />
+            <Input label="Email" type="email" value="" onChange={() => {}} />
+            <Input label="Phone" value="" onChange={() => {}} placeholder="+44 7700 000000" />
             <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save changes</Btn>
           </div>
         </Card>

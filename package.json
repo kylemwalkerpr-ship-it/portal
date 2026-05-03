@@ -14,7 +14,8 @@
     "@supabase/supabase-js": "^2.105.1",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

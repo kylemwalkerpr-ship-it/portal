@@ -22,5 +22,5 @@ export default async function DashboardPage() {
   const role = profile?.role ?? 'client'
   const status = profile?.status ?? 'active'
 
-  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? profile?.email ?? ''} />
+  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? profile?.email ?? ''} userId={userId} />
 }
