@@ -79,7 +79,8 @@ export async function GET() {
     try {
       const Stripe = (await import('stripe')).default
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-      const profile = fullSelect.data || basicSelect.data
+      const profile: { email?: string; full_name?: string | null; stripe_customer_id?: string } | null =
+        (fullSelect.data as Record<string, unknown> as never) || (basicSelect.data as Record<string, unknown> as never)
       const customerId = profile?.stripe_customer_id
         ? profile.stripe_customer_id
         : (await stripe.customers.create({
