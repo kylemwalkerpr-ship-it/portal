@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
@@ -13,6 +13,9 @@ function ConsultantApp({ onLogout }) {
   const [profileName, setProfileName] = React.useState('');
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
+  const [connectStatus, setConnectStatus] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState(null);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
 
@@ -21,6 +24,57 @@ function ConsultantApp({ onLogout }) {
   const totalEarnings = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
   const monthEarnings = orders.filter(o => o.status !== 'cancelled').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
   const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
+
+  const refreshConsultantData = React.useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      fetch('/api/consultant/data').then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load consultant data');
+        return data;
+      }),
+      fetch('/api/connect/status').then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load Connect status');
+        return data;
+      }),
+    ])
+      .then(([data, status]) => {
+        setOrders(data.orders ?? []);
+        setProfileName(data.consultant?.name || '');
+        setProfileEmail(data.consultant?.email || '');
+        setProfileBio(data.consultant?.bio || '');
+        setConnectStatus(status);
+        setNotifications((data.orders ?? []).filter(o => o.payoutStatus === 'failed').map(o => ({ text: `Payout failed for ${o.service}`, time: 'Needs review', dot: C.red })));
+        setLoadError(null);
+      })
+      .catch(e => setLoadError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  React.useEffect(() => { refreshConsultantData(); }, [refreshConsultantData]);
+
+  const startConnectOnboarding = async () => {
+    const res = await fetch('/api/connect/onboard', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to start onboarding');
+    window.location.href = data.url;
+  };
+
+  const openConnectDashboard = async () => {
+    const res = await fetch('/api/connect/dashboard-link', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to open payout dashboard');
+    window.location.href = data.url;
+  };
+
+  const markOrderComplete = async order => {
+    const res = await fetch(`/api/consultant/orders/${order.id}/complete`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to complete order');
+    await refreshConsultantData();
+    setSelectedOrder(prev => prev ? { ...prev, status: 'completed', payoutStatus: data.payout?.transferred ? 'transferred' : prev.payoutStatus } : prev);
+  };
 
   const sendMessage = () => {
     if (!msgInput.trim()) return;
@@ -48,13 +102,14 @@ function ConsultantApp({ onLogout }) {
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); }} badge={notifications.length > 0 ? `${notifications.length} new` : null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
+        <NavItem icon="🏦" label="Payout Setup" active={page === 'connect'} onClick={() => setPage('connect')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name="Dr. Sarah Ahmed" size={32} color={C.purple} />
+          <Avatar name={profileName || 'Consultant'} size={32} color={C.purple} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Dr. Sarah Ahmed</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileName || 'Consultant'}</div>
             <div style={{ fontSize: '11px', color: C.green }}>● Available</div>
           </div>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }} title="Log out">⏻</button>
@@ -95,7 +150,7 @@ function ConsultantApp({ onLogout }) {
             </div>
           )}
         </div>
-        <Avatar name="Dr. Sarah Ahmed" size={32} color={C.purple} />
+        <Avatar name={profileName || 'Consultant'} size={32} color={C.purple} />
       </div>
     </div>
   );
@@ -104,15 +159,24 @@ function ConsultantApp({ onLogout }) {
   const Dashboard = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome back, Dr. Sarah 👋</h2>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome back, {profileName || 'Consultant'} 👋</h2>
         <p style={{ color: C.textMuted, fontSize: '14px' }}>{newOrders > 0 ? `You have ${newOrders} new order waiting for acceptance.` : 'All orders are up to date.'}</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
         <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} delta="+2" />
         <StatCard label="New Requests" value={newOrders} icon="🆕" color={C.orange} />
-        <StatCard label="This Month" value={`£${monthEarnings}`} icon="💰" color={C.green} delta="+£396" />
+        <StatCard label="This Month" value={`$${monthEarnings}`} icon="💰" color={C.green} delta="" />
         <StatCard label="Avg Rating" value="4.9 ⭐" icon="🏆" color={C.purple} />
       </div>
+      {!connectStatus?.onboarded && (
+        <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '14px', padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '240px' }}>
+            <div style={{ fontWeight: 700, color: C.orange, fontSize: '15px' }}>Connect your bank account to receive payouts</div>
+            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>Stripe Connect is required before completed services can be paid out automatically.</div>
+          </div>
+          <Btn variant="primary" size="sm" onClick={() => setPage('connect')}>Set up payouts</Btn>
+        </div>
+      )}
 
       {/* New order alert */}
       {newOrders > 0 && (
@@ -204,6 +268,7 @@ function ConsultantApp({ onLogout }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
                 <StatusBadge status={order.status} />
                 <span style={{ fontSize: '14px', fontWeight: 700, color: C.green }}>{order.earn}</span>
+                <PayoutBadge status={order.payoutStatus} />
                 <span style={{ fontSize: '11px', color: C.textDim }}>Due: {order.deadline}</span>
               </div>
             </div>
@@ -269,7 +334,7 @@ function ConsultantApp({ onLogout }) {
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
                 <Btn variant="primary" size="sm">Save progress</Btn>
-                {progressVal >= 90 && order.status !== 'completed' && <Btn variant="success" size="sm">Mark as complete</Btn>}
+                {progressVal >= 90 && order.status !== 'completed' && <Btn variant="success" size="sm" onClick={() => markOrderComplete(order)}>Mark as complete</Btn>}
               </div>
             </Card>
             {/* Messages */}
@@ -311,7 +376,7 @@ function ConsultantApp({ onLogout }) {
                 </div>
               </div>
               <Divider style={{ margin: '14px 0' }} />
-              {[['Order', order.id], ['Placed', order.date], ['Your Earn', order.earn], ['Deadline', order.deadline]].map(([k, v]) => (
+              {[['Order', order.id], ['Placed', order.date], ['Your Earn', order.earn], ['Payout', <PayoutBadge status={order.payoutStatus} />], ['Deadline', order.deadline]].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '13px' }}>
                   <span style={{ color: C.textMuted }}>{k}</span>
                   <span style={{ color: k === 'Your Earn' ? C.green : C.text, fontWeight: 600 }}>{v}</span>
@@ -375,7 +440,7 @@ function ConsultantApp({ onLogout }) {
             <span style={{ fontSize: '20px' }}>✅</span>
             <div>
               <div style={{ fontWeight: 700, color: C.green }}>Withdrawal initiated!</div>
-              <div style={{ fontSize: '13px', color: C.textMuted }}>£{availableBalance} will arrive within 1–2 business days.</div>
+              <div style={{ fontSize: '13px', color: C.textMuted }}>${availableBalance} will arrive within 1–2 business days.</div>
             </div>
           </div>
         )}
@@ -384,7 +449,7 @@ function ConsultantApp({ onLogout }) {
           <div style={{ position: 'absolute', top: 0, right: 0, width: '6px', height: '100%', background: C.cyan }} />
           <div style={{ position: 'absolute', top: 0, right: '6px', width: '6px', height: '100%', background: '#fff', opacity: 0.15 }} />
           <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Available to withdraw</div>
-          <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '20px' }}>£{withdrawn ? '0' : availableBalance}</div>
+          <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '20px' }}>${withdrawn ? '0' : availableBalance}</div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <Btn variant="primary" size="md" onClick={() => !withdrawn && setWithdrawModal(true)} disabled={withdrawn}>
               {withdrawn ? '✓ Withdrawn' : 'Withdraw now'}
@@ -402,9 +467,9 @@ function ConsultantApp({ onLogout }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-          <StatCard label="This Month" value={`£${monthEarnings}`} icon="📈" color={C.green} delta="" />
-          <StatCard label="All Time" value={`£${totalEarnings}`} icon="💰" color={C.cyan} />
-          <StatCard label="Pending" value={withdrawn ? '£0' : `£${availableBalance}`} icon="⏳" color={C.orange} />
+          <StatCard label="This Month" value={`$${monthEarnings}`} icon="📈" color={C.green} delta="" />
+          <StatCard label="All Time" value={`$${totalEarnings}`} icon="💰" color={C.cyan} />
+          <StatCard label="Pending" value={withdrawn ? '$0' : `$${availableBalance}`} icon="⏳" color={C.orange} />
           <StatCard label="Completed Orders" value={completedOrders} icon="✅" color={C.purple} />
         </div>
 
@@ -427,7 +492,7 @@ function ConsultantApp({ onLogout }) {
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '460px', position: 'relative' }}>
               <button onClick={() => setWithdrawModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
               <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '6px' }}>Withdraw funds</h3>
-              <p style={{ color: C.textMuted, fontSize: '13px', marginBottom: '24px' }}>£{availableBalance} available from approved orders.</p>
+              <p style={{ color: C.textMuted, fontSize: '13px', marginBottom: '24px' }}>${availableBalance} available from approved orders.</p>
 
               <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
                 {[['paypal', '🅿️ PayPal'], ['bank', '🏦 US Bank (ACH)']].map(([val, lbl]) => (
@@ -460,10 +525,10 @@ function ConsultantApp({ onLogout }) {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', padding: '16px', background: C.surface2, borderRadius: '12px', marginBottom: '20px' }}>
                 <span style={{ fontSize: '14px', color: C.textMuted }}>Withdrawal amount</span>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>£{availableBalance}</span>
+                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>${availableBalance}</span>
               </div>
               <Btn variant="primary" fullWidth size="lg" onClick={handleWithdraw}>
-                Withdraw £{availableBalance} →
+                Withdraw ${availableBalance} →
               </Btn>
             </div>
           </div>
@@ -471,6 +536,44 @@ function ConsultantApp({ onLogout }) {
       </div>
     );
   };
+
+  const Connect = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
+      <div>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Payout Setup</h2>
+        <p style={{ color: C.textMuted, fontSize: '14px' }}>Connect your bank account with Stripe Express to receive automatic payouts when services are completed.</p>
+      </div>
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '260px' }}>
+            <div style={{ fontWeight: 800, fontSize: '16px', marginBottom: '8px' }}>
+              {connectStatus?.onboarded ? 'Your payout account is connected' : 'Connect your bank account'}
+            </div>
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.7 }}>
+              {connectStatus?.onboarded
+                ? 'You will receive payouts automatically when orders are completed and approved.'
+                : 'Stripe securely collects and verifies your bank details. YouSafe never stores your bank account information.'}
+            </div>
+          </div>
+          <Badge color={connectStatus?.onboarded ? 'green' : 'orange'}>
+            {connectStatus?.onboarded ? 'Connected' : 'Not connected'}
+          </Badge>
+        </div>
+        <Divider style={{ margin: '20px 0' }} />
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {connectStatus?.onboarded ? (
+            <Btn variant="primary" onClick={openConnectDashboard}>View Payout Dashboard</Btn>
+          ) : (
+            <Btn variant="primary" onClick={startConnectOnboarding}>Connect Bank Account</Btn>
+          )}
+          <Btn variant="secondary" onClick={refreshConsultantData}>Refresh Status</Btn>
+        </div>
+        <div style={{ marginTop: '16px', color: C.textMuted, fontSize: '13px' }}>
+          Charges enabled: {connectStatus?.chargesEnabled ? 'Yes' : 'No'} · Payouts enabled: {connectStatus?.payoutsEnabled ? 'Yes' : 'No'}
+        </div>
+      </Card>
+    </div>
+  );
 
   // ── SETTINGS ──
   const Settings = () => {
@@ -590,14 +693,17 @@ function ConsultantApp({ onLogout }) {
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <TopBar title={{ dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard'} />
+        <TopBar title={{ dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard'} />
         <div style={{ flex: 1 }}>
+          {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
+          {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
           {page === 'dashboard' && <Dashboard />}
           {page === 'orders' && <Orders />}
           {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
           {page === 'clients' && <Clients />}
           {page === 'messages' && <Messages />}
           {page === 'earnings' && <Earnings />}
+          {page === 'connect' && <Connect />}
           {page === 'settings' && <Settings />}
         </div>
       </div>

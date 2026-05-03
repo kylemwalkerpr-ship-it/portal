@@ -41,7 +41,40 @@ export async function POST(req: Request) {
     return new Response('OK', { status: 200 })
   }
 
-  if (event.type !== 'checkout.session.completed') {
+  const eventType = event.type as string
+
+  if (eventType === 'account.updated') {
+    const account = event.data.object as Stripe.Account
+    const consultantId = account.metadata?.consultantId
+    if (consultantId && account.details_submitted && account.charges_enabled) {
+      const db = createSupabaseAdminClient()
+      await db
+        .from('consultants')
+        .update({ stripe_onboarding_complete: true })
+        .eq('id', consultantId)
+      console.log(`[webhook] Consultant ${consultantId} completed Stripe Connect onboarding`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  if (eventType === 'transfer.created') {
+    const transfer = event.data.object as Stripe.Transfer
+    console.log(`[webhook] Transfer created: ${transfer.id} for order ${transfer.metadata?.orderId ?? 'unknown'}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (eventType === 'transfer.failed') {
+    const transfer = event.data.object as Stripe.Transfer
+    const orderId = transfer.metadata?.orderId
+    if (orderId) {
+      const db = createSupabaseAdminClient()
+      await db.from('orders').update({ payout_status: 'failed' }).eq('id', orderId)
+      console.error(`[webhook] Transfer failed: ${transfer.id} for order ${orderId}`)
+    }
+    return new Response('OK', { status: 200 })
+  }
+
+  if (eventType !== 'checkout.session.completed') {
     return new Response('OK', { status: 200 })
   }
 
@@ -94,13 +127,16 @@ export async function POST(req: Request) {
   const lineItem = sessionWithItems.line_items?.data[0]
   const serviceName = lineItem?.description ?? lineItem?.price?.product?.toString() ?? 'Consultancy Service'
 
-  // Find matching service in Supabase — or create one on the fly
+  // Prefer the service selected in the app checkout. Legacy payment links fall back to title matching.
   let serviceId: string
-  const { data: existingService } = await db
-    .from('services')
-    .select('id')
-    .ilike('title', `%${serviceName.split(' ').slice(0, 3).join(' ')}%`)
-    .single()
+  const metadataServiceId = session.metadata?.service_id
+  const { data: existingService } = metadataServiceId
+    ? await db.from('services').select('id').eq('id', metadataServiceId).single()
+    : await db
+        .from('services')
+        .select('id')
+        .ilike('title', `%${serviceName.split(' ').slice(0, 3).join(' ')}%`)
+        .single()
 
   if (existingService) {
     serviceId = existingService.id

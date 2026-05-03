@@ -152,6 +152,17 @@ export function StatusBadge({ status }) {
     completed: { label: 'Completed', color: 'green' },
     cancelled: { label: 'Cancelled', color: 'red' },
     new: { label: 'New', color: 'cyan' },
+    queued: { label: 'Pending', color: 'orange' },
+  }
+  const s = map[status] || map.pending
+  return <Badge color={s.color}>{s.label}</Badge>
+}
+
+export function PayoutBadge({ status }) {
+  const map = {
+    pending: { label: 'Payout Pending', color: 'gray' },
+    transferred: { label: 'Paid Out', color: 'green' },
+    failed: { label: 'Payout Failed — Contact Support', color: 'red' },
   }
   const s = map[status] || map.pending
   return <Badge color={s.color}>{s.label}</Badge>

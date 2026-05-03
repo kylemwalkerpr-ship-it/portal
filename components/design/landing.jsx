@@ -8,12 +8,12 @@ function LandingPage({ onLogin, onSignup }) {
   const [activePlan, setActivePlan] = React.useState('monthly');
 
   const services = [
-    { icon: '🎓', title: 'University Selection', desc: 'Shortlisting the best universities based on your profile, budget, and goals.', price: 'From £149' },
-    { icon: '📄', title: 'SOP & Essays', desc: 'Expert review and editing of your statement of purpose and application essays.', price: 'From £99' },
-    { icon: '✈️', title: 'Visa Support', desc: 'Step-by-step student visa documentation guidance for UK, Canada, Australia and more.', price: 'From £199' },
-    { icon: '🏠', title: 'Accommodation Help', desc: 'Finding verified student housing near your campus before you arrive.', price: 'From £79' },
-    { icon: '💼', title: 'Career Services', desc: 'CV building, LinkedIn optimisation and job search strategy for international students.', price: 'From £129' },
-    { icon: '🗂️', title: 'Full Application', desc: 'End-to-end support from shortlisting to visa approval with a dedicated consultant.', price: 'From £599' },
+    { icon: '🎓', title: 'University Selection', desc: 'Shortlisting the best universities based on your profile, budget, and goals.', price: 'From $149' },
+    { icon: '📄', title: 'SOP & Essays', desc: 'Expert review and editing of your statement of purpose and application essays.', price: 'From $99' },
+    { icon: '✈️', title: 'Visa Support', desc: 'Step-by-step student visa documentation guidance for UK, Canada, Australia and more.', price: 'From $199' },
+    { icon: '🏠', title: 'Accommodation Help', desc: 'Finding verified student housing near your campus before you arrive.', price: 'From $79' },
+    { icon: '💼', title: 'Career Services', desc: 'CV building, LinkedIn optimisation and job search strategy for international students.', price: 'From $129' },
+    { icon: '🗂️', title: 'Full Application', desc: 'End-to-end support from shortlisting to visa approval with a dedicated consultant.', price: 'From $599' },
   ];
 
   const steps = [
@@ -25,19 +25,19 @@ function LandingPage({ onLogin, onSignup }) {
 
   const plans = [
     {
-      name: 'Starter', price: { monthly: '£49', yearly: '£39' }, period: '/mo',
+      name: 'Starter', price: { monthly: '$49', yearly: '$39' }, period: '/mo',
       desc: 'Perfect for early explorers',
       features: ['1 active service at a time', 'Document storage (2 GB)', 'Email support', 'Progress tracker'],
       cta: 'Get Started', highlight: false,
     },
     {
-      name: 'Scholar', price: { monthly: '£129', yearly: '£99' }, period: '/mo',
+      name: 'Scholar', price: { monthly: '$129', yearly: '$99' }, period: '/mo',
       desc: 'Most popular for full applications',
       features: ['3 active services', 'Dedicated consultant', 'Document storage (20 GB)', 'Priority support', 'Visa checklist tool', 'Offer letter tracker'],
       cta: 'Start Free Trial', highlight: true,
     },
     {
-      name: 'Elite', price: { monthly: '£299', yearly: '£239' }, period: '/mo',
+      name: 'Elite', price: { monthly: '$299', yearly: '$239' }, period: '/mo',
       desc: 'White-glove end-to-end support',
       features: ['Unlimited services', 'Senior consultant', 'Unlimited storage', '24/7 WhatsApp support', 'Mock interviews', 'Airport pickup coordination'],
       cta: 'Contact Sales', highlight: false,

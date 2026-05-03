@@ -3,6 +3,19 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
+const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+const moneyValue = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
+const PLATFORM_FEE_PERCENT = 20;
+const CONSULTANT_FEE_PERCENT = 100 - PLATFORM_FEE_PERCENT;
+const deliveryLabel = days => {
+  const n = Number(days || 0);
+  if (!n) return 'Timeline TBD';
+  if (n >= 365) return '12 months';
+  if (n >= 90) return '3 months';
+  if (n >= 28) return '2–4 weeks';
+  return `${n} day${n === 1 ? '' : 's'}`;
+};
+
 function AdminApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [userFilter, setUserFilter] = React.useState('all');
@@ -18,16 +31,100 @@ function AdminApp({ onLogout }) {
   const [stripePublishableKey, setStripePublishableKey] = React.useState('');
   const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState(null);
 
-  const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + (parseInt(String(o.adminCut || '0').replace(/[^0-9]/g, '')) || 0), 0);
-  const paidToConsultants = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + (parseInt(String(o.consultantPay || '0').replace(/[^0-9]/g, '')) || 0), 0);
-  const pendingEscrow = orders.filter(o => o.escrow === 'held').reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const normalizeAdminData = React.useCallback(data => {
+    const profiles = data.users ?? [];
+    const profileById = new Map(profiles.map(p => [p.id, p]));
+    const itemsByOrder = new Map((data.orderItems ?? []).map(i => [i.order_id, i]));
+    const serviceById = new Map((data.services ?? []).map(s => [s.id, s]));
+    const normalizedUsers = profiles.map(p => ({
+      id: p.id,
+      name: p.full_name || p.email || 'Unnamed user',
+      email: p.email || '',
+      role: p.role === 'client' ? 'student' : p.role || 'student',
+      country: p.country || '—',
+      joined: p.created_at ? new Date(p.created_at).toLocaleDateString() : '—',
+      orders: (data.orders ?? []).filter(o => o.client_id === p.id || o.consultant_id === p.id).length,
+      spend: formatUSD((data.orders ?? []).filter(o => o.client_id === p.id).reduce((sum, o) => sum + Number(o.total_amount || 0), 0)),
+      status: p.status || 'active',
+    }));
+    const normalizedOrders = (data.orders ?? []).map(o => {
+      const item = itemsByOrder.get(o.id);
+      const service = serviceById.get(item?.service_id);
+      const student = profileById.get(o.client_id);
+      const consultant = profileById.get(o.consultant_id);
+      const amount = Number(o.total_amount ?? item?.subtotal ?? 0);
+      const released = ['released', 'paid', 'completed'].includes(String(o.escrow_status || '').toLowerCase()) || o.payout_released_at;
+      return {
+        id: o.id,
+        service: service?.title || o.service_title || 'Service unavailable',
+        student: student?.full_name || student?.email || 'Unknown student',
+        consultant: consultant?.full_name || consultant?.email || null,
+        consultantId: o.consultant_id || null,
+        amount: formatUSD(amount),
+        amountValue: amount,
+        consultantPay: formatUSD(amount * (CONSULTANT_FEE_PERCENT / 100)),
+        adminCut: formatUSD(amount * (PLATFORM_FEE_PERCENT / 100)),
+        escrow: released ? 'released' : 'held',
+        status: o.status === 'queued' ? 'pending' : (o.status || 'pending'),
+        createdAt: o.created_at,
+      };
+    });
+    const orderCountByService = new Map((data.orderItems ?? []).map(item => [item.service_id, 0]));
+    (data.orderItems ?? []).forEach(item => orderCountByService.set(item.service_id, (orderCountByService.get(item.service_id) || 0) + 1));
+    const normalizedServices = (data.services ?? []).map(s => ({
+      id: s.id,
+      title: s.title || '',
+      category: s.category || 'General',
+      price: Number(s.price || 0),
+      delivery_days: Number(s.delivery_days || 7),
+      active: Boolean(s.is_active),
+      orders: orderCountByService.get(s.id) || 0,
+    }));
+    setUsers(normalizedUsers);
+    setOrders(normalizedOrders);
+    setServices(normalizedServices);
+    setAlerts(normalizedOrders.filter(o => o.status === 'pending').slice(0, 5).map(o => ({ text: `Order ${o.id} is waiting for assignment`, time: o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'Now', dot: C.orange })));
+  }, []);
+
+  const refreshAdminData = React.useCallback(() => {
+    setLoading(true);
+    fetch('/api/admin/data')
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load admin data');
+        normalizeAdminData(data);
+        setLoadError(null);
+      })
+      .catch(e => setLoadError(e.message))
+      .finally(() => setLoading(false));
+  }, [normalizeAdminData]);
+
+  React.useEffect(() => { refreshAdminData(); }, [refreshAdminData]);
+
+  const releaseOrder = async orderId => {
+    const res = await fetch(`/api/admin/orders/${orderId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ escrow_status: 'released' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Release failed');
+    refreshAdminData();
+  };
+
+  const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.adminCut), 0);
+  const paidToConsultants = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.consultantPay), 0);
+  const pendingEscrow = orders.filter(o => o.escrow === 'held').reduce((a, o) => a + o.amountValue, 0);
   const totalStudents = users.filter(u => u.role === 'student').length;
   const totalConsultants = users.filter(u => u.role === 'consultant').length;
   const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
   const filteredUsers = userFilter === 'all' ? users : users.filter(u => u.role === userFilter);
   const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
-  const consultantNames = users.filter(u => u.role === 'consultant').map(u => u.name);
+  const consultants = users.filter(u => u.role === 'consultant');
+  const consultantNames = consultants.map(u => u.name);
 
   // ── SIDEBAR ──
   const Sidebar = () => (
@@ -106,8 +203,8 @@ function AdminApp({ onLogout }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3" />
         <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
-        <StatCard label="In Escrow" value={`£${pendingEscrow}`} icon="🔒" color={C.orange} />
-        <StatCard label="Admin Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} delta="+£160" />
+        <StatCard label="In Escrow" value={formatUSD(pendingEscrow)} icon="🔒" color={C.orange} />
+        <StatCard label="Admin Revenue" value={formatUSD(totalRevenue)} icon="💰" color={C.green} />
         <StatCard label="Active Orders" value={orders.filter(o => o.status === 'active').length} icon="📦" color={C.cyan} />
         <StatCard label="Completed" value={orders.filter(o => o.status === 'completed').length} icon="✅" color={C.green} />
       </div>
@@ -128,7 +225,7 @@ function AdminApp({ onLogout }) {
                 <div style={{ fontWeight: 700, color: C.orange }}>{order.amount} held</div>
                 <div style={{ fontSize: '12px', color: C.textMuted }}>{order.consultantPay} / {order.adminCut}</div>
               </div>
-              <Btn variant="success" size="sm">Release</Btn>
+              <Btn variant="success" size="sm" onClick={() => releaseOrder(order.id)}>Release</Btn>
             </Card>
           ))}
         </div>
@@ -164,20 +261,20 @@ function AdminApp({ onLogout }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue Split (all time)</div>
           {[
-            { label: 'Total collected', value: orders.reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.text },
-            { label: 'Consultant share (60%)', value: orders.reduce((a, o) => a + (parseInt(String(o.consultantPay || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.cyan },
-            { label: 'Platform share (40%)', value: orders.reduce((a, o) => a + (parseInt(String(o.adminCut || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.green },
+            { label: 'Total collected', value: orders.reduce((a, o) => a + o.amountValue, 0), color: C.text },
+            { label: `Consultant share (${CONSULTANT_FEE_PERCENT}%)`, value: orders.reduce((a, o) => a + moneyValue(o.consultantPay), 0), color: C.cyan },
+            { label: `Platform share (${PLATFORM_FEE_PERCENT}%)`, value: orders.reduce((a, o) => a + moneyValue(o.adminCut), 0), color: C.green },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: r.color }}>£{r.value}</span>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: r.color }}>{formatUSD(r.value)}</span>
             </div>
           ))}
         </Card>
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Platform Health</div>
           {[
-            { label: 'Avg order value', value: orders.length ? `£${Math.round(orders.reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0) / orders.length)}` : 'N/A' },
+            { label: 'Avg order value', value: orders.length ? formatUSD(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A' },
             { label: 'Completion rate', value: 'N/A' },
             { label: 'Avg response time', value: 'N/A' },
             { label: 'Student satisfaction', value: 'N/A' },
@@ -193,7 +290,18 @@ function AdminApp({ onLogout }) {
   );
 
   // ── USERS ──
-  const Users = () => (
+  const Users = () => {
+    const updateUser = async (user, payload) => {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'User update failed');
+      refreshAdminData();
+    };
+    return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
@@ -242,7 +350,7 @@ function AdminApp({ onLogout }) {
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <Btn variant="ghost" size="sm">View</Btn>
-                    <Btn variant="danger" size="sm">{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
+                    <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
                   </div>
                 </td>
               </tr>
@@ -251,16 +359,29 @@ function AdminApp({ onLogout }) {
         </table>
       </Card>
     </div>
-  );
+    );
+  };
 
   // ── ALL ORDERS ──
   const Orders = () => {
-    const [orders, setOrders] = React.useState([]);
     const [assignModal, setAssignModal] = React.useState(null);
-    const CONSULTANTS = consultantNames;
+    const CONSULTANTS = consultants;
     const filtered = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
-    const handleAssign = (orderId, consultant) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant, status: o.status === 'pending' ? 'active' : o.status } : o)); setAssignModal(null); };
-    const handleUnassign = (orderId) => setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant: null, status: 'pending' } : o));
+    const updateOrder = async (orderId, payload) => {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Order update failed');
+      refreshAdminData();
+    };
+    const handleAssign = async (orderId, consultant) => {
+      await updateOrder(orderId, { consultant_id: consultant.id, status: 'active' });
+      setAssignModal(null);
+    };
+    const handleUnassign = orderId => updateOrder(orderId, { consultant_id: null, status: 'queued' });
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div><h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>All Orders</h2><p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p></div>
@@ -285,7 +406,7 @@ function AdminApp({ onLogout }) {
                   <td style={{ padding: '14px 16px' }}><StatusBadge status={o.status} /></td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm">Release</Btn>}
+                      {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm" onClick={() => updateOrder(o.id, { escrow_status: 'released' })}>Release</Btn>}
                       {o.consultant ? (
                         <><Btn variant="secondary" size="sm" onClick={() => setAssignModal(o)}>Reassign</Btn><Btn variant="danger" size="sm" onClick={() => handleUnassign(o.id)}>Unassign</Btn></>
                       ) : (
@@ -307,10 +428,10 @@ function AdminApp({ onLogout }) {
               </div>
               {assignModal.consultant && <div style={{ background: C.surface2, borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '13px', color: C.textMuted }}>Current: <strong style={{ color: C.text }}>{assignModal.consultant}</strong></div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                {CONSULTANTS.filter(c => c !== assignModal.consultant).map(c => (
-                  <div key={c} style={{ padding: '14px 16px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}`, cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <Avatar name={c} size={36} color={C.purple} />
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: '14px' }}>{c}</div><div style={{ fontSize: '12px', color: C.green }}>● Available · 4.9 ⭐</div></div>
+                {CONSULTANTS.filter(c => c.id !== assignModal.consultantId).map(c => (
+                  <div key={c.id} style={{ padding: '14px 16px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}`, cursor: 'pointer', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <Avatar name={c.name} size={36} color={C.purple} />
+                    <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: '14px' }}>{c.name}</div><div style={{ fontSize: '12px', color: C.green }}>Available</div></div>
                     <Btn variant="primary" size="sm" onClick={() => handleAssign(assignModal.id, c)}>Assign</Btn>
                   </div>
                 ))}
@@ -327,17 +448,27 @@ function AdminApp({ onLogout }) {
   const Escrow = () => {
     const held = orders.filter(o => o.escrow === 'held');
     const released = orders.filter(o => o.escrow === 'released');
-    const totalHeld = held.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0);
+    const totalHeld = held.reduce((a, o) => a + o.amountValue, 0);
+    const releaseOrder = async orderId => {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ escrow_status: 'released' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Release failed');
+      refreshAdminData();
+    };
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Escrow Management</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released 60% to consultant, 40% to platform.</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {CONSULTANT_FEE_PERCENT}% to consultant, {PLATFORM_FEE_PERCENT}% to platform.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-          <StatCard label="Total Held" value={`£${totalHeld}`} icon="🔒" color={C.orange} />
+          <StatCard label="Total Held" value={formatUSD(totalHeld)} icon="🔒" color={C.orange} />
           <StatCard label="Orders in Escrow" value={held.length} icon="📦" color={C.cyan} />
-          <StatCard label="Released All Time" value={`£${released.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0)}`} icon="✅" color={C.green} />
+          <StatCard label="Released All Time" value={formatUSD(released.reduce((a, o) => a + o.amountValue, 0))} icon="✅" color={C.green} />
         </div>
         <div>
           <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Held — Awaiting Student Approval</h3>
@@ -356,15 +487,15 @@ function AdminApp({ onLogout }) {
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '16px', fontWeight: 800, color: C.cyan }}>{o.consultantPay}</div>
-                      <div style={{ fontSize: '11px', color: C.textDim }}>60% → consultant</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>{CONSULTANT_FEE_PERCENT}% → consultant</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '16px', fontWeight: 800, color: C.green }}>{o.adminCut}</div>
-                      <div style={{ fontSize: '11px', color: C.textDim }}>40% → platform</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>{PLATFORM_FEE_PERCENT}% → platform</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <StatusBadge status={o.status} />
-                      {o.status === 'completed' && <Btn variant="success" size="sm">Force release</Btn>}
+                      {o.status === 'completed' && <Btn variant="success" size="sm" onClick={() => releaseOrder(o.id)}>Force release</Btn>}
                     </div>
                   </div>
                 </div>
@@ -401,9 +532,9 @@ function AdminApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Payouts</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-        <StatCard label="Platform Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} />
-        <StatCard label="Paid to Consultants" value={`£${paidToConsultants}`} icon="👤" color={C.cyan} />
-        <StatCard label="Pending Payouts" value={`£${pendingEscrow}`} icon="⏳" color={C.orange} />
+        <StatCard label="Platform Revenue" value={formatUSD(totalRevenue)} icon="💰" color={C.green} />
+        <StatCard label="Paid to Consultants" value={formatUSD(paidToConsultants)} icon="👤" color={C.cyan} />
+        <StatCard label="Pending Payouts" value={formatUSD(pendingEscrow)} icon="⏳" color={C.orange} />
       </div>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Consultant Payout Queue</div>
@@ -414,7 +545,7 @@ function AdminApp({ onLogout }) {
               <div style={{ fontWeight: 600, fontSize: '14px' }}>{name}</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Pending payout details will appear here</div>
             </div>
-            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>£0</span>
+            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{formatUSD(0)}</span>
             <Btn variant="primary" size="sm">Pay out</Btn>
           </div>
         )) : (
@@ -461,18 +592,39 @@ function AdminApp({ onLogout }) {
 
   // ── SERVICES MANAGEMENT ──
   const ServicesAdmin = () => {
-    const [services, setServices] = React.useState([
-      { id: 1, name: 'University Selection Package', category: 'Applications', price: 299, active: true, orders: 18 },
-      { id: 2, name: 'SOP & Personal Statement Review', category: 'Writing', price: 149, active: true, orders: 24 },
-      { id: 3, name: 'UK Student Visa Support', category: 'Visa', price: 249, active: true, orders: 14 },
-      { id: 4, name: 'Canada Student Visa Support', category: 'Visa', price: 249, active: true, orders: 9 },
-      { id: 5, name: 'Australia Student Visa Support', category: 'Visa', price: 249, active: true, orders: 7 },
-      { id: 6, name: 'IELTS Preparation Plan', category: 'Test Prep', price: 79, active: true, orders: 31 },
-      { id: 7, name: 'Accommodation Assistance', category: 'Housing', price: 99, active: true, orders: 12 },
-      { id: 8, name: 'CV & LinkedIn Optimisation', category: 'Career', price: 129, active: true, orders: 8 },
-      { id: 9, name: 'Scholarship Search Service', category: 'Finance', price: 179, active: false, orders: 5 },
-      { id: 10, name: 'Full Application Package', category: 'Bundle', price: 599, active: true, orders: 6 },
-    ]);
+    const [editing, setEditing] = React.useState(null);
+    const [saving, setSaving] = React.useState(false);
+    const blank = { title: '', category: 'General', price: 0, delivery_days: 7, active: true };
+    const saveService = async () => {
+      setSaving(true);
+      const payload = {
+        title: editing.title,
+        category: editing.category,
+        price: Number(editing.price || 0),
+        delivery_days: Number(editing.delivery_days || 7),
+        is_active: Boolean(editing.active),
+      };
+      const res = await fetch(editing.id ? `/api/admin/services/${editing.id}` : '/api/admin/services', {
+        method: editing.id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setSaving(false);
+      if (!res.ok) throw new Error(data.error || 'Service save failed');
+      setEditing(null);
+      refreshAdminData();
+    };
+    const toggleService = async s => {
+      const res = await fetch(`/api/admin/services/${s.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: s.title, category: s.category, price: s.price, delivery_days: s.delivery_days, is_active: !s.active }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Service update failed');
+      refreshAdminData();
+    };
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -480,7 +632,7 @@ function AdminApp({ onLogout }) {
             <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Service Catalogue</h2>
             <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage all services available to students.</p>
           </div>
-          <Btn variant="primary" size="sm">+ Add service</Btn>
+          <Btn variant="primary" size="sm" onClick={() => setEditing(blank)}>+ Add service</Btn>
         </div>
         <Card style={{ padding: '0', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -494,14 +646,17 @@ function AdminApp({ onLogout }) {
             <tbody>
               {services.length > 0 ? services.map((s, i) => (
                 <tr key={s.id} style={{ borderBottom: i < services.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>{s.name}</td>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>
+                    <div>{s.title}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{deliveryLabel(s.delivery_days)}</div>
+                  </td>
                   <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
-                  <td style={{ padding: '14px 16px', fontWeight: 700 }}>£{s.price}</td>
-                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>£{Math.round(s.price * 0.6)}</td>
-                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>£{Math.round(s.price * 0.4)}</td>
+                  <td style={{ padding: '14px 16px', fontWeight: 700 }}>{formatUSD(s.price)}</td>
+                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatUSD(s.price * (CONSULTANT_FEE_PERCENT / 100))}</td>
+                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatUSD(s.price * (PLATFORM_FEE_PERCENT / 100))}</td>
                   <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
                   <td style={{ padding: '14px 16px' }}>
-                    <button onClick={() => setServices(prev => prev.map(sv => sv.id === s.id ? { ...sv, active: !sv.active } : sv))} style={{
+                    <button onClick={() => toggleService(s)} style={{
                       width: '40px', height: '22px', borderRadius: '99px', border: 'none', cursor: 'pointer',
                       background: s.active ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
                     }}>
@@ -510,7 +665,7 @@ function AdminApp({ onLogout }) {
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      <Btn variant="ghost" size="sm">Edit</Btn>
+                      <Btn variant="ghost" size="sm" onClick={() => setEditing(s)}>Edit</Btn>
                     </div>
                   </td>
                 </tr>
@@ -522,6 +677,29 @@ function AdminApp({ onLogout }) {
             </tbody>
           </table>
         </Card>
+        {editing && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '520px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '17px', fontWeight: 800 }}>{editing.id ? 'Edit service' : 'Add service'}</h3>
+                <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              </div>
+              <div style={{ display: 'grid', gap: '14px' }}>
+                <Input label="Service title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
+                <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />
+                <Input label="Price (USD)" type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} />
+                <Input label="Delivery days" type="number" value={editing.delivery_days} onChange={v => setEditing(s => ({ ...s, delivery_days: v }))} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: C.surface2, borderRadius: '10px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 600 }}>Visible to students</span>
+                  <button onClick={() => setEditing(s => ({ ...s, active: !s.active }))} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: editing.active ? C.cyan : C.surface3, position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: '3px', left: editing.active ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
+                  </button>
+                </div>
+                <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save service'}</Btn>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -536,13 +714,13 @@ function AdminApp({ onLogout }) {
           <div>
             <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Consultant share</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <input type="range" min="50" max="80" defaultValue="60" style={{ flex: 1, accentColor: C.cyan }} />
-              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>60%</span>
+              <input type="range" min="50" max="90" defaultValue={CONSULTANT_FEE_PERCENT} style={{ flex: 1, accentColor: C.cyan }} />
+              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>{CONSULTANT_FEE_PERCENT}%</span>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: C.surface2, borderRadius: '10px', fontSize: '14px' }}>
             <span style={{ color: C.textMuted }}>Platform receives</span>
-            <span style={{ fontWeight: 700, color: C.green }}>40%</span>
+            <span style={{ fontWeight: 700, color: C.green }}>{PLATFORM_FEE_PERCENT}%</span>
           </div>
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save split</Btn>
         </div>
@@ -595,6 +773,8 @@ function AdminApp({ onLogout }) {
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={pages[page] || 'Admin'} />
         <div style={{ flex: 1 }}>
+          {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
+          {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading live admin data…</div>}
           {page === 'dashboard' && <Dashboard />}
           {page === 'users' && <Users />}
           {page === 'orders' && <Orders />}

@@ -4,44 +4,29 @@ import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-// CACHE-BUST v3 — hardcoded fallback ensures Stripe always loads even if env-var inlining fails
-const STRIPE_PUB_KEY =
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
-  'pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BOvHpQa9WupSj8lYeBg4ORI3AhSLflB7fsvvHgQHEqvczFAVf5CnjSWg400nEjPlTuq'
+const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 const STUDENT_ORDERS = [];
 
-const SERVICES_CATALOG = [
-  // ── Study Permits ──
-  { id: 'sp1', icon: '📋', title: 'Study Permit Starter Package', desc: 'Essential support for your Canadian study permit application — document checklist, guidance and review.', price: '$199', time: '5–7 days', popular: false, category: 'Study Permits', stripeUrl: 'https://buy.stripe.com/4gM3cvgsV1mK3azeDWgYU02' },
-  { id: 'sp2', icon: '📋', title: 'Study Permit Standard Package', desc: 'Full study permit support including document prep, application review and submission strategy.', price: '$349', time: '7–10 days', popular: true, category: 'Study Permits', stripeUrl: 'https://buy.stripe.com/aFa8wP6Sl5D026v2VegYU03' },
-  { id: 'sp3', icon: '📋', title: 'Study Permit Premium Package', desc: 'Premium end-to-end study permit service with dedicated consultant, priority support and follow-up.', price: '$549', time: '7–14 days', popular: false, category: 'Study Permits', stripeUrl: 'https://buy.stripe.com/14AaEX6Sl9TgcL91RagYU04' },
-  { id: 'sp4', icon: '🌐', title: 'Study Permit & Visa Consulting', desc: 'Comprehensive consulting covering both your study permit and visitor visa requirements.', price: '$149', time: '3–5 days', popular: false, category: 'Study Permits', stripeUrl: 'https://buy.stripe.com/cNieVd0tX9Tgh1pgM4gYU00' },
-  // ── University Admissions ──
-  { id: 'ua1', icon: '🎓', title: 'University Admission Basic', desc: 'Foundational admissions support: school selection, application checklist and document review.', price: '$299', time: '5–7 days', popular: false, category: 'University Admissions', stripeUrl: 'https://buy.stripe.com/aFadR9ccF1mKdPd0N6gYU05' },
-  { id: 'ua2', icon: '🎓', title: 'University Admission Comprehensive', desc: 'Full admissions package: university shortlist, SOP review, application submission and follow-up.', price: '$549', time: '7–14 days', popular: true, category: 'University Admissions', stripeUrl: 'https://buy.stripe.com/6oU5kDfoRc1o6mL2VegYU06' },
-  { id: 'ua3', icon: '🎓', title: 'University Admission Elite', desc: 'White-glove admissions support with senior consultant, mock interviews and scholarship guidance.', price: '$849', time: '2–4 weeks', popular: false, category: 'University Admissions', stripeUrl: 'https://buy.stripe.com/fZu5kD6SlfdA4eDanGgYU07' },
-  // ── Post-Graduate ──
-  { id: 'pg1', icon: '🏫', title: 'PGWP Only Package', desc: 'Dedicated Post-Graduate Work Permit application support for recent Canadian graduates.', price: '$249', time: '5–7 days', popular: false, category: 'Post-Graduate', stripeUrl: 'https://buy.stripe.com/4gMeVd0tX5D08uT3ZigYU08' },
-  // ── PR & Immigration ──
-  { id: 'pr1', icon: '🍁', title: 'PR Roadmap Package', desc: 'Personalised permanent residency pathway analysis — Express Entry, PNP and other streams.', price: '$449', time: '7–10 days', popular: false, category: 'PR & Immigration', stripeUrl: 'https://buy.stripe.com/8x2aEXccF9Tg3az3ZigYU09' },
-  { id: 'pr2', icon: '🍁', title: 'Full PR Acceleration Package', desc: 'Complete PR application support from profile optimisation to ITA and full application submission.', price: '$799', time: '2–6 weeks', popular: true, category: 'PR & Immigration', stripeUrl: 'https://buy.stripe.com/8x2fZhb8B0iGfXl2VegYU0a' },
-  // ── Settlement ──
-  { id: 'st1', icon: '🏠', title: 'Arrival Essentials Package', desc: 'Pre-arrival checklist, SIN, banking, accommodation and first-week setup support.', price: '$199', time: '3–5 days', popular: false, category: 'Settlement', stripeUrl: 'https://buy.stripe.com/aFacN590t3uS7qPanGgYU0b' },
-  { id: 'st2', icon: '🏠', title: 'Full Settlement Package', desc: 'Comprehensive settlement support: housing, healthcare, banking, schools and community resources.', price: '$449', time: '5–10 days', popular: false, category: 'Settlement', stripeUrl: 'https://buy.stripe.com/4gM00jdgJ3uScL92VegYU0c' },
-  { id: 'st3', icon: '🏠', title: 'Premium Integration Package', desc: 'Full integration package with ongoing support, mentorship and community connections for 3 months.', price: '$699', time: 'Ongoing', popular: false, category: 'Settlement', stripeUrl: 'https://buy.stripe.com/aFaeVd90taXkaD11RagYU0d' },
-  // ── Mentorship ──
-  { id: 'me1', icon: '🤝', title: 'Monthly Mentorship', desc: 'Monthly 1-on-1 sessions with a dedicated consultant covering any immigration or settlement topic.', price: '$149/mo', time: 'Ongoing', popular: false, category: 'Mentorship', stripeUrl: 'https://buy.stripe.com/bJe6oH5Oh1mKfXlcvOgYU0e' },
-  { id: 'me2', icon: '🤝', title: 'Quarterly Mentorship', desc: 'Three months of structured mentorship with weekly check-ins and priority support.', price: '$349', time: '3 months', popular: false, category: 'Mentorship', stripeUrl: 'https://buy.stripe.com/dRmeVd90t7L826v1RagYU0f' },
-  { id: 'me3', icon: '🤝', title: 'Annual Mentorship', desc: 'Full year of dedicated mentorship — the complete guidance package for your Canadian journey.', price: '$849', time: '12 months', popular: false, category: 'Mentorship', stripeUrl: 'https://buy.stripe.com/7sY14nfoRghE4eD53mgYU0g' },
-  // ── Credentials ──
-  { id: 'cr1', icon: '📜', title: 'Credential Assessment Guided', desc: 'Guided support through your Educational Credential Assessment (ECA) application process.', price: '$179', time: '5–7 days', popular: false, category: 'Credentials', stripeUrl: 'https://buy.stripe.com/4gMbJ12C50iG8uT9jCgYU0h' },
-  { id: 'cr2', icon: '📜', title: 'Credential Assessment Full + Appeal', desc: 'Full ECA support including appeals, re-evaluations and additional documentation preparation.', price: '$299', time: '7–14 days', popular: false, category: 'Credentials', stripeUrl: 'https://buy.stripe.com/00wcN55Oh7L85iH53mgYU0i' },
-  // ── Career ──
-  { id: 'ca1', icon: '💼', title: 'Resume & LinkedIn Glow-Up', desc: 'Canadian-standard resume rewrite and LinkedIn profile optimisation for the local job market.', price: '$99', time: '3–5 days', popular: false, category: 'Career', stripeUrl: 'https://buy.stripe.com/28E7sL5Ohd5s7qP67qgYU0j' },
-  { id: 'ca2', icon: '💼', title: 'Job Search Mastery', desc: 'Job search strategy, application coaching, interview prep and networking guidance for Canada.', price: '$199', time: '1–2 weeks', popular: false, category: 'Career', stripeUrl: 'https://buy.stripe.com/00weVdfoR3uS12rfI0gYU0k' },
-  { id: 'ca3', icon: '💼', title: 'Premium Placement Package', desc: 'End-to-end job placement support: resume, cover letters, applications, interviews and offer negotiation.', price: '$349', time: '2–4 weeks', popular: true, category: 'Career', stripeUrl: 'https://buy.stripe.com/5kQ6oH5Ohd5s3az9jCgYU0l' },
-];
+const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+const serviceIcon = category => ({
+  'Study Permits': '📋',
+  'University Admissions': '🎓',
+  'Post-Graduate': '🏫',
+  'PR & Immigration': '🍁',
+  Settlement: '🏠',
+  Mentorship: '🤝',
+  Credentials: '📜',
+  Career: '💼',
+})[category] || '🛒';
+const deliveryLabel = days => {
+  const n = Number(days || 0);
+  if (!n) return 'Timeline TBD';
+  if (n >= 365) return '12 months';
+  if (n >= 90) return '3 months';
+  if (n >= 28) return '2–4 weeks';
+  return `${n} day${n === 1 ? '' : 's'}`;
+};
 
 // ─── Escrow Approval Card ─────────────────────────────────────────────────────
 function EscrowApprovalCard({ order }) {
@@ -53,7 +38,7 @@ function EscrowApprovalCard({ order }) {
   if (state === 'approved') return (
     <div style={{ background: `${C.green}12`, border: `1px solid ${C.green}33`, borderRadius: '14px', padding: '20px' }}>
       <div style={{ fontWeight: 700, fontSize: '15px', color: C.green }}>✅ Payment released from escrow!</div>
-      <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px' }}>60% sent to your consultant · 40% to platform. Your order is complete.</div>
+      <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px' }}>80% sent to your consultant · 20% to platform. Your order is complete.</div>
     </div>
   );
 
@@ -78,7 +63,7 @@ function EscrowApprovalCard({ order }) {
         <div style={{ background: `${C.green}12`, border: `1px solid ${C.green}33`, borderRadius: '14px', padding: '20px' }}>
           <div style={{ fontWeight: 700, fontSize: '15px', color: C.green, marginBottom: '8px' }}>🎉 Ready for your approval</div>
           <p style={{ fontSize: '13px', color: C.textMuted, lineHeight: 1.6, marginBottom: '16px' }}>
-            Your consultant has completed the deliverable. Review the files, then approve to release payment — <strong style={{ color: C.cyan }}>60%</strong> goes to your consultant, <strong style={{ color: C.green }}>40%</strong> to the platform.
+            Your consultant has completed the deliverable. Review the files, then approve to release payment — <strong style={{ color: C.cyan }}>80%</strong> goes to your consultant, <strong style={{ color: C.green }}>20%</strong> to the platform.
           </p>
           <div style={{ display: 'flex', gap: '10px' }}>
             <Btn variant="success" size="sm" onClick={() => setState('approved')}>✓ Approve &amp; release payment</Btn>
@@ -132,8 +117,8 @@ function EscrowApprovalCard({ order }) {
           <div style={{ background: C.surface3, borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
             {[
               ['Original payment', order.price],
-              ['3% processing fee (from consultant)', `-£${Math.round(parseInt(order.price.replace('£','')) * 0.03)}`],
-              ['You receive', `£${Math.round(parseInt(order.price.replace('£','')) * 0.97)}`],
+              ['3% processing fee (from consultant)', `-${formatUSD((Number(String(order.price).replace(/[^0-9.]/g, '')) || 0) * 0.03)}`],
+              ['You receive', formatUSD((Number(String(order.price).replace(/[^0-9.]/g, '')) || 0) * 0.97)],
             ].map(([k, v], i) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: i < 2 ? `1px solid ${C.border}` : 'none', fontSize: '14px' }}>
                 <span style={{ color: C.textMuted }}>{k}</span>
@@ -187,9 +172,8 @@ function StripePaymentSection() {
     // If already loaded, just open the form
     if (stripe) { setAddingCard(true); return; }
 
-    // STRIPE_PUB_KEY has a hardcoded fallback so it can never be empty here
     if (!STRIPE_PUB_KEY) {
-      setStripeErr('Build error: Stripe key fallback missing. Force a hard refresh of this page.');
+      setStripeErr('Stripe is not configured. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to the environment.');
       return;
     }
 
@@ -811,12 +795,28 @@ function StudentApp({ onLogout, userId, userName }) {
     const [catFilter, setCatFilter] = React.useState('All');
     const [cart, setCart] = React.useState(null);
     const [showCheckout, setShowCheckout] = React.useState(false);
+    const [services, setServices] = React.useState([]);
+    const [servicesLoading, setServicesLoading] = React.useState(true);
+    const [servicesError, setServicesError] = React.useState(null);
     const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet'
     const [walletBalance, setWalletBalance] = React.useState(null);
     const [paying, setPaying] = React.useState(false);
     const [payError, setPayError] = React.useState(null);
-    const categories = ['All', ...Array.from(new Set(SERVICES_CATALOG.map(s => s.category)))];
-    const filtered = catFilter === 'All' ? SERVICES_CATALOG : SERVICES_CATALOG.filter(s => s.category === catFilter);
+    const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
+    const filtered = catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter);
+
+    React.useEffect(() => {
+      setServicesLoading(true);
+      fetch('/api/services')
+        .then(async r => {
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Unable to load services');
+          setServices(d.services ?? []);
+          setServicesError(null);
+        })
+        .catch(e => setServicesError(e.message))
+        .finally(() => setServicesLoading(false));
+    }, []);
 
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
@@ -828,7 +828,7 @@ function StudentApp({ onLogout, userId, userName }) {
     }, [showCheckout]);
 
     if (showCheckout && cart) {
-      const priceNum = parseInt(cart.price.replace(/[^0-9]/g, '')) || 0;
+      const priceNum = Number(cart.price || 0);
       const amountCents = priceNum * 100;
       const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
 
@@ -838,7 +838,7 @@ function StudentApp({ onLogout, userId, userName }) {
           const res = await fetch('/api/checkout/wallet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: cart.title, amountCents }),
+            body: JSON.stringify({ title: cart.title, amountCents, serviceId: cart.id }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
@@ -859,10 +859,10 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ fontSize: '32px' }}>{cart.icon}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: '15px' }}>{cart.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.desc}</div>
-                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {cart.time}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.category || 'General'}</div>
+                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{cart.price}</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatUSD(cart.price)}</div>
             </div>
           </Card>
           {/* Payment method selector */}
@@ -912,28 +912,39 @@ function StudentApp({ onLogout, userId, userName }) {
           {/* Order summary */}
           <Card style={{ marginBottom: '24px' }}>
             <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
-            {[['Service', cart.title], ['Delivery', cart.time]].map(([k, v]) => (
+            {[['Service', cart.title], ['Delivery', deliveryLabel(cart.delivery_days)]].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
                 <span style={{ color: C.textMuted }}>{k}</span>
                 <span style={{ fontWeight: 600 }}>{v}</span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span><span style={{ color: C.cyan }}>{cart.price}</span>
+              <span>Total</span><span style={{ color: C.cyan }}>{formatUSD(cart.price)}</span>
             </div>
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
           {payMethod === 'wallet' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
-              {paying ? 'Processing…' : `Pay ${cart.price} from Wallet`}
+              {paying ? 'Processing…' : `Pay ${formatUSD(cart.price)} from Wallet`}
             </Btn>
           ) : (
-            <Btn variant="primary" fullWidth size="lg" onClick={() => {
-              const stripeUrl = userId ? `${cart.stripeUrl}?client_reference_id=${userId}` : cart.stripeUrl;
-              window.open(stripeUrl, '_blank');
-              setTimeout(() => { setShowCheckout(false); setCart(null); setOrderPlaced(true); setTimeout(() => setOrderPlaced(false), 6000); }, 500);
+            <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
+              setPaying(true); setPayError(null);
+              try {
+                const res = await fetch('/api/checkout/service', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ serviceId: cart.id }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Checkout failed');
+                window.location.href = data.url;
+              } catch (e) {
+                setPayError(e.message);
+                setPaying(false);
+              }
             }}>
-              Pay {cart.price} — Checkout with Stripe →
+              {paying ? 'Opening checkout…' : `Pay ${formatUSD(cart.price)} with Stripe →`}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
@@ -971,20 +982,22 @@ function StudentApp({ onLogout, userId, userName }) {
           ))}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+          {servicesLoading && <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px' }}>Loading services…</div>}
+          {servicesError && <div style={{ color: C.red, fontSize: '14px', padding: '20px' }}>{servicesError}</div>}
+          {!servicesLoading && !servicesError && filtered.length === 0 && <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px' }}>No active services are available yet.</div>}
           {filtered.map(s => (
             <Card key={s.id} hover style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
-              {s.popular && <div style={{ position: 'absolute', top: '16px', right: '16px', background: C.cyan, color: '#000', fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '99px' }}>POPULAR</div>}
               <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                <div style={{ fontSize: '28px' }}>{s.icon}</div>
-                <Badge color="gray" style={{ fontSize: '11px', marginTop: '4px' }}>{s.category}</Badge>
+                <div style={{ fontSize: '28px' }}>{serviceIcon(s.category)}</div>
+                <Badge color="gray" style={{ fontSize: '11px', marginTop: '4px' }}>{s.category || 'General'}</Badge>
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>{s.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>{s.desc}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>Professional YouSafe consultancy service with escrow-protected payment.</div>
               </div>
-              <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {s.time} · 🔒 Escrow protected</div>
+              <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{s.price}</span>
+                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatUSD(s.price)}</span>
                 <Btn variant="primary" size="sm" onClick={() => { setCart(s); setShowCheckout(true); }}>Order now</Btn>              </div>
             </Card>
           ))}

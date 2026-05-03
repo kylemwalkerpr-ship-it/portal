@@ -7,13 +7,38 @@ export async function POST(req: Request) {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, amountCents } = await req.json()
+  const { title, amountCents, serviceId: requestedServiceId } = await req.json()
 
   if (!title || !Number.isInteger(amountCents) || amountCents < 100) {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
   }
 
   try {
+    const db = createSupabaseAdminClient()
+    const { data: profile } = await db
+      .from('profiles')
+      .select('id')
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+
+    if (!profile) return Response.json({ error: 'Profile not found' }, { status: 404 })
+
+    const { data: service } = await db
+      .from('services')
+      .select('id, price')
+      .eq('id', requestedServiceId)
+      .eq('is_active', true)
+      .single()
+
+    if (!service) {
+      return Response.json({ error: 'Service not found' }, { status: 404 })
+    }
+
+    const expectedAmountCents = Math.round(Number(service.price || 0) * 100)
+    if (expectedAmountCents !== amountCents) {
+      return Response.json({ error: 'Service price changed. Please refresh and try again.' }, { status: 409 })
+    }
+
     const stripe = getStripe()
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
 
@@ -34,34 +59,7 @@ export async function POST(req: Request) {
       confirm: true,
     })
 
-    // Create order in Supabase
-    const db = createSupabaseAdminClient()
-    const { data: profile } = await db
-      .from('profiles')
-      .select('id')
-      .eq('clerk_user_id', clerkUserId)
-      .single()
-
-    if (!profile) return Response.json({ error: 'Profile not found' }, { status: 404 })
-
-    // Find or create a matching service
-    let serviceId: string
-    const { data: existing } = await db
-      .from('services')
-      .select('id')
-      .ilike('title', `%${title.split(' ').slice(0, 3).join(' ')}%`)
-      .single()
-
-    if (existing) {
-      serviceId = existing.id
-    } else {
-      const { data: newSvc } = await db
-        .from('services')
-        .insert({ title, price: amountCents / 100, delivery_days: 7, category: 'Immigration', is_active: true })
-        .select('id')
-        .single()
-      serviceId = newSvc?.id ?? ''
-    }
+    const serviceId = service.id
 
     const { data: order } = await db
       .from('orders')
