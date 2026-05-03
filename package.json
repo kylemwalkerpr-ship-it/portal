@@ -11,6 +11,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.2.8",
     "@opennextjs/cloudflare": "^1.19.4",
+    "@stripe/stripe-js": "^9.4.0",
     "@supabase/supabase-js": "^2.105.1",
     "next": "latest",
     "react": "latest",
