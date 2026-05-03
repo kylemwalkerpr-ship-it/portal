@@ -155,12 +155,10 @@ function StripePaymentSection() {
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
 
-  // Keep Stripe instances in refs to avoid re-render timing issues
   const stripeRef = React.useRef(null);
   const cardElementRef = React.useRef(null);
-  const mountDivRef = React.useRef(null);
 
-  // Load Stripe.js eagerly on mount
+  // Load Stripe.js once on mount
   React.useEffect(() => {
     const pubKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     if (!pubKey) return;
@@ -183,35 +181,41 @@ function StripePaymentSection() {
 
   React.useEffect(() => { fetchCards(); }, []);
 
-  // Mount card element after the form div renders — use a short delay so the
-  // DOM is guaranteed to exist even if Stripe.js was still loading
-  React.useEffect(() => {
-    if (!addingCard) {
+  // Callback ref — fires the instant the mount div enters/leaves the DOM.
+  // Polls for Stripe.js readiness so it works even if the script is still loading.
+  const cardMountRef = React.useCallback((node) => {
+    if (!node) {
+      // div removed — destroy card element
       if (cardElementRef.current) {
         try { cardElementRef.current.destroy(); } catch (_) {}
         cardElementRef.current = null;
       }
       return;
     }
-    const mount = () => {
-      if (!stripeRef.current || !mountDivRef.current) return;
+    // div added — poll until Stripe.js is initialised, then mount
+    let cancelled = false;
+    const tryMount = () => {
+      if (cancelled) return;
+      if (!stripeRef.current) { setTimeout(tryMount, 80); return; }
       if (cardElementRef.current) { try { cardElementRef.current.destroy(); } catch (_) {} }
-      const elements = stripeRef.current.elements({ appearance: { theme: 'stripe' } });
+      const elements = stripeRef.current.elements();
       const card = elements.create('card', {
         hidePostalCode: true,
-        style: { base: { color: '#1F2937', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } }, invalid: { color: '#EF4444' } },
+        style: {
+          base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
+          invalid: { color: '#EF4444' },
+        },
       });
-      card.mount(mountDivRef.current);
+      card.mount(node);
       cardElementRef.current = card;
     };
-    // 100 ms gives React time to commit the div to the DOM
-    const t = setTimeout(mount, 100);
-    return () => clearTimeout(t);
-  }, [addingCard]);
+    tryMount();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSave = async () => {
     if (!stripeRef.current || !cardElementRef.current) {
-      setErrorMsg('Stripe is still loading — please try again in a moment.');
+      setErrorMsg('Stripe has not loaded yet — please wait a moment and try again.');
       return;
     }
     setSaving(true); setErrorMsg(null);
@@ -268,17 +272,17 @@ function StripePaymentSection() {
       {!addingCard ? (
         <Btn variant="secondary" size="sm" onClick={() => { setErrorMsg(null); setAddingCard(true); }}>+ Add new card</Btn>
       ) : (
-        <div style={{ background: C.surface2, borderRadius: '14px', padding: '20px', border: `1px solid ${C.border2}` }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: C.textMuted, marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ background: '#F9FAFB', borderRadius: '14px', padding: '20px', border: '1px solid #E5E7EB' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
             <span>Add payment method</span>
             <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
           </div>
-          {/* Stripe mounts its card input into this div */}
+          {/* cardMountRef fires as soon as this div enters the DOM */}
           <div
-            ref={mountDivRef}
-            style={{ padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #E5E7EB', minHeight: '44px', marginBottom: '16px' }}
+            ref={cardMountRef}
+            style={{ padding: '12px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '46px', marginBottom: '16px' }}
           />
-          <div style={{ fontSize: '12px', color: C.textDim, marginBottom: '16px' }}>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '16px' }}>
             🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
