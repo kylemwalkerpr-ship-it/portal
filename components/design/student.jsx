@@ -4,10 +4,7 @@ import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-// Module-level promise — deduped + cached across renders
-const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
-  : Promise.resolve(null)
+const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 const STUDENT_ORDERS = [];
 
@@ -159,21 +156,14 @@ function StripePaymentSection() {
   const [addingCard, setAddingCard] = React.useState(false);
   const [cardMounted, setCardMounted] = React.useState(false);
   const [stripe, setStripe] = React.useState(null);
+  const [stripeStatus, setStripeStatus] = React.useState('idle'); // idle | loading | ready | error
+  const [stripeErr, setStripeErr] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
 
   const cardElemRef = React.useRef(null);
   const mountNodeRef = React.useRef(null);
-
-  // Load Stripe.js once via the official loader (deduped by stripePromise)
-  React.useEffect(() => {
-    let cancelled = false;
-    stripePromise
-      .then((s) => { if (!cancelled && s) setStripe(s); })
-      .catch((err) => console.error('[Stripe] loadStripe failed:', err));
-    return () => { cancelled = true; };
-  }, []);
 
   const fetchCards = async () => {
     setLoading(true);
@@ -186,29 +176,62 @@ function StripePaymentSection() {
 
   React.useEffect(() => { fetchCards(); }, []);
 
+  // Lazy-load Stripe ON DEMAND when the user clicks "Add new card"
+  const handleAddCard = async () => {
+    setErrorMsg(null);
+    setStripeErr(null);
+
+    // If already loaded, just open the form
+    if (stripe) { setAddingCard(true); return; }
+
+    if (!STRIPE_PUB_KEY) {
+      setStripeErr('Stripe publishable key is not configured. Contact support.');
+      return;
+    }
+
+    setStripeStatus('loading');
+    setAddingCard(true);    // open the form immediately so user sees "Loading…" inside it
+
+    try {
+      const s = await loadStripe(STRIPE_PUB_KEY);
+      if (!s) throw new Error('loadStripe() returned null — Stripe.js may have been blocked by a browser extension or ad blocker.');
+      setStripe(s);
+      setStripeStatus('ready');
+    } catch (err) {
+      console.error('[Stripe] load failed:', err);
+      setStripeErr(err.message || 'Failed to load Stripe');
+      setStripeStatus('error');
+    }
+  };
+
   // Mount card element whenever stripe instance AND addingCard are both ready
   React.useEffect(() => {
     if (!stripe || !addingCard) return;
-    // mountNodeRef.current is set by React before this effect runs
     const node = mountNodeRef.current;
     if (!node) return;
 
     if (cardElemRef.current) { try { cardElemRef.current.destroy(); } catch (_) {} }
 
-    const elements = stripe.elements();
-    const card = elements.create('card', {
-      hidePostalCode: true,
-      style: {
-        base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
-        invalid: { color: '#EF4444' },
-      },
-    });
-    card.mount(node);
-    cardElemRef.current = card;
-    setCardMounted(true);
+    try {
+      const elements = stripe.elements();
+      const card = elements.create('card', {
+        hidePostalCode: true,
+        style: {
+          base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
+          invalid: { color: '#EF4444' },
+        },
+      });
+      card.mount(node);
+      cardElemRef.current = card;
+      setCardMounted(true);
+    } catch (err) {
+      console.error('[Stripe] mount failed:', err);
+      setStripeErr(err.message || 'Failed to mount card element');
+    }
 
     return () => {
-      try { card.destroy(); } catch (_) {}
+      try { cardElemRef.current?.destroy(); } catch (_) {}
+      cardElemRef.current = null;
       setCardMounted(false);
     };
   }, [stripe, addingCard]);
@@ -222,11 +245,11 @@ function StripePaymentSection() {
     try {
       const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
       const { clientSecret, error: apiErr } = await res.json();
-      if (apiErr) throw new Error(apiErr);
-      const { error: stripeErr } = await stripe.confirmCardSetup(clientSecret, {
+      if (!res.ok || apiErr) throw new Error(apiErr || `SetupIntent failed (${res.status})`);
+      const { error: confirmErr } = await stripe.confirmCardSetup(clientSecret, {
         payment_method: { card: cardElemRef.current },
       });
-      if (stripeErr) throw new Error(stripeErr.message);
+      if (confirmErr) throw new Error(confirmErr.message);
       setAddingCard(false); setSaved(true);
       await fetchCards();
       setTimeout(() => setSaved(false), 3000);
@@ -253,6 +276,7 @@ function StripePaymentSection() {
       </div>
       {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely via Stripe</div>}
       {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {errorMsg}</div>}
+      {stripeErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ Stripe error: {stripeErr}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         {loading ? (
           <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading…</div>
@@ -270,7 +294,9 @@ function StripePaymentSection() {
         ))}
       </div>
       {!addingCard ? (
-        <Btn variant="secondary" size="sm" onClick={() => { setErrorMsg(null); setAddingCard(true); }}>+ Add new card</Btn>
+        <Btn variant="secondary" size="sm" onClick={handleAddCard} disabled={stripeStatus === 'loading'}>
+          {stripeStatus === 'loading' ? 'Loading Stripe…' : '+ Add new card'}
+        </Btn>
       ) : (
         <div style={{ background: '#F9FAFB', borderRadius: '14px', padding: '20px', border: '1px solid #E5E7EB' }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
