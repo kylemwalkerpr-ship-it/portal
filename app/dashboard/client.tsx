@@ -11,7 +11,10 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 
 export default function DashboardClient({ role, status, userName, userId }) {
   const { signOut } = useClerk()
-  const handleLogout = () => signOut({ redirectUrl: '/' })
+  const handleLogout = async () => {
+    await signOut()
+    window.location.href = 'https://yousafeconsultancy.com'
+  }
 
   if (status === 'pending' && role === 'consultant') {
     return (

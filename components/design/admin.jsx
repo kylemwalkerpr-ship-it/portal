@@ -46,7 +46,9 @@ function AdminApp({ onLogout }) {
     <div style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
-        <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+        <a href="https://yousafeconsultancy.com" style={{ display: 'inline-flex' }}>
+          <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+        </a>
         <Badge color="red" style={{ fontSize: '10px', padding: '2px 8px' }}>Admin</Badge>
       </div>
       <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
