@@ -10,6 +10,9 @@ function ConsultantApp({ onLogout }) {
   const [messages, setMessages] = React.useState([]);
   const [orders, setOrders] = React.useState([]);
   const [notifications, setNotifications] = React.useState([]);
+  const [profileName, setProfileName] = React.useState('');
+  const [profileEmail, setProfileEmail] = React.useState('');
+  const [profileBio, setProfileBio] = React.useState('');
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
 
@@ -160,13 +163,8 @@ function ConsultantApp({ onLogout }) {
       <div>
         <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Earnings — Last 30 days</h3>
         <Card style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '80px' }}>
-            {[40, 55, 35, 70, 60, 80, 45, 90, 65, 75, 50, 85, 95, 60].map((h, i) => (
-              <div key={i} style={{ flex: 1, height: `${h}%`, background: i === 13 ? C.cyan : `${C.cyan}40`, borderRadius: '4px 4px 0 0', transition: 'background 0.2s' }} />
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '11px', color: C.textDim }}>
-            <span>Apr 1</span><span>Apr 15</span><span>Apr 30</span>
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Earnings trends will be available here once your order history is connected to the dashboard.
           </div>
         </Card>
       </div>
@@ -322,12 +320,14 @@ function ConsultantApp({ onLogout }) {
             </Card>
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '12px' }}>Student Documents</div>
-              {['Transcript.pdf', 'CV_2025.pdf', 'IELTS_Score.pdf'].map(f => (
-                <div key={f} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
+              {order.documents && order.documents.length > 0 ? order.documents.map((f, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
                   <span>📄 {f}</span>
                   <Btn variant="ghost" size="sm">↓</Btn>
                 </div>
-              ))}
+              )) : (
+                <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>No student documents available.</div>
+              )}
               <Btn variant="secondary" fullWidth size="sm" style={{ marginTop: '10px' }}>+ Upload deliverable</Btn>
             </Card>
           </div>
@@ -340,36 +340,12 @@ function ConsultantApp({ onLogout }) {
   const Clients = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Clients</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-        {[
-          { name: 'Omar Hassan', country: 'Pakistan → UK', orders: 3, spend: '£597', status: 'active', joined: 'Apr 2025' },
-          { name: 'Priya Sharma', country: 'India → Australia', orders: 1, spend: '£99', status: 'new', joined: 'Apr 2025' },
-          { name: 'Carlos Mendez', country: 'Colombia → Canada', orders: 2, spend: '£398', status: 'active', joined: 'Mar 2025' },
-          { name: 'Aisha Rahman', country: 'Bangladesh → UK', orders: 1, spend: '£199', status: 'completed', joined: 'Mar 2025' },
-          { name: 'Liu Wei', country: 'China → Germany', orders: 1, spend: '£149', status: 'pending', joined: 'Apr 2025' },
-        ].map(c => (
-          <Card key={c.name} hover style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <Avatar name={c.name} size={44} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '14px' }}>{c.name}</div>
-                <div style={{ color: C.textMuted, fontSize: '12px' }}>{c.country}</div>
-              </div>
-              <StatusBadge status={c.status} />
-            </div>
-            <Divider />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', textAlign: 'center' }}>
-              {[['Orders', c.orders], ['Spent', c.spend], ['Joined', c.joined]].map(([k, v]) => (
-                <div key={k}>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: C.text }}>{v}</div>
-                  <div style={{ fontSize: '11px', color: C.textMuted }}>{k}</div>
-                </div>
-              ))}
-            </div>
-            <Btn variant="secondary" fullWidth size="sm">View profile</Btn>
-          </Card>
-        ))}
-      </div>
+      <Card style={{ padding: '24px', textAlign: 'center' }}>
+        <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Client list is not available</div>
+        <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+          Client summaries will appear here once your platform orders and student relationships are loaded.
+        </div>
+      </Card>
     </div>
   );
 
@@ -382,7 +358,8 @@ function ConsultantApp({ onLogout }) {
     const [accountNum, setAccountNum] = React.useState('');
     const [autoWithdraw, setAutoWithdraw] = React.useState(false);
     const [withdrawn, setWithdrawn] = React.useState(false);
-    const availableBalance = 318;
+    const availableBalance = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
+    const completedOrders = orders.filter(o => o.status === 'completed').length;
 
     const handleWithdraw = () => {
       setWithdrawModal(false);
@@ -393,7 +370,6 @@ function ConsultantApp({ onLogout }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Earnings</h2>
 
-        {/* Withdrawal success toast */}
         {withdrawn && (
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span style={{ fontSize: '20px' }}>✅</span>
@@ -404,9 +380,7 @@ function ConsultantApp({ onLogout }) {
           </div>
         )}
 
-        {/* Wallet card */}
         <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0d2060 100%)`, borderRadius: '20px', padding: '28px', position: 'relative', overflow: 'hidden' }}>
-          {/* Flag stripe decoration */}
           <div style={{ position: 'absolute', top: 0, right: 0, width: '6px', height: '100%', background: C.cyan }} />
           <div style={{ position: 'absolute', top: 0, right: '6px', width: '6px', height: '100%', background: '#fff', opacity: 0.15 }} />
           <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Available to withdraw</div>
@@ -428,45 +402,26 @@ function ConsultantApp({ onLogout }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-          <StatCard label="This Month" value={`£${monthEarnings}`} icon="📈" color={C.green} delta="+£396" />
-          <StatCard label="All Time" value="£3,240" icon="💰" color={C.cyan} />
+          <StatCard label="This Month" value={`£${monthEarnings}`} icon="📈" color={C.green} delta="" />
+          <StatCard label="All Time" value={`£${totalEarnings}`} icon="💰" color={C.cyan} />
           <StatCard label="Pending" value={withdrawn ? '£0' : `£${availableBalance}`} icon="⏳" color={C.orange} />
-          <StatCard label="Completed Orders" value="18" icon="✅" color={C.purple} />
+          <StatCard label="Completed Orders" value={completedOrders} icon="✅" color={C.purple} />
         </div>
 
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Monthly Breakdown</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: '120px', marginBottom: '12px' }}>
-            {[['Jan', 55], ['Feb', 70], ['Mar', 65], ['Apr', 90]].map(([m, h]) => (
-              <div key={m} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                <div style={{ width: '100%', height: `${h}%`, background: m === 'Apr' ? C.cyan : `${C.cyan}40`, borderRadius: '6px 6px 0 0' }} />
-                <span style={{ fontSize: '12px', color: C.textMuted }}>{m}</span>
-              </div>
-            ))}
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Monthly earnings trends will appear here once order and payout data is available.
           </div>
         </Card>
 
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payout History</div>
-          {[
-            { desc: 'UK Visa Guidance — Aisha Rahman', date: 'Apr 2, 2025', amount: '£159', status: 'Paid', method: 'PayPal' },
-            { desc: 'University Selection — Omar Hassan', date: 'Mar 22, 2025', amount: '£239', status: 'Paid', method: 'Bank transfer' },
-            { desc: 'SOP Review — Previous client', date: 'Mar 5, 2025', amount: '£79', status: 'Paid', method: 'PayPal' },
-          ].map((p, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>{p.desc}</div>
-                <div style={{ fontSize: '12px', color: C.textMuted }}>{p.date} · via {p.method}</div>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Badge color="green">{p.status}</Badge>
-                <span style={{ fontWeight: 700, color: C.green }}>{p.amount}</span>
-              </div>
-            </div>
-          ))}
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Your payout history will populate when payments are processed through the system.
+          </div>
         </Card>
 
-        {/* Withdrawal modal */}
         {withdrawModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '460px', position: 'relative' }}>
@@ -474,7 +429,6 @@ function ConsultantApp({ onLogout }) {
               <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '6px' }}>Withdraw funds</h3>
               <p style={{ color: C.textMuted, fontSize: '13px', marginBottom: '24px' }}>£{availableBalance} available from approved orders.</p>
 
-              {/* Method selector */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
                 {[['paypal', '🅿️ PayPal'], ['bank', '🏦 US Bank (ACH)']].map(([val, lbl]) => (
                   <button key={val} onClick={() => setWithdrawMethod(val)} style={{
@@ -489,15 +443,15 @@ function ConsultantApp({ onLogout }) {
 
               {withdrawMethod === 'paypal' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <Input label="PayPal email address" type="email" value={paypalEmail} onChange={setPaypalEmail} placeholder="your@paypal.com" icon="✉" />
+                  <Input label="PayPal email address" type="email" value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} placeholder="your@paypal.com" icon="✉" />
                   <div style={{ background: C.surface2, borderRadius: '10px', padding: '14px', fontSize: '13px', color: C.textMuted }}>
                     Funds arrive instantly to your PayPal account. PayPal fees may apply.
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <Input label="Routing number (ABA)" value={routingNum} onChange={setRoutingNum} placeholder="9-digit routing number" icon="🏦" />
-                  <Input label="Account number" value={accountNum} onChange={setAccountNum} placeholder="Your checking account" icon="🔢" />
+                  <Input label="Routing number (ABA)" value={routingNum} onChange={e => setRoutingNum(e.target.value)} placeholder="9-digit routing number" icon="🏦" />
+                  <Input label="Account number" value={accountNum} onChange={e => setAccountNum(e.target.value)} placeholder="Your checking account" icon="🔢" />
                   <div style={{ background: C.surface2, borderRadius: '10px', padding: '14px', fontSize: '13px', color: C.textMuted }}>
                     ACH transfers arrive in 1–2 business days. US bank accounts only.
                   </div>
@@ -528,17 +482,17 @@ function ConsultantApp({ onLogout }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <Avatar name="Dr. Sarah Ahmed" size={60} color={C.purple} />
+            <Avatar name={profileName || 'Consultant'} size={60} color={C.purple} />
             <div>
-              <div style={{ fontWeight: 700 }}>Dr. Sarah Ahmed</div>
-              <div style={{ color: C.textMuted, fontSize: '13px' }}>sarah.ahmed@yousafe.com</div>
+              <div style={{ fontWeight: 700 }}>{profileName || 'Consultant Name'}</div>
+              <div style={{ color: C.textMuted, fontSize: '13px' }}>{profileEmail || 'you@example.com'}</div>
               <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }}>Change photo</Btn>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Input label="Full name" value="Dr. Sarah Ahmed" onChange={() => {}} />
-            <Input label="Email" type="email" value="sarah.ahmed@yousafe.com" onChange={() => {}} />
-            <Input label="Bio" value="Senior education consultant with 8+ years helping students study abroad." onChange={() => {}} />
+            <Input label="Full name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Full name" />
+            <Input label="Email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="Email address" />
+            <Input label="Bio" value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Short profile summary" />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 600 }}>Available for orders</div>
@@ -579,7 +533,7 @@ function ConsultantApp({ onLogout }) {
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
         <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>STUDENTS</div>
-          {orders.map(o => (
+          {orders.length > 0 ? orders.map(o => (
             <div key={o.id} onClick={() => setSelectedOrder(o)} style={{
               padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer',
               background: selectedOrder?.id === o.id ? C.surface2 : 'transparent',
@@ -591,7 +545,9 @@ function ConsultantApp({ onLogout }) {
                 <div style={{ fontSize: '12px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div>
               </div>
             </div>
-          ))}
+          )) : (
+            <div style={{ padding: '20px', color: C.textMuted, textAlign: 'center' }}>No conversations available.</div>
+          )}
         </div>
         {selectedOrder ? (
           <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>

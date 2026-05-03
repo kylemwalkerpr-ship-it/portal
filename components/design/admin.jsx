@@ -116,9 +116,9 @@ function AdminApp({ onLogout }) {
       <div>
         <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Pending Escrow Releases</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {ALL_ORDERS.filter(o => o.status === 'completed' && o.escrow === 'held').length === 0 ? (
+          {orders.filter(o => o.status === 'completed' && o.escrow === 'held').length === 0 ? (
             <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No pending escrow releases</div>
-          ) : ALL_ORDERS.filter(o => o.status === 'completed' && o.escrow === 'held').map(order => (
+          ) : orders.filter(o => o.status === 'completed' && o.escrow === 'held').map(order => (
             <Card key={order.id} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: '14px' }}>{order.service}</div>

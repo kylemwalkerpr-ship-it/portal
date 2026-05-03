@@ -244,8 +244,13 @@ function StripePaymentSection() {
     setSaving(true); setErrorMsg(null);
     try {
       const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
-      const { clientSecret, error: apiErr } = await res.json();
-      if (!res.ok || apiErr) throw new Error(apiErr || `SetupIntent failed (${res.status})`);
+      let body;
+      try { body = await res.json(); }
+      catch { body = { error: `Server returned status ${res.status} with a non-JSON response (likely a Worker crash).` }; }
+      const { clientSecret, error: apiErr } = body;
+      if (!res.ok || apiErr || !clientSecret) {
+        throw new Error(`${apiErr || 'SetupIntent failed'} (HTTP ${res.status}). Run /api/wallet/diagnose for details.`);
+      }
       const { error: confirmErr } = await stripe.confirmCardSetup(clientSecret, {
         payment_method: { card: cardElemRef.current },
       });
