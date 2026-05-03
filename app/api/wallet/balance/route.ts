@@ -9,26 +9,24 @@ export async function GET() {
 
   try {
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
-
-    let available: Record<string, number> = {}
-    try {
-      const balance = await getStripe().customers.retrieveCashBalance(customerId)
-      available = Object.fromEntries(
-        Object.entries(balance.available ?? {}).map(([currency, amount]) => [
-          currency,
-          (amount as number) / 100,
-        ])
-      )
-    } catch (balanceErr) {
-      // Cash balance not enabled on this Stripe account — return zero
-      if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
-        available = {}
-      } else {
-        throw balanceErr
-      }
+    if (!customerId) {
+      return Response.json({ available: 0, pending: 0 }, { status: 200 })
     }
 
-    return Response.json({ available })
+    try {
+      const balance = await getStripe().customers.retrieveCashBalance(customerId)
+      const currency = Object.keys(balance.available ?? {})[0] || 'usd'
+      return Response.json({
+        available: (balance.available?.[currency] || 0) / 100,
+        pending: (balance.pending?.[currency] || 0) / 100,
+      })
+    } catch (balanceErr) {
+      if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
+        return Response.json({ available: 0, pending: 0 }, { status: 200 })
+      }
+      console.error('[Stripe] retrieveCashBalance error:', balanceErr instanceof Error ? balanceErr.message : balanceErr)
+      return Response.json({ error: balanceErr instanceof Error ? balanceErr.message : 'Stripe balance error' }, { status: 500 })
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[wallet/balance]', message)
