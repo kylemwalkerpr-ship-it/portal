@@ -64,8 +64,9 @@ export async function GET() {
     try {
       const Stripe = (await import('stripe')).default
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-      const acct = await stripe.accounts.retrieve()
-      report.stripeAccount = { ok: true, accountId: acct.id, country: acct.country, chargesEnabled: acct.charges_enabled }
+      // Verify the secret key works by listing one customer (account.retrieve() requires no-arg overload not available)
+      const list = await stripe.customers.list({ limit: 1 })
+      report.stripeAccount = { ok: true, hasObject: list.object === 'list' }
     } catch (e) {
       report.stripeAccount = { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
