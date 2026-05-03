@@ -25,19 +25,35 @@ export default async function DashboardPage() {
   if (!userId) redirect('/sign-in')
 
   const db = createSupabaseAdminClient()
-  const { data: existing, error } = await db
+
+  // Fetch profile — try with status column first, fall back without it
+  let profile: { role: string; status: string; full_name: string | null; email: string } | null = null
+
+  const { data: full, error: fullErr } = await db
     .from('profiles')
     .select('role, status, full_name, email')
     .eq('clerk_user_id', userId)
     .single()
 
-  if (error) console.error('[dashboard] profile fetch error:', error.message)
+  if (full) {
+    profile = full
+  } else {
+    // status column may not exist — try without it
+    const { data: basic } = await db
+      .from('profiles')
+      .select('role, full_name, email')
+      .eq('clerk_user_id', userId)
+      .single()
+    if (basic) profile = { ...basic, status: 'active' }
+    else if (fullErr) console.error('[dashboard] fetch error:', fullErr.message)
+  }
 
-  let profile = existing
-
+  // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
     const { email, fullName } = await getClerkUserData(userId)
-    const { data: created } = await db
+
+    // Try upsert with status
+    const { data: c1 } = await db
       .from('profiles')
       .upsert(
         { clerk_user_id: userId, email, full_name: fullName || null, role: 'client', status: 'active' },
@@ -45,7 +61,22 @@ export default async function DashboardPage() {
       )
       .select('role, status, full_name, email')
       .single()
-    profile = created
+
+    if (c1) {
+      profile = c1
+    } else {
+      // status column missing — upsert without it
+      const { data: c2, error: c2Err } = await db
+        .from('profiles')
+        .upsert(
+          { clerk_user_id: userId, email, full_name: fullName || null, role: 'client' },
+          { onConflict: 'clerk_user_id' }
+        )
+        .select('role, full_name, email')
+        .single()
+      if (c2) profile = { ...c2, status: 'active' }
+      else console.error('[dashboard] profile create error:', c2Err?.message)
+    }
   }
 
   const role = profile?.role ?? 'client'
