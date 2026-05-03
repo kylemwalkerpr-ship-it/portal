@@ -3,43 +3,31 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const ALL_USERS = [
-  { id: 'U001', name: 'Omar Hassan', role: 'student', email: 'omar@email.com', country: 'Pakistan', joined: 'Apr 10', status: 'active', orders: 4, spend: '£726' },
-  { id: 'U002', name: 'Priya Sharma', role: 'student', email: 'priya@email.com', country: 'India', joined: 'Apr 16', status: 'active', orders: 1, spend: '£99' },
-  { id: 'U003', name: 'Carlos Mendez', role: 'student', email: 'carlos@email.com', country: 'Colombia', joined: 'Mar 20', status: 'active', orders: 2, spend: '£398' },
-  { id: 'U004', name: 'Aisha Rahman', role: 'student', email: 'aisha@email.com', country: 'Bangladesh', joined: 'Mar 5', status: 'active', orders: 1, spend: '£199' },
-  { id: 'U005', name: 'Liu Wei', role: 'student', email: 'liu@email.com', country: 'China', joined: 'Apr 19', status: 'pending', orders: 1, spend: '£149' },
-  { id: 'C001', name: 'Dr. Sarah Ahmed', role: 'consultant', email: 'sarah@yousafe.com', country: 'UK', joined: 'Jan 2025', status: 'active', orders: 12, spend: '£3,240 earned' },
-  { id: 'C002', name: 'James Okafor', role: 'consultant', email: 'james@yousafe.com', country: 'UK', joined: 'Feb 2025', status: 'active', orders: 8, spend: '£1,860 earned' },
-  { id: 'C003', name: 'Aisha Malik', role: 'consultant', email: 'amalik@yousafe.com', country: 'Pakistan', joined: 'Mar 2025', status: 'active', orders: 5, spend: '£980 earned' },
-];
-
-const ALL_ORDERS = [
-  { id: 'ORD-001', service: 'University Selection Package', student: 'Omar Hassan', consultant: 'Dr. Sarah Ahmed', date: 'Apr 10', status: 'active', amount: '£299', escrow: 'held', consultantPay: '£179', adminCut: '£120' },
-  { id: 'ORD-002', service: 'SOP Review & Editing', student: 'Omar Hassan', consultant: 'James Okafor', date: 'Apr 18', status: 'review', amount: '£99', escrow: 'held', consultantPay: '£59', adminCut: '£40' },
-  { id: 'ORD-003', service: 'UK Visa Support', student: 'Omar Hassan', consultant: 'Aisha Malik', date: 'Mar 28', status: 'completed', amount: '£199', escrow: 'released', consultantPay: '£119', adminCut: '£80' },
-  { id: 'ORD-004', service: 'IELTS Preparation Plan', student: 'Omar Hassan', consultant: 'Dr. Sarah Ahmed', date: 'May 1', status: 'pending', amount: '£79', escrow: 'held', consultantPay: '£47', adminCut: '£32' },
-  { id: 'ORD-005', service: 'SOP Review & Editing', student: 'Priya Sharma', consultant: 'James Okafor', date: 'Apr 16', status: 'new', amount: '£99', escrow: 'held', consultantPay: '£59', adminCut: '£40' },
-  { id: 'ORD-007', service: 'Visa Support — Canada', student: 'Carlos Mendez', consultant: 'Dr. Sarah Ahmed', date: 'Apr 5', status: 'review', amount: '£199', escrow: 'held', consultantPay: '£119', adminCut: '£80' },
-  { id: 'ORD-009', service: 'UK Visa Guidance', student: 'Aisha Rahman', consultant: 'Aisha Malik', date: 'Mar 20', status: 'completed', amount: '£199', escrow: 'released', consultantPay: '£119', adminCut: '£80' },
-  { id: 'ORD-010', service: 'University Selection', student: 'Liu Wei', consultant: 'Dr. Sarah Ahmed', date: 'Apr 19', status: 'pending', amount: '£149', escrow: 'held', consultantPay: '£89', adminCut: '£60' },
-];
-
 function AdminApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [userFilter, setUserFilter] = React.useState('all');
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [selectedUser, setSelectedUser] = React.useState(null);
   const [notifOpen, setNotifOpen] = React.useState(false);
+  const [users, setUsers] = React.useState([]);
+  const [orders, setOrders] = React.useState([]);
+  const [services, setServices] = React.useState([]);
+  const [alerts, setAlerts] = React.useState([]);
+  const [platformName, setPlatformName] = React.useState('');
+  const [supportEmail, setSupportEmail] = React.useState('');
+  const [stripePublishableKey, setStripePublishableKey] = React.useState('');
+  const [stripeSecretKey, setStripeSecretKey] = React.useState('');
+  const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
 
-  const totalRevenue = ALL_ORDERS.filter(o => o.escrow === 'released').reduce((a, o) => a + parseInt(o.adminCut.replace('£', '')), 0);
-  const pendingEscrow = ALL_ORDERS.filter(o => o.escrow === 'held').reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0);
-  const totalStudents = ALL_USERS.filter(u => u.role === 'student').length;
-  const totalConsultants = ALL_USERS.filter(u => u.role === 'consultant').length;
-  const pendingOrders = ALL_ORDERS.filter(o => o.status === 'new' || o.status === 'pending').length;
-
-  const filteredUsers = userFilter === 'all' ? ALL_USERS : ALL_USERS.filter(u => u.role === userFilter);
-  const filteredOrders = orderFilter === 'all' ? ALL_ORDERS : ALL_ORDERS.filter(o => o.status === orderFilter);
+  const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + (parseInt(String(o.adminCut || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const paidToConsultants = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + (parseInt(String(o.consultantPay || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const pendingEscrow = orders.filter(o => o.escrow === 'held').reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const totalStudents = users.filter(u => u.role === 'student').length;
+  const totalConsultants = users.filter(u => u.role === 'consultant').length;
+  const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
+  const filteredUsers = userFilter === 'all' ? users : users.filter(u => u.role === userFilter);
+  const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
+  const consultantNames = users.filter(u => u.role === 'consultant').map(u => u.name);
 
   // ── SIDEBAR ──
   const Sidebar = () => (
@@ -87,20 +75,19 @@ function AdminApp({ onLogout }) {
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Admin Alerts</div>
-              {[
-                { text: 'New student registration — Liu Wei', time: '10 min ago', dot: C.cyan },
-                { text: 'ORD-007 awaiting student approval', time: '1 hr ago', dot: C.orange },
-                { text: 'Escrow release: £199 — Aisha Rahman', time: 'Yesterday', dot: C.green },
-                { text: 'Consultant payout due — Dr. Sarah Ahmed', time: 'Yesterday', dot: C.purple },
-              ].map((n, i) => (
+              {alerts.length > 0 ? alerts.map((n, i) => (
                 <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot, marginTop: '5px', flexShrink: 0 }} />
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot || C.cyan, marginTop: '5px', flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
                     <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
+                  No alerts available
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -121,8 +108,8 @@ function AdminApp({ onLogout }) {
         <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
         <StatCard label="In Escrow" value={`£${pendingEscrow}`} icon="🔒" color={C.orange} />
         <StatCard label="Admin Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} delta="+£160" />
-        <StatCard label="Active Orders" value={ALL_ORDERS.filter(o => o.status === 'active').length} icon="📦" color={C.cyan} />
-        <StatCard label="Completed" value={ALL_ORDERS.filter(o => o.status === 'completed').length} icon="✅" color={C.green} />
+        <StatCard label="Active Orders" value={orders.filter(o => o.status === 'active').length} icon="📦" color={C.cyan} />
+        <StatCard label="Completed" value={orders.filter(o => o.status === 'completed').length} icon="✅" color={C.green} />
       </div>
 
       {/* Escrow alerts */}
@@ -154,7 +141,7 @@ function AdminApp({ onLogout }) {
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {ALL_ORDERS.slice(0, 5).map(order => (
+          {orders.slice(0, 5).map(order => (
             <Card key={order.id} style={{ padding: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
@@ -177,9 +164,9 @@ function AdminApp({ onLogout }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue Split (all time)</div>
           {[
-            { label: 'Total collected', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0), color: C.text },
-            { label: 'Consultant share (60%)', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.consultantPay.replace('£', '')), 0), color: C.cyan },
-            { label: 'Platform share (40%)', value: ALL_ORDERS.reduce((a, o) => a + parseInt(o.adminCut.replace('£', '')), 0), color: C.green },
+            { label: 'Total collected', value: orders.reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.text },
+            { label: 'Consultant share (60%)', value: orders.reduce((a, o) => a + (parseInt(String(o.consultantPay || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.cyan },
+            { label: 'Platform share (40%)', value: orders.reduce((a, o) => a + (parseInt(String(o.adminCut || '0').replace(/[^0-9]/g, '')) || 0), 0), color: C.green },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
@@ -190,10 +177,10 @@ function AdminApp({ onLogout }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Platform Health</div>
           {[
-            { label: 'Avg order value', value: `£${Math.round(ALL_ORDERS.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0) / ALL_ORDERS.length)}` },
-            { label: 'Completion rate', value: '78%' },
-            { label: 'Avg response time', value: '18h' },
-            { label: 'Student satisfaction', value: '4.8 / 5' },
+            { label: 'Avg order value', value: orders.length ? `£${Math.round(orders.reduce((a, o) => a + (parseInt(String(o.amount || '0').replace(/[^0-9]/g, '')) || 0), 0) / orders.length)}` : 'N/A' },
+            { label: 'Completion rate', value: 'N/A' },
+            { label: 'Avg response time', value: 'N/A' },
+            { label: 'Student satisfaction', value: 'N/A' },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
@@ -211,7 +198,7 @@ function AdminApp({ onLogout }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Users</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{ALL_USERS.length} total · {totalStudents} students · {totalConsultants} consultants</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>{users.length} total · {totalStudents} students · {totalConsultants} consultants</p>
         </div>
         <Btn variant="primary" size="sm">+ Invite user</Btn>
       </div>
@@ -268,9 +255,9 @@ function AdminApp({ onLogout }) {
 
   // ── ALL ORDERS ──
   const Orders = () => {
-    const [orders, setOrders] = React.useState(ALL_ORDERS);
+    const [orders, setOrders] = React.useState([]);
     const [assignModal, setAssignModal] = React.useState(null);
-    const CONSULTANTS = ['Dr. Sarah Ahmed', 'James Okafor', 'Aisha Malik'];
+    const CONSULTANTS = consultantNames;
     const filtered = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
     const handleAssign = (orderId, consultant) => { setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant, status: o.status === 'pending' ? 'active' : o.status } : o)); setAssignModal(null); };
     const handleUnassign = (orderId) => setOrders(prev => prev.map(o => o.id === orderId ? { ...o, consultant: null, status: 'pending' } : o));
@@ -338,8 +325,8 @@ function AdminApp({ onLogout }) {
 
   // ── ESCROW ──
   const Escrow = () => {
-    const held = ALL_ORDERS.filter(o => o.escrow === 'held');
-    const released = ALL_ORDERS.filter(o => o.escrow === 'released');
+    const held = orders.filter(o => o.escrow === 'held');
+    const released = orders.filter(o => o.escrow === 'released');
     const totalHeld = held.reduce((a, o) => a + parseInt(o.amount.replace('£', '')), 0);
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -415,26 +402,26 @@ function AdminApp({ onLogout }) {
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Payouts</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         <StatCard label="Platform Revenue" value={`£${totalRevenue}`} icon="💰" color={C.green} />
-        <StatCard label="Paid to Consultants" value="£477" icon="👤" color={C.cyan} />
-        <StatCard label="Pending Payouts" value="£318" icon="⏳" color={C.orange} />
+        <StatCard label="Paid to Consultants" value={`£${paidToConsultants}`} icon="👤" color={C.cyan} />
+        <StatCard label="Pending Payouts" value={`£${pendingEscrow}`} icon="⏳" color={C.orange} />
       </div>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Consultant Payout Queue</div>
-        {[
-          { name: 'Dr. Sarah Ahmed', pending: '£179', due: 'May 1' },
-          { name: 'James Okafor', pending: '£59', due: 'May 2' },
-          { name: 'Aisha Malik', pending: '£80', due: 'May 5' },
-        ].map((c, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-            <Avatar name={c.name} size={36} color={C.purple} />
+        {consultantNames.length > 0 ? consultantNames.map((name, i) => (
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
+            <Avatar name={name} size={36} color={C.purple} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '14px' }}>{c.name}</div>
-              <div style={{ fontSize: '12px', color: C.textMuted }}>Due: {c.due}</div>
+              <div style={{ fontWeight: 600, fontSize: '14px' }}>{name}</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Pending payout details will appear here</div>
             </div>
-            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{c.pending}</span>
+            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>£0</span>
             <Btn variant="primary" size="sm">Pay out</Btn>
           </div>
-        ))}
+        )) : (
+          <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
+            No payout queue data available
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -445,59 +432,28 @@ function AdminApp({ onLogout }) {
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Analytics</h2>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue by month</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: '120px', marginBottom: '12px' }}>
-            {[['Jan', 35], ['Feb', 55], ['Mar', 62], ['Apr', 90]].map(([m, h]) => (
-              <div key={m} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                <div style={{ width: '100%', height: `${h}%`, background: m === 'Apr' ? C.cyan : `${C.cyan}40`, borderRadius: '6px 6px 0 0' }} />
-                <span style={{ fontSize: '12px', color: C.textMuted }}>{m}</span>
-              </div>
-            ))}
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue summary</div>
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Analytics will appear here once platform order and payout history is available.
           </div>
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Services by volume</div>
-          {[
-            { name: 'University Selection', pct: 82 },
-            { name: 'Visa Support', pct: 65 },
-            { name: 'SOP Review', pct: 48 },
-            { name: 'Accommodation', pct: 30 },
-          ].map(s => (
-            <div key={s.name} style={{ marginBottom: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}>
-                <span style={{ color: C.textMuted }}>{s.name}</span>
-                <span style={{ fontWeight: 600 }}>{s.pct}%</span>
-              </div>
-              <ProgressBar value={s.pct} />
-            </div>
-          ))}
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Service trends</div>
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Real service volume and country breakdowns are not yet available.
+          </div>
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Students by origin country</div>
-          {[['Pakistan', 35], ['India', 25], ['Nigeria', 15], ['China', 12], ['Other', 13]].map(([c, p]) => (
-            <div key={c} style={{ marginBottom: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
-                <span style={{ color: C.textMuted }}>{c}</span><span>{p}%</span>
-              </div>
-              <ProgressBar value={p} color={C.purple} />
-            </div>
-          ))}
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Student origins</div>
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            Country analytics will be populated when student and order data are connected.
+          </div>
         </Card>
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Key metrics</div>
-          {[
-            ['Total GMV', '£1,571'],
-            ['Platform take', `£${totalRevenue} (40%)`],
-            ['Consultant payout', '£795 (60%)'],
-            ['Avg time to complete', '8.4 days'],
-            ['Student return rate', '62%'],
-            ['Net promoter score', '72'],
-          ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-              <span style={{ color: C.textMuted }}>{k}</span>
-              <span style={{ fontWeight: 700 }}>{v}</span>
-            </div>
-          ))}
+          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+            No key metrics are available until platform data is sourced from the backend.
+          </div>
         </Card>
       </div>
     </div>
@@ -536,7 +492,7 @@ function AdminApp({ onLogout }) {
               </tr>
             </thead>
             <tbody>
-              {services.map((s, i) => (
+              {services.length > 0 ? services.map((s, i) => (
                 <tr key={s.id} style={{ borderBottom: i < services.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>{s.name}</td>
                   <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
@@ -558,7 +514,11 @@ function AdminApp({ onLogout }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan="8" style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>No services available yet.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </Card>
@@ -606,8 +566,8 @@ function AdminApp({ onLogout }) {
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Platform Info</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Input label="Platform name" value="YouSafe Consultancy" onChange={() => {}} />
-          <Input label="Support email" value="support@yousafeconsultancy.com" onChange={() => {}} />
+          <Input label="Platform name" value={platformName} onChange={e => setPlatformName(e.target.value)} placeholder="Enter platform name" />
+          <Input label="Support email" value={supportEmail} onChange={e => setSupportEmail(e.target.value)} placeholder="Enter support email" />
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save</Btn>
         </div>
       </Card>
@@ -618,9 +578,9 @@ function AdminApp({ onLogout }) {
           All payments and payouts processed via Stripe Connect.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <Input label="Stripe publishable key" value="pk_live_••••••••••••••••••••••" onChange={() => {}} />
-          <Input label="Stripe secret key" value="sk_live_••••••••••••••••••••••" onChange={() => {}} type="password" />
-          <Input label="Webhook signing secret" value="whsec_••••••••••••••••" onChange={() => {}} type="password" />
+          <Input label="Stripe publishable key" value={stripePublishableKey} onChange={e => setStripePublishableKey(e.target.value)} placeholder="pk_live_..." />
+          <Input label="Stripe secret key" value={stripeSecretKey} onChange={e => setStripeSecretKey(e.target.value)} type="password" placeholder="sk_live_..." />
+          <Input label="Webhook signing secret" value={webhookSigningSecret} onChange={e => setWebhookSigningSecret(e.target.value)} type="password" placeholder="whsec_..." />
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save Stripe config</Btn>
         </div>
       </Card>

@@ -1,39 +1,28 @@
 import { getClerkUserId } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
-import Stripe from 'stripe'
 
 export async function GET() {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // The wallet UI must always render — never throw a 500. Worst case: show $0.
   try {
-    console.log('[wallet/balance] request', { clerkUserId })
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
-    console.log('[wallet/balance] customerId', { customerId })
-    if (!customerId) {
-      return Response.json({ available: 0, pending: 0 }, { status: 200 })
-    }
+    if (!customerId) return Response.json({ available: 0, pending: 0 })
 
-    try {
-      const balance = await getStripe().customers.retrieveCashBalance(customerId)
-      console.log('[wallet/balance] balance', { balance })
-      const currency = Object.keys(balance.available ?? {})[0] || 'usd'
-      const pending = (balance as any).pending ?? {}
-      return Response.json({
-        available: (balance.available?.[currency] || 0) / 100,
-        pending: (pending[currency] || 0) / 100,
-      })
-    } catch (balanceErr) {
-      if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
-        return Response.json({ available: 0, pending: 0 }, { status: 200 })
-      }
-      console.error('[Stripe] retrieveCashBalance error:', balanceErr instanceof Error ? balanceErr.message : balanceErr, balanceErr)
-      return Response.json({ error: balanceErr instanceof Error ? balanceErr.message : 'Stripe balance error' }, { status: 500 })
-    }
+    const balance = await getStripe().customers.retrieveCashBalance(customerId)
+    const currency = Object.keys(balance.available ?? {})[0] || 'usd'
+    const pending = (balance as { pending?: Record<string, number> }).pending ?? {}
+
+    return Response.json({
+      available: (balance.available?.[currency] || 0) / 100,
+      pending: (pending[currency] || 0) / 100,
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[wallet/balance]', message)
-    return Response.json({ error: message }, { status: 500 })
+    console.error('[wallet/balance] returning $0 due to:', message)
+    // Always return zero balance instead of erroring — UI keeps working
+    return Response.json({ available: 0, pending: 0, _note: message })
   }
 }

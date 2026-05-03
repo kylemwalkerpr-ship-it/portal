@@ -3,25 +3,21 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const CONSULTANT_ORDERS = [];
-
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
-  const [messages, setMessages] = React.useState([
-    { from: 'student', name: 'Omar Hassan', text: 'Hi Dr. Sarah! I have attached my transcripts. Please let me know if you need anything else.', time: '10:30 AM' },
-    { from: 'consultant', text: 'Thanks Omar! I\'ll have your university shortlist ready by Thursday. Do you have any preferences for city?', time: '10:32 AM' },
-    { from: 'student', name: 'Omar Hassan', text: 'London would be ideal, but Manchester and Birmingham are fine too.', time: '10:47 AM' },
-  ]);
+  const [messages, setMessages] = React.useState([]);
+  const [orders, setOrders] = React.useState([]);
+  const [notifications, setNotifications] = React.useState([]);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
 
-  const activeOrders = CONSULTANT_ORDERS.filter(o => o.status === 'active' || o.status === 'review').length;
-  const newOrders = CONSULTANT_ORDERS.filter(o => o.status === 'new').length;
-  const totalEarnings = CONSULTANT_ORDERS.filter(o => o.status === 'completed').reduce((a, o) => a + parseInt(o.earn.replace('£', '')), 0);
-  const monthEarnings = CONSULTANT_ORDERS.filter(o => o.status !== 'cancelled').reduce((a, o) => a + parseInt(o.earn.replace('£', '')), 0);
-  const filteredOrders = orderFilter === 'all' ? CONSULTANT_ORDERS : CONSULTANT_ORDERS.filter(o => o.status === orderFilter);
+  const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
+  const newOrders = orders.filter(o => o.status === 'new').length;
+  const totalEarnings = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const monthEarnings = orders.filter(o => o.status !== 'cancelled').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
+  const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
 
   const sendMessage = () => {
     if (!msgInput.trim()) return;
@@ -46,7 +42,7 @@ function ConsultantApp({ onLogout }) {
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={newOrders > 0 ? `${newOrders} new` : null} />
         <NavItem icon="👥" label="Clients" active={page === 'clients'} onClick={() => setPage('clients')} />
-        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); setSelectedOrder(CONSULTANT_ORDERS[0]); }} badge="3" />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); }} badge={notifications.length > 0 ? `${notifications.length} new` : null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
@@ -80,19 +76,19 @@ function ConsultantApp({ onLogout }) {
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Notifications</div>
-              {[
-                { text: 'New order from Priya Sharma — SOP Review', time: '30 min ago', dot: C.cyan },
-                { text: 'Omar submitted transcripts for ORD-001', time: '1 hr ago', dot: C.orange },
-                { text: 'Payout of £159 processed', time: 'Yesterday', dot: C.green },
-              ].map((n, i) => (
-                <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < 2 ? `1px solid ${C.border}` : 'none' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot, marginTop: '5px', flexShrink: 0 }} />
+              {notifications.length > 0 ? notifications.map((n, i) => (
+                <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < notifications.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot || C.cyan, marginTop: '5px', flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
                     <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
+                  No notifications yet
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -121,10 +117,13 @@ function ConsultantApp({ onLogout }) {
           <div style={{ fontSize: '28px' }}>📬</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: '15px', color: C.orange }}>New order request</div>
-            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '3px' }}>Priya Sharma — SOP Review & Editing · £79 earn</div>
+            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '3px' }}>A new request is waiting for your review.</div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="success" size="sm" onClick={() => { setSelectedOrder(CONSULTANT_ORDERS[1]); setPage('order-detail'); }}>Accept</Btn>
+            <Btn variant="success" size="sm" onClick={() => {
+              const order = orders.find(o => o.status === 'new');
+              if (order) { setSelectedOrder(order); setPage('order-detail'); }
+            }}>Accept</Btn>
             <Btn variant="danger" size="sm">Decline</Btn>
           </div>
         </div>
@@ -137,7 +136,7 @@ function ConsultantApp({ onLogout }) {
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {CONSULTANT_ORDERS.filter(o => ['active', 'review', 'new'].includes(o.status)).map(order => (
+          {orders.filter(o => ['active', 'review', 'new'].includes(o.status)).map(order => (
             <Card key={order.id} hover style={{ padding: '18px', cursor: 'pointer' }} onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                 <Avatar name={order.student} size={40} />
@@ -180,7 +179,7 @@ function ConsultantApp({ onLogout }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Orders</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{CONSULTANT_ORDERS.length} total</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total</p>
         </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -580,7 +579,7 @@ function ConsultantApp({ onLogout }) {
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
         <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>STUDENTS</div>
-          {CONSULTANT_ORDERS.map(o => (
+          {orders.map(o => (
             <div key={o.id} onClick={() => setSelectedOrder(o)} style={{
               padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer',
               background: selectedOrder?.id === o.id ? C.surface2 : 'transparent',
