@@ -341,6 +341,171 @@ function StripePaymentSection() {
 window.EscrowApprovalCard = EscrowApprovalCard;
 window.StripePaymentSection = StripePaymentSection;
 
+// ─── Top-up Dialog ───────────────────────────────────────────────────────────
+function TopUpDialog({ onClose, onSuccess }) {
+  const [cards, setCards] = React.useState([]);
+  const [loadingCards, setLoadingCards] = React.useState(true);
+  const [selectedCardId, setSelectedCardId] = React.useState('');
+  const [amount, setAmount] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [errMsg, setErrMsg] = React.useState(null);
+  const [success, setSuccess] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch('/api/wallet/payment-methods')
+      .then(r => r.json())
+      .then(d => {
+        const list = d.cards ?? [];
+        setCards(list);
+        if (list[0]) setSelectedCardId(list[0].id);
+      })
+      .finally(() => setLoadingCards(false));
+  }, []);
+
+  const PRESETS = [10, 25, 50, 100, 250];
+  const amountNum = parseFloat(amount);
+  const validAmount = !Number.isNaN(amountNum) && amountNum >= 1;
+  const canSubmit = validAmount && !!selectedCardId && !submitting;
+
+  const handleSubmit = async () => {
+    setErrMsg(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/wallet/topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethodId: selectedCardId,
+          amount: Math.round(amountNum * 100), // cents
+        }),
+      });
+      let body;
+      try { body = await res.json(); } catch { body = { error: `Server returned ${res.status}` }; }
+      if (!res.ok || body.error) throw new Error(body.error || `Top-up failed (${res.status})`);
+      setSuccess(true);
+      setTimeout(() => onSuccess(), 1200);
+    } catch (e) {
+      setErrMsg(e.message);
+    } finally { setSubmitting(false); }
+  };
+
+  const brandColor = b => ({ visa: '#1a1f71', mastercard: '#eb001b', amex: '#007bc1' }[b] ?? C.textMuted);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '20px' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: C.surface, borderRadius: '16px', padding: '28px', maxWidth: '460px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div>
+            <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Top up wallet</div>
+            <div style={{ fontSize: '13px', color: C.textMuted }}>Add funds to your wallet using a saved card</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: C.textMuted, lineHeight: 1 }}>×</button>
+        </div>
+
+        {success ? (
+          <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>✓</div>
+            <div style={{ fontWeight: 700, color: C.green }}>Top-up successful!</div>
+            <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '4px' }}>Your wallet will update in a moment.</div>
+          </div>
+        ) : (
+          <>
+            {/* Amount */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Amount (USD)</div>
+              <div style={{ position: 'relative', marginBottom: '10px' }}>
+                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 700, color: C.textMuted }}>$</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '12px 14px 12px 28px', fontSize: '18px', fontWeight: 600, background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {PRESETS.map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setAmount(String(p))}
+                    style={{
+                      padding: '6px 14px', borderRadius: '20px', border: `1px solid ${amount === String(p) ? C.cyan : C.border}`,
+                      background: amount === String(p) ? `${C.cyan}15` : C.surface2, color: amount === String(p) ? C.cyan : C.textMuted,
+                      fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                    }}
+                  >${p}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Card selector */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, marginBottom: '10px' }}>Pay with</div>
+              {loadingCards ? (
+                <div style={{ color: C.textMuted, fontSize: '13px', padding: '12px' }}>Loading cards…</div>
+              ) : cards.length === 0 ? (
+                <div style={{ background: 'rgba(245,158,11,0.1)', border: `1px solid rgba(245,158,11,0.3)`, borderRadius: '10px', padding: '14px', fontSize: '13px', color: C.orange }}>
+                  No saved cards. Add a card first using the "+ Add new card" button below.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {cards.map(card => (
+                    <label
+                      key={card.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
+                        background: C.surface2, borderRadius: '10px',
+                        border: `2px solid ${selectedCardId === card.id ? C.cyan : C.border}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        checked={selectedCardId === card.id}
+                        onChange={() => setSelectedCardId(card.id)}
+                        style={{ accentColor: C.cyan }}
+                      />
+                      <div style={{ width: '36px', height: '24px', borderRadius: '4px', background: brandColor(card.brand), color: '#fff', fontSize: '9px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {card.brand.slice(0, 4).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, fontSize: '14px' }}>
+                        •••• {card.last4} <span style={{ color: C.textMuted, fontSize: '12px' }}>· {card.exp_month}/{card.exp_year}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {errMsg && (
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '16px' }}>⚠ {errMsg}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Btn variant="primary" size="md" onClick={handleSubmit} disabled={!canSubmit} fullWidth>
+                {submitting ? 'Charging…' : validAmount ? `Charge $${amountNum.toFixed(2)}` : 'Enter an amount'}
+              </Btn>
+              <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
+            </div>
+            <div style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
+              🔒 Charged securely via Stripe. Funds added to your wallet for future orders.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StudentApp({ onLogout, userId, userName }) {
   const [page, setPage] = React.useState('dashboard');
   const [selectedOrder, setSelectedOrder] = React.useState(null);
@@ -849,24 +1014,44 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── BILLING ──
   const Billing = () => {
     const [walletBal, setWalletBal] = React.useState(null);
-    React.useEffect(() => {
+    const [topUpOpen, setTopUpOpen] = React.useState(false);
+
+    const refreshBalance = React.useCallback(() => {
       fetch('/api/wallet/balance')
         .then(r => r.json())
-        .then(d => setWalletBal(d.available?.usd ?? 0))
+        .then(d => setWalletBal(d.available?.usd ?? d.available ?? 0))
         .catch(() => setWalletBal(0));
     }, []);
+
+    React.useEffect(() => { refreshBalance(); }, [refreshBalance]);
+
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
+
         {/* Wallet balance */}
         <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(60,59,110,0.06))`, border: `1px solid rgba(60,59,110,0.18)` }}>
-          <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</div>
-          <div style={{ fontSize: '36px', fontWeight: 800, color: C.text, lineHeight: 1 }}>
-            {walletBal === null ? '—' : `$${walletBal.toFixed(2)}`}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</div>
+              <div style={{ fontSize: '36px', fontWeight: 800, color: C.text, lineHeight: 1 }}>
+                {walletBal === null ? '—' : `$${Number(walletBal).toFixed(2)}`}
+              </div>
+              <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
+            </div>
+            <Btn variant="primary" size="sm" onClick={() => setTopUpOpen(true)}>+ Top up</Btn>
           </div>
-          <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
         </Card>
+
+        {topUpOpen && (
+          <TopUpDialog
+            onClose={() => setTopUpOpen(false)}
+            onSuccess={() => { setTopUpOpen(false); refreshBalance(); }}
+          />
+        )}
+
         <StripePaymentSection />
+
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
           <div style={{ padding: '28px 0', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>
