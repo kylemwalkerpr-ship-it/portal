@@ -151,21 +151,24 @@ function StripePaymentSection() {
   const [cards, setCards] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
-  const [stripeInstance, setStripeInstance] = React.useState(null);
-  const [cardElement, setCardElement] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
-  const cardRef = React.useRef(null);
 
-  // Load Stripe.js once
+  // Keep Stripe instances in refs to avoid re-render timing issues
+  const stripeRef = React.useRef(null);
+  const cardElementRef = React.useRef(null);
+  const mountDivRef = React.useRef(null);
+
+  // Load Stripe.js eagerly on mount
   React.useEffect(() => {
     const pubKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     if (!pubKey) return;
-    const init = () => setStripeInstance(window.Stripe(pubKey));
+    const init = () => { stripeRef.current = window.Stripe(pubKey); };
     if (window.Stripe) { init(); return; }
     const s = document.createElement('script');
     s.src = 'https://js.stripe.com/v3/';
+    s.async = true;
     s.onload = init;
     document.head.appendChild(s);
   }, []);
@@ -180,30 +183,44 @@ function StripePaymentSection() {
 
   React.useEffect(() => { fetchCards(); }, []);
 
-  // Mount Stripe CardElement whenever the add-card form opens
+  // Mount card element after the form div renders — use a short delay so the
+  // DOM is guaranteed to exist even if Stripe.js was still loading
   React.useEffect(() => {
-    if (!addingCard || !stripeInstance || !cardRef.current) return;
-    const elements = stripeInstance.elements();
-    const card = elements.create('card', {
-      style: {
-        base: { color: C.text, fontFamily: 'inherit', fontSize: '14px', '::placeholder': { color: C.textDim } },
-        invalid: { color: C.red },
-      },
-    });
-    card.mount(cardRef.current);
-    setCardElement(card);
-    return () => { try { card.unmount(); } catch (_) {} };
-  }, [addingCard, stripeInstance]);
+    if (!addingCard) {
+      if (cardElementRef.current) {
+        try { cardElementRef.current.destroy(); } catch (_) {}
+        cardElementRef.current = null;
+      }
+      return;
+    }
+    const mount = () => {
+      if (!stripeRef.current || !mountDivRef.current) return;
+      if (cardElementRef.current) { try { cardElementRef.current.destroy(); } catch (_) {} }
+      const elements = stripeRef.current.elements({ appearance: { theme: 'stripe' } });
+      const card = elements.create('card', {
+        hidePostalCode: true,
+        style: { base: { color: '#1F2937', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } }, invalid: { color: '#EF4444' } },
+      });
+      card.mount(mountDivRef.current);
+      cardElementRef.current = card;
+    };
+    // 100 ms gives React time to commit the div to the DOM
+    const t = setTimeout(mount, 100);
+    return () => clearTimeout(t);
+  }, [addingCard]);
 
   const handleSave = async () => {
-    if (!stripeInstance || !cardElement) return;
+    if (!stripeRef.current || !cardElementRef.current) {
+      setErrorMsg('Stripe is still loading — please try again in a moment.');
+      return;
+    }
     setSaving(true); setErrorMsg(null);
     try {
       const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
       const { clientSecret, error: apiErr } = await res.json();
       if (apiErr) throw new Error(apiErr);
-      const { error: stripeErr } = await stripeInstance.confirmCardSetup(clientSecret, {
-        payment_method: { card: cardElement },
+      const { error: stripeErr } = await stripeRef.current.confirmCardSetup(clientSecret, {
+        payment_method: { card: cardElementRef.current },
       });
       if (stripeErr) throw new Error(stripeErr.message);
       setAddingCard(false); setSaved(true);
@@ -231,11 +248,11 @@ function StripePaymentSection() {
         Secured by Stripe — we never store card details directly.
       </div>
       {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely via Stripe</div>}
-      {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.red, marginBottom: '14px' }}>⚠ {errorMsg}</div>}
+      {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {errorMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         {loading ? (
           <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading…</div>
-        ) : cards.length === 0 ? (
+        ) : cards.length === 0 && !addingCard ? (
           <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No cards saved yet.</div>
         ) : cards.map(card => (
           <div key={card.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}` }}>
@@ -249,16 +266,17 @@ function StripePaymentSection() {
         ))}
       </div>
       {!addingCard ? (
-        <Btn variant="secondary" size="sm" onClick={() => setAddingCard(true)}>+ Add new card</Btn>
+        <Btn variant="secondary" size="sm" onClick={() => { setErrorMsg(null); setAddingCard(true); }}>+ Add new card</Btn>
       ) : (
         <div style={{ background: C.surface2, borderRadius: '14px', padding: '20px', border: `1px solid ${C.border2}` }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: C.textMuted, marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
             <span>Add payment method</span>
             <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
           </div>
+          {/* Stripe mounts its card input into this div */}
           <div
-            ref={cardRef}
-            style={{ padding: '12px 14px', background: C.surface3, borderRadius: '10px', border: `1px solid ${C.border2}`, minHeight: '42px', marginBottom: '16px' }}
+            ref={mountDivRef}
+            style={{ padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #E5E7EB', minHeight: '44px', marginBottom: '16px' }}
           />
           <div style={{ fontSize: '12px', color: C.textDim, marginBottom: '16px' }}>
             🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
@@ -581,63 +599,137 @@ function StudentApp({ onLogout, userId, userName }) {
     const [catFilter, setCatFilter] = React.useState('All');
     const [cart, setCart] = React.useState(null);
     const [showCheckout, setShowCheckout] = React.useState(false);
+    const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet'
+    const [walletBalance, setWalletBalance] = React.useState(null);
+    const [paying, setPaying] = React.useState(false);
+    const [payError, setPayError] = React.useState(null);
     const categories = ['All', ...Array.from(new Set(SERVICES_CATALOG.map(s => s.category)))];
     const filtered = catFilter === 'All' ? SERVICES_CATALOG : SERVICES_CATALOG.filter(s => s.category === catFilter);
 
-    if (showCheckout && cart) return (
-      <div style={{ padding: '28px', maxWidth: '560px' }}>
-        <Btn variant="ghost" size="sm" onClick={() => setShowCheckout(false)} style={{ marginBottom: '20px' }}>← Back to services</Btn>
-        <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '24px' }}>Checkout</h2>
-        <Card style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-            <div style={{ fontSize: '32px' }}>{cart.icon}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '15px' }}>{cart.title}</div>
-              <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.desc}</div>
-              <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {cart.time}</div>
+    // Fetch wallet balance when checkout opens
+    React.useEffect(() => {
+      if (!showCheckout) return;
+      fetch('/api/wallet/balance')
+        .then(r => r.json())
+        .then(d => setWalletBalance(d.available?.usd ?? 0))
+        .catch(() => setWalletBalance(0));
+    }, [showCheckout]);
+
+    if (showCheckout && cart) {
+      const priceNum = parseInt(cart.price.replace(/[^0-9]/g, '')) || 0;
+      const amountCents = priceNum * 100;
+      const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
+
+      const handleWalletPay = async () => {
+        setPaying(true); setPayError(null);
+        try {
+          const res = await fetch('/api/checkout/wallet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: cart.title, amountCents }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Payment failed');
+          setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          setTimeout(() => setOrderPlaced(false), 6000);
+        } catch (e) {
+          setPayError(e.message);
+        } finally { setPaying(false); }
+      };
+
+      return (
+        <div style={{ padding: '28px', maxWidth: '560px' }}>
+          <Btn variant="ghost" size="sm" onClick={() => { setShowCheckout(false); setPayError(null); }} style={{ marginBottom: '20px' }}>← Back to services</Btn>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '24px' }}>Checkout</h2>
+          {/* Service summary */}
+          <Card style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+              <div style={{ fontSize: '32px' }}>{cart.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>{cart.title}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.desc}</div>
+                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {cart.time}</div>
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{cart.price}</div>
             </div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{cart.price}</div>
-          </div>
-        </Card>
-        <Card style={{ marginBottom: '16px' }}>
-          <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Payment held in escrow</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
-            {[
-              ['1.', 'You pay now — funds held securely in escrow'],
-              ['2.', 'Consultant is assigned and completes your order'],
-              ['3.', 'You review and approve the delivery'],
-              ['4.', '60% released to your consultant, 40% to platform'],
-            ].map(([n, t]) => (
-              <div key={n} style={{ display: 'flex', gap: '10px', color: C.textMuted }}>
-                <span style={{ color: C.cyan, fontWeight: 700 }}>{n}</span> {t}
+          </Card>
+          {/* Payment method selector */}
+          <Card style={{ marginBottom: '16px' }}>
+            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Choose payment method</div>
+            {/* Wallet option */}
+            <div
+              onClick={() => canUseWallet && setPayMethod('wallet')}
+              style={{
+                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'wallet' ? C.cyan : C.border}`,
+                background: payMethod === 'wallet' ? `${C.cyan}10` : C.surface2,
+                cursor: canUseWallet ? 'pointer' : 'not-allowed', opacity: canUseWallet ? 1 : 0.5,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <span style={{ fontSize: '20px' }}>💰</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Wallet</div>
+                  <div style={{ fontSize: '12px', color: C.textMuted }}>
+                    Balance: {walletBalance === null ? '…' : `$${walletBalance.toFixed(2)}`}
+                    {!canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
+                  </div>
+                </div>
+              </div>
+              {payMethod === 'wallet' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
+            </div>
+            {/* Stripe option */}
+            <div
+              onClick={() => setPayMethod('stripe')}
+              style={{
+                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'stripe' ? C.cyan : C.border}`,
+                background: payMethod === 'stripe' ? `${C.cyan}10` : C.surface2,
+                cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <span style={{ fontSize: '20px' }}>💳</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Card</div>
+                  <div style={{ fontSize: '12px', color: C.textMuted }}>Secure checkout via Stripe</div>
+                </div>
+              </div>
+              {payMethod === 'stripe' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
+            </div>
+          </Card>
+          {/* Order summary */}
+          <Card style={{ marginBottom: '24px' }}>
+            <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
+            {[['Service', cart.title], ['Delivery', cart.time]].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
+                <span style={{ color: C.textMuted }}>{k}</span>
+                <span style={{ fontWeight: 600 }}>{v}</span>
               </div>
             ))}
-          </div>
-        </Card>
-        <Card style={{ marginBottom: '24px' }}>
-          <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
-          {[['Service', cart.title], ['Delivery', cart.time], ['Consultant cut (60%)', `£${Math.round(parseInt(cart.price.replace('£','')) * 0.6)}`], ['Platform fee (40%)', `£${Math.round(parseInt(cart.price.replace('£','')) * 0.4)}`]].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-              <span style={{ color: C.textMuted }}>{k}</span>
-              <span style={{ fontWeight: 600 }}>{v}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
+              <span>Total</span><span style={{ color: C.cyan }}>{cart.price}</span>
             </div>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-            <span>Total</span><span style={{ color: C.cyan }}>{cart.price}</span>
-          </div>
-        </Card>
-        <Btn variant="primary" fullWidth size="lg" onClick={() => {
-          const stripeUrl = userId ? `${cart.stripeUrl}?client_reference_id=${userId}` : cart.stripeUrl;
-          window.open(stripeUrl, '_blank');
-          setTimeout(() => { setShowCheckout(false); setCart(null); setOrderPlaced(true); setTimeout(() => setOrderPlaced(false), 6000); }, 500);
-        }}>
-          Pay {cart.price} — Checkout with Stripe →
-        </Btn>
-        <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
-          Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.
-        </p>
-      </div>
-    );
+          </Card>
+          {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
+          {payMethod === 'wallet' ? (
+            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
+              {paying ? 'Processing…' : `Pay ${cart.price} from Wallet`}
+            </Btn>
+          ) : (
+            <Btn variant="primary" fullWidth size="lg" onClick={() => {
+              const stripeUrl = userId ? `${cart.stripeUrl}?client_reference_id=${userId}` : cart.stripeUrl;
+              window.open(stripeUrl, '_blank');
+              setTimeout(() => { setShowCheckout(false); setCart(null); setOrderPlaced(true); setTimeout(() => setOrderPlaced(false), 6000); }, 500);
+            }}>
+              Pay {cart.price} — Checkout with Stripe →
+            </Btn>
+          )}
+          <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
+            Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.
+          </p>
+        </div>
+      );
+    }
 
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -708,18 +800,35 @@ function StudentApp({ onLogout, userId, userName }) {
   );
 
   // ── BILLING ──
-  const Billing = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
-      <StripePaymentSection />
-      <Card>
-        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
-        <div style={{ padding: '28px 0', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>
-          No payments yet. Your order history will appear here once you place an order.
-        </div>
-      </Card>
-    </div>
-  );
+  const Billing = () => {
+    const [walletBal, setWalletBal] = React.useState(null);
+    React.useEffect(() => {
+      fetch('/api/wallet/balance')
+        .then(r => r.json())
+        .then(d => setWalletBal(d.available?.usd ?? 0))
+        .catch(() => setWalletBal(0));
+    }, []);
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
+        {/* Wallet balance */}
+        <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(60,59,110,0.06))`, border: `1px solid rgba(60,59,110,0.18)` }}>
+          <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</div>
+          <div style={{ fontSize: '36px', fontWeight: 800, color: C.text, lineHeight: 1 }}>
+            {walletBal === null ? '—' : `$${walletBal.toFixed(2)}`}
+          </div>
+          <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
+        </Card>
+        <StripePaymentSection />
+        <Card>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
+          <div style={{ padding: '28px 0', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>
+            No payments yet. Your order history will appear here once you place an order.
+          </div>
+        </Card>
+      </div>
+    );
+  };
 
   // ── SETTINGS ──
   const Settings = () => {
