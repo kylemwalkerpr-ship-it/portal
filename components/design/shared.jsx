@@ -3,24 +3,24 @@
 import React from 'react'
 
 export const C = {
-  bg: '#05080f',
-  surface: '#0b1120',
-  surface2: '#111928',
-  surface3: '#182035',
-  border: '#1e2d48',
-  border2: '#243557',
-  cyan: '#c8102e',
-  cyanDark: '#a00d24',
-  cyanGlow: 'rgba(200,16,46,0.15)',
-  navy: '#1e4db7',
-  navyGlow: 'rgba(30,77,183,0.15)',
-  text: '#f0f4fc',
-  textMuted: '#7d90b0',
-  textDim: '#3d5070',
-  green: '#10b981',
-  orange: '#f59e0b',
-  red: '#ef4444',
-  purple: '#a78bfa',
+  bg: '#E8E8E8',
+  surface: '#FFFFFF',
+  surface2: '#F3F4F6',
+  surface3: '#E5E7EB',
+  border: '#E5E7EB',
+  border2: '#D1D5DB',
+  cyan: '#3C3B6E',
+  cyanDark: '#2d2a5e',
+  cyanGlow: 'rgba(60,59,110,0.12)',
+  navy: '#B22234',
+  navyGlow: 'rgba(178,34,52,0.12)',
+  text: '#1F2937',
+  textMuted: '#6B7280',
+  textDim: '#9CA3AF',
+  green: '#059669',
+  orange: '#D97706',
+  red: '#DC2626',
+  purple: '#7C3AED',
 }
 
 export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth }) {
@@ -56,12 +56,12 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick, disab
 
 export function Badge({ children, color = 'cyan', style }) {
   const colors = {
-    cyan: { bg: 'rgba(34,211,238,0.12)', text: C.cyan, border: 'rgba(34,211,238,0.25)' },
-    green: { bg: 'rgba(16,185,129,0.12)', text: C.green, border: 'rgba(16,185,129,0.25)' },
-    orange: { bg: 'rgba(245,158,11,0.12)', text: C.orange, border: 'rgba(245,158,11,0.25)' },
-    red: { bg: 'rgba(239,68,68,0.12)', text: C.red, border: 'rgba(239,68,68,0.25)' },
-    purple: { bg: 'rgba(167,139,250,0.12)', text: C.purple, border: 'rgba(167,139,250,0.25)' },
-    gray: { bg: 'rgba(125,143,163,0.12)', text: C.textMuted, border: 'rgba(125,143,163,0.25)' },
+    cyan: { bg: 'rgba(60,59,110,0.10)', text: C.cyan, border: 'rgba(60,59,110,0.25)' },
+    green: { bg: 'rgba(5,150,105,0.10)', text: C.green, border: 'rgba(5,150,105,0.25)' },
+    orange: { bg: 'rgba(217,119,6,0.10)', text: C.orange, border: 'rgba(217,119,6,0.25)' },
+    red: { bg: 'rgba(220,38,38,0.10)', text: C.red, border: 'rgba(220,38,38,0.25)' },
+    purple: { bg: 'rgba(124,58,237,0.10)', text: C.purple, border: 'rgba(124,58,237,0.25)' },
+    gray: { bg: 'rgba(107,114,128,0.10)', text: C.textMuted, border: 'rgba(107,114,128,0.25)' },
   }
   const c = colors[color] || colors.cyan
   return (
@@ -126,7 +126,7 @@ export function Select({ label, value, onChange, options, style }) {
 }
 
 export function Avatar({ name, src, size = 36, color }) {
-  const colors = ['#22d3ee', '#10b981', '#a78bfa', '#f59e0b', '#ef4444']
+  const colors = ['#3C3B6E', '#B22234', '#059669', '#D97706', '#7C3AED']
   const idx = name ? name.charCodeAt(0) % colors.length : 0
   const bg = color || colors[idx]
   const initials = name ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'

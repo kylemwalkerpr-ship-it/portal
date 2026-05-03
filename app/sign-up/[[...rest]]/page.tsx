@@ -21,7 +21,7 @@ export default function SignUpPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0d1b2e',
+        background: '#E8E8E8',
         overflow: 'hidden',
       }}
     >
@@ -56,7 +56,7 @@ export default function SignUpPage() {
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(ellipse 55% 55% at 50% 50%, rgba(13,27,46,0.72) 0%, rgba(13,27,46,0.55) 40%, rgba(13,27,46,0.85) 100%)',
+            'radial-gradient(ellipse 55% 55% at 50% 50%, rgba(232,232,232,0.75) 0%, rgba(232,232,232,0.55) 40%, rgba(232,232,232,0.88) 100%)',
           pointerEvents: 'none',
         }}
       />
