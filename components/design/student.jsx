@@ -9,6 +9,7 @@ const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const STUDENT_ORDERS = [];
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const serviceIcon = category => ({
   'Study Permits': '📋',
   'University Admissions': '🎓',
@@ -830,7 +831,11 @@ function StudentApp({ onLogout, userId, userName }) {
     if (showCheckout && cart) {
       const priceNum = Number(cart.price || 0);
       const amountCents = priceNum * 100;
-      const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
+      const serviceCurrency = String(cart.currency || 'usd').toLowerCase();
+      const isUsdService = serviceCurrency === 'usd';
+      const usdPriceNum = Number(cart.usd_price || (isUsdService ? priceNum : 0));
+      const hasUsdEquivalent = !isUsdService && usdPriceNum > 0;
+      const canUseWallet = isUsdService && walletBalance !== null && walletBalance >= priceNum;
 
       const handleWalletPay = async () => {
         setPaying(true); setPayError(null);
@@ -862,7 +867,10 @@ function StudentApp({ onLogout, userId, userName }) {
                 <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.category || 'General'}</div>
                 <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatUSD(cart.price)}</div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(cart.price, serviceCurrency)}</div>
+                {hasUsdEquivalent && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(usdPriceNum, 'usd')}</div>}
+              </div>
             </div>
           </Card>
           {/* Payment method selector */}
@@ -884,7 +892,8 @@ function StudentApp({ onLogout, userId, userName }) {
                   <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Wallet</div>
                   <div style={{ fontSize: '12px', color: C.textMuted }}>
                     Balance: {walletBalance === null ? '…' : `$${walletBalance.toFixed(2)}`}
-                    {!canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
+                    {!isUsdService && <span style={{ color: C.textMuted, marginLeft: '6px' }}>— USD only</span>}
+                    {isUsdService && !canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
                   </div>
                 </div>
               </div>
@@ -919,13 +928,18 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span><span style={{ color: C.cyan }}>{formatUSD(cart.price)}</span>
+              <span>Total</span><span style={{ color: C.cyan }}>{formatMoney(cart.price, serviceCurrency)}</span>
             </div>
+            {hasUsdEquivalent && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0 4px', fontSize: '12px', color: C.textMuted }}>
+                <span>USD equivalent</span><span>{formatMoney(usdPriceNum, 'usd')}</span>
+              </div>
+            )}
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
           {payMethod === 'wallet' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
-              {paying ? 'Processing…' : `Pay ${formatUSD(cart.price)} from Wallet`}
+              {paying ? 'Processing…' : `Pay ${formatMoney(cart.price, serviceCurrency)} from Wallet`}
             </Btn>
           ) : (
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
@@ -944,7 +958,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 setPaying(false);
               }
             }}>
-              {paying ? 'Opening checkout…' : `Pay ${formatUSD(cart.price)} with Stripe →`}
+              {paying ? 'Opening checkout…' : `Pay ${formatMoney(cart.price, serviceCurrency)} with Stripe →`}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
@@ -997,7 +1011,12 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
               <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatUSD(s.price)}</span>
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(s.price, s.currency)}</div>
+                  {String(s.currency || 'usd').toLowerCase() !== 'usd' && Number(s.usd_price || 0) > 0 && (
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
+                  )}
+                </div>
                 <Btn variant="primary" size="sm" onClick={() => { setCart(s); setShowCheckout(true); }}>Order now</Btn>              </div>
             </Card>
           ))}

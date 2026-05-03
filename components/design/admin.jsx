@@ -4,6 +4,7 @@ import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const moneyValue = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
 const PLATFORM_FEE_PERCENT = 20;
 const CONSULTANT_FEE_PERCENT = 100 - PLATFORM_FEE_PERCENT;
@@ -79,6 +80,8 @@ function AdminApp({ onLogout }) {
       title: s.title || '',
       category: s.category || 'General',
       price: Number(s.price || 0),
+      usd_price: Number(s.usd_price || 0),
+      currency: s.currency || 'usd',
       delivery_days: Number(s.delivery_days || 7),
       active: Boolean(s.is_active),
       orders: orderCountByService.get(s.id) || 0,
@@ -651,9 +654,14 @@ function AdminApp({ onLogout }) {
                     <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{deliveryLabel(s.delivery_days)}</div>
                   </td>
                   <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
-                  <td style={{ padding: '14px 16px', fontWeight: 700 }}>{formatUSD(s.price)}</td>
-                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatUSD(s.price * (CONSULTANT_FEE_PERCENT / 100))}</td>
-                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatUSD(s.price * (PLATFORM_FEE_PERCENT / 100))}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <div style={{ fontWeight: 700 }}>{formatMoney(s.price, s.currency)}</div>
+                    {String(s.currency || 'usd').toLowerCase() !== 'usd' && s.usd_price > 0 && (
+                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
+                    )}
+                  </td>
+                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatMoney(s.price * (CONSULTANT_FEE_PERCENT / 100), s.currency)}</td>
+                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatMoney(s.price * (PLATFORM_FEE_PERCENT / 100), s.currency)}</td>
                   <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
                   <td style={{ padding: '14px 16px' }}>
                     <button onClick={() => toggleService(s)} style={{

@@ -25,13 +25,17 @@ export async function POST(req: Request) {
 
     const { data: service } = await db
       .from('services')
-      .select('id, price')
+      .select('*')
       .eq('id', requestedServiceId)
       .eq('is_active', true)
       .single()
 
     if (!service) {
       return Response.json({ error: 'Service not found' }, { status: 404 })
+    }
+
+    if (String(service.currency || 'usd').toLowerCase() !== 'usd') {
+      return Response.json({ error: 'Wallet payments are only available for USD services' }, { status: 400 })
     }
 
     const expectedAmountCents = Math.round(Number(service.price || 0) * 100)

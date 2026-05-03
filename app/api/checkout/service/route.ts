@@ -20,6 +20,10 @@ export async function POST(req: Request) {
 
   if (error || !service) return Response.json({ error: 'Service not found' }, { status: 404 })
 
+  if (service.stripe_payment_link_url) {
+    return Response.json({ url: service.stripe_payment_link_url })
+  }
+
   const amount = dollarsToCents(service.price)
   if (amount < 100) return Response.json({ error: 'Service price is invalid' }, { status: 400 })
 
@@ -34,7 +38,7 @@ export async function POST(req: Request) {
       {
         quantity: 1,
         price_data: {
-          currency: 'usd',
+          currency: String(service.currency || 'usd').toLowerCase(),
           unit_amount: amount,
           product_data: {
             name: service.title ?? 'YouSafe service',
