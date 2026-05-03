@@ -9,7 +9,7 @@ const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: f
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 
-export default function DashboardClient({ role, status, userName }) {
+export default function DashboardClient({ role, status, userName, userId }) {
   const { signOut } = useClerk()
   const handleLogout = () => signOut({ redirectUrl: '/' })
 
@@ -44,5 +44,5 @@ export default function DashboardClient({ role, status, userName }) {
 
   if (role === 'consultant') return <ConsultantApp onLogout={handleLogout} />
   if (role === 'admin') return <AdminApp onLogout={handleLogout} />
-  return <StudentApp onLogout={handleLogout} />
+  return <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
 }

@@ -3,13 +3,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const CONSULTANT_ORDERS = [
-  { id: 'ORD-001', service: 'University Selection Package', student: 'Omar Hassan', avatar: 'OH', country: 'Pakistan → UK', date: 'Apr 10, 2025', status: 'active', progress: 65, price: '£299', earn: '£239', deadline: 'Apr 22' },
-  { id: 'ORD-005', service: 'SOP Review & Editing', student: 'Priya Sharma', avatar: 'PS', country: 'India → Australia', date: 'Apr 16, 2025', status: 'new', progress: 0, price: '£99', earn: '£79', deadline: 'Apr 24' },
-  { id: 'ORD-007', service: 'Visa Support — Canada', student: 'Carlos Mendez', avatar: 'CM', country: 'Colombia → Canada', date: 'Apr 5, 2025', status: 'review', progress: 90, price: '£199', earn: '£159', deadline: 'Apr 20' },
-  { id: 'ORD-009', service: 'UK Visa Guidance', student: 'Aisha Rahman', avatar: 'AR', country: 'Bangladesh → UK', date: 'Mar 20, 2025', status: 'completed', progress: 100, price: '£199', earn: '£159', deadline: 'Done' },
-  { id: 'ORD-010', service: 'University Selection', student: 'Liu Wei', avatar: 'LW', country: 'China → Germany', date: 'Apr 19, 2025', status: 'pending', progress: 0, price: '£149', earn: '£119', deadline: 'Apr 28' },
-];
+const CONSULTANT_ORDERS = [];
 
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');

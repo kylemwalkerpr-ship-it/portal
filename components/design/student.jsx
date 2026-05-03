@@ -3,12 +3,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const STUDENT_ORDERS = [
-  { id: 'ORD-001', service: 'University Selection Package', consultant: 'Dr. Sarah Ahmed', avatar: 'SA', date: 'Apr 10, 2025', status: 'active', progress: 65, price: '£299', deliverable: 'Shortlist of 8 universities', messages: 3 },
-  { id: 'ORD-002', service: 'SOP Review & Editing', consultant: 'James Okafor', avatar: 'JO', date: 'Apr 18, 2025', status: 'review', progress: 90, price: '£99', deliverable: 'Reviewed SOP document', messages: 1 },
-  { id: 'ORD-003', service: 'UK Visa Support', consultant: 'Aisha Malik', avatar: 'AM', date: 'Mar 28, 2025', status: 'completed', progress: 100, price: '£199', deliverable: 'Visa checklist + approval', messages: 0 },
-  { id: 'ORD-004', service: 'IELTS Preparation Plan', consultant: 'Dr. Sarah Ahmed', avatar: 'SA', date: 'May 1, 2025', status: 'pending', progress: 0, price: '£79', deliverable: 'Custom study plan', messages: 0 },
-];
+const STUDENT_ORDERS = [];
 
 const SERVICES_CATALOG = [
   // ── Study Permits ──
@@ -230,15 +225,11 @@ function StripePaymentSection() {
 window.EscrowApprovalCard = EscrowApprovalCard;
 window.StripePaymentSection = StripePaymentSection;
 
-function StudentApp({ onLogout }) {
+function StudentApp({ onLogout, userId, userName }) {
   const [page, setPage] = React.useState('dashboard');
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
-  const [messages, setMessages] = React.useState([
-    { from: 'consultant', name: 'Dr. Sarah Ahmed', text: 'Hi! I have reviewed your academic background. I\'ll have your university shortlist ready by Thursday.', time: '10:32 AM' },
-    { from: 'student', text: 'Thank you! Should I send my transcripts now?', time: '10:45 AM' },
-    { from: 'consultant', name: 'Dr. Sarah Ahmed', text: 'Yes please, along with your updated CV. PDF format preferred.', time: '11:02 AM' },
-  ]);
+  const [messages, setMessages] = React.useState([]);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -250,9 +241,6 @@ function StudentApp({ onLogout }) {
     if (!msgInput.trim()) return;
     setMessages(prev => [...prev, { from: 'student', text: msgInput, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     setMsgInput('');
-    setTimeout(() => {
-      setMessages(prev => [...prev, { from: 'consultant', name: 'Dr. Sarah Ahmed', text: 'Thanks for that! I\'ll review and get back to you shortly.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-    }, 1200);
   };
 
   const activeOrders = STUDENT_ORDERS.filter(o => o.status === 'active' || o.status === 'review').length;
@@ -272,7 +260,7 @@ function StudentApp({ onLogout }) {
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Browse Services" active={page === 'services'} onClick={() => setPage('services')} />
-        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); setSelectedOrder(STUDENT_ORDERS[0]); }} badge="2" />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
@@ -280,9 +268,9 @@ function StudentApp({ onLogout }) {
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name="Omar Hassan" size={32} />
+          <Avatar name={userName || 'Student'} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Omar Hassan</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName || 'Student'}</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>Student</div>
           </div>
           <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }} title="Log out">⏻</button>
@@ -377,7 +365,7 @@ function StudentApp({ onLogout }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
           {[
             { icon: '🛒', label: 'Browse services', action: () => setPage('services') },
-            { icon: '💬', label: 'Message consultant', action: () => { setSelectedOrder(STUDENT_ORDERS[0]); setPage('messages'); } },
+            { icon: '💬', label: 'Message consultant', action: () => setPage('messages') },
             { icon: '📋', label: 'Upload document', action: () => setPage('documents') },
             { icon: '💳', label: 'Manage billing', action: () => setPage('billing') },
           ].map(({ icon, label, action }) => (
@@ -597,7 +585,8 @@ function StudentApp({ onLogout }) {
           </div>
         </Card>
         <Btn variant="primary" fullWidth size="lg" onClick={() => {
-          window.open(cart.stripeUrl, '_blank');
+          const stripeUrl = userId ? `${cart.stripeUrl}?client_reference_id=${userId}` : cart.stripeUrl;
+          window.open(stripeUrl, '_blank');
           setTimeout(() => { setShowCheckout(false); setCart(null); setOrderPlaced(true); setTimeout(() => setOrderPlaced(false), 6000); }, 500);
         }}>
           Pay {cart.price} — Checkout with Stripe →
@@ -804,6 +793,15 @@ function StudentApp({ onLogout }) {
           {page === 'documents' && <Documents />}
           {page === 'billing' && <Billing />}
           {page === 'settings' && <Settings />}
+          {page === 'messages' && !selectedOrder && (
+            <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: C.textMuted, flexDirection: 'column', gap: '12px' }}>
+                <span style={{ fontSize: '40px' }}>💬</span>
+                <p style={{ fontSize: '15px' }}>No active orders yet. Place an order to chat with your consultant.</p>
+              </div>
+            </div>
+          )}
           {page === 'messages' && selectedOrder && (
             <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
