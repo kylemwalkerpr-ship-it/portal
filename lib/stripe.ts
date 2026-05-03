@@ -7,6 +7,6 @@ if (!stripeSecretKey) {
 
 export function getStripe(): Stripe {
   return new Stripe(stripeSecretKey, {
-    apiVersion: '2023-10-16',
+    apiVersion: Stripe.API_VERSION,
   })
 }

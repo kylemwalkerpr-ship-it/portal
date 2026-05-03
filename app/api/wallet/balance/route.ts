@@ -16,9 +16,10 @@ export async function GET() {
     try {
       const balance = await getStripe().customers.retrieveCashBalance(customerId)
       const currency = Object.keys(balance.available ?? {})[0] || 'usd'
+      const pending = (balance as any).pending ?? {}
       return Response.json({
         available: (balance.available?.[currency] || 0) / 100,
-        pending: (balance.pending?.[currency] || 0) / 100,
+        pending: (pending[currency] || 0) / 100,
       })
     } catch (balanceErr) {
       if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
