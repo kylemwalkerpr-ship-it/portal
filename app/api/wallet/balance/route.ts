@@ -1,6 +1,7 @@
 import { getClerkUserId } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
+import Stripe from 'stripe'
 
 export async function GET() {
   const clerkUserId = await getClerkUserId()
@@ -8,15 +9,24 @@ export async function GET() {
 
   try {
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
-    const balance = await getStripe().customers.retrieveCashBalance(customerId)
 
-    // Convert from cents to major currency units
-    const available = Object.fromEntries(
-      Object.entries(balance.available ?? {}).map(([currency, amount]) => [
-        currency,
-        (amount as number) / 100,
-      ])
-    )
+    let available: Record<string, number> = {}
+    try {
+      const balance = await getStripe().customers.retrieveCashBalance(customerId)
+      available = Object.fromEntries(
+        Object.entries(balance.available ?? {}).map(([currency, amount]) => [
+          currency,
+          (amount as number) / 100,
+        ])
+      )
+    } catch (balanceErr) {
+      // Cash balance not enabled on this Stripe account — return zero
+      if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
+        available = {}
+      } else {
+        throw balanceErr
+      }
+    }
 
     return Response.json({ available })
   } catch (err: unknown) {

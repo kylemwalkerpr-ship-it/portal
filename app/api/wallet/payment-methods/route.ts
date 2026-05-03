@@ -22,6 +22,6 @@ export async function GET() {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[wallet/payment-methods GET]', message)
-    return Response.json({ error: message }, { status: 500 })
-  }
+    // Return empty list rather than 500 so the UI still renders
+    return Response.json({ cards: [], _error: message })
 }

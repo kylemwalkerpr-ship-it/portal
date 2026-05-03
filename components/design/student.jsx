@@ -151,6 +151,7 @@ function StripePaymentSection() {
   const [cards, setCards] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
+  const [cardMounted, setCardMounted] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
@@ -185,14 +186,13 @@ function StripePaymentSection() {
   // Polls for Stripe.js readiness so it works even if the script is still loading.
   const cardMountRef = React.useCallback((node) => {
     if (!node) {
-      // div removed — destroy card element
       if (cardElementRef.current) {
         try { cardElementRef.current.destroy(); } catch (_) {}
         cardElementRef.current = null;
       }
+      setCardMounted(false);
       return;
     }
-    // div added — poll until Stripe.js is initialised, then mount
     let cancelled = false;
     const tryMount = () => {
       if (cancelled) return;
@@ -208,14 +208,15 @@ function StripePaymentSection() {
       });
       card.mount(node);
       cardElementRef.current = card;
+      setCardMounted(true);
     };
     tryMount();
     return () => { cancelled = true; };
   }, []);
 
   const handleSave = async () => {
-    if (!stripeRef.current || !cardElementRef.current) {
-      setErrorMsg('Stripe has not loaded yet — please wait a moment and try again.');
+    if (!cardMounted || !stripeRef.current || !cardElementRef.current) {
+      setErrorMsg('Card fields are still loading — please wait a moment.');
       return;
     }
     setSaving(true); setErrorMsg(null);
@@ -278,16 +279,25 @@ function StripePaymentSection() {
             <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
           </div>
           {/* cardMountRef fires as soon as this div enters the DOM */}
-          <div
-            ref={cardMountRef}
-            style={{ padding: '12px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '46px', marginBottom: '16px' }}
-          />
+          <div style={{ position: 'relative', marginBottom: '16px' }}>
+            <div
+              ref={cardMountRef}
+              style={{ padding: '12px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '46px' }}
+            />
+            {!cardMounted && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', paddingLeft: '14px', fontSize: '13px', color: '#9CA3AF', pointerEvents: 'none' }}>
+                Loading card fields…
+              </div>
+            )}
+          </div>
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '16px' }}>
             🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save card securely'}</Btn>
-            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); }}>Cancel</Btn>
+            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving || !cardMounted}>
+              {saving ? 'Saving…' : !cardMounted ? 'Loading…' : 'Save card securely'}
+            </Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); setCardMounted(false); }}>Cancel</Btn>
           </div>
         </div>
       )}
