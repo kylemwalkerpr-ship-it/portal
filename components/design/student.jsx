@@ -152,23 +152,23 @@ function StripePaymentSection() {
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
   const [cardMounted, setCardMounted] = React.useState(false);
+  const [stripe, setStripe] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
 
-  const stripeRef = React.useRef(null);
-  const cardElementRef = React.useRef(null);
+  const cardElemRef = React.useRef(null);
+  const mountNodeRef = React.useRef(null);
 
-  // Load Stripe.js once on mount
+  // Load Stripe.js on mount — set state when ready so effects re-run
   React.useEffect(() => {
     const pubKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-    if (!pubKey) return;
-    const init = () => { stripeRef.current = window.Stripe(pubKey); };
-    if (window.Stripe) { init(); return; }
+    if (!pubKey) { console.error('Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'); return; }
+    if (window.Stripe) { setStripe(window.Stripe(pubKey)); return; }
     const s = document.createElement('script');
     s.src = 'https://js.stripe.com/v3/';
-    s.async = true;
-    s.onload = init;
+    s.onload = () => setStripe(window.Stripe(pubKey));
+    s.onerror = () => console.error('Failed to load Stripe.js');
     document.head.appendChild(s);
   }, []);
 
@@ -176,47 +176,43 @@ function StripePaymentSection() {
     setLoading(true);
     try {
       const res = await fetch('/api/wallet/payment-methods');
-      if (res.ok) { const d = await res.json(); setCards(d.cards ?? []); }
+      const d = await res.json();
+      setCards(d.cards ?? []);
     } finally { setLoading(false); }
   };
 
   React.useEffect(() => { fetchCards(); }, []);
 
-  // Callback ref — fires the instant the mount div enters/leaves the DOM.
-  // Polls for Stripe.js readiness so it works even if the script is still loading.
-  const cardMountRef = React.useCallback((node) => {
-    if (!node) {
-      if (cardElementRef.current) {
-        try { cardElementRef.current.destroy(); } catch (_) {}
-        cardElementRef.current = null;
-      }
+  // Mount card element whenever stripe instance AND addingCard are both ready
+  React.useEffect(() => {
+    if (!stripe || !addingCard) return;
+    // mountNodeRef.current is set by React before this effect runs
+    const node = mountNodeRef.current;
+    if (!node) return;
+
+    if (cardElemRef.current) { try { cardElemRef.current.destroy(); } catch (_) {} }
+
+    const elements = stripe.elements();
+    const card = elements.create('card', {
+      hidePostalCode: true,
+      style: {
+        base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
+        invalid: { color: '#EF4444' },
+      },
+    });
+    card.mount(node);
+    cardElemRef.current = card;
+    setCardMounted(true);
+
+    return () => {
+      try { card.destroy(); } catch (_) {}
       setCardMounted(false);
-      return;
-    }
-    let cancelled = false;
-    const tryMount = () => {
-      if (cancelled) return;
-      if (!stripeRef.current) { setTimeout(tryMount, 80); return; }
-      if (cardElementRef.current) { try { cardElementRef.current.destroy(); } catch (_) {} }
-      const elements = stripeRef.current.elements();
-      const card = elements.create('card', {
-        hidePostalCode: true,
-        style: {
-          base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
-          invalid: { color: '#EF4444' },
-        },
-      });
-      card.mount(node);
-      cardElementRef.current = card;
-      setCardMounted(true);
     };
-    tryMount();
-    return () => { cancelled = true; };
-  }, []);
+  }, [stripe, addingCard]);
 
   const handleSave = async () => {
-    if (!cardMounted || !stripeRef.current || !cardElementRef.current) {
-      setErrorMsg('Card fields are still loading — please wait a moment.');
+    if (!stripe || !cardElemRef.current) {
+      setErrorMsg('Card fields are not ready — please wait a moment.');
       return;
     }
     setSaving(true); setErrorMsg(null);
@@ -224,8 +220,8 @@ function StripePaymentSection() {
       const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
       const { clientSecret, error: apiErr } = await res.json();
       if (apiErr) throw new Error(apiErr);
-      const { error: stripeErr } = await stripeRef.current.confirmCardSetup(clientSecret, {
-        payment_method: { card: cardElementRef.current },
+      const { error: stripeErr } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: { card: cardElemRef.current },
       });
       if (stripeErr) throw new Error(stripeErr.message);
       setAddingCard(false); setSaved(true);
@@ -278,15 +274,14 @@ function StripePaymentSection() {
             <span>Add payment method</span>
             <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
           </div>
-          {/* cardMountRef fires as soon as this div enters the DOM */}
           <div style={{ position: 'relative', marginBottom: '16px' }}>
             <div
-              ref={cardMountRef}
+              ref={mountNodeRef}
               style={{ padding: '12px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '46px' }}
             />
             {!cardMounted && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', paddingLeft: '14px', fontSize: '13px', color: '#9CA3AF', pointerEvents: 'none' }}>
-                Loading card fields…
+                {stripe ? 'Initialising…' : 'Loading Stripe…'}
               </div>
             )}
           </div>
@@ -297,7 +292,7 @@ function StripePaymentSection() {
             <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving || !cardMounted}>
               {saving ? 'Saving…' : !cardMounted ? 'Loading…' : 'Save card securely'}
             </Btn>
-            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); setCardMounted(false); }}>Cancel</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); }}>Cancel</Btn>
           </div>
         </div>
       )}
