@@ -8,13 +8,16 @@ export async function GET() {
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
+    console.log('[wallet/balance] request', { clerkUserId })
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
+    console.log('[wallet/balance] customerId', { customerId })
     if (!customerId) {
       return Response.json({ available: 0, pending: 0 }, { status: 200 })
     }
 
     try {
       const balance = await getStripe().customers.retrieveCashBalance(customerId)
+      console.log('[wallet/balance] balance', { balance })
       const currency = Object.keys(balance.available ?? {})[0] || 'usd'
       const pending = (balance as any).pending ?? {}
       return Response.json({
@@ -25,7 +28,7 @@ export async function GET() {
       if (balanceErr instanceof Stripe.errors.StripeInvalidRequestError) {
         return Response.json({ available: 0, pending: 0 }, { status: 200 })
       }
-      console.error('[Stripe] retrieveCashBalance error:', balanceErr instanceof Error ? balanceErr.message : balanceErr)
+      console.error('[Stripe] retrieveCashBalance error:', balanceErr instanceof Error ? balanceErr.message : balanceErr, balanceErr)
       return Response.json({ error: balanceErr instanceof Error ? balanceErr.message : 'Stripe balance error' }, { status: 500 })
     }
   } catch (err: unknown) {

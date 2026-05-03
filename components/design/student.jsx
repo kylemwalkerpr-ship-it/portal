@@ -1,7 +1,13 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
+import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+
+// Module-level promise — deduped + cached across renders
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : Promise.resolve(null)
 
 const STUDENT_ORDERS = [];
 
@@ -160,16 +166,13 @@ function StripePaymentSection() {
   const cardElemRef = React.useRef(null);
   const mountNodeRef = React.useRef(null);
 
-  // Load Stripe.js on mount — set state when ready so effects re-run
+  // Load Stripe.js once via the official loader (deduped by stripePromise)
   React.useEffect(() => {
-    const pubKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-    if (!pubKey) { console.error('Missing NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'); return; }
-    if (window.Stripe) { setStripe(window.Stripe(pubKey)); return; }
-    const s = document.createElement('script');
-    s.src = 'https://js.stripe.com/v3/';
-    s.onload = () => setStripe(window.Stripe(pubKey));
-    s.onerror = () => console.error('Failed to load Stripe.js');
-    document.head.appendChild(s);
+    let cancelled = false;
+    stripePromise
+      .then((s) => { if (!cancelled && s) setStripe(s); })
+      .catch((err) => console.error('[Stripe] loadStripe failed:', err));
+    return () => { cancelled = true; };
   }, []);
 
   const fetchCards = async () => {

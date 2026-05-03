@@ -5,8 +5,6 @@ export function getStripe(): Stripe {
   if (!stripeSecretKey) {
     throw new Error('Missing STRIPE_SECRET_KEY environment variable')
   }
-
-  return new Stripe(stripeSecretKey, {
-    apiVersion: Stripe.API_VERSION,
-  })
+  // Use the SDK's pinned default API version — passing undefined here breaks the client
+  return new Stripe(stripeSecretKey)
 }
