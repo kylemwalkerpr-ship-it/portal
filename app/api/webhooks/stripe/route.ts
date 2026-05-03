@@ -22,6 +22,25 @@ export async function POST(req: Request) {
     return new Response('Invalid signature', { status: 400 })
   }
 
+  // ── Wallet events ──────────────────────────────────────────────────────────
+  if ((event.type as string) === 'customer.cash_balance.funds_available') {
+    const obj = event.data.object as { customer: string }
+    console.log(`[webhook] Wallet funds available for customer: ${obj.customer}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (event.type === 'payment_intent.payment_failed') {
+    const pi = event.data.object as Stripe.PaymentIntent
+    console.error(`[webhook] PaymentIntent failed: ${pi.id} — ${pi.last_payment_error?.message}`)
+    return new Response('OK', { status: 200 })
+  }
+
+  if (event.type === 'payment_method.detached') {
+    const pm = event.data.object as Stripe.PaymentMethod
+    console.log(`[webhook] PaymentMethod detached: ${pm.id}`)
+    return new Response('OK', { status: 200 })
+  }
+
   if (event.type !== 'checkout.session.completed') {
     return new Response('OK', { status: 200 })
   }

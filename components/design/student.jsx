@@ -149,25 +149,79 @@ function EscrowApprovalCard({ order }) {
 // ─── Stripe Payment Method Component ─────────────────────────────────────────
 function StripePaymentSection() {
   const [cards, setCards] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
-  const [cardNum, setCardNum] = React.useState('');
-  const [expiry, setExpiry] = React.useState('');
-  const [cvc, setCvc] = React.useState('');
-  const [cardName, setCardName] = React.useState('');
+  const [stripeInstance, setStripeInstance] = React.useState(null);
+  const [cardElement, setCardElement] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState(null);
+  const cardRef = React.useRef(null);
 
-  const formatCard = v => v.replace(/\D/g,'').slice(0,16).replace(/(.{4})/g,'$1 ').trim();
-  const formatExpiry = v => { const d = v.replace(/\D/g,'').slice(0,4); return d.length > 2 ? d.slice(0,2)+'/'+d.slice(2) : d; };
+  // Load Stripe.js once
+  React.useEffect(() => {
+    const pubKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    if (!pubKey) return;
+    const init = () => setStripeInstance(window.Stripe(pubKey));
+    if (window.Stripe) { init(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://js.stripe.com/v3/';
+    s.onload = init;
+    document.head.appendChild(s);
+  }, []);
 
-  const handleSave = () => {
-    if (cardNum.replace(/\s/g,'').length < 16 || expiry.length < 5 || cvc.length < 3) return;
-    const last4 = cardNum.replace(/\s/g,'').slice(-4);
-    setCards(prev => [...prev, { id: Date.now(), brand: 'Visa', last4, exp: expiry, default: false }]);
-    setAddingCard(false); setSaved(true); setCardNum(''); setExpiry(''); setCvc(''); setCardName('');
-    setTimeout(() => setSaved(false), 3000);
+  const fetchCards = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/wallet/payment-methods');
+      if (res.ok) { const d = await res.json(); setCards(d.cards ?? []); }
+    } finally { setLoading(false); }
   };
 
-  const brandColor = b => b === 'Visa' ? '#1a1f71' : b === 'Mastercard' ? '#eb001b' : C.textMuted;
+  React.useEffect(() => { fetchCards(); }, []);
+
+  // Mount Stripe CardElement whenever the add-card form opens
+  React.useEffect(() => {
+    if (!addingCard || !stripeInstance || !cardRef.current) return;
+    const elements = stripeInstance.elements();
+    const card = elements.create('card', {
+      style: {
+        base: { color: C.text, fontFamily: 'inherit', fontSize: '14px', '::placeholder': { color: C.textDim } },
+        invalid: { color: C.red },
+      },
+    });
+    card.mount(cardRef.current);
+    setCardElement(card);
+    return () => { try { card.unmount(); } catch (_) {} };
+  }, [addingCard, stripeInstance]);
+
+  const handleSave = async () => {
+    if (!stripeInstance || !cardElement) return;
+    setSaving(true); setErrorMsg(null);
+    try {
+      const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
+      const { clientSecret, error: apiErr } = await res.json();
+      if (apiErr) throw new Error(apiErr);
+      const { error: stripeErr } = await stripeInstance.confirmCardSetup(clientSecret, {
+        payment_method: { card: cardElement },
+      });
+      if (stripeErr) throw new Error(stripeErr.message);
+      setAddingCard(false); setSaved(true);
+      await fetchCards();
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      setErrorMsg(e.message);
+    } finally { setSaving(false); }
+  };
+
+  const handleRemove = async (pmId) => {
+    try {
+      await fetch(`/api/wallet/payment-methods/${pmId}`, { method: 'DELETE' });
+      await fetchCards();
+    } catch (e) { console.error('Remove failed', e); }
+  };
+
+  const brandColor = b => ({ visa: '#1a1f71', mastercard: '#eb001b', amex: '#007bc1' }[b] ?? C.textMuted);
 
   return (
     <Card>
@@ -177,16 +231,20 @@ function StripePaymentSection() {
         Secured by Stripe — we never store card details directly.
       </div>
       {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely via Stripe</div>}
+      {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.red, marginBottom: '14px' }}>⚠ {errorMsg}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-        {cards.map(card => (
-          <div key={card.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: C.surface2, borderRadius: '12px', border: `1px solid ${card.default ? C.cyan : C.border}` }}>
+        {loading ? (
+          <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading…</div>
+        ) : cards.length === 0 ? (
+          <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No cards saved yet.</div>
+        ) : cards.map(card => (
+          <div key={card.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}` }}>
             <div style={{ width: '44px', height: '28px', borderRadius: '6px', background: brandColor(card.brand), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{card.brand.slice(0,4).toUpperCase()}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>•••• •••• •••• {card.last4}</div>
-              <div style={{ fontSize: '12px', color: C.textMuted }}>Expires {card.exp}</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Expires {card.exp_month}/{card.exp_year}</div>
             </div>
-            {card.default && <Badge color="cyan">Default</Badge>}
-            <Btn variant="ghost" size="sm" onClick={() => setCards(prev => prev.filter(c => c.id !== card.id))}>Remove</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => handleRemove(card.id)}>Remove</Btn>
           </div>
         ))}
       </div>
@@ -198,20 +256,16 @@ function StripePaymentSection() {
             <span>Add payment method</span>
             <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <Input label="Cardholder name" value={cardName} onChange={setCardName} placeholder="Full name on card" />
-            <Input label="Card number" value={cardNum} onChange={v => setCardNum(formatCard(v))} placeholder="1234 5678 9012 3456" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Input label="Expiry" value={expiry} onChange={v => setExpiry(formatExpiry(v))} placeholder="MM/YY" />
-              <Input label="CVC" value={cvc} onChange={v => setCvc(v.replace(/\D/g,'').slice(0,4))} placeholder="•••" />
-            </div>
-            <div style={{ fontSize: '12px', color: C.textDim, display: 'flex', gap: '6px', alignItems: 'center' }}>
-              🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
-            </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <Btn variant="primary" size="sm" onClick={handleSave}>Save card securely</Btn>
-              <Btn variant="ghost" size="sm" onClick={() => setAddingCard(false)}>Cancel</Btn>
-            </div>
+          <div
+            ref={cardRef}
+            style={{ padding: '12px 14px', background: C.surface3, borderRadius: '10px', border: `1px solid ${C.border2}`, minHeight: '42px', marginBottom: '16px' }}
+          />
+          <div style={{ fontSize: '12px', color: C.textDim, marginBottom: '16px' }}>
+            🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save card securely'}</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); }}>Cancel</Btn>
           </div>
         </div>
       )}
