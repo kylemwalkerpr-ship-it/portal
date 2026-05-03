@@ -4,7 +4,10 @@ import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+// CACHE-BUST v3 — hardcoded fallback ensures Stripe always loads even if env-var inlining fails
+const STRIPE_PUB_KEY =
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+  'pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BOvHpQa9WupSj8lYeBg4ORI3AhSLflB7fsvvHgQHEqvczFAVf5CnjSWg400nEjPlTuq'
 
 const STUDENT_ORDERS = [];
 
@@ -184,8 +187,9 @@ function StripePaymentSection() {
     // If already loaded, just open the form
     if (stripe) { setAddingCard(true); return; }
 
+    // STRIPE_PUB_KEY has a hardcoded fallback so it can never be empty here
     if (!STRIPE_PUB_KEY) {
-      setStripeErr('Stripe publishable key is not configured. Contact support.');
+      setStripeErr('Build error: Stripe key fallback missing. Force a hard refresh of this page.');
       return;
     }
 
