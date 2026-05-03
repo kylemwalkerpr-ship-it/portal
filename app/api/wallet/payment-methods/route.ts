@@ -24,4 +24,5 @@ export async function GET() {
     console.error('[wallet/payment-methods GET]', message)
     // Return empty list rather than 500 so the UI still renders
     return Response.json({ cards: [], _error: message })
+  }
 }
