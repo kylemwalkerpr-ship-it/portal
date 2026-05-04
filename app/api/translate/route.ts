@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 
-export const runtime = "edge"
-
 const MYMEMORY_URL = "https://api.mymemory.translated.net/get"
 const LIBRETRANSLATE_ENDPOINTS = [
   "https://translate.fedilab.app/translate",
