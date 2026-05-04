@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -22,6 +22,9 @@ function AdminApp({ onLogout }) {
   const [userFilter, setUserFilter] = React.useState('all');
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [selectedUser, setSelectedUser] = React.useState(null);
+  const [selectedOrder, setSelectedOrder] = React.useState(null);
+  const [inviteModal, setInviteModal] = React.useState(false);
+  const [actionNotice, setActionNotice] = React.useState('');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [users, setUsers] = React.useState([]);
   const [orders, setOrders] = React.useState([]);
@@ -157,7 +160,29 @@ function AdminApp({ onLogout }) {
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>Super Admin</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>admin@yousafe.com</div>
           </div>
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }}>⏻</button>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Log out and return to Yousafe Consultancy"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              border: `1px solid ${C.border}`,
+              borderRadius: '8px',
+              background: C.surface,
+              color: C.textMuted,
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '7px 9px',
+              whiteSpace: 'nowrap',
+            }}
+            title="Log out"
+          >
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </div>
@@ -191,7 +216,20 @@ function AdminApp({ onLogout }) {
             </div>
           )}
         </div>
-        <Avatar name="Admin" size={32} color={C.red} />
+        <UserMenu
+          name="Super Admin"
+          role="Admin"
+          email="admin@yousafe.com"
+          color={C.red}
+          onNavigate={setPage}
+          onLogout={onLogout}
+          items={[
+            { label: 'Admin settings', icon: '⚙️', action: () => setPage('settings') },
+            { label: 'User management', icon: '👥', action: () => setPage('users') },
+            { label: 'All orders', icon: '📦', action: () => setPage('orders') },
+            { label: 'Escrow queue', icon: '🔒', action: () => setPage('escrow') },
+          ]}
+        />
       </div>
     </div>
   );
@@ -294,6 +332,8 @@ function AdminApp({ onLogout }) {
 
   // ── USERS ──
   const Users = () => {
+    const [inviteEmail, setInviteEmail] = React.useState('');
+    const [inviteRole, setInviteRole] = React.useState('student');
     const updateUser = async (user, payload) => {
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
@@ -311,7 +351,7 @@ function AdminApp({ onLogout }) {
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Users</h2>
           <p style={{ color: C.textMuted, fontSize: '14px' }}>{users.length} total · {totalStudents} students · {totalConsultants} consultants</p>
         </div>
-        <Btn variant="primary" size="sm">+ Invite user</Btn>
+        <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {['all', 'student', 'consultant'].map(f => (
@@ -352,7 +392,7 @@ function AdminApp({ onLogout }) {
                 <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : 'orange'}>{u.status}</Badge></td>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    <Btn variant="ghost" size="sm">View</Btn>
+                    <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
                     <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
                   </div>
                 </td>
@@ -361,6 +401,59 @@ function AdminApp({ onLogout }) {
           </tbody>
         </table>
       </Card>
+      {selectedUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setSelectedUser(null)}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <Avatar name={selectedUser.name} size={48} color={selectedUser.role === 'consultant' ? C.purple : C.cyan} />
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800 }}>{selectedUser.name}</h3>
+                  <div style={{ color: C.textMuted, fontSize: '13px' }}>{selectedUser.email}</div>
+                </div>
+              </div>
+              <button onClick={() => setSelectedUser(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+              {[
+                ['Role', selectedUser.role],
+                ['Status', selectedUser.status],
+                ['Country', selectedUser.country],
+                ['Joined', selectedUser.joined],
+                ['Orders', selectedUser.orders],
+                ['Financials', selectedUser.spend],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '12px' }}>
+                  <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+                  <div style={{ color: C.text, fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Btn variant="primary" size="sm" onClick={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}>View orders</Btn>
+              <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
+                {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
+              </Btn>
+              <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Close</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+      {inviteModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setInviteModal(false)}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Invite user</h3>
+              <button onClick={() => setInviteModal(false)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gap: '14px' }}>
+              <Input label="Email address" value={inviteEmail} onChange={setInviteEmail} placeholder="student@example.com" />
+              <Select label="Role" value={inviteRole} onChange={setInviteRole} options={[{ value: 'student', label: 'Student' }, { value: 'consultant', label: 'Consultant' }, { value: 'admin', label: 'Admin' }]} />
+              <Btn variant="primary" onClick={() => { setInviteModal(false); setActionNotice(`Invite prepared for ${inviteEmail || 'new user'} as ${inviteRole}. Connect an email provider to send real invitations.`); }}>Create invite</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     );
   };
@@ -409,6 +502,7 @@ function AdminApp({ onLogout }) {
                   <td style={{ padding: '14px 16px' }}><StatusBadge status={o.status} /></td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(o)}>View</Btn>
                       {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm" onClick={() => updateOrder(o.id, { escrow_status: 'released' })}>Release</Btn>}
                       {o.consultant ? (
                         <><Btn variant="secondary" size="sm" onClick={() => setAssignModal(o)}>Reassign</Btn><Btn variant="danger" size="sm" onClick={() => handleUnassign(o.id)}>Unassign</Btn></>
@@ -440,6 +534,48 @@ function AdminApp({ onLogout }) {
                 ))}
               </div>
               <Btn variant="ghost" fullWidth onClick={() => setAssignModal(null)}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+        {selectedOrder && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setSelectedOrder(null)}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Order details</h3>
+                  <div style={{ color: C.cyan, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>{selectedOrder.id}</div>
+                </div>
+                <button onClick={() => setSelectedOrder(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              </div>
+              <Card style={{ padding: '16px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 800, marginBottom: '6px' }}>{selectedOrder.service}</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <StatusBadge status={selectedOrder.status} />
+                  <Badge color={selectedOrder.escrow === 'released' ? 'green' : 'orange'}>{selectedOrder.escrow === 'released' ? 'Released' : 'Escrow held'}</Badge>
+                </div>
+              </Card>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  ['Student', selectedOrder.student],
+                  ['Consultant', selectedOrder.consultant || 'Unassigned'],
+                  ['Amount', selectedOrder.amount],
+                  ['Consultant payout', selectedOrder.consultantPay],
+                  ['Platform cut', selectedOrder.adminCut],
+                  ['Created', selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : '—'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '12px' }}>
+                    <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ color: C.text, fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <Btn variant="primary" size="sm" onClick={() => { setAssignModal(selectedOrder); setSelectedOrder(null); }}>{selectedOrder.consultant ? 'Reassign consultant' : 'Assign consultant'}</Btn>
+                {selectedOrder.escrow === 'held' && selectedOrder.status === 'completed' && (
+                  <Btn variant="success" size="sm" onClick={() => updateOrder(selectedOrder.id, { escrow_status: 'released' })}>Release escrow</Btn>
+                )}
+                <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(null)}>Close</Btn>
+              </div>
             </div>
           </div>
         )}
@@ -549,7 +685,7 @@ function AdminApp({ onLogout }) {
               <div style={{ fontSize: '12px', color: C.textMuted }}>Pending payout details will appear here</div>
             </div>
             <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{formatUSD(0)}</span>
-            <Btn variant="primary" size="sm">Pay out</Btn>
+            <Btn variant="primary" size="sm" onClick={() => setActionNotice(`Payout review opened for ${name}. Stripe payout automation will process eligible released balances.`)}>Pay out</Btn>
           </div>
         )) : (
           <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
@@ -730,31 +866,31 @@ function AdminApp({ onLogout }) {
             <span style={{ color: C.textMuted }}>Platform receives</span>
             <span style={{ fontWeight: 700, color: C.green }}>{PLATFORM_FEE_PERCENT}%</span>
           </div>
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save split</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Revenue split settings saved for this session.')}>Save split</Btn>
         </div>
       </Card>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Escrow Rules</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Select label="Auto-release escrow after" value="14 days" onChange={() => {}} options={['7 days', '14 days', '21 days', '30 days', 'Never (manual only)'].map(v => ({ value: v, label: v }))} />
+          <Select label="Auto-release escrow after" value="14 days" onChange={() => setActionNotice('Escrow auto-release window updated for this session.')} options={['7 days', '14 days', '21 days', '30 days', 'Never (manual only)'].map(v => ({ value: v, label: v }))} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>Allow admin force-release</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Admin can release escrow without student approval</div>
             </div>
-            <button style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: C.cyan, position: 'relative' }}>
+            <button onClick={() => setActionNotice('Admin force-release permission toggled for this session.')} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: C.cyan, position: 'relative' }}>
               <div style={{ position: 'absolute', top: '3px', left: '22px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
             </button>
           </div>
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save rules</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Escrow rules saved for this session.')}>Save rules</Btn>
         </div>
       </Card>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Platform Info</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Input label="Platform name" value={platformName} onChange={e => setPlatformName(e.target.value)} placeholder="Enter platform name" />
-          <Input label="Support email" value={supportEmail} onChange={e => setSupportEmail(e.target.value)} placeholder="Enter support email" />
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save</Btn>
+          <Input label="Platform name" value={platformName} onChange={setPlatformName} placeholder="Enter platform name" />
+          <Input label="Support email" value={supportEmail} onChange={setSupportEmail} placeholder="Enter support email" />
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Platform info saved for this session.')}>Save</Btn>
         </div>
       </Card>
       <Card>
@@ -764,10 +900,10 @@ function AdminApp({ onLogout }) {
           All payments and payouts processed via Stripe Connect.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <Input label="Stripe publishable key" value={stripePublishableKey} onChange={e => setStripePublishableKey(e.target.value)} placeholder="pk_live_..." />
-          <Input label="Stripe secret key" value={stripeSecretKey} onChange={e => setStripeSecretKey(e.target.value)} type="password" placeholder="sk_live_..." />
-          <Input label="Webhook signing secret" value={webhookSigningSecret} onChange={e => setWebhookSigningSecret(e.target.value)} type="password" placeholder="whsec_..." />
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save Stripe config</Btn>
+          <Input label="Stripe publishable key" value={stripePublishableKey} onChange={setStripePublishableKey} placeholder="pk_live_..." />
+          <Input label="Stripe secret key" value={stripeSecretKey} onChange={setStripeSecretKey} type="password" placeholder="sk_live_..." />
+          <Input label="Webhook signing secret" value={webhookSigningSecret} onChange={setWebhookSigningSecret} type="password" placeholder="whsec_..." />
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Stripe config saved for this session. Store secrets server-side before production use.')}>Save Stripe config</Btn>
         </div>
       </Card>
     </div>
@@ -783,6 +919,12 @@ function AdminApp({ onLogout }) {
         <div style={{ flex: 1 }}>
           {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
           {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading live admin data…</div>}
+          {actionNotice && (
+            <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span>{actionNotice}</span>
+              <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
+            </div>
+          )}
           {page === 'dashboard' && <Dashboard />}
           {page === 'users' && <Users />}
           {page === 'orders' && <Orders />}

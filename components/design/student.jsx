@@ -2,7 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
-import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
@@ -498,6 +498,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [messages, setMessages] = React.useState([]);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
+  const [actionNotice, setActionNotice] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [orderPlaced, setOrderPlaced] = React.useState(false);
 
@@ -541,7 +542,29 @@ function StudentApp({ onLogout, userId, userName }) {
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName || 'Student'}</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>Student</div>
           </div>
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }} title="Log out">⏻</button>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Log out and return to Yousafe Consultancy"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              border: `1px solid ${C.border}`,
+              borderRadius: '8px',
+              background: C.surface,
+              color: C.textMuted,
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '7px 9px',
+              whiteSpace: 'nowrap',
+            }}
+            title="Log out"
+          >
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </div>
@@ -565,7 +588,18 @@ function StudentApp({ onLogout, userId, userName }) {
             </div>
           )}
         </div>
-        <Avatar name={userName || 'User'} size={32} />
+        <UserMenu
+          name={userName || 'User'}
+          role="Student"
+          onNavigate={setPage}
+          onLogout={onLogout}
+          items={[
+            { label: 'Profile settings', icon: '⚙️', action: () => setPage('settings') },
+            { label: 'My orders', icon: '📦', action: () => setPage('orders') },
+            { label: 'Billing wallet', icon: '💳', action: () => setPage('billing') },
+            { label: 'Messages', icon: '💬', action: () => setPage('messages') },
+          ]}
+        />
       </div>
     </div>
   );
@@ -1196,6 +1230,7 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── SETTINGS ──
   const Settings = () => {
     const [notifs, setNotifs] = React.useState({ messages: true, orders: true, promo: false });
+    const [profile, setProfile] = React.useState({ name: userName || '', email: '', phone: '' });
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Settings</h2>
@@ -1205,14 +1240,14 @@ function StudentApp({ onLogout, userId, userName }) {
             <Avatar name={userName || 'User'} size={60} />
             <div>
               <div style={{ fontWeight: 700 }}>{userName || 'User'}</div>
-              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }}>Change photo</Btn>
+              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} onClick={() => setActionNotice('Photo picker opened. Connect profile storage to upload a new avatar.')}>Change photo</Btn>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Input label="Full name" value={userName || ''} onChange={() => {}} />
-            <Input label="Email" type="email" value="" onChange={() => {}} />
-            <Input label="Phone" value="" onChange={() => {}} placeholder="+44 7700 000000" />
-            <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save changes</Btn>
+            <Input label="Full name" value={profile.name} onChange={v => setProfile(p => ({ ...p, name: v }))} />
+            <Input label="Email" type="email" value={profile.email} onChange={v => setProfile(p => ({ ...p, email: v }))} />
+            <Input label="Phone" value={profile.phone} onChange={v => setProfile(p => ({ ...p, phone: v }))} placeholder="+44 7700 000000" />
+            <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Profile changes saved for this session.')}>Save changes</Btn>
           </div>
         </Card>
         <Card>
@@ -1234,7 +1269,7 @@ function StudentApp({ onLogout, userId, userName }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <Input label="Current password" type="password" value="" onChange={() => {}} placeholder="••••••••" />
             <Input label="New password" type="password" value="" onChange={() => {}} placeholder="••••••••" />
-            <Btn variant="secondary" size="sm" style={{ alignSelf: 'flex-start' }}>Update password</Btn>
+            <Btn variant="secondary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Password update requested. Connect Clerk account management to complete this securely.')}>Update password</Btn>
           </div>
         </Card>
       </div>
@@ -1252,6 +1287,12 @@ function StudentApp({ onLogout, userId, userName }) {
           'order-detail': 'Order Details',
         }[page] || 'Dashboard'} />
         <div style={{ flex: 1 }}>
+          {actionNotice && (
+            <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span>{actionNotice}</span>
+              <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
+            </div>
+          )}
           {page === 'dashboard' && <Dashboard />}
           {page === 'orders' && <OrdersList />}
           {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}

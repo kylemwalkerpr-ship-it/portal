@@ -144,6 +144,128 @@ export function Avatar({ name, src, size = 36, color }) {
   )
 }
 
+export function UserMenu({ name, role, email, color, onNavigate, onLogout, items = [] }) {
+  const [open, setOpen] = React.useState(false)
+  const displayName = name || role || 'User'
+  const defaultItems = [
+    { label: 'Profile settings', icon: '⚙️', action: () => onNavigate?.('settings') },
+    { label: role === 'Admin' ? 'User management' : role === 'Consultant' ? 'Messages' : 'Billing', icon: role === 'Admin' ? '👥' : role === 'Consultant' ? '💬' : '💳', action: () => onNavigate?.(role === 'Admin' ? 'users' : role === 'Consultant' ? 'messages' : 'billing') },
+    { label: 'Help & support', icon: '❔', action: () => window.location.href = 'mailto:support@yousafeconsultancy.com' },
+  ]
+  const menuItems = items.length ? items : defaultItems
+
+  const run = action => {
+    setOpen(false)
+    action?.()
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${displayName} account menu`}
+        style={{
+          border: `1px solid ${open ? C.cyan : C.border}`,
+          background: open ? `${C.cyan}10` : C.surface2,
+          borderRadius: '999px',
+          padding: '2px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          color: C.text,
+        }}
+      >
+        <Avatar name={displayName} size={32} color={color} />
+        <span style={{ fontSize: '12px', color: C.textDim, paddingRight: '6px' }}>⌄</span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '44px',
+            width: '248px',
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: '14px',
+            boxShadow: '0 18px 50px rgba(15,23,42,0.18)',
+            zIndex: 120,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Avatar name={displayName} size={36} color={color} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+              <div style={{ fontSize: '11px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email || role || 'Account'}</div>
+            </div>
+          </div>
+          <div style={{ padding: '6px' }}>
+            {menuItems.map(item => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => run(item.action)}
+                style={{
+                  width: '100%',
+                  border: 'none',
+                  background: 'transparent',
+                  color: C.text,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px',
+                  borderRadius: '10px',
+                  fontFamily: 'inherit',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ width: '18px', textAlign: 'center' }}>{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ padding: '6px', borderTop: `1px solid ${C.border}` }}>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => run(onLogout)}
+              style={{
+                width: '100%',
+                border: 'none',
+                background: 'transparent',
+                color: C.red,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '10px',
+                borderRadius: '10px',
+                fontFamily: 'inherit',
+                fontSize: '13px',
+                fontWeight: 700,
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ width: '18px', textAlign: 'center' }}>⏻</span>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function StatusBadge({ status }) {
   const map = {
     pending: { label: 'Pending', color: 'orange' },

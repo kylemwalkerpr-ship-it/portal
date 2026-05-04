@@ -8,12 +8,16 @@ import dynamic from 'next/dynamic'
 const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: false })
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
+const LANDING_URL = 'https://yousafeconsultancy.com'
 
 export default function DashboardClient({ role, status, userName, userId }) {
   const { signOut } = useClerk()
   const handleLogout = async () => {
-    await signOut()
-    window.location.href = 'https://yousafeconsultancy.com'
+    try {
+      await signOut({ redirectUrl: LANDING_URL })
+    } finally {
+      window.location.replace(LANDING_URL)
+    }
   }
 
   if (status === 'pending' && role === 'consultant') {

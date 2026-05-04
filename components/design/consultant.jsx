@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
@@ -18,6 +18,7 @@ function ConsultantApp({ onLogout }) {
   const [loadError, setLoadError] = React.useState(null);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
+  const [actionNotice, setActionNotice] = React.useState('');
 
   const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
   const newOrders = orders.filter(o => o.status === 'new').length;
@@ -76,6 +77,12 @@ function ConsultantApp({ onLogout }) {
     setSelectedOrder(prev => prev ? { ...prev, status: 'completed', payoutStatus: data.payout?.transferred ? 'transferred' : prev.payoutStatus } : prev);
   };
 
+  const declineOrder = order => {
+    if (!order) return;
+    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'cancelled' } : o));
+    setActionNotice(`Order ${order.id} declined for this session.`);
+  };
+
   const sendMessage = () => {
     if (!msgInput.trim()) return;
     setMessages(prev => [...prev, { from: 'consultant', text: msgInput, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
@@ -112,7 +119,29 @@ function ConsultantApp({ onLogout }) {
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileName || 'Consultant'}</div>
             <div style={{ fontSize: '11px', color: C.green }}>● Available</div>
           </div>
-          <button onClick={onLogout} style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '16px' }} title="Log out">⏻</button>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Log out and return to Yousafe Consultancy"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              border: `1px solid ${C.border}`,
+              borderRadius: '8px',
+              background: C.surface,
+              color: C.textMuted,
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '7px 9px',
+              whiteSpace: 'nowrap',
+            }}
+            title="Log out"
+          >
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </div>
@@ -150,7 +179,20 @@ function ConsultantApp({ onLogout }) {
             </div>
           )}
         </div>
-        <Avatar name={profileName || 'Consultant'} size={32} color={C.purple} />
+        <UserMenu
+          name={profileName || 'Consultant'}
+          role="Consultant"
+          email={profileEmail}
+          color={C.purple}
+          onNavigate={setPage}
+          onLogout={onLogout}
+          items={[
+            { label: 'Profile settings', icon: '⚙️', action: () => setPage('settings') },
+            { label: 'Orders', icon: '📦', action: () => setPage('orders') },
+            { label: 'Messages', icon: '💬', action: () => setPage('messages') },
+            { label: 'Payout setup', icon: '🏦', action: () => setPage('connect') },
+          ]}
+        />
       </div>
     </div>
   );
@@ -191,7 +233,7 @@ function ConsultantApp({ onLogout }) {
               const order = orders.find(o => o.status === 'new');
               if (order) { setSelectedOrder(order); setPage('order-detail'); }
             }}>Accept</Btn>
-            <Btn variant="danger" size="sm">Decline</Btn>
+            <Btn variant="danger" size="sm" onClick={() => declineOrder(orders.find(o => o.status === 'new'))}>Decline</Btn>
           </div>
         </div>
       )}
@@ -697,6 +739,12 @@ function ConsultantApp({ onLogout }) {
         <div style={{ flex: 1 }}>
           {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
           {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
+          {actionNotice && (
+            <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+              <span>{actionNotice}</span>
+              <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
+            </div>
+          )}
           {page === 'dashboard' && <Dashboard />}
           {page === 'orders' && <Orders />}
           {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
