@@ -41,11 +41,11 @@ export default async function DashboardPage({
   const db = createSupabaseAdminClient()
 
   // Fetch profile — try with status column first, fall back without it
-  let profile: { role: string; status: string; full_name: string | null; email: string } | null = null
+  let profile: { id?: string; clerk_user_id?: string | null; role: string; status: string; full_name: string | null; email: string } | null = null
 
   const { data: full, error: fullErr } = await db
     .from('profiles')
-    .select('role, status, full_name, email')
+    .select('id, clerk_user_id, role, status, full_name, email')
     .eq('clerk_user_id', userId)
     .single()
 
@@ -58,7 +58,7 @@ export default async function DashboardPage({
     // status column may not exist — try without it
     const { data: basic } = await db
       .from('profiles')
-      .select('role, full_name, email')
+      .select('id, clerk_user_id, role, full_name, email')
       .eq('clerk_user_id', userId)
       .single()
     if (basic) profile = { ...basic, status: 'active' }
@@ -73,16 +73,26 @@ export default async function DashboardPage({
     if (email) {
       const { data: existingByEmail } = await db
         .from('profiles')
-        .select('role, status, full_name, email')
+        .select('id, clerk_user_id, role, status, full_name, email')
         .eq('email', email)
         .maybeSingle()
 
       if (existingByEmail) {
-        profile = {
-          role: existingByEmail.role,
-          status: existingByEmail.status ?? 'active',
-          full_name: existingByEmail.full_name,
-          email: existingByEmail.email,
+        const shouldRelink =
+          existingByEmail.clerk_user_id !== userId &&
+          (existingByEmail.role === requestedRole || existingByEmail.role === 'admin')
+
+        if (shouldRelink) {
+          const { data: linked } = await db
+            .from('profiles')
+            .update({ clerk_user_id: userId })
+            .eq('id', existingByEmail.id)
+            .select('id, clerk_user_id, role, status, full_name, email')
+            .single()
+
+          profile = linked ?? existingByEmail
+        } else {
+          profile = existingByEmail
         }
       }
     }
