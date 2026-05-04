@@ -4,8 +4,16 @@ import { ClerkProvider } from '@clerk/nextjs'
 const LANDING_URL = 'https://yousafeconsultancy.com'
 
 export const metadata = {
+  metadataBase: new URL('https://portal.yousafeconsultancy.com'),
   title: 'YouSafe Portal',
   description: 'Your international student consultancy platform',
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: '/',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

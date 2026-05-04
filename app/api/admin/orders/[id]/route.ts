@@ -10,12 +10,12 @@ async function requireAdmin() {
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
     .from('profiles')
-    .select('role')
+    .select('id, role')
     .eq('clerk_user_id', clerkUserId)
     .single()
 
   if (profile?.role !== 'admin') return { error: 'Forbidden', status: 403 as const }
-  return { db }
+  return { db, profile }
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -37,8 +37,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
+  const { data: before } = await auth.db.from('orders').select('status').eq('id', id).single()
   const { data, error } = await auth.db.from('orders').update(payload).eq('id', id).select('*').single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  if ('status' in payload && before?.status !== payload.status) {
+    await auth.db.from('order_status_history').insert({
+      order_id: id,
+      from_status: before?.status ?? null,
+      to_status: payload.status,
+      changed_by_id: auth.profile.id,
+      note: body.note || `Status changed by admin to ${payload.status}`,
+    })
+  }
 
   let payout = null
   if (payload.status === 'completed' || payload.escrow_status === 'released') {
@@ -46,4 +57,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
 
   return Response.json({ order: data, payout })
+}
+
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+
+  const { id } = await context.params
+
+  await auth.db.from('order_status_history').delete().eq('order_id', id)
+  await auth.db.from('order_items').delete().eq('order_id', id)
+
+  const { error } = await auth.db.from('orders').delete().eq('id', id)
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  return Response.json({ ok: true })
 }

@@ -513,6 +513,21 @@ function AdminApp({ onLogout }) {
       if (!res.ok) throw new Error(data.error || 'Order update failed');
       refreshAdminData();
     };
+    const cancelOrder = async orderId => {
+      if (!confirm('Cancel this order? It will remain visible for records.')) return;
+      await updateOrder(orderId, { status: 'cancelled', note: 'Order cancelled by admin' });
+      setSelectedOrder(null);
+      setActionNotice(`Order ${orderId} cancelled.`);
+    };
+    const deleteOrder = async orderId => {
+      if (!confirm('Permanently delete this order and its line items? This cannot be undone.')) return;
+      const res = await fetch(`/api/admin/orders/${orderId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Order delete failed');
+      setSelectedOrder(null);
+      setActionNotice(`Order ${orderId} deleted.`);
+      refreshAdminData();
+    };
     const handleAssign = async (orderId, consultant) => {
       await updateOrder(orderId, { consultant_id: consultant.id, status: 'active' });
       setAssignModal(null);
@@ -522,7 +537,7 @@ function AdminApp({ onLogout }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div><h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>All Orders</h2><p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p></div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {['all','new','active','review','pending','completed'].map(f => (
+          {['all','new','active','review','pending','completed','cancelled'].map(f => (
             <button key={f} onClick={() => setOrderFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter===f?C.cyan:C.border}`, background: orderFilter===f?`${C.cyan}18`:C.surface2, color: orderFilter===f?C.cyan:C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter===f?600:400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
           ))}
         </div>
@@ -544,11 +559,13 @@ function AdminApp({ onLogout }) {
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(o)}>View</Btn>
                       {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm" onClick={() => updateOrder(o.id, { escrow_status: 'released', force: true })}>Release</Btn>}
+                      {o.status !== 'cancelled' && <Btn variant="danger" size="sm" onClick={() => cancelOrder(o.id)}>Cancel</Btn>}
                       {o.consultant ? (
                         <><Btn variant="secondary" size="sm" onClick={() => setAssignModal(o)}>Reassign</Btn><Btn variant="danger" size="sm" onClick={() => handleUnassign(o.id)}>Unassign</Btn></>
                       ) : (
                         <Btn variant="primary" size="sm" onClick={() => setAssignModal(o)}>Assign</Btn>
                       )}
+                      <Btn variant="danger" size="sm" onClick={() => deleteOrder(o.id)}>Delete</Btn>
                     </div>
                   </td>
                 </tr>
@@ -614,6 +631,10 @@ function AdminApp({ onLogout }) {
                 {selectedOrder.escrow === 'held' && selectedOrder.status === 'completed' && (
                   <Btn variant="success" size="sm" onClick={() => updateOrder(selectedOrder.id, { escrow_status: 'released', force: true })}>Release escrow</Btn>
                 )}
+                {selectedOrder.status !== 'cancelled' && (
+                  <Btn variant="danger" size="sm" onClick={() => cancelOrder(selectedOrder.id)}>Cancel order</Btn>
+                )}
+                <Btn variant="danger" size="sm" onClick={() => deleteOrder(selectedOrder.id)}>Delete order</Btn>
                 <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(null)}>Close</Btn>
               </div>
             </div>
