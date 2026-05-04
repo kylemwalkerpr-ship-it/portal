@@ -12,7 +12,7 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 const LANDING_URL = 'https://yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
-export default function DashboardClient({ role, status, userName, userId, expectedRole }) {
+export default function DashboardClient({ role, status, userName, userId, expectedRole, errorState }) {
   const { signOut } = useClerk()
   const handleLogout = async () => {
     try {
@@ -20,6 +20,23 @@ export default function DashboardClient({ role, status, userName, userId, expect
     } finally {
       window.location.replace(LANDING_URL)
     }
+  }
+
+  if (errorState) {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
+        <div style={{ textAlign: 'center', maxWidth: '460px', padding: '40px' }}>
+          <div style={{ fontSize: '44px', marginBottom: '18px' }}>!</div>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Account needs a quick refresh</h2>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            Your account was recently reactivated, but the session still needs to reconnect cleanly. Sign out, then sign in again using the correct role option.
+          </p>
+          <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            Sign out and retry
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (expectedRole && role !== expectedRole) {
