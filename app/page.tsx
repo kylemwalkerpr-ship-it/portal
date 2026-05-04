@@ -8,8 +8,8 @@ export default function Home() {
   const router = useRouter()
   return (
     <LandingPage
-      onLogin={() => router.push('/sign-in')}
-      onSignup={() => router.push('/sign-up')}
+      onLogin={() => router.push('/sign-in/student')}
+      onSignup={() => router.push('/sign-up/student')}
     />
   )
 }

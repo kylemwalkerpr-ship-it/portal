@@ -4,6 +4,7 @@ import React from 'react'
 import { useClerk } from '@clerk/nextjs'
 import { C } from '@/components/design/shared'
 import dynamic from 'next/dynamic'
+import { roleLabel, signInForLane } from '@/lib/roleLanes'
 
 const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: false })
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
@@ -11,7 +12,7 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 const LANDING_URL = 'https://yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
-export default function DashboardClient({ role, status, userName, userId }) {
+export default function DashboardClient({ role, status, userName, userId, expectedRole }) {
   const { signOut } = useClerk()
   const handleLogout = async () => {
     try {
@@ -19,6 +20,32 @@ export default function DashboardClient({ role, status, userName, userId }) {
     } finally {
       window.location.replace(LANDING_URL)
     }
+  }
+
+  if (expectedRole && role !== expectedRole) {
+    const handleSwitchRoute = async () => {
+      const redirectUrl = signInForLane(expectedRole)
+      try {
+        await signOut({ redirectUrl })
+      } finally {
+        window.location.replace(redirectUrl)
+      }
+    }
+
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
+        <div style={{ textAlign: 'center', maxWidth: '440px', padding: '40px' }}>
+          <div style={{ fontSize: '44px', marginBottom: '18px' }}>↔</div>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Use the correct sign-in route</h2>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            This browser is signed in as a {roleLabel(role)} account, but this link is for {roleLabel(expectedRole)} access. Sign out and use the right route to keep accounts separate.
+          </p>
+          <button onClick={handleSwitchRoute} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            Sign out and continue
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (status === 'pending' && role === 'consultant') {

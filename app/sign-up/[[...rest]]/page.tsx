@@ -1,5 +1,7 @@
 'use client'
 import { SignUp } from '@clerk/nextjs'
+import { usePathname } from 'next/navigation'
+import { dashboardForLane, normalizeAuthLane, signInForLane } from '@/lib/roleLanes'
 
 const FLAGS = [
   '🇺🇸','🇨🇦','🇬🇧','🇫🇷','🇩🇪','🇦🇺','🇯🇵','🇧🇷','🇮🇳','🇨🇳',
@@ -11,6 +13,8 @@ const FLAGS = [
 ]
 
 export default function SignUpPage() {
+  const pathname = usePathname()
+  const lane = normalizeAuthLane(pathname.split('/').filter(Boolean)[1])
   const repeated = Array.from({ length: 300 }, (_, i) => FLAGS[i % FLAGS.length])
 
   return (
@@ -63,7 +67,11 @@ export default function SignUpPage() {
 
       {/* Clerk sign-up form */}
       <div style={{ position: 'relative', zIndex: 10 }}>
-        <SignUp forceRedirectUrl="/dashboard" />
+        <SignUp
+          forceRedirectUrl={dashboardForLane(lane)}
+          signInUrl={signInForLane(lane)}
+          unsafeMetadata={{ requestedRole: lane }}
+        />
       </div>
     </div>
   )

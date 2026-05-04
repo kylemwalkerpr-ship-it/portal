@@ -14,11 +14,14 @@ async function createOrderForPaymentIntent(paymentIntent: Stripe.PaymentIntent) 
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
     .from('profiles')
-    .select('id')
+    .select('id, role, status')
     .eq('clerk_user_id', clerkUserId)
     .single()
 
   if (!profile) throw new Error('Profile not found')
+  if (profile.role !== 'client' || profile.status !== 'active') {
+    throw new Error('Student checkout requires an active student account')
+  }
 
   const { data: service } = await db
     .from('services')
@@ -80,6 +83,16 @@ export async function POST(req: Request) {
 
   try {
     const db = createSupabaseAdminClient()
+    const { data: profile } = await db
+      .from('profiles')
+      .select('role, status')
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+
+    if (profile?.role !== 'client' || profile.status !== 'active') {
+      return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
+    }
+
     const { data: service } = await db
       .from('services')
       .select('*')

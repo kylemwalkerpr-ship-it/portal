@@ -1,10 +1,14 @@
 import { getClerkUserId } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
+import { isActiveClient } from '@/lib/roleGuards'
 
 export async function GET() {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await isActiveClient(clerkUserId))) {
+    return Response.json({ error: 'Student wallet requires an active student account' }, { status: 403 })
+  }
 
   try {
     const customerId = await getOrCreateStripeCustomer(clerkUserId)

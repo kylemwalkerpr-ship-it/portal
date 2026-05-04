@@ -1,11 +1,23 @@
 import { getClerkUserId } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function POST() {
   const clerkUserId = await getClerkUserId()
   console.log('[wallet/setup-intent] request', { clerkUserId })
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const db = createSupabaseAdminClient()
+  const { data: profile } = await db
+    .from('profiles')
+    .select('role, status')
+    .eq('clerk_user_id', clerkUserId)
+    .single()
+
+  if (profile?.role !== 'client' || profile.status !== 'active') {
+    return Response.json({ error: 'Student wallet requires an active student account' }, { status: 403 })
+  }
 
   try {
     const customerId = await getOrCreateStripeCustomer(clerkUserId)

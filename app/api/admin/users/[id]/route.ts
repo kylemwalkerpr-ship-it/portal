@@ -36,9 +36,17 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
     const { data: target } = await auth.db
       .from('profiles')
-      .select('email')
+      .select('email, role')
       .eq('id', id)
       .single()
+
+    if (target?.role && target.role !== role) {
+      return Response.json(
+        { error: 'Roles are independent. Create a separate account through the correct role-specific signup route.' },
+        { status: 409 }
+      )
+    }
+
     if (target?.email) {
       const { data: duplicate } = await auth.db
         .from('profiles')

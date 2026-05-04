@@ -11,6 +11,16 @@ export async function POST(req: Request) {
   if (!serviceId) return Response.json({ error: 'Missing service id' }, { status: 400 })
 
   const db = createSupabaseAdminClient()
+  const { data: profile } = await db
+    .from('profiles')
+    .select('role, status')
+    .eq('clerk_user_id', clerkUserId)
+    .single()
+
+  if (profile?.role !== 'client' || profile.status !== 'active') {
+    return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
+  }
+
   const { data: service, error } = await db
     .from('services')
     .select('*')
@@ -32,8 +42,8 @@ export async function POST(req: Request) {
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     client_reference_id: clerkUserId,
-    success_url: `${origin}/dashboard?checkout=success`,
-    cancel_url: `${origin}/dashboard?checkout=cancelled`,
+    success_url: `${origin}/dashboard?lane=student&checkout=success`,
+    cancel_url: `${origin}/dashboard?lane=student&checkout=cancelled`,
     line_items: [
       {
         quantity: 1,

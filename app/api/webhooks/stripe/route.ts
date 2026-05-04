@@ -86,12 +86,12 @@ export async function POST(req: Request) {
   const db = createSupabaseAdminClient()
 
   // Find the user's profile — by clerk_user_id if we have it, otherwise by email
-  let profile: { id: string } | null = null
+  let profile: { id: string; role?: string; status?: string } | null = null
 
   if (clerkUserId) {
     const { data } = await db
       .from('profiles')
-      .select('id')
+      .select('id, role, status')
       .eq('clerk_user_id', clerkUserId)
       .single()
     profile = data
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
   if (!profile && customerEmail) {
     const { data } = await db
       .from('profiles')
-      .select('id')
+      .select('id, role, status')
       .eq('email', customerEmail)
       .single()
     profile = data
@@ -118,6 +118,11 @@ export async function POST(req: Request) {
 
   if (!profile) {
     return new Response('Could not resolve profile', { status: 500 })
+  }
+
+  if (profile.role && (profile.role !== 'client' || profile.status === 'suspended')) {
+    console.warn(`[webhook] Ignored checkout for non-client profile ${profile.id}`)
+    return new Response('OK', { status: 200 })
   }
 
   // Get line items to extract service name

@@ -17,11 +17,14 @@ export async function POST(req: Request) {
     const db = createSupabaseAdminClient()
     const { data: profile } = await db
       .from('profiles')
-      .select('id')
+      .select('id, role, status')
       .eq('clerk_user_id', clerkUserId)
       .single()
 
     if (!profile) return Response.json({ error: 'Profile not found' }, { status: 404 })
+    if (profile.role !== 'client' || profile.status !== 'active') {
+      return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
+    }
 
     const { data: service } = await db
       .from('services')

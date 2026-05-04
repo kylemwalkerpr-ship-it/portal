@@ -1,28 +1,40 @@
 import { redirect } from 'next/navigation'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { normalizeAuthLane, type AuthLane } from '@/lib/roleLanes'
 import DashboardClient from './client'
 
 const SUPPORT_DASHBOARD_URL = 'https://support.yousafeconsultancy.com/dashboard'
 
-async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string }> {
+async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: AuthLane | null }> {
   const secretKey = process.env.CLERK_SECRET_KEY
-  if (!secretKey) return { email: '', fullName: '' }
+  if (!secretKey) return { email: '', fullName: '', requestedRole: null }
   try {
     const res = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
       headers: { Authorization: `Bearer ${secretKey}` },
     })
-    if (!res.ok) return { email: '', fullName: '' }
+    if (!res.ok) return { email: '', fullName: '', requestedRole: null }
     const user = await res.json()
     const email = user.email_addresses?.[0]?.email_address ?? ''
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ')
-    return { email, fullName }
+    const metadataRole = user.unsafe_metadata?.requestedRole ?? user.unsafe_metadata?.role
+    return {
+      email,
+      fullName,
+      requestedRole: metadataRole ? normalizeAuthLane(metadataRole) : null,
+    }
   } catch {
-    return { email: '', fullName: '' }
+    return { email: '', fullName: '', requestedRole: null }
   }
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lane?: string }>
+}) {
+  const params = await searchParams
+  let requestedRole = normalizeAuthLane(params.lane)
   const userId = await getClerkUserId()
   if (!userId) redirect('/sign-in')
 
@@ -55,7 +67,8 @@ export default async function DashboardPage() {
 
   // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
-    const { email, fullName } = await getClerkUserData(userId)
+    const { email, fullName, requestedRole: metadataRole } = await getClerkUserData(userId)
+    requestedRole = params.lane ? requestedRole : metadataRole ?? requestedRole
 
     if (email) {
       const { data: existingByEmail } = await db
@@ -75,12 +88,13 @@ export default async function DashboardPage() {
     }
 
     // Try upsert with status
+    const defaultStatus = requestedRole === 'client' ? 'active' : 'pending'
     const { data: c1 } = profile
       ? { data: null }
       : await db
           .from('profiles')
           .upsert(
-            { clerk_user_id: userId, email, full_name: fullName || null, role: 'client', status: 'active' },
+            { clerk_user_id: userId, email, full_name: fullName || null, role: requestedRole, status: defaultStatus },
             { onConflict: 'clerk_user_id' }
           )
           .select('role, status, full_name, email')
@@ -93,7 +107,7 @@ export default async function DashboardPage() {
       const { data: c2, error: c2Err } = await db
         .from('profiles')
         .upsert(
-          { clerk_user_id: userId, email, full_name: fullName || null, role: 'client' },
+          { clerk_user_id: userId, email, full_name: fullName || null, role: requestedRole },
           { onConflict: 'clerk_user_id' }
         )
         .select('role, full_name, email')
@@ -103,6 +117,18 @@ export default async function DashboardPage() {
     }
   }
 
+  if (profile && profile.role !== 'admin' && profile.role !== requestedRole) {
+    return (
+      <DashboardClient
+        role={profile.role}
+        status={profile.status ?? 'active'}
+        userName={profile.full_name ?? profile.email ?? ''}
+        userId={userId}
+        expectedRole={requestedRole}
+      />
+    )
+  }
+
   if (profile?.role === 'support' && profile.status === 'active') {
     redirect(SUPPORT_DASHBOARD_URL)
   }
@@ -110,5 +136,5 @@ export default async function DashboardPage() {
   const role = profile?.role ?? 'client'
   const status = profile?.status ?? 'active'
 
-  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? profile?.email ?? ''} userId={userId} />
+  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? profile?.email ?? ''} userId={userId} expectedRole={null} />
 }

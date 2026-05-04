@@ -1,11 +1,15 @@
 import { getClerkUserId } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
+import { isActiveClient } from '@/lib/roleGuards'
 import Stripe from 'stripe'
 
 export async function POST(req: Request) {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!(await isActiveClient(clerkUserId))) {
+    return Response.json({ error: 'Student wallet requires an active student account' }, { status: 403 })
+  }
 
   const body = await req.json()
   const { paymentMethodId, amount } = body
