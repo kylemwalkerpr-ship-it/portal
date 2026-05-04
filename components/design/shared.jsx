@@ -23,7 +23,7 @@ export const C = {
   purple: '#7C3AED',
 }
 
-export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth }) {
+export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth, ...props }) {
   const base = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     gap: '8px', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
@@ -47,7 +47,7 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick, disab
     navy: { background: C.navy, color: '#fff', boxShadow: `0 0 20px ${C.navyGlow}` },
   }
   return (
-    <button type={type} onClick={onClick} disabled={disabled}
+    <button type={type} onClick={onClick} disabled={disabled} {...props}
       style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>
       {children}
     </button>

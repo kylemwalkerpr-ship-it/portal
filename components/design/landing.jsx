@@ -4,7 +4,7 @@ import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 function LandingPage({ onLogin, onSignup }) {
-  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(null);
   const [activePlan, setActivePlan] = React.useState('monthly');
 
   const services = [
@@ -51,6 +51,15 @@ function LandingPage({ onLogin, onSignup }) {
   ];
 
   const navLinks = ['Services', 'How It Works', 'Pricing', 'About'];
+  const signInOptions = [
+    { label: 'Student', description: 'Access services, orders, wallet, and documents.', lane: 'student' },
+    { label: 'Consultant', description: 'Manage assigned students, orders, and payouts.', lane: 'consultant' },
+  ];
+
+  const openSignIn = lane => {
+    setMenuOpen(null);
+    onLogin?.(lane);
+  };
 
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: 'inherit', minHeight: '100vh' }}>
@@ -69,8 +78,60 @@ function LandingPage({ onLogin, onSignup }) {
               <a key={l} href="#" style={{ color: C.textMuted, fontSize: '14px', textDecoration: 'none', fontWeight: 500 }}>{l}</a>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <Btn variant="ghost" size="sm" onClick={onLogin}>Log in</Btn>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <Btn
+                variant="ghost"
+                size="sm"
+                onClick={() => setMenuOpen(open => open === 'nav' ? null : 'nav')}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen === 'nav'}
+              >
+                Sign in ▾
+              </Btn>
+              {menuOpen === 'nav' && (
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 10px)',
+                    right: 0,
+                    width: '260px',
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '12px',
+                    boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
+                    padding: '8px',
+                    zIndex: 500,
+                  }}
+                >
+                  {signInOptions.map(option => (
+                    <button
+                      key={option.lane}
+                      role="menuitem"
+                      onClick={() => openSignIn(option.lane)}
+                      style={{
+                        width: '100%',
+                        display: 'block',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        color: C.text,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2 }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <div style={{ fontSize: '14px', fontWeight: 800 }}>{option.label} sign in</div>
+                      <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Btn variant="primary" size="sm" onClick={onSignup}>Sign up free</Btn>
           </div>
         </div>
@@ -252,7 +313,52 @@ function LandingPage({ onLogin, onSignup }) {
           </p>
           <div style={{ display: 'flex', gap: '14px', justifyContent: 'center' }}>
             <Btn variant="primary" size="xl" onClick={onSignup}>Create free account</Btn>
-            <Btn variant="outline" size="xl" onClick={onLogin}>I already have an account</Btn>
+            <div style={{ position: 'relative' }}>
+              <Btn variant="outline" size="xl" onClick={() => setMenuOpen(open => open === 'footer' ? null : 'footer')}>I already have an account</Btn>
+              {menuOpen === 'footer' && (
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: 'calc(100% + 12px)',
+                    transform: 'translateX(-50%)',
+                    width: '280px',
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '12px',
+                    boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
+                    padding: '8px',
+                    zIndex: 500,
+                  }}
+                >
+                  {signInOptions.map(option => (
+                    <button
+                      key={option.lane}
+                      role="menuitem"
+                      onClick={() => openSignIn(option.lane)}
+                      style={{
+                        width: '100%',
+                        display: 'block',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        color: C.text,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2 }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <div style={{ fontSize: '14px', fontWeight: 800 }}>{option.label} sign in</div>
+                      <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
