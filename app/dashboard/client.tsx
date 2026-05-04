@@ -9,6 +9,7 @@ const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: f
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 const LANDING_URL = 'https://yousafeconsultancy.com'
+const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
 export default function DashboardClient({ role, status, userName, userId }) {
   const { signOut } = useClerk()
@@ -37,13 +38,40 @@ export default function DashboardClient({ role, status, userName, userId }) {
     )
   }
 
+  if (status === 'pending' && role === 'support') {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
+        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Support Access Pending</h2>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            Your support account is waiting for approval. Once activated, you can use the support workspace.
+          </p>
+          <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (status === 'suspended') {
     return (
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', padding: '40px' }}>
+        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>🚫</div>
           <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Account Suspended</h2>
-          <p style={{ color: C.textMuted }}>Contact support@yousafeconsultancy.com for help.</p>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            This account cannot access the portal or support workspace. Contact support@yousafeconsultancy.com for help.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+              Sign out
+            </button>
+            <a href={SUPPORT_URL} style={{ color: C.textDim, fontSize: '14px' }}>
+              Support home
+            </a>
+          </div>
         </div>
       </div>
     )

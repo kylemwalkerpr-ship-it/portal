@@ -3,6 +3,8 @@ import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import DashboardClient from './client'
 
+const SUPPORT_DASHBOARD_URL = 'https://support.yousafeconsultancy.com/dashboard'
+
 async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string }> {
   const secretKey = process.env.CLERK_SECRET_KEY
   if (!secretKey) return { email: '', fullName: '' }
@@ -37,8 +39,8 @@ export default async function DashboardPage() {
 
   if (full) {
     profile = full
-    if (profile.role === 'support') {
-      redirect('https://support.yousafeconsultancy.com/dashboard')
+    if (profile.role === 'support' && profile.status === 'active') {
+      redirect(SUPPORT_DASHBOARD_URL)
     }
   } else {
     // status column may not exist — try without it
@@ -101,8 +103,8 @@ export default async function DashboardPage() {
     }
   }
 
-  if (profile?.role === 'support') {
-    redirect('https://support.yousafeconsultancy.com/dashboard')
+  if (profile?.role === 'support' && profile.status === 'active') {
+    redirect(SUPPORT_DASHBOARD_URL)
   }
 
   const role = profile?.role ?? 'client'
