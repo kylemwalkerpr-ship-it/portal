@@ -1,6 +1,6 @@
 import { getStripe } from './stripe'
 import { createSupabaseAdminClient } from './supabase'
-import { CONNECT_CURRENCY, PLATFORM_FEE_PERCENT } from './platformConfig'
+import { CONNECT_CURRENCY, getPlatformSettings } from './platformConfig'
 import { findConsultantForOrder } from './consultant'
 
 function centsFromOrder(order: Record<string, any>) {
@@ -40,8 +40,9 @@ export async function triggerConsultantPayout(orderId: string) {
     return { skipped: true, reason: 'Consultant onboarding incomplete' }
   }
 
+  const settings = await getPlatformSettings()
   const totalAmount = centsFromOrder(order)
-  const platformFee = Math.round(totalAmount * (PLATFORM_FEE_PERCENT / 100))
+  const platformFee = Math.round(totalAmount * (Number(settings.platform_fee_percent) / 100))
   const consultantPayout = totalAmount - platformFee
 
   try {

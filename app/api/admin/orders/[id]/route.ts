@@ -1,6 +1,7 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { triggerConsultantPayout } from '@/lib/payouts'
+import { getPlatformSettings } from '@/lib/platformConfig'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()
@@ -28,6 +29,13 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if ('consultant_id' in body) payload.consultant_id = body.consultant_id || null
   if ('status' in body) payload.status = body.status
   if ('escrow_status' in body) payload.escrow_status = body.escrow_status
+
+  if (payload.escrow_status === 'released' && body.force === true) {
+    const settings = await getPlatformSettings()
+    if (!settings.allow_admin_force_release) {
+      return Response.json({ error: 'Admin force-release is disabled in platform settings' }, { status: 403 })
+    }
+  }
 
   const { data, error } = await auth.db.from('orders').update(payload).eq('id', id).select('*').single()
   if (error) return Response.json({ error: error.message }, { status: 500 })

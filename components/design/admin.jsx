@@ -6,8 +6,14 @@ import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divi
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const moneyValue = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
-const PLATFORM_FEE_PERCENT = 20;
-const CONSULTANT_FEE_PERCENT = 100 - PLATFORM_FEE_PERCENT;
+const DEFAULT_SETTINGS = {
+  platform_fee_percent: 20,
+  consultant_fee_percent: 80,
+  auto_release_days: 14,
+  allow_admin_force_release: true,
+  platform_name: 'Yousafe Consultancy',
+  support_email: 'support@yousafeconsultancy.com',
+};
 const deliveryLabel = days => {
   const n = Number(days || 0);
   if (!n) return 'Timeline TBD';
@@ -32,13 +38,23 @@ function AdminApp({ onLogout }) {
   const [alerts, setAlerts] = React.useState([]);
   const [platformName, setPlatformName] = React.useState('');
   const [supportEmail, setSupportEmail] = React.useState('');
+  const [platformSettings, setPlatformSettings] = React.useState(DEFAULT_SETTINGS);
+  const [consultantShare, setConsultantShare] = React.useState(DEFAULT_SETTINGS.consultant_fee_percent);
+  const [autoReleaseDays, setAutoReleaseDays] = React.useState(String(DEFAULT_SETTINGS.auto_release_days));
+  const [allowForceRelease, setAllowForceRelease] = React.useState(DEFAULT_SETTINGS.allow_admin_force_release);
   const [stripePublishableKey, setStripePublishableKey] = React.useState('');
   const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
 
+  const consultantFeePercent = Number(platformSettings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
+  const platformFeePercent = Number(platformSettings.platform_fee_percent || (100 - consultantFeePercent));
+
   const normalizeAdminData = React.useCallback(data => {
+    const settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+    const consultantPercent = Number(settings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
+    const platformPercent = Number(settings.platform_fee_percent || (100 - consultantPercent));
     const profiles = data.users ?? [];
     const profileById = new Map(profiles.map(p => [p.id, p]));
     const itemsByOrder = new Map((data.orderItems ?? []).map(i => [i.order_id, i]));
@@ -69,8 +85,8 @@ function AdminApp({ onLogout }) {
         consultantId: o.consultant_id || null,
         amount: formatUSD(amount),
         amountValue: amount,
-        consultantPay: formatUSD(amount * (CONSULTANT_FEE_PERCENT / 100)),
-        adminCut: formatUSD(amount * (PLATFORM_FEE_PERCENT / 100)),
+        consultantPay: formatUSD(amount * (consultantPercent / 100)),
+        adminCut: formatUSD(amount * (platformPercent / 100)),
         escrow: released ? 'released' : 'held',
         status: o.status === 'queued' ? 'pending' : (o.status || 'pending'),
         createdAt: o.created_at,
@@ -92,6 +108,12 @@ function AdminApp({ onLogout }) {
     setUsers(normalizedUsers);
     setOrders(normalizedOrders);
     setServices(normalizedServices);
+    setPlatformSettings(settings);
+    setConsultantShare(consultantPercent);
+    setAutoReleaseDays(String(settings.auto_release_days || DEFAULT_SETTINGS.auto_release_days));
+    setAllowForceRelease(Boolean(settings.allow_admin_force_release));
+    setPlatformName(settings.platform_name || '');
+    setSupportEmail(settings.support_email || '');
     setAlerts(normalizedOrders.filter(o => o.status === 'pending').slice(0, 5).map(o => ({ text: `Order ${o.id} is waiting for assignment`, time: o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'Now', dot: C.orange })));
   }, []);
 
@@ -114,11 +136,29 @@ function AdminApp({ onLogout }) {
     const res = await fetch(`/api/admin/orders/${orderId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ escrow_status: 'released' }),
+      body: JSON.stringify({ escrow_status: 'released', force: true }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Release failed');
     refreshAdminData();
+  };
+
+  const savePlatformSettings = async updates => {
+    const res = await fetch('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...platformSettings, ...updates }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Settings update failed');
+    setPlatformSettings(data.settings);
+    setConsultantShare(Number(data.settings.consultant_fee_percent));
+    setAutoReleaseDays(String(data.settings.auto_release_days));
+    setAllowForceRelease(Boolean(data.settings.allow_admin_force_release));
+    setPlatformName(data.settings.platform_name || '');
+    setSupportEmail(data.settings.support_email || '');
+    await refreshAdminData();
+    return data.settings;
   };
 
   const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.adminCut), 0);
@@ -303,8 +343,8 @@ function AdminApp({ onLogout }) {
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue Split (all time)</div>
           {[
             { label: 'Total collected', value: orders.reduce((a, o) => a + o.amountValue, 0), color: C.text },
-            { label: `Consultant share (${CONSULTANT_FEE_PERCENT}%)`, value: orders.reduce((a, o) => a + moneyValue(o.consultantPay), 0), color: C.cyan },
-            { label: `Platform share (${PLATFORM_FEE_PERCENT}%)`, value: orders.reduce((a, o) => a + moneyValue(o.adminCut), 0), color: C.green },
+            { label: `Consultant share (${consultantFeePercent}%)`, value: orders.reduce((a, o) => a + moneyValue(o.consultantPay), 0), color: C.cyan },
+            { label: `Platform share (${platformFeePercent}%)`, value: orders.reduce((a, o) => a + moneyValue(o.adminCut), 0), color: C.green },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
@@ -503,7 +543,7 @@ function AdminApp({ onLogout }) {
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(o)}>View</Btn>
-                      {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm" onClick={() => updateOrder(o.id, { escrow_status: 'released' })}>Release</Btn>}
+                      {o.escrow==='held' && o.status==='completed' && <Btn variant="success" size="sm" onClick={() => updateOrder(o.id, { escrow_status: 'released', force: true })}>Release</Btn>}
                       {o.consultant ? (
                         <><Btn variant="secondary" size="sm" onClick={() => setAssignModal(o)}>Reassign</Btn><Btn variant="danger" size="sm" onClick={() => handleUnassign(o.id)}>Unassign</Btn></>
                       ) : (
@@ -572,7 +612,7 @@ function AdminApp({ onLogout }) {
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <Btn variant="primary" size="sm" onClick={() => { setAssignModal(selectedOrder); setSelectedOrder(null); }}>{selectedOrder.consultant ? 'Reassign consultant' : 'Assign consultant'}</Btn>
                 {selectedOrder.escrow === 'held' && selectedOrder.status === 'completed' && (
-                  <Btn variant="success" size="sm" onClick={() => updateOrder(selectedOrder.id, { escrow_status: 'released' })}>Release escrow</Btn>
+                  <Btn variant="success" size="sm" onClick={() => updateOrder(selectedOrder.id, { escrow_status: 'released', force: true })}>Release escrow</Btn>
                 )}
                 <Btn variant="ghost" size="sm" onClick={() => setSelectedOrder(null)}>Close</Btn>
               </div>
@@ -592,7 +632,7 @@ function AdminApp({ onLogout }) {
       const res = await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ escrow_status: 'released' }),
+        body: JSON.stringify({ escrow_status: 'released', force: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Release failed');
@@ -602,7 +642,7 @@ function AdminApp({ onLogout }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Escrow Management</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {CONSULTANT_FEE_PERCENT}% to consultant, {PLATFORM_FEE_PERCENT}% to platform.</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {consultantFeePercent}% to consultant, {platformFeePercent}% to platform.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           <StatCard label="Total Held" value={formatUSD(totalHeld)} icon="🔒" color={C.orange} />
@@ -626,11 +666,11 @@ function AdminApp({ onLogout }) {
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '16px', fontWeight: 800, color: C.cyan }}>{o.consultantPay}</div>
-                      <div style={{ fontSize: '11px', color: C.textDim }}>{CONSULTANT_FEE_PERCENT}% → consultant</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>{consultantFeePercent}% → consultant</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '16px', fontWeight: 800, color: C.green }}>{o.adminCut}</div>
-                      <div style={{ fontSize: '11px', color: C.textDim }}>{PLATFORM_FEE_PERCENT}% → platform</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>{platformFeePercent}% → platform</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <StatusBadge status={o.status} />
@@ -796,8 +836,8 @@ function AdminApp({ onLogout }) {
                       <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
                     )}
                   </td>
-                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatMoney(s.price * (CONSULTANT_FEE_PERCENT / 100), s.currency)}</td>
-                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatMoney(s.price * (PLATFORM_FEE_PERCENT / 100), s.currency)}</td>
+                  <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatMoney(s.price * (consultantFeePercent / 100), s.currency)}</td>
+                  <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatMoney(s.price * (platformFeePercent / 100), s.currency)}</td>
                   <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
                   <td style={{ padding: '14px 16px' }}>
                     <button onClick={() => toggleService(s)} style={{
@@ -858,31 +898,51 @@ function AdminApp({ onLogout }) {
           <div>
             <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Consultant share</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <input type="range" min="50" max="90" defaultValue={CONSULTANT_FEE_PERCENT} style={{ flex: 1, accentColor: C.cyan }} />
-              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>{CONSULTANT_FEE_PERCENT}%</span>
+              <input type="range" min="50" max="95" value={consultantShare} onChange={e => setConsultantShare(Number(e.target.value))} style={{ flex: 1, accentColor: C.cyan }} />
+              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>{consultantShare}%</span>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: C.surface2, borderRadius: '10px', fontSize: '14px' }}>
             <span style={{ color: C.textMuted }}>Platform receives</span>
-            <span style={{ fontWeight: 700, color: C.green }}>{PLATFORM_FEE_PERCENT}%</span>
+            <span style={{ fontWeight: 700, color: C.green }}>{100 - consultantShare}%</span>
           </div>
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Revenue split settings saved for this session.')}>Save split</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ consultant_fee_percent: consultantShare, platform_fee_percent: 100 - consultantShare });
+              setActionNotice(`Revenue split saved: ${consultantShare}% consultant / ${100 - consultantShare}% platform. Future payouts will use this split.`);
+            } catch (e) {
+              setActionNotice(e.message || 'Revenue split update failed.');
+            }
+          }}>Save split</Btn>
         </div>
       </Card>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Escrow Rules</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Select label="Auto-release escrow after" value="14 days" onChange={() => setActionNotice('Escrow auto-release window updated for this session.')} options={['7 days', '14 days', '21 days', '30 days', 'Never (manual only)'].map(v => ({ value: v, label: v }))} />
+          <Select label="Auto-release escrow after" value={autoReleaseDays} onChange={setAutoReleaseDays} options={[
+            { value: '7', label: '7 days' },
+            { value: '14', label: '14 days' },
+            { value: '21', label: '21 days' },
+            { value: '30', label: '30 days' },
+            { value: 'never', label: 'Never (manual only)' },
+          ]} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>Allow admin force-release</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Admin can release escrow without student approval</div>
             </div>
-            <button onClick={() => setActionNotice('Admin force-release permission toggled for this session.')} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: C.cyan, position: 'relative' }}>
-              <div style={{ position: 'absolute', top: '3px', left: '22px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
+            <button onClick={() => setAllowForceRelease(v => !v)} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: allowForceRelease ? C.cyan : C.surface3, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: '3px', left: allowForceRelease ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
             </button>
           </div>
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Escrow rules saved for this session.')}>Save rules</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ auto_release_days: autoReleaseDays, allow_admin_force_release: allowForceRelease });
+              setActionNotice(`Escrow rules saved. Admin force-release is ${allowForceRelease ? 'enabled' : 'disabled'}.`);
+            } catch (e) {
+              setActionNotice(e.message || 'Escrow rules update failed.');
+            }
+          }}>Save rules</Btn>
         </div>
       </Card>
       <Card>
@@ -890,7 +950,14 @@ function AdminApp({ onLogout }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <Input label="Platform name" value={platformName} onChange={setPlatformName} placeholder="Enter platform name" />
           <Input label="Support email" value={supportEmail} onChange={setSupportEmail} placeholder="Enter support email" />
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Platform info saved for this session.')}>Save</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ platform_name: platformName, support_email: supportEmail });
+              setActionNotice('Platform info saved.');
+            } catch (e) {
+              setActionNotice(e.message || 'Platform info update failed.');
+            }
+          }}>Save</Btn>
         </div>
       </Card>
       <Card>
