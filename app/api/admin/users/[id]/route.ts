@@ -23,8 +23,19 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const { id } = await context.params
   const body = await req.json()
   const payload: Record<string, unknown> = {}
-  if ('status' in body) payload.status = body.status
-  if ('role' in body) payload.role = body.role === 'student' ? 'client' : body.role
+  if ('status' in body) {
+    if (!['active', 'pending', 'suspended'].includes(body.status)) {
+      return Response.json({ error: 'Invalid status' }, { status: 400 })
+    }
+    payload.status = body.status
+  }
+  if ('role' in body) {
+    const role = body.role === 'student' ? 'client' : body.role
+    if (!['client', 'consultant', 'support', 'admin'].includes(role)) {
+      return Response.json({ error: 'Invalid role' }, { status: 400 })
+    }
+    payload.role = role
+  }
   if ('full_name' in body) payload.full_name = body.full_name
   if ('country' in body) payload.country = body.country
 

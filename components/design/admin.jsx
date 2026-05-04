@@ -22,6 +22,14 @@ const deliveryLabel = days => {
   if (n >= 28) return '2–4 weeks';
   return `${n} day${n === 1 ? '' : 's'}`;
 };
+const normalizeRole = role => role === 'client' ? 'student' : (role || 'student');
+const roleBadgeColor = role => ({
+  student: 'cyan',
+  consultant: 'purple',
+  support: 'orange',
+  admin: 'red',
+})[role] || 'gray';
+const approvalLabel = role => role === 'support' ? 'Customer support access' : 'Consultant access';
 
 function AdminApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
@@ -63,9 +71,10 @@ function AdminApp({ onLogout }) {
       id: p.id,
       name: p.full_name || p.email || 'Unnamed user',
       email: p.email || '',
-      role: p.role === 'client' ? 'student' : p.role || 'student',
+      role: normalizeRole(p.role),
       country: p.country || '—',
       joined: p.created_at ? new Date(p.created_at).toLocaleDateString() : '—',
+      createdAt: p.created_at,
       orders: (data.orders ?? []).filter(o => o.client_id === p.id || o.consultant_id === p.id).length,
       spend: formatUSD((data.orders ?? []).filter(o => o.client_id === p.id).reduce((sum, o) => sum + Number(o.total_amount || 0), 0)),
       status: p.status || 'active',
@@ -114,7 +123,19 @@ function AdminApp({ onLogout }) {
     setAllowForceRelease(Boolean(settings.allow_admin_force_release));
     setPlatformName(settings.platform_name || '');
     setSupportEmail(settings.support_email || '');
-    setAlerts(normalizedOrders.filter(o => o.status === 'pending').slice(0, 5).map(o => ({ text: `Order ${o.id} is waiting for assignment`, time: o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'Now', dot: C.orange })));
+    const pendingUsers = normalizedUsers.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
+    setAlerts([
+      ...pendingUsers.map(u => ({
+        text: `${approvalLabel(u.role)} pending for ${u.name}`,
+        time: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Now',
+        dot: u.role === 'support' ? C.orange : C.purple,
+      })),
+      ...normalizedOrders.filter(o => o.status === 'pending').map(o => ({
+        text: `Order ${o.id} is waiting for assignment`,
+        time: o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'Now',
+        dot: C.orange,
+      })),
+    ].slice(0, 8));
   }, []);
 
   const refreshAdminData = React.useCallback(() => {
@@ -161,15 +182,38 @@ function AdminApp({ onLogout }) {
     return data.settings;
   };
 
+  const updateUser = async (user, payload) => {
+    const res = await fetch(`/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'User update failed');
+    refreshAdminData();
+    return data.user;
+  };
+
+  const approveUser = async user => {
+    await updateUser(user, { status: 'active' });
+    setActionNotice(`${approvalLabel(user.role)} approved for ${user.name}.`);
+  };
+
   const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.adminCut), 0);
   const paidToConsultants = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.consultantPay), 0);
   const pendingEscrow = orders.filter(o => o.escrow === 'held').reduce((a, o) => a + o.amountValue, 0);
   const totalStudents = users.filter(u => u.role === 'student').length;
   const totalConsultants = users.filter(u => u.role === 'consultant').length;
+  const totalSupport = users.filter(u => u.role === 'support').length;
+  const pendingApprovals = users.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
   const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
-  const filteredUsers = userFilter === 'all' ? users : users.filter(u => u.role === userFilter);
+  const filteredUsers = userFilter === 'all'
+    ? users
+    : userFilter === 'pending'
+      ? pendingApprovals
+      : users.filter(u => u.role === userFilter);
   const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
-  const consultants = users.filter(u => u.role === 'consultant');
+  const consultants = users.filter(u => u.role === 'consultant' && u.status === 'active');
   const consultantNames = consultants.map(u => u.name);
 
   // ── SIDEBAR ──
@@ -184,7 +228,7 @@ function AdminApp({ onLogout }) {
       </div>
       <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
-        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} />
+        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
@@ -233,7 +277,8 @@ function AdminApp({ onLogout }) {
     <div style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <Badge color="orange">{pendingOrders} pending</Badge>
+        <Badge color="orange">{pendingApprovals.length} approvals</Badge>
+        <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
@@ -284,10 +329,31 @@ function AdminApp({ onLogout }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3" />
         <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
+        <StatCard label="Support Team" value={totalSupport} icon="🎧" color={C.orange} />
+        <StatCard label="Approvals" value={pendingApprovals.length} icon="✅" color={C.green} />
         <StatCard label="In Escrow" value={formatUSD(pendingEscrow)} icon="🔒" color={C.orange} />
         <StatCard label="Admin Revenue" value={formatUSD(totalRevenue)} icon="💰" color={C.green} />
-        <StatCard label="Active Orders" value={orders.filter(o => o.status === 'active').length} icon="📦" color={C.cyan} />
-        <StatCard label="Completed" value={orders.filter(o => o.status === 'completed').length} icon="✅" color={C.green} />
+      </div>
+
+      {/* Unified approvals */}
+      <div>
+        <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Pending User Approvals</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {pendingApprovals.length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No consultant or support approvals waiting.</div>
+          ) : pendingApprovals.map(user => (
+            <Card key={user.id} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <Avatar name={user.name} size={38} color={user.role === 'support' ? C.orange : C.purple} />
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>{user.name}</div>
+                <div style={{ color: C.textMuted, fontSize: '12px' }}>{user.email}</div>
+              </div>
+              <Badge color={roleBadgeColor(user.role)}>{approvalLabel(user.role)}</Badge>
+              <Btn variant="success" size="sm" onClick={() => approveUser(user)}>Approve</Btn>
+              <Btn variant="danger" size="sm" onClick={() => updateUser(user, { status: 'suspended' })}>Reject</Btn>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Escrow alerts */}
@@ -374,33 +440,23 @@ function AdminApp({ onLogout }) {
   const Users = () => {
     const [inviteEmail, setInviteEmail] = React.useState('');
     const [inviteRole, setInviteRole] = React.useState('student');
-    const updateUser = async (user, payload) => {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'User update failed');
-      refreshAdminData();
-    };
     return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Users</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{users.length} total · {totalStudents} students · {totalConsultants} consultants</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>{users.length} total · {totalStudents} students · {totalConsultants} consultants · {totalSupport} support</p>
         </div>
         <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['all', 'student', 'consultant'].map(f => (
+        {['all', 'pending', 'student', 'consultant', 'support'].map(f => (
           <button key={f} onClick={() => setUserFilter(f)} style={{
             padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
             background: userFilter === f ? `${C.cyan}18` : C.surface2,
             color: userFilter === f ? C.cyan : C.textMuted,
             fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
-          }}>{f === 'all' ? 'All users' : f === 'student' ? `Students (${totalStudents})` : `Consultants (${totalConsultants})`}</button>
+          }}>{f === 'all' ? 'All users' : f === 'pending' ? `Pending approvals (${pendingApprovals.length})` : f === 'student' ? `Students (${totalStudents})` : f === 'consultant' ? `Consultants (${totalConsultants})` : `Support (${totalSupport})`}</button>
         ))}
       </div>
       <Card style={{ padding: '0', overflow: 'hidden' }}>
@@ -417,14 +473,14 @@ function AdminApp({ onLogout }) {
               <tr key={u.id} style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Avatar name={u.name} size={32} color={u.role === 'consultant' ? C.purple : C.cyan} />
+                    <Avatar name={u.name} size={32} color={u.role === 'consultant' ? C.purple : u.role === 'support' ? C.orange : C.cyan} />
                     <div>
                       <div style={{ fontSize: '14px', fontWeight: 600 }}>{u.name}</div>
                       <div style={{ fontSize: '12px', color: C.textMuted }}>{u.email}</div>
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: '14px 16px' }}><Badge color={u.role === 'consultant' ? 'purple' : 'cyan'}>{u.role}</Badge></td>
+                <td style={{ padding: '14px 16px' }}><Badge color={roleBadgeColor(u.role)}>{u.role}</Badge></td>
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.country}</td>
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.joined}</td>
                 <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{u.orders}</td>
@@ -433,6 +489,9 @@ function AdminApp({ onLogout }) {
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
+                    {['consultant', 'support'].includes(u.role) && u.status === 'pending' && (
+                      <Btn variant="success" size="sm" onClick={() => approveUser(u)}>Approve</Btn>
+                    )}
                     <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
                   </div>
                 </td>
@@ -446,7 +505,7 @@ function AdminApp({ onLogout }) {
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Avatar name={selectedUser.name} size={48} color={selectedUser.role === 'consultant' ? C.purple : C.cyan} />
+                <Avatar name={selectedUser.name} size={48} color={selectedUser.role === 'consultant' ? C.purple : selectedUser.role === 'support' ? C.orange : C.cyan} />
                 <div>
                   <h3 style={{ fontSize: '18px', fontWeight: 800 }}>{selectedUser.name}</h3>
                   <div style={{ color: C.textMuted, fontSize: '13px' }}>{selectedUser.email}</div>
@@ -471,6 +530,9 @@ function AdminApp({ onLogout }) {
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <Btn variant="primary" size="sm" onClick={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}>View orders</Btn>
+              {['consultant', 'support'].includes(selectedUser.role) && selectedUser.status === 'pending' && (
+                <Btn variant="success" size="sm" onClick={() => approveUser(selectedUser)}>Approve access</Btn>
+              )}
               <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
                 {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
               </Btn>
