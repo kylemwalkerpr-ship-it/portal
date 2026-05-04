@@ -8,12 +8,12 @@ async function requireAdmin() {
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
     .from('profiles')
-    .select('role')
+    .select('id, role')
     .eq('clerk_user_id', clerkUserId)
     .single()
 
   if (profile?.role !== 'admin') return { error: 'Forbidden', status: 403 as const }
-  return { db }
+  return { db, adminProfileId: profile.id }
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,14 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const { id } = await context.params
   const body = await req.json()
+
+  if (id === auth.adminProfileId && ('status' in body || 'role' in body)) {
+    return Response.json(
+      { error: 'Admins cannot change their own role or account status' },
+      { status: 400 }
+    )
+  }
+
   const payload: Record<string, unknown> = {}
   if ('status' in body) {
     if (!['active', 'pending', 'suspended'].includes(body.status)) {

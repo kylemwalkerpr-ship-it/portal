@@ -41,6 +41,7 @@ function AdminApp({ onLogout }) {
   const [actionNotice, setActionNotice] = React.useState('');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [users, setUsers] = React.useState([]);
+  const [currentAdminId, setCurrentAdminId] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [services, setServices] = React.useState([]);
   const [alerts, setAlerts] = React.useState([]);
@@ -61,6 +62,7 @@ function AdminApp({ onLogout }) {
 
   const normalizeAdminData = React.useCallback(data => {
     const settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+    setCurrentAdminId(data.currentAdminId || null);
     const consultantPercent = Number(settings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
     const platformPercent = Number(settings.platform_fee_percent || (100 - consultantPercent));
     const profiles = data.users ?? [];
@@ -193,6 +195,8 @@ function AdminApp({ onLogout }) {
     refreshAdminData();
     return data.user;
   };
+
+  const isCurrentAdmin = user => Boolean(user?.id && user.id === currentAdminId);
 
   const approveUser = async user => {
     await updateUser(user, { status: 'active' });
@@ -506,8 +510,12 @@ function AdminApp({ onLogout }) {
                     {['consultant', 'support'].includes(u.role) && u.status === 'pending' && (
                       <Btn variant="success" size="sm" onClick={() => approveUser(u)}>Approve</Btn>
                     )}
-                    <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
-                    {['consultant', 'support'].includes(u.role) && (
+                    {isCurrentAdmin(u) ? (
+                      <Badge color="red">You</Badge>
+                    ) : (
+                      <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
+                    )}
+                    {['consultant', 'support'].includes(u.role) && !isCurrentAdmin(u) && (
                       <Btn variant="danger" size="sm" onClick={() => deleteUser(u)}>Delete</Btn>
                     )}
                   </div>
@@ -550,10 +558,14 @@ function AdminApp({ onLogout }) {
               {['consultant', 'support'].includes(selectedUser.role) && selectedUser.status === 'pending' && (
                 <Btn variant="success" size="sm" onClick={() => approveUser(selectedUser)}>Approve access</Btn>
               )}
-              <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
-                {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
-              </Btn>
-              {['consultant', 'support'].includes(selectedUser.role) && (
+              {isCurrentAdmin(selectedUser) ? (
+                <Badge color="red">Current admin account</Badge>
+              ) : (
+                <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
+                  {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
+                </Btn>
+              )}
+              {['consultant', 'support'].includes(selectedUser.role) && !isCurrentAdmin(selectedUser) && (
                 <Btn variant="danger" size="sm" onClick={() => deleteUser(selectedUser)}>Delete user</Btn>
               )}
               <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Close</Btn>

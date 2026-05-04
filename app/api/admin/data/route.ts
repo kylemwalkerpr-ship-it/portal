@@ -9,12 +9,12 @@ async function requireAdmin() {
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
     .from('profiles')
-    .select('role')
+    .select('id, role')
     .eq('clerk_user_id', clerkUserId)
     .single()
 
   if (profile?.role !== 'admin') return { error: 'Forbidden', status: 403 as const }
-  return { db }
+  return { db, adminProfileId: profile.id }
 }
 
 export async function GET() {
@@ -39,5 +39,6 @@ export async function GET() {
     orderItems: itemsRes.data ?? [],
     services: servicesRes.data ?? [],
     settings: { ...DEFAULT_PLATFORM_SETTINGS, ...(settingsRes.data?.value || {}) },
+    currentAdminId: auth.adminProfileId,
   })
 }
