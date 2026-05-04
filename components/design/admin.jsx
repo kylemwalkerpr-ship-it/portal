@@ -199,6 +199,20 @@ function AdminApp({ onLogout }) {
     setActionNotice(`${approvalLabel(user.role)} approved for ${user.name}.`);
   };
 
+  const deleteUser = async user => {
+    if (!['consultant', 'support'].includes(user.role)) {
+      setActionNotice('Only consultant and support staff accounts can be deleted here.');
+      return;
+    }
+    if (!confirm(`Delete ${user.name}? This permanently removes the ${user.role} account and cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'User delete failed');
+    setSelectedUser(null);
+    setActionNotice(`${user.name} was deleted.`);
+    refreshAdminData();
+  };
+
   const totalRevenue = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.adminCut), 0);
   const paidToConsultants = orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.consultantPay), 0);
   const pendingEscrow = orders.filter(o => o.escrow === 'held').reduce((a, o) => a + o.amountValue, 0);
@@ -493,6 +507,9 @@ function AdminApp({ onLogout }) {
                       <Btn variant="success" size="sm" onClick={() => approveUser(u)}>Approve</Btn>
                     )}
                     <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
+                    {['consultant', 'support'].includes(u.role) && (
+                      <Btn variant="danger" size="sm" onClick={() => deleteUser(u)}>Delete</Btn>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -536,6 +553,9 @@ function AdminApp({ onLogout }) {
               <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
                 {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
               </Btn>
+              {['consultant', 'support'].includes(selectedUser.role) && (
+                <Btn variant="danger" size="sm" onClick={() => deleteUser(selectedUser)}>Delete user</Btn>
+              )}
               <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Close</Btn>
             </div>
           </div>

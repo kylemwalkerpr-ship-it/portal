@@ -37,6 +37,9 @@ export default async function DashboardPage() {
 
   if (full) {
     profile = full
+    if (profile.role === 'support') {
+      redirect('https://support.yousafeconsultancy.com/dashboard')
+    }
   } else {
     // status column may not exist — try without it
     const { data: basic } = await db
@@ -77,6 +80,10 @@ export default async function DashboardPage() {
       if (c2) profile = { ...c2, status: 'active' }
       else console.error('[dashboard] profile create error:', c2Err?.message)
     }
+  }
+
+  if (profile?.role === 'support') {
+    redirect('https://support.yousafeconsultancy.com/dashboard')
   }
 
   const role = profile?.role ?? 'client'
