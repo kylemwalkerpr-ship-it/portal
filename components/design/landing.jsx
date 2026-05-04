@@ -51,15 +51,139 @@ function LandingPage({ onLogin, onSignup }) {
   ];
 
   const navLinks = ['Services', 'How It Works', 'Pricing', 'About'];
-  const signInOptions = [
-    { label: 'Student', description: 'Access services, orders, wallet, and documents.', lane: 'student' },
-    { label: 'Consultant', description: 'Manage assigned students, orders, and payouts.', lane: 'consultant' },
+  const accountOptions = [
+    {
+      label: 'Student / Client',
+      description: 'Browse services, manage orders, wallet, documents, and messages.',
+      lane: 'student',
+      signInLabel: 'Student sign in',
+      signUpLabel: 'Create student account',
+    },
+    {
+      label: 'Consultant',
+      description: 'Manage assigned students, service orders, earnings, and payouts.',
+      lane: 'consultant',
+      signInLabel: 'Consultant sign in',
+      signUpLabel: 'Apply as consultant',
+    },
+    {
+      label: 'Support staff',
+      description: 'Access the live chat support workspace after approval.',
+      lane: 'support',
+      signInLabel: 'Support sign in',
+      signUpLabel: 'Request support access',
+      signInHref: 'https://support.yousafeconsultancy.com/sign-in',
+      signUpHref: 'https://support.yousafeconsultancy.com/sign-up',
+    },
+    {
+      label: 'Admin',
+      description: 'Administrative access for approved Yousafe operators.',
+      lane: 'admin',
+      signInLabel: 'Admin sign in',
+      signInHref: '/sign-in/admin',
+    },
   ];
 
   const openSignIn = lane => {
     setMenuOpen(null);
     onLogin?.(lane);
   };
+
+  const openSignUp = lane => {
+    setMenuOpen(null);
+    onSignup?.(lane);
+  };
+
+  const openHref = href => {
+    setMenuOpen(null);
+    window.location.href = href;
+  };
+
+  const AccountDropdown = ({ id, align = 'right', above = false }) => (
+    <div style={{ position: 'relative' }}>
+      <Btn
+        variant={id === 'nav' ? 'ghost' : 'outline'}
+        size={id === 'nav' ? 'sm' : 'xl'}
+        onClick={() => setMenuOpen(open => open === id ? null : id)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen === id}
+      >
+        Account access ▾
+      </Btn>
+      {menuOpen === id && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: above ? undefined : 'calc(100% + 10px)',
+            bottom: above ? 'calc(100% + 12px)' : undefined,
+            right: align === 'right' ? 0 : undefined,
+            left: align === 'center' ? '50%' : undefined,
+            transform: align === 'center' ? 'translateX(-50%)' : undefined,
+            width: '360px',
+            maxWidth: 'calc(100vw - 32px)',
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: '12px',
+            boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
+            padding: '8px',
+            zIndex: 500,
+          }}
+        >
+          {accountOptions.map((option, index) => (
+            <div
+              key={option.label}
+              style={{
+                borderTop: index === 0 ? 'none' : `1px solid ${C.border}`,
+                padding: '10px 8px',
+              }}
+            >
+              <div style={{ fontSize: '14px', fontWeight: 800, color: C.text }}>{option.label}</div>
+              <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                <button
+                  role="menuitem"
+                  onClick={() => option.signInHref ? openHref(option.signInHref) : openSignIn(option.lane)}
+                  style={{
+                    border: `1px solid ${C.border2}`,
+                    background: C.surface2,
+                    color: C.text,
+                    borderRadius: '8px',
+                    padding: '7px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {option.signInLabel}
+                </button>
+                {option.signUpLabel && (
+                  <button
+                    role="menuitem"
+                    onClick={() => option.signUpHref ? openHref(option.signUpHref) : openSignUp(option.lane)}
+                    style={{
+                      border: 'none',
+                      background: C.cyan,
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '7px 10px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {option.signUpLabel}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: 'inherit', minHeight: '100vh' }}>
@@ -79,60 +203,8 @@ function LandingPage({ onLogin, onSignup }) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
-              <Btn
-                variant="ghost"
-                size="sm"
-                onClick={() => setMenuOpen(open => open === 'nav' ? null : 'nav')}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen === 'nav'}
-              >
-                Sign in ▾
-              </Btn>
-              {menuOpen === 'nav' && (
-                <div
-                  role="menu"
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 10px)',
-                    right: 0,
-                    width: '260px',
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: '12px',
-                    boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
-                    padding: '8px',
-                    zIndex: 500,
-                  }}
-                >
-                  {signInOptions.map(option => (
-                    <button
-                      key={option.lane}
-                      role="menuitem"
-                      onClick={() => openSignIn(option.lane)}
-                      style={{
-                        width: '100%',
-                        display: 'block',
-                        textAlign: 'left',
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: '10px',
-                        padding: '12px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        color: C.text,
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2 }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                    >
-                      <div style={{ fontSize: '14px', fontWeight: 800 }}>{option.label} sign in</div>
-                      <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Btn variant="primary" size="sm" onClick={onSignup}>Sign up free</Btn>
+            <AccountDropdown id="nav" />
+            <Btn variant="primary" size="sm" onClick={() => onSignup?.('student')}>Sign up free</Btn>
           </div>
         </div>
       </nav>
@@ -313,52 +385,7 @@ function LandingPage({ onLogin, onSignup }) {
           </p>
           <div style={{ display: 'flex', gap: '14px', justifyContent: 'center' }}>
             <Btn variant="primary" size="xl" onClick={onSignup}>Create free account</Btn>
-            <div style={{ position: 'relative' }}>
-              <Btn variant="outline" size="xl" onClick={() => setMenuOpen(open => open === 'footer' ? null : 'footer')}>I already have an account</Btn>
-              {menuOpen === 'footer' && (
-                <div
-                  role="menu"
-                  style={{
-                    position: 'absolute',
-                    left: '50%',
-                    bottom: 'calc(100% + 12px)',
-                    transform: 'translateX(-50%)',
-                    width: '280px',
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: '12px',
-                    boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
-                    padding: '8px',
-                    zIndex: 500,
-                  }}
-                >
-                  {signInOptions.map(option => (
-                    <button
-                      key={option.lane}
-                      role="menuitem"
-                      onClick={() => openSignIn(option.lane)}
-                      style={{
-                        width: '100%',
-                        display: 'block',
-                        textAlign: 'left',
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: '10px',
-                        padding: '12px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        color: C.text,
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2 }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                    >
-                      <div style={{ fontSize: '14px', fontWeight: 800 }}>{option.label} sign in</div>
-                      <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <AccountDropdown id="footer" align="center" above />
           </div>
         </div>
       </section>

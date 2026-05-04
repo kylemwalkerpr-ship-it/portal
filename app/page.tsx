@@ -9,7 +9,7 @@ export default function Home() {
   return (
     <LandingPage
       onLogin={(lane = 'student') => router.push(`/sign-in/${lane}`)}
-      onSignup={() => router.push('/sign-up/student')}
+      onSignup={(lane = 'student') => router.push(`/sign-up/${lane}`)}
     />
   )
 }
