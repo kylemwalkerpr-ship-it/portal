@@ -6,6 +6,7 @@ import { getLocalTranslation } from "@/lib/translations"
 
 const clientCache = new Map<string, string>()
 const translationQueue = new Map<string, Promise<string>>()
+const TRANSLATION_ENDPOINTS = ["/api/translate", "https://yousafeconsultancy.com/api/translate"]
 
 export async function translateText(text: string, targetLang: string): Promise<string> {
   const normalized = text.trim()
@@ -26,17 +27,20 @@ export async function translateText(text: string, targetLang: string): Promise<s
 
   const fetchPromise = (async () => {
     try {
-      const response = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: normalized, targetLang }),
-      })
-      if (!response.ok) return normalized
-      const data = await response.json()
-      const result = data.translatedText || normalized
-      clientCache.set(cacheKey, result)
-      return result
-    } catch {
+      for (const endpoint of TRANSLATION_ENDPOINTS) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: normalized, targetLang }),
+          })
+          if (!response.ok) continue
+          const data = await response.json()
+          const result = data.translatedText || normalized
+          clientCache.set(cacheKey, result)
+          return result
+        } catch {}
+      }
       return normalized
     } finally {
       translationQueue.delete(cacheKey)
