@@ -55,19 +55,38 @@ export default async function DashboardPage() {
   if (!profile) {
     const { email, fullName } = await getClerkUserData(userId)
 
+    if (email) {
+      const { data: existingByEmail } = await db
+        .from('profiles')
+        .select('role, status, full_name, email')
+        .eq('email', email)
+        .maybeSingle()
+
+      if (existingByEmail) {
+        profile = {
+          role: existingByEmail.role,
+          status: existingByEmail.status ?? 'active',
+          full_name: existingByEmail.full_name,
+          email: existingByEmail.email,
+        }
+      }
+    }
+
     // Try upsert with status
-    const { data: c1 } = await db
-      .from('profiles')
-      .upsert(
-        { clerk_user_id: userId, email, full_name: fullName || null, role: 'client', status: 'active' },
-        { onConflict: 'clerk_user_id' }
-      )
-      .select('role, status, full_name, email')
-      .single()
+    const { data: c1 } = profile
+      ? { data: null }
+      : await db
+          .from('profiles')
+          .upsert(
+            { clerk_user_id: userId, email, full_name: fullName || null, role: 'client', status: 'active' },
+            { onConflict: 'clerk_user_id' }
+          )
+          .select('role, status, full_name, email')
+          .single()
 
     if (c1) {
       profile = c1
-    } else {
+    } else if (!profile) {
       // status column missing — upsert without it
       const { data: c2, error: c2Err } = await db
         .from('profiles')
