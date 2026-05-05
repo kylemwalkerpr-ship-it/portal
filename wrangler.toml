@@ -19,3 +19,7 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BO
 # `wrangler secret put STRIPE_WEBHOOK_SECRET`, or add them to your deployment environment.
 # STRIPE_SECRET_KEY = ""
 # STRIPE_WEBHOOK_SECRET = ""
+
+[[routes]]
+pattern = "portal.yousafeconsultancy.com"
+custom_domain = true
