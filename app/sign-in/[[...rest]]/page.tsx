@@ -13,6 +13,7 @@ export default function SignInPage() {
   const lane = normalizeAuthLane(laneSegment)
   const isInvalidLane = Boolean(laneSegment) && !VALID_SIGN_IN_LANES.has(laneSegment)
   const redirectUrl = laneSegment === 'admin' ? '/dashboard' : dashboardForLane(lane)
+  const signInPath = `/sign-in/${laneSegment || 'student'}`
 
   useEffect(() => {
     if (isInvalidLane) window.location.replace(STUDENT_SIGN_IN_URL)
@@ -46,6 +47,8 @@ export default function SignInPage() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <SignIn
+        routing="path"
+        path={signInPath}
         forceRedirectUrl={redirectUrl}
         signUpUrl={signUpForLane(lane)}
       />

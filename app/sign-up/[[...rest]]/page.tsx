@@ -24,6 +24,7 @@ export default function SignUpPage() {
   const shouldRedirect =
     laneSegment === 'admin' ||
     (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment))
+  const signUpPath = `/sign-up/${laneSegment || 'student'}`
   const repeated = Array.from({ length: 300 }, (_, i) => FLAGS[i % FLAGS.length])
 
   useEffect(() => {
@@ -110,6 +111,8 @@ export default function SignUpPage() {
       {/* Clerk sign-up form */}
       <div style={{ position: 'relative', zIndex: 10 }}>
         <SignUp
+          routing="path"
+          path={signUpPath}
           forceRedirectUrl={dashboardForLane(lane)}
           signInUrl={signInForLane(lane)}
           unsafeMetadata={{ requestedRole: lane }}
