@@ -4,7 +4,6 @@ import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { dashboardForLane, normalizeAuthLane, signInForLane } from '@/lib/roleLanes'
 
-const SUPPORT_SIGN_UP_URL = 'https://support.yousafeconsultancy.com/sign-up'
 const ADMIN_SIGN_IN_URL = '/sign-in/admin'
 const STUDENT_SIGN_UP_URL = '/sign-up/student'
 const VALID_SIGN_UP_LANES = new Set(['student', 'client', 'consultant'])
@@ -23,16 +22,25 @@ export default function SignUpPage() {
   const laneSegment = pathname.split('/').filter(Boolean)[1]
   const lane = normalizeAuthLane(laneSegment)
   const shouldRedirect =
-    laneSegment === 'support' ||
     laneSegment === 'admin' ||
     (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment))
   const repeated = Array.from({ length: 300 }, (_, i) => FLAGS[i % FLAGS.length])
 
   useEffect(() => {
-    if (laneSegment === 'support') window.location.replace(SUPPORT_SIGN_UP_URL)
-    else if (laneSegment === 'admin') window.location.replace(ADMIN_SIGN_IN_URL)
+    if (laneSegment === 'admin') window.location.replace(ADMIN_SIGN_IN_URL)
     else if (shouldRedirect) window.location.replace(STUDENT_SIGN_UP_URL)
   }, [laneSegment, shouldRedirect])
+
+  // Clear any lingering redirect query params to prevent nested loops
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('redirect_url') || url.searchParams.has('sign_in_force_redirect_url') || url.searchParams.has('sign_up_force_redirect_url')) {
+      url.searchParams.delete('redirect_url')
+      url.searchParams.delete('sign_in_force_redirect_url')
+      url.searchParams.delete('sign_up_force_redirect_url')
+      window.history.replaceState({}, '', url)
+    }
+  }, [])
 
   if (shouldRedirect) {
     return (
