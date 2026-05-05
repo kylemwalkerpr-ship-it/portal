@@ -68,7 +68,10 @@ export default function SignUpPage() {
       {/* Clerk sign-up form */}
       <div style={{ position: 'relative', zIndex: 10 }}>
         <SignUp
+          fallbackRedirectUrl={dashboardForLane(lane)}
           forceRedirectUrl={dashboardForLane(lane)}
+          signInForceRedirectUrl={dashboardForLane(lane)}
+          signInFallbackRedirectUrl={dashboardForLane(lane)}
           signInUrl={signInForLane(lane)}
           unsafeMetadata={{ requestedRole: lane }}
         />

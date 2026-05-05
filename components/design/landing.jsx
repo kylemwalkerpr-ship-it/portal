@@ -67,15 +67,6 @@ function LandingPage({ onLogin, onSignup }) {
       signUpLabel: 'Apply as consultant',
     },
     {
-      label: 'Support staff',
-      description: 'Access the live chat support workspace after approval.',
-      lane: 'support',
-      signInLabel: 'Support sign in',
-      signUpLabel: 'Request support access',
-      signInHref: 'https://support.yousafeconsultancy.com/sign-in',
-      signUpHref: 'https://support.yousafeconsultancy.com/sign-up',
-    },
-    {
       label: 'Admin',
       description: 'Administrative access for approved Yousafe operators.',
       lane: 'admin',

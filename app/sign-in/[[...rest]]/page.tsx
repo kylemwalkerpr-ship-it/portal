@@ -14,6 +14,7 @@ export default function SignInPage() {
     }}>
       <SignIn
         fallbackRedirectUrl={dashboardForLane(lane)}
+        forceRedirectUrl={dashboardForLane(lane)}
         signUpUrl={signUpForLane(lane)}
       />
     </div>
