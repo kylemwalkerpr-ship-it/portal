@@ -18,7 +18,7 @@ export default function SignInPage() {
     if (isInvalidLane) window.location.replace(STUDENT_SIGN_IN_URL)
   }, [isInvalidLane])
 
-  if (isInvalidLane) {
+  // Clear any lingering redirect query params to prevent nested loops
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.searchParams.has('redirect_url') || url.searchParams.has('sign_in_force_redirect_url') || url.searchParams.has('sign_up_force_redirect_url')) {
@@ -29,7 +29,7 @@ export default function SignInPage() {
     }
   }, [])
 
-  if (isSupportLane || isInvalidLane) {
+  if (isInvalidLane) {
     return (
       <div style={{
         minHeight: '100vh', background: '#05080f', color: '#fff',
