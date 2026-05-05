@@ -2,6 +2,7 @@ node_modules/
 .next/
 .open-next/
 .env*
+!.env.production
 .vercel/
 *.tsbuildinfo
 next-env.d.ts

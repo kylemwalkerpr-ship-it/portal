@@ -38,7 +38,6 @@ export default function SignInPage() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <SignIn
-        fallbackRedirectUrl={redirectUrl}
         forceRedirectUrl={redirectUrl}
         signUpUrl={signUpForLane(lane)}
       />

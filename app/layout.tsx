@@ -25,10 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           afterSignOutUrl={LANDING_URL}
           signInUrl="/sign-in/student"
           signUpUrl="/sign-up/student"
-          signInFallbackRedirectUrl="/dashboard"
-          signUpFallbackRedirectUrl="/dashboard"
-          signInForceRedirectUrl="/dashboard"
-          signUpForceRedirectUrl="/dashboard"
         >
           <TranslationProvider>{children}</TranslationProvider>
         </ClerkProvider>
