@@ -57,7 +57,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string }>) {
   const params = await searchParams
   let requestedRole = normalizeAuthLane(params.lane)
   const userId = await getClerkUserId()
-  if (!userId) redirect('/sign-in')
+  if (!userId) redirect('/sign-in/student')
 
   const db = createSupabaseAdminClient()
   const clerkData = await getClerkUserData(userId)

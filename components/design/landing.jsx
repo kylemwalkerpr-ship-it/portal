@@ -66,13 +66,6 @@ function LandingPage({ onLogin, onSignup }) {
       signInLabel: 'Consultant sign in',
       signUpLabel: 'Apply as consultant',
     },
-    {
-      label: 'Admin',
-      description: 'Administrative access for approved Yousafe operators.',
-      lane: 'admin',
-      signInLabel: 'Admin sign in',
-      signInHref: '/sign-in/admin',
-    },
   ];
 
   const openSignIn = lane => {
@@ -83,11 +76,6 @@ function LandingPage({ onLogin, onSignup }) {
   const openSignUp = lane => {
     setMenuOpen(null);
     onSignup?.(lane);
-  };
-
-  const openHref = href => {
-    setMenuOpen(null);
-    window.location.href = href;
   };
 
   const AccountDropdown = ({ id, align = 'right', above = false }) => (
@@ -134,7 +122,7 @@ function LandingPage({ onLogin, onSignup }) {
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
                 <button
                   role="menuitem"
-                  onClick={() => option.signInHref ? openHref(option.signInHref) : openSignIn(option.lane)}
+                  onClick={() => openSignIn(option.lane)}
                   style={{
                     border: `1px solid ${C.border2}`,
                     background: C.surface2,
@@ -152,7 +140,7 @@ function LandingPage({ onLogin, onSignup }) {
                 {option.signUpLabel && (
                   <button
                     role="menuitem"
-                    onClick={() => option.signUpHref ? openHref(option.signUpHref) : openSignUp(option.lane)}
+                    onClick={() => openSignUp(option.lane)}
                     style={{
                       border: 'none',
                       background: C.cyan,

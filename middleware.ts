@@ -27,7 +27,9 @@ export default function proxy(req: NextRequest) {
   if (isPublic) return NextResponse.next()
 
   if (!hasSession(req)) {
-    const signIn = new URL('/sign-in', req.url)
+    const lane = req.nextUrl.searchParams.get('lane')
+    const signInPath = lane === 'consultant' ? '/sign-in/consultant' : '/sign-in/student'
+    const signIn = new URL(signInPath, req.url)
     signIn.searchParams.set('redirect_url', `${pathname}${req.nextUrl.search}`)
     return NextResponse.redirect(signIn)
   }

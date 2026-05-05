@@ -1,7 +1,13 @@
 'use client'
 import { SignUp } from '@clerk/nextjs'
 import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import { dashboardForLane, normalizeAuthLane, signInForLane } from '@/lib/roleLanes'
+
+const SUPPORT_SIGN_UP_URL = 'https://support.yousafeconsultancy.com/sign-up'
+const ADMIN_SIGN_IN_URL = '/sign-in/admin'
+const STUDENT_SIGN_UP_URL = '/sign-up/student'
+const VALID_SIGN_UP_LANES = new Set(['student', 'client', 'consultant'])
 
 const FLAGS = [
   '🇺🇸','🇨🇦','🇬🇧','🇫🇷','🇩🇪','🇦🇺','🇯🇵','🇧🇷','🇮🇳','🇨🇳',
@@ -14,8 +20,36 @@ const FLAGS = [
 
 export default function SignUpPage() {
   const pathname = usePathname()
-  const lane = normalizeAuthLane(pathname.split('/').filter(Boolean)[1])
+  const laneSegment = pathname.split('/').filter(Boolean)[1]
+  const lane = normalizeAuthLane(laneSegment)
+  const shouldRedirect =
+    laneSegment === 'support' ||
+    laneSegment === 'admin' ||
+    (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment))
   const repeated = Array.from({ length: 300 }, (_, i) => FLAGS[i % FLAGS.length])
+
+  useEffect(() => {
+    if (laneSegment === 'support') window.location.replace(SUPPORT_SIGN_UP_URL)
+    else if (laneSegment === 'admin') window.location.replace(ADMIN_SIGN_IN_URL)
+    else if (shouldRedirect) window.location.replace(STUDENT_SIGN_UP_URL)
+  }, [laneSegment, shouldRedirect])
+
+  if (shouldRedirect) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#E8E8E8',
+          color: '#1F2937',
+        }}
+      >
+        Redirecting to the correct account page...
+      </div>
+    )
+  }
 
   return (
     <div
