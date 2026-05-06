@@ -6,7 +6,8 @@ import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divi
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
-const STUDENT_ORDERS = [];
+const TERMS_URL = 'https://yousafeconsultancy.com/terms'
+const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -496,22 +497,221 @@ function StudentApp({ onLogout, userId, userName }) {
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
+  const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
-  const [searchQuery, setSearchQuery] = React.useState('');
   const [orderPlaced, setOrderPlaced] = React.useState(false);
+  const [orders, setOrders] = React.useState([]);
+  const [ordersLoading, setOrdersLoading] = React.useState(true);
+  const [ordersError, setOrdersError] = React.useState(null);
+  const [orderFiles, setOrderFiles] = React.useState([]);
+  const [filesLoading, setFilesLoading] = React.useState(false);
+  const [uploadingOrderFile, setUploadingOrderFile] = React.useState(false);
+  const orderFileInputRef = React.useRef(null);
+  const [allFiles, setAllFiles] = React.useState([]);
+  const [allFilesLoading, setAllFilesLoading] = React.useState(false);
+  const [docUploadOrderId, setDocUploadOrderId] = React.useState('');
+  const [uploadingDoc, setUploadingDoc] = React.useState(false);
+  const docFileInputRef = React.useRef(null);
 
-  const filteredOrders = orderFilter === 'all' ? STUDENT_ORDERS : STUDENT_ORDERS.filter(o => o.status === orderFilter);
+  const refreshStudentData = React.useCallback(() => {
+    setOrdersLoading(true);
+    return fetch('/api/student/data')
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load your dashboard');
+        return data;
+      })
+      .then(data => {
+        setOrders(data.orders ?? []);
+        setOrdersError(null);
+      })
+      .catch(e => setOrdersError(e.message))
+      .finally(() => setOrdersLoading(false));
+  }, []);
 
-  const sendMessage = () => {
-    if (!msgInput.trim()) return;
-    setMessages(prev => [...prev, { from: 'student', text: msgInput, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+  React.useEffect(() => { refreshStudentData(); }, [refreshStudentData]);
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshStudentData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [refreshStudentData]);
+
+  // Keep selectedOrder in sync with the latest orders payload
+  React.useEffect(() => {
+    if (!selectedOrder) return;
+    const fresh = orders.find(o => o.id === selectedOrder.id);
+    if (fresh && fresh !== selectedOrder) setSelectedOrder(fresh);
+  }, [orders, selectedOrder]);
+
+  const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
+  const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
+  const completedOrders = orders.filter(o => o.status === 'completed').length;
+
+  const loadMessagesFor = React.useCallback(async order => {
+    if (!order?.id) return;
+    setMessagesLoading(true);
+    try {
+      const res = await fetch(`/api/student/messages?orderId=${encodeURIComponent(order.id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load messages');
+      setMessages((data.messages ?? []).map(m => ({
+        id: m.id,
+        from: m.sender_role === 'client' ? 'student' : 'consultant',
+        text: m.body,
+        name: order.consultant,
+        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      })));
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedOrder) {
+      setMessages([]);
+      return undefined;
+    }
+    loadMessagesFor(selectedOrder);
+    if (page !== 'messages' && page !== 'order-detail') return undefined;
+    const interval = setInterval(() => loadMessagesFor(selectedOrder), 6000);
+    return () => clearInterval(interval);
+  }, [selectedOrder, loadMessagesFor, page]);
+
+  const sendMessage = async () => {
+    const text = msgInput.trim();
+    if (!text || !selectedOrder?.id) return;
     setMsgInput('');
+    try {
+      const res = await fetch('/api/student/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to send message');
+      const m = data.message;
+      setMessages(prev => [...prev, {
+        id: m.id,
+        from: 'student',
+        text: m.body,
+        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (e) {
+      setMsgInput(text);
+      setActionNotice(e.message);
+    }
   };
 
-  const activeOrders = STUDENT_ORDERS.filter(o => o.status === 'active' || o.status === 'review').length;
-  const completedOrders = STUDENT_ORDERS.filter(o => o.status === 'completed').length;
+  const loadOrderFiles = React.useCallback(async order => {
+    if (!order?.id) return;
+    setFilesLoading(true);
+    try {
+      const res = await fetch(`/api/student/orders/${order.id}/files`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load files');
+      setOrderFiles(data.files || []);
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedOrder) loadOrderFiles(selectedOrder);
+    else setOrderFiles([]);
+  }, [selectedOrder, loadOrderFiles]);
+
+  const uploadOrderFile = async file => {
+    if (!file || !selectedOrder?.id) return;
+    setUploadingOrderFile(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/student/orders/${selectedOrder.id}/files`, { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setOrderFiles(prev => [data.file, ...prev]);
+      setActionNotice(`Uploaded ${data.file.name}.`);
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setUploadingOrderFile(false);
+      if (orderFileInputRef.current) orderFileInputRef.current.value = '';
+    }
+  };
+
+  const deleteOrderFile = async fileId => {
+    if (!selectedOrder?.id || !fileId) return;
+    if (typeof window !== 'undefined' && !window.confirm('Delete this file?')) return;
+    try {
+      const res = await fetch(`/api/student/orders/${selectedOrder.id}/files?fileId=${encodeURIComponent(fileId)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to delete file');
+      setOrderFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
+  const refreshAllFiles = React.useCallback(() => {
+    setAllFilesLoading(true);
+    return fetch('/api/student/files')
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load files');
+        setAllFiles(data.files || []);
+      })
+      .catch(e => setActionNotice(e.message))
+      .finally(() => setAllFilesLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    if (page === 'documents') refreshAllFiles();
+  }, [page, refreshAllFiles]);
+
+  const uploadDocToOrder = async file => {
+    if (!file) return;
+    if (!docUploadOrderId) {
+      setActionNotice('Pick an order to upload to.');
+      return;
+    }
+    setUploadingDoc(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/student/orders/${docUploadOrderId}/files`, { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setActionNotice(`Uploaded ${data.file.name}.`);
+      await refreshAllFiles();
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setUploadingDoc(false);
+      if (docFileInputRef.current) docFileInputRef.current.value = '';
+    }
+  };
+
+  const deleteDocFile = async file => {
+    if (!file?.id || !file?.order_id) return;
+    if (typeof window !== 'undefined' && !window.confirm(`Delete ${file.name}?`)) return;
+    try {
+      const res = await fetch(`/api/student/orders/${file.order_id}/files?fileId=${encodeURIComponent(file.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to delete file');
+      setAllFiles(prev => prev.filter(f => f.id !== file.id));
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
 
   // ── SIDEBAR ──
   const Sidebar = () => (
@@ -810,14 +1010,61 @@ function StudentApp({ onLogout, userId, userName }) {
               <Btn variant="secondary" fullWidth size="sm" style={{ marginTop: '14px' }} onClick={() => setPage('messages')}>Send message</Btn>
             </Card>
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '12px' }}>Documents</div>
-              {['Transcript.pdf', 'CV_2025.pdf', 'Passport_copy.pdf'].map(f => (
-                <div key={f} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-                  <span style={{ color: C.text }}>📄 {f}</span>
-                  <Btn variant="ghost" size="sm">↓</Btn>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>Documents</div>
+                <button
+                  type="button"
+                  onClick={() => orderFileInputRef.current?.click()}
+                  disabled={uploadingOrderFile}
+                  style={{ background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '8px', padding: '6px 10px', cursor: uploadingOrderFile ? 'not-allowed' : 'pointer', color: C.text, fontSize: '12px', fontWeight: 600, opacity: uploadingOrderFile ? 0.6 : 1 }}
+                >
+                  {uploadingOrderFile ? 'Uploading…' : '+ Upload'}
+                </button>
+                <input
+                  ref={orderFileInputRef}
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadOrderFile(f);
+                  }}
+                />
+              </div>
+              {filesLoading && orderFiles.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading files…</div>
+              )}
+              {!filesLoading && orderFiles.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>No files yet. Share transcripts, IDs, or supporting docs with your consultant here.</div>
+              )}
+              {orderFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {orderFiles.map((f, i) => {
+                    const sizeKb = f.size_bytes ? Math.max(1, Math.round(f.size_bytes / 1024)) : null;
+                    const date = f.created_at ? new Date(f.created_at).toLocaleDateString() : '';
+                    const mine = f.uploader_role === 'client';
+                    return (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: i < orderFiles.length - 1 ? `1px solid ${C.border}` : 'none', fontSize: '13px' }}>
+                        <span style={{ flexShrink: 0 }}>📄</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{f.name}</div>
+                          <div style={{ fontSize: '11px', color: C.textDim }}>
+                            {mine ? 'You' : f.uploader_name || 'Consultant'}{sizeKb ? ` · ${sizeKb} KB` : ''}{date ? ` · ${date}` : ''}
+                          </div>
+                        </div>
+                        {f.url && (
+                          <a href={f.url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>Open</a>
+                        )}
+                        {mine && (
+                          <button onClick={() => deleteOrderFile(f.id)} title="Delete" style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-              <Btn variant="secondary" fullWidth size="sm" style={{ marginTop: '10px' }}>+ Upload file</Btn>
+              )}
+              <div style={{ marginTop: '12px', fontSize: '11px', color: C.textDim, lineHeight: 1.5 }}>
+                Files are stored privately. Links expire after 10 minutes — they're regenerated each time the order is opened.
+              </div>
             </Card>
           </div>
         </div>

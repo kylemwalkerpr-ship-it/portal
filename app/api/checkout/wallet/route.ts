@@ -7,10 +7,18 @@ export async function POST(req: Request) {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { title, amountCents, serviceId: requestedServiceId } = await req.json()
+  const body = await req.json().catch(() => ({}))
+  const { title, amountCents, serviceId: requestedServiceId, acceptedTerms, acceptedRefundPolicy } = body
 
   if (!title || !Number.isInteger(amountCents) || amountCents < 100) {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
+  }
+
+  if (acceptedTerms !== true || acceptedRefundPolicy !== true) {
+    return Response.json(
+      { error: 'You must accept the Terms of Service and Refund Policy before completing payment.' },
+      { status: 400 },
+    )
   }
 
   try {
@@ -64,39 +72,65 @@ export async function POST(req: Request) {
       payment_method_types: ['customer_balance'],
       payment_method_data: { type: 'customer_balance' },
       confirm: true,
+      metadata: {
+        clerk_user_id: clerkUserId,
+        service_id: String(service.id),
+        funding_source: 'wallet',
+      },
     })
 
-    const serviceId = service.id
-
-    const { data: order } = await db
-      .from('orders')
-      .insert({
-        client_id: profile.id,
-        status: 'queued',
-        total_amount: amountCents / 100,
-        requirements: `Wallet payment — Stripe PI: ${pi.id}`,
-      })
-      .select('id')
-      .single()
-
-    if (order && serviceId) {
-      await db.from('order_items').insert({
-        order_id: order.id,
-        service_id: serviceId,
-        quantity: 1,
-        unit_price: amountCents / 100,
-        subtotal: amountCents / 100,
-      })
-      await db.from('order_status_history').insert({
-        order_id: order.id,
-        from_status: null,
-        to_status: 'queued',
-        changed_by_id: profile.id,
-        note: `Paid from wallet — ${title}`,
-      })
+    if (pi.status !== 'succeeded') {
+      console.warn(`[checkout/wallet] PaymentIntent ${pi.id} did not succeed (status: ${pi.status}) — order not created`)
+      return Response.json(
+        { error: `Payment is ${pi.status}. Please retry once it settles.`, paymentIntentId: pi.id, paymentIntentStatus: pi.status },
+        { status: 402 },
+      )
     }
 
-    return Response.json({ success: true, orderId: order?.id })
+    const acceptedAt = new Date().toISOString()
+
+    const orderInsert: Record<string, unknown> = {
+      client_id: profile.id,
+      status: 'queued',
+      total_amount: amountCents / 100,
+      requirements: `Wallet payment — Stripe PI: ${pi.id}`,
+      terms_accepted_at: acceptedAt,
+      refund_policy_accepted_at: acceptedAt,
+      stripe_payment_intent_id: pi.id,
+    }
+
+    let orderResult = await db.from('orders').insert(orderInsert).select('id').single()
+
+    if (orderResult.error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id/i.test(orderResult.error.message)) {
+      // Legacy schema without acknowledgment columns — retry without them
+      delete orderInsert.terms_accepted_at
+      delete orderInsert.refund_policy_accepted_at
+      delete orderInsert.stripe_payment_intent_id
+      orderResult = await db.from('orders').insert(orderInsert).select('id').single()
+    }
+
+    if (orderResult.error || !orderResult.data) {
+      console.error('[checkout/wallet] order insert failed', orderResult.error)
+      return Response.json({ error: 'Order creation failed after successful payment. Contact support.' }, { status: 500 })
+    }
+
+    const order = orderResult.data
+    await db.from('order_items').insert({
+      order_id: order.id,
+      service_id: service.id,
+      quantity: 1,
+      unit_price: amountCents / 100,
+      subtotal: amountCents / 100,
+    })
+    await db.from('order_status_history').insert({
+      order_id: order.id,
+      from_status: null,
+      to_status: 'queued',
+      changed_by_id: profile.id,
+      note: `Paid from wallet — ${title}`,
+    })
+
+    return Response.json({ success: true, orderId: order.id })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[checkout/wallet]', message)
