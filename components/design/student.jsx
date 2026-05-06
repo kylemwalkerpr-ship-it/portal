@@ -1566,56 +1566,9 @@ function StudentApp({ onLogout, userId, userName }) {
     );
   };
 
-  // ── BILLING ──
-  const Billing = () => {
-    const [walletBal, setWalletBal] = React.useState(null);
-    const [topUpOpen, setTopUpOpen] = React.useState(false);
-
-    const refreshBalance = React.useCallback(() => {
-      fetch('/api/wallet/balance')
-        .then(r => r.json())
-        .then(d => setWalletBal(d.available?.usd ?? d.available ?? 0))
-        .catch(() => setWalletBal(0));
-    }, []);
-
-    React.useEffect(() => { refreshBalance(); }, [refreshBalance]);
-
-    return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
-
-        {/* Wallet balance */}
-        <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(60,59,110,0.06))`, border: `1px solid rgba(60,59,110,0.18)` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-            <div>
-              <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</div>
-              <div style={{ fontSize: '36px', fontWeight: 800, color: C.text, lineHeight: 1 }}>
-                {walletBal === null ? '—' : `$${Number(walletBal).toFixed(2)}`}
-              </div>
-              <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
-            </div>
-            <Btn variant="primary" size="sm" onClick={() => setTopUpOpen(true)}>+ Top up</Btn>
-          </div>
-        </Card>
-
-        {topUpOpen && (
-          <TopUpDialog
-            onClose={() => setTopUpOpen(false)}
-            onSuccess={() => { setTopUpOpen(false); refreshBalance(); }}
-          />
-        )}
-
-        <StripePaymentSection />
-
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
-          <div style={{ padding: '28px 0', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>
-            No payments yet. Your order history will appear here once you place an order.
-          </div>
-        </Card>
-      </div>
-    );
-  };
+  // Billing is declared at module top-level so its component identity is stable
+  // across StudentApp re-renders (otherwise StripePaymentSection remounts on
+  // every poll tick and the saved-cards loader never settles).
 
   // ── SETTINGS ──
   const Settings = () => {
