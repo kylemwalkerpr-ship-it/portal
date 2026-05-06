@@ -160,17 +160,33 @@ export async function POST(req: Request) {
     serviceId = newService?.id ?? ''
   }
 
-  // Create the order
-  const { data: order, error } = await db
+  // Hosted Stripe Checkout includes ToS/refund acknowledgment via the consent_collection
+  // page. The presence of session.payment_status === 'paid' is our trigger to record acceptance.
+  const acceptedAt = new Date().toISOString()
+  const orderInsert: Record<string, unknown> = {
+    client_id: profile.id,
+    status: 'queued',
+    total_amount: amountTotal,
+    requirements: `Stripe session: ${session.id}`,
+    terms_accepted_at: acceptedAt,
+    refund_policy_accepted_at: acceptedAt,
+    stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+  }
+
+  let { data: order, error } = await db
     .from('orders')
-    .insert({
-      client_id: profile.id,
-      status: 'queued',
-      total_amount: amountTotal,
-      requirements: `Stripe session: ${session.id}`,
-    })
+    .insert(orderInsert)
     .select('id')
     .single()
+
+  if (error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id/i.test(error.message)) {
+    delete orderInsert.terms_accepted_at
+    delete orderInsert.refund_policy_accepted_at
+    delete orderInsert.stripe_payment_intent_id
+    const retry = await db.from('orders').insert(orderInsert).select('id').single()
+    order = retry.data
+    error = retry.error
+  }
 
   if (error || !order) {
     console.error('Order creation failed', error)

@@ -921,11 +921,11 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── ORDER DETAIL ──
   const OrderDetail = ({ order }) => {
     const timeline = [
-      { label: 'Order placed', date: 'Apr 10', done: true },
-      { label: 'Consultant assigned', date: 'Apr 11', done: true },
-      { label: 'Documents reviewed', date: 'Apr 14', done: true },
-      { label: 'Draft delivered', date: 'Apr 18', done: order.progress >= 80 },
-      { label: 'Final delivery', date: 'Apr 22', done: order.status === 'completed' },
+      { label: 'Order placed', date: order.date || '—', done: true },
+      { label: 'Consultant assigned', date: order.consultantId ? 'Assigned' : 'Pending', done: Boolean(order.consultantId) },
+      { label: 'Working on deliverable', date: 'In progress', done: (order.progress || 0) >= 40 },
+      { label: 'Sent for review', date: order.deadline || '—', done: (order.progress || 0) >= 90 },
+      { label: 'Completed', date: order.status === 'completed' ? 'Done' : '—', done: order.status === 'completed' },
     ];
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1087,6 +1087,10 @@ function StudentApp({ onLogout, userId, userName }) {
     const [walletBalance, setWalletBalance] = React.useState(null);
     const [paying, setPaying] = React.useState(false);
     const [payError, setPayError] = React.useState(null);
+    const [acceptedTerms, setAcceptedTerms] = React.useState(false);
+    const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false);
+    const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card';
+    const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     const filtered = catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter);
 
@@ -1135,16 +1139,27 @@ function StudentApp({ onLogout, userId, userName }) {
       const canUseSavedCard = Boolean(selectedCardId);
 
       const handleWalletPay = async () => {
+        if (!ackComplete) {
+          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
+          return;
+        }
         setPaying(true); setPayError(null);
         try {
           const res = await fetch('/api/checkout/wallet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: cart.title, amountCents, serviceId: cart.id }),
+            body: JSON.stringify({
+              title: cart.title,
+              amountCents,
+              serviceId: cart.id,
+              acceptedTerms: true,
+              acceptedRefundPolicy: true,
+            }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
         } catch (e) {
           setPayError(e.message);
@@ -1156,13 +1171,22 @@ function StudentApp({ onLogout, userId, userName }) {
           setPayError('Choose a saved card first.');
           return;
         }
+        if (!ackComplete) {
+          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
+          return;
+        }
 
         setPaying(true); setPayError(null);
         try {
           const res = await fetch('/api/checkout/card', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serviceId: cart.id, paymentMethodId: selectedCardId }),
+            body: JSON.stringify({
+              serviceId: cart.id,
+              paymentMethodId: selectedCardId,
+              acceptedTerms: true,
+              acceptedRefundPolicy: true,
+            }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
@@ -1313,13 +1337,42 @@ function StudentApp({ onLogout, userId, userName }) {
             )}
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
+          {requiresAck && (
+            <Card style={{ marginBottom: '14px', padding: '16px' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '10px' }}>Required: review and accept</div>
+              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', color: C.text, marginBottom: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  style={{ marginTop: '3px' }}
+                />
+                <span>
+                  I have read and agree to the{' '}
+                  <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 600 }}>Terms of Service</a>.
+                </span>
+              </label>
+              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', color: C.text, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={acceptedRefundPolicy}
+                  onChange={e => setAcceptedRefundPolicy(e.target.checked)}
+                  style={{ marginTop: '3px' }}
+                />
+                <span>
+                  I have read and accept the{' '}
+                  <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 600 }}>Refund Policy</a>.
+                </span>
+              </label>
+            </Card>
+          )}
           {payMethod === 'wallet' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
-              {paying ? 'Processing…' : `Pay ${formatMoney(cart.price, serviceCurrency)} from Wallet`}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(cart.price, serviceCurrency)} from Wallet`}
             </Btn>
           ) : payMethod === 'saved_card' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard}>
-              {paying ? 'Processing…' : selectedCard ? `Pay ${formatMoney(cart.price, serviceCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(cart.price, serviceCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
@@ -1406,22 +1459,112 @@ function StudentApp({ onLogout, userId, userName }) {
   };
 
   // ── DOCUMENTS ──
-  const Documents = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Documents</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage your application documents securely.</p>
+  const Documents = () => {
+    const groups = React.useMemo(() => {
+      const map = new Map();
+      for (const f of allFiles) {
+        const key = f.order_id;
+        if (!map.has(key)) map.set(key, { orderId: key, title: f.order_title || 'Order', files: [] });
+        map.get(key).files.push(f);
+      }
+      return Array.from(map.values());
+    }, [allFiles]);
+
+    const triggerUpload = () => {
+      if (orders.length === 0) {
+        setActionNotice('Place an order before uploading documents.');
+        return;
+      }
+      if (!docUploadOrderId) setDocUploadOrderId(orders[0].id);
+      docFileInputRef.current?.click();
+    };
+
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Documents</h2>
+            <p style={{ color: C.textMuted, fontSize: '14px' }}>All files shared with consultants across your orders.</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {orders.length > 0 && (
+              <select
+                value={docUploadOrderId || orders[0]?.id || ''}
+                onChange={e => setDocUploadOrderId(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '10px', border: `1px solid ${C.border2}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit' }}
+              >
+                {orders.map(o => (
+                  <option key={o.id} value={o.id}>{o.service} · {o.id.slice(0, 8)}</option>
+                ))}
+              </select>
+            )}
+            <Btn variant="primary" size="sm" onClick={triggerUpload} disabled={uploadingDoc}>
+              {uploadingDoc ? 'Uploading…' : '+ Upload'}
+            </Btn>
+            <input
+              ref={docFileInputRef}
+              type="file"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) uploadDocToOrder(f);
+              }}
+            />
+          </div>
         </div>
-        <Btn variant="primary" size="sm">+ Upload</Btn>
+
+        {allFilesLoading && allFiles.length === 0 && (
+          <Card style={{ padding: '24px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>Loading documents…</Card>
+        )}
+
+        {!allFilesLoading && allFiles.length === 0 && (
+          <Card style={{ padding: '32px', textAlign: 'center' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>📄</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>No documents yet</div>
+            <div style={{ fontSize: '13px', color: C.textMuted, lineHeight: 1.6, maxWidth: '380px', margin: '0 auto' }}>
+              {orders.length === 0
+                ? 'Place an order from Browse Services to start exchanging files with your consultant.'
+                : 'Upload transcripts, IDs, or supporting docs to share them with your consultant.'}
+            </div>
+          </Card>
+        )}
+
+        {groups.map(group => (
+          <Card key={group.orderId} style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>{group.title}</div>
+                <div style={{ fontSize: '12px', color: C.textMuted }}>{group.files.length} file{group.files.length === 1 ? '' : 's'}</div>
+              </div>
+              <Btn variant="ghost" size="sm" onClick={() => {
+                const order = orders.find(o => o.id === group.orderId);
+                if (order) { setSelectedOrder(order); setPage('order-detail'); }
+              }}>Open order →</Btn>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {group.files.map((f, i) => {
+                const sizeKb = f.size_bytes ? Math.max(1, Math.round(f.size_bytes / 1024)) : null;
+                const date = f.created_at ? new Date(f.created_at).toLocaleDateString() : '';
+                return (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: i < group.files.length - 1 ? `1px solid ${C.border}` : 'none', fontSize: '13px' }}>
+                    <span style={{ flexShrink: 0 }}>📄</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{f.name}</div>
+                      <div style={{ fontSize: '11px', color: C.textDim }}>
+                        {f.is_mine ? 'You' : f.uploader_name || 'Consultant'}{sizeKb ? ` · ${sizeKb} KB` : ''}{date ? ` · ${date}` : ''}
+                      </div>
+                    </div>
+                    {f.url && <a href={f.url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>Open</a>}
+                    {f.is_mine && <button onClick={() => deleteDocFile(f)} title="Delete" style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}>×</button>}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '260px', flexDirection: 'column', gap: '12px', color: C.textMuted }}>
-        <span style={{ fontSize: '40px' }}>📄</span>
-        <p style={{ fontSize: '15px' }}>No documents uploaded yet.</p>
-        <p style={{ fontSize: '13px', color: C.textDim }}>Upload your transcripts, passport, or other documents to get started.</p>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ── BILLING ──
   const Billing = () => {
