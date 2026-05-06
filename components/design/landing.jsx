@@ -370,14 +370,53 @@ function LandingPage({ onLogin, onSignup }) {
       </section>
 
       {/* FOOTER */}
-      <footer style={{ borderTop: `1px solid ${C.border}`, padding: '32px 24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <img src="logo.png" style={{ height: '28px', filter: 'invert(1)', opacity: 0.6 }} alt="YouSafe" />
-          <div style={{ color: C.textDim, fontSize: '13px' }}>© 2025 YouSafe Consultancy. All rights reserved.</div>
-          <div style={{ display: 'flex', gap: '24px' }}>
-            {['Privacy', 'Terms', 'Contact'].map(l => (
-              <a key={l} href="#" style={{ color: C.textDim, fontSize: '13px', textDecoration: 'none' }}>{l}</a>
-            ))}
+      <footer style={{ borderTop: `1px solid ${C.border}`, padding: '48px 24px 32px', marginTop: '80px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ 
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto',
+            gap: '40px',
+            alignItems: 'center',
+            marginBottom: '32px'
+          }}>
+            <img src="logo.png" style={{ height: '32px', filter: 'invert(1)', opacity: 0.7 }} alt="YouSafe" />
+            <div style={{ 
+              color: C.textDim, 
+              fontSize: '13px',
+              lineHeight: '1.6',
+              margin: 0
+            }}>
+              © 2025 YouSafe Consultancy. All rights reserved.
+            </div>
+            <div style={{ display: 'flex', gap: '32px', justifyContent: 'flex-end' }}>
+              {['Privacy', 'Terms', 'Contact'].map(l => (
+                <a 
+                  key={l} 
+                  href="#" 
+                  style={{ 
+                    color: C.textDim, 
+                    fontSize: '13px', 
+                    textDecoration: 'none',
+                    transition: 'color 0.2s',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onMouseEnter={e => e.target.style.color = C.text}
+                  onMouseLeave={e => e.target.style.color = C.textDim}
+                >
+                  {l}
+                </a>
+              ))}
+            </div>
+          </div>
+          <div style={{ 
+            borderTop: `1px solid ${C.border}33`,
+            paddingTop: '24px',
+            textAlign: 'center',
+            color: C.textDim,
+            fontSize: '12px',
+            letterSpacing: '0.3px'
+          }}>
+            Helping international students achieve their dreams globally
           </div>
         </div>
       </footer>

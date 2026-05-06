@@ -29,15 +29,18 @@ export async function GET() {
     const service = serviceById.get(item?.service_id)
     const student = profileById.get(order.client_id)
     const payoutCents = Number(order.consultant_payout_amount || Math.round(Number(order.total_amount || 0) * 80))
+    const storedProgress = Number.isFinite(Number(order.progress)) ? Number(order.progress) : null
+    const fallbackProgress = order.status === 'completed' ? 100 : order.status === 'review' ? 90 : order.status === 'active' ? 50 : 0
     return {
       id: order.id,
       service: service?.title || 'Service unavailable',
       student: student?.full_name || student?.email || 'Unknown student',
+      clientId: order.client_id,
       country: student?.country || '—',
       status: order.status === 'queued' ? 'pending' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',
-      deadline: '—',
-      progress: order.status === 'completed' ? 100 : order.status === 'active' ? 50 : 0,
+      deadline: order.deadline ? new Date(order.deadline).toLocaleDateString() : '—',
+      progress: storedProgress ?? fallbackProgress,
       earn: `$${dollarsFromCents(payoutCents).toFixed(2)}`,
       payoutStatus: order.payout_status || 'pending',
       consultantPayoutAmount: payoutCents,
@@ -45,11 +48,16 @@ export async function GET() {
     }
   })
 
+  const defaultNotifPrefs = { orders: true, messages: true, payments: true }
+
   return Response.json({
     consultant: {
-      name: profile.full_name || consultant.full_name || consultant.name || 'Consultant',
+      name: profile.full_name || consultant.full_name || consultant.name || '',
       email: profile.email || consultant.email || '',
       bio: consultant.bio || '',
+      available: consultant.available !== false,
+      autoWithdraw: Boolean(consultant.auto_withdraw),
+      notifPrefs: { ...defaultNotifPrefs, ...(consultant.notif_prefs || {}) },
       stripeOnboardingComplete: Boolean(consultant.stripe_onboarding_complete ?? consultant.stripeOnboardingComplete),
     },
     orders,

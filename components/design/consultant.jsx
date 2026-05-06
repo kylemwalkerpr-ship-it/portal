@@ -1,18 +1,22 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
+  const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [orders, setOrders] = React.useState([]);
   const [notifications, setNotifications] = React.useState([]);
   const [profileName, setProfileName] = React.useState('');
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
+  const [available, setAvailable] = React.useState(true);
+  const [notifPrefs, setNotifPrefs] = React.useState({ orders: true, messages: true, payments: true });
+  const [autoWithdraw, setAutoWithdraw] = React.useState(false);
   const [connectStatus, setConnectStatus] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
@@ -28,7 +32,7 @@ function ConsultantApp({ onLogout }) {
 
   const refreshConsultantData = React.useCallback(() => {
     setLoading(true);
-    Promise.all([
+    return Promise.all([
       fetch('/api/consultant/data').then(async r => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Unable to load consultant data');
@@ -45,13 +49,68 @@ function ConsultantApp({ onLogout }) {
         setProfileName(data.consultant?.name || '');
         setProfileEmail(data.consultant?.email || '');
         setProfileBio(data.consultant?.bio || '');
+        setAvailable(data.consultant?.available !== false);
+        setNotifPrefs(data.consultant?.notifPrefs || { orders: true, messages: true, payments: true });
+        setAutoWithdraw(Boolean(data.consultant?.autoWithdraw));
         setConnectStatus(status);
-        setNotifications((data.orders ?? []).filter(o => o.payoutStatus === 'failed').map(o => ({ text: `Payout failed for ${o.service}`, time: 'Needs review', dot: C.red })));
+        const newOrderNotifs = (data.orders ?? [])
+          .filter(o => o.status === 'new' || o.status === 'pending')
+          .map(o => ({ text: `New order: ${o.service} from ${o.student}`, time: o.date, dot: C.cyan }));
+        const failedPayoutNotifs = (data.orders ?? [])
+          .filter(o => o.payoutStatus === 'failed')
+          .map(o => ({ text: `Payout failed for ${o.service}`, time: 'Needs review', dot: C.red }));
+        setNotifications([...newOrderNotifs, ...failedPayoutNotifs]);
         setLoadError(null);
       })
       .catch(e => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const persistConsultantPrefs = async patch => {
+    try {
+      const res = await fetch('/api/consultant/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to update preferences');
+      return true;
+    } catch (e) {
+      setActionNotice(e.message);
+      return false;
+    }
+  };
+
+  const saveProfile = async () => {
+    const ok = await persistConsultantPrefs({
+      full_name: profileName,
+      email: profileEmail,
+      bio: profileBio,
+    });
+    if (ok) setActionNotice('Profile saved.');
+  };
+
+  const toggleAvailable = async () => {
+    const next = !available;
+    setAvailable(next);
+    const ok = await persistConsultantPrefs({ available: next });
+    if (!ok) setAvailable(!next);
+  };
+
+  const toggleNotifPref = async key => {
+    const next = { ...notifPrefs, [key]: !notifPrefs[key] };
+    setNotifPrefs(next);
+    const ok = await persistConsultantPrefs({ notif_prefs: next });
+    if (!ok) setNotifPrefs(notifPrefs);
+  };
+
+  const toggleAutoWithdraw = async () => {
+    const next = !autoWithdraw;
+    setAutoWithdraw(next);
+    const ok = await persistConsultantPrefs({ auto_withdraw: next });
+    if (!ok) setAutoWithdraw(!next);
+  };
 
   React.useEffect(() => { refreshConsultantData(); }, [refreshConsultantData]);
 
@@ -77,17 +136,107 @@ function ConsultantApp({ onLogout }) {
     setSelectedOrder(prev => prev ? { ...prev, status: 'completed', payoutStatus: data.payout?.transferred ? 'transferred' : prev.payoutStatus } : prev);
   };
 
-  const declineOrder = order => {
+  const acceptOrder = async order => {
     if (!order) return;
-    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'cancelled' } : o));
-    setActionNotice(`Order ${order.id} declined for this session.`);
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/accept`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to accept order');
+      await refreshConsultantData();
+      setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, status: 'active' } : prev);
+      setActionNotice(`Order ${order.id} accepted.`);
+    } catch (e) {
+      setActionNotice(e.message);
+    }
   };
 
-  const sendMessage = () => {
-    if (!msgInput.trim()) return;
-    setMessages(prev => [...prev, { from: 'consultant', text: msgInput, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-    setMsgInput('');
+  const declineOrder = async order => {
+    if (!order) return;
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'Declined by consultant' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to decline order');
+      await refreshConsultantData();
+      setSelectedOrder(prev => prev && prev.id === order.id ? null : prev);
+      if (page === 'order-detail') setPage('orders');
+      setActionNotice(`Order ${order.id} declined and returned to queue.`);
+    } catch (e) {
+      setActionNotice(e.message);
+    }
   };
+
+  const saveOrderProgress = async (order, progress) => {
+    if (!order) return;
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/progress`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ progress }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to save progress');
+      await refreshConsultantData();
+      setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, progress, status: data.order?.status || prev.status } : prev);
+      setActionNotice('Progress saved.');
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
+  const loadMessagesFor = React.useCallback(async order => {
+    if (!order?.id) return;
+    setMessagesLoading(true);
+    try {
+      const res = await fetch(`/api/consultant/messages?orderId=${encodeURIComponent(order.id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load messages');
+      setMessages((data.messages ?? []).map(m => ({
+        id: m.id,
+        from: m.sender_role === 'consultant' ? 'consultant' : 'student',
+        text: m.body,
+        name: order.student,
+        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      })));
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  const sendMessage = async () => {
+    const text = msgInput.trim();
+    if (!text || !selectedOrder?.id) return;
+    setMsgInput('');
+    try {
+      const res = await fetch('/api/consultant/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to send message');
+      const m = data.message;
+      setMessages(prev => [...prev, {
+        id: m.id,
+        from: 'consultant',
+        text: m.body,
+        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } catch (e) {
+      setMsgInput(text);
+      setActionNotice(e.message);
+    }
+  };
+
+  React.useEffect(() => {
+    if (selectedOrder) loadMessagesFor(selectedOrder);
+    else setMessages([]);
+  }, [selectedOrder, loadMessagesFor]);
 
   // ── SIDEBAR ──
   const Sidebar = () => (
@@ -159,7 +308,7 @@ function ConsultantApp({ onLogout }) {
         {newOrders > 0 && <Badge color="orange">{newOrders} new order{newOrders > 1 ? 's' : ''}</Badge>}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
-          <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
+          {notifications.length > 0 && <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />}
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Notifications</div>
@@ -202,13 +351,13 @@ function ConsultantApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
         <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome back, {profileName || 'Consultant'} 👋</h2>
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>{newOrders > 0 ? `You have ${newOrders} new order waiting for acceptance.` : 'All orders are up to date.'}</p>
+        <p style={{ color: C.textMuted, fontSize: '14px' }}>{newOrders > 0 ? `You have ${newOrders} new order${newOrders === 1 ? '' : 's'} waiting for acceptance.` : 'All orders are up to date.'}</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
-        <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} delta="+2" />
+        <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} />
         <StatCard label="New Requests" value={newOrders} icon="🆕" color={C.orange} />
-        <StatCard label="This Month" value={`$${monthEarnings}`} icon="💰" color={C.green} delta="" />
-        <StatCard label="Avg Rating" value="4.9 ⭐" icon="🏆" color={C.purple} />
+        <StatCard label="This Month" value={`$${monthEarnings}`} icon="💰" color={C.green} />
+        <StatCard label="Completed" value={orders.filter(o => o.status === 'completed').length} icon="🏆" color={C.purple} />
       </div>
       {!connectStatus?.onboarded && (
         <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '14px', padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
@@ -229,10 +378,7 @@ function ConsultantApp({ onLogout }) {
             <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '3px' }}>A new request is waiting for your review.</div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="success" size="sm" onClick={() => {
-              const order = orders.find(o => o.status === 'new');
-              if (order) { setSelectedOrder(order); setPage('order-detail'); }
-            }}>Accept</Btn>
+            <Btn variant="success" size="sm" onClick={() => acceptOrder(orders.find(o => o.status === 'new'))}>Accept</Btn>
             <Btn variant="danger" size="sm" onClick={() => declineOrder(orders.find(o => o.status === 'new'))}>Decline</Btn>
           </div>
         </div>
@@ -314,10 +460,10 @@ function ConsultantApp({ onLogout }) {
                 <span style={{ fontSize: '11px', color: C.textDim }}>Due: {order.deadline}</span>
               </div>
             </div>
-            {order.status === 'new' && (
-              <div style={{ display: 'flex', gap: '8px', marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${C.border}` }}>
-                <Btn variant="success" size="sm">Accept order</Btn>
-                <Btn variant="danger" size="sm">Decline</Btn>
+            {(order.status === 'new' || order.status === 'pending') && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+                <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Accept order</Btn>
+                <Btn variant="danger" size="sm" onClick={() => declineOrder(order)}>Decline</Btn>
               </div>
             )}
           </Card>
@@ -343,13 +489,13 @@ function ConsultantApp({ onLogout }) {
           <h2 style={{ fontSize: '18px', fontWeight: 800 }}>{order.service}</h2>
           <StatusBadge status={order.status} />
         </div>
-        {order.status === 'new' && (
+        {(order.status === 'new' || order.status === 'pending') && (
           <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span>📬</span>
             <span style={{ color: C.orange, fontWeight: 600, fontSize: '14px' }}>New order — waiting for your acceptance</span>
             <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
-              <Btn variant="success" size="sm">Accept</Btn>
-              <Btn variant="danger" size="sm">Decline</Btn>
+              <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Accept</Btn>
+              <Btn variant="danger" size="sm" onClick={() => declineOrder(order)}>Decline</Btn>
             </div>
           </div>
         )}
@@ -375,7 +521,7 @@ function ConsultantApp({ onLogout }) {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <Btn variant="primary" size="sm">Save progress</Btn>
+                <Btn variant="primary" size="sm" onClick={() => saveOrderProgress(order, progressVal)}>Save progress</Btn>
                 {progressVal >= 90 && order.status !== 'completed' && <Btn variant="success" size="sm" onClick={() => markOrderComplete(order)}>Mark as complete</Btn>}
               </div>
             </Card>
@@ -383,8 +529,14 @@ function ConsultantApp({ onLogout }) {
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Chat with {order.student}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '240px', overflowY: 'auto', marginBottom: '16px' }}>
+                {messagesLoading && messages.length === 0 && (
+                  <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading messages…</div>
+                )}
+                {!messagesLoading && messages.length === 0 && (
+                  <div style={{ color: C.textMuted, fontSize: '13px' }}>No messages yet — say hello.</div>
+                )}
                 {messages.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'consultant' ? 'row-reverse' : 'row' }}>
+                  <div key={m.id || i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'consultant' ? 'row-reverse' : 'row' }}>
                     {m.from === 'student' && <Avatar name={m.name} size={30} />}
                     <div style={{ maxWidth: '70%' }}>
                       <div style={{
@@ -429,13 +581,15 @@ function ConsultantApp({ onLogout }) {
               <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '12px' }}>Student Documents</div>
               {order.documents && order.documents.length > 0 ? order.documents.map((f, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-                  <span>📄 {f}</span>
-                  <Btn variant="ghost" size="sm">↓</Btn>
+                  <span>📄 {f.name || f}</span>
+                  {f.url ? <a href={f.url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '13px', textDecoration: 'none' }}>Download</a> : null}
                 </div>
               )) : (
-                <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>No student documents available.</div>
+                <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>No student documents shared yet.</div>
               )}
-              <Btn variant="secondary" fullWidth size="sm" style={{ marginTop: '10px' }}>+ Upload deliverable</Btn>
+              <div style={{ marginTop: '12px', fontSize: '12px', color: C.textDim, lineHeight: 1.5 }}>
+                Share deliverables and updates through the chat below — students will be notified.
+              </div>
             </Card>
           </div>
         </div>
@@ -444,137 +598,153 @@ function ConsultantApp({ onLogout }) {
   };
 
   // ── CLIENTS ──
-  const Clients = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Clients</h2>
-      <Card style={{ padding: '24px', textAlign: 'center' }}>
-        <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Client list is not available</div>
-        <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-          Client summaries will appear here once your platform orders and student relationships are loaded.
-        </div>
-      </Card>
-    </div>
-  );
+  const Clients = () => {
+    const clientMap = orders.reduce((acc, o) => {
+      const key = o.clientId || o.student;
+      if (!key) return acc;
+      const entry = acc.get(key) || { id: key, name: o.student, country: o.country, totalCents: 0, orders: 0, lastDate: null };
+      entry.orders += 1;
+      entry.totalCents += Number(o.consultantPayoutAmount || 0);
+      const ts = o.date ? new Date(o.date).getTime() : 0;
+      if (!entry.lastDate || ts > entry.lastDate) entry.lastDate = ts;
+      acc.set(key, entry);
+      return acc;
+    }, new Map());
+    const clients = Array.from(clientMap.values()).sort((a, b) => (b.lastDate || 0) - (a.lastDate || 0));
+
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Clients</h2>
+        {clients.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {clients.map(c => {
+              const clientOrders = orders.filter(o => (o.clientId || o.student) === c.id);
+              const firstOrder = clientOrders[0];
+              return (
+                <Card key={c.id} hover style={{ padding: '16px', cursor: firstOrder ? 'pointer' : 'default' }} onClick={() => firstOrder && (setSelectedOrder(firstOrder), setPage('order-detail'))}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                    <Avatar name={c.name} size={42} />
+                    <div style={{ flex: 1, minWidth: '180px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '14px' }}>{c.name}</div>
+                      <div style={{ color: C.textMuted, fontSize: '12px' }}>{c.country} · {c.orders} order{c.orders === 1 ? '' : 's'}</div>
+                    </div>
+                    <span style={{ fontSize: '13px', color: C.green, fontWeight: 700 }}>${(c.totalCents / 100).toFixed(2)}</span>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card style={{ padding: '24px', textAlign: 'center' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>No clients yet</div>
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+              Once students are matched to your services, they will appear here.
+            </div>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   // ── EARNINGS ──
   const Earnings = () => {
-    const [withdrawModal, setWithdrawModal] = React.useState(false);
-    const [withdrawMethod, setWithdrawMethod] = React.useState('paypal');
-    const [paypalEmail, setPaypalEmail] = React.useState('');
-    const [routingNum, setRoutingNum] = React.useState('');
-    const [accountNum, setAccountNum] = React.useState('');
-    const [autoWithdraw, setAutoWithdraw] = React.useState(false);
-    const [withdrawn, setWithdrawn] = React.useState(false);
-    const availableBalance = orders.filter(o => o.status === 'completed').reduce((a, o) => a + (parseInt(String(o.earn || '0').replace(/[^0-9]/g, '')) || 0), 0);
-    const completedOrders = orders.filter(o => o.status === 'completed').length;
-
-    const handleWithdraw = () => {
-      setWithdrawModal(false);
-      setWithdrawn(true);
-    };
+    const completed = orders.filter(o => o.status === 'completed');
+    const transferredCents = completed.reduce((a, o) => a + (o.payoutStatus === 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
+    const pendingCents = completed.reduce((a, o) => a + (o.payoutStatus !== 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
+    const transferredDollars = (transferredCents / 100).toFixed(2);
+    const pendingDollars = (pendingCents / 100).toFixed(2);
+    const completedOrders = completed.length;
+    const monthlyByKey = completed.reduce((acc, o) => {
+      if (!o.date || o.payoutStatus !== 'transferred') return acc;
+      const d = new Date(o.date);
+      if (Number.isNaN(d.getTime())) return acc;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+      acc[key] = acc[key] || { label, cents: 0, count: 0 };
+      acc[key].cents += Number(o.consultantPayoutAmount || 0);
+      acc[key].count += 1;
+      return acc;
+    }, {});
+    const monthlyRows = Object.entries(monthlyByKey).sort(([a], [b]) => b.localeCompare(a)).slice(0, 12);
+    const payoutRows = completed.filter(o => o.payoutStatus === 'transferred' || o.payoutStatus === 'failed');
 
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Earnings</h2>
 
-        {withdrawn && (
-          <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <span style={{ fontSize: '20px' }}>✅</span>
-            <div>
-              <div style={{ fontWeight: 700, color: C.green }}>Withdrawal initiated!</div>
-              <div style={{ fontSize: '13px', color: C.textMuted }}>${availableBalance} will arrive within 1–2 business days.</div>
-            </div>
-          </div>
-        )}
-
         <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0d2060 100%)`, borderRadius: '20px', padding: '28px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: 0, right: 0, width: '6px', height: '100%', background: C.cyan }} />
           <div style={{ position: 'absolute', top: 0, right: '6px', width: '6px', height: '100%', background: '#fff', opacity: 0.15 }} />
-          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Available to withdraw</div>
-          <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '20px' }}>${withdrawn ? '0' : availableBalance}</div>
+          <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Transferred to your bank</div>
+          <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>${transferredDollars}</div>
+          <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', marginBottom: '20px' }}>
+            Payouts move to your connected bank automatically when orders are completed and approved by the student.
+          </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <Btn variant="primary" size="md" onClick={() => !withdrawn && setWithdrawModal(true)} disabled={withdrawn}>
-              {withdrawn ? '✓ Withdrawn' : 'Withdraw now'}
-            </Btn>
+            {connectStatus?.onboarded ? (
+              <Btn variant="primary" size="md" onClick={openConnectDashboard}>Open Stripe payout dashboard</Btn>
+            ) : (
+              <Btn variant="primary" size="md" onClick={() => setPage('connect')}>Set up payouts</Btn>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button onClick={() => setAutoWithdraw(a => !a)} style={{
+              <button onClick={toggleAutoWithdraw} style={{
                 width: '40px', height: '22px', borderRadius: '99px', border: 'none', cursor: 'pointer',
                 background: autoWithdraw ? C.cyan : 'rgba(255,255,255,0.2)', position: 'relative', transition: 'background 0.2s',
               }}>
                 <div style={{ position: 'absolute', top: '3px', left: autoWithdraw ? '20px' : '3px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
               </button>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>Auto-withdraw on approval</span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>Auto-transfer on order approval</span>
             </div>
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-          <StatCard label="This Month" value={`$${monthEarnings}`} icon="📈" color={C.green} delta="" />
+          <StatCard label="This Month" value={`$${monthEarnings}`} icon="📈" color={C.green} />
           <StatCard label="All Time" value={`$${totalEarnings}`} icon="💰" color={C.cyan} />
-          <StatCard label="Pending" value={withdrawn ? '$0' : `$${availableBalance}`} icon="⏳" color={C.orange} />
+          <StatCard label="Pending Payout" value={`$${pendingDollars}`} icon="⏳" color={C.orange} />
           <StatCard label="Completed Orders" value={completedOrders} icon="✅" color={C.purple} />
         </div>
 
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Monthly Breakdown</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Monthly earnings trends will appear here once order and payout data is available.
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Monthly Breakdown</div>
+          {monthlyRows.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {monthlyRows.map(([key, row]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: '10px', background: C.surface2, fontSize: '13px' }}>
+                  <span style={{ color: C.text, fontWeight: 600 }}>{row.label}</span>
+                  <span style={{ color: C.textMuted }}>{row.count} order{row.count === 1 ? '' : 's'}</span>
+                  <span style={{ color: C.green, fontWeight: 700 }}>${(row.cents / 100).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+              No transferred payouts yet. Earnings appear here once Stripe Connect transfers complete.
+            </div>
+          )}
         </Card>
 
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payout History</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Your payout history will populate when payments are processed through the system.
-          </div>
-        </Card>
-
-        {withdrawModal && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '32px', width: '100%', maxWidth: '460px', position: 'relative' }}>
-              <button onClick={() => setWithdrawModal(false)} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
-              <h3 style={{ fontSize: '18px', fontWeight: 800, marginBottom: '6px' }}>Withdraw funds</h3>
-              <p style={{ color: C.textMuted, fontSize: '13px', marginBottom: '24px' }}>${availableBalance} available from approved orders.</p>
-
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
-                {[['paypal', '🅿️ PayPal'], ['bank', '🏦 US Bank (ACH)']].map(([val, lbl]) => (
-                  <button key={val} onClick={() => setWithdrawMethod(val)} style={{
-                    flex: 1, padding: '12px', border: `1px solid ${withdrawMethod === val ? C.cyan : C.border2}`,
-                    borderRadius: '12px', background: withdrawMethod === val ? `${C.cyan}18` : C.surface2,
-                    color: withdrawMethod === val ? C.cyan : C.textMuted,
-                    fontWeight: withdrawMethod === val ? 700 : 400, fontSize: '13px',
-                    cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                  }}>{lbl}</button>
-                ))}
-              </div>
-
-              {withdrawMethod === 'paypal' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <Input label="PayPal email address" type="email" value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} placeholder="your@paypal.com" icon="✉" />
-                  <div style={{ background: C.surface2, borderRadius: '10px', padding: '14px', fontSize: '13px', color: C.textMuted }}>
-                    Funds arrive instantly to your PayPal account. PayPal fees may apply.
+          {payoutRows.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {payoutRows.map(o => (
+                <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{o.service}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px' }}>{o.id} · {o.date}</div>
                   </div>
+                  <PayoutBadge status={o.payoutStatus} />
+                  <span style={{ fontWeight: 700, color: o.payoutStatus === 'transferred' ? C.green : C.orange }}>{o.earn}</span>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <Input label="Routing number (ABA)" value={routingNum} onChange={e => setRoutingNum(e.target.value)} placeholder="9-digit routing number" icon="🏦" />
-                  <Input label="Account number" value={accountNum} onChange={e => setAccountNum(e.target.value)} placeholder="Your checking account" icon="🔢" />
-                  <div style={{ background: C.surface2, borderRadius: '10px', padding: '14px', fontSize: '13px', color: C.textMuted }}>
-                    ACH transfers arrive in 1–2 business days. US bank accounts only.
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', padding: '16px', background: C.surface2, borderRadius: '12px', marginBottom: '20px' }}>
-                <span style={{ fontSize: '14px', color: C.textMuted }}>Withdrawal amount</span>
-                <span style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>${availableBalance}</span>
-              </div>
-              <Btn variant="primary" fullWidth size="lg" onClick={handleWithdraw}>
-                Withdraw ${availableBalance} →
-              </Btn>
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+              Your payout history will populate when Stripe Connect transfers settle.
+            </div>
+          )}
+        </Card>
       </div>
     );
   };
@@ -618,58 +788,54 @@ function ConsultantApp({ onLogout }) {
   );
 
   // ── SETTINGS ──
-  const Settings = () => {
-    const [avail, setAvail] = React.useState(true);
-    const [notifs, setNotifs] = React.useState({ orders: true, messages: true, payments: true });
-    return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Settings</h2>
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <Avatar name={profileName || 'Consultant'} size={60} color={C.purple} />
+  const Settings = () => (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Settings</h2>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+          <Avatar name={profileName || 'Consultant'} size={60} color={C.purple} />
+          <div>
+            <div style={{ fontWeight: 700 }}>{profileName || 'Consultant Name'}</div>
+            <div style={{ color: C.textMuted, fontSize: '13px' }}>{profileEmail || 'you@example.com'}</div>
+            <div style={{ color: C.textDim, fontSize: '12px', marginTop: '4px' }}>Profile photos use your account avatar from sign-in.</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Input label="Full name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Full name" />
+          <Input label="Email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="Email address" />
+          <Input label="Bio" value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Short profile summary" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
             <div>
-              <div style={{ fontWeight: 700 }}>{profileName || 'Consultant Name'}</div>
-              <div style={{ color: C.textMuted, fontSize: '13px' }}>{profileEmail || 'you@example.com'}</div>
-              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }}>Change photo</Btn>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>Available for orders</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Toggle off to pause new requests</div>
             </div>
+            <button onClick={toggleAvailable} style={{
+              width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+              background: available ? C.green : C.surface3, position: 'relative', transition: 'background 0.2s',
+            }}>
+              <div style={{ position: 'absolute', top: '3px', left: available ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Input label="Full name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Full name" />
-            <Input label="Email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="Email address" />
-            <Input label="Bio" value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Short profile summary" />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>Available for orders</div>
-                <div style={{ fontSize: '12px', color: C.textMuted }}>Toggle off to pause new requests</div>
-              </div>
-              <button onClick={() => setAvail(a => !a)} style={{
-                width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
-                background: avail ? C.green : C.surface3, position: 'relative', transition: 'background 0.2s',
-              }}>
-                <div style={{ position: 'absolute', top: '3px', left: avail ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
-              </button>
-            </div>
-            <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }}>Save changes</Btn>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={saveProfile}>Save changes</Btn>
+        </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Notifications</div>
+        {[['orders', 'New order requests'], ['messages', 'Student messages'], ['payments', 'Payment confirmations']].map(([key, label]) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: '14px' }}>{label}</span>
+            <button onClick={() => toggleNotifPref(key)} style={{
+              width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+              background: notifPrefs[key] ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
+            }}>
+              <div style={{ position: 'absolute', top: '3px', left: notifPrefs[key] ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </button>
           </div>
-        </Card>
-        <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Notifications</div>
-          {[['orders', 'New order requests'], ['messages', 'Student messages'], ['payments', 'Payment confirmations']].map(([key, label]) => (
-            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: '14px' }}>{label}</span>
-              <button onClick={() => setNotifs(n => ({ ...n, [key]: !n[key] }))} style={{
-                width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
-                background: notifs[key] ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
-              }}>
-                <div style={{ position: 'absolute', top: '3px', left: notifs[key] ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
-              </button>
-            </div>
-          ))}
-        </Card>
-      </div>
-    );
-  };
+        ))}
+      </Card>
+    </div>
+  );
 
   // ── MESSAGES ──
   const Messages = () => (
@@ -704,8 +870,14 @@ function ConsultantApp({ onLogout }) {
               </div>
             </div>
             <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {messagesLoading && messages.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading messages…</div>
+              )}
+              {!messagesLoading && messages.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px' }}>No messages yet.</div>
+              )}
               {messages.map((m, i) => (
-                <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'consultant' ? 'row-reverse' : 'row' }}>
+                <div key={m.id || i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'consultant' ? 'row-reverse' : 'row' }}>
                   {m.from === 'student' && <Avatar name={m.name} size={30} />}
                   <div style={{ maxWidth: '60%' }}>
                     <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'consultant' ? C.cyan : C.surface2, color: m.from === 'consultant' ? '#000' : C.text }}>{m.text}</div>
