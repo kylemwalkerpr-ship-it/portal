@@ -814,7 +814,7 @@ function StudentApp({ onLogout, userId, userName }) {
         </p>
       </div>
       {/* Stats — only shown once there's real activity */}
-      {STUDENT_ORDERS.length > 0 && (
+      {orders.length > 0 && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
         <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} />
         <StatCard label="Completed" value={completedOrders} icon="✅" color={C.green} />
@@ -827,7 +827,7 @@ function StudentApp({ onLogout, userId, userName }) {
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {STUDENT_ORDERS.filter(o => o.status !== 'completed').map(order => (
+          {orders.filter(o => o.status !== 'completed').map(order => (
             <Card key={order.id} style={{ padding: '18px', cursor: 'pointer' }} onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
                 <Avatar name={order.consultant} size={40} />
@@ -880,7 +880,7 @@ function StudentApp({ onLogout, userId, userName }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>My Orders</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{STUDENT_ORDERS.length} total orders</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p>
         </div>
         <Btn variant="primary" size="sm" onClick={() => setPage('services')}>+ New Order</Btn>
       </div>
@@ -1705,7 +1705,7 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
                 <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
-                  {STUDENT_ORDERS.map(o => (
+                  {orders.map(o => (
                     <div key={o.id} onClick={() => setSelectedOrder(o)} style={{
                       padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer',
                       background: selectedOrder?.id === o.id ? C.surface2 : 'transparent',
