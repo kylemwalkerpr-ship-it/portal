@@ -3,6 +3,57 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
+function EarningsChart({ days }) {
+  const data = Array.isArray(days) && days.length > 0 ? days : [];
+  if (data.length === 0) {
+    return (
+      <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+        Earnings trends will populate as your completed orders accumulate.
+      </div>
+    );
+  }
+  const maxCents = Math.max(1, ...data.map(d => d.cents || 0));
+  const totalCents = data.reduce((a, d) => a + (d.cents || 0), 0);
+  const totalOrders = data.reduce((a, d) => a + (d.orders || 0), 0);
+  const formatLabel = iso => {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+  const firstLabel = formatLabel(data[0].date);
+  const lastLabel = formatLabel(data[data.length - 1].date);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: C.text }}>${(totalCents / 100).toFixed(2)}</div>
+          <div style={{ fontSize: '12px', color: C.textMuted }}>{totalOrders} completed order{totalOrders === 1 ? '' : 's'} in 30 days</div>
+        </div>
+        <div style={{ fontSize: '11px', color: C.textDim }}>{firstLabel} → {lastLabel}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '120px' }}>
+        {data.map(d => {
+          const pct = (d.cents || 0) / maxCents;
+          const height = Math.max(2, Math.round(pct * 110));
+          const tooltip = `${formatLabel(d.date)} · $${((d.cents || 0) / 100).toFixed(2)}${d.orders ? ` · ${d.orders} order${d.orders === 1 ? '' : 's'}` : ''}`;
+          return (
+            <div
+              key={d.date}
+              title={tooltip}
+              style={{
+                flex: 1,
+                height: `${height}px`,
+                background: d.cents > 0 ? C.cyan : C.surface3,
+                borderRadius: '3px 3px 0 0',
+                transition: 'background 0.2s',
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ConsultantApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [selectedOrder, setSelectedOrder] = React.useState(null);
@@ -10,7 +61,9 @@ function ConsultantApp({ onLogout }) {
   const [messages, setMessages] = React.useState([]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [orders, setOrders] = React.useState([]);
+  const [earningsByDay, setEarningsByDay] = React.useState([]);
   const [notifications, setNotifications] = React.useState([]);
+  const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set());
   const [profileName, setProfileName] = React.useState('');
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
@@ -23,6 +76,10 @@ function ConsultantApp({ onLogout }) {
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
+  const [orderFiles, setOrderFiles] = React.useState([]);
+  const [filesLoading, setFilesLoading] = React.useState(false);
+  const [uploadingFile, setUploadingFile] = React.useState(false);
+  const fileInputRef = React.useRef(null);
 
   const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
   const newOrders = orders.filter(o => o.status === 'new').length;
@@ -46,6 +103,7 @@ function ConsultantApp({ onLogout }) {
     ])
       .then(([data, status]) => {
         setOrders(data.orders ?? []);
+        setEarningsByDay(data.earningsByDay ?? []);
         setProfileName(data.consultant?.name || '');
         setProfileEmail(data.consultant?.email || '');
         setProfileBio(data.consultant?.bio || '');
@@ -55,10 +113,23 @@ function ConsultantApp({ onLogout }) {
         setConnectStatus(status);
         const newOrderNotifs = (data.orders ?? [])
           .filter(o => o.status === 'new' || o.status === 'pending')
-          .map(o => ({ text: `New order: ${o.service} from ${o.student}`, time: o.date, dot: C.cyan }));
+          .map(o => ({
+            key: `order-new:${o.id}`,
+            text: `New order: ${o.service} from ${o.student}`,
+            time: o.date,
+            dot: C.cyan,
+            order: o,
+          }));
         const failedPayoutNotifs = (data.orders ?? [])
           .filter(o => o.payoutStatus === 'failed')
-          .map(o => ({ text: `Payout failed for ${o.service}`, time: 'Needs review', dot: C.red }));
+          .map(o => ({
+            key: `payout-failed:${o.id}`,
+            text: `Payout failed for ${o.service}`,
+            time: 'Needs review',
+            dot: C.red,
+            order: o,
+            target: 'earnings',
+          }));
         setNotifications([...newOrderNotifs, ...failedPayoutNotifs]);
         setLoadError(null);
       })
@@ -113,6 +184,118 @@ function ConsultantApp({ onLogout }) {
   };
 
   React.useEffect(() => { refreshConsultantData(); }, [refreshConsultantData]);
+
+  const refreshNotifReads = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/consultant/notifications');
+      const data = await res.json();
+      if (res.ok) setReadNotifKeys(new Set(data.readKeys || []));
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  React.useEffect(() => { refreshNotifReads(); }, [refreshNotifReads]);
+
+  const markNotifsRead = React.useCallback(async keys => {
+    if (!keys || keys.length === 0) return;
+    setReadNotifKeys(prev => {
+      const next = new Set(prev);
+      for (const k of keys) next.add(k);
+      return next;
+    });
+    try {
+      await fetch('/api/consultant/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys }),
+      });
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  const clearReadNotifs = React.useCallback(async () => {
+    setReadNotifKeys(new Set());
+    try {
+      await fetch('/api/consultant/notifications', { method: 'DELETE' });
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  const visibleNotifications = React.useMemo(
+    () => notifications.filter(n => !readNotifKeys.has(n.key)),
+    [notifications, readNotifKeys],
+  );
+
+  const handleNotificationClick = async n => {
+    await markNotifsRead([n.key]);
+    setNotifOpen(false);
+    if (n.target) {
+      setPage(n.target);
+    } else if (n.order) {
+      setSelectedOrder(n.order);
+      setPage('order-detail');
+    }
+  };
+
+  const loadOrderFiles = React.useCallback(async order => {
+    if (!order?.id) return;
+    setFilesLoading(true);
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/files`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load files');
+      setOrderFiles(data.files || []);
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedOrder) loadOrderFiles(selectedOrder);
+    else setOrderFiles([]);
+  }, [selectedOrder, loadOrderFiles]);
+
+  const uploadFile = async file => {
+    if (!file || !selectedOrder?.id) return;
+    setUploadingFile(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/consultant/orders/${selectedOrder.id}/files`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setOrderFiles(prev => [data.file, ...prev]);
+      setActionNotice(`Uploaded ${data.file.name}.`);
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const deleteFile = async fileId => {
+    if (!selectedOrder?.id || !fileId) return;
+    if (typeof window !== 'undefined' && !window.confirm('Delete this file?')) return;
+    try {
+      const res = await fetch(`/api/consultant/orders/${selectedOrder.id}/files?fileId=${encodeURIComponent(fileId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to delete file');
+      setOrderFiles(prev => prev.filter(f => f.id !== fileId));
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
 
   const startConnectOnboarding = async () => {
     const res = await fetch('/api/connect/onboard', { method: 'POST' });
@@ -234,9 +417,24 @@ function ConsultantApp({ onLogout }) {
   };
 
   React.useEffect(() => {
-    if (selectedOrder) loadMessagesFor(selectedOrder);
-    else setMessages([]);
-  }, [selectedOrder, loadMessagesFor]);
+    if (!selectedOrder) {
+      setMessages([]);
+      return undefined;
+    }
+    loadMessagesFor(selectedOrder);
+    if (page !== 'messages' && page !== 'order-detail') return undefined;
+    const interval = setInterval(() => loadMessagesFor(selectedOrder), 6000);
+    return () => clearInterval(interval);
+  }, [selectedOrder, loadMessagesFor, page]);
+
+  // Poll consultant data on a slow timer so new orders / payouts surface without manual refresh
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshConsultantData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [refreshConsultantData]);
 
   // ── SIDEBAR ──
   const Sidebar = () => (
@@ -266,7 +464,14 @@ function ConsultantApp({ onLogout }) {
           <Avatar name={profileName || 'Consultant'} size={32} color={C.purple} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileName || 'Consultant'}</div>
-            <div style={{ fontSize: '11px', color: C.green }}>● Available</div>
+            <button
+              type="button"
+              onClick={toggleAvailable}
+              title={available ? 'Available — click to pause new orders' : 'Unavailable — click to resume'}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: available ? C.green : C.textDim, fontFamily: 'inherit' }}
+            >
+              ● {available ? 'Available' : 'Unavailable'}
+            </button>
           </div>
           <button
             type="button"
@@ -308,21 +513,40 @@ function ConsultantApp({ onLogout }) {
         {newOrders > 0 && <Badge color="orange">{newOrders} new order{newOrders > 1 ? 's' : ''}</Badge>}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
-          {notifications.length > 0 && <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />}
+          {visibleNotifications.length > 0 && <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />}
           {notifOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Notifications</div>
-              {notifications.length > 0 ? notifications.map((n, i) => (
-                <div key={i} style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < notifications.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+            <div style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>Notifications</span>
+                {visibleNotifications.length > 0 && (
+                  <button onClick={() => markNotifsRead(visibleNotifications.map(n => n.key))} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit', fontWeight: 600 }}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {visibleNotifications.length > 0 ? visibleNotifications.map((n, i) => (
+                <button
+                  key={n.key}
+                  type="button"
+                  onClick={() => handleNotificationClick(n)}
+                  style={{ width: '100%', textAlign: 'left', padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < visibleNotifications.length - 1 ? `1px solid ${C.border}` : 'none', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                >
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot || C.cyan, marginTop: '5px', flexShrink: 0 }} />
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
                     <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
                   </div>
-                </div>
+                </button>
               )) : (
                 <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
-                  No notifications yet
+                  You're all caught up.
+                </div>
+              )}
+              {readNotifKeys.size > 0 && (
+                <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, textAlign: 'center' }}>
+                  <button onClick={clearReadNotifs} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' }}>
+                    Reset read state
+                  </button>
                 </div>
               )}
             </div>
@@ -411,13 +635,11 @@ function ConsultantApp({ onLogout }) {
         </div>
       </div>
 
-      {/* Earnings chart placeholder */}
+      {/* Earnings chart */}
       <div>
         <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Earnings — Last 30 days</h3>
         <Card style={{ padding: '20px' }}>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Earnings trends will be available here once your order history is connected to the dashboard.
-          </div>
+          <EarningsChart days={earningsByDay} />
         </Card>
       </div>
     </div>
@@ -578,17 +800,60 @@ function ConsultantApp({ onLogout }) {
               ))}
             </Card>
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '12px' }}>Student Documents</div>
-              {order.documents && order.documents.length > 0 ? order.documents.map((f, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
-                  <span>📄 {f.name || f}</span>
-                  {f.url ? <a href={f.url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '13px', textDecoration: 'none' }}>Download</a> : null}
-                </div>
-              )) : (
-                <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>No student documents shared yet.</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px' }}>Files</div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  style={{ background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '8px', padding: '6px 10px', cursor: uploadingFile ? 'not-allowed' : 'pointer', color: C.text, fontSize: '12px', fontWeight: 600, opacity: uploadingFile ? 0.6 : 1 }}
+                >
+                  {uploadingFile ? 'Uploading…' : '+ Upload'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadFile(f);
+                  }}
+                />
+              </div>
+              {filesLoading && orderFiles.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading files…</div>
               )}
-              <div style={{ marginTop: '12px', fontSize: '12px', color: C.textDim, lineHeight: 1.5 }}>
-                Share deliverables and updates through the chat below — students will be notified.
+              {!filesLoading && orderFiles.length === 0 && (
+                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>No files yet. Upload deliverables here — your student will see them instantly.</div>
+              )}
+              {orderFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {orderFiles.map((f, i) => {
+                    const sizeKb = f.size_bytes ? Math.max(1, Math.round(f.size_bytes / 1024)) : null;
+                    const date = f.created_at ? new Date(f.created_at).toLocaleDateString() : '';
+                    const mine = f.uploader_role === 'consultant';
+                    return (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: i < orderFiles.length - 1 ? `1px solid ${C.border}` : 'none', fontSize: '13px' }}>
+                        <span style={{ flexShrink: 0 }}>📄</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }}>{f.name}</div>
+                          <div style={{ fontSize: '11px', color: C.textDim }}>
+                            {mine ? 'You' : f.uploader_name || 'Student'}{sizeKb ? ` · ${sizeKb} KB` : ''}{date ? ` · ${date}` : ''}
+                          </div>
+                        </div>
+                        {f.url && (
+                          <a href={f.url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>Open</a>
+                        )}
+                        {mine && (
+                          <button onClick={() => deleteFile(f.id)} title="Delete" style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ marginTop: '12px', fontSize: '11px', color: C.textDim, lineHeight: 1.5 }}>
+                Files are stored privately. Links expire after 10 minutes — they're regenerated each time the order is opened.
               </div>
             </Card>
           </div>

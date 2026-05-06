@@ -15,13 +15,26 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
 
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
 
-  const { data, error } = await auth.db
+  let { data, error } = await auth.db
     .from('orders')
-    .update({ status: 'completed', escrow_status: 'released' })
+    .update({ status: 'completed', escrow_status: 'released', completed_at: new Date().toISOString() })
     .eq('id', id)
     .eq('consultant_id', auth.profile.id)
     .select('*')
     .single()
+
+  if (error && /completed_at/i.test(error.message)) {
+    // Older schemas may not have completed_at — retry without it
+    const retry = await auth.db
+      .from('orders')
+      .update({ status: 'completed', escrow_status: 'released' })
+      .eq('id', id)
+      .eq('consultant_id', auth.profile.id)
+      .select('*')
+      .single()
+    data = retry.data
+    error = retry.error
+  }
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
 

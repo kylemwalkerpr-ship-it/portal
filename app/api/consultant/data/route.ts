@@ -20,11 +20,28 @@ export async function GET() {
   const error = ordersRes.error || itemsRes.error || servicesRes.error || profilesRes.error
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
+  const orderRows = ordersRes.data ?? []
+  const orderIds = orderRows.map(o => o.id)
+
+  let fileCountByOrder = new Map<string, number>()
+  if (orderIds.length > 0) {
+    const { data: fileRows } = await db
+      .from('order_files')
+      .select('order_id')
+      .in('order_id', orderIds)
+    if (fileRows) {
+      fileCountByOrder = fileRows.reduce((m, r) => {
+        m.set(r.order_id, (m.get(r.order_id) || 0) + 1)
+        return m
+      }, new Map<string, number>())
+    }
+  }
+
   const itemsByOrder = new Map((itemsRes.data ?? []).map(item => [item.order_id, item]))
   const serviceById = new Map((servicesRes.data ?? []).map(service => [service.id, service]))
   const profileById = new Map((profilesRes.data ?? []).map(p => [p.id, p]))
 
-  const orders = (ordersRes.data ?? []).map(order => {
+  const orders = orderRows.map(order => {
     const item = itemsByOrder.get(order.id)
     const service = serviceById.get(item?.service_id)
     const student = profileById.get(order.client_id)
@@ -39,14 +56,38 @@ export async function GET() {
       country: student?.country || '—',
       status: order.status === 'queued' ? 'pending' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',
+      createdAt: order.created_at || null,
+      completedAt: order.completed_at || null,
       deadline: order.deadline ? new Date(order.deadline).toLocaleDateString() : '—',
       progress: storedProgress ?? fallbackProgress,
       earn: `$${dollarsFromCents(payoutCents).toFixed(2)}`,
       payoutStatus: order.payout_status || 'pending',
       consultantPayoutAmount: payoutCents,
-      documents: [],
+      fileCount: fileCountByOrder.get(order.id) || 0,
     }
   })
+
+  // Daily earnings for the last 30 days, based on completed orders with transferred or pending payouts
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days: { date: string; cents: number; orders: number }[] = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    days.push({ date: d.toISOString().slice(0, 10), cents: 0, orders: 0 })
+  }
+  const dayIndex = new Map(days.map((d, i) => [d.date, i]))
+
+  for (const order of orderRows) {
+    if (order.status !== 'completed') continue
+    const ts = order.completed_at || order.updated_at || order.created_at
+    if (!ts) continue
+    const key = new Date(ts).toISOString().slice(0, 10)
+    const idx = dayIndex.get(key)
+    if (idx === undefined) continue
+    days[idx].cents += Number(order.consultant_payout_amount || 0)
+    days[idx].orders += 1
+  }
 
   const defaultNotifPrefs = { orders: true, messages: true, payments: true }
 
@@ -61,5 +102,6 @@ export async function GET() {
       stripeOnboardingComplete: Boolean(consultant.stripe_onboarding_complete ?? consultant.stripeOnboardingComplete),
     },
     orders,
+    earningsByDay: days,
   })
 }
