@@ -79,7 +79,12 @@ function ConsultantApp({ onLogout }) {
   const [orderFiles, setOrderFiles] = React.useState([]);
   const [filesLoading, setFilesLoading] = React.useState(false);
   const [uploadingFile, setUploadingFile] = React.useState(false);
+  const [orderDetailProgress, setOrderDetailProgress] = React.useState(0);
   const fileInputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (selectedOrder) setOrderDetailProgress(Number(selectedOrder.progress) || 0);
+  }, [selectedOrder?.id, selectedOrder?.progress]);
 
   const activeOrders = orders.filter(o => o.status === 'active' || o.status === 'review').length;
   const newOrders = orders.filter(o => o.status === 'new').length;
@@ -297,26 +302,59 @@ function ConsultantApp({ onLogout }) {
     }
   };
 
+  const [connectBusy, setConnectBusy] = React.useState(false);
+
   const startConnectOnboarding = async () => {
-    const res = await fetch('/api/connect/onboard', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unable to start onboarding');
-    window.location.href = data.url;
+    setConnectBusy(true);
+    setActionNotice('');
+    try {
+      const res = await fetch('/api/connect/onboard', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || `Unable to start onboarding (HTTP ${res.status})`);
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      setActionNotice(e.message);
+      setConnectBusy(false);
+    }
   };
 
   const openConnectDashboard = async () => {
-    const res = await fetch('/api/connect/dashboard-link', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unable to open payout dashboard');
-    window.location.href = data.url;
+    setConnectBusy(true);
+    setActionNotice('');
+    try {
+      const res = await fetch('/api/connect/dashboard-link', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || `Unable to open payout dashboard (HTTP ${res.status})`);
+      }
+      window.location.href = data.url;
+    } catch (e) {
+      setActionNotice(e.message);
+      setConnectBusy(false);
+    }
   };
 
   const markOrderComplete = async order => {
-    const res = await fetch(`/api/consultant/orders/${order.id}/complete`, { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Unable to complete order');
-    await refreshConsultantData();
-    setSelectedOrder(prev => prev ? { ...prev, status: 'completed', payoutStatus: data.payout?.transferred ? 'transferred' : prev.payoutStatus } : prev);
+    if (!order) return;
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/complete`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Unable to complete order');
+      await refreshConsultantData();
+      setSelectedOrder(prev => prev ? { ...prev, status: 'completed', payoutStatus: data.payout?.transferred ? 'transferred' : prev.payoutStatus } : prev);
+      const payoutMsg = data.payout?.transferred
+        ? ' Payout transferred to your connected bank.'
+        : data.payout?.skipped
+          ? ` Payout skipped: ${data.payout.reason || 'see payout setup'}.`
+          : data.payout?.failed
+            ? ` Payout transfer failed: ${data.payout.error || 'see Stripe dashboard'}.`
+            : '';
+      setActionNotice(`Order ${order.id} marked complete.${payoutMsg}`);
+    } catch (e) {
+      setActionNotice(e.message);
+    }
   };
 
   const acceptOrder = async order => {
@@ -696,7 +734,8 @@ function ConsultantApp({ onLogout }) {
 
   // ── ORDER DETAIL (consultant view) ──
   const OrderDetail = ({ order }) => {
-    const [progressVal, setProgressVal] = React.useState(order.progress);
+    const progressVal = orderDetailProgress;
+    const setProgressVal = setOrderDetailProgress;
     const timeline = [
       { label: 'Order received', date: order.date, done: true },
       { label: 'Accepted', date: '+1 day', done: order.status !== 'new' },
@@ -947,7 +986,9 @@ function ConsultantApp({ onLogout }) {
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             {connectStatus?.onboarded ? (
-              <Btn variant="primary" size="md" onClick={openConnectDashboard}>Open Stripe payout dashboard</Btn>
+              <Btn variant="primary" size="md" onClick={openConnectDashboard} disabled={connectBusy}>
+                {connectBusy ? 'Opening Stripe…' : 'Open Stripe payout dashboard'}
+              </Btn>
             ) : (
               <Btn variant="primary" size="md" onClick={() => setPage('connect')}>Set up payouts</Btn>
             )}
@@ -1039,11 +1080,15 @@ function ConsultantApp({ onLogout }) {
         <Divider style={{ margin: '20px 0' }} />
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {connectStatus?.onboarded ? (
-            <Btn variant="primary" onClick={openConnectDashboard}>View Payout Dashboard</Btn>
+            <Btn variant="primary" onClick={openConnectDashboard} disabled={connectBusy}>
+              {connectBusy ? 'Opening Stripe…' : 'View Payout Dashboard'}
+            </Btn>
           ) : (
-            <Btn variant="primary" onClick={startConnectOnboarding}>Connect Bank Account</Btn>
+            <Btn variant="primary" onClick={startConnectOnboarding} disabled={connectBusy}>
+              {connectBusy ? 'Redirecting to Stripe…' : 'Connect Bank Account'}
+            </Btn>
           )}
-          <Btn variant="secondary" onClick={refreshConsultantData}>Refresh Status</Btn>
+          <Btn variant="secondary" onClick={refreshConsultantData} disabled={connectBusy}>Refresh Status</Btn>
         </div>
         <div style={{ marginTop: '16px', color: C.textMuted, fontSize: '13px' }}>
           Charges enabled: {connectStatus?.chargesEnabled ? 'Yes' : 'No'} · Payouts enabled: {connectStatus?.payoutsEnabled ? 'Yes' : 'No'}
@@ -1170,9 +1215,9 @@ function ConsultantApp({ onLogout }) {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
-      <Sidebar />
+      {Sidebar()}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <TopBar title={{ dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard'} />
+        {TopBar({ title: { dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard' })}
         <div style={{ flex: 1 }}>
           {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
           {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
@@ -1182,14 +1227,14 @@ function ConsultantApp({ onLogout }) {
               <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
             </div>
           )}
-          {page === 'dashboard' && <Dashboard />}
-          {page === 'orders' && <Orders />}
-          {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
-          {page === 'clients' && <Clients />}
-          {page === 'messages' && <Messages />}
-          {page === 'earnings' && <Earnings />}
-          {page === 'connect' && <Connect />}
-          {page === 'settings' && <Settings />}
+          {page === 'dashboard' && Dashboard()}
+          {page === 'orders' && Orders()}
+          {page === 'order-detail' && selectedOrder && OrderDetail({ order: selectedOrder })}
+          {page === 'clients' && Clients()}
+          {page === 'messages' && Messages()}
+          {page === 'earnings' && Earnings()}
+          {page === 'connect' && Connect()}
+          {page === 'settings' && Settings()}
         </div>
       </div>
     </div>

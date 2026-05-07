@@ -2,7 +2,7 @@ import { getClerkUserId } from './auth'
 import { createSupabaseAdminClient } from './supabase'
 
 export type ConsultantAuth =
-  | { error: string; status: 401 | 403 | 404 }
+  | { error: string; status: 401 | 403 | 404 | 500 }
   | { db: ReturnType<typeof createSupabaseAdminClient>; profile: Record<string, any>; consultant: Record<string, any> }
 
 export async function getCurrentConsultant(): Promise<ConsultantAuth> {
@@ -18,8 +18,17 @@ export async function getCurrentConsultant(): Promise<ConsultantAuth> {
 
   if (!profile || profile.role !== 'consultant') return { error: 'Forbidden', status: 403 }
 
-  const consultant = await findConsultantForProfile(db, profile)
-  if (!consultant) return { error: 'Consultant record not found', status: 404 }
+  let consultant = await findConsultantForProfile(db, profile)
+  if (!consultant) {
+    consultant = await provisionConsultantForProfile(db, profile)
+  }
+  if (!consultant) {
+    return {
+      error:
+        'Unable to provision your consultant workspace. Run the supabase/consultant_provisioning.sql migration and try again.',
+      status: 500,
+    }
+  }
 
   return { db, profile, consultant }
 }
@@ -45,6 +54,56 @@ export async function findConsultantForProfile(
   }
 
   return null
+}
+
+/**
+ * Idempotently create a `consultants` row for a profile that has role=consultant
+ * but no matching consultants record yet.
+ *
+ * The base consultants table was provisioned outside our migration history, so
+ * we don't know its exact column shape. Try the common foreign-key shapes
+ * (`profile_id`, then `user_id`) and fall back to an email-only insert.
+ */
+export async function provisionConsultantForProfile(
+  db: ReturnType<typeof createSupabaseAdminClient>,
+  profile: Record<string, any>,
+) {
+  if (profile.role !== 'consultant') return null
+
+  const baseRow: Record<string, unknown> = {
+    email: profile.email || null,
+    full_name: profile.full_name || null,
+  }
+
+  const candidates: Array<Record<string, unknown>> = [
+    { ...baseRow, profile_id: profile.id },
+    { ...baseRow, user_id: profile.id },
+    baseRow,
+  ]
+
+  for (const candidate of candidates) {
+    const { data, error } = await db
+      .from('consultants')
+      .insert(candidate)
+      .select('*')
+      .single()
+    if (!error && data) return data
+    // If the column doesn't exist (legacy schema), try the next shape.
+    if (error && /column .* does not exist|column .* of relation/i.test(error.message)) {
+      continue
+    }
+    // Race: another request just created the row — re-find and return.
+    if (error && /duplicate key|unique constraint/i.test(error.message)) {
+      const found = await findConsultantForProfile(db, profile)
+      if (found) return found
+    }
+    if (error) {
+      console.error('[provisionConsultantForProfile] insert error', error.message)
+    }
+  }
+
+  // Final attempt: re-find in case a concurrent request created it.
+  return findConsultantForProfile(db, profile)
 }
 
 export async function findConsultantForOrder(
