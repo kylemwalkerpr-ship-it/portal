@@ -21,6 +21,8 @@ const ALLOWED_ORIGINS = new Set([
   'https://checkout.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
+  'https://lattice.legal',
+  'https://www.lattice.legal',
 ])
 
 function corsHeaders(req: Request) {
