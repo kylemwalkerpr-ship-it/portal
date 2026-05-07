@@ -1,5 +1,8 @@
 import { createSupabaseAdminClient } from './supabase'
 
+export const SUPPORTED_CURRENCIES = ['usd', 'cad'] as const
+export type PrimaryCurrency = typeof SUPPORTED_CURRENCIES[number]
+
 export const DEFAULT_PLATFORM_SETTINGS = {
   platform_fee_percent: 20,
   consultant_fee_percent: 80,
@@ -7,9 +10,19 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   allow_admin_force_release: true,
   platform_name: 'Yousafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
+  primary_currency: 'usd' as PrimaryCurrency,
 }
 
+/**
+ * @deprecated Read from getPlatformSettings().primary_currency at call sites
+ * that need the live admin-controlled value. Kept for any caller still using it.
+ */
 export const CONNECT_CURRENCY = 'usd'
+
+export function normalizePrimaryCurrency(value: unknown): PrimaryCurrency {
+  const lower = typeof value === 'string' ? value.toLowerCase() : ''
+  return (SUPPORTED_CURRENCIES as readonly string[]).includes(lower) ? (lower as PrimaryCurrency) : 'usd'
+}
 
 export async function getPlatformSettings() {
   const db = createSupabaseAdminClient()
@@ -21,8 +34,12 @@ export async function getPlatformSettings() {
 
   if (error || !data?.value) return DEFAULT_PLATFORM_SETTINGS
 
-  return {
+  const merged = {
     ...DEFAULT_PLATFORM_SETTINGS,
     ...(data.value as Record<string, unknown>),
   }
+  // Always normalise primary_currency so downstream Stripe calls never see a
+  // typo or wrong case.
+  merged.primary_currency = normalizePrimaryCurrency(merged.primary_currency)
+  return merged
 }

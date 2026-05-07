@@ -1,6 +1,6 @@
 import { getStripe } from './stripe'
 import { createSupabaseAdminClient } from './supabase'
-import { CONNECT_CURRENCY, getPlatformSettings } from './platformConfig'
+import { getPlatformSettings } from './platformConfig'
 import { findConsultantForOrder } from './consultant'
 
 function centsFromOrder(order: Record<string, any>) {
@@ -48,7 +48,7 @@ export async function triggerConsultantPayout(orderId: string) {
   try {
     const transfer = await getStripe().transfers.create({
       amount: consultantPayout,
-      currency: CONNECT_CURRENCY,
+      currency: settings.primary_currency,
       destination: stripeAccountId,
       transfer_group: `order_${order.id}`,
       metadata: {

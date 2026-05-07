@@ -1,6 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { DEFAULT_PLATFORM_SETTINGS } from '@/lib/platformConfig'
+import { DEFAULT_PLATFORM_SETTINGS, normalizePrimaryCurrency } from '@/lib/platformConfig'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()
@@ -48,6 +48,7 @@ export async function PATCH(req: Request) {
     platform_fee_percent: platformFee,
     auto_release_days: autoReleaseDays,
     allow_admin_force_release: Boolean(body.allow_admin_force_release),
+    primary_currency: normalizePrimaryCurrency(body.primary_currency ?? DEFAULT_PLATFORM_SETTINGS.primary_currency),
   }
 
   const { data, error } = await auth.db

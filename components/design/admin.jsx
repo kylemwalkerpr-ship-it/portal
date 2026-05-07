@@ -3,8 +3,10 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 
-const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+// Legacy alias kept temporarily; new call sites should use formatPrimary from
+// inside AdminApp which respects the admin-controlled primary_currency.
+const formatUSD = value => formatMoney(value, 'usd');
 const moneyValue = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) || 0;
 const DEFAULT_SETTINGS = {
   platform_fee_percent: 20,
@@ -13,7 +15,10 @@ const DEFAULT_SETTINGS = {
   allow_admin_force_release: true,
   platform_name: 'Yousafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
+  primary_currency: 'usd',
 };
+const SUPPORTED_CURRENCIES = ['usd', 'cad'];
+const normalizeCurrency = c => SUPPORTED_CURRENCIES.includes(String(c || '').toLowerCase()) ? String(c).toLowerCase() : 'usd';
 const deliveryLabel = days => {
   const n = Number(days || 0);
   if (!n) return 'Timeline TBD';
@@ -51,6 +56,7 @@ function AdminApp({ onLogout }) {
   const [consultantShare, setConsultantShare] = React.useState(DEFAULT_SETTINGS.consultant_fee_percent);
   const [autoReleaseDays, setAutoReleaseDays] = React.useState(String(DEFAULT_SETTINGS.auto_release_days));
   const [allowForceRelease, setAllowForceRelease] = React.useState(DEFAULT_SETTINGS.allow_admin_force_release);
+  const [primaryCurrency, setPrimaryCurrency] = React.useState(DEFAULT_SETTINGS.primary_currency);
   const [stripePublishableKey, setStripePublishableKey] = React.useState('');
   const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
@@ -59,12 +65,16 @@ function AdminApp({ onLogout }) {
 
   const consultantFeePercent = Number(platformSettings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
   const platformFeePercent = Number(platformSettings.platform_fee_percent || (100 - consultantFeePercent));
+  const activeCurrency = normalizeCurrency(platformSettings.primary_currency);
+  const formatPrimary = React.useCallback(v => formatMoney(v, activeCurrency), [activeCurrency]);
 
   const normalizeAdminData = React.useCallback(data => {
     const settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
     setCurrentAdminId(data.currentAdminId || null);
     const consultantPercent = Number(settings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
     const platformPercent = Number(settings.platform_fee_percent || (100 - consultantPercent));
+    const adminCurrency = normalizeCurrency(settings.primary_currency);
+    const fmt = v => formatMoney(v, adminCurrency);
     const profiles = data.users ?? [];
     const profileById = new Map(profiles.map(p => [p.id, p]));
     const itemsByOrder = new Map((data.orderItems ?? []).map(i => [i.order_id, i]));
@@ -78,7 +88,7 @@ function AdminApp({ onLogout }) {
       joined: p.created_at ? new Date(p.created_at).toLocaleDateString() : '—',
       createdAt: p.created_at,
       orders: (data.orders ?? []).filter(o => o.client_id === p.id || o.consultant_id === p.id).length,
-      spend: formatUSD((data.orders ?? []).filter(o => o.client_id === p.id).reduce((sum, o) => sum + Number(o.total_amount || 0), 0)),
+      spend: fmt((data.orders ?? []).filter(o => o.client_id === p.id).reduce((sum, o) => sum + Number(o.total_amount || 0), 0)),
       status: p.status || 'active',
     }));
     const normalizedOrders = (data.orders ?? []).map(o => {
@@ -94,10 +104,10 @@ function AdminApp({ onLogout }) {
         student: student?.full_name || student?.email || 'Unknown student',
         consultant: consultant?.full_name || consultant?.email || null,
         consultantId: o.consultant_id || null,
-        amount: formatUSD(amount),
+        amount: fmt(amount),
         amountValue: amount,
-        consultantPay: formatUSD(amount * (consultantPercent / 100)),
-        adminCut: formatUSD(amount * (platformPercent / 100)),
+        consultantPay: fmt(amount * (consultantPercent / 100)),
+        adminCut: fmt(amount * (platformPercent / 100)),
         escrow: released ? 'released' : 'held',
         status: o.status === 'queued' ? 'pending' : (o.status || 'pending'),
         createdAt: o.created_at,
@@ -123,6 +133,7 @@ function AdminApp({ onLogout }) {
     setConsultantShare(consultantPercent);
     setAutoReleaseDays(String(settings.auto_release_days || DEFAULT_SETTINGS.auto_release_days));
     setAllowForceRelease(Boolean(settings.allow_admin_force_release));
+    setPrimaryCurrency(normalizeCurrency(settings.primary_currency));
     setPlatformName(settings.platform_name || '');
     setSupportEmail(settings.support_email || '');
     const pendingUsers = normalizedUsers.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
@@ -178,6 +189,7 @@ function AdminApp({ onLogout }) {
     setConsultantShare(Number(data.settings.consultant_fee_percent));
     setAutoReleaseDays(String(data.settings.auto_release_days));
     setAllowForceRelease(Boolean(data.settings.allow_admin_force_release));
+    setPrimaryCurrency(normalizeCurrency(data.settings.primary_currency));
     setPlatformName(data.settings.platform_name || '');
     setSupportEmail(data.settings.support_email || '');
     await refreshAdminData();
@@ -349,8 +361,8 @@ function AdminApp({ onLogout }) {
         <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
         <StatCard label="Support Team" value={totalSupport} icon="🎧" color={C.orange} />
         <StatCard label="Approvals" value={pendingApprovals.length} icon="✅" color={C.green} />
-        <StatCard label="In Escrow" value={formatUSD(pendingEscrow)} icon="🔒" color={C.orange} />
-        <StatCard label="Admin Revenue" value={formatUSD(totalRevenue)} icon="💰" color={C.green} />
+        <StatCard label="In Escrow" value={formatPrimary(pendingEscrow)} icon="🔒" color={C.orange} />
+        <StatCard label="Admin Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
       </div>
 
       {/* Unified approvals */}
@@ -432,14 +444,14 @@ function AdminApp({ onLogout }) {
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: '14px', color: C.textMuted }}>{r.label}</span>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: r.color }}>{formatUSD(r.value)}</span>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: r.color }}>{formatPrimary(r.value)}</span>
             </div>
           ))}
         </Card>
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Platform Health</div>
           {[
-            { label: 'Avg order value', value: orders.length ? formatUSD(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A' },
+            { label: 'Avg order value', value: orders.length ? formatPrimary(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A' },
             { label: 'Completion rate', value: 'N/A' },
             { label: 'Avg response time', value: 'N/A' },
             { label: 'Student satisfaction', value: 'N/A' },
@@ -760,9 +772,9 @@ function AdminApp({ onLogout }) {
           <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {consultantFeePercent}% to consultant, {platformFeePercent}% to platform.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-          <StatCard label="Total Held" value={formatUSD(totalHeld)} icon="🔒" color={C.orange} />
+          <StatCard label="Total Held" value={formatPrimary(totalHeld)} icon="🔒" color={C.orange} />
           <StatCard label="Orders in Escrow" value={held.length} icon="📦" color={C.cyan} />
-          <StatCard label="Released All Time" value={formatUSD(released.reduce((a, o) => a + o.amountValue, 0))} icon="✅" color={C.green} />
+          <StatCard label="Released All Time" value={formatPrimary(released.reduce((a, o) => a + o.amountValue, 0))} icon="✅" color={C.green} />
         </div>
         <div>
           <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Held — Awaiting Student Approval</h3>
@@ -826,9 +838,9 @@ function AdminApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Payouts</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-        <StatCard label="Platform Revenue" value={formatUSD(totalRevenue)} icon="💰" color={C.green} />
-        <StatCard label="Paid to Consultants" value={formatUSD(paidToConsultants)} icon="👤" color={C.cyan} />
-        <StatCard label="Pending Payouts" value={formatUSD(pendingEscrow)} icon="⏳" color={C.orange} />
+        <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
+        <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon="👤" color={C.cyan} />
+        <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon="⏳" color={C.orange} />
       </div>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Consultant Payout Queue</div>
@@ -839,7 +851,7 @@ function AdminApp({ onLogout }) {
               <div style={{ fontWeight: 600, fontSize: '14px' }}>{name}</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Pending payout details will appear here</div>
             </div>
-            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{formatUSD(0)}</span>
+            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{formatPrimary(0)}</span>
             <Btn variant="primary" size="sm" onClick={() => setActionNotice(`Payout review opened for ${name}. Stripe payout automation will process eligible released balances.`)}>Pay out</Btn>
           </div>
         )) : (
@@ -1007,6 +1019,38 @@ function AdminApp({ onLogout }) {
   const Settings = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Platform Settings</h2>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Primary Currency</div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.6 }}>
+          The default currency used for new services, the wallet, consultant
+          payouts (Stripe transfers), and admin revenue summaries when no
+          specific currency is set on the underlying record.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Select
+            label="Currency"
+            value={primaryCurrency}
+            onChange={setPrimaryCurrency}
+            options={[
+              { value: 'usd', label: 'US Dollar (USD)' },
+              { value: 'cad', label: 'Canadian Dollar (CAD)' },
+            ]}
+          />
+          <div style={{ fontSize: '12px', color: C.textMuted, lineHeight: 1.5 }}>
+            Note: Stripe Connect transfers are denominated in this currency.
+            CAD payouts require your platform Stripe account to support CAD —
+            verify in dashboard.stripe.com before changing.
+          </div>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ primary_currency: normalizeCurrency(primaryCurrency) });
+              setActionNotice(`Primary currency saved: ${primaryCurrency.toUpperCase()}.`);
+            } catch (e) {
+              setActionNotice(e.message || 'Currency update failed.');
+            }
+          }}>Save currency</Btn>
+        </div>
+      </Card>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Revenue Split</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
