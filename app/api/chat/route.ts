@@ -9,6 +9,9 @@ const MAX_USER_MESSAGE_CHARS = 2000
 const ALLOWED_ORIGINS = new Set([
   'https://yousafeconsultancy.com',
   'https://www.yousafeconsultancy.com',
+  'https://ca.yousafeconsultancy.com',
+  'https://usa.yousafeconsultancy.com',
+  'https://checkout.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
 ])
