@@ -10,12 +10,17 @@ export async function GET() {
 
   const { db, profile, consultant } = auth
 
-  const [ordersRes, itemsRes, servicesRes, profilesRes] = await Promise.all([
+  const [ordersRes, itemsRes, servicesRes] = await Promise.all([
     db.from('orders').select('*').eq('consultant_id', profile.id).order('created_at', { ascending: false }),
     db.from('order_items').select('*'),
     db.from('services').select('*'),
-    db.from('profiles').select('id, email, full_name, country'),
   ])
+
+  // Profiles select tolerates legacy schemas that don't yet have the `country` column
+  let profilesRes = await db.from('profiles').select('id, email, full_name, country')
+  if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
+    profilesRes = await db.from('profiles').select('id, email, full_name')
+  }
 
   const error = ordersRes.error || itemsRes.error || servicesRes.error || profilesRes.error
   if (error) return Response.json({ error: error.message }, { status: 500 })
