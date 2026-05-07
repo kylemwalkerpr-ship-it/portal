@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeAuthLane, type AuthLane } from '@/lib/roleLanes'
+import { normalizeVertical } from '@/lib/platformConfig'
 import DashboardClient from './client'
 
 const SUPPORT_DASHBOARD_URL = 'https://support.yousafeconsultancy.com/dashboard'
@@ -31,7 +32,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lane?: string }>
+  searchParams: Promise<{ lane?: string; vertical?: string }>
 }) {
   try {
     return await renderDashboardPage(searchParams)
@@ -53,9 +54,13 @@ export default async function DashboardPage({
   }
 }
 
-async function renderDashboardPage(searchParams: Promise<{ lane?: string }>) {
+async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertical?: string }>) {
   const params = await searchParams
   let requestedRole = normalizeAuthLane(params.lane)
+  // Verticals let one portal serve study-abroad consultancy + legal document
+  // prep. The wizard on caseworks deep-links here with ?vertical=legal so we
+  // can tag the freshly-created profile.
+  const requestedVertical = params.vertical ? normalizeVertical(params.vertical) : null
   const userId = await getClerkUserId()
   if (!userId) redirect('/sign-in/student')
 
@@ -119,34 +124,62 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string }>) {
 
   // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
-    // Try upsert with status
     const defaultStatus = requestedRole === 'client' ? 'active' : 'pending'
-    const { data: c1 } = profile
-      ? { data: null }
-      : await db
-          .from('profiles')
-          .upsert(
-            { clerk_user_id: userId, email: clerkData.email, full_name: clerkData.fullName || null, role: requestedRole, status: defaultStatus },
-            { onConflict: 'clerk_user_id' }
-          )
-          .select('role, status, full_name, email')
-          .single()
+    const baseRow: Record<string, unknown> = {
+      clerk_user_id: userId,
+      email: clerkData.email,
+      full_name: clerkData.fullName || null,
+      role: requestedRole,
+      status: defaultStatus,
+    }
+    if (requestedVertical) baseRow.vertical = requestedVertical
 
-    if (c1) {
-      profile = c1
-    } else if (!profile) {
-      // status column missing — upsert without it
-      const { data: c2, error: c2Err } = await db
+    let createResult = await db
+      .from('profiles')
+      .upsert(baseRow, { onConflict: 'clerk_user_id' })
+      .select('role, status, full_name, email')
+      .single()
+
+    // Older databases may not have status / vertical columns yet — peel them
+    // off and retry until we land on a payload that fits the live schema.
+    if (createResult.error && /column .*vertical/i.test(createResult.error.message)) {
+      const { vertical: _v, ...row } = baseRow
+      createResult = await db
         .from('profiles')
-        .upsert(
-          { clerk_user_id: userId, email: clerkData.email, full_name: clerkData.fullName || null, role: requestedRole },
-          { onConflict: 'clerk_user_id' }
-        )
+        .upsert(row, { onConflict: 'clerk_user_id' })
+        .select('role, status, full_name, email')
+        .single()
+    }
+    if (createResult.error && /column .*status/i.test(createResult.error.message)) {
+      const { status: _s, vertical: _v, ...row } = baseRow
+      const fallback = await db
+        .from('profiles')
+        .upsert(row, { onConflict: 'clerk_user_id' })
         .select('role, full_name, email')
         .single()
-      if (c2) profile = { ...c2, status: 'active' }
-      else console.error('[dashboard] profile create error:', c2Err?.message)
+      if (fallback.data) {
+        profile = { ...fallback.data, status: 'active' }
+      } else {
+        console.error('[dashboard] profile create error:', fallback.error?.message)
+      }
+    } else if (createResult.data) {
+      profile = createResult.data
+    } else if (createResult.error) {
+      console.error('[dashboard] profile create error:', createResult.error.message)
     }
+  } else if (requestedVertical) {
+    // Existing profile arriving with ?vertical=legal — promote them to that
+    // vertical so the storefront knows which catalogue they belong to. Soft
+    // update; ignore failures (column may not exist yet).
+    db
+      .from('profiles')
+      .update({ vertical: requestedVertical })
+      .eq('id', profile.id)
+      .then(({ error }) => {
+        if (error && !/column .*vertical/i.test(error.message)) {
+          console.error('[dashboard] vertical update error:', error.message)
+        }
+      })
   }
 
   if (profile && profile.role !== 'admin' && profile.role !== requestedRole) {

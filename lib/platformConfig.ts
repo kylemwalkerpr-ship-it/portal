@@ -3,6 +3,28 @@ import { createSupabaseAdminClient } from './supabase'
 export const SUPPORTED_CURRENCIES = ['usd', 'cad'] as const
 export type PrimaryCurrency = typeof SUPPORTED_CURRENCIES[number]
 
+/**
+ * Verticals = which product the user is engaging with on the portal:
+ *
+ *   - 'study_abroad' is the original YouSafe Consultancy catalogue
+ *     (visa consulting, university admissions, settlement support,
+ *     mentorship). Surfaces on yousafeconsultancy.com / ca / usa.
+ *
+ *   - 'legal' is the document-prep + attorney-review catalogue
+ *     surfaced on caseworks (mycaseworks.co).
+ *
+ * Profiles, services, and consultants all carry a vertical tag so the
+ * admin can run both catalogues from a single backend.
+ */
+export const SUPPORTED_VERTICALS = ['study_abroad', 'legal'] as const
+export type Vertical = typeof SUPPORTED_VERTICALS[number]
+
+export function normalizeVertical(value: unknown): Vertical {
+  return (SUPPORTED_VERTICALS as readonly string[]).includes(String(value || ''))
+    ? (String(value) as Vertical)
+    : 'study_abroad'
+}
+
 export const DEFAULT_PLATFORM_SETTINGS = {
   platform_fee_percent: 20,
   consultant_fee_percent: 80,

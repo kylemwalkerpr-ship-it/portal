@@ -1,5 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { normalizeVertical } from '@/lib/platformConfig'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()
@@ -23,6 +24,7 @@ function servicePayload(body: Record<string, unknown>) {
     price: Number(body.price ?? 0),
     delivery_days: Number(body.delivery_days ?? 7),
     is_active: Boolean(body.is_active),
+    vertical: normalizeVertical(body.vertical),
   }
 }
 
@@ -35,7 +37,14 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid service payload' }, { status: 400 })
   }
 
-  const { data, error } = await auth.db.from('services').insert(payload).select('*').single()
-  if (error) return Response.json({ error: error.message }, { status: 500 })
-  return Response.json({ service: data }, { status: 201 })
+  let result = await auth.db.from('services').insert(payload).select('*').single()
+  // Older databases may not have the vertical column yet — retry without it
+  // so the admin can keep editing until the migration runs.
+  if (result.error && /column .*vertical/i.test(result.error.message)) {
+    const { vertical: _v, ...legacy } = payload
+    result = await auth.db.from('services').insert(legacy).select('*').single()
+  }
+
+  if (result.error) return Response.json({ error: result.error.message }, { status: 500 })
+  return Response.json({ service: result.data }, { status: 201 })
 }

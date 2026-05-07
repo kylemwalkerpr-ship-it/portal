@@ -127,6 +127,7 @@ function AdminApp({ onLogout }) {
       delivery_days: Number(s.delivery_days || 7),
       active: Boolean(s.is_active),
       orders: orderCountByService.get(s.id) || 0,
+      vertical: s.vertical || 'study_abroad',
     }));
     setUsers(normalizedUsers);
     setOrders(normalizedOrders);
@@ -904,7 +905,7 @@ function AdminApp({ onLogout }) {
   const ServicesAdmin = () => {
     const [editing, setEditing] = React.useState(null);
     const [saving, setSaving] = React.useState(false);
-    const blank = { title: '', category: 'General', price: 0, delivery_days: 7, active: true };
+    const blank = { title: '', category: 'General', price: 0, delivery_days: 7, active: true, vertical: 'study_abroad' };
     const saveService = async () => {
       setSaving(true);
       const payload = {
@@ -913,6 +914,7 @@ function AdminApp({ onLogout }) {
         price: Number(editing.price || 0),
         delivery_days: Number(editing.delivery_days || 7),
         is_active: Boolean(editing.active),
+        vertical: editing.vertical || 'study_abroad',
       };
       const res = await fetch(editing.id ? `/api/admin/services/${editing.id}` : '/api/admin/services', {
         method: editing.id ? 'PATCH' : 'POST',
@@ -929,7 +931,7 @@ function AdminApp({ onLogout }) {
       const res = await fetch(`/api/admin/services/${s.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: s.title, category: s.category, price: s.price, delivery_days: s.delivery_days, is_active: !s.active }),
+        body: JSON.stringify({ title: s.title, category: s.category, price: s.price, delivery_days: s.delivery_days, is_active: !s.active, vertical: s.vertical || 'study_abroad' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Service update failed');
@@ -948,7 +950,7 @@ function AdminApp({ onLogout }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {['Service', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', ''].map(h => (
+                {['Service', 'Vertical', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', ''].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -959,6 +961,11 @@ function AdminApp({ onLogout }) {
                   <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>
                     <div>{s.title}</div>
                     <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{deliveryLabel(s.delivery_days)}</div>
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <Badge color={s.vertical === 'legal' ? 'purple' : 'cyan'}>
+                      {s.vertical === 'legal' ? 'Legal' : 'Study Abroad'}
+                    </Badge>
                   </td>
                   <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
                   <td style={{ padding: '14px 16px' }}>
@@ -986,7 +993,7 @@ function AdminApp({ onLogout }) {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan="8" style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>No services available yet.</td>
+                  <td colSpan="9" style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>No services available yet.</td>
                 </tr>
               )}
             </tbody>
@@ -1001,6 +1008,15 @@ function AdminApp({ onLogout }) {
               </div>
               <div style={{ display: 'grid', gap: '14px' }}>
                 <Input label="Service title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
+                <Select
+                  label="Vertical"
+                  value={editing.vertical || 'study_abroad'}
+                  onChange={v => setEditing(s => ({ ...s, vertical: v }))}
+                  options={[
+                    { value: 'study_abroad', label: 'Study Abroad (yousafeconsultancy.com)' },
+                    { value: 'legal', label: 'Legal (mycaseworks.co)' },
+                  ]}
+                />
                 <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />
                 <Input label="Price (USD)" type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} />
                 <Input label="Delivery days" type="number" value={editing.delivery_days} onChange={v => setEditing(s => ({ ...s, delivery_days: v }))} />
