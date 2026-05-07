@@ -5,7 +5,10 @@ import React from 'react'
 
 const STORAGE_KEY = 'yousafe.chat.history.v1'
 const OPEN_KEY = 'yousafe.chat.open.v1'
+const SUPPORT_KEY = 'yousafe.chat.support.v1'
 const MAX_PERSISTED = 30
+const SUPPORT_API_DEFAULT = 'https://support.yousafeconsultancy.com/api/chat/widget'
+const SUPPORT_POLL_MS = 5000
 
 const styles = {
   bubbleBg: '#3C3B6E',
@@ -24,48 +27,69 @@ const styles = {
   userBubbleText: '#FFFFFF',
   assistantBubble: '#F3F4F6',
   assistantBubbleText: '#111827',
+  systemBubble: '#FEF3C7',
+  systemBubbleText: '#78350F',
+  agentBubble: '#DCFCE7',
+  agentBubbleText: '#14532D',
   red: '#DC2626',
 }
 
-const GREETING = "Hi! I'm Yara, the YouSafe assistant. I can answer questions about services, payments, refunds, document uploads, or how the portal works. What can I help you with?"
+const GREETING = "Hi! I'm Yara, the YouSafe assistant. I can answer questions about services, payments, refunds, document uploads, or how the portal works. If you need a person, just ask to talk to a human and I'll connect you with our support team."
 
-function loadHistory() {
-  if (typeof window === 'undefined') return []
+function loadJSON(key, fallback) {
+  if (typeof window === 'undefined') return fallback
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return fallback
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.slice(-MAX_PERSISTED) : []
+    return parsed != null ? parsed : fallback
   } catch {
-    return []
+    return fallback
   }
 }
 
-function saveHistory(history) {
+function saveJSON(key, value) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-MAX_PERSISTED)))
+    window.localStorage.setItem(key, JSON.stringify(value))
   } catch {
     /* localStorage may be disabled — non-fatal */
   }
 }
 
-function loadOpen() {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.localStorage.getItem(OPEN_KEY) === '1'
-  } catch {
-    return false
+function statusLabel(supportSession) {
+  if (!supportSession?.conversationId) return 'AI assistant online'
+  const status = supportSession.status
+  if (status === 'assigned') return 'Live agent connected'
+  if (status === 'waiting_for_agent') {
+    const pos = supportSession.queue?.position
+    const wait = supportSession.queue?.estimatedWaitMinutes
+    if (pos && wait) return `In live queue · #${pos} · ~${wait} min`
+    if (pos) return `In live queue · #${pos}`
+    return 'In live queue'
   }
+  if (status === 'resolved' || status === 'closed') return 'Live chat closed'
+  return 'AI support online'
 }
 
-function saveOpen(open) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(OPEN_KEY, open ? '1' : '0')
-  } catch {
-    /* ignore */
+function bubbleStylesFor(role) {
+  if (role === 'user') {
+    return { background: styles.userBubble, color: styles.userBubbleText, border: 'none' }
   }
+  if (role === 'system') {
+    return { background: styles.systemBubble, color: styles.systemBubbleText, border: '1px solid #FCD34D' }
+  }
+  if (role === 'agent') {
+    return { background: styles.agentBubble, color: styles.agentBubbleText, border: '1px solid #86EFAC' }
+  }
+  return { background: styles.assistantBubble, color: styles.assistantBubbleText, border: `1px solid ${styles.border}` }
+}
+
+function senderLabel(role, name) {
+  if (role === 'user') return null
+  if (role === 'agent') return name ? `${name} · Support` : 'Support team'
+  if (role === 'system') return 'YouSafe'
+  return 'Yara'
 }
 
 export default function ChatWidget() {
@@ -75,22 +99,28 @@ export default function ChatWidget() {
   const [sending, setSending] = React.useState(false)
   const [error, setError] = React.useState(null)
   const [hydrated, setHydrated] = React.useState(false)
+  const [supportSession, setSupportSession] = React.useState(null)
   const scrollRef = React.useRef(null)
   const inputRef = React.useRef(null)
 
   React.useEffect(() => {
-    setHistory(loadHistory())
-    setOpen(loadOpen())
+    setHistory(loadJSON(STORAGE_KEY, []))
+    setOpen(loadJSON(OPEN_KEY, false) === true)
+    setSupportSession(loadJSON(SUPPORT_KEY, null))
     setHydrated(true)
   }, [])
 
   React.useEffect(() => {
-    if (hydrated) saveHistory(history)
+    if (hydrated) saveJSON(STORAGE_KEY, history.slice(-MAX_PERSISTED))
   }, [history, hydrated])
 
   React.useEffect(() => {
-    if (hydrated) saveOpen(open)
+    if (hydrated) saveJSON(OPEN_KEY, open)
   }, [open, hydrated])
+
+  React.useEffect(() => {
+    if (hydrated) saveJSON(SUPPORT_KEY, supportSession)
+  }, [supportSession, hydrated])
 
   React.useEffect(() => {
     if (!open) return
@@ -100,29 +130,121 @@ export default function ChatWidget() {
     if (inputRef.current) inputRef.current.focus()
   }, [open, history.length, sending])
 
-  const send = async () => {
-    const text = input.trim()
+  // Poll support-saas for new agent / system replies once the conversation
+  // has been handed off. We merge support-side messages into local history
+  // by tracking the most-recent message timestamp we already know.
+  React.useEffect(() => {
+    if (!open) return
+    const id = supportSession?.conversationId
+    if (!id) return
+    const apiUrl = supportSession?.apiUrl || SUPPORT_API_DEFAULT
+    let cancelled = false
+
+    const pull = async () => {
+      try {
+        const res = await fetch(`${apiUrl}/${encodeURIComponent(id)}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        const remoteMessages = Array.isArray(data.messages) ? data.messages : []
+        if (remoteMessages.length === 0) return
+
+        setHistory(prev => mergeRemoteMessages(prev, remoteMessages))
+        setSupportSession(prev => prev ? {
+          ...prev,
+          status: data.conversation?.status ?? prev.status,
+          queue: data.queue ?? prev.queue,
+        } : prev)
+      } catch {
+        /* polling errors are non-fatal */
+      }
+    }
+
+    pull()
+    const timer = setInterval(pull, SUPPORT_POLL_MS)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [open, supportSession?.conversationId, supportSession?.apiUrl])
+
+  const sendToYara = async (history, options = undefined) => {
+    const apiHistory = history
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => ({ role: m.role, content: m.content }))
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: apiHistory,
+        requestAgent: options?.requestAgent === true,
+        topic: options?.topic,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || `Assistant unreachable (${res.status})`)
+    }
+    return data
+  }
+
+  const sendToSupport = async (text, session) => {
+    const apiUrl = session.apiUrl || SUPPORT_API_DEFAULT
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        conversationId: session.conversationId,
+        topic: 'portal',
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data.error || `Support unreachable (${res.status})`)
+    }
+    return data
+  }
+
+  const send = async (overrideText = undefined, options = undefined) => {
+    const text = (typeof overrideText === 'string' ? overrideText : input).trim()
     if (!text || sending) return
 
-    const userTurn = { role: 'user', content: text, ts: Date.now() }
-    const next = [...history, userTurn]
+    const localUserTurn = { role: 'user', content: text, ts: Date.now() }
+    let next = [...history, localUserTurn]
     setHistory(next)
     setInput('')
     setSending(true)
     setError(null)
 
     try {
-      const apiHistory = next.map(m => ({ role: m.role, content: m.content }))
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiHistory }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data.reply) {
-        throw new Error(data.error || `Assistant unreachable (${res.status})`)
+      if (supportSession?.conversationId && supportSession.status !== 'resolved' && supportSession.status !== 'closed') {
+        // Active live-support session — send through support-saas.
+        const data = await sendToSupport(text, supportSession)
+        if (Array.isArray(data.messages)) {
+          setHistory(prev => mergeRemoteMessages(prev, data.messages))
+        }
+        setSupportSession(prev => prev ? {
+          ...prev,
+          status: data.conversation?.status ?? prev.status,
+          queue: data.queue ?? prev.queue,
+        } : prev)
+        return
       }
-      setHistory(prev => [...prev, { role: 'assistant', content: data.reply, ts: Date.now() }])
+
+      const data = await sendToYara(next, options)
+
+      if (data.handoff?.conversationId) {
+        const session = {
+          conversationId: data.handoff.conversationId,
+          status: data.handoff.status || 'waiting_for_agent',
+          queue: data.handoff.queue || null,
+          apiUrl: data.handoff.apiUrl || SUPPORT_API_DEFAULT,
+          openedAt: Date.now(),
+        }
+        setSupportSession(session)
+        const reply = data.reply || "I'm connecting you to a live support agent."
+        setHistory(prev => [...prev, { role: 'system', content: reply, ts: Date.now() }])
+      } else if (data.reply) {
+        setHistory(prev => [...prev, { role: 'assistant', content: data.reply, ts: Date.now() }])
+      }
     } catch (e) {
       setError(e.message || 'Something went wrong.')
     } finally {
@@ -130,8 +252,15 @@ export default function ChatWidget() {
     }
   }
 
+  const requestHumanSupport = () => {
+    if (sending) return
+    const userMessage = "I'd like to talk to a human support agent."
+    send(userMessage, { requestAgent: true })
+  }
+
   const reset = () => {
     setHistory([])
+    setSupportSession(null)
     setError(null)
   }
 
@@ -146,9 +275,13 @@ export default function ChatWidget() {
     ? history
     : [{ role: 'assistant', content: GREETING, ts: 0 }]
 
+  const inLiveSession =
+    Boolean(supportSession?.conversationId) &&
+    supportSession.status !== 'resolved' &&
+    supportSession.status !== 'closed'
+
   return (
     <>
-      {/* Floating launcher */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -187,7 +320,7 @@ export default function ChatWidget() {
             right: '20px',
             bottom: '88px',
             width: 'min(380px, calc(100vw - 40px))',
-            height: 'min(560px, calc(100vh - 120px))',
+            height: 'min(580px, calc(100vh - 120px))',
             background: styles.panelBg,
             border: `1px solid ${styles.panelBorder}`,
             borderRadius: '16px',
@@ -199,7 +332,6 @@ export default function ChatWidget() {
             fontFamily: 'inherit',
           }}
         >
-          {/* Header */}
           <div
             style={{
               padding: '14px 16px',
@@ -224,11 +356,13 @@ export default function ChatWidget() {
                 fontSize: '14px',
               }}
             >
-              Y
+              {inLiveSession ? '🛟' : 'Y'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>Yara · YouSafe assistant</div>
-              <div style={{ fontSize: '11px', opacity: 0.85 }}>Replies in seconds · powered by AI</div>
+              <div style={{ fontSize: '14px', fontWeight: 700 }}>
+                {inLiveSession ? 'Live support' : 'Yara · YouSafe assistant'}
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{statusLabel(supportSession)}</div>
             </div>
             <button
               type="button"
@@ -249,7 +383,6 @@ export default function ChatWidget() {
             </button>
           </div>
 
-          {/* Messages */}
           <div
             ref={scrollRef}
             style={{
@@ -262,31 +395,32 @@ export default function ChatWidget() {
               gap: '10px',
             }}
           >
-            {visibleHistory.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    maxWidth: '82%',
-                    padding: '10px 13px',
-                    borderRadius: '12px',
-                    fontSize: '14px',
-                    lineHeight: 1.5,
-                    whiteSpace: 'pre-wrap',
-                    background: m.role === 'user' ? styles.userBubble : styles.assistantBubble,
-                    color: m.role === 'user' ? styles.userBubbleText : styles.assistantBubbleText,
-                    border: m.role === 'user' ? 'none' : `1px solid ${styles.border}`,
-                  }}
-                >
-                  {m.content}
+            {visibleHistory.map((m, i) => {
+              const role = m.role
+              const bubble = bubbleStylesFor(role)
+              const align = role === 'user' ? 'flex-end' : 'flex-start'
+              const label = senderLabel(role, m.senderName)
+              return (
+                <div key={m.id || i} style={{ display: 'flex', justifyContent: align, flexDirection: 'column', alignItems: align }}>
+                  {label && (
+                    <div style={{ fontSize: '10px', color: styles.textDim, marginBottom: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                  )}
+                  <div
+                    style={{
+                      maxWidth: '82%',
+                      padding: '10px 13px',
+                      borderRadius: '12px',
+                      fontSize: '14px',
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      ...bubble,
+                    }}
+                  >
+                    {m.content}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             {sending && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <div
@@ -326,7 +460,30 @@ export default function ChatWidget() {
             )}
           </div>
 
-          {/* Composer */}
+          {!inLiveSession && (
+            <div style={{ padding: '8px 12px 0', display: 'flex', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={requestHumanSupport}
+                disabled={sending}
+                style={{
+                  background: 'transparent',
+                  border: `1px dashed ${styles.border2}`,
+                  borderRadius: '999px',
+                  padding: '5px 14px',
+                  cursor: sending ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: styles.bubbleBg,
+                  fontFamily: 'inherit',
+                  opacity: sending ? 0.6 : 1,
+                }}
+              >
+                Talk to a human →
+              </button>
+            </div>
+          )}
+
           <div
             style={{
               borderTop: `1px solid ${styles.border}`,
@@ -342,7 +499,7 @@ export default function ChatWidget() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Type a message…"
+              placeholder={inLiveSession ? 'Message support…' : 'Type a message…'}
               rows={1}
               disabled={sending}
               style={{
@@ -363,7 +520,7 @@ export default function ChatWidget() {
             />
             <button
               type="button"
-              onClick={send}
+              onClick={() => send()}
               disabled={sending || input.trim().length === 0}
               style={{
                 height: '38px',
@@ -406,4 +563,42 @@ function Dot({ delay }) {
       }}
     />
   )
+}
+
+/**
+ * Merges support-saas messages (which may include AI/agent/system replies the
+ * user didn't see locally yet) into the widget's local history. We dedupe on
+ * the support-saas message id and only append messages strictly newer than
+ * what we already have.
+ */
+function mergeRemoteMessages(local, remote) {
+  if (!Array.isArray(remote) || remote.length === 0) return local
+  const seenIds = new Set(local.map(m => m.id).filter(Boolean))
+  const lastTs = local.reduce((acc, m) => (m.ts && m.ts > acc ? m.ts : acc), 0)
+  const additions = []
+  for (const r of remote) {
+    if (!r || !r.id || seenIds.has(r.id)) continue
+    const ts = r.created_at ? new Date(r.created_at).getTime() : Date.now()
+    if (ts <= lastTs) continue
+    const role = remoteRoleToLocal(r.sender_type)
+    if (!role) continue
+    if (role === 'user') continue // visitor messages are already in local history
+    additions.push({
+      id: r.id,
+      role,
+      content: r.body || '',
+      senderName: r.sender_name || null,
+      ts,
+    })
+  }
+  if (additions.length === 0) return local
+  return [...local, ...additions]
+}
+
+function remoteRoleToLocal(senderType) {
+  if (senderType === 'visitor') return 'user'
+  if (senderType === 'agent') return 'agent'
+  if (senderType === 'system') return 'system'
+  if (senderType === 'ai') return 'assistant'
+  return null
 }

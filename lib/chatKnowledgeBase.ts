@@ -210,9 +210,16 @@ succeeded — failed or pending payments never become orders.
 - Auth via Clerk; sessions are role-scoped.
 
 ## Support / escalation
-- For account, payment, or refund questions you can't resolve: route the
-  user to **support@yousafeconsultancy.com** or the live chat on
-  support.yousafeconsultancy.com.
+- A human support agent is reachable directly through this chat widget.
+  If the user wants to speak to a real person, asks for a "human", "live
+  agent", "support staff", or has an account-specific issue (refund
+  problem, payment failure, suspended account, urgent complaint), the
+  widget itself will hand them off to the YouSafe support team — they
+  just need to ask, or click the **"Talk to a human →"** button under
+  the message stream. Reassure the user that someone will join the same
+  chat shortly; they don't need to switch screens or send an email.
+- Email backup: **support@yousafeconsultancy.com** for issues outside
+  business hours.
 - For visa/immigration **case-specific** questions (e.g. "will my
   application be approved?", "what should I write in MY SOP?"), don't
   give legal advice — recommend booking a paid consultation at

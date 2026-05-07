@@ -3,6 +3,12 @@ import { getChatProvider, type ChatTurn } from '@/lib/chatProvider'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { fetchLiveKnowledge } from '@/lib/liveKnowledge'
+import {
+  SUPPORT_WIDGET_API,
+  escalateToSupport,
+  shouldEscalateToLiveAgent,
+  type SupportVisitor,
+} from '@/lib/chatEscalation'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -52,8 +58,24 @@ function isValidTurn(t: unknown): t is ChatTurn {
   )
 }
 
+function asVisitor(input: unknown): SupportVisitor | null {
+  if (!input || typeof input !== 'object') return null
+  const v = input as Record<string, unknown>
+  const trim = (s: unknown) => (typeof s === 'string' ? s.trim() : '') || null
+  return {
+    name: trim(v.name),
+    email: trim(v.email),
+    phone: trim(v.phone),
+  }
+}
+
 export async function POST(req: Request) {
-  let body: { messages?: unknown }
+  let body: {
+    messages?: unknown
+    requestAgent?: unknown
+    visitor?: unknown
+    topic?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -74,25 +96,29 @@ export async function POST(req: Request) {
     )
   }
 
-  // Best-effort viewer context: if signed in, tell the model who's asking so it
-  // can address them by name and tailor advice for their role. This is purely
-  // informational; the model doesn't get any private order data.
+  // Resolve viewer context from Clerk if signed in. Used both to enrich the
+  // AI system prompt AND to pre-fill visitor identity for support-saas
+  // handoff so the agent knows who they're talking to.
   let viewerContext = ''
+  let viewerVisitor: SupportVisitor | null = null
+  let viewerRole: string | null = null
   try {
     const clerkUserId = await getClerkUserId()
     if (clerkUserId) {
       const db = createSupabaseAdminClient()
       const { data: profile } = await db
         .from('profiles')
-        .select('full_name, role, status')
+        .select('full_name, email, role, status')
         .eq('clerk_user_id', clerkUserId)
         .maybeSingle()
       if (profile) {
-        const name = profile.full_name?.trim()
-        const role = profile.role === 'client' ? 'student' : profile.role
+        const name = profile.full_name?.trim() || null
+        const email = profile.email?.trim() || null
+        viewerRole = profile.role === 'client' ? 'student' : profile.role
+        viewerVisitor = { name, email, phone: null }
         const bits = [
           name ? `Name: ${name}` : null,
-          role ? `Role: ${role}` : null,
+          viewerRole ? `Role: ${viewerRole}` : null,
           profile.status ? `Account status: ${profile.status}` : null,
         ].filter(Boolean)
         if (bits.length > 0) viewerContext = `\n\n# Current viewer\n${bits.join('\n')}`
@@ -100,6 +126,43 @@ export async function POST(req: Request) {
     }
   } catch {
     /* anonymous viewers are fine */
+  }
+
+  // ── LIVE-AGENT ESCALATION ────────────────────────────────────────────────
+  // Triggered either by an explicit `requestAgent: true` from the widget
+  // (e.g. the "Talk to a human" button) or when the user's message contains
+  // intent keywords ("real human", "live agent", etc.).
+  const wantsAgent =
+    body.requestAgent === true || shouldEscalateToLiveAgent(lastUser.content)
+  if (wantsAgent) {
+    const incomingVisitor = asVisitor(body.visitor)
+    const topic = typeof body.topic === 'string' && body.topic.trim()
+      ? body.topic.trim()
+      : (viewerRole ? `portal-${viewerRole}` : 'portal')
+    const visitor: SupportVisitor | null = viewerVisitor || incomingVisitor || null
+
+    try {
+      const handoff = await escalateToSupport({
+        message: lastUser.content,
+        visitor,
+        topic,
+      })
+      return withCors(req, {
+        handoff: {
+          conversationId: handoff.conversationId,
+          status: handoff.status,
+          queue: handoff.queue,
+          apiUrl: handoff.apiUrl,
+        },
+        reply:
+          "I'm connecting you to a live support agent. They'll join the chat as soon as someone is available — feel free to share more context here in the meantime.",
+        provider: 'handoff',
+      })
+    } catch (err) {
+      console.error('[chat] escalation failed', err instanceof Error ? err.message : err)
+      // Fall through to AI reply so the user isn't left stranded if support
+      // is unreachable. We'll surface a hint that they can email instead.
+    }
   }
 
   const provider = getChatProvider()
@@ -124,7 +187,7 @@ export async function POST(req: Request) {
 
   try {
     const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + liveSection, cleaned)
-    return withCors(req, { reply, provider: provider.name })
+    return withCors(req, { reply, provider: provider.name, supportApiUrl: SUPPORT_WIDGET_API })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[chat] provider error', message)
