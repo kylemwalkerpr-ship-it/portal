@@ -190,10 +190,13 @@
 
     try {
       var apiHistory = history.map(function (m) { return { role: m.role, content: m.content } })
+      // Cross-origin call — visitors on the marketing site are anonymous, so
+      // we don't include credentials. Including them would require
+      // Access-Control-Allow-Credentials: true on the response and would
+      // fail in browsers that block third-party cookies anyway.
       var res = await fetch(cfg.apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ messages: apiHistory }),
       })
       var data = {}
