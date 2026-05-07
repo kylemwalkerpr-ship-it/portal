@@ -9,6 +9,7 @@ import { roleLabel, signInForLane } from '@/lib/roleLanes'
 const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: false })
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
+const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false })
 const LANDING_URL = 'https://yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
@@ -121,7 +122,15 @@ export default function DashboardClient({ role, status, userName, userId, expect
     )
   }
 
-  if (role === 'consultant') return <ConsultantApp onLogout={handleLogout} />
-  if (role === 'admin') return <AdminApp onLogout={handleLogout} />
-  return <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
+  const app =
+    role === 'consultant' ? <ConsultantApp onLogout={handleLogout} />
+    : role === 'admin' ? <AdminApp onLogout={handleLogout} />
+    : <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
+
+  return (
+    <>
+      {app}
+      <ChatWidget />
+    </>
+  )
 }
