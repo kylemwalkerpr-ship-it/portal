@@ -85,6 +85,9 @@ export async function GET() {
       id: profile.id,
       name: profile.full_name || '',
       email: profile.email || '',
+      // Vertical lets the dashboard scope its catalogue ('legal' = MyCaseworks,
+      // 'study_abroad' = YouSafe). Default for legacy rows is study_abroad.
+      vertical: profile.vertical || 'study_abroad',
     },
     orders,
   })

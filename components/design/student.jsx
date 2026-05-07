@@ -554,6 +554,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [orders, setOrders] = React.useState([]);
   const [ordersLoading, setOrdersLoading] = React.useState(true);
   const [ordersError, setOrdersError] = React.useState(null);
+  const [viewerVertical, setViewerVertical] = React.useState('study_abroad');
   const [orderFiles, setOrderFiles] = React.useState([]);
   const [filesLoading, setFilesLoading] = React.useState(false);
   const [uploadingOrderFile, setUploadingOrderFile] = React.useState(false);
@@ -574,6 +575,7 @@ function StudentApp({ onLogout, userId, userName }) {
       })
       .then(data => {
         setOrders(data.orders ?? []);
+        if (data.profile?.vertical) setViewerVertical(data.profile.vertical);
         setOrdersError(null);
       })
       .catch(e => setOrdersError(e.message))
@@ -1166,7 +1168,13 @@ function StudentApp({ onLogout, userId, userName }) {
 
     React.useEffect(() => {
       setServicesLoading(true);
-      fetch('/api/services')
+      // Scope the catalogue to the viewer's vertical so a legal-vertical
+      // user (came in via mycaseworks.co intake) only sees legal services,
+      // not the study-abroad consultancy catalogue.
+      const url = viewerVertical && viewerVertical !== 'study_abroad'
+        ? `/api/services?vertical=${encodeURIComponent(viewerVertical)}`
+        : '/api/services';
+      fetch(url)
         .then(async r => {
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || 'Unable to load services');
@@ -1178,7 +1186,7 @@ function StudentApp({ onLogout, userId, userName }) {
         })
         .catch(e => setServicesError(e.message))
         .finally(() => setServicesLoading(false));
-    }, []);
+    }, [viewerVertical]);
 
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
