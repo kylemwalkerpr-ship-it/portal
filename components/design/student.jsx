@@ -1129,6 +1129,27 @@ function StudentApp({ onLogout, userId, userName }) {
     const [services, setServices] = React.useState([]);
     const [servicesLoading, setServicesLoading] = React.useState(true);
     const [servicesError, setServicesError] = React.useState(null);
+    const [primaryCurrency, setPrimaryCurrency] = React.useState('usd');
+    const [usdToCadRate, setUsdToCadRate] = React.useState(1.37);
+    const [displayCurrency, setDisplayCurrency] = React.useState(() => {
+      if (typeof window === 'undefined') return null;
+      try { return window.localStorage.getItem('yousafe.displayCurrency') || null; } catch { return null; }
+    });
+    const effectiveDisplayCurrency = (displayCurrency || primaryCurrency || 'usd').toLowerCase();
+    const setAndPersistDisplayCurrency = c => {
+      const next = c.toLowerCase();
+      setDisplayCurrency(next);
+      try { window.localStorage.setItem('yousafe.displayCurrency', next); } catch { /* ignore */ }
+    };
+    const convertPrice = (amount, fromCurrency) => {
+      const from = String(fromCurrency || 'usd').toLowerCase();
+      const to = effectiveDisplayCurrency;
+      const value = Number(amount || 0);
+      if (from === to) return value;
+      if (from === 'usd' && to === 'cad') return value * usdToCadRate;
+      if (from === 'cad' && to === 'usd') return value / (usdToCadRate || 1);
+      return value;
+    };
     const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet' | 'saved_card'
     const [savedCards, setSavedCards] = React.useState([]);
     const [cardsLoading, setCardsLoading] = React.useState(false);
@@ -1150,6 +1171,9 @@ function StudentApp({ onLogout, userId, userName }) {
           const d = await r.json();
           if (!r.ok) throw new Error(d.error || 'Unable to load services');
           setServices(d.services ?? []);
+          if (d.primaryCurrency) setPrimaryCurrency(String(d.primaryCurrency).toLowerCase());
+          const rate = Number(d.rates?.usd_to_cad);
+          if (Number.isFinite(rate) && rate > 0) setUsdToCadRate(rate);
           setServicesError(null);
         })
         .catch(e => setServicesError(e.message))
@@ -1466,16 +1490,46 @@ function StudentApp({ onLogout, userId, userName }) {
             <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View order →</Btn>
           </div>
         )}
-        {/* Category filter */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {categories.map(c => (
-            <button key={c} onClick={() => setCatFilter(c)} style={{
-              padding: '6px 16px', borderRadius: '20px', border: `1px solid ${catFilter === c ? C.cyan : C.border}`,
-              background: catFilter === c ? `${C.cyan}18` : C.surface2,
-              color: catFilter === c ? C.cyan : C.textMuted,
-              fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: catFilter === c ? 600 : 400, transition: 'all 0.15s',
-            }}>{c}</button>
-          ))}
+        {/* Category filter + currency selector */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {categories.map(c => (
+              <button key={c} onClick={() => setCatFilter(c)} style={{
+                padding: '6px 16px', borderRadius: '20px', border: `1px solid ${catFilter === c ? C.cyan : C.border}`,
+                background: catFilter === c ? `${C.cyan}18` : C.surface2,
+                color: catFilter === c ? C.cyan : C.textMuted,
+                fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: catFilter === c ? 600 : 400, transition: 'all 0.15s',
+              }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>Show prices in</span>
+            <div style={{ display: 'inline-flex', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px' }}>
+              {[
+                { value: 'usd', label: 'USD' },
+                { value: 'cad', label: 'CAD' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAndPersistDisplayCurrency(opt.value)}
+                  style={{
+                    padding: '5px 14px',
+                    borderRadius: '999px',
+                    border: 'none',
+                    background: effectiveDisplayCurrency === opt.value ? C.cyan : 'transparent',
+                    color: effectiveDisplayCurrency === opt.value ? '#fff' : C.textMuted,
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
           {servicesLoading && <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px' }}>Loading services…</div>}
@@ -1494,10 +1548,25 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                 <div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(s.price, s.currency)}</div>
-                  {String(s.currency || 'usd').toLowerCase() !== 'usd' && Number(s.usd_price || 0) > 0 && (
-                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
-                  )}
+                  {(() => {
+                    const native = String(s.currency || 'usd').toLowerCase();
+                    const isConverted = native !== effectiveDisplayCurrency;
+                    const displayed = isConverted
+                      ? convertPrice(s.price, native)
+                      : Number(s.price || 0);
+                    return (
+                      <>
+                        <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
+                          {isConverted ? '≈ ' : ''}{formatMoney(displayed, effectiveDisplayCurrency)}
+                        </div>
+                        {isConverted && (
+                          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>
+                            Charged as {formatMoney(s.price, native)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <Btn variant="primary" size="sm" onClick={() => { setCart(s); setShowCheckout(true); }}>Order now</Btn>              </div>
             </Card>

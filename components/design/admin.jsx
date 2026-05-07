@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   platform_name: 'Yousafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
   primary_currency: 'usd',
+  usd_to_cad_rate: 1.37,
 };
 const SUPPORTED_CURRENCIES = ['usd', 'cad'];
 const normalizeCurrency = c => SUPPORTED_CURRENCIES.includes(String(c || '').toLowerCase()) ? String(c).toLowerCase() : 'usd';
@@ -57,6 +58,7 @@ function AdminApp({ onLogout }) {
   const [autoReleaseDays, setAutoReleaseDays] = React.useState(String(DEFAULT_SETTINGS.auto_release_days));
   const [allowForceRelease, setAllowForceRelease] = React.useState(DEFAULT_SETTINGS.allow_admin_force_release);
   const [primaryCurrency, setPrimaryCurrency] = React.useState(DEFAULT_SETTINGS.primary_currency);
+  const [usdToCadRate, setUsdToCadRate] = React.useState(String(DEFAULT_SETTINGS.usd_to_cad_rate));
   const [stripePublishableKey, setStripePublishableKey] = React.useState('');
   const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
@@ -134,6 +136,7 @@ function AdminApp({ onLogout }) {
     setAutoReleaseDays(String(settings.auto_release_days || DEFAULT_SETTINGS.auto_release_days));
     setAllowForceRelease(Boolean(settings.allow_admin_force_release));
     setPrimaryCurrency(normalizeCurrency(settings.primary_currency));
+    setUsdToCadRate(String(Number(settings.usd_to_cad_rate || DEFAULT_SETTINGS.usd_to_cad_rate)));
     setPlatformName(settings.platform_name || '');
     setSupportEmail(settings.support_email || '');
     const pendingUsers = normalizedUsers.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
@@ -190,6 +193,7 @@ function AdminApp({ onLogout }) {
     setAutoReleaseDays(String(data.settings.auto_release_days));
     setAllowForceRelease(Boolean(data.settings.allow_admin_force_release));
     setPrimaryCurrency(normalizeCurrency(data.settings.primary_currency));
+    setUsdToCadRate(String(Number(data.settings.usd_to_cad_rate || DEFAULT_SETTINGS.usd_to_cad_rate)));
     setPlatformName(data.settings.platform_name || '');
     setSupportEmail(data.settings.support_email || '');
     await refreshAdminData();
@@ -1041,10 +1045,25 @@ function AdminApp({ onLogout }) {
             CAD payouts require your platform Stripe account to support CAD —
             verify in dashboard.stripe.com before changing.
           </div>
+          <Input
+            label="USD → CAD display rate"
+            value={usdToCadRate}
+            onChange={setUsdToCadRate}
+            placeholder="1.37"
+            hint="Used by the storefront's currency selector to show converted prices. Each service still charges in its own native currency at checkout."
+          />
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
             try {
-              await savePlatformSettings({ primary_currency: normalizeCurrency(primaryCurrency) });
-              setActionNotice(`Primary currency saved: ${primaryCurrency.toUpperCase()}.`);
+              const rate = Number(usdToCadRate)
+              if (!Number.isFinite(rate) || rate <= 0) {
+                setActionNotice('Enter a positive USD→CAD rate (e.g. 1.37).');
+                return;
+              }
+              await savePlatformSettings({
+                primary_currency: normalizeCurrency(primaryCurrency),
+                usd_to_cad_rate: rate,
+              });
+              setActionNotice(`Currency saved: ${primaryCurrency.toUpperCase()} primary · 1 USD ≈ ${rate.toFixed(4)} CAD.`);
             } catch (e) {
               setActionNotice(e.message || 'Currency update failed.');
             }

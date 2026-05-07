@@ -11,6 +11,10 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   platform_name: 'Yousafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
   primary_currency: 'usd' as PrimaryCurrency,
+  // Used by the storefront to display prices in the user's chosen currency.
+  // Admin-controlled rather than auto-fetched: each service charges in its
+  // own native currency at checkout, so this is purely a display conversion.
+  usd_to_cad_rate: 1.37,
 }
 
 /**
@@ -41,5 +45,7 @@ export async function getPlatformSettings() {
   // Always normalise primary_currency so downstream Stripe calls never see a
   // typo or wrong case.
   merged.primary_currency = normalizePrimaryCurrency(merged.primary_currency)
+  const rate = Number(merged.usd_to_cad_rate)
+  merged.usd_to_cad_rate = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_PLATFORM_SETTINGS.usd_to_cad_rate
   return merged
 }
