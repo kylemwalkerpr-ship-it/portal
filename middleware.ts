@@ -15,6 +15,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/webhooks(.*)',
   '/api/wallet/diagnose',
   '/api/translate(.*)',
+  '/api/chat(.*)',
 ])
 
 export default clerkMiddleware(
