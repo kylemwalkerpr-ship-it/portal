@@ -2,6 +2,7 @@ import { CHAT_SYSTEM_PROMPT } from '@/lib/chatKnowledgeBase'
 import { getChatProvider, type ChatTurn } from '@/lib/chatProvider'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { fetchLiveKnowledge } from '@/lib/liveKnowledge'
 
 const MAX_HISTORY_TURNS = 16
 const MAX_USER_MESSAGE_CHARS = 2000
@@ -113,8 +114,16 @@ export async function POST(req: Request) {
     )
   }
 
+  // Fetch the live knowledge supplement maintained on the marketing site so
+  // edits to yara-knowledge.json roll out without a portal redeploy. Edge-
+  // cached for ~5 minutes; falls back to null if the marketing site is down.
+  const liveKnowledge = await fetchLiveKnowledge()
+  const liveSection = liveKnowledge
+    ? `\n\n# Live updates from the marketing site\nThese override anything conflicting in the static knowledge base above.\n\n${liveKnowledge}`
+    : ''
+
   try {
-    const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext, cleaned)
+    const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + liveSection, cleaned)
     return withCors(req, { reply, provider: provider.name })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
