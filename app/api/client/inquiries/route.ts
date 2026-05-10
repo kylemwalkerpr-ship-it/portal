@@ -1,6 +1,5 @@
 import { requireClient } from '@/lib/clientAuth'
 
-export const runtime = 'edge'
 
 // Returns inquiries the signed-in client either owns by profile_id, or that
 // match their email (covers anonymous submissions made before the user signed

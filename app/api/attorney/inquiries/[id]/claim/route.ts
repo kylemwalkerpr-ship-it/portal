@@ -1,6 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 
-export const runtime = 'edge'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()

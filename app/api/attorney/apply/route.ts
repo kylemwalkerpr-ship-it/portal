@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export const runtime = 'edge'
 
 type ApplyBody = {
   full_name?: string

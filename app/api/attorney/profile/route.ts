@@ -1,7 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export const runtime = 'edge'
 
 export async function GET() {
   const userId = await getClerkUserId()

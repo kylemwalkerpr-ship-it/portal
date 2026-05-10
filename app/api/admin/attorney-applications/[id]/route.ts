@@ -2,7 +2,6 @@ import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { sendEmail, attorneyApprovalEmail, attorneyDeclineEmail } from '@/lib/email'
 
-export const runtime = 'edge'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()

@@ -1,7 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export const runtime = 'edge'
 
 // Submit / update a rating for an attorney. One rating per (rater, attorney);
 // re-rating overwrites the previous value.

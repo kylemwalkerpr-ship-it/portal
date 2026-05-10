@@ -1,7 +1,6 @@
 import { getStripe } from '@/lib/stripe'
 import { requireClient } from '@/lib/clientAuth'
 
-export const runtime = 'edge'
 
 // Create a Stripe Checkout Session for accepting a custom attorney offer.
 // On `checkout.session.completed`, the existing webhook (extended for offer

@@ -1,6 +1,5 @@
 import { requireClient } from '@/lib/clientAuth'
 
-export const runtime = 'edge'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireClient()

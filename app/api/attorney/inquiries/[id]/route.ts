@@ -1,6 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 
-export const runtime = 'edge'
 
 // Returns the full thread for an inquiry (claim status, messages, offers).
 // Attorney must either own the claim or the inquiry must be unclaimed (so they

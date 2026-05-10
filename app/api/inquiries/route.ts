@@ -1,7 +1,6 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { handleOptions, jsonWithCors } from '@/lib/cors'
 
-export const runtime = 'edge'
 
 type InquiryBody = {
   email?: string

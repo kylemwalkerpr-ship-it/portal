@@ -1,6 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 
-export const runtime = 'edge'
 
 export async function GET(req: Request) {
   const { ctx, error, status } = await requireAttorney()
