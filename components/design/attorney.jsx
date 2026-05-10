@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   queue: 'Inquiry Queue',
   mine: 'My Inquiries',
   orders: 'Active Orders',
+  messages: 'Messages',
   earnings: 'Earnings',
   profile: 'My Profile',
   settings: 'Settings',
@@ -63,6 +64,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'queue' && <QueuePage />}
               {page === 'mine' && <MyInquiriesPage />}
               {page === 'orders' && <OrdersPage />}
+              {page === 'messages' && <AttorneyMessagesPage />}
               {page === 'earnings' && <EarningsPage />}
               {page === 'profile' && <AttorneyProfileEditor />}
               {page === 'settings' && <SettingsPage />}
@@ -98,6 +100,7 @@ function Sidebar({ page, setPage, onLogout, displayName }) {
         <NavItem icon="📥" label="Inquiry Queue" active={page === 'queue'} onClick={() => setPage('queue')} />
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
         <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
@@ -311,8 +314,69 @@ function MyInquiriesPage() {
   )
 }
 
+function AttorneyMessagesPage() {
+  const [chats, setChats] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [openId, setOpenId] = React.useState(null)
+
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
+    fetch('/api/attorney/chats', { credentials: 'same-origin' })
+      .then(async r => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load chats.')
+        setChats(payload.chats || [])
+        setError('')
+      })
+      .catch(e => setError(e.message))
+      .finally(() => { if (isInitial) setLoading(false) })
+  }, [])
+
+  React.useEffect(() => {
+    load(true)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load(false) }, 6000)
+    return () => clearInterval(id)
+  }, [load])
+
+  if (openId) {
+    return <InquiryThread inquiryId={openId} isChat onBack={() => { setOpenId(null); load(false) }} />
+  }
+  if (loading) return <Notice>Loading chats...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+
+  return (
+    <div style={{ padding: '24px 28px' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <div style={eyebrowStyle}>Pre-intake</div>
+        <h2 style={pageTitleStyle}>Attorney chats.</h2>
+      </div>
+      {chats.length === 0 ? (
+        <Notice>No pre-intake chats yet. Students can start one from your public profile.</Notice>
+      ) : (
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {chats.map(chat => (
+            <Card key={chat.id}>
+              <button type="button" onClick={() => setOpenId(chat.id)} style={{ width: '100%', padding: '14px 16px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, textAlign: 'left', fontFamily: 'inherit' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '14px' }}>{chat.client_name}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{chat.client_email}</div>
+                    <div style={{ color: C.textDim, fontSize: '12px', marginTop: '6px', maxWidth: '540px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.last_message || 'No messages yet'}</div>
+                  </div>
+                  {chat.pending_offers > 0 && <Badge color="orange">{chat.pending_offers} pending offer</Badge>}
+                </div>
+              </button>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Inquiry thread ──────────────────────────────────────────────────────────
-function InquiryThread({ inquiryId, onBack }) {
+function InquiryThread({ inquiryId, onBack, isChat = false }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -321,6 +385,7 @@ function InquiryThread({ inquiryId, onBack }) {
   const [showOfferModal, setShowOfferModal] = React.useState(false)
   const [withdrawingId, setWithdrawingId] = React.useState(null)
   const [connect, setConnect] = React.useState(null)
+  const chatFileRef = React.useRef(null)
 
   const load = React.useCallback((isInitial) => {
     if (isInitial) setLoading(true)
@@ -360,17 +425,25 @@ function InquiryThread({ inquiryId, onBack }) {
     }
   }
 
-  async function sendMessage(e) {
-    e.preventDefault()
-    if (!draft.trim() || sending) return
+  async function sendMessage(e, file) {
+    e?.preventDefault?.()
+    if ((!draft.trim() && !file) || sending) return
     setSending(true)
     try {
-      const res = await fetch(`/api/attorney/inquiries/${inquiryId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ body: draft }),
-      })
+      let res
+      if (isChat && file) {
+        const form = new FormData()
+        form.append('body', draft)
+        form.append('file', file)
+        res = await fetch(`/api/attorney/chats/${inquiryId}/messages`, { method: 'POST', credentials: 'same-origin', body: form })
+      } else {
+        res = await fetch(isChat ? `/api/attorney/chats/${inquiryId}/messages` : `/api/attorney/inquiries/${inquiryId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ body: draft }),
+        })
+      }
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not send message.')
       setDraft('')
@@ -379,6 +452,7 @@ function InquiryThread({ inquiryId, onBack }) {
       setError(err.message)
     } finally {
       setSending(false)
+      if (chatFileRef.current) chatFileRef.current.value = ''
     }
   }
 
@@ -412,14 +486,14 @@ function InquiryThread({ inquiryId, onBack }) {
         onClick={onBack}
         style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px' }}
       >
-        ← Back to my inquiries
+        ← Back to {isChat ? 'messages' : 'my inquiries'}
       </button>
 
       <Card>
         <div style={{ padding: '18px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '17px' }}>{inquiry.case_type_label || inquiry.case_type || 'Inquiry'}</div>
+              <div style={{ fontWeight: 700, fontSize: '17px' }}>{isChat ? 'Pre-intake chat' : (inquiry.case_type_label || inquiry.case_type || 'Inquiry')}</div>
               <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '2px' }}>
                 {inquiry.full_name} · {inquiry.email}{inquiry.phone ? ` · ${inquiry.phone}` : ''}
               </div>
@@ -461,6 +535,8 @@ function InquiryThread({ inquiryId, onBack }) {
         </div>
 
         <form onSubmit={sendMessage} style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          {isChat && <input ref={chatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e, e.target.files?.[0])} />}
+          {isChat && <Btn type="button" variant="secondary" size="sm" onClick={() => chatFileRef.current?.click()}>Attach</Btn>}
           <textarea
             rows={2}
             value={draft}

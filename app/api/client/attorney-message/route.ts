@@ -35,13 +35,14 @@ export async function POST(req: Request) {
       client_profile_id: ctx.profileId,
       email: ctx.email,
       full_name: ctx.fullName,
-      case_type: 'pre_intake_message',
-      case_type_label: 'Pre-intake attorney message',
+      case_type: 'attorney_chat',
+      case_type_label: 'Attorney profile chat',
       urgency: 'normal',
       answers: { initial_message: message },
-      meta: { started_from: 'attorney_profile_message' },
-      source: 'portal_attorney_profile',
+      meta: { started_from: 'attorney_profile_message', pre_intake: true },
+      source: 'portal_attorney_chat',
       target_attorney_profile_id: attorney.profile_id,
+      status: 'engaged',
     })
     .select('id')
     .single()
@@ -58,5 +59,5 @@ export async function POST(req: Request) {
   })
 
   if (msgErr) return Response.json({ error: msgErr.message }, { status: 500 })
-  return Response.json({ inquiryId: inquiry.id, ok: true })
+  return Response.json({ chatId: inquiry.id, inquiryId: inquiry.id, ok: true })
 }

@@ -982,7 +982,13 @@ function StudentApp({ onLogout, userId, userName }) {
   // Cross-component navigation: child views (e.g. FindAttorney) dispatch a
   // CustomEvent('yousafe-navigate', { detail: { page } }) to switch tabs.
   React.useEffect(() => {
-    const handler = (e) => { if (e.detail?.page) setPage(e.detail.page) }
+    const handler = (e) => {
+      if (e.detail?.attorneyChatId) {
+        setSelectedAttorneyChatId(e.detail.attorneyChatId)
+        setSelectedOrder(null)
+      }
+      if (e.detail?.page) setPage(e.detail.page)
+    }
     window.addEventListener('yousafe-navigate', handler)
     return () => window.removeEventListener('yousafe-navigate', handler)
   }, []);
@@ -990,6 +996,11 @@ function StudentApp({ onLogout, userId, userName }) {
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
+  const [attorneyChats, setAttorneyChats] = React.useState([]);
+  const [selectedAttorneyChatId, setSelectedAttorneyChatId] = React.useState(null);
+  const [attorneyChatData, setAttorneyChatData] = React.useState(null);
+  const [attorneyChatLoading, setAttorneyChatLoading] = React.useState(false);
+  const attorneyChatFileRef = React.useRef(null);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
@@ -1028,6 +1039,48 @@ function StudentApp({ onLogout, userId, userName }) {
   }, []);
 
   React.useEffect(() => { refreshStudentData(); }, [refreshStudentData]);
+
+  const loadAttorneyChats = React.useCallback(() => {
+    return fetch('/api/client/attorney-chats')
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load attorney chats');
+        setAttorneyChats(data.chats || []);
+        return data.chats || [];
+      })
+      .catch(e => {
+        setActionNotice(e.message);
+        return [];
+      });
+  }, []);
+
+  React.useEffect(() => { loadAttorneyChats(); }, [loadAttorneyChats]);
+
+  const loadAttorneyChat = React.useCallback(async chatId => {
+    if (!chatId) return;
+    setAttorneyChatLoading(true);
+    try {
+      const res = await fetch(`/api/client/attorney-chats/${chatId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load attorney chat');
+      setAttorneyChatData(data);
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setAttorneyChatLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedAttorneyChatId) {
+      setAttorneyChatData(null);
+      return undefined;
+    }
+    loadAttorneyChat(selectedAttorneyChatId);
+    if (page !== 'messages') return undefined;
+    const interval = setInterval(() => loadAttorneyChat(selectedAttorneyChatId), 6000);
+    return () => clearInterval(interval);
+  }, [selectedAttorneyChatId, loadAttorneyChat, page]);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -1101,6 +1154,62 @@ function StudentApp({ onLogout, userId, userName }) {
       }]);
     } catch (e) {
       setMsgInput(text);
+      setActionNotice(e.message);
+    }
+  };
+
+  const sendAttorneyChatMessage = async (file) => {
+    const text = msgInput.trim();
+    if ((!text && !file) || !selectedAttorneyChatId) return;
+    setMsgInput('');
+    try {
+      let res;
+      if (file) {
+        const form = new FormData();
+        form.append('body', text);
+        form.append('file', file);
+        res = await fetch(`/api/client/attorney-chats/${selectedAttorneyChatId}/messages`, { method: 'POST', body: form });
+      } else {
+        res = await fetch(`/api/client/attorney-chats/${selectedAttorneyChatId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text }),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to send message');
+      await loadAttorneyChat(selectedAttorneyChatId);
+      await loadAttorneyChats();
+    } catch (e) {
+      setMsgInput(text);
+      setActionNotice(e.message);
+    } finally {
+      if (attorneyChatFileRef.current) attorneyChatFileRef.current.value = '';
+    }
+  };
+
+  const acceptAttorneyOffer = async offerId => {
+    try {
+      const res = await fetch(`/api/offers/${offerId}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
+      window.location.href = data.url;
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
+  const declineAttorneyOffer = async offerId => {
+    try {
+      const res = await fetch(`/api/offers/${offerId}/decline`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Could not decline offer.');
+      await loadAttorneyChat(selectedAttorneyChatId);
+    } catch (e) {
       setActionNotice(e.message);
     }
   };
@@ -1615,7 +1724,7 @@ function StudentApp({ onLogout, userId, userName }) {
       setDisplayCurrency(next);
       try { window.localStorage.setItem('yousafe.displayCurrency', next); } catch { /* ignore */ }
     };
-    const convertPrice = (amount, fromCurrency) => {
+    const convertPrice = (amount, fromCurrency = 'usd') => {
       const from = String(fromCurrency || 'usd').toLowerCase();
       const to = effectiveDisplayCurrency;
       const value = Number(amount || 0);
@@ -1690,13 +1799,9 @@ function StudentApp({ onLogout, userId, userName }) {
     if (showCheckout && cart) {
       const priceNum = Number(cart.price || 0);
       const amountCents = priceNum * 100;
-      const serviceCurrency = String(cart.currency || 'usd').toLowerCase();
-      const isUsdService = serviceCurrency === 'usd';
-      const usdPriceNum = Number(cart.usd_price || (isUsdService ? priceNum : 0));
-      const hasUsdEquivalent = !isUsdService && usdPriceNum > 0;
-      const displayPriceNum = convertPrice(priceNum, serviceCurrency);
-      const isDisplayedConverted = serviceCurrency !== effectiveDisplayCurrency;
-      const canUseWallet = isUsdService && walletBalance !== null && walletBalance >= priceNum;
+      const serviceCurrency = 'usd';
+      const displayPriceNum = effectiveDisplayCurrency === 'cad' ? convertPrice(priceNum, 'usd') : priceNum;
+      const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
       const selectedCard = savedCards.find(card => card.id === selectedCardId);
       const canUseSavedCard = Boolean(selectedCardId);
 
@@ -1791,8 +1896,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{isDisplayedConverted ? '≈ ' : ''}{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</div>
-                {isDisplayedConverted && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>Charged as {formatMoney(priceNum, serviceCurrency)}</div>}
+                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</div>
               </div>
             </div>
           </Card>
@@ -1815,8 +1919,7 @@ function StudentApp({ onLogout, userId, userName }) {
                   <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with Wallet</div>
                   <div style={{ fontSize: '12px', color: C.textMuted }}>
                     Balance: {walletBalance === null ? '…' : `$${walletBalance.toFixed(2)}`}
-                    {!isUsdService && <span style={{ color: C.textMuted, marginLeft: '6px' }}>— USD only</span>}
-                    {isUsdService && !canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
+                    {!canUseWallet && walletBalance !== null && <span style={{ color: '#EF4444', marginLeft: '6px' }}>— insufficient</span>}
                   </div>
                 </div>
               </div>
@@ -1894,13 +1997,8 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span><span style={{ color: C.cyan }}>{isDisplayedConverted ? '≈ ' : ''}{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</span>
+              <span>Total</span><span style={{ color: C.cyan }}>{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</span>
             </div>
-            {(hasUsdEquivalent || isDisplayedConverted) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0 4px', fontSize: '12px', color: C.textMuted }}>
-                <span>Charged as</span><span>{formatMoney(priceNum, serviceCurrency)}</span>
-              </div>
-            )}
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
           {requiresAck && (
@@ -1934,11 +2032,11 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {payMethod === 'wallet' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(priceNum, serviceCurrency)} from Wallet`}
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
             </Btn>
           ) : payMethod === 'saved_card' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${isDisplayedConverted ? '≈ ' : ''}${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
@@ -1957,7 +2055,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 setPaying(false);
               }
             }}>
-              {paying ? 'Opening checkout…' : `Pay ${isDisplayedConverted ? '≈ ' : ''}${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with Stripe →`}
+              {paying ? 'Opening checkout…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with Stripe →`}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
@@ -2054,21 +2152,14 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                 <div>
                   {(() => {
-                    const native = String(s.currency || 'usd').toLowerCase();
-                    const isConverted = native !== effectiveDisplayCurrency;
-                    const displayed = isConverted
-                      ? convertPrice(s.price, native)
+                    const displayed = effectiveDisplayCurrency === 'cad'
+                      ? convertPrice(s.price, 'usd')
                       : Number(s.price || 0);
                     return (
                       <>
                         <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
-                          {isConverted ? '≈ ' : ''}{formatMoney(displayed, effectiveDisplayCurrency)}
+                          {formatMoney(displayed, effectiveDisplayCurrency)}
                         </div>
-                        {isConverted && (
-                          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>
-                            Charged as {formatMoney(s.price, native)}
-                          </div>
-                        )}
                       </>
                     );
                   })()}
@@ -2079,9 +2170,7 @@ function StudentApp({ onLogout, userId, userName }) {
         </div>
         {selectedService && (() => {
           const details = getServiceDetails(selectedService);
-          const native = String(selectedService.currency || 'usd').toLowerCase();
-          const isConverted = native !== effectiveDisplayCurrency;
-          const displayed = isConverted ? convertPrice(selectedService.price, native) : Number(selectedService.price || 0);
+          const displayed = effectiveDisplayCurrency === 'cad' ? convertPrice(selectedService.price, 'usd') : Number(selectedService.price || 0);
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -2162,8 +2251,7 @@ function StudentApp({ onLogout, userId, userName }) {
                       <div style={{ color: C.text, fontSize: '13px' }}>Escrow protected</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '22px', fontWeight: 900, color: C.cyan }}>{isConverted ? '≈ ' : ''}{formatMoney(displayed, effectiveDisplayCurrency)}</div>
-                      {isConverted && <div style={{ color: C.textMuted, fontSize: '12px' }}>Charged as {formatMoney(selectedService.price, native)}</div>}
+                      <div style={{ fontSize: '22px', fontWeight: 900, color: C.cyan }}>{formatMoney(displayed, effectiveDisplayCurrency)}</div>
                     </div>
                   </div>
                   <Btn variant="primary" size="lg" fullWidth onClick={() => openCheckoutForService(selectedService)}>
@@ -2394,6 +2482,108 @@ function StudentApp({ onLogout, userId, userName }) {
     );
   };
 
+  const StudentMessages = () => {
+    const conversations = [
+      ...attorneyChats.map(c => ({ type: 'attorney', id: c.id, name: c.attorney_name, sub: c.last_message || 'Attorney profile chat', avatar: c.headshot_url, presence: c.presence, pending: c.pending_offers })),
+      ...orders.map(o => ({ type: 'order', id: o.id, name: o.consultant, sub: o.service, order: o, pending: o.messages })),
+    ];
+    const currentAttorneyChat = attorneyChatData?.chat;
+    const currentMessages = attorneyChatData?.messages || [];
+    const currentOffers = attorneyChatData?.offers || [];
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
+          <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
+            {conversations.length === 0 && (
+              <div style={{ padding: '24px 16px', color: C.textMuted, fontSize: '13px', lineHeight: 1.5 }}>No conversations yet. Open an attorney profile to start a chat, or place an order to message a consultant.</div>
+            )}
+            {conversations.map(c => {
+              const active = c.type === 'attorney' ? selectedAttorneyChatId === c.id : selectedOrder?.id === c.id;
+              return (
+                <button
+                  key={`${c.type}-${c.id}`}
+                  type="button"
+                  onClick={() => {
+                    if (c.type === 'attorney') { setSelectedAttorneyChatId(c.id); setSelectedOrder(null); }
+                    else { setSelectedOrder(c.order); setSelectedAttorneyChatId(null); }
+                  }}
+                  style={{ width: '100%', padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer', background: active ? C.surface2 : 'transparent', border: 'none', borderBottom: `1px solid ${C.border}`, textAlign: 'left', fontFamily: 'inherit', color: C.text }}
+                >
+                  <Avatar name={c.name} src={c.avatar} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                    <div style={{ fontSize: '12px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sub}</div>
+                    {c.type === 'attorney' && <div style={{ fontSize: '11px', color: c.presence === 'online' ? C.green : C.textDim, marginTop: '2px' }}>{c.presence === 'online' ? '● Online' : '○ Offline'}</div>}
+                  </div>
+                  {c.pending > 0 && <Badge color="red" style={{ fontSize: '10px', alignSelf: 'flex-start', padding: '1px 6px' }}>{c.pending}</Badge>}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedAttorneyChatId ? (
+            <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <Avatar name={currentAttorneyChat?.attorney_name || 'Attorney'} src={currentAttorneyChat?.headshot_url} size={38} />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '14px' }}>{currentAttorneyChat?.attorney_name || 'Attorney'}</div>
+                  <div style={{ fontSize: '12px', color: currentAttorneyChat?.presence === 'online' ? C.green : C.textDim }}>
+                    {currentAttorneyChat?.presence === 'online' ? '● Online' : currentAttorneyChat?.last_seen ? `○ Last seen ${new Date(currentAttorneyChat.last_seen).toLocaleString()}` : '○ Offline'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {attorneyChatLoading && currentMessages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
+                {currentMessages.map((m) => <ChatBubble key={m.id} message={m} mine={m.sender_role === 'client'} />)}
+                {currentOffers.map(o => <AttorneyOfferCard key={o.id} offer={o} onAccept={() => acceptAttorneyOffer(o.id)} onDecline={() => declineAttorneyOffer(o.id)} />)}
+              </div>
+              <div style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input ref={attorneyChatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendAttorneyChatMessage(e.target.files?.[0])} />
+                <Btn variant="secondary" size="sm" onClick={() => attorneyChatFileRef.current?.click()}>Attach</Btn>
+                <input value={msgInput} onChange={e => setMsgInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendAttorneyChatMessage()}
+                  placeholder="Type a message…"
+                  style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
+                <Btn variant="primary" size="sm" onClick={() => sendAttorneyChatMessage()}>Send</Btn>
+              </div>
+            </Card>
+          ) : selectedOrder ? (
+            <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <Avatar name={selectedOrder.consultant} size={36} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '14px' }}>{selectedOrder.consultant}</div>
+                  <div style={{ fontSize: '12px', color: C.green }}>● Online</div>
+                </div>
+              </div>
+              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {messages.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
+                    {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
+                    <div style={{ maxWidth: '60%' }}>
+                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.cyan : C.surface2, color: m.from === 'student' ? '#000' : C.text }}>{m.text}</div>
+                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
+                <input value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
+                <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
+              </div>
+            </Card>
+          ) : (
+            <Card style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '14px' }}>
+              Select a conversation.
+            </Card>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ── RENDER ──
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2421,76 +2611,60 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'documents' && <Documents />}
           {page === 'billing' && <Billing />}
           {page === 'settings' && <Settings />}
-          {page === 'messages' && !selectedOrder && (
-            <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: C.textMuted, flexDirection: 'column', gap: '12px' }}>
-                <span style={{ fontSize: '40px' }}>💬</span>
-                <p style={{ fontSize: '15px' }}>No active orders yet. Place an order to chat with your consultant.</p>
-              </div>
-            </div>
-          )}
-          {page === 'messages' && selectedOrder && (
-            <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
-                <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
-                  {orders.map(o => (
-                    <div key={o.id} onClick={() => setSelectedOrder(o)} style={{
-                      padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer',
-                      background: selectedOrder?.id === o.id ? C.surface2 : 'transparent',
-                      borderBottom: `1px solid ${C.border}`,
-                    }}>
-                      <Avatar name={o.consultant} size={36} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.consultant}</div>
-                        <div style={{ fontSize: '12px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div>
-                      </div>
-                      {o.messages > 0 && <Badge color="red" style={{ fontSize: '10px', alignSelf: 'flex-start', padding: '1px 6px' }}>{o.messages}</Badge>}
-                    </div>
-                  ))}
-                </div>
-                <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
-                  <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <Avatar name={selectedOrder.consultant} size={36} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '14px' }}>{selectedOrder.consultant}</div>
-                      <div style={{ fontSize: '12px', color: C.green }}>● Online</div>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {messages.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
-                        {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
-                        <div style={{ maxWidth: '60%' }}>
-                          <div style={{
-                            padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5,
-                            background: m.from === 'student' ? C.cyan : C.surface2,
-                            color: m.from === 'student' ? '#000' : C.text,
-                          }}>{m.text}</div>
-                          <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
-                    <input value={msgInput} onChange={e => setMsgInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                      placeholder="Type a message…"
-                      style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
-                    <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          )}
+          {page === 'messages' && <StudentMessages />}
           </div>
           <DashboardRightPane role="student" />
         </div>
       </div>
     </div>
   );
+}
+
+function ChatBubble({ message, mine }) {
+  const body = String(message.body || '')
+  const lines = body.split('\n')
+  const attachmentLine = lines.find(line => /^https?:\/\//.test(line.trim()))
+  const labelLine = lines.find(line => line.startsWith('Attachment:'))
+  const text = attachmentLine ? lines.filter(line => line !== attachmentLine && line !== labelLine).join('\n').trim() : body
+  return (
+    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+      <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: mine ? C.cyan : C.surface2, color: mine ? '#000' : C.text, whiteSpace: 'pre-wrap' }}>
+        {text && <div>{text}</div>}
+        {attachmentLine && (
+          <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? '#000' : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
+            {labelLine || 'Open attachment'}
+          </a>
+        )}
+        <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
+      </div>
+    </div>
+  )
+}
+
+function AttorneyOfferCard({ offer, onAccept, onDecline }) {
+  const platformFee = Number(offer.platform_fee || 0)
+  const total = Number(offer.price || 0) + platformFee
+  const pending = offer.status === 'sent'
+  return (
+    <div style={{ border: `1px solid ${pending ? C.cyan : C.border}`, borderRadius: '12px', padding: '14px', background: pending ? `${C.cyan}0d` : C.surface2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 800, fontSize: '14px', color: C.text }}>{offer.title}</div>
+        <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : 'gray'}>{offer.status}</Badge>
+      </div>
+      <div style={{ marginTop: '6px', color: C.textMuted, fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{offer.description}</div>
+      <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Attorney fee</span><strong>${Number(offer.price || 0).toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Platform fee ({offer.platform_fee_percent_snapshot || 25}%)</span><strong>${platformFee.toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: '5px', marginTop: '3px' }}><span>You pay</span><strong>${total.toFixed(2)}</strong></div>
+      </div>
+      {pending && (
+        <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+          <Btn variant="primary" size="sm" onClick={onAccept}>Accept & pay ${total.toFixed(2)}</Btn>
+          <Btn variant="ghost" size="sm" onClick={onDecline}>Decline</Btn>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default StudentApp;

@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       {
         quantity: 1,
         price_data: {
-          currency: String(service.currency || 'usd').toLowerCase(),
+          currency: 'usd',
           unit_amount: amount,
           product_data: {
             name: service.title ?? 'YouSafe service',

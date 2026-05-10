@@ -39,7 +39,7 @@ export async function GET(req: Request) {
         .order('title', { ascending: true })
       if (legacyErr) return Response.json({ error: legacyErr.message }, { status: 500 })
       return Response.json({
-        services: legacyServices ?? [],
+        services: (legacyServices ?? []).map((service) => ({ ...service, currency: 'usd' })),
         primaryCurrency: settings.primary_currency,
         rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
         vertical,
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
   }
 
   return Response.json({
-    services: services ?? [],
+    services: (services ?? []).map((service) => ({ ...service, currency: 'usd' })),
     primaryCurrency: settings.primary_currency,
     rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
     vertical,

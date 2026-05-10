@@ -320,7 +320,10 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not send message.')
       setMessageText('')
-      setMessageStatus('Message sent. You can continue the conversation from My Inquiries.')
+      setMessageStatus('Chat started. Opening Messages...')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'messages', attorneyChatId: payload?.chatId } }))
+      }
     } catch (e) {
       setMessageStatus(e.message)
     } finally {

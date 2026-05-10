@@ -149,7 +149,7 @@ export async function POST(req: Request) {
     if (!service) return Response.json({ error: 'Service not found' }, { status: 404 })
 
     const amount = dollarsToCents(service.price)
-    const currency = String(service.currency || 'usd').toLowerCase()
+    const currency = 'usd'
     if (amount < 100) return Response.json({ error: 'Service price is invalid' }, { status: 400 })
 
     const stripe = getStripe()

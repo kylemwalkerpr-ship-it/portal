@@ -45,10 +45,6 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Service not found' }, { status: 404 })
     }
 
-    if (String(service.currency || 'usd').toLowerCase() !== 'usd') {
-      return Response.json({ error: 'Wallet payments are only available for USD services' }, { status: 400 })
-    }
-
     const expectedAmountCents = Math.round(Number(service.price || 0) * 100)
     if (expectedAmountCents !== amountCents) {
       return Response.json({ error: 'Service price changed. Please refresh and try again.' }, { status: 409 })

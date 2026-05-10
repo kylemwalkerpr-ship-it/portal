@@ -30,12 +30,12 @@ export async function GET(req: Request) {
 
     const { data, error: qErr } = await ctx.db
       .from('inquiries')
-      .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, created_at')
+      .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, source, created_at')
       .in('id', ids)
       .order('created_at', { ascending: false })
 
     if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
-    return Response.json({ inquiries: data ?? [] })
+    return Response.json({ inquiries: (data ?? []).filter((q) => q.source !== 'portal_attorney_chat') })
   }
 
   // Default: open queue (anything not finalised). Attorneys see all such
@@ -44,14 +44,14 @@ export async function GET(req: Request) {
   // jumps to the top of this attorney's queue.
   const { data, error: qErr } = await ctx.db
     .from('inquiries')
-    .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, target_attorney_profile_id, created_at')
+    .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, source, target_attorney_profile_id, created_at')
     .in('status', ['open', 'engaged', 'claimed'])
     .order('created_at', { ascending: false })
     .limit(200)
 
   if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
 
-  const decorated = (data ?? []).map((q) => ({
+  const decorated = (data ?? []).filter((q) => q.source !== 'portal_attorney_chat').map((q) => ({
     ...q,
     targeted_to_me: q.target_attorney_profile_id === ctx.profileId,
   }))

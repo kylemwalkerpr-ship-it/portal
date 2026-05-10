@@ -24,7 +24,7 @@ export async function GET() {
 
   const { data, error: qErr } = await ctx.db
     .from('inquiries')
-    .select('id, case_type_label, country, urgency, status, claimed_by_attorney_id, claimed_at, created_at')
+    .select('id, case_type_label, country, urgency, status, claimed_by_attorney_id, claimed_at, source, created_at')
     .eq('client_profile_id', ctx.profileId)
     .order('created_at', { ascending: false })
 
@@ -36,7 +36,7 @@ export async function GET() {
     return Response.json({ error: qErr.message }, { status: 500 })
   }
 
-  return Response.json({ inquiries: data ?? [] })
+  return Response.json({ inquiries: (data ?? []).filter((q) => q.source !== 'portal_attorney_chat') })
 }
 
 function isMissingTable(message: string | undefined | null): boolean {
