@@ -680,7 +680,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
     fetch('/api/attorney/connect/status', { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((p) => setConnect(p))
-      .catch(() => setConnect({ has_account: false, onboarding_complete: false }))
+      .catch(() => setConnect({ has_account: false, onboarding_complete: false, effective_onboarded: false, attorney_platform_fee_percent: 25 }))
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') load(false)
     }, 6000)
@@ -752,94 +752,42 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
   const messages = data.messages || []
   const offers = data.offers || []
   const hasPendingOffer = offers.some((o) => o.status === 'sent')
+  const effectiveOnboarded = Boolean(connect?.effective_onboarded ?? connect?.onboarding_complete)
+  const bypassed = Boolean(connect?.bypassed)
+  const livePercent = Number.isFinite(Number(connect?.attorney_platform_fee_percent))
+    ? Number(connect.attorney_platform_fee_percent)
+    : DEFAULT_ATTORNEY_FEE_PERCENT
 
   return (
-    <div style={{ padding: '20px 28px', maxWidth: '880px' }}>
+    <div style={{ padding: '20px 28px', maxWidth: '920px' }}>
       <button
         onClick={onBack}
-        style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px' }}
+        style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px', fontFamily: 'inherit' }}
       >
         ← Back to {isChat ? 'messages' : 'my inquiries'}
       </button>
 
-      <Card>
-        <div style={{ padding: '18px 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '17px' }}>{isChat ? 'Pre-intake chat' : (inquiry.case_type_label || inquiry.case_type || 'Inquiry')}</div>
-              <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '2px' }}>
-                {inquiry.full_name} · {inquiry.email}{inquiry.phone ? ` · ${inquiry.phone}` : ''}
-              </div>
-              <div style={{ fontSize: '12px', color: C.textDim, marginTop: '2px' }}>
-                {inquiry.country || '—'} · Submitted {new Date(inquiry.created_at).toLocaleString()}
-              </div>
-            </div>
-            <Badge color={inquiry.status === 'converted' ? 'green' : 'cyan'}>{inquiry.status}</Badge>
-          </div>
-          <AnswersPreview answers={inquiry.answers} expanded />
-        </div>
-      </Card>
+      <ClientBanner inquiry={inquiry} isChat={isChat} />
 
-      <div style={{ marginTop: '20px' }}>
-        <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: '0 0 10px' }}>
-          Conversation
-        </h3>
-        <div
-          style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: '12px',
-            padding: '14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            maxHeight: '420px',
-            overflow: 'auto',
-          }}
-        >
-          {messages.length === 0 && (
-            <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '12px 0' }}>
-              No messages yet. Introduce yourself to start.
-            </div>
-          )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} viewerRole="attorney" />
-          ))}
-        </div>
+      {!isChat && <div style={{ marginTop: '14px' }}><Card><div style={{ padding: '14px 18px' }}><AnswersPreview answers={inquiry.answers} expanded /></div></Card></div>}
 
-        <form onSubmit={sendMessage} style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-          {isChat && <input ref={chatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e, e.target.files?.[0])} />}
-          {isChat && <Btn type="button" variant="secondary" size="sm" onClick={() => chatFileRef.current?.click()}>Attach</Btn>}
-          <textarea
-            rows={2}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Reply to the client..."
-            style={{
-              flex: 1,
-              background: C.surface,
-              border: `1px solid ${C.border}`,
-              borderRadius: '8px',
-              padding: '10px 12px',
-              color: C.text,
-              fontSize: '14px',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-            }}
-          />
-          <Btn type="submit" variant="primary" size="sm" disabled={sending || !draft.trim()}>
-            {sending ? 'Sending...' : 'Send'}
-          </Btn>
-        </form>
-      </div>
+      <ConversationBox
+        messages={messages}
+        viewerRole="attorney"
+        draft={draft}
+        setDraft={setDraft}
+        sending={sending}
+        onSend={sendMessage}
+        fileRef={isChat ? chatFileRef : null}
+      />
 
       <div style={{ marginTop: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '12px', flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
             My offers
           </h3>
           {!hasPendingOffer && inquiry.status !== 'converted' && (
-            connect && connect.onboarding_complete ? (
+            effectiveOnboarded ? (
               <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
                 + Send custom offer
               </Btn>
@@ -850,9 +798,15 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
             )
           )}
         </div>
-        {connect && !connect.onboarding_complete && (
-          <div style={{ marginBottom: '10px', padding: '10px 12px', background: 'rgba(245,180,0,0.10)', border: '1px solid rgba(245,180,0,0.25)', borderRadius: '8px', color: '#f5b400', fontSize: '12px' }}>
-            You can chat with the client now, but you must connect Stripe to send a paid offer. Click the button above to onboard.
+        {connect && !connect.onboarding_complete && !bypassed && (
+          <div style={{ marginBottom: '10px', padding: '10px 12px', background: 'rgba(245,180,0,0.10)', border: '1px solid rgba(245,180,0,0.25)', borderRadius: '8px', color: '#a36a00', fontSize: '12px' }}>
+            You can chat with the client now, but you must connect Stripe before sending a paid offer. Click the button above to onboard.
+          </div>
+        )}
+        {bypassed && !connect?.onboarding_complete && (
+          <div style={{ marginBottom: '10px', padding: '10px 12px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '8px', color: C.cyan, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>✓</span>
+            <span>Admin Stripe bypass is enabled — you can send paid offers now. Payouts hold until your Connect account verifies.</span>
           </div>
         )}
         {offers.length === 0 ? (
@@ -869,6 +823,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
       {showOfferModal && (
         <OfferModal
           inquiryId={inquiryId}
+          feePercent={livePercent}
           onClose={() => setShowOfferModal(false)}
           onCreated={() => {
             setShowOfferModal(false)
@@ -880,12 +835,12 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
   )
 }
 
-// Default platform fee percent for the live preview. The server snapshots
-// the actual current setting at offer-creation time, which is the source of
-// truth on the offer row.
+// Fallback used only if the live admin-controlled percent fails to load.
+// The server snapshots the actual current setting at offer-creation time,
+// which is the source of truth on the offer row.
 const DEFAULT_ATTORNEY_FEE_PERCENT = 25
 
-function OfferModal({ inquiryId, onClose, onCreated }) {
+function OfferModal({ inquiryId, onClose, onCreated, feePercent }) {
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [price, setPrice] = React.useState('')
@@ -894,8 +849,9 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState('')
 
+  const livePercent = Number.isFinite(Number(feePercent)) ? Number(feePercent) : DEFAULT_ATTORNEY_FEE_PERCENT
   const numericPrice = Number(price) || 0
-  const previewPlatformFee = Math.round(numericPrice * (DEFAULT_ATTORNEY_FEE_PERCENT / 100) * 100) / 100
+  const previewPlatformFee = Math.round(numericPrice * (livePercent / 100) * 100) / 100
   const previewTotal = numericPrice + previewPlatformFee
 
   async function submit(e) {
@@ -1004,7 +960,7 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
               <span style={{ color: C.text }}>${numericPrice.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: C.text }}>Platform fee ({DEFAULT_ATTORNEY_FEE_PERCENT}%)</span>
+              <span style={{ color: C.text }}>Platform fee ({livePercent}%)</span>
               <span style={{ color: C.text }}>${previewPlatformFee.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: '4px', marginTop: '2px' }}>
@@ -1726,35 +1682,355 @@ const pillBtn = (active) => ({
 })
 
 // ── Shared subcomponents ────────────────────────────────────────────────────
+
+const QUICK_REPLIES = [
+  {
+    label: 'Intro & next steps',
+    body:
+      "Hello — thanks for reaching out. I’ve reviewed the details you shared. Before I can scope a fixed price, I’d like to confirm a couple of items:\n\n1. Your current status / most recent filings\n2. Any prior denials or pending notices\n3. Your target timeline\n\nReply here and I’ll send a written offer with scope, deliverables, and an estimated turnaround.",
+  },
+  {
+    label: 'Documents needed',
+    body:
+      "Could you upload the following so I can finalize scope?\n\n• Government-issued ID\n• Most recent status / approval notice\n• Any prior application or denial paperwork\n• Supporting evidence (employment, financials, school letters as applicable)\n\nUse the paperclip in the composer to attach. Anything you’re unsure about, just describe it and I’ll flag what’s actually required.",
+  },
+  {
+    label: 'Pricing how it works',
+    body:
+      "On YouSafe, my fee is paid in full to me. The platform fee is added on top and disclosed to you before checkout — it isn’t taken out of my fee. Funds sit in escrow until the work is delivered and you approve it. Once approved, the payout releases to me.",
+  },
+  {
+    label: 'Conflict / out of scope',
+    body:
+      "Thank you for reaching out. After reviewing the details, this matter is outside the scope I currently take on, so I won’t be able to send an offer. The YouSafe queue lets other panel attorneys see your inquiry, and I’d encourage you to wait for an alternative engagement. Best of luck.",
+  },
+]
+
+function ClientBanner({ inquiry, isChat }) {
+  const initial = (inquiry?.full_name || inquiry?.email || '?').trim().charAt(0).toUpperCase()
+  const submitted = inquiry?.created_at ? new Date(inquiry.created_at) : null
+  return (
+    <Card>
+      <div style={{ padding: '16px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <div
+              style={{
+                width: '44px', height: '44px', borderRadius: '50%',
+                background: `${C.cyan}18`, color: C.cyan,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: '17px', flexShrink: 0, fontFamily: C.serif,
+              }}
+            >
+              {initial}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: C.serif, fontSize: '20px', fontWeight: 600, color: C.text, lineHeight: 1.15, letterSpacing: '-0.005em' }}>
+                {inquiry?.full_name || 'Client'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: '6px', fontSize: '12.5px', color: C.textMuted }}>
+                {inquiry?.email && (
+                  <a href={`mailto:${inquiry.email}`} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <span>✉</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inquiry.email}</span>
+                  </a>
+                )}
+                {inquiry?.phone && (
+                  <a href={`tel:${inquiry.phone}`} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <span>📞</span><span>{inquiry.phone}</span>
+                  </a>
+                )}
+                {inquiry?.country && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <span>🌍</span><span>{inquiry.country}</span>
+                  </span>
+                )}
+                {inquiry?.preferred_contact && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <span>Preferred:</span><span style={{ color: C.text, fontWeight: 700 }}>{inquiry.preferred_contact}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+            <Badge color={inquiry?.status === 'converted' ? 'green' : isChat ? 'cyan' : inquiry?.status === 'engaged' ? 'cyan' : 'orange'}>
+              {isChat ? 'Pre-intake chat' : (inquiry?.status || 'inquiry')}
+            </Badge>
+            <div style={{ fontSize: '11.5px', color: C.textDim, textAlign: 'right' }}>
+              {!isChat && (inquiry?.case_type_label || inquiry?.case_type) && (
+                <div style={{ color: C.textMuted, fontWeight: 700 }}>
+                  {inquiry.case_type_label || inquiry.case_type}
+                </div>
+              )}
+              {submitted && <div>Submitted {submitted.toLocaleString()}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSend, fileRef }) {
+  const scrollRef = React.useRef(null)
+  const [autoScroll, setAutoScroll] = React.useState(true)
+
+  React.useEffect(() => {
+    if (!autoScroll || !scrollRef.current) return
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [messages.length, autoScroll])
+
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - (el.scrollTop + el.clientHeight)
+    setAutoScroll(distance < 80)
+  }
+
+  const groups = React.useMemo(() => groupByDay(messages), [messages])
+
+  return (
+    <div style={{ marginTop: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '10px', gap: '8px' }}>
+        <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
+          Conversation
+        </h3>
+        <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700 }}>
+          {messages.length === 0 ? 'No messages yet' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: '14px',
+          padding: '14px 14px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          maxHeight: '460px',
+          overflow: 'auto',
+          scrollBehavior: 'smooth',
+        }}
+      >
+        {groups.length === 0 && (
+          <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '24px 8px' }}>
+            No messages yet. Use a quick template below or write your own intro to start.
+          </div>
+        )}
+        {groups.map(group => (
+          <React.Fragment key={group.label}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, margin: '4px 0' }}>
+              <div style={{ flex: 1, height: '1px', background: C.border }} />
+              <span>{group.label}</span>
+              <div style={{ flex: 1, height: '1px', background: C.border }} />
+            </div>
+            {group.messages.map(m => (
+              <MessageBubble key={m.id} message={m} viewerRole={viewerRole} />
+            ))}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <ComposerRow
+        draft={draft}
+        setDraft={setDraft}
+        sending={sending}
+        onSend={onSend}
+        fileRef={fileRef}
+      />
+    </div>
+  )
+}
+
+function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
+  const [openMenu, setOpenMenu] = React.useState(false)
+  const charLimit = 4000
+  const remaining = charLimit - draft.length
+  const onKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      onSend()
+    }
+  }
+  const apply = (body) => {
+    setDraft(prev => prev ? `${prev.replace(/\n+$/, '')}\n\n${body}` : body)
+    setOpenMenu(false)
+  }
+  return (
+    <div style={{ marginTop: '10px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+        <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: '4px' }}>
+          Quick replies
+        </span>
+        {QUICK_REPLIES.map(t => (
+          <button
+            key={t.label}
+            type="button"
+            onClick={() => apply(t.body)}
+            style={{
+              border: `1px solid ${C.border}`,
+              background: C.surface2,
+              color: C.textMuted,
+              borderRadius: '999px',
+              padding: '4px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <form
+        onSubmit={(e) => { e.preventDefault(); onSend(e) }}
+        style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '8px' }}
+      >
+        {fileRef && (
+          <>
+            <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => onSend(e, e.target.files?.[0])} />
+            <Btn type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()} title="Attach a file">
+              📎
+            </Btn>
+          </>
+        )}
+        <textarea
+          rows={3}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, charLimit))}
+          onKeyDown={onKeyDown}
+          placeholder="Reply to the client. Use Cmd/Ctrl + Enter to send."
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            padding: '8px 10px',
+            color: C.text,
+            fontSize: '14px',
+            fontFamily: 'inherit',
+            resize: 'vertical',
+            lineHeight: 1.5,
+          }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <span style={{ fontSize: '11px', color: remaining < 200 ? C.orange : C.textDim, fontWeight: 700 }}>
+            {remaining} left
+          </span>
+          <Btn type="submit" variant="primary" size="sm" disabled={sending || !draft.trim()}>
+            {sending ? 'Sending…' : 'Send'}
+          </Btn>
+        </div>
+      </form>
+      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '6px' }}>
+        Communication is logged to the inquiry record. Funds for any paid offer move through escrow before release.
+      </div>
+    </div>
+  )
+}
+
+function groupByDay(messages) {
+  const buckets = new Map()
+  for (const m of messages) {
+    const d = m.created_at ? new Date(m.created_at) : null
+    const key = d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : 'undated'
+    const label = !d || Number.isNaN(d.getTime())
+      ? 'Earlier'
+      : isToday(d)
+        ? 'Today'
+        : isYesterday(d)
+          ? 'Yesterday'
+          : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    if (!buckets.has(key)) buckets.set(key, { label, messages: [] })
+    buckets.get(key).messages.push(m)
+  }
+  return Array.from(buckets.values())
+}
+
+function isToday(d) {
+  const t = new Date()
+  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate()
+}
+
+function isYesterday(d) {
+  const y = new Date()
+  y.setDate(y.getDate() - 1)
+  return d.getFullYear() === y.getFullYear() && d.getMonth() === y.getMonth() && d.getDate() === y.getDate()
+}
+
 function MessageBubble({ message, viewerRole }) {
   const mine =
     (viewerRole === 'attorney' && message.sender_role === 'attorney') ||
     (viewerRole === 'client' && message.sender_role === 'client')
   const isSystem = message.sender_role === 'system'
+  const ts = message.created_at ? new Date(message.created_at) : null
+  const timeLabel = ts && !Number.isNaN(ts.getTime())
+    ? ts.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : ''
+
   if (isSystem) {
     return (
-      <div style={{ textAlign: 'center', color: C.textDim, fontSize: '12px', fontStyle: 'italic' }}>
+      <div
+        role="status"
+        style={{
+          alignSelf: 'center',
+          maxWidth: '85%',
+          background: C.surface2,
+          border: `1px solid ${C.border}`,
+          borderRadius: '999px',
+          padding: '6px 14px',
+          color: C.textMuted,
+          fontSize: '12px',
+          textAlign: 'center',
+          fontWeight: 600,
+          letterSpacing: '0.01em',
+        }}
+      >
+        <span style={{ marginRight: '6px', color: C.textDim }}>●</span>
         {message.body}
+        {timeLabel && <span style={{ marginLeft: '8px', color: C.textDim, fontWeight: 500 }}>· {timeLabel}</span>}
       </div>
     )
   }
+
+  const senderLabel = mine
+    ? 'You'
+    : message.sender_role === 'attorney'
+      ? 'Attorney'
+      : message.sender_role === 'client'
+        ? 'Client'
+        : message.sender_role || 'Sender'
+
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div
-        style={{
-          maxWidth: '70%',
-          background: mine ? C.cyan : C.surface2,
-          color: mine ? '#000' : C.text,
-          padding: '8px 12px',
-          borderRadius: '10px',
-          fontSize: '14px',
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {message.body}
-        <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>
-          {new Date(message.created_at).toLocaleString()}
+      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: '4px' }}>
+        <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {senderLabel}
         </div>
+        <div
+          style={{
+            background: mine ? C.cyan : C.surface2,
+            color: mine ? '#04212a' : C.text,
+            padding: '10px 14px',
+            borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+            fontSize: '14px',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.55,
+            border: mine ? 'none' : `1px solid ${C.border}`,
+            boxShadow: '0 1px 2px rgba(15,18,32,0.04)',
+          }}
+        >
+          {message.body}
+        </div>
+        {timeLabel && (
+          <div style={{ fontSize: '10.5px', color: C.textDim, fontWeight: 600 }}>
+            {timeLabel}
+          </div>
+        )}
       </div>
     </div>
   )

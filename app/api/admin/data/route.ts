@@ -22,16 +22,64 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db } = auth
 
-  const [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes] = await Promise.all([
+  const [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes] = await Promise.all([
     db.from('profiles').select('*').order('created_at', { ascending: false }),
     db.from('orders').select('*').order('created_at', { ascending: false }),
     db.from('order_items').select('*'),
     db.from('services').select('*').order('category', { ascending: true }).order('title', { ascending: true }),
     db.from('platform_settings').select('value').eq('key', 'default').single(),
+    db.from('consultants').select('id, profile_id, user_id, email, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
+    db.from('attorneys').select('id, profile_id, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
   ])
 
   const error = profilesRes.error || ordersRes.error || itemsRes.error || servicesRes.error
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Map each profile to a flat connect summary so the admin UI can render the
+  // bypass toggle without joining tables itself. Consultants have legacy rows
+  // keyed by user_id or email, so we fall back through those when profile_id
+  // isn't populated yet.
+  const consultantByProfile = new Map<string, Record<string, unknown>>()
+  const consultantByEmail = new Map<string, Record<string, unknown>>()
+  for (const row of (consultantsRes.data ?? []) as Array<Record<string, unknown>>) {
+    const pid = (row.profile_id || row.user_id) as string | undefined
+    if (pid) consultantByProfile.set(pid, row)
+    const em = String(row.email || '').toLowerCase()
+    if (em) consultantByEmail.set(em, row)
+  }
+  const attorneyByProfile = new Map<string, Record<string, unknown>>()
+  for (const row of (attorneysRes.data ?? []) as Array<Record<string, unknown>>) {
+    const pid = (row.profile_id) as string | undefined
+    if (pid) attorneyByProfile.set(pid, row)
+  }
+
+  const connectSummary = (profilesRes.data ?? []).reduce<Record<string, {
+    role: string
+    stripe_account_id: string | null
+    stripe_onboarding_complete: boolean
+    stripe_bypass: boolean
+  }>>((acc, p) => {
+    if (p.role === 'consultant') {
+      const row =
+        consultantByProfile.get(p.id) ||
+        (p.email ? consultantByEmail.get(String(p.email).toLowerCase()) : null)
+      acc[p.id] = {
+        role: 'consultant',
+        stripe_account_id: (row?.stripe_account_id as string) || null,
+        stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
+        stripe_bypass: Boolean(row?.stripe_bypass),
+      }
+    } else if (p.role === 'attorney') {
+      const row = attorneyByProfile.get(p.id)
+      acc[p.id] = {
+        role: 'attorney',
+        stripe_account_id: (row?.stripe_account_id as string) || null,
+        stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
+        stripe_bypass: Boolean(row?.stripe_bypass),
+      }
+    }
+    return acc
+  }, {})
 
   return Response.json({
     users: profilesRes.data ?? [],
@@ -39,6 +87,7 @@ export async function GET() {
     orderItems: itemsRes.data ?? [],
     services: servicesRes.data ?? [],
     settings: { ...DEFAULT_PLATFORM_SETTINGS, ...(settingsRes.data?.value || {}) },
+    connectByProfileId: connectSummary,
     currentAdminId: auth.adminProfileId,
   })
 }

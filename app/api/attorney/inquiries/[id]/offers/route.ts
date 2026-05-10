@@ -26,14 +26,18 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (!Number.isFinite(price) || price <= 0) return Response.json({ error: 'Price must be a positive number.' }, { status: 400 })
   if (!Number.isInteger(deliveryDays) || deliveryDays <= 0) return Response.json({ error: 'Delivery days must be a positive integer.' }, { status: 400 })
 
-  // Block sending an offer until Stripe Connect onboarding is complete — the
-  // checkout step needs an account to route the attorney's fee to.
+  // Block sending an offer until Stripe Connect onboarding is complete OR
+  // the admin has flipped the bypass for this attorney. The bypass lets ops
+  // pre-onboard a panelist while their Connect account is still in review;
+  // the actual transfer happens once the account is verified.
   const { data: attorney } = await ctx.db
     .from('attorneys')
-    .select('stripe_account_id, stripe_onboarding_complete')
+    .select('stripe_account_id, stripe_onboarding_complete, stripe_bypass')
     .eq('id', ctx.attorneyId)
     .single()
-  if (!attorney?.stripe_account_id || !attorney.stripe_onboarding_complete) {
+  const onboarded = Boolean(attorney?.stripe_account_id && attorney?.stripe_onboarding_complete)
+  const bypassed = Boolean(attorney?.stripe_bypass)
+  if (!onboarded && !bypassed) {
     return Response.json(
       { error: 'Connect a payout account before sending an offer.', requires_connect: true },
       { status: 412 },

@@ -16,6 +16,10 @@ function consultantOnboarded(consultant: Record<string, any>) {
   return Boolean(consultant.stripe_onboarding_complete ?? consultant.stripeOnboardingComplete)
 }
 
+function consultantBypassed(consultant: Record<string, any>) {
+  return Boolean(consultant.stripe_bypass ?? consultant.stripeBypass)
+}
+
 export async function triggerConsultantPayout(orderId: string) {
   const db = createSupabaseAdminClient()
   const { data: order, error } = await db.from('orders').select('*').eq('id', orderId).single()
@@ -33,8 +37,23 @@ export async function triggerConsultantPayout(orderId: string) {
 
   const consultant = await findConsultantForOrder(db, order)
   const stripeAccountId = consultant ? consultantStripeAccountId(consultant) : null
+  const bypassed = consultant ? consultantBypassed(consultant) : false
 
-  if (!consultant || !stripeAccountId || !consultantOnboarded(consultant)) {
+  // The bypass flag lets admins assign paid orders to a consultant whose
+  // Stripe Connect account is still being verified. The actual transfer still
+  // requires a connected account, so we mark the payout as `pending` (not
+  // failed) and let ops complete the transfer manually once Connect lands.
+  if (!consultant) {
+    await db.from('orders').update({ payout_status: 'failed' }).eq('id', order.id)
+    console.warn(`[Payout] Consultant for order ${order.id} not found. Payout skipped.`)
+    return { skipped: true, reason: 'Consultant not found' }
+  }
+  if ((!stripeAccountId || !consultantOnboarded(consultant)) && bypassed) {
+    await db.from('orders').update({ payout_status: 'pending' }).eq('id', order.id)
+    console.warn(`[Payout] Consultant for order ${order.id} bypassed by admin; payout marked pending until Connect completes.`)
+    return { skipped: true, reason: 'Stripe Connect bypassed by admin — payout pending manual completion' }
+  }
+  if (!stripeAccountId || !consultantOnboarded(consultant)) {
     await db.from('orders').update({ payout_status: 'failed' }).eq('id', order.id)
     console.warn(`[Payout] Consultant for order ${order.id} has not completed Stripe onboarding. Payout skipped.`)
     return { skipped: true, reason: 'Consultant onboarding incomplete' }

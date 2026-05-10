@@ -11,6 +11,7 @@ const moneyValue = value => Number(String(value ?? 0).replace(/[^0-9.-]/g, '')) 
 const DEFAULT_SETTINGS = {
   platform_fee_percent: 20,
   consultant_fee_percent: 80,
+  attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
   platform_name: 'Yousafe Consultancy',
@@ -92,10 +93,12 @@ function AdminApp({ onLogout }) {
   const [supportEmail, setSupportEmail] = React.useState('');
   const [platformSettings, setPlatformSettings] = React.useState(DEFAULT_SETTINGS);
   const [consultantShare, setConsultantShare] = React.useState(DEFAULT_SETTINGS.consultant_fee_percent);
+  const [attorneyPlatformFee, setAttorneyPlatformFee] = React.useState(DEFAULT_SETTINGS.attorney_platform_fee_percent);
   const [autoReleaseDays, setAutoReleaseDays] = React.useState(String(DEFAULT_SETTINGS.auto_release_days));
   const [allowForceRelease, setAllowForceRelease] = React.useState(DEFAULT_SETTINGS.allow_admin_force_release);
   const [primaryCurrency, setPrimaryCurrency] = React.useState(DEFAULT_SETTINGS.primary_currency);
   const [usdToCadRate, setUsdToCadRate] = React.useState(String(DEFAULT_SETTINGS.usd_to_cad_rate));
+  const [connectByProfile, setConnectByProfile] = React.useState({});
   const [stripePublishableKey, setStripePublishableKey] = React.useState('');
   const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
@@ -169,8 +172,10 @@ function AdminApp({ onLogout }) {
     setUsers(normalizedUsers);
     setOrders(normalizedOrders);
     setServices(normalizedServices);
+    setConnectByProfile(data.connectByProfileId || {});
     setPlatformSettings(settings);
     setConsultantShare(consultantPercent);
+    setAttorneyPlatformFee(Number(settings.attorney_platform_fee_percent || DEFAULT_SETTINGS.attorney_platform_fee_percent));
     setAutoReleaseDays(String(settings.auto_release_days || DEFAULT_SETTINGS.auto_release_days));
     setAllowForceRelease(Boolean(settings.allow_admin_force_release));
     setPrimaryCurrency(normalizeCurrency(settings.primary_currency));
@@ -299,6 +304,7 @@ function AdminApp({ onLogout }) {
     if (!res.ok) throw new Error(data.error || 'Settings update failed');
     setPlatformSettings(data.settings);
     setConsultantShare(Number(data.settings.consultant_fee_percent));
+    setAttorneyPlatformFee(Number(data.settings.attorney_platform_fee_percent || DEFAULT_SETTINGS.attorney_platform_fee_percent));
     setAutoReleaseDays(String(data.settings.auto_release_days));
     setAllowForceRelease(Boolean(data.settings.allow_admin_force_release));
     setPrimaryCurrency(normalizeCurrency(data.settings.primary_currency));
@@ -326,6 +332,33 @@ function AdminApp({ onLogout }) {
   const approveUser = async user => {
     await updateUser(user, { status: 'active' });
     setActionNotice(`${approvalLabel(user.role)} approved for ${user.name}.`);
+  };
+
+  const setStripeBypass = async (user, enabled) => {
+    if (!['consultant', 'attorney'].includes(user.role)) {
+      setActionNotice('Stripe bypass only applies to consultants and attorneys.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/stripe-bypass`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Could not update Stripe bypass.');
+      setConnectByProfile(prev => ({
+        ...prev,
+        [user.id]: { ...(prev[user.id] || { role: user.role }), stripe_bypass: enabled },
+      }));
+      setActionNotice(
+        enabled
+          ? `Stripe Connect bypass ENABLED for ${user.name}. They can work while Connect verifies; payouts stay pending until the account lands.`
+          : `Stripe Connect bypass DISABLED for ${user.name}.`
+      );
+    } catch (e) {
+      setActionNotice(e.message || 'Could not update Stripe bypass.');
+    }
   };
 
   const deleteUser = async user => {
@@ -691,6 +724,44 @@ function AdminApp({ onLogout }) {
                 </div>
               ))}
             </div>
+            {['consultant', 'attorney'].includes(selectedUser.role) && (() => {
+              const c = connectByProfile[selectedUser.id] || {};
+              const onboarded = Boolean(c.stripe_onboarding_complete);
+              const bypass = Boolean(c.stripe_bypass);
+              const effective = onboarded || bypass;
+              return (
+                <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                    <div>
+                      <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stripe Connect</div>
+                      <div style={{ color: C.text, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>
+                        {onboarded ? '✓ Onboarded' : c.stripe_account_id ? 'Pending verification' : 'No Connect account yet'}
+                        {bypass && <span style={{ marginLeft: '8px', color: C.orange, fontWeight: 800 }}>· Admin bypass ON</span>}
+                      </div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px', lineHeight: 1.5 }}>
+                        {effective
+                          ? `${selectedUser.role === 'attorney' ? 'Attorney can send paid offers' : 'Consultant can be assigned paid orders'}.${bypass && !onboarded ? ' Payouts stay pending until Connect completes.' : ''}`
+                          : `${selectedUser.role === 'attorney' ? 'Attorney is blocked from sending paid offers' : 'Consultant is blocked from new paid order assignments'}. Enable bypass to whitelist them while Connect verifies.`}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStripeBypass(selectedUser, !bypass)}
+                      role="switch"
+                      aria-checked={bypass}
+                      title={bypass ? 'Click to disable bypass' : 'Click to enable bypass'}
+                      style={{
+                        width: '46px', height: '26px', borderRadius: '999px', border: 'none',
+                        cursor: 'pointer', position: 'relative', flexShrink: 0,
+                        background: bypass ? C.orange : C.surface3,
+                      }}
+                    >
+                      <span style={{ position: 'absolute', top: '3px', left: bypass ? '23px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', transition: 'left 160ms', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <Btn variant="primary" size="sm" onClick={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}>View orders</Btn>
               {['consultant', 'support'].includes(selectedUser.role) && selectedUser.status === 'pending' && (
@@ -1250,13 +1321,19 @@ function AdminApp({ onLogout }) {
         </div>
       </Card>
       <Card>
-        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Revenue Split</div>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Consultant Revenue Split</div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.5 }}>
+          Applies to study-abroad services billed at a fixed price (the client pays the listed price; the consultant takes a share, the platform keeps the rest).
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Consultant share</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <input type="range" min="50" max="95" value={consultantShare} onChange={e => setConsultantShare(Number(e.target.value))} style={{ flex: 1, accentColor: C.cyan }} />
-              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '40px' }}>{consultantShare}%</span>
+              <input type="range" min="5" max="95" step="1" value={consultantShare} onChange={e => setConsultantShare(Number(e.target.value))} style={{ flex: 1, accentColor: C.cyan }} />
+              <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '52px', textAlign: 'right' }}>{consultantShare}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: C.textDim, marginTop: '4px' }}>
+              <span>5%</span><span>50%</span><span>95%</span>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: C.surface2, borderRadius: '10px', fontSize: '14px' }}>
@@ -1266,11 +1343,52 @@ function AdminApp({ onLogout }) {
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
             try {
               await savePlatformSettings({ consultant_fee_percent: consultantShare, platform_fee_percent: 100 - consultantShare });
-              setActionNotice(`Revenue split saved: ${consultantShare}% consultant / ${100 - consultantShare}% platform. Future payouts will use this split.`);
+              setActionNotice(`Consultant split saved: ${consultantShare}% consultant / ${100 - consultantShare}% platform. Future payouts will use this split.`);
             } catch (e) {
-              setActionNotice(e.message || 'Revenue split update failed.');
+              setActionNotice(e.message || 'Consultant split update failed.');
             }
-          }}>Save split</Btn>
+          }}>Save consultant split</Btn>
+        </div>
+      </Card>
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Attorney Platform Fee</div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.5 }}>
+          Per ABA Rule 5.4 attorney fees are NOT split — the attorney is paid in full and the platform fee is added on top. The slider sets the percent that goes on top of every attorney offer. Existing offers keep their snapshot percent; future offers use the new value.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Platform fee added on top of attorney fee</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <input type="range" min="0" max="50" step="1" value={attorneyPlatformFee} onChange={e => setAttorneyPlatformFee(Number(e.target.value))} style={{ flex: 1, accentColor: C.green }} />
+              <span style={{ fontSize: '16px', fontWeight: 800, color: C.green, width: '52px', textAlign: 'right' }}>{attorneyPlatformFee}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: C.textDim, marginTop: '4px' }}>
+              <span>0%</span><span>25%</span><span>50%</span>
+            </div>
+          </div>
+          <div style={{ background: C.surface2, borderRadius: '10px', padding: '12px', fontSize: '13px', display: 'grid', gap: '4px' }}>
+            <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Example: $500 attorney fee</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: C.text }}>Attorney receives</span>
+              <span style={{ color: C.text }}>$500.00</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: C.text }}>Platform fee ({attorneyPlatformFee}%)</span>
+              <span style={{ color: C.text }}>${(500 * attorneyPlatformFee / 100).toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: '4px', marginTop: '2px' }}>
+              <span style={{ color: C.text, fontWeight: 700 }}>Client pays</span>
+              <span style={{ color: C.green, fontWeight: 700 }}>${(500 * (1 + attorneyPlatformFee / 100)).toFixed(2)}</span>
+            </div>
+          </div>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ attorney_platform_fee_percent: attorneyPlatformFee });
+              setActionNotice(`Attorney platform fee saved: ${attorneyPlatformFee}% added on top. New offers will use this value.`);
+            } catch (e) {
+              setActionNotice(e.message || 'Attorney platform fee update failed.');
+            }
+          }}>Save attorney fee</Btn>
         </div>
       </Card>
       <Card>

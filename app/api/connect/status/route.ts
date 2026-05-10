@@ -7,9 +7,16 @@ export async function GET() {
 
   const { db, consultant } = auth
   const stripeAccountId = consultant.stripe_account_id || consultant.stripeAccountId
+  const bypassed = Boolean(consultant.stripe_bypass ?? consultant.stripeBypass)
 
   if (!stripeAccountId) {
-    return Response.json({ onboarded: false, chargesEnabled: false, payoutsEnabled: false })
+    return Response.json({
+      onboarded: false,
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      bypassed,
+      effective_onboarded: bypassed,
+    })
   }
 
   const account = await getStripe().accounts.retrieve(stripeAccountId)
@@ -23,5 +30,7 @@ export async function GET() {
     onboarded,
     chargesEnabled: Boolean(account.charges_enabled),
     payoutsEnabled: Boolean(account.payouts_enabled),
+    bypassed,
+    effective_onboarded: onboarded || bypassed,
   })
 }

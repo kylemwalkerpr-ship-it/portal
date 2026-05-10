@@ -593,10 +593,10 @@ function Footer() {
         </FooterColumn>
 
         <FooterColumn label="Company">
-          <FooterLink href="https://yousafeconsultancy.com/about">About</FooterLink>
-          <FooterLink href="mailto:support@yousafeconsultancy.com">Support</FooterLink>
-          <FooterLink href="https://yousafeconsultancy.com/terms">Terms</FooterLink>
-          <FooterLink href="https://yousafeconsultancy.com/privacy">Privacy</FooterLink>
+          <FooterLink href="https://usa.yousafeconsultancy.com/about">About</FooterLink>
+          <FooterLink href="https://usa.yousafeconsultancy.com/support">Support</FooterLink>
+          <FooterLink href="https://usa.yousafeconsultancy.com/terms-of-service">Terms</FooterLink>
+          <FooterLink href="https://usa.yousafeconsultancy.com/privacy-policy">Privacy</FooterLink>
         </FooterColumn>
       </div>
 
