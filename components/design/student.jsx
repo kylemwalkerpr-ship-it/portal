@@ -5,6 +5,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 import FindAttorney from './find-attorney'
 import MyInquiries from './my-inquiries'
+import OrderRatingPrompt from './order-rating-prompt'
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
@@ -1052,6 +1053,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 </div>
               ))}
             </Card>
+            <OrderRatingPrompt orderId={order.id} />
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Your Consultant</div>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>

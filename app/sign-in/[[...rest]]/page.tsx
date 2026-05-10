@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 import { dashboardForLane, normalizeAuthLane, signUpForLane } from '@/lib/roleLanes'
 
 const STUDENT_SIGN_IN_URL = '/sign-in/student'
-const VALID_SIGN_IN_LANES = new Set(['student', 'client', 'consultant', 'admin'])
+const VALID_SIGN_IN_LANES = new Set(['student', 'client', 'consultant', 'admin', 'attorney'])
 
 export default function SignInPage() {
   const pathname = usePathname()

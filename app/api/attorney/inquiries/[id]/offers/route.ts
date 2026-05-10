@@ -1,5 +1,6 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { getPlatformSettings } from '@/lib/platformConfig'
+import { sendEmail, inquiryNewOfferEmail } from '@/lib/email'
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()
@@ -41,7 +42,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('id, email, client_profile_id, status')
+    .select('id, email, full_name, client_profile_id, status')
     .eq('id', inquiryId)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
@@ -87,6 +88,22 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     sender_profile_id: ctx.profileId,
     body: `New offer from ${ctx.fullName ?? 'an attorney'}: "${title}" — attorney fee $${price.toFixed(2)} + platform fee $${platformFee.toFixed(2)} (${feePercent}%) · ${deliveryDays} day delivery`,
   })
+
+  if (inquiry.email) {
+    try {
+      const tpl = inquiryNewOfferEmail({
+        clientName: inquiry.full_name,
+        attorneyName: ctx.fullName ?? 'An attorney',
+        offerTitle: title,
+        attorneyFee: price,
+        platformFee,
+        inquiryId,
+      })
+      await sendEmail({ to: inquiry.email, subject: tpl.subject, html: tpl.html })
+    } catch (e) {
+      console.error('[attorney/offers] notify-client failed', e)
+    }
+  }
 
   return Response.json({ offer })
 }

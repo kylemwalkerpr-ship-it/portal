@@ -1,5 +1,6 @@
 import Stripe from 'stripe'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { sendEmail, inquiryOfferAcceptedEmail } from '@/lib/email'
 
 export async function POST(req: Request) {
   const secret = process.env.STRIPE_SECRET_KEY
@@ -170,6 +171,32 @@ export async function POST(req: Request) {
         sender_profile_id: clientProfileId,
         body: `Client accepted offer "${offer?.title ?? ''}". Order #${order.id} is now active.`,
       })
+    }
+
+    // Notify the attorney their offer was accepted.
+    try {
+      const { data: attorneyProfile } = await db
+        .from('profiles')
+        .select('email, full_name')
+        .eq('id', attorneyProfileId)
+        .single()
+      const { data: clientProfile } = await db
+        .from('profiles')
+        .select('full_name')
+        .eq('id', clientProfileId)
+        .single()
+      if (attorneyProfile?.email) {
+        const tpl = inquiryOfferAcceptedEmail({
+          attorneyName: attorneyProfile.full_name,
+          clientName: clientProfile?.full_name ?? null,
+          offerTitle: offer?.title ?? '',
+          attorneyFee,
+          inquiryId: inquiryId ?? '',
+        })
+        await sendEmail({ to: attorneyProfile.email, subject: tpl.subject, html: tpl.html })
+      }
+    } catch (e) {
+      console.error('[webhook] notify-attorney failed', e)
     }
 
     return new Response('OK', { status: 200 })

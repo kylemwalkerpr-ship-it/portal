@@ -1,4 +1,5 @@
 import { requireClient } from '@/lib/clientAuth'
+import { sendEmail, inquiryOfferDeclinedEmail } from '@/lib/email'
 
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -9,7 +10,7 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
 
   const { data: offer } = await ctx.db
     .from('attorney_offers')
-    .select('id, client_email, client_profile_id, status, inquiry_id')
+    .select('id, client_email, client_profile_id, status, inquiry_id, title, attorney_profile_id')
     .eq('id', id)
     .single()
   if (!offer) return Response.json({ error: 'Offer not found.' }, { status: 404 })
@@ -31,6 +32,26 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     sender_profile_id: ctx.profileId,
     body: 'Client declined the offer.',
   })
+
+  // Email the attorney.
+  try {
+    const { data: attorneyProfile } = await ctx.db
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', offer.attorney_profile_id)
+      .single()
+    if (attorneyProfile?.email) {
+      const tpl = inquiryOfferDeclinedEmail({
+        attorneyName: attorneyProfile.full_name,
+        clientName: ctx.fullName,
+        offerTitle: offer.title,
+        inquiryId: offer.inquiry_id,
+      })
+      await sendEmail({ to: attorneyProfile.email, subject: tpl.subject, html: tpl.html })
+    }
+  } catch (e) {
+    console.error('[offers/decline] notify-attorney failed', e)
+  }
 
   return Response.json({ ok: true })
 }

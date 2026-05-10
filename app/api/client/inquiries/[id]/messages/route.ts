@@ -1,4 +1,5 @@
 import { requireClient } from '@/lib/clientAuth'
+import { sendEmail, inquiryClientMessageEmail } from '@/lib/email'
 
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -43,6 +44,39 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .from('inquiries')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', id)
+
+  // Notify every attorney who has previously engaged with this inquiry.
+  try {
+    const { data: attorneyMessages } = await ctx.db
+      .from('inquiry_messages')
+      .select('sender_profile_id')
+      .eq('inquiry_id', id)
+      .eq('sender_role', 'attorney')
+    const engagedProfileIds = Array.from(
+      new Set((attorneyMessages ?? []).map((m) => m.sender_profile_id).filter(Boolean)),
+    )
+    if (engagedProfileIds.length > 0) {
+      const { data: profiles } = await ctx.db
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', engagedProfileIds)
+      for (const p of profiles ?? []) {
+        if (!p.email) continue
+        const tpl = inquiryClientMessageEmail({
+          attorneyName: p.full_name,
+          clientName: ctx.fullName,
+          preview: text,
+          inquiryId: id,
+        })
+        // Fire-and-forget; don't block response on email delivery.
+        sendEmail({ to: p.email, subject: tpl.subject, html: tpl.html }).catch((e) =>
+          console.error('[client/messages] notify-attorney failed', p.email, e),
+        )
+      }
+    }
+  } catch (e) {
+    console.error('[client/messages] fan-out lookup failed', e)
+  }
 
   return Response.json({ message: msg })
 }

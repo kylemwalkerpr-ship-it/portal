@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { sendEmail, inquiryAttorneyEngagedEmail } from '@/lib/email'
 
 // Multi-attorney model: any approved attorney can message any open inquiry.
 // Their messages are tagged with sender_profile_id so the student UI can
@@ -20,13 +21,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('id, status')
+    .select('id, email, full_name, case_type_label, status')
     .eq('id', id)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
   if (inquiry.status === 'converted' || inquiry.status === 'closed' || inquiry.status === 'cancelled') {
     return Response.json({ error: `Inquiry is ${inquiry.status}.` }, { status: 409 })
   }
+
+  // First-message detection BEFORE inserting (so we know whether to email).
+  const { count: priorAttorneyMessages } = await ctx.db
+    .from('inquiry_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('inquiry_id', id)
+    .eq('sender_role', 'attorney')
+    .eq('sender_profile_id', ctx.profileId)
 
   const { data: msg, error: insErr } = await ctx.db
     .from('inquiry_messages')
@@ -46,6 +55,22 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     await ctx.db.from('inquiries').update({ status: 'engaged', updated_at: new Date().toISOString() }).eq('id', id)
   } else {
     await ctx.db.from('inquiries').update({ updated_at: new Date().toISOString() }).eq('id', id)
+  }
+
+  // Notify the client only on this attorney's FIRST message in the inquiry,
+  // to avoid spamming them on every back-and-forth.
+  if ((priorAttorneyMessages ?? 0) === 0 && inquiry.email) {
+    try {
+      const tpl = inquiryAttorneyEngagedEmail({
+        clientName: inquiry.full_name,
+        attorneyName: ctx.fullName ?? 'An attorney',
+        caseLabel: inquiry.case_type_label ?? '',
+        inquiryId: id,
+      })
+      await sendEmail({ to: inquiry.email, subject: tpl.subject, html: tpl.html })
+    } catch (e) {
+      console.error('[attorney/messages] notify-client failed', e)
+    }
   }
 
   return Response.json({ message: msg })
