@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { handleOptions, jsonWithCors } from '@/lib/cors'
+import { sendEmail } from '@/lib/email'
 
 
 type InquiryBody = {
@@ -14,6 +15,7 @@ type InquiryBody = {
   answers?: Record<string, unknown>
   meta?: Record<string, unknown>
   source?: string
+  target_attorney_id?: string // attorneys.id when posted from an attorney profile
   // Legacy caseworks form payload — accept the nested `contact` shape too.
   contact?: { full_name?: string; email?: string; phone?: string; notes?: string }
   website?: string // honeypot from legacy form
@@ -76,6 +78,17 @@ export async function POST(req: Request) {
     .eq('email', email)
     .maybeSingle()
 
+  // Resolve target attorney (when student is posting from a specific attorney's profile).
+  let targetAttorneyProfileId: string | null = null
+  if (body.target_attorney_id) {
+    const { data: target } = await db
+      .from('attorneys')
+      .select('profile_id')
+      .eq('id', body.target_attorney_id)
+      .maybeSingle()
+    targetAttorneyProfileId = target?.profile_id ?? null
+  }
+
   const { data: inquiry, error } = await db
     .from('inquiries')
     .insert({
@@ -91,6 +104,7 @@ export async function POST(req: Request) {
       answers,
       meta,
       source: clean(body.source, 60) || 'caseworks',
+      target_attorney_profile_id: targetAttorneyProfileId,
     })
     .select('id, access_token')
     .single()
@@ -98,6 +112,44 @@ export async function POST(req: Request) {
   if (error || !inquiry) {
     console.error('[inquiries] insert failed', error?.message)
     return jsonWithCors(req, { error: 'Could not save your inquiry. Please try again.' }, 500)
+  }
+
+  // Targeted-attorney path: log a system message and send a direct email so the
+  // attorney sees this in their queue immediately.
+  if (targetAttorneyProfileId) {
+    const { data: attorney } = await db
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', targetAttorneyProfileId)
+      .single()
+
+    await db.from('inquiry_messages').insert({
+      inquiry_id: inquiry.id,
+      sender_role: 'system',
+      sender_profile_id: existingProfile?.id ?? null,
+      body: `${fullName} sent this inquiry directly to ${attorney?.full_name || 'you'}.`,
+    })
+
+    if (attorney?.email) {
+      try {
+        const inquiryUrl = `https://portal.yousafeconsultancy.com/dashboard?inquiry=${inquiry.id}`
+        const greeting = attorney.full_name ? `Hello ${attorney.full_name},` : 'Hello,'
+        await sendEmail({
+          to: attorney.email,
+          subject: `Direct inquiry from ${fullName}`,
+          html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
+<p>${greeting}</p>
+<p><strong>${fullName}</strong> just sent you a direct inquiry from your YouSafe profile.</p>
+<p><strong>Case type:</strong> ${caseLabel ?? caseType ?? 'Not specified'}</p>
+${urgency ? `<p><strong>Urgency:</strong> ${urgency}</p>` : ''}
+<p><a href="${inquiryUrl}">Open in your inbox queue →</a></p>
+<p>— YouSafe Consultancy</p>
+</body></html>`,
+        })
+      } catch (e) {
+        console.error('[inquiries] target-attorney notify failed', e)
+      }
+    }
   }
 
   return jsonWithCors(req, { id: inquiry.id, access_token: inquiry.access_token, ok: true }, 200)

@@ -40,14 +40,23 @@ export async function GET(req: Request) {
 
   // Default: open queue (anything not finalised). Attorneys see all such
   // inquiries even after another attorney has engaged — competing offers are
-  // expected.
+  // expected. Surfaces targeted_to_me first so a directly addressed inquiry
+  // jumps to the top of this attorney's queue.
   const { data, error: qErr } = await ctx.db
     .from('inquiries')
-    .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, created_at')
+    .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, target_attorney_profile_id, created_at')
     .in('status', ['open', 'engaged', 'claimed'])
     .order('created_at', { ascending: false })
     .limit(200)
 
   if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
-  return Response.json({ inquiries: data ?? [] })
+
+  const decorated = (data ?? []).map((q) => ({
+    ...q,
+    targeted_to_me: q.target_attorney_profile_id === ctx.profileId,
+  }))
+  // Targeted-to-me first.
+  decorated.sort((a, b) => Number(b.targeted_to_me) - Number(a.targeted_to_me))
+
+  return Response.json({ inquiries: decorated })
 }

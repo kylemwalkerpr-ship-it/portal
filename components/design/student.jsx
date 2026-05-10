@@ -546,6 +546,13 @@ function Billing() {
 
 function StudentApp({ onLogout, userId, userName }) {
   const [page, setPage] = React.useState('dashboard');
+  // Cross-component navigation: child views (e.g. FindAttorney) dispatch a
+  // CustomEvent('yousafe-navigate', { detail: { page } }) to switch tabs.
+  React.useEffect(() => {
+    const handler = (e) => { if (e.detail?.page) setPage(e.detail.page) }
+    window.addEventListener('yousafe-navigate', handler)
+    return () => window.removeEventListener('yousafe-navigate', handler)
+  }, []);
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
@@ -773,11 +780,12 @@ function StudentApp({ onLogout, userId, userName }) {
       width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`,
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0,
     }}>
-      <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
-        <a href="https://yousafeconsultancy.com" style={{ display: 'inline-flex' }}>
-          <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+      <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
+          <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
+        <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Student portal</div>
       </div>
       <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
@@ -864,7 +872,8 @@ function StudentApp({ onLogout, userId, userName }) {
   const Dashboard = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome, {userName || 'there'} 👋</h2>
+        <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: '4px' }}>Today</div>
+        <h2 style={{ fontFamily: C.serif, fontSize: '34px', fontWeight: 500, marginBottom: '6px', letterSpacing: '-0.012em', color: C.text }}>Welcome back{userName ? `, ${userName.split(' ')[0]}` : ''}.</h2>
         <p style={{ color: C.textMuted, fontSize: '14px' }}>
           {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services and place your first order to get started.'}
         </p>

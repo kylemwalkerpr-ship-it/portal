@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
+import IntakeForm from './inquiry-intake-form'
 
 // Browse list + full-screen detail (Fiverr-style seller profile).
 export default function FindAttorney() {
@@ -10,6 +11,7 @@ export default function FindAttorney() {
   const [error, setError] = React.useState('')
   const [query, setQuery] = React.useState('')
   const [openId, setOpenId] = React.useState(null)
+  const [intakeFor, setIntakeFor] = React.useState(null) // { id, name } when student opens intake from a profile
 
   React.useEffect(() => {
     let cancelled = false
@@ -45,8 +47,31 @@ export default function FindAttorney() {
     )
   }, [attorneys, query])
 
+  if (intakeFor) {
+    return (
+      <IntakeForm
+        targetAttorney={intakeFor}
+        onCancel={() => setIntakeFor(null)}
+        onSubmitted={() => {
+          setIntakeFor(null)
+          setOpenId(null)
+          // Tell the student dashboard to switch to the My Inquiries tab.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'inquiries' } }))
+          }
+        }}
+      />
+    )
+  }
+
   if (openId) {
-    return <AttorneyDetail attorneyId={openId} onBack={() => setOpenId(null)} />
+    return (
+      <AttorneyDetail
+        attorneyId={openId}
+        onBack={() => setOpenId(null)}
+        onStartInquiry={(att) => setIntakeFor(att)}
+      />
+    )
   }
 
   return (
@@ -241,7 +266,7 @@ function RatingDisplay({ count, avg, compact }) {
 }
 
 // ── Detail (full profile) ─────────────────────────────────────────────────
-function AttorneyDetail({ attorneyId, onBack }) {
+function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -410,7 +435,12 @@ function AttorneyDetail({ attorneyId, onBack }) {
                 Submit an inquiry describing your matter. {a.full_name?.split(' ')[0] || 'They'}
                 {' '}will see it in their queue and can send you a custom offer.
               </p>
-              <Btn variant="primary" size="md" fullWidth onClick={() => { window.location.assign('/dashboard?lane=student#inquiries') }}>
+              <Btn
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={() => onStartInquiry?.({ id: a.id, name: a.full_name })}
+              >
                 Submit an inquiry →
               </Btn>
               {a.offers_free_consult && (

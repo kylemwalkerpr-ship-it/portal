@@ -55,6 +55,8 @@ function AdminApp({ onLogout }) {
   const [attorneyAppFilter, setAttorneyAppFilter] = React.useState('pending');
   const [attorneyAppDecisionId, setAttorneyAppDecisionId] = React.useState(null);
   const [openApplicationId, setOpenApplicationId] = React.useState(null);
+  const [pendingInvites, setPendingInvites] = React.useState([]);
+  const [invitesLoaded, setInvitesLoaded] = React.useState(false);
   const [currentAdminId, setCurrentAdminId] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [services, setServices] = React.useState([]);
@@ -186,7 +188,47 @@ function AdminApp({ onLogout }) {
       .catch(e => setLoadError(e.message));
   }, []);
 
-  React.useEffect(() => { refreshAdminData(); refreshAttorneyApplications(); }, [refreshAdminData, refreshAttorneyApplications]);
+  const refreshInvites = React.useCallback(() => {
+    fetch('/api/admin/invite')
+      .then(async r => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(data?.error || 'Unable to load invitations');
+        setPendingInvites(Array.isArray(data?.invitations) ? data.invitations : []);
+        setInvitesLoaded(true);
+      })
+      .catch(e => { setInvitesLoaded(true); console.error('[admin] invites load failed', e.message) });
+  }, []);
+
+  const sendInvite = async (payload) => {
+    const res = await fetch('/api/admin/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || 'Invitation failed.');
+    setActionNotice(`Invitation sent to ${payload.email}.`);
+    refreshInvites();
+    refreshAdminData();
+    return data;
+  };
+
+  const revokeInvite = async (id) => {
+    if (!confirm('Revoke this invitation? The link will stop working immediately.')) return;
+    try {
+      const res = await fetch(`/api/admin/invite/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Revoke failed.');
+      setActionNotice('Invitation revoked.');
+      refreshInvites();
+    } catch (e) { setActionNotice(e.message) }
+  };
+
+  React.useEffect(() => {
+    refreshAdminData();
+    refreshAttorneyApplications();
+    refreshInvites();
+  }, [refreshAdminData, refreshAttorneyApplications, refreshInvites]);
 
   const decideAttorneyApplication = async (applicationId, action) => {
     if (attorneyAppDecisionId) return;
@@ -296,12 +338,12 @@ function AdminApp({ onLogout }) {
   // ── SIDEBAR ──
   const Sidebar = () => (
     <div style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
-      <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
-        <a href="https://yousafeconsultancy.com" style={{ display: 'inline-flex' }}>
-          <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+      <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
+          <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
-        <Badge color="red" style={{ fontSize: '10px', padding: '2px 8px' }}>Admin</Badge>
+        <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Admin console</div>
       </div>
       <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
@@ -641,19 +683,46 @@ function AdminApp({ onLogout }) {
         </div>
       )}
       {inviteModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setInviteModal(false)}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Invite user</h3>
-              <button onClick={() => setInviteModal(false)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+        <InviteModal
+          onClose={() => setInviteModal(false)}
+          onSend={async (payload) => {
+            await sendInvite(payload);
+            setInviteModal(false);
+          }}
+        />
+      )}
+
+      {pendingInvites.length > 0 && (
+        <Card>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '14px' }}>Pending invitations · {pendingInvites.length}</div>
+              <span style={{ color: C.textMuted, fontSize: '12px' }}>Sent via Clerk · users complete sign-up via emailed link</span>
             </div>
-            <div style={{ display: 'grid', gap: '14px' }}>
-              <Input label="Email address" value={inviteEmail} onChange={setInviteEmail} placeholder="student@example.com" />
-              <Select label="Role" value={inviteRole} onChange={setInviteRole} options={[{ value: 'student', label: 'Student' }, { value: 'consultant', label: 'Consultant' }, { value: 'admin', label: 'Admin' }]} />
-              <Btn variant="primary" onClick={() => { setInviteModal(false); setActionNotice(`Invite prepared for ${inviteEmail || 'new user'} as ${inviteRole}. Connect an email provider to send real invitations.`); }}>Create invite</Btn>
-            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Email</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Role</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Sent</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}`, textAlign: 'right' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingInvites.map(inv => (
+                  <tr key={inv.id}>
+                    <td style={{ padding: '10px', fontSize: '13px', color: C.text }}>{inv.email_address}</td>
+                    <td style={{ padding: '10px', fontSize: '12px', color: C.textMuted }}>{inv.public_metadata?.invitedRole ?? '—'}</td>
+                    <td style={{ padding: '10px', fontSize: '12px', color: C.textDim }}>{inv.created_at ? new Date(inv.created_at).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '10px', textAlign: 'right' }}>
+                      <Btn variant="ghost" size="sm" onClick={() => revokeInvite(inv.id)}>Revoke</Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        </Card>
       )}
     </div>
     );
@@ -1348,6 +1417,77 @@ function AdminApp({ onLogout }) {
           {page === 'analytics' && <Analytics />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InviteModal({ onClose, onSend }) {
+  const [email, setEmail] = React.useState('');
+  const [fullName, setFullName] = React.useState('');
+  const [role, setRole] = React.useState('student');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function submit() {
+    if (submitting) return;
+    setError('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('A valid email is required.'); return; }
+    setSubmitting(true);
+    try {
+      await onSend({ email: email.trim(), full_name: fullName.trim() || undefined, role });
+    } catch (e) {
+      setError(e.message || 'Could not send invitation.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const ROLE_OPTIONS = [
+    { value: 'student', label: 'Student / Client' },
+    { value: 'consultant', label: 'Consultant' },
+    { value: 'attorney', label: 'Attorney' },
+    { value: 'support', label: 'Support staff' },
+    { value: 'admin', label: 'Admin' },
+  ];
+  const roleHelp = {
+    student: 'Active immediately on first sign-in.',
+    consultant: 'Pending until you approve their application.',
+    attorney: 'Pending until you approve their application + they complete Stripe Connect.',
+    support: 'Pending until you approve.',
+    admin: 'Active immediately. Use sparingly.',
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,18,32,0.55)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '28px', width: '100%', maxWidth: '460px' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <div>
+            <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: '4px' }}>Members</div>
+            <h3 style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, margin: 0, color: C.text, letterSpacing: '-0.01em' }}>Invite a user</h3>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}>×</button>
+        </div>
+        <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 18px', lineHeight: 1.55 }}>
+          Sends a Clerk invitation by email. The recipient sets their own password and lands on the right lane automatically.
+        </p>
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <Input label="Email address" value={email} onChange={setEmail} placeholder="name@example.com" />
+          <Input label="Full name (optional)" value={fullName} onChange={setFullName} placeholder="Jane Doe" />
+          <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
+          <div style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.4 }}>{roleHelp[role]}</div>
+          {error && <div style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.20)', color: C.red, padding: '9px 12px', borderRadius: '8px', fontSize: '12px' }}>{error}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+            <Btn variant="ghost" size="sm" onClick={onClose}>Cancel</Btn>
+            <Btn variant="primary" size="sm" onClick={submit} disabled={submitting}>{submitting ? 'Sending…' : 'Send invitation'}</Btn>
+          </div>
         </div>
       </div>
     </div>

@@ -29,31 +29,44 @@ export const C = {
 }
 
 export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth, ...props }) {
+  const [hovered, setHovered] = React.useState(false)
   const base = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     gap: '8px', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'inherit', fontWeight: 600, transition: 'all 0.15s',
-    borderRadius: '10px', whiteSpace: 'nowrap', width: fullWidth ? '100%' : undefined,
+    fontFamily: 'inherit', fontWeight: 600,
+    transition: 'transform 140ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease',
+    borderRadius: '999px', whiteSpace: 'nowrap', width: fullWidth ? '100%' : undefined,
     opacity: disabled ? 0.5 : 1,
+    transform: hovered && !disabled ? 'translateY(-1px)' : 'none',
   }
   const sizes = {
-    sm: { padding: '6px 14px', fontSize: '13px' },
-    md: { padding: '10px 20px', fontSize: '14px' },
+    sm: { padding: '7px 16px', fontSize: '13px', letterSpacing: '0.005em' },
+    md: { padding: '10px 22px', fontSize: '14px', letterSpacing: '0.005em' },
     lg: { padding: '13px 28px', fontSize: '15px' },
     xl: { padding: '16px 36px', fontSize: '16px' },
   }
   const variants = {
-    primary: { background: C.cyan, color: '#fff', boxShadow: `0 0 20px ${C.cyanGlow}` },
-    secondary: { background: C.surface2, color: C.text, border: `1px solid ${C.border2}` },
+    primary: {
+      background: '#1F2937', color: '#fff',
+      boxShadow: hovered && !disabled ? '0 6px 18px rgba(31,41,55,0.20)' : '0 1px 2px rgba(31,41,55,0.10)',
+    },
+    secondary: { background: C.surface, color: C.text, border: `1px solid ${C.border2}` },
     ghost: { background: 'transparent', color: C.textMuted },
-    danger: { background: 'rgba(239,68,68,0.15)', color: C.red, border: `1px solid rgba(239,68,68,0.3)` },
-    success: { background: 'rgba(16,185,129,0.15)', color: C.green, border: `1px solid rgba(16,185,129,0.3)` },
-    outline: { background: 'transparent', color: C.cyan, border: `1px solid ${C.cyan}` },
-    navy: { background: C.navy, color: '#fff', boxShadow: `0 0 20px ${C.navyGlow}` },
+    danger: { background: 'rgba(220,38,38,0.08)', color: C.red, border: `1px solid rgba(220,38,38,0.25)` },
+    success: { background: 'rgba(5,150,105,0.10)', color: C.green, border: `1px solid rgba(5,150,105,0.25)` },
+    outline: { background: 'transparent', color: C.text, border: `1px solid ${hovered && !disabled ? C.text : 'rgba(0,0,0,0.18)'}` },
+    navy: { background: C.navy, color: '#fff', boxShadow: hovered && !disabled ? `0 6px 18px ${C.navyGlow}` : `0 1px 2px ${C.navyGlow}` },
   }
   return (
-    <button type={type} onClick={onClick} disabled={disabled} {...props}
-      style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      {...props}
+      style={{ ...base, ...sizes[size], ...variants[variant], ...style }}
+    >
       {children}
     </button>
   )
@@ -80,18 +93,26 @@ export function Badge({ children, color = 'cyan', style }) {
 
 export function Card({ children, style, onClick, hover = false }) {
   const [hovered, setHovered] = React.useState(false)
+  const isHover = hover || Boolean(onClick)
   return (
-    <div onClick={onClick}
-      onMouseEnter={() => hover && setHovered(true)}
-      onMouseLeave={() => hover && setHovered(false)}
+    <div
+      onClick={onClick}
+      onMouseEnter={() => isHover && setHovered(true)}
+      onMouseLeave={() => isHover && setHovered(false)}
       style={{
-        background: C.surface, border: `1px solid ${hovered ? C.border2 : C.border}`,
-        borderRadius: '16px', padding: '24px', transition: 'all 0.2s',
+        background: C.surface,
+        border: `1px solid ${hovered ? 'rgba(0,0,0,0.14)' : C.border}`,
+        borderRadius: '14px',
+        padding: '24px',
+        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
         cursor: onClick ? 'pointer' : undefined,
-        transform: hovered ? 'translateY(-2px)' : undefined,
-        boxShadow: hovered ? `0 8px 32px rgba(0,0,0,0.3)` : undefined,
-        ...style
-      }}>{children}</div>
+        transform: hovered && isHover ? 'translateY(-2px)' : undefined,
+        boxShadow: hovered && isHover ? '0 12px 28px rgba(15,18,32,0.08)' : '0 1px 2px rgba(15,18,32,0.03)',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
   )
 }
 
@@ -321,18 +342,24 @@ export function ProgressBar({ value, color = C.cyan, style }) {
 }
 
 export function NavItem({ icon, label, active, onClick, badge }) {
+  const [hovered, setHovered] = React.useState(false)
   return (
-    <div onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: '12px',
-      padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
-      background: active ? `${C.cyan}18` : 'transparent',
-      color: active ? C.cyan : C.textMuted,
-      fontWeight: active ? 600 : 400, fontSize: '14px',
-      transition: 'all 0.15s', position: 'relative',
-      borderLeft: active ? `2px solid ${C.cyan}` : '2px solid transparent',
-    }}>
-      <span style={{ fontSize: '18px', width: '20px', textAlign: 'center' }}>{icon}</span>
-      <span style={{ flex: 1 }}>{label}</span>
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '12px',
+        padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+        background: active ? C.surface2 : (hovered ? 'rgba(0,0,0,0.03)' : 'transparent'),
+        color: active ? C.text : C.textMuted,
+        fontWeight: active ? 600 : 500, fontSize: '14px',
+        transition: 'background 120ms ease, color 120ms ease',
+        position: 'relative',
+      }}
+    >
+      <span style={{ fontSize: '16px', width: '20px', textAlign: 'center', opacity: active ? 1 : 0.85 }}>{icon}</span>
+      <span style={{ flex: 1, letterSpacing: '0.005em' }}>{label}</span>
       {badge && <Badge color="red" style={{ fontSize: '10px', padding: '1px 6px' }}>{badge}</Badge>}
     </div>
   )

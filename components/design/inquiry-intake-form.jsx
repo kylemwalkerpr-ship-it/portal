@@ -10,7 +10,7 @@ const DRAFT_KEY = 'yousafe-inquiry-draft-v1'
 // legal.yousafeconsultancy.com so attorneys see the same structured context
 // regardless of where the student submitted from. Auto-saves draft to
 // localStorage so a refresh doesn't lose work.
-export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaultName, defaultPhone }) {
+export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaultName, defaultPhone, targetAttorney }) {
   const [country, setCountry] = React.useState(null)
   const [caseTypeId, setCaseTypeId] = React.useState('')
   const [answers, setAnswers] = React.useState({})
@@ -24,6 +24,7 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
   })
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState('')
+  const [submittedId, setSubmittedId] = React.useState(null)
 
   // Restore draft on mount.
   React.useEffect(() => {
@@ -122,7 +123,8 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
           urgency: typeof answers.urgency === 'string' ? answers.urgency : undefined,
           recommended_tier: recommended?.tier,
           answers: { ...answers, _intake_notes: contact.notes.trim() },
-          source: 'portal',
+          source: targetAttorney ? 'portal:attorney-profile' : 'portal',
+          target_attorney_id: targetAttorney?.id,
         }),
       })
       const payload = await res.json().catch(() => null)
@@ -132,7 +134,7 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
       } catch {
         /* ignore */
       }
-      onSubmitted()
+      setSubmittedId(payload.id || true)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
     } finally {
@@ -151,6 +153,35 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
     : 1
   const progressPct = Math.min(100, Math.round((currentStep / totalSteps) * 100))
 
+  if (submittedId) {
+    return (
+      <div style={{ padding: '40px 28px', maxWidth: '640px' }}>
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: '14px',
+          padding: '36px 32px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: '40px', marginBottom: '14px' }}>✓</div>
+          <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: C.text, margin: '0 0 10px', letterSpacing: '-0.012em' }}>
+            Inquiry submitted.
+          </h2>
+          <p style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6, margin: '0 0 24px' }}>
+            {targetAttorney
+              ? `${targetAttorney.name} has been notified directly. You can start chatting right away from your inquiries page — they'll see your messages as soon as they open the inquiry.`
+              : "We've routed this to the attorney panel. You'll get an email as soon as someone responds."}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <Btn variant="primary" size="md" onClick={() => { onSubmitted({ id: submittedId }) }}>
+              Go to my inquiries →
+            </Btn>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: '760px' }}>
       <button onClick={onCancel} type="button" style={backBtnStyle}>
@@ -158,12 +189,12 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
       </button>
 
       <div style={{ marginBottom: '24px' }}>
-        <div style={eyebrow}>Free legal intake</div>
-        <h2 style={pageTitle}>Tell us about your case.</h2>
+        <div style={eyebrow}>{targetAttorney ? `Direct inquiry to ${targetAttorney.name}` : 'Free legal intake'}</div>
+        <h2 style={pageTitle}>{targetAttorney ? 'Tell ' + targetAttorney.name.split(' ')[0] + ' about your case.' : 'Tell us about your case.'}</h2>
         <p style={pageSub}>
-          We pre-screen your matter so an attorney can give you a useful first response without
-          a 30-minute discovery call. Anything you put here is shared only with attorneys on the
-          panel.
+          {targetAttorney
+            ? `${targetAttorney.name} will be notified directly. Other panel attorneys won't see this inquiry first — but if ${targetAttorney.name.split(' ')[0]} doesn't respond within a day, the inquiry opens to the panel as a backup.`
+            : 'We pre-screen your matter so an attorney can give you a useful first response without a 30-minute discovery call. Anything you put here is shared only with attorneys on the panel.'}
         </p>
       </div>
 
