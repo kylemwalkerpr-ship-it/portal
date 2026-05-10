@@ -190,7 +190,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
       <DashboardClient
         role={profile.role}
         status={profile.status ?? 'active'}
-        userName={profile.full_name ?? profile.email ?? ''}
+        userName={profile.full_name ?? ''}
         userId={userId}
         expectedRole={requestedRole}
         errorState={null}
@@ -205,5 +205,5 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   const role = profile?.role ?? 'client'
   const status = profile?.status ?? 'active'
 
-  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? profile?.email ?? ''} userId={userId} expectedRole={null} errorState={null} />
+  return <DashboardClient role={role} status={status} userName={profile?.full_name ?? ''} userId={userId} expectedRole={null} errorState={null} />
 }

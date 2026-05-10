@@ -162,6 +162,10 @@ export default function DashboardClient({ role, status, userName, userId, expect
     )
   }
 
+  if (role !== 'admin' && status === 'active' && !hasFirstAndLastName(userName)) {
+    return <ProfileNameGate role={role} onLogout={handleLogout} />
+  }
+
   const app =
     role === 'consultant' ? <ConsultantApp onLogout={handleLogout} />
     : role === 'admin' ? <AdminApp onLogout={handleLogout} />
@@ -174,4 +178,89 @@ export default function DashboardClient({ role, status, userName, userId, expect
       <ChatWidget />
     </>
   )
+}
+
+function hasFirstAndLastName(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  const first = /^(Mr\.?|Mrs\.?|Ms\.?|Mx\.?|Dr\.?|Prof\.?)$/i.test(parts[0] || '') ? parts[1] : parts[0]
+  const last = /^(Mr\.?|Mrs\.?|Ms\.?|Mx\.?|Dr\.?|Prof\.?)$/i.test(parts[0] || '') ? parts.slice(2).join(' ') : parts.slice(1).join(' ')
+  return Boolean(first && last)
+}
+
+function ProfileNameGate({ role, onLogout }) {
+  const [salutation, setSalutation] = React.useState('')
+  const [firstName, setFirstName] = React.useState('')
+  const [lastName, setLastName] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState('')
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salutation, first_name: firstName, last_name: lastName }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not save your profile.')
+      window.location.reload()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', padding: '24px' }}>
+      <div style={{ width: '100%', maxWidth: '440px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px' }}>
+        <div style={{ color: C.textMuted, fontSize: '11px', letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 800, marginBottom: '8px' }}>{roleLabel(role)} profile</div>
+        <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 800, margin: '0 0 8px' }}>Add your name</h2>
+        <p style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6, margin: '0 0 20px' }}>
+          Your email stays in the email section. Add your first and last name so messages, orders, and profiles show a real person.
+        </p>
+        {error && <div style={{ color: C.red, fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', color: C.textMuted, fontWeight: 700 }}>
+            Preferred salutation
+            <select value={salutation} onChange={e => setSalutation(e.target.value)} style={gateInputStyle}>
+              <option value="">No salutation</option>
+              {['Mr.', 'Mrs.', 'Ms.', 'Mx.', 'Dr.', 'Prof.'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', color: C.textMuted, fontWeight: 700 }}>
+            First name
+            <input value={firstName} onChange={e => setFirstName(e.target.value)} style={gateInputStyle} />
+          </label>
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', color: C.textMuted, fontWeight: 700 }}>
+            Last name
+            <input value={lastName} onChange={e => setLastName(e.target.value)} style={gateInputStyle} />
+          </label>
+          <button type="button" onClick={save} disabled={saving} style={{ border: 'none', borderRadius: '999px', background: '#1F2937', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', padding: '12px 18px', fontWeight: 800 }}>
+            {saving ? 'Saving...' : 'Continue'}
+          </button>
+          <button type="button" onClick={onLogout} style={{ border: 'none', background: 'transparent', color: C.textMuted, cursor: 'pointer', padding: '6px', fontWeight: 700 }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const gateInputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '11px 12px',
+  border: `1px solid ${C.border2}`,
+  borderRadius: '10px',
+  background: C.surface2,
+  color: C.text,
+  fontFamily: 'inherit',
+  fontSize: '14px',
 }

@@ -270,6 +270,9 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  const [messageText, setMessageText] = React.useState('')
+  const [messageStatus, setMessageStatus] = React.useState('')
+  const [sendingMessage, setSendingMessage] = React.useState(false)
 
   React.useEffect(() => {
     fetch(`/api/attorneys/${attorneyId}`, { credentials: 'same-origin' })
@@ -298,6 +301,32 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const a = data.attorney
   const ratings = data.ratings || []
   const initial = (a.full_name || '?').trim().charAt(0).toUpperCase()
+
+  async function sendPreIntakeMessage() {
+    const text = messageText.trim()
+    if (!text) {
+      setMessageStatus('Write a short message first.')
+      return
+    }
+    setSendingMessage(true)
+    setMessageStatus('')
+    try {
+      const res = await fetch('/api/client/attorney-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ attorneyId: a.id, message: text }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not send message.')
+      setMessageText('')
+      setMessageStatus('Message sent. You can continue the conversation from My Inquiries.')
+    } catch (e) {
+      setMessageStatus(e.message)
+    } finally {
+      setSendingMessage(false)
+    }
+  }
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: '1080px' }}>
@@ -413,9 +442,11 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
             </Section>
           )}
 
-          <Section title="Reviews">
+          <Section title="Testimonials">
             {ratings.length === 0 ? (
-              <div style={{ color: C.textMuted, fontSize: '13px' }}>No reviews yet. Be the first.</div>
+              <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>
+                Testimonials will appear here after completed engagements. For now, look for what sets this profile apart: clear jurisdictions, focused specialties, response style, and whether the attorney offers a free consult.
+              </div>
             ) : (
               <div style={{ display: 'grid', gap: '14px' }}>
                 {ratings.map((r) => (
@@ -443,6 +474,21 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
               >
                 Submit an inquiry →
               </Btn>
+              <DividerLite />
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <label style={{ fontSize: '12px', color: C.textMuted, fontWeight: 700 }}>Message before intake</label>
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  placeholder="Ask a short question before filling the intake form."
+                  rows={4}
+                  style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: '88px', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '10px 12px', fontFamily: 'inherit', color: C.text, background: C.surface2, fontSize: '13px', lineHeight: 1.45, outline: 'none' }}
+                />
+                <Btn variant="secondary" size="sm" fullWidth onClick={sendPreIntakeMessage} disabled={sendingMessage}>
+                  {sendingMessage ? 'Sending...' : 'Start chat'}
+                </Btn>
+                {messageStatus && <div style={{ color: messageStatus.startsWith('Message sent') ? C.green : C.red, fontSize: '12px', lineHeight: 1.45 }}>{messageStatus}</div>}
+              </div>
               {a.offers_free_consult && (
                 <p style={{ color: C.green, fontSize: '12px', textAlign: 'center', margin: '10px 0 0' }}>
                   Free 15-minute consult included
@@ -476,6 +522,10 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
       </div>
     </div>
   )
+}
+
+function DividerLite() {
+  return <div style={{ height: '1px', background: C.border, margin: '16px 0' }} />
 }
 
 function Section({ title, children }) {

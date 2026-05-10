@@ -1178,7 +1178,7 @@ function AdminApp({ onLogout }) {
                   ]}
                 />
                 <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />
-                <Input label="Price (USD)" type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} />
+                <Input label="Price" type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} placeholder="$" />
                 <Input label="Delivery days" type="number" value={editing.delivery_days} onChange={v => setEditing(s => ({ ...s, delivery_days: v }))} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: C.surface2, borderRadius: '10px' }}>
                   <span style={{ fontSize: '14px', fontWeight: 600 }}>Visible to students</span>

@@ -101,6 +101,7 @@ export async function GET() {
       name: profile.full_name || consultant.full_name || consultant.name || '',
       email: profile.email || consultant.email || '',
       bio: consultant.bio || '',
+      avatarUrl: consultant.avatar_url || consultant.headshot_url || consultant.photo_url || '',
       available: consultant.available !== false,
       autoWithdraw: Boolean(consultant.auto_withdraw),
       notifPrefs: { ...defaultNotifPrefs, ...(consultant.notif_prefs || {}) },

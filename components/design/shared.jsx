@@ -170,7 +170,7 @@ export function Avatar({ name, src, size = 36, color }) {
   )
 }
 
-export function UserMenu({ name, role, email, color, onNavigate, onLogout, items = [] }) {
+export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLogout, items = [] }) {
   const [open, setOpen] = React.useState(false)
   const displayName = name || role || 'User'
   const defaultItems = [
@@ -205,7 +205,7 @@ export function UserMenu({ name, role, email, color, onNavigate, onLogout, items
           color: C.text,
         }}
       >
-        <Avatar name={displayName} size={32} color={color} />
+        <Avatar name={displayName} src={avatarSrc} size={32} color={color} />
         <span style={{ fontSize: '12px', color: C.textDim, paddingRight: '6px' }}>⌄</span>
       </button>
       {open && (
@@ -225,7 +225,7 @@ export function UserMenu({ name, role, email, color, onNavigate, onLogout, items
           }}
         >
           <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Avatar name={displayName} size={36} color={color} />
+            <Avatar name={displayName} src={avatarSrc} size={36} color={color} />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '13px', fontWeight: 800, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
               <div style={{ fontSize: '11px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email || role || 'Account'}</div>

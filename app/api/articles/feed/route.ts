@@ -108,13 +108,18 @@ export async function GET(request: Request) {
       },
     )
   } catch (error) {
-    const limit = cleanLimit(new URL(request.url).searchParams.get('limit'))
+    const requestUrl = new URL(request.url)
+    const limit = cleanLimit(requestUrl.searchParams.get('limit'))
+    const region = requestUrl.searchParams.get('region')?.toUpperCase()
+    const fallbackArticles = region
+      ? FALLBACK_ARTICLES.filter((article) => article.region === region)
+      : FALLBACK_ARTICLES
 
     return Response.json(
       {
         source: 'portal-fallback',
         fallback: true,
-        articles: FALLBACK_ARTICLES.slice(0, limit),
+        articles: fallbackArticles.slice(0, limit),
       },
       {
         headers: {

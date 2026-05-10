@@ -9,6 +9,7 @@ import { EagleGlyph, MapleGlyph, LionGlyph } from './country-glyphs'
 export default function DashboardRightPane({ role = 'student' }) {
   const cards = role === 'attorney' ? ATTORNEY_CARDS : role === 'admin' ? ADMIN_CARDS : STUDENT_CARDS
   const [articles, setArticles] = React.useState([])
+  const [region, setRegion] = React.useState('ALL')
   const [isLoading, setIsLoading] = React.useState(true)
   const [feedError, setFeedError] = React.useState(null)
 
@@ -21,7 +22,9 @@ export default function DashboardRightPane({ role = 'student' }) {
       setFeedError(null)
 
       try {
-        const response = await fetch(`/api/articles/feed?role=${encodeURIComponent(role)}&limit=6`, {
+        const params = new URLSearchParams({ role, limit: '18' })
+        if (region !== 'ALL') params.set('region', region)
+        const response = await fetch(`/api/articles/feed?${params.toString()}`, {
           signal: controller.signal,
           headers: { Accept: 'application/json' },
         })
@@ -44,7 +47,7 @@ export default function DashboardRightPane({ role = 'student' }) {
       isMounted = false
       controller.abort()
     }
-  }, [role])
+  }, [role, region])
 
   return (
     <aside
@@ -63,11 +66,11 @@ export default function DashboardRightPane({ role = 'student' }) {
       }}
       className="yousafe-right-pane"
     >
-      <PracticeStrip />
+      <PracticeStrip selected={region} onSelect={setRegion} />
       {cards.map((card, i) => (
         <PaneCard key={i} {...card} />
       ))}
-      <ArticleFeedHeader />
+      <ArticleFeedHeader region={region} />
       {isLoading ? (
         <FeedSkeleton />
       ) : feedError ? (
@@ -80,9 +83,11 @@ export default function DashboardRightPane({ role = 'student' }) {
           cta="Open legal library →"
         />
       ) : articles.length ? (
-        articles.map((article) => (
-          <ArticleCard key={article.url || article.path || article.title} article={article} />
-        ))
+        <div style={{ display: 'grid', gap: '10px', maxHeight: '560px', overflowY: 'auto', paddingRight: '4px' }}>
+          {articles.map((article) => (
+            <ArticleCard key={article.url || article.path || article.title} article={article} />
+          ))}
+        </div>
       ) : (
         <PaneCard
           accent="#3C3B6E"
@@ -98,7 +103,7 @@ export default function DashboardRightPane({ role = 'student' }) {
   )
 }
 
-function PracticeStrip() {
+function PracticeStrip({ selected, onSelect }) {
   return (
     <div
       style={{
@@ -108,24 +113,62 @@ function PracticeStrip() {
         padding: '16px 16px 14px',
       }}
     >
-      <div style={eyebrowStyle}>Three jurisdictions</div>
+      <div style={eyebrowStyle}>Article jurisdiction</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', alignItems: 'center', gap: '8px' }}>
-        <Practice glyph={<EagleGlyph size={18} color="#1F2D5F" />} label="US" tint="#1F2D5F" />
+        <Practice glyph={<EagleGlyph size={18} color="#1F2D5F" />} label="US" value="US" tint="#1F2D5F" selected={selected === 'US'} onSelect={onSelect} />
         <span style={{ width: '1px', height: '22px', background: C.border }} />
-        <Practice glyph={<MapleGlyph size={18} color="#A4243B" />} label="CA" tint="#A4243B" />
+        <Practice glyph={<MapleGlyph size={18} color="#A4243B" />} label="CA" value="CA" tint="#A4243B" selected={selected === 'CA'} onSelect={onSelect} />
         <span style={{ width: '1px', height: '22px', background: C.border }} />
-        <Practice glyph={<LionGlyph size={18} color="#5B3A2A" />} label="UK" tint="#5B3A2A" />
+        <Practice glyph={<LionGlyph size={18} color="#5B3A2A" />} label="UK" value="UK" tint="#5B3A2A" selected={selected === 'UK'} onSelect={onSelect} />
       </div>
+      <button
+        type="button"
+        onClick={() => onSelect('ALL')}
+        style={{
+          marginTop: '10px',
+          border: `1px solid ${selected === 'ALL' ? C.cyan : C.border}`,
+          background: selected === 'ALL' ? `${C.cyan}10` : C.surface2,
+          color: selected === 'ALL' ? C.cyan : C.textMuted,
+          borderRadius: '999px',
+          padding: '6px 10px',
+          width: '100%',
+          cursor: 'pointer',
+          fontSize: '11px',
+          fontWeight: 800,
+          letterSpacing: '0.08em',
+        }}
+      >
+        ALL ARTICLES
+      </button>
     </div>
   )
 }
 
-function Practice({ glyph, label, tint }) {
+function Practice({ glyph, label, value, tint, selected, onSelect }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: tint, fontWeight: 700, fontSize: '12px', letterSpacing: '0.06em' }}>
+    <button
+      type="button"
+      onClick={() => onSelect(value)}
+      aria-pressed={selected}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        color: tint,
+        fontWeight: 700,
+        fontSize: '12px',
+        letterSpacing: '0.06em',
+        border: `1px solid ${selected ? tint : 'transparent'}`,
+        borderRadius: '999px',
+        padding: '6px 8px',
+        background: selected ? `${tint}10` : 'transparent',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+    >
       {glyph}
       <span>{label}</span>
-    </div>
+    </button>
   )
 }
 
@@ -176,13 +219,14 @@ function PaneCard({ accent, eyebrow, title, body, cta, href, onClick }) {
   )
 }
 
-function ArticleFeedHeader() {
+function ArticleFeedHeader({ region }) {
+  const label = region === 'ALL' ? 'Latest articles' : `${REGION_LABELS[region] || region} articles`
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '4px 4px 0' }}>
       <div>
         <div style={eyebrowStyle}>Legal library</div>
         <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, marginTop: '3px', lineHeight: 1.2 }}>
-          Latest articles
+          {label}
         </div>
       </div>
       <a
@@ -198,20 +242,55 @@ function ArticleFeedHeader() {
 }
 
 function ArticleCard({ article }) {
+  const [open, setOpen] = React.useState(false)
   const region = article?.region || 'COMPARE'
   const accent = REGION_ACCENTS[region] || C.cyan
   const regionLabel = REGION_LABELS[region] || 'Guide'
   const cluster = article?.cluster ? ` · ${article.cluster}` : ''
+  const details = [
+    article?.description,
+    article?.updated_at ? `Updated ${new Date(article.updated_at).toLocaleDateString()}` : null,
+    article?.path ? `Library path: ${article.path}` : null,
+  ].filter(Boolean)
 
   return (
-    <PaneCard
-      accent={accent}
-      eyebrow={`${regionLabel}${cluster}`}
-      title={article?.title || 'Legal article'}
-      body={article?.description || 'Read the latest guide from the YouSafe legal library.'}
+    <a
       href={article?.url || LEGAL_ARTICLES_URL}
-      cta="Read article →"
-    />
+      target="_blank"
+      rel="noreferrer"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+      style={{
+        display: 'block',
+        background: C.surface,
+        border: `1px solid ${open ? accent : C.border}`,
+        borderRadius: '14px',
+        padding: open ? '18px 18px' : '14px 16px',
+        textDecoration: 'none',
+        color: 'inherit',
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'padding 160ms ease, border-color 160ms ease, box-shadow 160ms ease',
+        boxShadow: open ? '0 14px 34px rgba(15,18,32,0.10)' : '0 1px 2px rgba(15,18,32,0.03)',
+      }}
+    >
+      <span style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: accent }} />
+      <div style={{ ...eyebrowStyle, color: accent }}>{regionLabel}{cluster}</div>
+      <div style={{ fontFamily: C.serif, fontSize: open ? '19px' : '17px', fontWeight: 500, color: C.text, marginTop: '6px', lineHeight: 1.22 }}>
+        {article?.title || 'Legal article'}
+      </div>
+      <p style={{ color: C.textMuted, fontSize: '12.5px', lineHeight: 1.55, margin: '8px 0 0' }}>
+        {article?.description || 'Read the latest guide from the YouSafe legal library.'}
+      </p>
+      {open && (
+        <div style={{ display: 'grid', gap: '7px', marginTop: '12px', color: C.textMuted, fontSize: '12px', lineHeight: 1.45 }}>
+          {details.slice(1).map(item => <div key={item}>{item}</div>)}
+          <div style={{ color: accent, fontWeight: 800 }}>Read article →</div>
+        </div>
+      )}
+    </a>
   )
 }
 

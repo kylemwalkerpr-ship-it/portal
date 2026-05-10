@@ -67,6 +67,8 @@ function ConsultantApp({ onLogout }) {
   const [profileName, setProfileName] = React.useState('');
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
+  const [profileAvatarUrl, setProfileAvatarUrl] = React.useState('');
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
   const [available, setAvailable] = React.useState(true);
   const [notifPrefs, setNotifPrefs] = React.useState({ orders: true, messages: true, payments: true });
   const [autoWithdraw, setAutoWithdraw] = React.useState(false);
@@ -81,6 +83,7 @@ function ConsultantApp({ onLogout }) {
   const [uploadingFile, setUploadingFile] = React.useState(false);
   const [orderDetailProgress, setOrderDetailProgress] = React.useState(0);
   const fileInputRef = React.useRef(null);
+  const avatarInputRef = React.useRef(null);
 
   React.useEffect(() => {
     if (selectedOrder) setOrderDetailProgress(Number(selectedOrder.progress) || 0);
@@ -112,6 +115,7 @@ function ConsultantApp({ onLogout }) {
         setProfileName(data.consultant?.name || '');
         setProfileEmail(data.consultant?.email || '');
         setProfileBio(data.consultant?.bio || '');
+        setProfileAvatarUrl(data.consultant?.avatarUrl || '');
         setAvailable(data.consultant?.available !== false);
         setNotifPrefs(data.consultant?.notifPrefs || { orders: true, messages: true, payments: true });
         setAutoWithdraw(Boolean(data.consultant?.autoWithdraw));
@@ -159,12 +163,35 @@ function ConsultantApp({ onLogout }) {
   };
 
   const saveProfile = async () => {
+    if (profileName.trim().split(/\s+/).length < 2) {
+      setActionNotice('Add your first and last name before saving.');
+      return;
+    }
     const ok = await persistConsultantPrefs({
       full_name: profileName,
       email: profileEmail,
       bio: profileBio,
     });
     if (ok) setActionNotice('Profile saved.');
+  };
+
+  const uploadAvatar = async file => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/consultant/profile/avatar', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setProfileAvatarUrl(data.avatar_url || '');
+      setActionNotice('Profile photo updated.');
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
   };
 
   const toggleAvailable = async () => {
@@ -499,7 +526,7 @@ function ConsultantApp({ onLogout }) {
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name={profileName || 'Consultant'} size={32} color={C.purple} />
+          <Avatar name={profileName || 'Consultant'} src={profileAvatarUrl} size={32} color={C.purple} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileName || 'Consultant'}</div>
             <button
@@ -594,6 +621,7 @@ function ConsultantApp({ onLogout }) {
           name={profileName || 'Consultant'}
           role="Consultant"
           email={profileEmail}
+          avatarSrc={profileAvatarUrl}
           color={C.purple}
           onNavigate={setPage}
           onLogout={onLogout}
@@ -1104,17 +1132,26 @@ function ConsultantApp({ onLogout }) {
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-          <Avatar name={profileName || 'Consultant'} size={60} color={C.purple} />
+          <Avatar name={profileName || 'Consultant'} src={profileAvatarUrl} size={60} color={C.purple} />
           <div>
             <div style={{ fontWeight: 700 }}>{profileName || 'Consultant Name'}</div>
             <div style={{ color: C.textMuted, fontSize: '13px' }}>{profileEmail || 'you@example.com'}</div>
-            <div style={{ color: C.textDim, fontSize: '12px', marginTop: '4px' }}>Profile photos use your account avatar from sign-in.</div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: 'none' }}
+              onChange={e => uploadAvatar(e.target.files?.[0])}
+            />
+            <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} disabled={uploadingAvatar} onClick={() => avatarInputRef.current?.click()}>
+              {uploadingAvatar ? 'Uploading...' : profileAvatarUrl ? 'Change photo' : 'Upload headshot'}
+            </Btn>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <Input label="Full name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Full name" />
-          <Input label="Email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="Email address" />
-          <Input label="Bio" value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Short profile summary" />
+          <Input label="First and last name" value={profileName} onChange={setProfileName} placeholder="First Last" />
+          <Input label="Email" type="email" value={profileEmail} onChange={setProfileEmail} placeholder="Email address" />
+          <Input label="Bio" value={profileBio} onChange={setProfileBio} placeholder="Short profile summary" />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>Available for orders</div>

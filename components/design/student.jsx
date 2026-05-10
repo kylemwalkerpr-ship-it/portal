@@ -437,6 +437,17 @@ function getServiceDetails(service) {
   };
 }
 
+function splitDisplayName(name) {
+  const raw = String(name || '').trim()
+  const parts = raw.split(/\s+/).filter(Boolean)
+  const salutation = /^(Mr\.?|Mrs\.?|Ms\.?|Mx\.?|Dr\.?|Prof\.?)$/i.test(parts[0] || '') ? parts.shift() : ''
+  return {
+    salutation: salutation ? salutation.replace(/\.$/, '.') : '',
+    first_name: parts[0] || '',
+    last_name: parts.slice(1).join(' '),
+  }
+}
+
 // ─── Escrow Approval Card ─────────────────────────────────────────────────────
 function EscrowApprovalCard({ order }) {
   const [state, setState] = React.useState('review'); // review | approved | rejected
@@ -549,6 +560,7 @@ function EscrowApprovalCard({ order }) {
 // ─── Stripe Payment Method Component ─────────────────────────────────────────
 function StripePaymentSection() {
   const [cards, setCards] = React.useState([]);
+  const [selectedCardId, setSelectedCardId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
   const [cardMounted, setCardMounted] = React.useState(false);
@@ -567,7 +579,12 @@ function StripePaymentSection() {
     try {
       const res = await fetch('/api/wallet/payment-methods');
       const d = await res.json();
-      setCards(d.cards ?? []);
+      const nextCards = d.cards ?? [];
+      setCards(nextCards);
+      setSelectedCardId(current => current || nextCards[0]?.id || '');
+    } catch (e) {
+      setCards([]);
+      setErrorMsg(e.message || 'Could not load saved cards.');
     } finally { setLoading(false); }
   };
 
@@ -663,6 +680,7 @@ function StripePaymentSection() {
   const handleRemove = async (pmId) => {
     try {
       await fetch(`/api/wallet/payment-methods/${pmId}`, { method: 'DELETE' });
+      if (selectedCardId === pmId) setSelectedCardId('');
       await fetchCards();
     } catch (e) { console.error('Remove failed', e); }
   };
@@ -681,18 +699,26 @@ function StripePaymentSection() {
       {stripeErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ Stripe error: {stripeErr}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         {loading ? (
-          <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading…</div>
+          <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading saved cards…</div>
         ) : cards.length === 0 && !addingCard ? (
           <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>No cards saved yet.</div>
         ) : cards.map(card => (
-          <div key={card.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: C.surface2, borderRadius: '12px', border: `1px solid ${C.border}` }}>
+          <button
+            key={card.id}
+            type="button"
+            onClick={() => setSelectedCardId(card.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: selectedCardId === card.id ? `${C.cyan}0f` : C.surface2, borderRadius: '999px', border: `1px solid ${selectedCardId === card.id ? C.cyan : C.border}`, cursor: 'pointer', color: C.text, fontFamily: 'inherit', textAlign: 'left' }}
+          >
+            <span style={{ width: '20px', height: '20px', borderRadius: '999px', border: `2px solid ${selectedCardId === card.id ? C.cyan : C.border2}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {selectedCardId === card.id && <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: C.cyan }} />}
+            </span>
             <div style={{ width: '44px', height: '28px', borderRadius: '6px', background: brandColor(card.brand), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{card.brand.slice(0,4).toUpperCase()}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>•••• •••• •••• {card.last4}</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Expires {card.exp_month}/{card.exp_year}</div>
             </div>
-            <Btn variant="ghost" size="sm" onClick={() => handleRemove(card.id)}>Remove</Btn>
-          </div>
+            <Btn variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRemove(card.id); }}>Remove</Btn>
+          </button>
         ))}
       </div>
       {!addingCard ? (
@@ -972,6 +998,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [ordersLoading, setOrdersLoading] = React.useState(true);
   const [ordersError, setOrdersError] = React.useState(null);
   const [viewerVertical, setViewerVertical] = React.useState('study_abroad');
+  const [profileData, setProfileData] = React.useState({ name: userName || '', email: '' });
   const [orderFiles, setOrderFiles] = React.useState([]);
   const [filesLoading, setFilesLoading] = React.useState(false);
   const [uploadingOrderFile, setUploadingOrderFile] = React.useState(false);
@@ -992,6 +1019,7 @@ function StudentApp({ onLogout, userId, userName }) {
       })
       .then(data => {
         setOrders(data.orders ?? []);
+        setProfileData({ name: data.profile?.name || userName || '', email: data.profile?.email || '' });
         if (data.profile?.vertical) setViewerVertical(data.profile.vertical);
         setOrdersError(null);
       })
@@ -1208,9 +1236,9 @@ function StudentApp({ onLogout, userId, userName }) {
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
-          <Avatar name={userName || 'Student'} size={32} />
+          <Avatar name={profileData.name || 'Student'} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName || 'Student'}</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileData.name || 'Student'}</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>Student</div>
           </div>
           <button
@@ -1260,8 +1288,9 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
         </div>
         <UserMenu
-          name={userName || 'User'}
+          name={profileData.name || 'Student'}
           role="Student"
+          email={profileData.email}
           onNavigate={setPage}
           onLogout={onLogout}
           items={[
@@ -1280,7 +1309,7 @@ function StudentApp({ onLogout, userId, userName }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
         <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: '4px' }}>Today</div>
-        <h2 style={{ fontFamily: C.serif, fontSize: '34px', fontWeight: 500, marginBottom: '6px', letterSpacing: '-0.012em', color: C.text }}>Welcome back{userName ? `, ${userName.split(' ')[0]}` : ''}.</h2>
+        <h2 style={{ fontFamily: C.serif, fontSize: '34px', fontWeight: 500, marginBottom: '6px', letterSpacing: '-0.012em', color: C.text }}>Welcome back{profileData.name ? `, ${profileData.name.split(' ').slice(-2, -1)[0] || profileData.name.split(' ')[0]}` : ''}.</h2>
         <p style={{ color: C.textMuted, fontSize: '14px' }}>
           {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services and place your first order to get started.'}
         </p>
@@ -1665,6 +1694,8 @@ function StudentApp({ onLogout, userId, userName }) {
       const isUsdService = serviceCurrency === 'usd';
       const usdPriceNum = Number(cart.usd_price || (isUsdService ? priceNum : 0));
       const hasUsdEquivalent = !isUsdService && usdPriceNum > 0;
+      const displayPriceNum = convertPrice(priceNum, serviceCurrency);
+      const isDisplayedConverted = serviceCurrency !== effectiveDisplayCurrency;
       const canUseWallet = isUsdService && walletBalance !== null && walletBalance >= priceNum;
       const selectedCard = savedCards.find(card => card.id === selectedCardId);
       const canUseSavedCard = Boolean(selectedCardId);
@@ -1760,8 +1791,8 @@ function StudentApp({ onLogout, userId, userName }) {
                 <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(cart.price, serviceCurrency)}</div>
-                {hasUsdEquivalent && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(usdPriceNum, 'usd')}</div>}
+                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{isDisplayedConverted ? '≈ ' : ''}{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</div>
+                {isDisplayedConverted && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>Charged as {formatMoney(priceNum, serviceCurrency)}</div>}
               </div>
             </div>
           </Card>
@@ -1820,12 +1851,15 @@ function StudentApp({ onLogout, userId, userName }) {
                     type="button"
                     onClick={() => setSelectedCardId(card.id)}
                     style={{
-                      width: '100%', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${selectedCardId === card.id ? C.cyan : C.border}`,
+                      width: '100%', padding: '11px 12px', borderRadius: '999px', border: `1px solid ${selectedCardId === card.id ? C.cyan : C.border}`,
                       background: selectedCardId === card.id ? `${C.cyan}0f` : '#fff', display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'center', cursor: 'pointer', color: C.text,
+                      alignItems: 'center', cursor: 'pointer', color: C.text, gap: '10px',
                     }}
                   >
-                    <span style={{ fontSize: '13px', fontWeight: 600 }}>{card.brand?.toUpperCase?.() || 'CARD'} •••• {card.last4}</span>
+                    <span style={{ width: '20px', height: '20px', borderRadius: '999px', border: `2px solid ${selectedCardId === card.id ? C.cyan : C.border2}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {selectedCardId === card.id && <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: C.cyan }} />}
+                    </span>
+                    <span style={{ fontSize: '13px', fontWeight: 700, flex: 1, textAlign: 'left' }}>{card.brand?.toUpperCase?.() || 'CARD'} •••• {card.last4}</span>
                     <span style={{ fontSize: '12px', color: C.textMuted }}>Exp {card.exp_month}/{card.exp_year}</span>
                   </button>
                 ))}
@@ -1860,11 +1894,11 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span><span style={{ color: C.cyan }}>{formatMoney(cart.price, serviceCurrency)}</span>
+              <span>Total</span><span style={{ color: C.cyan }}>{isDisplayedConverted ? '≈ ' : ''}{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</span>
             </div>
-            {hasUsdEquivalent && (
+            {(hasUsdEquivalent || isDisplayedConverted) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0 4px', fontSize: '12px', color: C.textMuted }}>
-                <span>USD equivalent</span><span>{formatMoney(usdPriceNum, 'usd')}</span>
+                <span>Charged as</span><span>{formatMoney(priceNum, serviceCurrency)}</span>
               </div>
             )}
           </Card>
@@ -1900,11 +1934,11 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {payMethod === 'wallet' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(cart.price, serviceCurrency)} from Wallet`}
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(priceNum, serviceCurrency)} from Wallet`}
             </Btn>
           ) : payMethod === 'saved_card' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(cart.price, serviceCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${isDisplayedConverted ? '≈ ' : ''}${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
@@ -1923,7 +1957,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 setPaying(false);
               }
             }}>
-              {paying ? 'Opening checkout…' : `Pay ${formatMoney(cart.price, serviceCurrency)} with Stripe →`}
+              {paying ? 'Opening checkout…' : `Pay ${isDisplayedConverted ? '≈ ' : ''}${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with Stripe →`}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
@@ -2260,7 +2294,39 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── SETTINGS ──
   const Settings = () => {
     const [notifs, setNotifs] = React.useState({ messages: true, orders: true, promo: false });
-    const [profile, setProfile] = React.useState({ name: userName || '', email: '', phone: '' });
+    const parsedName = React.useMemo(() => splitDisplayName(profileData.name || userName || ''), []);
+    const [profile, setProfile] = React.useState({ ...parsedName, email: profileData.email || '', phone: '' });
+    const [savingProfile, setSavingProfile] = React.useState(false);
+    const [profileError, setProfileError] = React.useState('');
+    const saveProfile = async () => {
+      setSavingProfile(true);
+      setProfileError('');
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profile),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not save profile.');
+        setProfileData({ name: data.profile?.full_name || '', email: data.profile?.email || profile.email });
+        setActionNotice('Profile changes saved.');
+      } catch (e) {
+        setProfileError(e.message);
+      } finally {
+        setSavingProfile(false);
+      }
+    };
+    React.useEffect(() => {
+      const nextName = splitDisplayName(profileData.name || userName || '');
+      setProfile(p => ({
+        ...p,
+        salutation: p.salutation || nextName.salutation,
+        first_name: p.first_name || nextName.first_name,
+        last_name: p.last_name || nextName.last_name,
+        email: p.email || profileData.email || '',
+      }));
+    }, [profileData.name, profileData.email]);
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
         <div>
@@ -2270,17 +2336,36 @@ function StudentApp({ onLogout, userId, userName }) {
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <Avatar name={userName || 'User'} size={60} />
+            <Avatar name={profileData.name || 'User'} size={60} />
             <div>
-              <div style={{ fontWeight: 700 }}>{userName || 'User'}</div>
-              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} onClick={() => setActionNotice('Photo picker opened. Connect profile storage to upload a new avatar.')}>Change photo</Btn>
+              <div style={{ fontWeight: 700 }}>{profileData.name || 'Add your name'}</div>
+              <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '2px' }}>{profileData.email || 'Email appears here'}</div>
+              <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} onClick={() => setActionNotice('Student avatar upload is ready for profile storage wiring.')}>Change photo</Btn>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <Input label="Full name" value={profile.name} onChange={v => setProfile(p => ({ ...p, name: v }))} />
+            {profileError && <div style={{ color: C.red, fontSize: '13px' }}>{profileError}</div>}
+            <Select
+              label="Preferred salutation"
+              value={profile.salutation}
+              onChange={v => setProfile(p => ({ ...p, salutation: v }))}
+              options={[
+                { value: '', label: 'No salutation' },
+                { value: 'Mr.', label: 'Mr.' },
+                { value: 'Mrs.', label: 'Mrs.' },
+                { value: 'Ms.', label: 'Ms.' },
+                { value: 'Mx.', label: 'Mx.' },
+                { value: 'Dr.', label: 'Dr.' },
+                { value: 'Prof.', label: 'Prof.' },
+              ]}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Input label="First name" value={profile.first_name} onChange={v => setProfile(p => ({ ...p, first_name: v }))} />
+              <Input label="Last name" value={profile.last_name} onChange={v => setProfile(p => ({ ...p, last_name: v }))} />
+            </div>
             <Input label="Email" type="email" value={profile.email} onChange={v => setProfile(p => ({ ...p, email: v }))} />
             <Input label="Phone" value={profile.phone} onChange={v => setProfile(p => ({ ...p, phone: v }))} placeholder="+44 7700 000000" />
-            <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Profile changes saved for this session.')}>Save changes</Btn>
+            <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} disabled={savingProfile} onClick={saveProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</Btn>
           </div>
         </Card>
         <Card>
