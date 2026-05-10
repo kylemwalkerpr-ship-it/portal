@@ -5,13 +5,17 @@ import { C, Btn, Badge, Card, NavItem } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
 
 const PAGE_TITLES = {
-  profile: 'My Profile',
+  overview: 'Overview',
   queue: 'Inquiry Queue',
   mine: 'My Inquiries',
+  orders: 'Active Orders',
+  earnings: 'Earnings',
+  profile: 'My Profile',
+  settings: 'Settings',
 }
 
 export default function AttorneyApp({ onLogout, userName }) {
-  const [page, setPage] = React.useState('queue')
+  const [page, setPage] = React.useState('overview')
   const [profileData, setProfileData] = React.useState(null)
   const [profileError, setProfileError] = React.useState('')
 
@@ -51,9 +55,13 @@ export default function AttorneyApp({ onLogout, userName }) {
           )}
         </header>
         <main style={{ flex: 1, overflow: 'auto' }}>
-          {page === 'profile' && <AttorneyProfileEditor />}
+          {page === 'overview' && <OverviewPage onJump={setPage} />}
           {page === 'queue' && <QueuePage />}
           {page === 'mine' && <MyInquiriesPage />}
+          {page === 'orders' && <OrdersPage />}
+          {page === 'earnings' && <EarningsPage />}
+          {page === 'profile' && <AttorneyProfileEditor />}
+          {page === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>
@@ -79,10 +87,14 @@ function Sidebar({ page, setPage, onLogout, displayName }) {
         </div>
       </div>
       <div style={{ padding: '12px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <NavItem icon="⬛" label="Overview" active={page === 'overview'} onClick={() => setPage('overview')} />
         <NavItem icon="📥" label="Inquiry Queue" active={page === 'queue'} onClick={() => setPage('queue')} />
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
+        <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
+        <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
+        <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <button
@@ -707,6 +719,623 @@ function OfferRow({ offer, onWithdraw, withdrawing }) {
     </Card>
   )
 }
+
+// ── Overview page ──────────────────────────────────────────────────────────
+function OverviewPage({ onJump }) {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+
+  const load = React.useCallback(() => {
+    fetch('/api/attorney/data', { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load overview.')
+        setData(payload)
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  React.useEffect(() => {
+    load()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 12000)
+    return () => clearInterval(id)
+  }, [load])
+
+  if (loading) return <Notice>Loading overview...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+
+  const s = data?.summary || {}
+  const recent = (data?.orders || []).slice(0, 5)
+
+  return (
+    <div style={{ padding: '28px', display: 'grid', gap: '24px', maxWidth: '1080px' }}>
+      <div>
+        <div style={eyebrowStyle}>Dashboard</div>
+        <h2 style={pageTitleStyle}>What's happening today.</h2>
+      </div>
+
+      {!data?.connect?.onboarding_complete && (
+        <Card>
+          <div style={{ padding: '16px 18px', borderLeft: `4px solid ${C.orange}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px' }}>Connect Stripe to receive payouts</div>
+              <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>You can chat with clients now, but you need a payout account before sending paid offers.</div>
+            </div>
+            <Btn variant="primary" size="sm" onClick={() => onJump('settings')}>Set up payouts</Btn>
+          </div>
+        </Card>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+        <StatCard label="Open inquiries" value={s.open_inquiries ?? 0} sub="In the queue" onClick={() => onJump('queue')} />
+        <StatCard label="My engagements" value={s.my_engaged_inquiries ?? 0} sub="Inquiries I've replied to" onClick={() => onJump('mine')} />
+        <StatCard label="Active orders" value={s.active_orders ?? 0} sub="In progress" onClick={() => onJump('orders')} />
+        <StatCard label="This month" value={`$${Number(s.earnings_month || 0).toFixed(0)}`} sub={`$${Number(s.earnings_lifetime || 0).toFixed(0)} lifetime`} onClick={() => onJump('earnings')} />
+        <StatCard label="Rating" value={s.rating_avg ? `${s.rating_avg} ★` : 'New'} sub={s.rating_count ? `${s.rating_count} review${s.rating_count === 1 ? '' : 's'}` : 'No reviews yet'} />
+      </div>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ fontWeight: 700, color: C.text, fontSize: '15px' }}>Recent active orders</div>
+            <button onClick={() => onJump('orders')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>See all →</button>
+          </div>
+          {recent.length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: '13px' }}>No active orders yet. Engage inquiries and send offers to start work.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {recent.map((o) => <CompactOrderRow key={o.id} order={o} />)}
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function StatCard({ label, value, sub, onClick }) {
+  const interactive = typeof onClick === 'function'
+  return (
+    <div
+      onClick={interactive ? onClick : undefined}
+      style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: '14px',
+        padding: '18px 18px',
+        cursor: interactive ? 'pointer' : 'default',
+        transition: 'border-color 140ms',
+      }}
+    >
+      <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontFamily: C.serif, fontSize: '30px', fontWeight: 500, color: C.text, marginTop: '4px', letterSpacing: '-0.012em' }}>{value}</div>
+      {sub && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{sub}</div>}
+    </div>
+  )
+}
+
+function CompactOrderRow({ order }) {
+  return (
+    <div style={{ padding: '10px 12px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ flex: 1, minWidth: '200px' }}>
+        <div style={{ color: C.text, fontSize: '13px', fontWeight: 600 }}>{order.title}</div>
+        <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.client_name} · {order.progress}% · ${order.attorney_fee.toFixed(2)}</div>
+      </div>
+      <Badge color={order.is_complete ? 'green' : order.status === 'review' ? 'cyan' : 'orange'}>{order.is_complete ? 'completed' : order.status}</Badge>
+    </div>
+  )
+}
+
+// ── Orders page ────────────────────────────────────────────────────────────
+function OrdersPage() {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [openId, setOpenId] = React.useState(null)
+  const [filter, setFilter] = React.useState('active')
+
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
+    fetch('/api/attorney/data', { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load orders.')
+        setData(payload)
+        setError('')
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => { if (isInitial) setLoading(false) })
+  }, [])
+
+  React.useEffect(() => {
+    load(true)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load(false) }, 8000)
+    return () => clearInterval(id)
+  }, [load])
+
+  if (loading) return <Notice>Loading your orders...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+
+  if (openId) return <OrderDetail orderId={openId} onBack={() => { setOpenId(null); load(false) }} />
+
+  const all = data?.orders || []
+  const filtered = filter === 'all' ? all : filter === 'active' ? all.filter((o) => !o.is_complete) : all.filter((o) => o.is_complete)
+
+  return (
+    <div style={{ padding: '24px 28px', maxWidth: '1080px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', marginBottom: '16px' }}>
+        <div>
+          <div style={eyebrowStyle}>Engagements</div>
+          <h2 style={pageTitleStyle}>Active orders.</h2>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0 }}>Orders that came from accepted offers. Update progress as you work, mark deliverables complete to request escrow release.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {['active', 'completed', 'all'].map((f) => (
+            <button key={f} onClick={() => setFilter(f)} style={pillBtn(filter === f)}>{f}</button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card><div style={{ padding: '24px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No {filter} orders.</div></Card>
+      ) : (
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {filtered.map((o) => (
+            <Card key={o.id}>
+              <div onClick={() => setOpenId(o.id)} style={{ padding: '16px 18px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '15px', color: C.text }}>{o.title}</div>
+                    <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
+                      {o.client_name} · {o.client_email} · started {new Date(o.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {o.messages > 0 && <Badge color="cyan">{o.messages} msg</Badge>}
+                    <Badge color={o.is_complete ? 'green' : o.status === 'review' ? 'cyan' : 'orange'}>{o.is_complete ? 'completed' : o.status}</Badge>
+                  </div>
+                </div>
+                <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
+                    <div style={{ height: '6px', background: C.surface3, borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${o.progress}%`, background: C.cyan, transition: 'width 200ms ease' }} />
+                    </div>
+                  </div>
+                  <span style={{ color: C.textMuted, fontSize: '12px', minWidth: '50px', textAlign: 'right' }}>{o.progress}%</span>
+                  <span style={{ fontFamily: C.serif, color: C.text, fontSize: '18px' }}>${o.attorney_fee.toFixed(0)}</span>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OrderDetail({ orderId, onBack }) {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [draft, setDraft] = React.useState('')
+  const [sending, setSending] = React.useState(false)
+  const [progressDraft, setProgressDraft] = React.useState(0)
+  const [savingProgress, setSavingProgress] = React.useState(false)
+  const [completing, setCompleting] = React.useState(false)
+
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
+    fetch(`/api/attorney/orders/${orderId}`, { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load order.')
+        setData(payload)
+        if (payload?.order?.progress != null) setProgressDraft(payload.order.progress)
+        setError('')
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => { if (isInitial) setLoading(false) })
+  }, [orderId])
+
+  React.useEffect(() => {
+    load(true)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load(false) }, 6000)
+    return () => clearInterval(id)
+  }, [load])
+
+  async function send(e) {
+    e.preventDefault()
+    if (!draft.trim() || sending) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/attorney/orders/${orderId}/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ body: draft }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Send failed.')
+      setDraft('')
+      load(false)
+    } catch (e) { setError(e.message) } finally { setSending(false) }
+  }
+
+  async function saveProgress() {
+    setSavingProgress(true)
+    try {
+      const res = await fetch(`/api/attorney/orders/${orderId}/progress`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ progress: progressDraft }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Update failed.')
+      load(false)
+    } catch (e) { setError(e.message) } finally { setSavingProgress(false) }
+  }
+
+  async function markComplete() {
+    if (!confirm('Mark this order as ready for client review? They\'ll be notified to approve and release payment.')) return
+    setCompleting(true)
+    try {
+      const res = await fetch(`/api/attorney/orders/${orderId}/complete`, { method: 'POST', credentials: 'same-origin' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Complete failed.')
+      load(false)
+    } catch (e) { setError(e.message) } finally { setCompleting(false) }
+  }
+
+  if (loading) return <Notice>Loading order...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+  if (!data) return null
+
+  const order = data.order
+  const messages = data.messages || []
+  const completed = order.status === 'completed' || ['released', 'paid', 'completed'].includes(String(order.escrow_status || '').toLowerCase())
+
+  return (
+    <div style={{ padding: '20px 28px', maxWidth: '1080px' }}>
+      <button onClick={onBack} style={backBtn}>← Back to orders</button>
+
+      <Card>
+        <div style={{ padding: '20px 22px', display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', alignItems: 'flex-start' }}>
+          <div>
+            <div style={eyebrowStyle}>Order</div>
+            <h2 style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, color: C.text, margin: '4px 0 8px' }}>{order.offer?.title || 'Custom engagement'}</h2>
+            <div style={{ color: C.textMuted, fontSize: '13px' }}>
+              {order.client_name} · {order.client_email}
+            </div>
+            {order.offer?.description && (
+              <p style={{ marginTop: '10px', color: C.text, fontSize: '13px', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{order.offer.description}</p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <Badge color={completed ? 'green' : order.status === 'review' ? 'cyan' : 'orange'}>{completed ? 'completed' : order.status}</Badge>
+            <div style={{ marginTop: '10px', fontFamily: C.serif, fontSize: '24px', color: C.text }}>${Number(order.attorney_fee || 0).toFixed(2)}</div>
+            <div style={{ color: C.textMuted, fontSize: '11px' }}>your fee · client paid ${(Number(order.attorney_fee || 0) + Number(order.platform_fee || 0)).toFixed(2)}</div>
+            <div style={{ color: C.textDim, fontSize: '11px', marginTop: '4px' }}>Payout: {order.payout_status}</div>
+          </div>
+        </div>
+      </Card>
+
+      <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', alignItems: 'flex-start' }}>
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <Card>
+            <div style={{ padding: '16px 18px' }}>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Conversation</div>
+              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflow: 'auto' }}>
+                {messages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '12px 0' }}>No messages yet.</div>}
+                {messages.map((m) => <OrderBubble key={m.id} message={m} />)}
+              </div>
+              {!completed && (
+                <form onSubmit={send} style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                  <textarea rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply to your client..." style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', color: C.text, fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }} />
+                  <Btn type="submit" variant="primary" size="sm" disabled={sending || !draft.trim()}>{sending ? 'Sending...' : 'Send'}</Btn>
+                </form>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <Card>
+            <div style={{ padding: '16px 18px' }}>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Progress</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="range" min="0" max="100" step="5"
+                  value={progressDraft}
+                  onChange={(e) => setProgressDraft(Number(e.target.value))}
+                  disabled={completed}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontFamily: C.serif, fontSize: '20px', color: C.text, minWidth: '50px', textAlign: 'right' }}>{progressDraft}%</span>
+              </div>
+              {!completed && progressDraft !== order.progress && (
+                <Btn variant="ghost" size="sm" disabled={savingProgress} onClick={saveProgress} style={{ marginTop: '8px' }}>
+                  {savingProgress ? 'Saving...' : 'Save progress'}
+                </Btn>
+              )}
+            </div>
+          </Card>
+
+          {!completed && (
+            <Card>
+              <div style={{ padding: '16px 18px' }}>
+                <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '6px' }}>Ready for review?</div>
+                <p style={{ color: C.textMuted, fontSize: '12px', margin: '0 0 12px', lineHeight: 1.5 }}>
+                  Mark the deliverable complete. The client gets notified to approve and release escrow.
+                </p>
+                <Btn variant="primary" size="sm" fullWidth disabled={completing} onClick={markComplete}>
+                  {completing ? 'Submitting...' : 'Submit for client review'}
+                </Btn>
+              </div>
+            </Card>
+          )}
+
+          <Card>
+            <div style={{ padding: '16px 18px' }}>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '8px' }}>Order details</div>
+              <DetailRow label="Order ID" value={order.id} mono />
+              {order.offer?.delivery_days && <DetailRow label="Promised delivery" value={`${order.offer.delivery_days} days`} />}
+              <DetailRow label="Started" value={new Date(order.created_at).toLocaleString()} />
+              {order.completed_at && <DetailRow label="Completed" value={new Date(order.completed_at).toLocaleString()} />}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OrderBubble({ message }) {
+  const mine = message.sender_role === 'consultant'
+  return (
+    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+      <div style={{ maxWidth: '78%', background: mine ? C.cyan : C.surface2, color: mine ? '#fff' : C.text, padding: '8px 12px', borderRadius: '10px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+        {message.body}
+        <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: '12px', gap: '8px' }}>
+      <span style={{ color: C.textMuted }}>{label}</span>
+      <span style={{ color: C.text, fontFamily: mono ? 'monospace' : 'inherit', textAlign: 'right', wordBreak: 'break-all' }}>{value}</span>
+    </div>
+  )
+}
+
+// ── Earnings page ──────────────────────────────────────────────────────────
+function EarningsPage() {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [opening, setOpening] = React.useState(false)
+
+  React.useEffect(() => {
+    fetch('/api/attorney/data', { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load earnings.')
+        setData(payload)
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function openStripe() {
+    setOpening(true)
+    try {
+      const res = await fetch('/api/attorney/connect/dashboard-link', { method: 'POST', credentials: 'same-origin' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not open Stripe dashboard.')
+      window.open(payload.url, '_blank', 'noopener')
+    } catch (e) { setError(e.message) } finally { setOpening(false) }
+  }
+
+  if (loading) return <Notice>Loading earnings...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+
+  const s = data?.summary || {}
+  const trend = data?.trend || []
+  const completed = (data?.orders || []).filter((o) => o.is_complete)
+  const peak = trend.reduce((m, d) => Math.max(m, d.amount), 0) || 1
+
+  return (
+    <div style={{ padding: '24px 28px', maxWidth: '1080px', display: 'grid', gap: '20px' }}>
+      <div>
+        <div style={eyebrowStyle}>Money</div>
+        <h2 style={pageTitleStyle}>Earnings.</h2>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+        <StatCard label="This month" value={`$${Number(s.earnings_month || 0).toFixed(2)}`} sub="Released to date" />
+        <StatCard label="Lifetime" value={`$${Number(s.earnings_lifetime || 0).toFixed(2)}`} sub="All-time fees" />
+        <StatCard label="Completed orders" value={s.completed_orders ?? 0} sub="Total delivered" />
+      </div>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ fontWeight: 700, color: C.text, fontSize: '14px' }}>Stripe Connect</div>
+            {data?.connect?.onboarding_complete ? (
+              <Btn variant="primary" size="sm" onClick={openStripe} disabled={opening}>{opening ? 'Opening...' : 'Open Stripe dashboard ↗'}</Btn>
+            ) : (
+              <Badge color="orange">Not connected</Badge>
+            )}
+          </div>
+          <p style={{ color: C.textMuted, fontSize: '12px', margin: 0 }}>
+            Payouts are handled by Stripe. Open the Stripe dashboard to view payout schedule, bank details, and tax forms.
+          </p>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Last 30 days</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '120px' }}>
+            {trend.map((d) => (
+              <div key={d.date} title={`${d.date}: $${d.amount.toFixed(2)}`} style={{ flex: 1, height: `${(d.amount / peak) * 100}%`, background: d.amount > 0 ? C.cyan : C.surface3, minHeight: '2px', borderRadius: '2px' }} />
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Completed engagements</div>
+          {completed.length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: '13px' }}>No completed orders yet.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Engagement</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Client</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Completed</th>
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}`, textAlign: 'right' }}>Earned</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completed.map((o) => (
+                  <tr key={o.id}>
+                    <td style={{ padding: '10px', color: C.text, fontSize: '13px' }}>{o.title}</td>
+                    <td style={{ padding: '10px', color: C.textMuted, fontSize: '13px' }}>{o.client_name}</td>
+                    <td style={{ padding: '10px', color: C.textMuted, fontSize: '12px' }}>{o.completed_at ? new Date(o.completed_at).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '10px', color: C.text, fontSize: '13px', textAlign: 'right', fontFamily: C.serif }}>${o.attorney_fee.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ── Settings page ──────────────────────────────────────────────────────────
+function SettingsPage() {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const [savedFlash, setSavedFlash] = React.useState('')
+
+  const load = React.useCallback(() => {
+    fetch('/api/attorney/profile', { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(payload?.error || 'Could not load.')
+        setData(payload)
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  React.useEffect(() => { load() }, [load])
+
+  async function startConnect() {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/attorney/connect/onboard', { method: 'POST', credentials: 'same-origin' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start onboarding.')
+      window.location.href = payload.url
+    } catch (e) { setError(e.message); setBusy(false) }
+  }
+
+  async function toggleAvailable(v) {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/attorney/profile', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ available: v }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not save.')
+      setData((d) => ({ ...d, attorney: { ...d.attorney, ...payload.attorney } }))
+      setSavedFlash('Saved')
+      window.setTimeout(() => setSavedFlash(''), 1400)
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  if (loading) return <Notice>Loading settings...</Notice>
+  if (error) return <Notice tone="error">{error}</Notice>
+
+  const a = data?.attorney || {}
+  const stripeOnboarded = Boolean(a.stripe_account_id) && data?.attorney?.stripe_onboarding_complete
+
+  return (
+    <div style={{ padding: '24px 28px', maxWidth: '720px', display: 'grid', gap: '16px' }}>
+      <div>
+        <div style={eyebrowStyle}>Account</div>
+        <h2 style={pageTitleStyle}>Settings.</h2>
+        {savedFlash && <span style={{ color: C.green, fontSize: '12px', fontWeight: 700 }}>{savedFlash} ✓</span>}
+      </div>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '6px' }}>Payouts</div>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 12px' }}>
+            {stripeOnboarded
+              ? 'Stripe Connect is set up. You can receive payments from accepted offers.'
+              : 'Connect a Stripe account to receive payouts. Without this, you can\'t send paid offers.'}
+          </p>
+          {!stripeOnboarded && (
+            <Btn variant="primary" size="sm" onClick={startConnect} disabled={busy}>
+              {busy ? 'Opening Stripe...' : 'Set up payouts with Stripe'}
+            </Btn>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px' }}>Accepting new clients</div>
+              <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>
+                Turn off if your queue is full. Profile stays visible but cards show "Limited".
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleAvailable(!(a.available !== false))}
+              disabled={busy}
+              style={{ width: '46px', height: '26px', borderRadius: '999px', border: 'none', background: a.available !== false ? C.cyan : C.surface3, position: 'relative', cursor: busy ? 'not-allowed' : 'pointer', padding: 0 }}
+            >
+              <span style={{ position: 'absolute', top: '3px', left: a.available !== false ? '23px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 160ms' }} />
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '6px' }}>Account & sign-out</div>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 12px' }}>
+            Email and password are managed by Clerk. Use the user menu to update them.
+          </p>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ── Tiny styles ─────────────────────────────────────────────────────────────
+const eyebrowStyle = { color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700, marginBottom: '6px' }
+const pageTitleStyle = { fontFamily: C.serif, fontSize: '30px', fontWeight: 500, color: C.text, margin: '0 0 8px', letterSpacing: '-0.012em' }
+const backBtn = { background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '14px', fontFamily: 'inherit', padding: 0 }
+const pillBtn = (active) => ({
+  padding: '6px 14px', borderRadius: '999px', border: `1px solid ${active ? C.cyan : C.border}`,
+  background: active ? `${C.cyanGlow}` : C.surface, color: active ? C.cyan : C.textMuted,
+  fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: active ? 600 : 500, textTransform: 'capitalize',
+})
 
 // ── Shared subcomponents ────────────────────────────────────────────────────
 function MessageBubble({ message, viewerRole }) {

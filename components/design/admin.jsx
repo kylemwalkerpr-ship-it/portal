@@ -32,10 +32,14 @@ const normalizeRole = role => role === 'client' ? 'student' : (role || 'student'
 const roleBadgeColor = role => ({
   student: 'cyan',
   consultant: 'purple',
+  attorney: 'green',
   support: 'orange',
   admin: 'red',
 })[role] || 'gray';
-const approvalLabel = role => role === 'support' ? 'Customer support access' : 'Consultant access';
+const approvalLabel = role =>
+  role === 'support' ? 'Customer support access'
+  : role === 'attorney' ? 'Attorney panel access'
+  : 'Consultant access';
 
 function AdminApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
@@ -256,8 +260,8 @@ function AdminApp({ onLogout }) {
   };
 
   const deleteUser = async user => {
-    if (!['consultant', 'support'].includes(user.role)) {
-      setActionNotice('Only consultant and support staff accounts can be deleted here.');
+    if (!['consultant', 'support', 'attorney'].includes(user.role)) {
+      setActionNotice('Only consultant, attorney and support staff accounts can be deleted here.');
       return;
     }
     if (!confirm(`Delete ${user.name}? This permanently removes the ${user.role} account and cannot be undone.`)) return;
@@ -275,7 +279,8 @@ function AdminApp({ onLogout }) {
   const totalStudents = users.filter(u => u.role === 'student').length;
   const totalConsultants = users.filter(u => u.role === 'consultant').length;
   const totalSupport = users.filter(u => u.role === 'support').length;
-  const pendingApprovals = users.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
+  const pendingApprovals = users.filter(u => ['consultant', 'support', 'attorney'].includes(u.role) && u.status === 'pending');
+  const totalAttorneys = users.filter(u => u.role === 'attorney').length;
   const pendingAttorneyApps = attorneyApplications.filter(a => a.status === 'pending');
   const filteredAttorneyApps = attorneyAppFilter === 'all' ? attorneyApplications : attorneyApplications.filter(a => a.status === attorneyAppFilter);
   const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
@@ -523,13 +528,20 @@ function AdminApp({ onLogout }) {
         <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['all', 'pending', 'student', 'consultant', 'support'].map(f => (
+        {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
           <button key={f} onClick={() => setUserFilter(f)} style={{
             padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
             background: userFilter === f ? `${C.cyan}18` : C.surface2,
             color: userFilter === f ? C.cyan : C.textMuted,
             fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
-          }}>{f === 'all' ? 'All users' : f === 'pending' ? `Pending approvals (${pendingApprovals.length})` : f === 'student' ? `Students (${totalStudents})` : f === 'consultant' ? `Consultants (${totalConsultants})` : `Support (${totalSupport})`}</button>
+          }}>{
+            f === 'all' ? 'All users'
+            : f === 'pending' ? `Pending approvals (${pendingApprovals.length})`
+            : f === 'student' ? `Students (${totalStudents})`
+            : f === 'consultant' ? `Consultants (${totalConsultants})`
+            : f === 'attorney' ? `Attorneys (${totalAttorneys})`
+            : `Support (${totalSupport})`
+          }</button>
         ))}
       </div>
       <Card style={{ padding: '0', overflow: 'hidden' }}>
