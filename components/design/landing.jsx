@@ -1,427 +1,653 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C } from './shared'
 
-function LandingPage({ onLogin, onSignup }) {
-  const [menuOpen, setMenuOpen] = React.useState(null);
-  const [activePlan, setActivePlan] = React.useState('monthly');
+const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const SANS = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 
-  const services = [
-    { icon: '🎓', title: 'University Selection', desc: 'Shortlisting the best universities based on your profile, budget, and goals.', price: 'From $149' },
-    { icon: '📄', title: 'SOP & Essays', desc: 'Expert review and editing of your statement of purpose and application essays.', price: 'From $99' },
-    { icon: '✈️', title: 'Visa Support', desc: 'Step-by-step student visa documentation guidance for UK, Canada, Australia and more.', price: 'From $199' },
-    { icon: '🏠', title: 'Accommodation Help', desc: 'Finding verified student housing near your campus before you arrive.', price: 'From $79' },
-    { icon: '💼', title: 'Career Services', desc: 'CV building, LinkedIn optimisation and job search strategy for international students.', price: 'From $129' },
-    { icon: '🗂️', title: 'Full Application', desc: 'End-to-end support from shortlisting to visa approval with a dedicated consultant.', price: 'From $599' },
-  ];
+const LANES = [
+  {
+    id: 'student',
+    label: 'Student / Client',
+    blurb: 'Place orders, talk to your consultant, manage documents and inquiries.',
+    primary: 'Sign in',
+    secondary: 'Create account',
+  },
+  {
+    id: 'attorney',
+    label: 'Attorney',
+    blurb: 'Review intake inquiries, message clients, send custom offers and manage payouts.',
+    primary: 'Sign in',
+    secondary: 'Apply to join',
+  },
+  {
+    id: 'consultant',
+    label: 'Consultant',
+    blurb: 'Manage assigned students, deliverables, escrow releases and your profile.',
+    primary: 'Sign in',
+    secondary: 'Apply as consultant',
+  },
+  {
+    id: 'admin',
+    label: 'Admin',
+    blurb: 'Operate the platform — users, applications, services, escrow and settings.',
+    primary: 'Sign in',
+    secondary: null,
+  },
+]
 
-  const steps = [
-    { n: '01', title: 'Create your profile', desc: 'Tell us your academic background, target country and timeline.' },
-    { n: '02', title: 'Choose a service', desc: 'Browse packages or get a free recommendation from our team.' },
-    { n: '03', title: 'Work with your consultant', desc: 'Collaborate securely via our platform — share documents, chat, track progress.' },
-    { n: '04', title: 'Achieve your goal', desc: 'Get your offer letter, visa approved and land in your dream destination.' },
-  ];
+const PRACTICES = [
+  {
+    eyebrow: 'Study abroad',
+    title: 'Visa & university advisory',
+    desc: 'Senior consultants guide students through admissions, SOPs, visa documentation and settlement, with funds in escrow until you approve the work.',
+  },
+  {
+    eyebrow: 'Legal document prep',
+    title: 'US, UK & Canada legal review',
+    desc: 'Licensed attorneys claim your case from a vetted panel, message you directly, then send a custom offer. Their fee is paid in full to them; the platform fee is disclosed separately, per ABA Rule 5.4.',
+  },
+]
 
-  const plans = [
-    {
-      name: 'Starter', price: { monthly: '$49', yearly: '$39' }, period: '/mo',
-      desc: 'Perfect for early explorers',
-      features: ['1 active service at a time', 'Document storage (2 GB)', 'Email support', 'Progress tracker'],
-      cta: 'Get Started', highlight: false,
-    },
-    {
-      name: 'Scholar', price: { monthly: '$129', yearly: '$99' }, period: '/mo',
-      desc: 'Most popular for full applications',
-      features: ['3 active services', 'Dedicated consultant', 'Document storage (20 GB)', 'Priority support', 'Visa checklist tool', 'Offer letter tracker'],
-      cta: 'Start Free Trial', highlight: true,
-    },
-    {
-      name: 'Elite', price: { monthly: '$299', yearly: '$239' }, period: '/mo',
-      desc: 'White-glove end-to-end support',
-      features: ['Unlimited services', 'Senior consultant', 'Unlimited storage', '24/7 WhatsApp support', 'Mock interviews', 'Airport pickup coordination'],
-      cta: 'Contact Sales', highlight: false,
-    },
-  ];
+const STEPS = [
+  { n: '01', title: 'Tell us what you need', desc: 'Describe your situation in a short intake — university shortlist, visa pathway, or legal matter. Anonymous OK; an email is enough to start.' },
+  { n: '02', title: 'Get matched', desc: 'For consulting, we assign a senior consultant. For legal, your inquiry is visible to the attorney panel and qualified attorneys reach out.' },
+  { n: '03', title: 'Review & accept an offer', desc: 'Compare scope, timeline and price. Pay once, in one secure transaction. Funds held in escrow until the work is complete.' },
+  { n: '04', title: 'Work through to delivery', desc: 'Chat in-thread, share files securely, track progress. Release payment when you approve the deliverable.' },
+]
 
-  const testimonials = [
-    { name: 'Aisha Rahman', country: 'Pakistan → UK', text: 'Got into University of Manchester with full scholarship. YouSafe guided me through every step of the process.', rating: 5 },
-    { name: 'Carlos Mendez', country: 'Colombia → Canada', text: 'Visa got approved in 3 weeks. My consultant was incredibly thorough and I always knew what to do next.', rating: 5 },
-    { name: 'Priya Sharma', country: 'India → Australia', text: 'The SOP review was game-changing. I had 4 rejections before and got 3 offers after their help.', rating: 5 },
-  ];
+const TESTIMONIALS = [
+  { name: 'Aisha R.', country: 'Pakistan → UK', text: 'Got into Manchester with full scholarship. The team guided me through every step.' },
+  { name: 'Carlos M.', country: 'Colombia → Canada', text: 'Visa approved in three weeks. My consultant was thorough; I always knew the next step.' },
+  { name: 'Priya S.', country: 'India → Australia', text: 'The SOP review changed everything. I went from four rejections to three offers.' },
+]
 
-  const navLinks = ['Services', 'How It Works', 'Pricing', 'About'];
-  const accountOptions = [
-    {
-      label: 'Student / Client',
-      description: 'Browse services, manage orders, wallet, documents, and messages.',
-      lane: 'student',
-      signInLabel: 'Student sign in',
-      signUpLabel: 'Create student account',
-    },
-    {
-      label: 'Consultant',
-      description: 'Manage assigned students, service orders, earnings, and payouts.',
-      lane: 'consultant',
-      signInLabel: 'Consultant sign in',
-      signUpLabel: 'Apply as consultant',
-    },
-  ];
-
-  const openSignIn = lane => {
-    setMenuOpen(null);
-    onLogin?.(lane);
-  };
-
-  const openSignUp = lane => {
-    setMenuOpen(null);
-    onSignup?.(lane);
-  };
-
-  const AccountDropdown = ({ id, align = 'right', above = false }) => (
-    <div style={{ position: 'relative' }}>
-      <Btn
-        variant={id === 'nav' ? 'ghost' : 'outline'}
-        size={id === 'nav' ? 'sm' : 'xl'}
-        onClick={() => setMenuOpen(open => open === id ? null : id)}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen === id}
-      >
-        Account access ▾
-      </Btn>
-      {menuOpen === id && (
-        <div
-          role="menu"
-          style={{
-            position: 'absolute',
-            top: above ? undefined : 'calc(100% + 10px)',
-            bottom: above ? 'calc(100% + 12px)' : undefined,
-            right: align === 'right' ? 0 : undefined,
-            left: align === 'center' ? '50%' : undefined,
-            transform: align === 'center' ? 'translateX(-50%)' : undefined,
-            width: '360px',
-            maxWidth: 'calc(100vw - 32px)',
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: '12px',
-            boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
-            padding: '8px',
-            zIndex: 500,
-          }}
-        >
-          {accountOptions.map((option, index) => (
-            <div
-              key={option.label}
-              style={{
-                borderTop: index === 0 ? 'none' : `1px solid ${C.border}`,
-                padding: '10px 8px',
-              }}
-            >
-              <div style={{ fontSize: '14px', fontWeight: 800, color: C.text }}>{option.label}</div>
-              <div style={{ marginTop: '4px', fontSize: '12px', lineHeight: 1.45, color: C.textMuted }}>{option.description}</div>
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <button
-                  role="menuitem"
-                  onClick={() => openSignIn(option.lane)}
-                  style={{
-                    border: `1px solid ${C.border2}`,
-                    background: C.surface2,
-                    color: C.text,
-                    borderRadius: '8px',
-                    padding: '7px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                  }}
-                >
-                  {option.signInLabel}
-                </button>
-                {option.signUpLabel && (
-                  <button
-                    role="menuitem"
-                    onClick={() => openSignUp(option.lane)}
-                    style={{
-                      border: 'none',
-                      background: C.cyan,
-                      color: '#fff',
-                      borderRadius: '8px',
-                      padding: '7px 10px',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {option.signUpLabel}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+export default function LandingPage({ onLogin, onSignup }) {
+  const goSignIn = (lane) => onLogin?.(lane)
+  const goSignUp = (lane) => onSignup?.(lane)
 
   return (
-    <div style={{ background: C.bg, color: C.text, fontFamily: 'inherit', minHeight: '100vh' }}>
-      {/* NAV */}
-      <nav style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        background: 'rgba(8,12,16,0.85)', backdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${C.border}`,
-      }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 24px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="logo.png" style={{ height: '36px', filter: 'invert(1)' }} alt="YouSafe" />
-          </div>
-          <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
-            {navLinks.map(l => (
-              <a key={l} href="#" style={{ color: C.textMuted, fontSize: '14px', textDecoration: 'none', fontWeight: 500 }}>{l}</a>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <AccountDropdown id="nav" />
-            <Btn variant="primary" size="sm" onClick={() => onSignup?.('student')}>Sign up free</Btn>
-          </div>
-        </div>
-      </nav>
+    <div style={{ minHeight: '100vh', background: '#FBFAF7', color: C.text, fontFamily: SANS }}>
+      <Nav onSignIn={() => goSignIn('student')} />
 
-      {/* HERO */}
-      <section style={{ maxWidth: '1200px', margin: '0 auto', padding: '100px 24px 80px', textAlign: 'center', position: 'relative' }}>
-        {/* Glow */}
-        <div style={{
-          position: 'absolute', top: '40px', left: '50%', transform: 'translateX(-50%)',
-          width: '600px', height: '300px',
-          background: 'radial-gradient(ellipse, rgba(34,211,238,0.08) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-        <Badge color="cyan" style={{ marginBottom: '24px', fontSize: '13px', padding: '6px 16px' }}>
-          🌍 Trusted by 2,400+ students worldwide
-        </Badge>
-        <h1 style={{
-          fontSize: 'clamp(38px, 5vw, 68px)', fontWeight: 800, lineHeight: 1.1,
-          marginBottom: '24px', letterSpacing: '-1.5px',
-        }}>
-          Your journey abroad,<br />
-          <span style={{ color: C.cyan }}>guided every step.</span>
-        </h1>
-        <p style={{ fontSize: '18px', color: C.textMuted, maxWidth: '560px', margin: '0 auto 40px', lineHeight: 1.7 }}>
-          YouSafe connects international students with expert consultants for university applications, visas, accommodation, and beyond.
-        </p>
-        <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Btn variant="primary" size="xl" onClick={onSignup}>Get started free</Btn>
-          <Btn variant="secondary" size="xl">See how it works</Btn>
-        </div>
-        <div style={{ marginTop: '60px', display: 'flex', gap: '48px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {[['2,400+', 'Students helped'], ['94%', 'Visa success rate'], ['180+', 'Universities'], ['48h', 'Avg first response']].map(([v, l]) => (
-            <div key={l} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: C.cyan }}>{v}</div>
-              <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '4px' }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Hero onPrimary={() => goSignUp('student')} />
 
-      {/* SERVICES */}
-      <section style={{ maxWidth: '1200px', margin: '0 auto', padding: '80px 24px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '56px' }}>
-          <h2 style={{ fontSize: '36px', fontWeight: 800, marginBottom: '12px', letterSpacing: '-0.5px' }}>Everything you need to study abroad</h2>
-          <p style={{ color: C.textMuted, fontSize: '16px' }}>Expert services for every stage of your international journey.</p>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
-          {services.map(s => (
-            <Card key={s.title} hover style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ fontSize: '32px' }}>{s.icon}</div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>{s.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>{s.desc}</div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                <span style={{ color: C.cyan, fontWeight: 700, fontSize: '14px' }}>{s.price}</span>
-                <Btn variant="ghost" size="sm" onClick={onSignup}>Learn more →</Btn>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section style={{ background: C.surface, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '80px 24px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '56px' }}>
-            <h2 style={{ fontSize: '36px', fontWeight: 800, marginBottom: '12px', letterSpacing: '-0.5px' }}>How YouSafe works</h2>
-            <p style={{ color: C.textMuted, fontSize: '16px' }}>From first consultation to arriving at your university.</p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '32px' }}>
-            {steps.map((s, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '14px',
-                  background: `${C.cyan}18`, border: `1px solid ${C.cyan}33`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '13px', fontWeight: 800, color: C.cyan,
-                }}>{s.n}</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>{s.title}</div>
-                  <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }}>{s.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section style={{ maxWidth: '1200px', margin: '0 auto', padding: '80px 24px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <h2 style={{ fontSize: '36px', fontWeight: 800, marginBottom: '12px', letterSpacing: '-0.5px' }}>Simple, transparent pricing</h2>
-          <p style={{ color: C.textMuted, fontSize: '16px', marginBottom: '24px' }}>Save up to 25% with annual billing.</p>
-          <div style={{ display: 'inline-flex', background: C.surface2, borderRadius: '10px', padding: '4px', border: `1px solid ${C.border}` }}>
-            {['monthly', 'yearly'].map(p => (
-              <button key={p} onClick={() => setActivePlan(p)} style={{
-                padding: '8px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                background: activePlan === p ? C.cyan : 'transparent',
-                color: activePlan === p ? '#000' : C.textMuted,
-                fontSize: '13px', fontWeight: 600, fontFamily: 'inherit', transition: 'all 0.2s',
-              }}>{p === 'monthly' ? 'Monthly' : 'Yearly  🎉'}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px', alignItems: 'start' }}>
-          {plans.map(p => (
-            <div key={p.name} style={{
-              background: p.highlight ? `linear-gradient(135deg, ${C.surface} 0%, ${C.surface2} 100%)` : C.surface,
-              border: `1px solid ${p.highlight ? C.cyan : C.border}`,
-              borderRadius: '20px', padding: '32px',
-              boxShadow: p.highlight ? `0 0 40px ${C.cyanGlow}` : undefined,
-              position: 'relative', overflow: 'hidden',
-            }}>
-              {p.highlight && (
-                <div style={{
-                  position: 'absolute', top: '16px', right: '16px',
-                  background: C.cyan, color: '#000', fontSize: '11px', fontWeight: 800,
-                  padding: '3px 10px', borderRadius: '99px',
-                }}>POPULAR</div>
-              )}
-              <div style={{ marginBottom: '8px', fontSize: '18px', fontWeight: 800 }}>{p.name}</div>
-              <div style={{ color: C.textMuted, fontSize: '13px', marginBottom: '20px' }}>{p.desc}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '24px' }}>
-                <span style={{ fontSize: '40px', fontWeight: 800, color: p.highlight ? C.cyan : C.text }}>{p.price[activePlan]}</span>
-                <span style={{ color: C.textMuted, fontSize: '14px' }}>{p.period}</span>
-              </div>
-              <Btn variant={p.highlight ? 'primary' : 'secondary'} fullWidth onClick={onSignup}>{p.cta}</Btn>
-              <Divider style={{ margin: '24px 0' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {p.features.map(f => (
-                  <div key={f} style={{ display: 'flex', gap: '10px', fontSize: '14px', color: C.textMuted }}>
-                    <span style={{ color: C.green }}>✓</span> {f}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* TESTIMONIALS */}
-      <section style={{ background: C.surface, borderTop: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '80px 24px' }}>
-          <h2 style={{ fontSize: '36px', fontWeight: 800, textAlign: 'center', marginBottom: '48px', letterSpacing: '-0.5px' }}>
-            Students who made it
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-            {testimonials.map(t => (
-              <Card key={t.name} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ color: C.cyan, fontSize: '20px' }}>{'★'.repeat(t.rating)}</div>
-                <p style={{ color: C.text, fontSize: '15px', lineHeight: 1.7, flex: 1 }}>"{t.text}"</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Avatar name={t.name} size={40} />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>{t.name}</div>
-                    <div style={{ color: C.textMuted, fontSize: '12px' }}>{t.country}</div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA FOOTER */}
-      <section style={{ maxWidth: '1200px', margin: '0 auto', padding: '80px 24px', textAlign: 'center' }}>
-        <div style={{
-          background: `linear-gradient(135deg, ${C.surface} 0%, rgba(34,211,238,0.05) 100%)`,
-          border: `1px solid ${C.cyan}33`, borderRadius: '24px', padding: '64px',
-          boxShadow: `0 0 60px ${C.cyanGlow}`,
-        }}>
-          <h2 style={{ fontSize: '40px', fontWeight: 800, marginBottom: '16px', letterSpacing: '-0.5px' }}>
-            Ready to start your journey?
-          </h2>
-          <p style={{ color: C.textMuted, fontSize: '16px', marginBottom: '32px' }}>
-            Join thousands of students who got into their dream universities with YouSafe.
-          </p>
-          <div style={{ display: 'flex', gap: '14px', justifyContent: 'center' }}>
-            <Btn variant="primary" size="xl" onClick={onSignup}>Create free account</Btn>
-            <AccountDropdown id="footer" align="center" above />
-          </div>
-        </div>
-      </section>
-
-      {/* FOOTER */}
-      <footer style={{ borderTop: `1px solid ${C.border}`, padding: '48px 24px 32px', marginTop: '80px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <div style={{ 
+      <Section id="lanes" eyebrow="Members portal" title="Choose your lane.">
+        <div
+          style={{
             display: 'grid',
-            gridTemplateColumns: 'auto 1fr auto',
-            gap: '40px',
-            alignItems: 'center',
-            marginBottom: '32px'
-          }}>
-            <img src="logo.png" style={{ height: '32px', filter: 'invert(1)', opacity: 0.7 }} alt="YouSafe" />
-            <div style={{ 
-              color: C.textDim, 
-              fontSize: '13px',
-              lineHeight: '1.6',
-              margin: 0
-            }}>
-              © 2025 YouSafe Consultancy. All rights reserved.
-            </div>
-            <div style={{ display: 'flex', gap: '32px', justifyContent: 'flex-end' }}>
-              {['Privacy', 'Terms', 'Contact'].map(l => (
-                <a 
-                  key={l} 
-                  href="#" 
-                  style={{ 
-                    color: C.textDim, 
-                    fontSize: '13px', 
-                    textDecoration: 'none',
-                    transition: 'color 0.2s',
-                    whiteSpace: 'nowrap'
-                  }}
-                  onMouseEnter={e => e.target.style.color = C.text}
-                  onMouseLeave={e => e.target.style.color = C.textDim}
-                >
-                  {l}
-                </a>
-              ))}
-            </div>
-          </div>
-          <div style={{ 
-            borderTop: `1px solid ${C.border}33`,
-            paddingTop: '24px',
-            textAlign: 'center',
-            color: C.textDim,
-            fontSize: '12px',
-            letterSpacing: '0.3px'
-          }}>
-            Helping international students achieve their dreams globally
-          </div>
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '20px',
+            marginTop: '40px',
+          }}
+        >
+          {LANES.map((lane) => (
+            <LaneCard key={lane.id} lane={lane} onSignIn={() => goSignIn(lane.id)} onSignUp={() => goSignUp(lane.id)} />
+          ))}
         </div>
-      </footer>
+      </Section>
+
+      <Section id="practices" eyebrow="What we do" title="Two practices, one portal.">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '28px', marginTop: '40px' }}>
+          {PRACTICES.map((p) => (
+            <PracticeCard key={p.title} practice={p} />
+          ))}
+        </div>
+      </Section>
+
+      <Section id="how" eyebrow="How it works" title="A clean line from inquiry to delivery.">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '28px', marginTop: '40px' }}>
+          {STEPS.map((s) => (
+            <Step key={s.n} step={s} />
+          ))}
+        </div>
+      </Section>
+
+      <Section id="trust" eyebrow="Trusted by" title="Outcomes our members shipped.">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginTop: '40px' }}>
+          {TESTIMONIALS.map((t) => (
+            <Testimonial key={t.name} t={t} />
+          ))}
+        </div>
+
+        <div
+          style={{
+            marginTop: '56px',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '32px',
+            flexWrap: 'wrap',
+            color: C.textMuted,
+            fontSize: '12px',
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+          }}
+        >
+          <span>Stripe-secured payments</span>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span>Funds held in escrow</span>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span>ABA Rule 5.4 compliant</span>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span>Encrypted document storage</span>
+        </div>
+      </Section>
+
+      <Footer />
     </div>
-  );
+  )
 }
 
-export default LandingPage;
+// ── Top nav ────────────────────────────────────────────────────────────────
+function Nav({ onSignIn }) {
+  return (
+    <nav
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '20px 48px',
+        borderBottom: '1px solid rgba(0,0,0,0.06)',
+        background: 'rgba(251,250,247,0.85)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backdropFilter: 'saturate(160%) blur(10px)',
+        WebkitBackdropFilter: 'saturate(160%) blur(10px)',
+      }}
+    >
+      <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
+        <span
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
+            background: C.cyan,
+            color: '#fff',
+            fontFamily: SERIF,
+            fontWeight: 600,
+            fontSize: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          Y
+        </span>
+        <span style={{ fontFamily: SERIF, fontSize: '20px', color: C.text, letterSpacing: '0.01em' }}>
+          YouSafe
+        </span>
+      </a>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <a href="#how" style={navLinkStyle}>How it works</a>
+        <a href="#practices" style={navLinkStyle}>Practices</a>
+        <a href="#lanes" style={navLinkStyle}>Sign in</a>
+        <button
+          type="button"
+          onClick={onSignIn}
+          style={{
+            background: C.text,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '999px',
+            padding: '9px 18px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: SANS,
+            marginLeft: '8px',
+          }}
+        >
+          Member sign in
+        </button>
+      </div>
+    </nav>
+  )
+}
+
+const navLinkStyle = {
+  color: C.textMuted,
+  textDecoration: 'none',
+  fontSize: '13px',
+  padding: '8px 14px',
+  fontWeight: 500,
+}
+
+// ── Hero ───────────────────────────────────────────────────────────────────
+function Hero({ onPrimary }) {
+  return (
+    <header
+      style={{
+        padding: '120px 48px 100px',
+        maxWidth: '1080px',
+        margin: '0 auto',
+      }}
+    >
+      <div style={{ maxWidth: '780px' }}>
+        <div
+          style={{
+            color: C.textMuted,
+            fontSize: '12px',
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+            marginBottom: '24px',
+          }}
+        >
+          The YouSafe Portal
+        </div>
+        <h1
+          style={{
+            fontFamily: SERIF,
+            fontSize: 'clamp(44px, 6vw, 76px)',
+            lineHeight: 1.05,
+            letterSpacing: '-0.015em',
+            color: C.text,
+            margin: '0 0 28px',
+            fontWeight: 500,
+          }}
+        >
+          Your team for the<br />
+          <em style={{ fontStyle: 'italic', color: C.cyan }}>moves that matter.</em>
+        </h1>
+        <p
+          style={{
+            color: C.textMuted,
+            fontSize: '17px',
+            lineHeight: 1.65,
+            maxWidth: '600px',
+            margin: '0 0 40px',
+          }}
+        >
+          Study-abroad consulting and US, UK and Canadian legal document review — handled by
+          vetted professionals, paid in escrow, and delivered through one secure portal.
+        </p>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={onPrimary}
+            style={{
+              background: C.text,
+              color: '#fff',
+              border: 'none',
+              borderRadius: '999px',
+              padding: '14px 28px',
+              fontSize: '15px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: SANS,
+            }}
+          >
+            Start an inquiry →
+          </button>
+          <a
+            href="#how"
+            style={{
+              background: 'transparent',
+              color: C.text,
+              border: '1px solid rgba(0,0,0,0.15)',
+              borderRadius: '999px',
+              padding: '13px 28px',
+              fontSize: '15px',
+              fontWeight: 500,
+              textDecoration: 'none',
+              fontFamily: SANS,
+            }}
+          >
+            How it works
+          </a>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+// ── Section wrapper ────────────────────────────────────────────────────────
+function Section({ id, eyebrow, title, children }) {
+  return (
+    <section
+      id={id}
+      style={{
+        padding: '88px 48px',
+        borderTop: '1px solid rgba(0,0,0,0.06)',
+      }}
+    >
+      <div style={{ maxWidth: '1080px', margin: '0 auto' }}>
+        <div
+          style={{
+            color: C.textMuted,
+            fontSize: '12px',
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            fontWeight: 600,
+            marginBottom: '14px',
+          }}
+        >
+          {eyebrow}
+        </div>
+        <h2
+          style={{
+            fontFamily: SERIF,
+            fontSize: 'clamp(30px, 3.6vw, 44px)',
+            lineHeight: 1.15,
+            letterSpacing: '-0.012em',
+            color: C.text,
+            margin: 0,
+            fontWeight: 500,
+            maxWidth: '720px',
+          }}
+        >
+          {title}
+        </h2>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+// ── Lane card ──────────────────────────────────────────────────────────────
+function LaneCard({ lane, onSignIn, onSignUp }) {
+  const [hover, setHover] = React.useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: '#fff',
+        border: `1px solid ${hover ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.08)'}`,
+        borderRadius: '14px',
+        padding: '28px 24px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px',
+        transition: 'border-color 160ms, transform 160ms, box-shadow 160ms',
+        transform: hover ? 'translateY(-2px)' : 'none',
+        boxShadow: hover ? '0 12px 28px rgba(0,0,0,0.06)' : '0 1px 2px rgba(0,0,0,0.03)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: SERIF,
+          fontSize: '22px',
+          fontWeight: 500,
+          color: C.text,
+          letterSpacing: '-0.005em',
+        }}
+      >
+        {lane.label}
+      </div>
+      <p style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6, margin: 0, minHeight: '60px' }}>
+        {lane.blurb}
+      </p>
+      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={onSignIn}
+          style={{
+            background: C.text,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '999px',
+            padding: '10px 18px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: SANS,
+          }}
+        >
+          {lane.primary}
+        </button>
+        {lane.secondary && (
+          <button
+            type="button"
+            onClick={onSignUp}
+            style={{
+              background: 'transparent',
+              color: C.text,
+              border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: '999px',
+              padding: '9px 18px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: SANS,
+            }}
+          >
+            {lane.secondary}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Practice card ──────────────────────────────────────────────────────────
+function PracticeCard({ practice }) {
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid rgba(0,0,0,0.08)',
+        borderRadius: '14px',
+        padding: '36px 32px',
+      }}
+    >
+      <div
+        style={{
+          color: C.cyan,
+          fontSize: '11px',
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+          marginBottom: '14px',
+        }}
+      >
+        {practice.eyebrow}
+      </div>
+      <h3
+        style={{
+          fontFamily: SERIF,
+          fontSize: '26px',
+          fontWeight: 500,
+          color: C.text,
+          margin: '0 0 14px',
+          lineHeight: 1.2,
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {practice.title}
+      </h3>
+      <p style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.7, margin: 0 }}>
+        {practice.desc}
+      </p>
+    </div>
+  )
+}
+
+// ── How-it-works step ──────────────────────────────────────────────────────
+function Step({ step }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontFamily: SERIF,
+          fontSize: '20px',
+          color: C.cyan,
+          fontWeight: 500,
+          marginBottom: '12px',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {step.n}
+      </div>
+      <div style={{ height: '1px', background: 'rgba(0,0,0,0.1)', marginBottom: '14px' }} />
+      <h3
+        style={{
+          fontFamily: SERIF,
+          fontSize: '20px',
+          fontWeight: 500,
+          color: C.text,
+          margin: '0 0 10px',
+          lineHeight: 1.25,
+        }}
+      >
+        {step.title}
+      </h3>
+      <p style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.65, margin: 0 }}>
+        {step.desc}
+      </p>
+    </div>
+  )
+}
+
+// ── Testimonial ────────────────────────────────────────────────────────────
+function Testimonial({ t }) {
+  return (
+    <figure
+      style={{
+        background: '#fff',
+        border: '1px solid rgba(0,0,0,0.08)',
+        borderRadius: '14px',
+        padding: '28px 24px',
+        margin: 0,
+      }}
+    >
+      <div style={{ color: '#f5b400', fontSize: '14px', letterSpacing: '2px', marginBottom: '14px' }}>★★★★★</div>
+      <blockquote
+        style={{
+          fontFamily: SERIF,
+          fontSize: '17px',
+          lineHeight: 1.5,
+          color: C.text,
+          margin: '0 0 16px',
+          fontStyle: 'italic',
+          letterSpacing: '-0.005em',
+        }}
+      >
+        “{t.text}”
+      </blockquote>
+      <figcaption style={{ fontSize: '12px', color: C.textMuted }}>
+        <strong style={{ color: C.text, fontWeight: 600 }}>{t.name}</strong> · {t.country}
+      </figcaption>
+    </figure>
+  )
+}
+
+// ── Footer ─────────────────────────────────────────────────────────────────
+function Footer() {
+  return (
+    <footer
+      style={{
+        padding: '64px 48px 48px',
+        borderTop: '1px solid rgba(0,0,0,0.08)',
+        background: '#F4F2EE',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: '1080px',
+          margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '32px',
+        }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <span
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                background: C.cyan,
+                color: '#fff',
+                fontFamily: SERIF,
+                fontWeight: 600,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              Y
+            </span>
+            <span style={{ fontFamily: SERIF, fontSize: '17px', color: C.text }}>YouSafe</span>
+          </div>
+          <p style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.6, margin: 0 }}>
+            One portal for study-abroad and legal-document services. Operated by YouSafe Consultancy.
+          </p>
+        </div>
+
+        <FooterColumn label="Members">
+          <FooterLink href="/sign-in/student">Student / Client</FooterLink>
+          <FooterLink href="/sign-in/attorney">Attorney</FooterLink>
+          <FooterLink href="/sign-in/consultant">Consultant</FooterLink>
+          <FooterLink href="/sign-in/admin">Admin</FooterLink>
+        </FooterColumn>
+
+        <FooterColumn label="Practices">
+          <FooterLink href="https://yousafeconsultancy.com">Study-abroad consulting</FooterLink>
+          <FooterLink href="https://legal.yousafeconsultancy.com">Legal document prep</FooterLink>
+        </FooterColumn>
+
+        <FooterColumn label="Company">
+          <FooterLink href="https://yousafeconsultancy.com/about">About</FooterLink>
+          <FooterLink href="mailto:support@yousafeconsultancy.com">Support</FooterLink>
+          <FooterLink href="https://yousafeconsultancy.com/terms">Terms</FooterLink>
+          <FooterLink href="https://yousafeconsultancy.com/privacy">Privacy</FooterLink>
+        </FooterColumn>
+      </div>
+
+      <div
+        style={{
+          maxWidth: '1080px',
+          margin: '40px auto 0',
+          paddingTop: '24px',
+          borderTop: '1px solid rgba(0,0,0,0.06)',
+          color: C.textMuted,
+          fontSize: '11px',
+          textAlign: 'center',
+        }}
+      >
+        © {new Date().getFullYear()} YouSafe Consultancy. All rights reserved.
+      </div>
+    </footer>
+  )
+}
+
+function FooterColumn({ label, children }) {
+  return (
+    <div>
+      <div
+        style={{
+          color: C.textMuted,
+          fontSize: '11px',
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+          marginBottom: '14px',
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>{children}</div>
+    </div>
+  )
+}
+
+function FooterLink({ href, children }) {
+  return (
+    <a
+      href={href}
+      style={{
+        color: C.text,
+        textDecoration: 'none',
+        fontSize: '13px',
+      }}
+    >
+      {children}
+    </a>
+  )
+}
