@@ -5,20 +5,33 @@ import { C } from './shared'
 import { EagleGlyph, MapleGlyph, LionGlyph } from './country-glyphs'
 
 // Right rail: role CTAs plus a live article feed from the legal library.
-// Responsive: collapses to a slim launcher on narrow viewports; can be embedded
-// inline on the consultant dashboard via `variant="inline"`.
+//
+// Modes:
+//   - inline   → renders flat, no sticky/drawer (used inside the consultant
+//                dashboard column).
+//   - rail     → wide-screen sticky right column (default).
+//   - rail-min → wide-screen, user clicked Hide → floating "Show ▸" tab on
+//                the right edge.
+//   - drawer   → narrow viewport with drawer open.
+//   - launcher → narrow viewport, drawer closed → floating launcher button.
+//
+// Switching modes never unmounts the component, so feed state and scroll
+// position survive expand/collapse cycles.
 export default function DashboardRightPane({ role = 'student', variant = 'rail' }) {
   const cards = role === 'attorney' ? ATTORNEY_CARDS
     : role === 'admin' ? ADMIN_CARDS
     : role === 'consultant' ? CONSULTANT_CARDS
     : STUDENT_CARDS
+
   const [articles, setArticles] = React.useState([])
   const [region, setRegion] = React.useState('ALL')
   const [isLoading, setIsLoading] = React.useState(true)
   const [feedError, setFeedError] = React.useState(null)
-  const [collapsed, setCollapsed] = React.useState(false)
+  const [hidden, setHidden] = React.useState(false)
   const [isNarrow, setIsNarrow] = React.useState(false)
+  const hoverCapable = useHoverCapable()
 
+  // Track viewport width
   React.useEffect(() => {
     if (typeof window === 'undefined') return
     const mq = window.matchMedia('(max-width: 1100px)')
@@ -28,134 +41,97 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
     return () => mq.removeEventListener?.('change', apply)
   }, [])
 
+  // Reset hidden state when crossing the breakpoint so the user starts fresh
+  // at the new layout (otherwise hiding the drawer leaves the wide rail stuck
+  // closed, or vice versa).
+  React.useEffect(() => { setHidden(false) }, [isNarrow])
+
+  // Fetch the article feed (region-aware).
   React.useEffect(() => {
-    let isMounted = true
-    const controller = new AbortController()
+    let cancelled = false
+    const ctrl = new AbortController()
 
-    async function loadFeed() {
-      setIsLoading(true)
-      setFeedError(null)
+    setIsLoading(true)
+    setFeedError(null)
 
-      try {
-        const params = new URLSearchParams({ role, limit: '18' })
-        if (region !== 'ALL') params.set('region', region)
-        const response = await fetch(`/api/articles/feed?${params.toString()}`, {
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        })
-        if (!response.ok) throw new Error(`Article feed returned ${response.status}`)
-        const payload = await response.json()
-        if (!isMounted) return
+    const params = new URLSearchParams({ role, limit: '18' })
+    if (region !== 'ALL') params.set('region', region)
+
+    fetch(`/api/articles/feed?${params.toString()}`, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/json' },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Article feed returned ${res.status}`)
+        const payload = await res.json()
+        if (cancelled) return
         setArticles(Array.isArray(payload?.articles) ? payload.articles : [])
-      } catch (error) {
-        if (!isMounted || error?.name === 'AbortError') return
+      })
+      .catch((err) => {
+        if (cancelled || err?.name === 'AbortError') return
         setFeedError('We could not refresh the article feed.')
         setArticles([])
-      } finally {
-        if (isMounted) setIsLoading(false)
-      }
-    }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
 
-    loadFeed()
-
-    return () => {
-      isMounted = false
-      controller.abort()
-    }
+    return () => { cancelled = true; ctrl.abort() }
   }, [role, region])
 
   const inline = variant === 'inline'
-  const stickyOpen = !inline && !isNarrow && !collapsed
-  const drawerOpen = isNarrow && !collapsed
+  const mode = inline
+    ? 'inline'
+    : isNarrow
+      ? (hidden ? 'launcher' : 'drawer')
+      : (hidden ? 'rail-min' : 'rail')
 
-  // Narrow + collapsed → render only a floating launcher button.
-  if (isNarrow && collapsed && !inline) {
-    return (
-      <button
-        type="button"
-        onClick={() => setCollapsed(false)}
-        aria-label="Open article feed"
-        style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          zIndex: 70,
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: '999px',
-          padding: '10px 16px',
-          boxShadow: '0 8px 24px rgba(15,18,32,0.18)',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          fontSize: '12px',
-          fontWeight: 800,
-          color: C.text,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-      >
-        📰 <span>Articles</span>
-        {articles.length > 0 && (
-          <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '999px' }}>
-            {articles.length}
-          </span>
-        )}
-      </button>
-    )
+  // Lock background scroll while the drawer is open.
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (mode !== 'drawer') return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [mode])
+
+  // Escape key closes the drawer.
+  React.useEffect(() => {
+    if (mode !== 'drawer') return
+    const onKey = (e) => { if (e.key === 'Escape') setHidden(true) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode])
+
+  // ── Mode-only renders ────────────────────────────────────────────────────
+  if (mode === 'launcher') {
+    return <LauncherButton count={articles.length} onClick={() => setHidden(false)} />
+  }
+  if (mode === 'rail-min') {
+    return <RailMinTab onClick={() => setHidden(false)} />
   }
 
-  const containerStyle = inline ? {
-    width: '100%',
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  } : drawerOpen ? {
-    position: 'fixed',
-    top: 0,
-    right: 0,
-    width: 'min(360px, 92vw)',
-    height: '100vh',
-    zIndex: 70,
-    background: C.bg,
-    borderLeft: `1px solid ${C.border}`,
-    boxShadow: '-12px 0 36px rgba(15,18,32,0.18)',
-    padding: '20px 18px 24px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '14px',
-    overflowY: 'auto',
-  } : {
-    width: '320px',
-    flexShrink: 0,
-    padding: '28px 22px 28px 0',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    position: 'sticky',
-    top: 0,
-    alignSelf: 'flex-start',
-    maxHeight: '100vh',
-    overflowY: 'auto',
-  }
+  // ── Rail / drawer / inline render ────────────────────────────────────────
+  const containerStyle = inline
+    ? INLINE_CONTAINER
+    : mode === 'drawer'
+      ? DRAWER_CONTAINER
+      : RAIL_CONTAINER
 
   return (
     <>
-      {drawerOpen && (
+      {mode === 'drawer' && (
         <button
           type="button"
           aria-label="Close article feed"
-          onClick={() => setCollapsed(true)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,18,32,0.34)', border: 'none', cursor: 'pointer', zIndex: 69 }}
+          onClick={() => setHidden(true)}
+          style={DRAWER_BACKDROP}
         />
       )}
       <aside style={containerStyle} className="yousafe-right-pane">
         <PaneToolbar
-          collapsed={false}
-          onToggle={() => setCollapsed(true)}
-          showClose={!inline && (drawerOpen || stickyOpen)}
-          embedded={inline}
+          mode={mode}
+          onHide={() => setHidden(true)}
         />
         <PracticeStrip selected={region} onSelect={setRegion} />
         {cards.map((card, i) => (
@@ -174,9 +150,13 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
             cta="Open legal library →"
           />
         ) : articles.length ? (
-          <div style={{ display: 'grid', gap: '10px', maxHeight: inline ? '720px' : '60vh', overflowY: 'auto', paddingRight: '4px', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {articles.map((article) => (
-              <ArticleCard key={article.url || article.path || article.title} article={article} />
+              <ArticleCard
+                key={article.url || article.path || article.title}
+                article={article}
+                hoverCapable={hoverCapable}
+              />
             ))}
           </div>
         ) : (
@@ -195,8 +175,64 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
   )
 }
 
-function PaneToolbar({ onToggle, showClose, embedded }) {
-  if (embedded) {
+// ── Mode containers ─────────────────────────────────────────────────────────
+
+const RAIL_CONTAINER = {
+  width: '320px',
+  flexShrink: 0,
+  padding: '24px 22px 28px 0',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
+  position: 'sticky',
+  top: 0,
+  alignSelf: 'flex-start',
+  maxHeight: '100vh',
+  overflowY: 'auto',
+  scrollbarGutter: 'stable both-edges',
+  WebkitOverflowScrolling: 'touch',
+}
+
+const DRAWER_CONTAINER = {
+  position: 'fixed',
+  top: 0,
+  right: 0,
+  width: 'min(380px, 92vw)',
+  height: '100dvh',
+  zIndex: 70,
+  background: C.bg,
+  borderLeft: `1px solid ${C.border}`,
+  boxShadow: '-12px 0 36px rgba(15,18,32,0.18)',
+  padding: '18px 16px 24px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
+}
+
+const INLINE_CONTAINER = {
+  width: '100%',
+  padding: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
+}
+
+const DRAWER_BACKDROP = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15,18,32,0.4)',
+  border: 'none',
+  cursor: 'pointer',
+  zIndex: 69,
+  padding: 0,
+}
+
+// ── Toolbar ─────────────────────────────────────────────────────────────────
+
+function PaneToolbar({ mode, onHide }) {
+  if (mode === 'inline') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
         <div>
@@ -209,20 +245,119 @@ function PaneToolbar({ onToggle, showClose, embedded }) {
       </div>
     )
   }
-  if (!showClose) return null
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', position: 'sticky', top: 0, zIndex: 1, background: 'inherit', paddingTop: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontSize: '14px' }} aria-hidden>📰</span>
+        <span style={{ fontFamily: C.serif, fontSize: '15px', color: C.text, lineHeight: 1.2 }}>Articles</span>
+      </div>
       <button
         type="button"
-        onClick={onToggle}
-        aria-label="Hide article feed"
-        style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '4px 10px', fontSize: '11px', fontWeight: 800, color: C.textMuted, cursor: 'pointer', fontFamily: 'inherit' }}
+        onClick={onHide}
+        aria-label={mode === 'drawer' ? 'Close article feed' : 'Hide article feed'}
+        style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: '999px',
+          padding: '4px 10px',
+          fontSize: '11px',
+          fontWeight: 800,
+          color: C.textMuted,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          letterSpacing: '0.04em',
+        }}
       >
-        Hide ▸
+        {mode === 'drawer' ? 'Close ✕' : 'Hide ▸'}
       </button>
     </div>
   )
 }
+
+// ── Launcher / re-open ──────────────────────────────────────────────────────
+
+function LauncherButton({ count, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Open article feed"
+      style={{
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        zIndex: 70,
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: '999px',
+        padding: '10px 14px',
+        boxShadow: '0 8px 24px rgba(15,18,32,0.18)',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        fontSize: '12px',
+        fontWeight: 800,
+        color: C.text,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+      }}
+    >
+      <span aria-hidden>📰</span>
+      <span>Articles</span>
+      {count > 0 && (
+        <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', padding: '2px 7px', borderRadius: '999px', fontWeight: 800 }}>
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
+
+function RailMinTab({ onClick }) {
+  // A slim vertical "Show ▸" tab pinned to the right edge so the user can
+  // bring the rail back. Sits inside the same flex slot the rail used so the
+  // main column doesn't reflow.
+  return (
+    <aside
+      style={{
+        width: '32px',
+        flexShrink: 0,
+        padding: '24px 0 28px 0',
+        position: 'sticky',
+        top: 0,
+        alignSelf: 'flex-start',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+      }}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Show article feed"
+        style={{
+          writingMode: 'vertical-rl',
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: '999px',
+          padding: '12px 6px',
+          fontSize: '11px',
+          fontWeight: 800,
+          color: C.textMuted,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          letterSpacing: '0.06em',
+          boxShadow: '0 4px 14px rgba(15,18,32,0.08)',
+        }}
+      >
+        Articles ◂
+      </button>
+    </aside>
+  )
+}
+
+// ── Practice strip ──────────────────────────────────────────────────────────
 
 function PracticeStrip({ selected, onSelect }) {
   return (
@@ -257,6 +392,7 @@ function PracticeStrip({ selected, onSelect }) {
           fontSize: '11px',
           fontWeight: 800,
           letterSpacing: '0.08em',
+          fontFamily: 'inherit',
         }}
       >
         ALL ARTICLES
@@ -293,13 +429,21 @@ function Practice({ glyph, label, value, tint, selected, onSelect }) {
   )
 }
 
+// ── Pane card ───────────────────────────────────────────────────────────────
+
 function PaneCard({ accent, eyebrow, title, body, cta, href, onClick }) {
   const isLink = href || onClick
   const tint = accent || C.cyan
+  const handleClick = (e) => {
+    if (onClick) {
+      e.preventDefault()
+      onClick(e)
+    }
+  }
   return (
     <a
-      href={href}
-      onClick={onClick}
+      href={href || '#'}
+      onClick={handleClick}
       target={href?.startsWith('http') ? '_blank' : undefined}
       rel={href?.startsWith('http') ? 'noreferrer' : undefined}
       style={{
@@ -340,6 +484,8 @@ function PaneCard({ accent, eyebrow, title, body, cta, href, onClick }) {
   )
 }
 
+// ── Article feed header ─────────────────────────────────────────────────────
+
 function ArticleFeedHeader({ region }) {
   const label = region === 'ALL' ? 'Latest articles' : `${REGION_LABELS[region] || region} articles`
   return (
@@ -362,20 +508,28 @@ function ArticleFeedHeader({ region }) {
   )
 }
 
-function ArticleCard({ article }) {
+// ── Article card ────────────────────────────────────────────────────────────
+
+function ArticleCard({ article, hoverCapable }) {
   const [pinned, setPinned] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
-  const open = pinned || hovered
+  const open = pinned || (hoverCapable && hovered)
+
   const region = article?.region || 'COMPARE'
   const accent = REGION_ACCENTS[region] || C.cyan
   const regionLabel = REGION_LABELS[region] || 'Guide'
   const cluster = article?.cluster ? ` · ${article.cluster}` : ''
   const href = article?.url || LEGAL_ARTICLES_URL
-  const details = [
-    article?.description,
-    article?.updated_at ? `Updated ${new Date(article.updated_at).toLocaleDateString()}` : null,
-    article?.path ? `Library path: ${article.path}` : null,
-  ].filter(Boolean)
+  const updated = article?.updated_at
+    ? `Updated ${new Date(article.updated_at).toLocaleDateString()}`
+    : null
+  const path = article?.path ? `Library path: ${article.path}` : null
+  const description = article?.description || 'Read the latest guide from the YouSafe legal library.'
+
+  // Hover handlers only matter when the device is hover-capable. On touch
+  // devices we never set `hovered`, so the card stays in its pinned state.
+  const onEnter = hoverCapable ? () => setHovered(true) : undefined
+  const onLeave = hoverCapable ? () => setHovered(false) : undefined
 
   const toggle = (e) => {
     e?.preventDefault?.()
@@ -383,10 +537,26 @@ function ArticleCard({ article }) {
     setPinned((v) => !v)
   }
 
+  // The description is truncated when collapsed and free-flowing when expanded.
+  // We swap the entire style object rather than toggling individual properties
+  // so -webkit-line-clamp doesn't linger.
+  const descStyle = open
+    ? { color: C.textMuted, fontSize: '12.5px', lineHeight: 1.55, margin: '8px 0 0' }
+    : {
+        color: C.textMuted,
+        fontSize: '12.5px',
+        lineHeight: 1.55,
+        margin: '8px 0 0',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+      }
+
   return (
     <article
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
       style={{
         background: C.surface,
         border: `1px solid ${open ? accent : C.border}`,
@@ -406,7 +576,17 @@ function ArticleCard({ article }) {
             href={href}
             target="_blank"
             rel="noreferrer"
-            style={{ display: 'block', color: 'inherit', textDecoration: 'none', fontFamily: C.serif, fontSize: open ? '18px' : '16px', fontWeight: 500, marginTop: '6px', lineHeight: 1.22 }}
+            style={{
+              display: 'block',
+              color: 'inherit',
+              textDecoration: 'none',
+              fontFamily: C.serif,
+              fontSize: open ? '18px' : '16px',
+              fontWeight: 500,
+              marginTop: '6px',
+              lineHeight: 1.22,
+              letterSpacing: '-0.004em',
+            }}
           >
             {article?.title || 'Legal article'}
           </a>
@@ -425,22 +605,24 @@ function ArticleCard({ article }) {
             background: pinned ? `${accent}10` : C.surface2,
             color: pinned ? accent : C.textMuted,
             cursor: 'pointer',
-            fontSize: '14px',
+            fontSize: '16px',
             lineHeight: 1,
             fontWeight: 800,
             fontFamily: 'inherit',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           {pinned ? '−' : '+'}
         </button>
       </div>
-      <p style={{ color: C.textMuted, fontSize: '12.5px', lineHeight: 1.55, margin: '8px 0 0', display: '-webkit-box', WebkitLineClamp: open ? 'unset' : 2, WebkitBoxOrient: 'vertical', overflow: open ? 'visible' : 'hidden' }}>
-        {article?.description || 'Read the latest guide from the YouSafe legal library.'}
-      </p>
+      <p style={descStyle}>{description}</p>
       {open && (
-        <div style={{ display: 'grid', gap: '7px', marginTop: '12px', color: C.textMuted, fontSize: '12px', lineHeight: 1.45 }}>
-          {details.slice(1).map(item => <div key={item}>{item}</div>)}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px', color: C.textMuted, fontSize: '12px', lineHeight: 1.45 }}>
+          {updated && <div>{updated}</div>}
+          {path && <div style={{ wordBreak: 'break-all' }}>{path}</div>}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
             <a
               href={href}
               target="_blank"
@@ -449,13 +631,15 @@ function ArticleCard({ article }) {
             >
               Open in new tab ↗
             </a>
-            <button
-              type="button"
-              onClick={toggle}
-              style={{ background: 'none', border: 'none', color: C.textMuted, fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-            >
-              Minimize
-            </button>
+            {pinned && (
+              <button
+                type="button"
+                onClick={toggle}
+                style={{ background: 'none', border: 'none', color: C.textMuted, fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+              >
+                Minimize
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -463,20 +647,22 @@ function ArticleCard({ article }) {
   )
 }
 
+// ── Skeleton + footnote ─────────────────────────────────────────────────────
+
 function FeedSkeleton() {
   return (
-    <>
-      {[0, 1, 2].map((item) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {[0, 1, 2].map((i) => (
         <div
-          key={item}
+          key={i}
           style={{
             background: C.surface,
             border: `1px solid ${C.border}`,
             borderRadius: '14px',
-            padding: '16px 18px',
+            padding: '14px 16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
+            gap: '8px',
           }}
         >
           <span style={{ width: '42%', height: '8px', borderRadius: '999px', background: 'rgba(43, 92, 230, 0.14)' }} />
@@ -485,7 +671,7 @@ function FeedSkeleton() {
           <span style={{ width: '74%', height: '8px', borderRadius: '999px', background: 'rgba(12, 18, 32, 0.08)' }} />
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
@@ -497,6 +683,21 @@ function Footnote({ feedError }) {
         : 'Articles update from the YouSafe legal library so dashboard readers can click through to full guides.'}
     </div>
   )
+}
+
+// ── Hooks ───────────────────────────────────────────────────────────────────
+
+function useHoverCapable() {
+  const [capable, setCapable] = React.useState(false)
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
+    const apply = () => setCapable(mq.matches)
+    apply()
+    mq.addEventListener?.('change', apply)
+    return () => mq.removeEventListener?.('change', apply)
+  }, [])
+  return capable
 }
 
 const eyebrowStyle = {
