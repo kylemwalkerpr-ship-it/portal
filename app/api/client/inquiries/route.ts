@@ -10,11 +10,18 @@ export async function GET() {
   if (!ctx) return Response.json({ error }, { status })
 
   // Backfill any inquiries submitted with this email that don't yet have a profile_id.
-  await ctx.db
+  const backfill = await ctx.db
     .from('inquiries')
     .update({ client_profile_id: ctx.profileId })
     .eq('email', ctx.email)
     .is('client_profile_id', null)
+
+  if (backfill.error) {
+    if (isMissingTable(backfill.error.message)) {
+      return Response.json({ inquiries: [], schema_pending: true })
+    }
+    console.error('[client/inquiries] backfill error', backfill.error.message)
+  }
 
   const { data, error: qErr } = await ctx.db
     .from('inquiries')
@@ -22,7 +29,18 @@ export async function GET() {
     .eq('client_profile_id', ctx.profileId)
     .order('created_at', { ascending: false })
 
-  if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
+  if (qErr) {
+    if (isMissingTable(qErr.message)) {
+      return Response.json({ inquiries: [], schema_pending: true })
+    }
+    console.error('[client/inquiries] select error', qErr.message)
+    return Response.json({ error: qErr.message }, { status: 500 })
+  }
 
   return Response.json({ inquiries: data ?? [] })
+}
+
+function isMissingTable(message: string | undefined | null): boolean {
+  if (!message) return false
+  return /relation .*does not exist|could not find the table|schema cache/i.test(message)
 }
