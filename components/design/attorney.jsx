@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import { C, Btn, Badge, Card, NavItem } from './shared'
+import AttorneyProfileEditor from './attorney-profile-editor'
 
 const PAGE_TITLES = {
   profile: 'My Profile',
@@ -50,9 +51,7 @@ export default function AttorneyApp({ onLogout, userName }) {
           )}
         </header>
         <main style={{ flex: 1, overflow: 'auto' }}>
-          {page === 'profile' && (
-            <ProfilePage profileData={profileData} profileError={profileError} />
-          )}
+          {page === 'profile' && <AttorneyProfileEditor />}
           {page === 'queue' && <QueuePage />}
           {page === 'mine' && <MyInquiriesPage />}
         </main>

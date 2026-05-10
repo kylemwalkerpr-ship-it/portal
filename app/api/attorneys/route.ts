@@ -1,7 +1,6 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
-
 type AttorneyRow = {
   id: string
   profile_id: string
@@ -9,6 +8,18 @@ type AttorneyRow = {
   practice_areas: string | null
   bio: string | null
   available: boolean | null
+  headshot_url: string | null
+  tagline: string | null
+  intro: string | null
+  languages: string[] | null
+  years_experience: number | null
+  education: string | null
+  specialties: string[] | null
+  offers_free_consult: boolean | null
+  starting_price: number | null
+  video_intro_url: string | null
+  timezone: string | null
+  created_at: string | null
 }
 
 type ProfileRow = {
@@ -25,20 +36,12 @@ type ApplicationRow = {
   profile_url: string | null
 }
 
-type RatingAgg = {
-  attorney_id: string
-  count: number
-  avg: number
-}
-
 export async function GET() {
   const userId = await getClerkUserId()
   if (!userId) return Response.json({ error: 'Unauthenticated.' }, { status: 401 })
 
   const db = createSupabaseAdminClient()
 
-  // Restrict to active client / consultant / admin viewers; we don't expose this
-  // directory to attorneys themselves or to declined applicants.
   const { data: viewer } = await db
     .from('profiles')
     .select('role, status')
@@ -48,7 +51,7 @@ export async function GET() {
 
   const { data: attorneys, error: attorneyErr } = await db
     .from('attorneys')
-    .select('id, profile_id, jurisdictions, practice_areas, bio, available')
+    .select('id, profile_id, jurisdictions, practice_areas, bio, available, headshot_url, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone, created_at')
     .returns<AttorneyRow[]>()
 
   if (attorneyErr) return Response.json({ error: attorneyErr.message }, { status: 500 })
@@ -58,56 +61,55 @@ export async function GET() {
   const attorneyIds = attorneys.map((a) => a.id)
 
   const [{ data: profiles }, { data: applications }, { data: ratings }] = await Promise.all([
-    db
-      .from('profiles')
-      .select('id, full_name, email, status')
-      .in('id', profileIds)
-      .returns<ProfileRow[]>(),
+    db.from('profiles').select('id, full_name, email, status').in('id', profileIds).returns<ProfileRow[]>(),
     db
       .from('attorney_applications')
       .select('profile_id, credential_type, capacity, profile_url')
       .in('profile_id', profileIds)
       .eq('status', 'approved')
       .returns<ApplicationRow[]>(),
-    db
-      .from('attorney_ratings')
-      .select('attorney_id, stars')
-      .in('attorney_id', attorneyIds)
-      .returns<{ attorney_id: string; stars: number }[]>(),
+    db.from('attorney_ratings').select('attorney_id, stars').in('attorney_id', attorneyIds).returns<{ attorney_id: string; stars: number }[]>(),
   ])
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]))
   const applicationByProfile = new Map((applications ?? []).map((a) => [a.profile_id ?? '', a]))
 
-  const ratingByAttorney = new Map<string, RatingAgg>()
+  const ratingByAttorney = new Map<string, { count: number; sum: number }>()
   for (const r of ratings ?? []) {
-    const current = ratingByAttorney.get(r.attorney_id) ?? { attorney_id: r.attorney_id, count: 0, avg: 0 }
-    current.avg = (current.avg * current.count + r.stars) / (current.count + 1)
-    current.count += 1
-    ratingByAttorney.set(r.attorney_id, current)
+    const cur = ratingByAttorney.get(r.attorney_id) ?? { count: 0, sum: 0 }
+    cur.count += 1
+    cur.sum += r.stars
+    ratingByAttorney.set(r.attorney_id, cur)
   }
 
   const result = attorneys
-    .filter((a) => {
-      const profile = profileById.get(a.profile_id)
-      return profile?.status === 'active'
-    })
+    .filter((a) => profileById.get(a.profile_id)?.status === 'active')
     .map((a) => {
       const profile = profileById.get(a.profile_id)
       const application = applicationByProfile.get(a.profile_id)
-      const rating = ratingByAttorney.get(a.id)
+      const r = ratingByAttorney.get(a.id)
       return {
         id: a.id,
         full_name: profile?.full_name || profile?.email?.split('@')[0] || 'Attorney',
+        headshot_url: a.headshot_url,
+        tagline: a.tagline,
         bio: a.bio,
-        jurisdictions: a.jurisdictions || null,
-        practice_areas: a.practice_areas || null,
+        intro: a.intro,
+        jurisdictions: a.jurisdictions,
+        practice_areas: a.practice_areas,
+        specialties: a.specialties,
+        languages: a.languages,
         credential_type: application?.credential_type || null,
+        years_experience: a.years_experience,
+        starting_price: a.starting_price,
+        offers_free_consult: a.offers_free_consult ?? false,
         capacity: application?.capacity || null,
         profile_url: application?.profile_url || null,
+        timezone: a.timezone,
         available: a.available !== false,
-        rating_count: rating?.count ?? 0,
-        rating_avg: rating ? Number(rating.avg.toFixed(2)) : null,
+        member_since: a.created_at,
+        rating_count: r?.count ?? 0,
+        rating_avg: r ? Number((r.sum / r.count).toFixed(2)) : null,
       }
     })
 
