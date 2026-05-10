@@ -94,6 +94,349 @@ const deliveryLabel = days => {
   return `${n} day${n === 1 ? '' : 's'}`;
 };
 
+const SERVICE_DETAIL_LIBRARY = {
+  'Study Permit Starter Package': {
+    label: 'Study Permit Starter Review',
+    summary: 'A focused readiness review for students who already know their school/program and need help organizing a clean study permit package.',
+    deliverables: [
+      'Personalized intake checklist for study permit documents',
+      'Review of school acceptance, passport, financial proof, and supporting records',
+      'Statement of purpose outline with improvement notes',
+      'One written review memo with gaps, risks, and next steps',
+      'One follow-up clarification round by portal message',
+    ],
+    timeline: 'Initial review in 7 business days after all requested documents are uploaded.',
+    bestFor: 'Students with most documents ready who want a second set of eyes before submission.',
+  },
+  'Study Permit Standard Package': {
+    label: 'Study Permit Standard Preparation',
+    summary: 'Document preparation support for students who want a structured package, stronger written materials, and organized proof-of-funds presentation.',
+    deliverables: [
+      'Full document checklist tailored to your country, school, and program',
+      'Statement of purpose drafting support and one revision round',
+      'Proof-of-funds organization plan and sponsor-document checklist',
+      'Application-form review for consistency against your documents',
+      'Final submission-readiness packet with outstanding items clearly marked',
+    ],
+    timeline: '10 business days after complete intake and document upload.',
+    bestFor: 'Students who want guided preparation before they submit independently or with an authorized representative.',
+  },
+  'Study Permit Premium Package': {
+    label: 'Study Permit Premium File Build',
+    summary: 'A deeper preparation package for complex study histories, multiple sponsors, prior refusals, or students who need a more polished evidence packet.',
+    deliverables: [
+      'Priority intake review and document strategy checklist',
+      'Statement of purpose drafting support with up to two revision rounds',
+      'Financial evidence map for sponsors, bank records, income, and ties',
+      'Refusal or complexity review, if applicable',
+      'Final organized file index and submission-readiness review call',
+    ],
+    timeline: '14 business days after complete intake; complex files may require extra document-gathering time.',
+    bestFor: 'Students with complex financial, academic, or prior-refusal circumstances.',
+  },
+  'Study Permit & Visa Consulting': {
+    label: 'Student Visa Planning Call',
+    summary: 'A short planning session to understand your goals, documents, deadlines, and next administrative steps.',
+    deliverables: [
+      'One consultation focused on your study or visa-document questions',
+      'High-level document checklist after the call',
+      'Written summary of next steps and open items',
+      'Referral suggestion if your situation requires licensed legal advice',
+    ],
+    timeline: 'Scheduled based on availability; written recap usually within 2 business days after the call.',
+    bestFor: 'Students who need direction before choosing a larger package.',
+  },
+  'University Admission Basic': {
+    label: 'University Admission Starter',
+    summary: 'A focused admissions package for students who need help narrowing programs and organizing their first application materials.',
+    deliverables: [
+      'Program-fit questionnaire and shortlist criteria',
+      'Review of up to 3 target programs',
+      'Admissions document checklist',
+      'Personal statement or essay review notes for one draft',
+      'Deadline tracker template',
+    ],
+    timeline: '7 business days after intake.',
+    bestFor: 'Students who already have a direction and need application organization.',
+  },
+  'University Admission Comprehensive': {
+    label: 'University Admission Application Build',
+    summary: 'End-to-end admissions preparation support for multiple schools, essays, recommendations, and application sequencing.',
+    deliverables: [
+      'Shortlist of up to 6 schools or programs',
+      'Application calendar with priority deadlines',
+      'Essay or statement support for up to 2 drafts',
+      'Recommendation-letter guidance and document tracker',
+      'Final application-readiness review for consistency',
+    ],
+    timeline: '14 business days after intake; school response times are outside YouSafe control.',
+    bestFor: 'Students applying to several schools who want a structured admissions plan.',
+  },
+  'University Admission Elite': {
+    label: 'University Admission Elite Support',
+    summary: 'High-touch admissions preparation for competitive programs, scholarship positioning, and several application rounds.',
+    deliverables: [
+      'Program strategy session and up to 10-school comparison matrix',
+      'Essay support for up to 4 drafts across applications',
+      'Scholarship-document checklist and positioning notes',
+      'Interview preparation session, if applicable',
+      'Weekly application progress check-ins during the package window',
+    ],
+    timeline: '2-4 weeks depending on the number of applications and draft cycles.',
+    bestFor: 'Students applying to competitive or scholarship-sensitive programs.',
+  },
+  'PGWP Only Package': {
+    label: 'PGWP Document Checklist Review',
+    summary: 'Administrative support to organize documents for a post-graduation work permit request.',
+    deliverables: [
+      'PGWP eligibility and timing checklist based on official requirements',
+      'Review of completion letter, transcript, passport, and study permit records',
+      'Document consistency review and missing-item list',
+      'Submission-readiness summary',
+    ],
+    timeline: '7 business days after all requested documents are uploaded.',
+    bestFor: 'Graduates who need help organizing PGWP materials and deadlines.',
+  },
+  'PR Roadmap Package': {
+    label: 'Post-Study Options Roadmap',
+    summary: 'An informational planning package that helps you compare official post-study pathways and prepare questions for qualified representatives when needed.',
+    deliverables: [
+      'Profile intake covering education, work history, language tests, and goals',
+      'High-level comparison of official pathway options',
+      'Document-readiness checklist for future planning',
+      'Timeline map for language tests, work history, and credential records',
+      'Referral guidance for licensed legal or immigration representation where needed',
+    ],
+    timeline: '10 business days after intake.',
+    bestFor: 'Students and graduates who want an organized, non-guaranteed planning roadmap.',
+  },
+  'Full PR Acceleration Package': {
+    label: 'Post-Study Planning Intensive',
+    summary: 'A longer planning engagement for graduates who need document organization, timeline tracking, and structured preparation for post-study options.',
+    deliverables: [
+      'Detailed intake review and planning tracker',
+      'Credential, language-test, work-history, and reference-letter checklist',
+      'Monthly milestone plan for up to 6 weeks',
+      'Two planning calls and portal follow-up support',
+      'Representative-referral checklist if case-specific advice is needed',
+    ],
+    timeline: 'Up to 6 weeks, with milestones set after intake.',
+    bestFor: 'Graduates preparing a longer-term post-study plan with several moving parts.',
+  },
+  'Arrival Essentials Package': {
+    label: 'Arrival Essentials Setup',
+    summary: 'Practical settlement support for the first steps after landing, including housing, banking, phone, and local setup guidance.',
+    deliverables: [
+      'Arrival checklist for your city and school',
+      'Housing-search guidance and rental-document checklist',
+      'Banking, phone, transit, and ID setup checklist',
+      'First-week appointment and task planner',
+      'Portal follow-up for setup questions',
+    ],
+    timeline: '5 business days after intake; best started before arrival.',
+    bestFor: 'Students arriving soon who need a practical first-week plan.',
+  },
+  'Full Settlement Package': {
+    label: 'Full Settlement Planning',
+    summary: 'Broader settlement support covering housing, banking, healthcare basics, campus setup, and local life planning.',
+    deliverables: [
+      'City-specific settlement plan',
+      'Housing and roommate-search document checklist',
+      'Banking, phone, health coverage, and transportation setup guidance',
+      'Campus onboarding and local-services checklist',
+      'Two follow-up support rounds by portal message',
+    ],
+    timeline: '10 business days after intake, plus follow-up during arrival week.',
+    bestFor: 'Students who want support before and shortly after landing.',
+  },
+  'Premium Integration Package': {
+    label: 'Premium Integration Support',
+    summary: 'Extended support for students who want help settling into school, local routines, networking, and early career preparation.',
+    deliverables: [
+      '90-day integration roadmap',
+      'Housing, banking, healthcare, and local-services planning',
+      'Campus involvement and networking plan',
+      'Resume baseline review and local job-readiness checklist',
+      'Scheduled check-ins during the package period',
+    ],
+    timeline: 'Up to 90 days of structured support.',
+    bestFor: 'Students who want sustained support beyond the first arrival week.',
+  },
+  'Monthly Mentorship': {
+    label: 'Monthly Student Mentorship',
+    summary: 'Ongoing monthly guidance to keep your study, documents, deadlines, and settlement tasks organized.',
+    deliverables: [
+      'One monthly planning check-in',
+      'Deadline and document tracker updates',
+      'Portal messaging for quick administrative questions',
+      'Monthly next-step summary',
+    ],
+    timeline: 'Renews monthly; first check-in scheduled after purchase.',
+    bestFor: 'Students who want light ongoing accountability.',
+  },
+  'Quarterly Mentorship': {
+    label: 'Quarterly Student Mentorship',
+    summary: 'Three months of periodic planning support for academic, settlement, and document-readiness milestones.',
+    deliverables: [
+      'Quarterly goal-setting session',
+      'Monthly progress check-ins for 3 months',
+      'Document and deadline tracker maintenance',
+      'End-of-quarter action plan',
+    ],
+    timeline: '3 months of support.',
+    bestFor: 'Students managing several deadlines across a semester.',
+  },
+  'Annual Mentorship': {
+    label: 'Annual Student Mentorship',
+    summary: 'Year-round planning support for students who want consistent help with academic, settlement, and post-study preparation.',
+    deliverables: [
+      'Annual roadmap session',
+      'Monthly check-ins for 12 months',
+      'Deadline, document, and renewal tracker',
+      'Semester planning support',
+      'Priority portal follow-up for administrative questions',
+    ],
+    timeline: '12 months of support.',
+    bestFor: 'Students who want structured guidance across a full academic year.',
+  },
+  'Credential Assessment Guided': {
+    label: 'Credential Assessment Guided Review',
+    summary: 'Guidance for organizing transcripts, degree records, translations, and third-party credential assessment requirements.',
+    deliverables: [
+      'Credential-assessment provider comparison checklist',
+      'Document collection list for transcripts and certificates',
+      'Translation/notarization readiness notes',
+      'Submission checklist and timeline tracker',
+    ],
+    timeline: '7 business days after intake.',
+    bestFor: 'Students who need help preparing credential-assessment materials.',
+  },
+  'Credential Assessment Full + Appeal': {
+    label: 'Credential Assessment Full Support',
+    summary: 'Deeper support for credential-assessment packages, missing records, or follow-up documentation requests.',
+    deliverables: [
+      'Full credential document review',
+      'Provider-specific submission checklist',
+      'Translation/notarization and mailing plan',
+      'Response plan for missing-document or clarification requests',
+      'One follow-up review round',
+    ],
+    timeline: '14 business days after complete intake.',
+    bestFor: 'Students with complex credential histories or prior assessment issues.',
+  },
+  'Resume & LinkedIn Glow-Up': {
+    label: 'Resume & LinkedIn Refresh',
+    summary: 'Career-document support to make your resume and LinkedIn profile clearer for student jobs, internships, or early professional roles.',
+    deliverables: [
+      'Resume review and rewrite notes',
+      'LinkedIn headline/about/experience recommendations',
+      'Keyword and skills checklist for target roles',
+      'One revision round after your updates',
+    ],
+    timeline: '5 business days after intake.',
+    bestFor: 'Students preparing for internships, campus jobs, or early career roles.',
+  },
+  'Job Search Mastery': {
+    label: 'Job Search Preparation',
+    summary: 'Structured job-search support covering resume, LinkedIn, role targeting, outreach, and interview preparation.',
+    deliverables: [
+      'Resume and LinkedIn review',
+      'Target-role and employer list template',
+      'Outreach message templates',
+      'Interview preparation checklist',
+      'Job-search weekly tracker',
+    ],
+    timeline: '14 business days after intake.',
+    bestFor: 'Students actively applying for internships, co-op, OPT, or entry roles.',
+  },
+  'Premium Placement Package': {
+    label: 'Premium Career Launch Support',
+    summary: 'High-touch career readiness support for students who want help with positioning, applications, interviews, and accountability.',
+    deliverables: [
+      'Career-positioning intake and target-role strategy',
+      'Resume and LinkedIn refresh',
+      'Application tracker and outreach scripts',
+      'Two mock interview sessions',
+      'Weekly job-search check-ins during the package window',
+    ],
+    timeline: '2-4 weeks depending on interview and application pacing.',
+    bestFor: 'Students who want a structured launch plan and recurring accountability.',
+  },
+};
+
+const LEGAL_SERVICE_DETAILS = {
+  Basic: {
+    label: 'Legal Document Prep - Basic',
+    summary: 'Administrative document-preparation support for straightforward legal forms and filing packets.',
+    deliverables: [
+      'Intake checklist and document collection list',
+      'Draft preparation of selected forms using your information',
+      'Basic filing packet organization',
+      'One correction round for typos or missing fields',
+    ],
+    timeline: 'Typical turnaround follows the listed delivery estimate after all client information is received.',
+    bestFor: 'Clients who need form organization and document-prep help, not legal advice.',
+  },
+  Essential: {
+    label: 'Document Prep + Attorney Review - Essential',
+    summary: 'Document preparation with an attorney review checkpoint before delivery.',
+    deliverables: [
+      'Document-prep intake and draft packet assembly',
+      'Attorney review of prepared packet for issue spotting',
+      'Written notes on corrections or missing information',
+      'One revision round before final delivery',
+    ],
+    timeline: 'Typical turnaround follows the listed delivery estimate once all intake materials are complete.',
+    bestFor: 'Clients who want document-prep support plus attorney review.',
+  },
+  Enhanced: {
+    label: 'Document Prep + Live Consultation - Enhanced',
+    summary: 'Document-prep support plus a live consultation to discuss the prepared packet and next steps.',
+    deliverables: [
+      'Prepared document packet from client-provided information',
+      'Attorney or qualified professional review checkpoint',
+      'Live consultation to discuss packet and process questions',
+      'Final delivery checklist and filing-readiness notes',
+    ],
+    timeline: 'Typical turnaround follows the listed delivery estimate; consultation scheduling may affect final delivery.',
+    bestFor: 'Clients who need a guided conversation before using the prepared packet.',
+  },
+  Professional: {
+    label: 'Full Attorney Engagement - Professional',
+    summary: 'A higher-touch engagement for matters requiring direct attorney involvement.',
+    deliverables: [
+      'Conflict and intake review',
+      'Attorney-led scope confirmation',
+      'Document strategy and preparation plan',
+      'Matter-specific deliverables defined after attorney intake',
+    ],
+    timeline: 'Timeline is confirmed after intake because scope depends on the matter.',
+    bestFor: 'Clients whose matter may require direct legal representation.',
+  },
+};
+
+function getServiceDetails(service) {
+  const title = service?.title || '';
+  if (SERVICE_DETAIL_LIBRARY[title]) return SERVICE_DETAIL_LIBRARY[title];
+  if (String(service?.vertical || '').toLowerCase() === 'legal' || /legal|attorney/i.test(title)) {
+    const key = Object.keys(LEGAL_SERVICE_DETAILS).find(k => title.includes(k)) || 'Basic';
+    return LEGAL_SERVICE_DETAILS[key];
+  }
+  const category = service?.category || 'General';
+  return {
+    label: title || 'YouSafe Service',
+    summary: 'A YouSafe service package with escrow-protected payment, document intake, consultant assignment, and delivery through your portal.',
+    deliverables: [
+      'Client intake and document checklist',
+      'Assigned consultant review',
+      'Portal messaging during the service window',
+      'Final deliverable uploaded to your order workspace',
+    ],
+    timeline: `${deliveryLabel(service?.delivery_days)} after complete intake unless otherwise noted.`,
+    bestFor: `${category} support with a defined scope and secure payment flow.`,
+  };
+}
+
 // ─── Escrow Approval Card ─────────────────────────────────────────────────────
 function EscrowApprovalCard({ order }) {
   const [state, setState] = React.useState('review'); // review | approved | rejected
@@ -1223,9 +1566,10 @@ function StudentApp({ onLogout, userId, userName }) {
   };
 
   // ── SERVICES BROWSE ──
-  const ServicesBrowse = () => {
+  const ServicesBrowse = React.useMemo(() => function ServicesBrowse() {
     const [catFilter, setCatFilter] = React.useState('All');
     const [cart, setCart] = React.useState(null);
+    const [selectedService, setSelectedService] = React.useState(null);
     const [showCheckout, setShowCheckout] = React.useState(false);
     const [services, setServices] = React.useState([]);
     const [servicesLoading, setServicesLoading] = React.useState(true);
@@ -1264,6 +1608,13 @@ function StudentApp({ onLogout, userId, userName }) {
     const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     const filtered = catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter);
+    const openCheckoutForService = service => {
+      const details = getServiceDetails(service);
+      setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
+      setSelectedService(null);
+      setShowCheckout(true);
+      setPayError(null);
+    };
 
     React.useEffect(() => {
       setServicesLoading(true);
@@ -1388,6 +1739,7 @@ function StudentApp({ onLogout, userId, userName }) {
           }
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
         } catch (e) {
           setPayError(e.message);
@@ -1643,15 +1995,26 @@ function StudentApp({ onLogout, userId, userName }) {
           {servicesLoading && <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px' }}>Loading services…</div>}
           {servicesError && <div style={{ color: C.red, fontSize: '14px', padding: '20px' }}>{servicesError}</div>}
           {!servicesLoading && !servicesError && filtered.length === 0 && <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px' }}>No active services are available yet.</div>}
-          {filtered.map(s => (
-            <Card key={s.id} hover style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}>
+          {filtered.map(s => {
+            const details = getServiceDetails(s);
+            const deliverablePreview = details.deliverables?.slice(0, 2) || [];
+            return (
+            <Card key={s.id} onClick={() => setSelectedService(s)} style={{ display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative', minHeight: '276px' }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                 <div style={{ fontSize: '28px' }}>{serviceIcon(s.category)}</div>
                 <Badge color="gray" style={{ fontSize: '11px', marginTop: '4px' }}>{s.category || 'General'}</Badge>
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>{s.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>Professional YouSafe consultancy service with escrow-protected payment.</div>
+                <div style={{ fontFamily: C.serif, fontWeight: 600, fontSize: '20px', lineHeight: 1.15, letterSpacing: '-0.006em', marginBottom: '8px', color: C.text }}>{details.label}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.55 }}>{details.summary}</div>
+              </div>
+              <div style={{ display: 'grid', gap: '6px', color: C.textMuted, fontSize: '12px', lineHeight: 1.35 }}>
+                {deliverablePreview.map(item => (
+                  <div key={item} style={{ display: 'flex', gap: '7px' }}>
+                    <span style={{ color: C.green, fontWeight: 800 }}>✓</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
               </div>
               <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
@@ -1676,13 +2039,110 @@ function StudentApp({ onLogout, userId, userName }) {
                     );
                   })()}
                 </div>
-                <Btn variant="primary" size="sm" onClick={() => { setCart(s); setShowCheckout(true); }}>Order now</Btn>              </div>
+                <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); openCheckoutForService(s); }}>View & buy</Btn>              </div>
             </Card>
-          ))}
+          )})}
         </div>
+        {selectedService && (() => {
+          const details = getServiceDetails(selectedService);
+          const native = String(selectedService.currency || 'usd').toLowerCase();
+          const isConverted = native !== effectiveDisplayCurrency;
+          const displayed = isConverted ? convertPrice(selectedService.price, native) : Number(selectedService.price || 0);
+          return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                aria-label="Close service details"
+                onClick={() => setSelectedService(null)}
+                style={{ flex: 1, border: 'none', background: 'rgba(31,41,55,0.28)', cursor: 'pointer' }}
+              />
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${details.label} service details`}
+                style={{
+                  width: 'min(460px, 100vw)',
+                  height: '100vh',
+                  background: C.surface,
+                  boxShadow: '-24px 0 60px rgba(15,18,32,0.18)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderLeft: `1px solid ${C.border}`,
+                }}
+              >
+                <div style={{ padding: '22px 24px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flex: '0 0 auto' }}>
+                    {serviceIcon(selectedService.category)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Badge color="gray" style={{ fontSize: '11px', marginBottom: '8px' }}>{selectedService.category || 'General'}</Badge>
+                    <h3 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 600, color: C.text, letterSpacing: '-0.012em', lineHeight: 1.08, margin: 0 }}>{details.label}</h3>
+                    <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '8px' }}>{selectedService.title !== details.label ? selectedService.title : 'YouSafe service package'}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedService(null)}
+                    style={{ border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, borderRadius: '999px', width: '34px', height: '34px', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ padding: '22px 24px 120px', overflowY: 'auto', flex: 1 }}>
+                  <div style={{ color: C.text, fontSize: '14px', lineHeight: 1.7, marginBottom: '22px' }}>{details.summary}</div>
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    <section>
+                      <div style={{ fontSize: '12px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 800, marginBottom: '10px' }}>Deliverables</div>
+                      <div style={{ display: 'grid', gap: '9px' }}>
+                        {details.deliverables.map(item => (
+                          <div key={item} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '11px 12px' }}>
+                            <span style={{ color: C.green, fontWeight: 900, lineHeight: 1.3 }}>✓</span>
+                            <span style={{ color: C.text, fontSize: '13px', lineHeight: 1.45 }}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    <section style={{ display: 'grid', gap: '10px' }}>
+                      <div style={{ fontSize: '12px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 800 }}>Expected timeline</div>
+                      <div style={{ border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px', background: '#fff' }}>
+                        <div style={{ fontWeight: 800, fontSize: '14px', color: C.text, marginBottom: '4px' }}>{deliveryLabel(selectedService.delivery_days)}</div>
+                        <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.55 }}>{details.timeline}</div>
+                      </div>
+                    </section>
+                    <section style={{ display: 'grid', gap: '10px' }}>
+                      <div style={{ fontSize: '12px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 800 }}>Best for</div>
+                      <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.6 }}>{details.bestFor}</div>
+                    </section>
+                    <section style={{ border: `1px solid rgba(217,119,6,0.22)`, background: 'rgba(217,119,6,0.06)', borderRadius: '12px', padding: '14px' }}>
+                      <div style={{ fontWeight: 800, color: C.orange, fontSize: '13px', marginBottom: '5px' }}>Before you order</div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.55 }}>
+                        Timelines begin after you complete intake and upload requested documents. Government, school, employer, or third-party decisions are not guaranteed.
+                      </div>
+                    </section>
+                  </div>
+                </div>
+                <div style={{ position: 'sticky', bottom: 0, padding: '16px 24px 20px', borderTop: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(10px)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', fontWeight: 700 }}>Package price</div>
+                      <div style={{ color: C.text, fontSize: '13px' }}>Escrow protected</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 900, color: C.cyan }}>{isConverted ? '≈ ' : ''}{formatMoney(displayed, effectiveDisplayCurrency)}</div>
+                      {isConverted && <div style={{ color: C.textMuted, fontSize: '12px' }}>Charged as {formatMoney(selectedService.price, native)}</div>}
+                    </div>
+                  </div>
+                  <Btn variant="primary" size="lg" fullWidth onClick={() => openCheckoutForService(selectedService)}>
+                    Buy now
+                  </Btn>
+                </div>
+              </aside>
+            </div>
+          );
+        })()}
       </div>
     );
-  };
+  }, [viewerVertical, orderPlaced, refreshStudentData]);
 
   // ── DOCUMENTS ──
   const Documents = () => {

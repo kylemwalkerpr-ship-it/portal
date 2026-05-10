@@ -4,10 +4,48 @@ import React from 'react'
 import { C } from './shared'
 import { EagleGlyph, MapleGlyph, LionGlyph } from './country-glyphs'
 
-// Right rail: tips, articles, and CTAs that boost CTR. Editorial-style cards
-// curated per role. Hidden under 1280px so the main column always has room.
+// Right rail: role CTAs plus a live article feed from the legal library.
+// Hidden under 1280px so the main column always has room.
 export default function DashboardRightPane({ role = 'student' }) {
   const cards = role === 'attorney' ? ATTORNEY_CARDS : role === 'admin' ? ADMIN_CARDS : STUDENT_CARDS
+  const [articles, setArticles] = React.useState([])
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [feedError, setFeedError] = React.useState(null)
+
+  React.useEffect(() => {
+    let isMounted = true
+    const controller = new AbortController()
+
+    async function loadFeed() {
+      setIsLoading(true)
+      setFeedError(null)
+
+      try {
+        const response = await fetch(`/api/articles/feed?role=${encodeURIComponent(role)}&limit=6`, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        })
+        if (!response.ok) throw new Error(`Article feed returned ${response.status}`)
+        const payload = await response.json()
+        if (!isMounted) return
+        setArticles(Array.isArray(payload?.articles) ? payload.articles : [])
+      } catch (error) {
+        if (!isMounted || error?.name === 'AbortError') return
+        setFeedError('We could not refresh the article feed.')
+        setArticles([])
+      } finally {
+        if (isMounted) setIsLoading(false)
+      }
+    }
+
+    loadFeed()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [role])
+
   return (
     <aside
       style={{
@@ -29,7 +67,33 @@ export default function DashboardRightPane({ role = 'student' }) {
       {cards.map((card, i) => (
         <PaneCard key={i} {...card} />
       ))}
-      <Footnote />
+      <ArticleFeedHeader />
+      {isLoading ? (
+        <FeedSkeleton />
+      ) : feedError ? (
+        <PaneCard
+          accent="#3C3B6E"
+          eyebrow="Article feed"
+          title="Legal articles are temporarily unavailable."
+          body="Open the legal library to browse the latest YouSafe guides while the dashboard feed refreshes."
+          href={LEGAL_ARTICLES_URL}
+          cta="Open legal library →"
+        />
+      ) : articles.length ? (
+        articles.map((article) => (
+          <ArticleCard key={article.url || article.path || article.title} article={article} />
+        ))
+      ) : (
+        <PaneCard
+          accent="#3C3B6E"
+          eyebrow="Article feed"
+          title="Browse the legal library."
+          body="Guides, explainers, and checklists from the YouSafe legal article library."
+          href={LEGAL_ARTICLES_URL}
+          cta="View all articles →"
+        />
+      )}
+      <Footnote feedError={feedError} />
     </aside>
   )
 }
@@ -112,11 +176,77 @@ function PaneCard({ accent, eyebrow, title, body, cta, href, onClick }) {
   )
 }
 
-function Footnote() {
+function ArticleFeedHeader() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '4px 4px 0' }}>
+      <div>
+        <div style={eyebrowStyle}>Legal library</div>
+        <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, marginTop: '3px', lineHeight: 1.2 }}>
+          Latest articles
+        </div>
+      </div>
+      <a
+        href={LEGAL_ARTICLES_URL}
+        target="_blank"
+        rel="noreferrer"
+        style={{ color: C.cyan, fontSize: '12px', fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap' }}
+      >
+        View all →
+      </a>
+    </div>
+  )
+}
+
+function ArticleCard({ article }) {
+  const region = article?.region || 'COMPARE'
+  const accent = REGION_ACCENTS[region] || C.cyan
+  const regionLabel = REGION_LABELS[region] || 'Guide'
+  const cluster = article?.cluster ? ` · ${article.cluster}` : ''
+
+  return (
+    <PaneCard
+      accent={accent}
+      eyebrow={`${regionLabel}${cluster}`}
+      title={article?.title || 'Legal article'}
+      body={article?.description || 'Read the latest guide from the YouSafe legal library.'}
+      href={article?.url || LEGAL_ARTICLES_URL}
+      cta="Read article →"
+    />
+  )
+}
+
+function FeedSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          style={{
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: '14px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+          }}
+        >
+          <span style={{ width: '42%', height: '8px', borderRadius: '999px', background: 'rgba(43, 92, 230, 0.14)' }} />
+          <span style={{ width: '88%', height: '14px', borderRadius: '999px', background: 'rgba(12, 18, 32, 0.1)' }} />
+          <span style={{ width: '100%', height: '8px', borderRadius: '999px', background: 'rgba(12, 18, 32, 0.08)' }} />
+          <span style={{ width: '74%', height: '8px', borderRadius: '999px', background: 'rgba(12, 18, 32, 0.08)' }} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function Footnote({ feedError }) {
   return (
     <div style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, padding: '8px 4px 0' }}>
-      Tips and articles curated by the YouSafe editorial team. Fully removable —
-      tell us if you'd rather have a focus mode without distractions.
+      {feedError
+        ? 'Article feed fallback shown from the YouSafe legal library.'
+        : 'Articles update from the YouSafe legal library so dashboard readers can click through to full guides.'}
     </div>
   )
 }
@@ -130,6 +260,22 @@ const eyebrowStyle = {
 }
 
 // ── Curated content ─────────────────────────────────────────────────────────
+
+const LEGAL_ARTICLES_URL = 'https://legal.yousafeconsultancy.com/articles'
+
+const REGION_LABELS = {
+  US: 'United States',
+  UK: 'United Kingdom',
+  CA: 'Canada',
+  COMPARE: 'Compare',
+}
+
+const REGION_ACCENTS = {
+  US: '#1F2D5F',
+  CA: '#A4243B',
+  UK: '#5B3A2A',
+  COMPARE: '#3C3B6E',
+}
 
 const ATTORNEY_CARDS = [
   {
@@ -153,14 +299,6 @@ const ATTORNEY_CARDS = [
     eyebrow: 'Fees & compliance',
     title: 'Your fee is paid in full to you.',
     body: 'Per ABA Rule 5.4, the platform fee is added on top — never split from your fee. Disclose the breakdown to clients up front.',
-  },
-  {
-    accent: '#3C3B6E',
-    eyebrow: 'From the blog',
-    title: 'How clients pick between competing offers.',
-    body: 'A summary of what we see drive offer acceptance: clarity of scope, delivery date, attorney response time, and visible reviews.',
-    href: 'https://yousafeconsultancy.com/blog',
-    cta: 'Read on YouSafe →',
   },
 ]
 
@@ -186,14 +324,6 @@ const STUDENT_CARDS = [
     eyebrow: 'How payment works',
     title: 'Funds held in escrow until you approve.',
     body: 'You pay only when you accept a custom offer. Stripe holds the money until you approve the deliverable, with full refund protection if no work happens.',
-  },
-  {
-    accent: '#3C3B6E',
-    eyebrow: 'From the blog',
-    title: 'Reading the fine print on F-1, OPT, and PR pathways.',
-    body: 'Long-form articles from YouSafe consultants and attorneys covering common immigration and student-visa scenarios.',
-    href: 'https://yousafeconsultancy.com/blog',
-    cta: 'Read on YouSafe →',
   },
 ]
 
