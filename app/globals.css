@@ -18,3 +18,9 @@ h1, h2, .yousafe-serif {
   font-weight: 500;
   letter-spacing: -0.012em;
 }
+
+/* Hide the dashboard right rail on smaller viewports — main column always
+   gets full width when there isn't enough space for a 3-column layout. */
+@media (max-width: 1280px) {
+  .yousafe-right-pane { display: none !important; }
+}

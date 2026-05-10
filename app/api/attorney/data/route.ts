@@ -31,7 +31,13 @@ export async function GET() {
       .single(),
   ])
 
-  if (ordersRes.error) return Response.json({ error: ordersRes.error.message }, { status: 500 })
+  // Be defensive — partial migrations (e.g. orders missing source_offer_id)
+  // shouldn't blank out the whole dashboard. Log internally and degrade.
+  if (ordersRes.error) console.error('[attorney/data] orders query failed', ordersRes.error.message)
+  if (openInquiriesRes.error) console.error('[attorney/data] open-inquiries failed', openInquiriesRes.error.message)
+  if (mineInquiriesRes.error) console.error('[attorney/data] mine-inquiries failed', mineInquiriesRes.error.message)
+  if (ratingsRes.error) console.error('[attorney/data] ratings failed', ratingsRes.error.message)
+  if (attorneyRes.error) console.error('[attorney/data] attorney row failed', attorneyRes.error.message)
 
   const orderRows = ordersRes.data ?? []
   const orderIds = orderRows.map((o) => o.id)

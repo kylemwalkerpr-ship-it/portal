@@ -6,6 +6,7 @@ import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divi
 import FindAttorney from './find-attorney'
 import MyInquiries from './my-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
+import DashboardRightPane from './dashboard-right-pane'
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
@@ -1770,7 +1771,8 @@ function StudentApp({ onLogout, userId, userName }) {
           messages: 'Messages', documents: 'Documents', billing: 'Billing', settings: 'Settings',
           'order-detail': 'Order Details',
         }[page] || 'Dashboard'} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
           {actionNotice && (
             <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span>{actionNotice}</span>
@@ -1850,6 +1852,8 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
             </div>
           )}
+          </div>
+          <DashboardRightPane role="student" />
         </div>
       </div>
     </div>

@@ -3,6 +3,8 @@
 import React from 'react'
 import { C, Btn, Badge, Card, NavItem } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
+import DashboardRightPane from './dashboard-right-pane'
+import { CountryChip } from './country-glyphs'
 
 const PAGE_TITLES = {
   overview: 'Overview',
@@ -54,15 +56,20 @@ export default function AttorneyApp({ onLogout, userName }) {
             <span style={{ color: C.textMuted, fontSize: '13px' }}>{profileData.profile.email}</span>
           )}
         </header>
-        <main style={{ flex: 1, overflow: 'auto' }}>
-          {page === 'overview' && <OverviewPage onJump={setPage} />}
-          {page === 'queue' && <QueuePage />}
-          {page === 'mine' && <MyInquiriesPage />}
-          {page === 'orders' && <OrdersPage />}
-          {page === 'earnings' && <EarningsPage />}
-          {page === 'profile' && <AttorneyProfileEditor />}
-          {page === 'settings' && <SettingsPage />}
-        </main>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
+            <main style={{ flex: 1, minWidth: 0 }}>
+              {page === 'overview' && <OverviewPage onJump={setPage} />}
+              {page === 'queue' && <QueuePage />}
+              {page === 'mine' && <MyInquiriesPage />}
+              {page === 'orders' && <OrdersPage />}
+              {page === 'earnings' && <EarningsPage />}
+              {page === 'profile' && <AttorneyProfileEditor />}
+              {page === 'settings' && <SettingsPage />}
+            </main>
+            <DashboardRightPane role="attorney" />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -204,8 +211,9 @@ function QueuePage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '15px' }}>{q.case_type_label || q.case_type || 'Inquiry'}</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>
-                    {q.country || '—'} · {new Date(q.created_at).toLocaleString()}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
+                    {q.country ? <CountryChip country={q.country} /> : <span>—</span>}
+                    <span>· {new Date(q.created_at).toLocaleString()}</span>
                   </div>
                 </div>
                 <Badge color={q.status === 'engaged' ? 'cyan' : 'orange'}>{q.status}</Badge>
