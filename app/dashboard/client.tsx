@@ -12,16 +12,16 @@ const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false
 const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
 const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false })
-const LANDING_URL = 'https://yousafeconsultancy.com'
+const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
 export default function DashboardClient({ role, status, userName, userId, expectedRole, errorState }) {
   const { signOut } = useClerk()
   const handleLogout = async () => {
     try {
-      await signOut({ redirectUrl: LANDING_URL })
+      await signOut({ redirectUrl: PORTAL_URL })
     } finally {
-      window.location.replace(LANDING_URL)
+      window.location.replace(PORTAL_URL)
     }
   }
 
