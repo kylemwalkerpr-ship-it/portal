@@ -8,6 +8,66 @@ import MyInquiries from './my-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 
+// ── Premium section primitives ────────────────────────────────────────────
+const sectionEyebrow = {
+  color: C.textMuted,
+  fontSize: '11px',
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase',
+  fontWeight: 700,
+  marginBottom: '4px',
+}
+const sectionHeading = {
+  fontFamily: C.serif,
+  fontSize: '22px',
+  fontWeight: 500,
+  color: C.text,
+  letterSpacing: '-0.01em',
+  margin: 0,
+  lineHeight: 1.2,
+}
+const sectionHeaderRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-end',
+  marginBottom: '14px',
+  flexWrap: 'wrap',
+  gap: '12px',
+}
+
+function QuickActionTile({ icon, label, sub, onClick }) {
+  const [hover, setHover] = React.useState(false)
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: C.surface,
+        border: `1px solid ${hover ? 'rgba(0,0,0,0.14)' : C.border}`,
+        borderRadius: '14px',
+        padding: '16px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        textAlign: 'left',
+        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
+        transform: hover ? 'translateY(-2px)' : 'none',
+        boxShadow: hover ? '0 8px 22px rgba(15,18,32,0.06)' : '0 1px 2px rgba(15,18,32,0.03)',
+      }}
+    >
+      <span style={{ fontSize: '22px' }}>{icon}</span>
+      <span style={{ fontFamily: C.serif, fontSize: '17px', fontWeight: 500, color: C.text, letterSpacing: '-0.005em' }}>
+        {label}
+      </span>
+      {sub && <span style={{ fontSize: '12px', color: C.textMuted }}>{sub}</span>}
+    </button>
+  )
+}
+
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 const TERMS_URL = 'https://yousafeconsultancy.com/terms'
@@ -511,13 +571,16 @@ function Billing() {
 
   return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Billing</h2>
+      <div>
+        <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700, marginBottom: '4px' }}>Money</div>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Billing.</h2>
+      </div>
 
       <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(60,59,110,0.06))`, border: `1px solid rgba(60,59,110,0.18)` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
           <div>
-            <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</div>
-            <div style={{ fontSize: '36px', fontWeight: 800, color: C.text, lineHeight: 1 }}>
+            <div style={{ fontSize: '11px', color: C.textMuted, marginBottom: '6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em' }}>Wallet balance</div>
+            <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '40px', fontWeight: 500, color: C.text, lineHeight: 1, letterSpacing: '-0.012em' }}>
               {walletBal === null ? '—' : `$${Number(walletBal).toFixed(2)}`}
             </div>
             <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
@@ -887,94 +950,111 @@ function StudentApp({ onLogout, userId, userName }) {
       </div>
       )}
       {/* Active Orders */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '15px' }}>Active Orders</h3>
+      <section>
+        <div style={sectionHeaderRow}>
+          <div>
+            <div style={sectionEyebrow}>Active</div>
+            <h3 style={sectionHeading}>Orders in motion</h3>
+          </div>
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {orders.filter(o => o.status !== 'completed').length === 0 && (
+            <Card style={{ padding: '20px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
+              Nothing in progress right now. Browse services or submit an inquiry to start.
+            </Card>
+          )}
           {orders.filter(o => o.status !== 'completed').map(order => (
-            <Card key={order.id} style={{ padding: '18px', cursor: 'pointer' }} onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
+            <Card key={order.id} style={{ padding: '18px 20px', cursor: 'pointer' }} hover onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-                <Avatar name={order.consultant} size={40} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                <Avatar name={order.consultant} size={42} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '6px' }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '14px' }}>{order.service}</div>
+                      <div style={{ fontFamily: C.serif, fontWeight: 500, fontSize: '17px', color: C.text, lineHeight: 1.25, letterSpacing: '-0.005em' }}>{order.service}</div>
                       <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>with {order.consultant}</div>
                     </div>
                     <StatusBadge status={order.status} />
                   </div>
                   <ProgressBar value={order.progress} style={{ marginTop: '8px' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                    <span style={{ fontSize: '12px', color: C.textMuted }}>{order.deliverable}</span>
-                    <span style={{ fontSize: '12px', color: C.textMuted }}>{order.progress}%</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '12px', color: C.textMuted }}>
+                    <span>{order.deliverable}</span>
+                    <span>{order.progress}%</span>
                   </div>
                 </div>
               </div>
             </Card>
           ))}
         </div>
-      </div>
+      </section>
+
       {/* Quick actions */}
-      <div>
-        <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Quick Actions</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
+      <section>
+        <div style={sectionHeaderRow}>
+          <div>
+            <div style={sectionEyebrow}>Shortcuts</div>
+            <h3 style={sectionHeading}>Quick actions</h3>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
           {[
-            { icon: '🛒', label: 'Browse services', action: () => setPage('services') },
-            { icon: '💬', label: 'Message consultant', action: () => setPage('messages') },
-            { icon: '📋', label: 'Upload document', action: () => setPage('documents') },
-            { icon: '💳', label: 'Manage billing', action: () => setPage('billing') },
-          ].map(({ icon, label, action }) => (
-            <button key={label} onClick={action} style={{
-              background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px',
-              padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px',
-              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all 0.15s',
-            }}>
-              <span style={{ fontSize: '22px' }}>{icon}</span>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>{label}</span>
-            </button>
+            { icon: '⚖️', label: 'Find an attorney', sub: 'Browse the legal panel', action: () => setPage('attorneys') },
+            { icon: '🛒', label: 'Browse services', sub: 'Study-abroad catalogue', action: () => setPage('services') },
+            { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
+            { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
+            { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },
+          ].map(({ icon, label, sub, action }) => (
+            <QuickActionTile key={label} icon={icon} label={label} sub={sub} onClick={action} />
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 
   // ── ORDERS LIST ──
   const OrdersList = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>My Orders</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p>
+          <div style={sectionEyebrow}>Engagements</div>
+          <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>My orders.</h2>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0 }}>{orders.length} total · {activeOrders} in progress · {completedOrders} completed</p>
         </div>
-        <Btn variant="primary" size="sm" onClick={() => setPage('services')}>+ New Order</Btn>
+        <Btn variant="primary" size="sm" onClick={() => setPage('services')}>+ New order</Btn>
       </div>
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {['all', 'active', 'review', 'pending', 'completed'].map(f => (
           <button key={f} onClick={() => setOrderFilter(f)} style={{
-            padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter === f ? C.cyan : C.border}`,
-            background: orderFilter === f ? `${C.cyan}18` : C.surface2,
-            color: orderFilter === f ? C.cyan : C.textMuted,
-            fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter === f ? 600 : 400,
+            padding: '7px 16px', borderRadius: '999px',
+            border: `1px solid ${orderFilter === f ? 'rgba(0,0,0,0.18)' : C.border}`,
+            background: orderFilter === f ? C.surface : 'transparent',
+            color: orderFilter === f ? C.text : C.textMuted,
+            fontSize: '12px', cursor: 'pointer', fontFamily: 'inherit',
+            fontWeight: orderFilter === f ? 600 : 500,
             transition: 'all 0.15s', textTransform: 'capitalize',
+            letterSpacing: '0.01em',
           }}>{f}</button>
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {filteredOrders.length === 0 && (
+          <Card style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
+            No orders match this filter.
+          </Card>
+        )}
         {filteredOrders.map(order => (
-          <Card key={order.id} hover style={{ padding: '20px', cursor: 'pointer' }} onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
+          <Card key={order.id} hover style={{ padding: '20px 22px', cursor: 'pointer' }} onClick={() => { setSelectedOrder(order); setPage('order-detail'); }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <Avatar name={order.consultant} size={44} />
               <div style={{ flex: 1, minWidth: '200px' }}>
-                <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '2px' }}>{order.service}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px' }}>{order.id} · with {order.consultant} · {order.date}</div>
-                <ProgressBar value={order.progress} style={{ marginTop: '8px', maxWidth: '240px' }} />
+                <div style={{ fontFamily: C.serif, fontWeight: 500, fontSize: '18px', color: C.text, lineHeight: 1.2, letterSpacing: '-0.005em', marginBottom: '2px' }}>{order.service}</div>
+                <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.id} · with {order.consultant} · {order.date}</div>
+                <ProgressBar value={order.progress} style={{ marginTop: '10px', maxWidth: '260px' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
                 <StatusBadge status={order.status} />
-                <span style={{ fontSize: '14px', fontWeight: 700, color: C.text }}>{order.price}</span>
+                <span style={{ fontFamily: C.serif, fontSize: '20px', color: C.text }}>{order.price}</span>
                 {order.messages > 0 && <Badge color="red" style={{ fontSize: '11px' }}>{order.messages} new</Badge>}
               </div>
             </div>
@@ -995,10 +1075,13 @@ function StudentApp({ onLogout, userId, userName }) {
     ];
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>← Back</Btn>
-          <h2 style={{ fontSize: '18px', fontWeight: 800 }}>{order.service}</h2>
-          <StatusBadge status={order.status} />
+        <div>
+          <button onClick={() => setPage('orders')} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', fontFamily: 'inherit', padding: 0, marginBottom: '10px' }}>← Back to orders</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: 0 }}>{order.service}</h2>
+            <StatusBadge status={order.status} />
+          </div>
+          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>{order.id} · started {order.date}</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
           {/* Main */}
@@ -1501,8 +1584,9 @@ function StudentApp({ onLogout, userId, userName }) {
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Browse Services</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Expert support at every stage of your study abroad journey. Payment held in escrow until you approve.</p>
+          <div style={sectionEyebrow}>Catalogue</div>
+          <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Browse services.</h2>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '560px' }}>Expert support at every stage of your study-abroad journey. Funds held in escrow until you approve the deliverable.</p>
         </div>
         {orderPlaced && (
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1625,8 +1709,9 @@ function StudentApp({ onLogout, userId, userName }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Documents</h2>
-            <p style={{ color: C.textMuted, fontSize: '14px' }}>All files shared with consultants across your orders.</p>
+            <div style={sectionEyebrow}>Files</div>
+            <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Documents.</h2>
+            <p style={{ color: C.textMuted, fontSize: '13px', margin: 0 }}>All files shared with consultants across your orders.</p>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             {orders.length > 0 && (
@@ -1717,8 +1802,11 @@ function StudentApp({ onLogout, userId, userName }) {
     const [notifs, setNotifs] = React.useState({ messages: true, orders: true, promo: false });
     const [profile, setProfile] = React.useState({ name: userName || '', email: '', phone: '' });
     return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Settings</h2>
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
+        <div>
+          <div style={sectionEyebrow}>Account</div>
+          <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Settings.</h2>
+        </div>
         <Card>
           <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Profile</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
