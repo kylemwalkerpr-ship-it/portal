@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { C, Btn, Badge, Card, NavItem } from './shared'
+import { C, Btn, Badge, Card, NavItem, Avatar, UserMenu, PayoutBadge, StatCard as SharedStatCard } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
 import DashboardRightPane from './dashboard-right-pane'
 import { CountryChip } from './country-glyphs'
@@ -21,9 +21,14 @@ export default function AttorneyApp({ onLogout, userName }) {
   const [page, setPage] = React.useState('overview')
   const [profileData, setProfileData] = React.useState(null)
   const [profileError, setProfileError] = React.useState('')
+  const [dashboardData, setDashboardData] = React.useState(null)
+  const [available, setAvailable] = React.useState(true)
+  const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set())
+  const headshotInputRef = React.useRef(null)
+  const [uploadingHeadshot, setUploadingHeadshot] = React.useState(false)
 
-  React.useEffect(() => {
-    fetch('/api/attorney/profile', { credentials: 'same-origin' })
+  const refreshProfile = React.useCallback(() => {
+    return fetch('/api/attorney/profile', { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
         if (!r.ok) {
@@ -31,32 +36,179 @@ export default function AttorneyApp({ onLogout, userName }) {
           return
         }
         setProfileData(payload)
+        if (typeof payload?.attorney?.available === 'boolean') {
+          setAvailable(payload.attorney.available)
+        }
       })
       .catch((e) => setProfileError(e.message || 'Could not load profile.'))
   }, [])
 
+  const refreshDashboard = React.useCallback(() => {
+    return fetch('/api/attorney/data', { credentials: 'same-origin' })
+      .then(async (r) => {
+        const payload = await r.json().catch(() => null)
+        if (!r.ok) return
+        setDashboardData(payload)
+        if (typeof payload?.connect?.available === 'boolean') {
+          setAvailable(payload.connect.available)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  React.useEffect(() => { refreshProfile() }, [refreshProfile])
+  React.useEffect(() => {
+    refreshDashboard()
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') refreshDashboard()
+    }, 30000)
+    return () => clearInterval(id)
+  }, [refreshDashboard])
+
+  const profileId = profileData?.profile?.id || ''
+  const readKey = profileId ? `attorney:notif-read:${profileId}` : ''
+
+  React.useEffect(() => {
+    if (!readKey) return
+    try {
+      const raw = window.localStorage.getItem(readKey)
+      if (raw) setReadNotifKeys(new Set(JSON.parse(raw)))
+    } catch { /* ignore */ }
+  }, [readKey])
+
+  const persistReadNotifs = React.useCallback((next) => {
+    if (!readKey) return
+    try { window.localStorage.setItem(readKey, JSON.stringify(Array.from(next))) } catch { /* ignore */ }
+  }, [readKey])
+
+  const notifications = React.useMemo(() => {
+    const list = []
+    const orders = dashboardData?.orders || []
+    const summary = dashboardData?.summary || {}
+    if ((summary.open_inquiries ?? 0) > 0) {
+      list.push({
+        key: `inquiries-open:${summary.open_inquiries}`,
+        text: `${summary.open_inquiries} open inquir${summary.open_inquiries === 1 ? 'y' : 'ies'} in the queue`,
+        time: 'Live',
+        dot: C.cyan,
+        target: 'queue',
+      })
+    }
+    for (const o of orders) {
+      if (!o.is_complete && (o.status === 'active' || o.status === 'queued')) {
+        list.push({
+          key: `order-active:${o.id}`,
+          text: `Active engagement: ${o.title} — ${o.client_name}`,
+          time: o.created_at ? new Date(o.created_at).toLocaleDateString() : '',
+          dot: C.cyan,
+          target: 'orders',
+        })
+      }
+      if (o.payout_status === 'failed') {
+        list.push({
+          key: `payout-failed:${o.id}`,
+          text: `Payout failed for ${o.title}`,
+          time: 'Needs review',
+          dot: C.red,
+          target: 'earnings',
+        })
+      }
+    }
+    return list
+  }, [dashboardData])
+
+  const visibleNotifications = React.useMemo(
+    () => notifications.filter((n) => !readNotifKeys.has(n.key)),
+    [notifications, readNotifKeys],
+  )
+
+  const markNotifsRead = React.useCallback((keys) => {
+    if (!keys || keys.length === 0) return
+    setReadNotifKeys((prev) => {
+      const next = new Set(prev)
+      for (const k of keys) next.add(k)
+      persistReadNotifs(next)
+      return next
+    })
+  }, [persistReadNotifs])
+
+  const clearReadNotifs = React.useCallback(() => {
+    setReadNotifKeys(new Set())
+    if (readKey) {
+      try { window.localStorage.removeItem(readKey) } catch { /* ignore */ }
+    }
+  }, [readKey])
+
+  const handleNotificationClick = React.useCallback((n) => {
+    markNotifsRead([n.key])
+    if (n.target) setPage(n.target)
+  }, [markNotifsRead])
+
+  const toggleAvailable = React.useCallback(async () => {
+    const next = !available
+    setAvailable(next)
+    try {
+      const res = await fetch('/api/attorney/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ available: next }),
+      })
+      if (!res.ok) throw new Error('Could not update availability')
+    } catch {
+      setAvailable(!next)
+    }
+  }, [available])
+
+  const uploadHeadshot = React.useCallback(async (file) => {
+    if (!file) return
+    setUploadingHeadshot(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/attorney/profile/headshot', { method: 'POST', credentials: 'same-origin', body: form })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Upload failed')
+      setProfileData((prev) => prev ? { ...prev, attorney: { ...(prev.attorney || {}), headshot_url: payload.headshot_url, headshot_path: payload.headshot_path } } : prev)
+    } catch { /* surfaced via no-op; profile editor handles errors */ }
+    finally {
+      setUploadingHeadshot(false)
+      if (headshotInputRef.current) headshotInputRef.current.value = ''
+    }
+  }, [])
+
   const displayName = profileData?.profile?.full_name || userName || ''
+  const headshotUrl = profileData?.attorney?.headshot_url || ''
+  const profileEmail = profileData?.profile?.email || ''
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
-      <Sidebar page={page} setPage={setPage} onLogout={onLogout} displayName={displayName} />
+      <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        onLogout={onLogout}
+        displayName={displayName}
+        headshotUrl={headshotUrl}
+        available={available}
+        toggleAvailable={toggleAvailable}
+      />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header
-          style={{
-            height: '60px',
-            borderBottom: `1px solid ${C.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 28px',
-            background: C.surface,
-          }}
-        >
-          <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{PAGE_TITLES[page]}</h1>
-          {profileData?.profile?.email && (
-            <span style={{ color: C.textMuted, fontSize: '13px' }}>{profileData.profile.email}</span>
-          )}
-        </header>
+        <TopBar
+          title={PAGE_TITLES[page]}
+          notifications={visibleNotifications}
+          readCount={readNotifKeys.size}
+          onMarkAllRead={() => markNotifsRead(visibleNotifications.map((n) => n.key))}
+          onClearRead={clearReadNotifs}
+          onNotificationClick={handleNotificationClick}
+          displayName={displayName || 'Attorney'}
+          email={profileEmail}
+          headshotUrl={headshotUrl}
+          onLogout={onLogout}
+          onNavigate={setPage}
+          onChangeHeadshot={() => headshotInputRef.current?.click()}
+          uploadingHeadshot={uploadingHeadshot}
+        />
         <div style={{ flex: 1, overflow: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
             <main style={{ flex: 1, minWidth: 0 }}>
@@ -65,7 +217,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'mine' && <MyInquiriesPage />}
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && <AttorneyMessagesPage />}
-              {page === 'earnings' && <EarningsPage />}
+              {page === 'earnings' && <EarningsPage data={dashboardData} refresh={refreshDashboard} />}
               {page === 'profile' && <AttorneyProfileEditor />}
               {page === 'settings' && <SettingsPage />}
             </main>
@@ -77,7 +229,97 @@ export default function AttorneyApp({ onLogout, userName }) {
   )
 }
 
-function Sidebar({ page, setPage, onLogout, displayName }) {
+function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, onNotificationClick, displayName, email, headshotUrl, onLogout, onNavigate, onChangeHeadshot, uploadingHeadshot }) {
+  const [notifOpen, setNotifOpen] = React.useState(false)
+  return (
+    <div
+      style={{
+        height: '60px',
+        background: C.surface,
+        borderBottom: `1px solid ${C.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 28px',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+      }}
+    >
+      <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setNotifOpen((v) => !v)}
+            aria-label="Notifications"
+            style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}
+          >
+            🔔
+          </button>
+          {notifications.length > 0 && (
+            <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
+          )}
+          {notifOpen && (
+            <div style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>Notifications</span>
+                {notifications.length > 0 && (
+                  <button onClick={onMarkAllRead} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit', fontWeight: 600 }}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {notifications.length > 0 ? notifications.map((n, i) => (
+                <button
+                  key={n.key}
+                  type="button"
+                  onClick={() => { onNotificationClick(n); setNotifOpen(false) }}
+                  style={{ width: '100%', textAlign: 'left', padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start', borderBottom: i < notifications.length - 1 ? `1px solid ${C.border}` : 'none', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: n.dot || C.cyan, marginTop: '5px', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', color: C.text, lineHeight: 1.4 }}>{n.text}</div>
+                    <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>{n.time}</div>
+                  </div>
+                </button>
+              )) : (
+                <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
+                  You're all caught up.
+                </div>
+              )}
+              {readCount > 0 && (
+                <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, textAlign: 'center' }}>
+                  <button onClick={onClearRead} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' }}>
+                    Reset read state
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <UserMenu
+          name={displayName}
+          role="Attorney"
+          email={email}
+          avatarSrc={headshotUrl}
+          color={C.cyan}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          items={[
+            { label: 'My profile', icon: '👤', action: () => onNavigate?.('profile') },
+            { label: uploadingHeadshot ? 'Uploading photo…' : (headshotUrl ? 'Change photo' : 'Upload headshot'), icon: '🖼️', action: () => onChangeHeadshot?.() },
+            { label: 'Earnings', icon: '💰', action: () => onNavigate?.('earnings') },
+            { label: 'Messages', icon: '💬', action: () => onNavigate?.('messages') },
+            { label: 'Settings', icon: '⚙️', action: () => onNavigate?.('settings') },
+          ]}
+        />
+      </div>
+    </div>
+  )
+}
+
+function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable }) {
   return (
     <div
       style={{
@@ -87,15 +329,22 @@ function Sidebar({ page, setPage, onLogout, displayName }) {
         borderRight: `1px solid ${C.border}`,
         display: 'flex',
         flexDirection: 'column',
+        height: '100vh',
+        position: 'sticky',
+        top: 0,
       }}
     >
-      <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ fontWeight: 700, fontSize: '14px', color: C.text }}>YouSafe Attorney</div>
-        <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
+      <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ fontWeight: 700, fontSize: '14px', color: C.text }}>YouSafe</div>
+          <Badge color="cyan" style={{ fontSize: '10px', padding: '2px 8px' }}>Attorney</Badge>
+        </div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '4px' }}>
           {displayName || 'Panel member'}
         </div>
       </div>
-      <div style={{ padding: '12px 8px', flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Overview" active={page === 'overview'} onClick={() => setPage('overview')} />
         <NavItem icon="📥" label="Inquiry Queue" active={page === 'queue'} onClick={() => setPage('queue')} />
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
@@ -107,23 +356,43 @@ function Sidebar({ page, setPage, onLogout, displayName }) {
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
-        <button
-          type="button"
-          onClick={onLogout}
-          style={{
-            width: '100%',
-            border: `1px solid ${C.border}`,
-            borderRadius: '8px',
-            background: C.surface,
-            color: C.textMuted,
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 700,
-            padding: '8px',
-          }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
+          <Avatar name={displayName || 'Attorney'} src={headshotUrl} size={32} color={C.cyan} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName || 'Attorney'}</div>
+            <button
+              type="button"
+              onClick={toggleAvailable}
+              title={available ? 'Available — click to pause new clients' : 'Unavailable — click to resume'}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: available ? C.green : C.textDim, fontFamily: 'inherit' }}
+            >
+              ● {available ? 'Available' : 'Unavailable'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label="Log out and return to Yousafe Consultancy"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              border: `1px solid ${C.border}`,
+              borderRadius: '8px',
+              background: C.surface,
+              color: C.textMuted,
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '7px 9px',
+              whiteSpace: 'nowrap',
+            }}
+            title="Log out"
+          >
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
+            <span>Logout</span>
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1194,13 +1463,18 @@ function DetailRow({ label, value, mono }) {
 }
 
 // ── Earnings page ──────────────────────────────────────────────────────────
-function EarningsPage() {
-  const [data, setData] = React.useState(null)
-  const [loading, setLoading] = React.useState(true)
+function EarningsPage({ data: dataProp, refresh }) {
+  const [data, setData] = React.useState(dataProp || null)
+  const [loading, setLoading] = React.useState(!dataProp)
   const [error, setError] = React.useState('')
   const [opening, setOpening] = React.useState(false)
 
   React.useEffect(() => {
+    if (dataProp) {
+      setData(dataProp)
+      setLoading(false)
+      return
+    }
     fetch('/api/attorney/data', { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
@@ -1209,7 +1483,7 @@ function EarningsPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [dataProp])
 
   async function openStripe() {
     setOpening(true)
@@ -1225,76 +1499,102 @@ function EarningsPage() {
   if (error) return <Notice tone="error">{error}</Notice>
 
   const s = data?.summary || {}
-  const trend = data?.trend || []
-  const completed = (data?.orders || []).filter((o) => o.is_complete)
-  const peak = trend.reduce((m, d) => Math.max(m, d.amount), 0) || 1
+  const orders = data?.orders || []
+  const completed = orders.filter((o) => o.is_complete)
+  const completedOrders = completed.length
+
+  const transferred = completed.filter((o) => o.payout_status === 'transferred')
+  const pending = completed.filter((o) => o.payout_status !== 'transferred')
+  const transferredTotal = transferred.reduce((a, o) => a + Number(o.attorney_fee || 0), 0)
+  const pendingTotal = pending.reduce((a, o) => a + Number(o.attorney_fee || 0), 0)
+  const lifetime = Number(s.earnings_lifetime || 0)
+  const monthEarnings = Number(s.earnings_month || 0)
+
+  const monthlyByKey = completed.reduce((acc, o) => {
+    if (!o.completed_at || o.payout_status !== 'transferred') return acc
+    const d = new Date(o.completed_at)
+    if (Number.isNaN(d.getTime())) return acc
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleString(undefined, { month: 'short', year: 'numeric' })
+    acc[key] = acc[key] || { label, amount: 0, count: 0 }
+    acc[key].amount += Number(o.attorney_fee || 0)
+    acc[key].count += 1
+    return acc
+  }, {})
+  const monthlyRows = Object.entries(monthlyByKey).sort(([a], [b]) => b.localeCompare(a)).slice(0, 12)
+  const payoutRows = completed.filter((o) => o.payout_status === 'transferred' || o.payout_status === 'failed')
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: '1080px', display: 'grid', gap: '20px' }}>
-      <div>
-        <div style={eyebrowStyle}>Money</div>
-        <h2 style={pageTitleStyle}>Earnings.</h2>
-      </div>
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Earnings</h2>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
-        <StatCard label="This month" value={`$${Number(s.earnings_month || 0).toFixed(2)}`} sub="Released to date" />
-        <StatCard label="Lifetime" value={`$${Number(s.earnings_lifetime || 0).toFixed(2)}`} sub="All-time fees" />
-        <StatCard label="Completed orders" value={s.completed_orders ?? 0} sub="Total delivered" />
-      </div>
-
-      <Card>
-        <div style={{ padding: '18px 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ fontWeight: 700, color: C.text, fontSize: '14px' }}>Stripe Connect</div>
-            {data?.connect?.onboarding_complete ? (
-              <Btn variant="primary" size="sm" onClick={openStripe} disabled={opening}>{opening ? 'Opening...' : 'Open Stripe dashboard ↗'}</Btn>
-            ) : (
-              <Badge color="orange">Not connected</Badge>
-            )}
-          </div>
-          <p style={{ color: C.textMuted, fontSize: '12px', margin: 0 }}>
-            Payouts are handled by Stripe. Open the Stripe dashboard to view payout schedule, bank details, and tax forms.
-          </p>
+      <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0d2060 100%)`, borderRadius: '20px', padding: '28px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: 0, right: 0, width: '6px', height: '100%', background: C.cyan }} />
+        <div style={{ position: 'absolute', top: 0, right: '6px', width: '6px', height: '100%', background: '#fff', opacity: 0.15 }} />
+        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Transferred to your bank</div>
+        <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>${transferredTotal.toFixed(2)}</div>
+        <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', marginBottom: '20px' }}>
+          Payouts move to your connected bank automatically when engagements are completed and approved by the client.
         </div>
-      </Card>
-
-      <Card>
-        <div style={{ padding: '18px 20px' }}>
-          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Last 30 days</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '120px' }}>
-            {trend.map((d) => (
-              <div key={d.date} title={`${d.date}: $${d.amount.toFixed(2)}`} style={{ flex: 1, height: `${(d.amount / peak) * 100}%`, background: d.amount > 0 ? C.cyan : C.surface3, minHeight: '2px', borderRadius: '2px' }} />
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div style={{ padding: '18px 20px' }}>
-          <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Completed engagements</div>
-          {completed.length === 0 ? (
-            <div style={{ color: C.textMuted, fontSize: '13px' }}>No completed orders yet.</div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {data?.connect?.onboarding_complete ? (
+            <Btn variant="primary" size="md" onClick={openStripe} disabled={opening}>
+              {opening ? 'Opening Stripe…' : 'Open Stripe payout dashboard'}
+            </Btn>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Engagement</th>
-                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Client</th>
-                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>Completed</th>
-                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${C.border}`, textAlign: 'right' }}>Earned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completed.map((o) => (
-                  <tr key={o.id}>
-                    <td style={{ padding: '10px', color: C.text, fontSize: '13px' }}>{o.title}</td>
-                    <td style={{ padding: '10px', color: C.textMuted, fontSize: '13px' }}>{o.client_name}</td>
-                    <td style={{ padding: '10px', color: C.textMuted, fontSize: '12px' }}>{o.completed_at ? new Date(o.completed_at).toLocaleDateString() : '—'}</td>
-                    <td style={{ padding: '10px', color: C.text, fontSize: '13px', textAlign: 'right', fontFamily: C.serif }}>${o.attorney_fee.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <Badge color="orange">Stripe not connected — set up payouts in Settings</Badge>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+        <SharedStatCard label="This Month" value={`$${monthEarnings.toFixed(2)}`} icon="📈" color={C.green} />
+        <SharedStatCard label="All Time" value={`$${lifetime.toFixed(2)}`} icon="💰" color={C.cyan} />
+        <SharedStatCard label="Pending Payout" value={`$${pendingTotal.toFixed(2)}`} icon="⏳" color={C.orange} />
+        <SharedStatCard label="Completed Orders" value={completedOrders} icon="✅" color={C.purple} />
+      </div>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Monthly Breakdown</div>
+          {monthlyRows.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {monthlyRows.map(([key, row]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: '10px', background: C.surface2, fontSize: '13px' }}>
+                  <span style={{ color: C.text, fontWeight: 600 }}>{row.label}</span>
+                  <span style={{ color: C.textMuted }}>{row.count} order{row.count === 1 ? '' : 's'}</span>
+                  <span style={{ color: C.green, fontWeight: 700 }}>${row.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+              No transferred payouts yet. Earnings appear here once Stripe Connect transfers complete.
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payout History</div>
+          {payoutRows.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {payoutRows.map((o) => (
+                <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px', gap: '12px' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.title}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px' }}>{o.client_name} · {o.completed_at ? new Date(o.completed_at).toLocaleDateString() : '—'}</div>
+                  </div>
+                  <PayoutBadge status={o.payout_status} />
+                  <span style={{ fontWeight: 700, color: o.payout_status === 'transferred' ? C.green : C.orange, fontFamily: C.serif }}>${Number(o.attorney_fee || 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
+              Your payout history will populate when Stripe Connect transfers settle.
+            </div>
           )}
         </div>
       </Card>
