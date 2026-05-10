@@ -1,4 +1,4 @@
-export type AuthLane = 'client' | 'consultant' | 'support'
+export type AuthLane = 'client' | 'consultant' | 'support' | 'attorney'
 export type ProfileRole = AuthLane | 'admin'
 
 export const DEFAULT_AUTH_LANE: AuthLane = 'client'
@@ -7,6 +7,7 @@ export function normalizeAuthLane(value: unknown): AuthLane {
   if (value === 'student' || value === 'client') return 'client'
   if (value === 'consultant') return 'consultant'
   if (value === 'support') return 'support'
+  if (value === 'attorney') return 'attorney'
   return DEFAULT_AUTH_LANE
 }
 

@@ -6,7 +6,7 @@ import { dashboardForLane, normalizeAuthLane, signInForLane } from '@/lib/roleLa
 
 const ADMIN_SIGN_IN_URL = '/sign-in/admin'
 const STUDENT_SIGN_UP_URL = '/sign-up/student'
-const VALID_SIGN_UP_LANES = new Set(['student', 'client', 'consultant'])
+const VALID_SIGN_UP_LANES = new Set(['student', 'client', 'consultant', 'attorney'])
 
 const FLAGS = [
   '🇺🇸','🇨🇦','🇬🇧','🇫🇷','🇩🇪','🇦🇺','🇯🇵','🇧🇷','🇮🇳','🇨🇳',

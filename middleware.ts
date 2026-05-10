@@ -33,7 +33,10 @@ export default clerkMiddleware(
     if (!userId) {
       const lane = req.nextUrl.searchParams.get('lane')
       const laneSegment =
-        lane === 'consultant' ? 'consultant' : lane === 'admin' ? 'admin' : 'student'
+        lane === 'consultant' ? 'consultant'
+        : lane === 'admin' ? 'admin'
+        : lane === 'attorney' ? 'attorney'
+        : 'student'
       const signInUrl = new URL(`/sign-in/${laneSegment}`, req.nextUrl.origin)
       return NextResponse.redirect(signInUrl)
     }

@@ -9,6 +9,8 @@ import { roleLabel, signInForLane } from '@/lib/roleLanes'
 const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: false })
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
+const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
+const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
 const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false })
 const LANDING_URL = 'https://yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
@@ -83,6 +85,44 @@ export default function DashboardClient({ role, status, userName, userId, expect
     )
   }
 
+  if (role === 'attorney' && (status === 'incomplete' || !status)) {
+    return <AttorneyApplyForm onLogout={handleLogout} defaultFullName={userName} />
+  }
+
+  if (status === 'pending' && role === 'attorney') {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
+        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Attorney Application Under Review</h2>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            Thank you for applying to join the YouSafe attorney panel. Our team will review your application and email you when a decision is made.
+          </p>
+          <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'declined' && role === 'attorney') {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
+        <div style={{ textAlign: 'center', maxWidth: '420px', padding: '40px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>—</div>
+          <h2 style={{ color: C.text, fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>Application Not Accepted</h2>
+          <p style={{ color: C.textMuted, lineHeight: 1.7, marginBottom: '24px' }}>
+            Your attorney application was not accepted at this time. If you believe this is in error, contact support@yousafeconsultancy.com.
+          </p>
+          <button onClick={handleLogout} style={{ color: C.textDim, background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (status === 'pending' && role === 'support') {
     return (
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>
@@ -125,6 +165,7 @@ export default function DashboardClient({ role, status, userName, userId, expect
   const app =
     role === 'consultant' ? <ConsultantApp onLogout={handleLogout} />
     : role === 'admin' ? <AdminApp onLogout={handleLogout} />
+    : role === 'attorney' ? <AttorneyApp onLogout={handleLogout} userName={userName} />
     : <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
 
   return (

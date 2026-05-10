@@ -124,7 +124,10 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
 
   // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
-    const defaultStatus = requestedRole === 'client' ? 'active' : 'pending'
+    const defaultStatus =
+      requestedRole === 'client' ? 'active'
+      : requestedRole === 'attorney' ? 'incomplete'
+      : 'pending'
     const baseRow: Record<string, unknown> = {
       clerk_user_id: userId,
       email: clerkData.email,

@@ -20,6 +20,11 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BO
 # STRIPE_SECRET_KEY = ""
 # STRIPE_WEBHOOK_SECRET = ""
 
+# Resend transactional email key. Used for attorney application decision emails.
+# Set with: npx wrangler secret put RESEND_API_KEY
+# Sender domain (yousafeconsultancy.com) is already verified in Resend.
+# RESEND_API_KEY = ""
+
 [[routes]]
 pattern = "portal.yousafeconsultancy.com"
 custom_domain = true

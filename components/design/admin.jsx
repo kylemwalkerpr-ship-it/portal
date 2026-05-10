@@ -47,6 +47,10 @@ function AdminApp({ onLogout }) {
   const [actionNotice, setActionNotice] = React.useState('');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [users, setUsers] = React.useState([]);
+  const [attorneyApplications, setAttorneyApplications] = React.useState([]);
+  const [attorneyAppFilter, setAttorneyAppFilter] = React.useState('pending');
+  const [attorneyAppDecisionId, setAttorneyAppDecisionId] = React.useState(null);
+  const [openApplicationId, setOpenApplicationId] = React.useState(null);
   const [currentAdminId, setCurrentAdminId] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [services, setServices] = React.useState([]);
@@ -168,7 +172,38 @@ function AdminApp({ onLogout }) {
       .finally(() => setLoading(false));
   }, [normalizeAdminData]);
 
-  React.useEffect(() => { refreshAdminData(); }, [refreshAdminData]);
+  const refreshAttorneyApplications = React.useCallback(() => {
+    fetch('/api/admin/attorney-applications')
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Unable to load attorney applications');
+        setAttorneyApplications(Array.isArray(data.applications) ? data.applications : []);
+      })
+      .catch(e => setLoadError(e.message));
+  }, []);
+
+  React.useEffect(() => { refreshAdminData(); refreshAttorneyApplications(); }, [refreshAdminData, refreshAttorneyApplications]);
+
+  const decideAttorneyApplication = async (applicationId, action) => {
+    if (attorneyAppDecisionId) return;
+    setAttorneyAppDecisionId(applicationId);
+    try {
+      const res = await fetch(`/api/admin/attorney-applications/${applicationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Could not ${action} application`);
+      setActionNotice(action === 'approve' ? 'Attorney application approved.' : 'Attorney application declined.');
+      refreshAttorneyApplications();
+      refreshAdminData();
+    } catch (e) {
+      setActionNotice(e.message);
+    } finally {
+      setAttorneyAppDecisionId(null);
+    }
+  };
 
   const releaseOrder = async orderId => {
     const res = await fetch(`/api/admin/orders/${orderId}`, {
@@ -241,6 +276,8 @@ function AdminApp({ onLogout }) {
   const totalConsultants = users.filter(u => u.role === 'consultant').length;
   const totalSupport = users.filter(u => u.role === 'support').length;
   const pendingApprovals = users.filter(u => ['consultant', 'support'].includes(u.role) && u.status === 'pending');
+  const pendingAttorneyApps = attorneyApplications.filter(a => a.status === 'pending');
+  const filteredAttorneyApps = attorneyAppFilter === 'all' ? attorneyApplications : attorneyApplications.filter(a => a.status === attorneyAppFilter);
   const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
   const filteredUsers = userFilter === 'all'
     ? users
@@ -264,6 +301,7 @@ function AdminApp({ onLogout }) {
       <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
+        <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
@@ -1170,7 +1208,110 @@ function AdminApp({ onLogout }) {
     </div>
   );
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', services: 'Service Catalogue', settings: 'Settings' };
+  const AttorneyApplications = () => (
+    <div style={{ padding: '24px 28px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Attorney Applications</h2>
+          <div style={{ fontSize: '13px', color: C.textMuted }}>{pendingAttorneyApps.length} pending review · {attorneyApplications.length} total</div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {['pending', 'approved', 'declined', 'all'].map(f => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setAttorneyAppFilter(f)}
+              style={{
+                background: attorneyAppFilter === f ? C.cyan : C.surface,
+                color: attorneyAppFilter === f ? '#000' : C.text,
+                border: `1px solid ${attorneyAppFilter === f ? C.cyan : C.border}`,
+                borderRadius: '999px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 700,
+                textTransform: 'capitalize',
+                cursor: 'pointer',
+              }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filteredAttorneyApps.length === 0 ? (
+        <Card>
+          <div style={{ padding: '24px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
+            No applications in this view.
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {filteredAttorneyApps.map(app => {
+            const isOpen = openApplicationId === app.id;
+            const decisionPending = attorneyAppDecisionId === app.id;
+            return (
+              <Card key={app.id}>
+                <div style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: C.text, fontSize: '15px' }}>{app.full_name}</div>
+                      <div style={{ color: C.textMuted, fontSize: '13px' }}>{app.email}{app.phone ? ` · ${app.phone}` : ''}</div>
+                      <div style={{ color: C.textDim, fontSize: '12px', marginTop: '4px' }}>
+                        Submitted {app.created_at ? new Date(app.created_at).toLocaleString() : '—'}
+                      </div>
+                    </div>
+                    <Badge color={app.status === 'approved' ? 'green' : app.status === 'declined' ? 'red' : 'orange'}>
+                      {app.status}
+                    </Badge>
+                  </div>
+
+                  <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <ApplicationField label="Credential" value={app.credential_type} />
+                    <ApplicationField label="Jurisdictions" value={app.jurisdictions} />
+                    <ApplicationField label="Bar / roll number" value={app.bar_number} />
+                    <ApplicationField label="Practice areas" value={app.practice_areas} />
+                    <ApplicationField label="Capacity" value={app.capacity} />
+                    <ApplicationField label="Profile URL" value={app.profile_url} link />
+                  </div>
+
+                  {isOpen && (
+                    <div style={{ marginTop: '12px', display: 'grid', gap: '12px' }}>
+                      <ApplicationField label="Malpractice / PI insurance" value={app.malpractice_insurance} />
+                      {app.notes && <ApplicationField label="Notes" value={app.notes} multiline />}
+                      {app.decision_notes && <ApplicationField label="Decision notes" value={app.decision_notes} multiline />}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenApplicationId(isOpen ? null : app.id)}
+                      style={{ background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {isOpen ? 'Hide details' : 'Show full details'}
+                    </button>
+                    {app.status === 'pending' && (
+                      <>
+                        <Btn variant="primary" size="sm" disabled={decisionPending} onClick={() => decideAttorneyApplication(app.id, 'approve')}>
+                          {decisionPending ? 'Saving...' : 'Approve'}
+                        </Btn>
+                        <Btn variant="danger" size="sm" disabled={decisionPending} onClick={() => decideAttorneyApplication(app.id, 'decline')}>
+                          Decline
+                        </Btn>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', services: 'Service Catalogue', settings: 'Settings' };
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -1188,6 +1329,7 @@ function AdminApp({ onLogout }) {
           )}
           {page === 'dashboard' && <Dashboard />}
           {page === 'users' && <Users />}
+          {page === 'attorney-applications' && <AttorneyApplications />}
           {page === 'orders' && <Orders />}
           {page === 'escrow' && <Escrow />}
           {page === 'payouts' && <Payouts />}
@@ -1196,6 +1338,20 @@ function AdminApp({ onLogout }) {
           {page === 'settings' && <Settings />}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ApplicationField({ label, value, link, multiline }) {
+  const display = value || '—';
+  return (
+    <div>
+      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: C.textDim, marginBottom: '4px' }}>{label}</div>
+      {link && value ? (
+        <a href={value} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '13px', wordBreak: 'break-all' }}>{display}</a>
+      ) : (
+        <div style={{ color: C.text, fontSize: '13px', whiteSpace: multiline ? 'pre-wrap' : 'normal', wordBreak: 'break-word' }}>{display}</div>
+      )}
     </div>
   );
 }

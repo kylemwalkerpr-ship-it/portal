@@ -3,6 +3,7 @@
 import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import FindAttorney from './find-attorney'
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
@@ -780,6 +781,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Browse Services" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="⚖️" label="Find an Attorney" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
@@ -1766,6 +1768,7 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'orders' && <OrdersList />}
           {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
           {page === 'services' && <ServicesBrowse />}
+          {page === 'attorneys' && <FindAttorney />}
           {page === 'documents' && <Documents />}
           {page === 'billing' && <Billing />}
           {page === 'settings' && <Settings />}
