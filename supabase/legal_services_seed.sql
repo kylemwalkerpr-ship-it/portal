@@ -5,7 +5,7 @@
 -- Prereq: supabase/portal_verticals.sql must run first so the `vertical`
 -- column exists on services.
 --
--- Pricing here matches the public tier pricing on mycaseworks.co/services.
+-- Pricing here matches the public tier pricing on legal.yousafeconsultancy.com/services.
 -- The admin can adjust any of these in the dashboard after seeding.
 
 insert into services (title, category, price, currency, delivery_days, is_active, vertical)

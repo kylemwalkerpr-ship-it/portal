@@ -366,7 +366,7 @@ function AdminApp({ onLogout }) {
   const Sidebar = () => (
     <div style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
-        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+        <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
           <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
           <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
@@ -1174,7 +1174,7 @@ function AdminApp({ onLogout }) {
                   onChange={v => setEditing(s => ({ ...s, vertical: v }))}
                   options={[
                     { value: 'study_abroad', label: 'Study Abroad (yousafeconsultancy.com)' },
-                    { value: 'legal', label: 'Legal (mycaseworks.co)' },
+                    { value: 'legal', label: 'Legal (legal.yousafeconsultancy.com)' },
                   ]}
                 />
                 <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />

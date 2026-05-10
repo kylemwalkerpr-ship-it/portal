@@ -1325,7 +1325,7 @@ function StudentApp({ onLogout, userId, userName }) {
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0,
     }}>
       <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
-        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+        <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
           <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
           <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
@@ -1757,8 +1757,8 @@ function StudentApp({ onLogout, userId, userName }) {
     React.useEffect(() => {
       setServicesLoading(true);
       // Scope the catalogue to the viewer's vertical so a legal-vertical
-      // user (came in via mycaseworks.co intake) only sees legal services,
-      // not the study-abroad consultancy catalogue.
+      // user (came in via legal.yousafeconsultancy.com intake) only sees
+      // legal services, not the study-abroad consultancy catalogue.
       const url = viewerVertical && viewerVertical !== 'study_abroad'
         ? `/api/services?vertical=${encodeURIComponent(viewerVertical)}`
         : '/api/services';

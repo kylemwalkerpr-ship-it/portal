@@ -21,8 +21,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://checkout.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
-  'https://mycaseworks.co',
-  'https://www.mycaseworks.co',
+  'https://legal.yousafeconsultancy.com',
 ])
 
 function corsHeaders(req: Request) {

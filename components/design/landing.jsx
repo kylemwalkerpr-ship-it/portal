@@ -157,7 +157,7 @@ function Nav({ onSignIn }) {
         WebkitBackdropFilter: 'saturate(160%) blur(10px)',
       }}
     >
-      <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
+      <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
         <span
           style={{
             width: '32px',

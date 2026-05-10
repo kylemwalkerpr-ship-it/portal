@@ -336,10 +336,14 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
     >
       <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <a
+          href="https://yousafeconsultancy.com"
+          aria-label="Back to Yousafe Consultancy"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'inherit' }}
+        >
           <div style={{ fontWeight: 700, fontSize: '14px', color: C.text }}>YouSafe</div>
           <Badge color="cyan" style={{ fontSize: '10px', padding: '2px 8px' }}>Attorney</Badge>
-        </div>
+        </a>
         <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '4px' }}>
           {displayName || 'Panel member'}
         </div>

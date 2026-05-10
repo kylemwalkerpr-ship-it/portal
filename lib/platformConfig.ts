@@ -11,7 +11,7 @@ export type PrimaryCurrency = typeof SUPPORTED_CURRENCIES[number]
  *     mentorship). Surfaces on yousafeconsultancy.com / ca / usa.
  *
  *   - 'legal' is the document-prep + attorney-review catalogue
- *     surfaced on caseworks (mycaseworks.co).
+ *     surfaced on caseworks (legal.yousafeconsultancy.com).
  *
  * Profiles, services, and consultants all carry a vertical tag so the
  * admin can run both catalogues from a single backend.
