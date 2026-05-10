@@ -41,6 +41,33 @@ const approvalLabel = role =>
   : role === 'attorney' ? 'Attorney panel access'
   : 'Consultant access';
 
+// ── Premium section primitives ─────────────────────────────────────────────
+const adminEyebrow = {
+  color: C.textMuted,
+  fontSize: '11px',
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase',
+  fontWeight: 700,
+  marginBottom: '4px',
+};
+const adminPageTitle = {
+  fontFamily: C.serif,
+  fontSize: '32px',
+  fontWeight: 500,
+  color: C.text,
+  letterSpacing: '-0.012em',
+  margin: '0 0 6px',
+};
+const adminPageSub = { color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '640px' };
+const adminSectionHeading = {
+  fontFamily: C.serif,
+  fontSize: '20px',
+  fontWeight: 500,
+  color: C.text,
+  letterSpacing: '-0.005em',
+  margin: '0 0 12px',
+};
+
 function AdminApp({ onLogout }) {
   const [page, setPage] = React.useState('dashboard');
   const [userFilter, setUserFilter] = React.useState('all');
@@ -443,8 +470,9 @@ function AdminApp({ onLogout }) {
   const Dashboard = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Admin Overview</h2>
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>Full platform visibility — all users, orders and funds.</p>
+        <div style={adminEyebrow}>Today</div>
+        <h2 style={adminPageTitle}>Admin overview.</h2>
+        <p style={adminPageSub}>Full platform visibility — every user, order, and dollar.</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3" />
@@ -457,7 +485,7 @@ function AdminApp({ onLogout }) {
 
       {/* Unified approvals */}
       <div>
-        <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Pending User Approvals</h3>
+        <h3 style={adminSectionHeading}>Pending user approvals</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {pendingApprovals.length === 0 ? (
             <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No consultant or support approvals waiting.</div>
@@ -478,7 +506,7 @@ function AdminApp({ onLogout }) {
 
       {/* Escrow alerts */}
       <div>
-        <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Pending Escrow Releases</h3>
+        <h3 style={adminSectionHeading}>Pending Escrow Releases</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {orders.filter(o => o.status === 'completed' && o.escrow === 'held').length === 0 ? (
             <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No pending escrow releases</div>
@@ -501,7 +529,7 @@ function AdminApp({ onLogout }) {
       {/* Recent orders */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '15px' }}>Recent Orders</h3>
+          <h3 style={adminSectionHeading}>Recent Orders</h3>
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -526,7 +554,7 @@ function AdminApp({ onLogout }) {
       {/* Revenue split summary */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue Split (all time)</div>
+          <div style={adminSectionHeading}>Revenue Split (all time)</div>
           {[
             { label: 'Total collected', value: orders.reduce((a, o) => a + o.amountValue, 0), color: C.text },
             { label: `Consultant share (${consultantFeePercent}%)`, value: orders.reduce((a, o) => a + moneyValue(o.consultantPay), 0), color: C.cyan },
@@ -539,7 +567,7 @@ function AdminApp({ onLogout }) {
           ))}
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Platform Health</div>
+          <div style={adminSectionHeading}>Platform Health</div>
           {[
             { label: 'Avg order value', value: orders.length ? formatPrimary(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A' },
             { label: 'Completion rate', value: 'N/A' },
@@ -564,8 +592,9 @@ function AdminApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Users</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>{users.length} total · {totalStudents} students · {totalConsultants} consultants · {totalSupport} support</p>
+          <div style={adminEyebrow}>Members</div>
+          <h2 style={adminPageTitle}>Users.</h2>
+          <p style={adminPageSub}>{users.length} total · {totalStudents} students · {totalConsultants} consultants · {totalAttorneys} attorneys · {totalSupport} support</p>
         </div>
         <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
@@ -765,7 +794,11 @@ function AdminApp({ onLogout }) {
     const handleUnassign = orderId => updateOrder(orderId, { consultant_id: null, status: 'queued' });
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div><h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>All Orders</h2><p style={{ color: C.textMuted, fontSize: '14px' }}>{orders.length} total orders</p></div>
+        <div>
+          <div style={adminEyebrow}>Engagements</div>
+          <h2 style={adminPageTitle}>All orders.</h2>
+          <p style={adminPageSub}>{orders.length} total orders across the platform.</p>
+        </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {['all','new','active','review','pending','completed','cancelled'].map(f => (
             <button key={f} onClick={() => setOrderFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter===f?C.cyan:C.border}`, background: orderFilter===f?`${C.cyan}18`:C.surface2, color: orderFilter===f?C.cyan:C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter===f?600:400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
@@ -892,7 +925,8 @@ function AdminApp({ onLogout }) {
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Escrow Management</h2>
+          <div style={adminEyebrow}>Money in motion</div>
+          <h2 style={adminPageTitle}>Escrow.</h2>
           <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {consultantFeePercent}% to consultant, {platformFeePercent}% to platform.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
@@ -901,7 +935,7 @@ function AdminApp({ onLogout }) {
           <StatCard label="Released All Time" value={formatPrimary(released.reduce((a, o) => a + o.amountValue, 0))} icon="✅" color={C.green} />
         </div>
         <div>
-          <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Held — Awaiting Student Approval</h3>
+          <h3 style={adminSectionHeading}>Held — Awaiting Student Approval</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {held.map(o => (
               <Card key={o.id} style={{ padding: '18px' }}>
@@ -934,7 +968,7 @@ function AdminApp({ onLogout }) {
           </div>
         </div>
         <div>
-          <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '14px' }}>Released</h3>
+          <h3 style={adminSectionHeading}>Released</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {released.map(o => (
               <Card key={o.id} style={{ padding: '16px', opacity: 0.7 }}>
@@ -960,14 +994,17 @@ function AdminApp({ onLogout }) {
   // ── PAYOUTS ──
   const Payouts = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Payouts</h2>
+      <div>
+        <div style={adminEyebrow}>Disbursements</div>
+        <h2 style={adminPageTitle}>Payouts.</h2>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
         <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon="👤" color={C.cyan} />
         <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon="⏳" color={C.orange} />
       </div>
       <Card>
-        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Consultant Payout Queue</div>
+        <div style={adminSectionHeading}>Consultant Payout Queue</div>
         {consultantNames.length > 0 ? consultantNames.map((name, i) => (
           <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
             <Avatar name={name} size={36} color={C.purple} />
@@ -990,28 +1027,31 @@ function AdminApp({ onLogout }) {
   // ── ANALYTICS ──
   const Analytics = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Analytics</h2>
+      <div>
+        <div style={adminEyebrow}>Insight</div>
+        <h2 style={adminPageTitle}>Analytics.</h2>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Revenue summary</div>
+          <div style={adminSectionHeading}>Revenue summary</div>
           <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
             Analytics will appear here once platform order and payout history is available.
           </div>
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Service trends</div>
+          <div style={adminSectionHeading}>Service trends</div>
           <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
             Real service volume and country breakdowns are not yet available.
           </div>
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Student origins</div>
+          <div style={adminSectionHeading}>Student origins</div>
           <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
             Country analytics will be populated when student and order data are connected.
           </div>
         </Card>
         <Card>
-          <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Key metrics</div>
+          <div style={adminSectionHeading}>Key metrics</div>
           <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
             No key metrics are available until platform data is sourced from the backend.
           </div>
@@ -1060,7 +1100,8 @@ function AdminApp({ onLogout }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Service Catalogue</h2>
+            <div style={adminEyebrow}>Catalogue</div>
+            <h2 style={adminPageTitle}>Services.</h2>
             <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage all services available to students.</p>
           </div>
           <Btn variant="primary" size="sm" onClick={() => setEditing(blank)}>+ Add service</Btn>
@@ -1157,7 +1198,10 @@ function AdminApp({ onLogout }) {
   // ── SETTINGS ──
   const Settings = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
-      <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Platform Settings</h2>
+      <div>
+        <div style={adminEyebrow}>Configuration</div>
+        <h2 style={adminPageTitle}>Platform settings.</h2>
+      </div>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Primary Currency</div>
         <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.6 }}>
@@ -1274,7 +1318,7 @@ function AdminApp({ onLogout }) {
         </div>
       </Card>
       <Card>
-        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Stripe Integration</div>
+        <div style={adminSectionHeading}>Stripe Integration</div>
         <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>stripe</span>
           All payments and payouts processed via Stripe Connect.
@@ -1293,7 +1337,8 @@ function AdminApp({ onLogout }) {
     <div style={{ padding: '24px 28px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Attorney Applications</h2>
+          <div style={adminEyebrow}>Panel</div>
+          <h2 style={adminPageTitle}>Attorney applications.</h2>
           <div style={{ fontSize: '13px', color: C.textMuted }}>{pendingAttorneyApps.length} pending review · {attorneyApplications.length} total</div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
