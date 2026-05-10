@@ -1896,7 +1896,15 @@ function StudentApp({ onLogout, userId, userName }) {
                 <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</div>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
+                  {formatMoney(displayPriceNum, effectiveDisplayCurrency)}
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
+                </div>
+                <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px' }}>
+                  {effectiveDisplayCurrency === 'cad'
+                    ? `≈ ${formatMoney(priceNum, 'usd')} · charged in USD`
+                    : 'charged in USD'}
+                </div>
               </div>
             </div>
           </Card>
@@ -1990,14 +1998,27 @@ function StudentApp({ onLogout, userId, userName }) {
           {/* Order summary */}
           <Card style={{ marginBottom: '24px' }}>
             <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
-            {[['Service', cart.title], ['Delivery', deliveryLabel(cart.delivery_days)]].map(([k, v]) => (
+            {[
+              ['Service', cart.title],
+              ['Delivery', deliveryLabel(cart.delivery_days)],
+              ['Currency', `${effectiveDisplayCurrency.toUpperCase()}${effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? ` · 1 USD ≈ ${usdToCadRate.toFixed(2)} CAD` : ''}`],
+            ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
                 <span style={{ color: C.textMuted }}>{k}</span>
                 <span style={{ fontWeight: 600 }}>{v}</span>
               </div>
             ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
-              <span>Total</span><span style={{ color: C.cyan }}>{formatMoney(displayPriceNum, effectiveDisplayCurrency)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', fontSize: '16px', fontWeight: 800 }}>
+              <span>Total</span>
+              <span style={{ color: C.cyan, textAlign: 'right' }}>
+                {formatMoney(displayPriceNum, effectiveDisplayCurrency)}
+                <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
+                {effectiveDisplayCurrency === 'cad' && (
+                  <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 600, marginTop: '2px' }}>
+                    ≈ {formatMoney(priceNum, 'usd')} · charged in USD
+                  </div>
+                )}
+              </span>
             </div>
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
@@ -2070,7 +2091,14 @@ function StudentApp({ onLogout, userId, userName }) {
         <div>
           <div style={sectionEyebrow}>Catalogue</div>
           <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Browse services.</h2>
-          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '560px' }}>Expert support at every stage of your study-abroad journey. Funds held in escrow until you approve the deliverable.</p>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '560px' }}>
+            Expert support at every stage of your study-abroad journey. Funds held in escrow until you approve the deliverable.
+            {' '}
+            <span style={{ color: C.cyan, fontWeight: 700 }}>
+              Prices shown in {effectiveDisplayCurrency.toUpperCase()}
+              {effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? ` (1 USD ≈ ${usdToCadRate.toFixed(2)} CAD)` : ''}.
+            </span>
+          </p>
         </div>
         {orderPlaced && (
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -2148,23 +2176,33 @@ function StudentApp({ onLogout, userId, userName }) {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                <div>
+              <div style={{ fontSize: '12px', color: C.textDim }}>⏱ {deliveryLabel(s.delivery_days)} · 🔒 Escrow protected · 💱 {effectiveDisplayCurrency.toUpperCase()}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto', gap: '12px' }}>
+                <div style={{ minWidth: 0 }}>
                   {(() => {
+                    const usdValue = Number(s.price || 0);
                     const displayed = effectiveDisplayCurrency === 'cad'
                       ? convertPrice(s.price, 'usd')
-                      : Number(s.price || 0);
+                      : usdValue;
                     return (
                       <>
-                        <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
+                        <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan, lineHeight: 1.05 }}>
                           {formatMoney(displayed, effectiveDisplayCurrency)}
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>
+                            {effectiveDisplayCurrency.toUpperCase()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>
+                          {effectiveDisplayCurrency === 'cad'
+                            ? `≈ ${formatMoney(usdValue, 'usd')} · charged in USD`
+                            : 'one-time package · charged in USD'}
                         </div>
                       </>
                     );
                   })()}
                 </div>
-                <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); openCheckoutForService(s); }}>View & buy</Btn>              </div>
+                <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); openCheckoutForService(s); }}>View & buy</Btn>
+              </div>
             </Card>
           )})}
         </div>
@@ -2247,11 +2285,18 @@ function StudentApp({ onLogout, userId, userName }) {
                 <div style={{ position: 'sticky', bottom: 0, padding: '16px 24px 20px', borderTop: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(10px)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '12px' }}>
                     <div>
-                      <div style={{ color: C.textMuted, fontSize: '12px', fontWeight: 700 }}>Package price</div>
-                      <div style={{ color: C.text, fontSize: '13px' }}>Escrow protected</div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', fontWeight: 700 }}>Package price ({effectiveDisplayCurrency.toUpperCase()})</div>
+                      <div style={{ color: C.text, fontSize: '13px' }}>
+                        Escrow protected · {effectiveDisplayCurrency === 'cad'
+                          ? `≈ ${formatMoney(Number(selectedService.price || 0), 'usd')} charged in USD`
+                          : 'charged in USD'}
+                      </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '22px', fontWeight: 900, color: C.cyan }}>{formatMoney(displayed, effectiveDisplayCurrency)}</div>
+                      <div style={{ color: C.textDim, fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>
+                        {effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? `1 USD ≈ ${usdToCadRate.toFixed(2)} CAD` : 'Live USD'}
+                      </div>
                     </div>
                   </div>
                   <Btn variant="primary" size="lg" fullWidth onClick={() => openCheckoutForService(selectedService)}>

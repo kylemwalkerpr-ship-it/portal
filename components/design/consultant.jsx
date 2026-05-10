@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import DashboardRightPane from './dashboard-right-pane'
 
 function EarningsChart({ days }) {
   const data = Array.isArray(days) && days.length > 0 ? days : [];
@@ -1255,23 +1256,26 @@ function ConsultantApp({ onLogout }) {
       {Sidebar()}
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {TopBar({ title: { dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard' })}
-        <div style={{ flex: 1 }}>
-          {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
-          {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
-          {actionNotice && (
-            <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-              <span>{actionNotice}</span>
-              <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
-            </div>
-          )}
-          {page === 'dashboard' && Dashboard()}
-          {page === 'orders' && Orders()}
-          {page === 'order-detail' && selectedOrder && OrderDetail({ order: selectedOrder })}
-          {page === 'clients' && Clients()}
-          {page === 'messages' && Messages()}
-          {page === 'earnings' && Earnings()}
-          {page === 'connect' && Connect()}
-          {page === 'settings' && Settings()}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minHeight: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
+            {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
+            {actionNotice && (
+              <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span>{actionNotice}</span>
+                <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
+              </div>
+            )}
+            {page === 'dashboard' && Dashboard()}
+            {page === 'orders' && Orders()}
+            {page === 'order-detail' && selectedOrder && OrderDetail({ order: selectedOrder })}
+            {page === 'clients' && Clients()}
+            {page === 'messages' && Messages()}
+            {page === 'earnings' && Earnings()}
+            {page === 'connect' && Connect()}
+            {page === 'settings' && Settings()}
+          </div>
+          <DashboardRightPane role="consultant" />
         </div>
       </div>
     </div>
