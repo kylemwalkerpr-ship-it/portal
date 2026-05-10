@@ -3,8 +3,18 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: #E8E8E8;
+  background: #FBFAF7;
   color: #1F2937;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Premium serif for top-level headings across every dashboard. Components can
+   override locally if they want a sans-serif title, but the default upgrades
+   the visual feel everywhere with a single rule. */
+h1, h2, .yousafe-serif {
+  font-family: 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  letter-spacing: -0.012em;
 }

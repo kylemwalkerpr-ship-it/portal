@@ -2,18 +2,21 @@
 // @ts-nocheck
 import React from 'react'
 
+// Warm editorial palette. Off-white paper background, indigo accent (legacy
+// `cyan` key kept for compatibility with existing code), and a serif font
+// reference for premium headings.
 export const C = {
-  bg: '#E8E8E8',
+  bg: '#FBFAF7',
   surface: '#FFFFFF',
-  surface2: '#F3F4F6',
-  surface3: '#E5E7EB',
-  border: '#E5E7EB',
-  border2: '#D1D5DB',
+  surface2: '#F4F2EE',
+  surface3: '#EAE7E0',
+  border: 'rgba(0,0,0,0.08)',
+  border2: 'rgba(0,0,0,0.14)',
   cyan: '#3C3B6E',
   cyanDark: '#2d2a5e',
-  cyanGlow: 'rgba(60,59,110,0.12)',
+  cyanGlow: 'rgba(60,59,110,0.10)',
   navy: '#B22234',
-  navyGlow: 'rgba(178,34,52,0.12)',
+  navyGlow: 'rgba(178,34,52,0.10)',
   text: '#1F2937',
   textMuted: '#6B7280',
   textDim: '#9CA3AF',
@@ -21,6 +24,8 @@ export const C = {
   orange: '#D97706',
   red: '#DC2626',
   purple: '#7C3AED',
+  serif: "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif",
+  sans: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
 }
 
 export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth, ...props }) {
