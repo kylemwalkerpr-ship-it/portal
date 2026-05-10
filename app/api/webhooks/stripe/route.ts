@@ -85,6 +85,88 @@ export async function POST(req: Request) {
 
   const db = createSupabaseAdminClient()
 
+  // ── Attorney offer payment path ────────────────────────────────────────────
+  // If the session was created by /api/offers/[id]/checkout it carries the
+  // offer_id / inquiry_id metadata. Create the order with consultant_id set to
+  // the attorney's profile_id (attorneys reuse the consultant_id slot on
+  // orders), mark the offer accepted, and link both directions.
+  const offerId = session.metadata?.offer_id
+  if (offerId) {
+    const inquiryId = session.metadata?.inquiry_id
+    const attorneyProfileId = session.metadata?.attorney_profile_id
+    const clientProfileId = session.metadata?.client_profile_id
+    const deliveryDays = Number(session.metadata?.delivery_days || 7)
+
+    if (!attorneyProfileId || !clientProfileId) {
+      console.error('[webhook] Offer payment missing required metadata', session.id)
+      return new Response('OK', { status: 200 })
+    }
+
+    // Idempotency: if we already created an order for this offer, skip.
+    const { data: existingOrder } = await db
+      .from('orders')
+      .select('id')
+      .eq('source_offer_id', offerId)
+      .maybeSingle()
+    if (existingOrder) {
+      return new Response('OK', { status: 200 })
+    }
+
+    const { data: offer } = await db
+      .from('attorney_offers')
+      .select('title, description')
+      .eq('id', offerId)
+      .single()
+
+    const acceptedAt = new Date().toISOString()
+    const deadline = new Date(Date.now() + deliveryDays * 24 * 60 * 60 * 1000).toISOString()
+
+    const { data: order, error: orderErr } = await db
+      .from('orders')
+      .insert({
+        client_id: clientProfileId,
+        consultant_id: attorneyProfileId,
+        status: 'queued',
+        total_amount: amountTotal,
+        requirements: offer?.description ?? `Custom attorney offer ${offerId}`,
+        terms_accepted_at: acceptedAt,
+        refund_policy_accepted_at: acceptedAt,
+        stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        deadline,
+        source_inquiry_id: inquiryId ?? null,
+        source_offer_id: offerId,
+      })
+      .select('id')
+      .single()
+
+    if (orderErr || !order) {
+      console.error('[webhook] Offer order create failed', orderErr?.message)
+      return new Response('Order create failed', { status: 500 })
+    }
+
+    await db
+      .from('attorney_offers')
+      .update({ status: 'accepted', decided_at: acceptedAt, order_id: order.id, client_profile_id: clientProfileId })
+      .eq('id', offerId)
+
+    if (inquiryId) {
+      await db
+        .from('inquiries')
+        .update({ status: 'converted', updated_at: new Date().toISOString() })
+        .eq('id', inquiryId)
+
+      await db.from('inquiry_messages').insert({
+        inquiry_id: inquiryId,
+        sender_role: 'system',
+        sender_profile_id: clientProfileId,
+        body: `Client accepted offer "${offer?.title ?? ''}". Order #${order.id} is now active.`,
+      })
+    }
+
+    return new Response('OK', { status: 200 })
+  }
+  // ── /Attorney offer payment path ───────────────────────────────────────────
+
   // Find the user's profile — by clerk_user_id if we have it, otherwise by email
   let profile: { id: string; role?: string; status?: string } | null = null
 
