@@ -1,5 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
-
+import { getPlatformSettings } from '@/lib/platformConfig'
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()
@@ -25,15 +25,37 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (!Number.isFinite(price) || price <= 0) return Response.json({ error: 'Price must be a positive number.' }, { status: 400 })
   if (!Number.isInteger(deliveryDays) || deliveryDays <= 0) return Response.json({ error: 'Delivery days must be a positive integer.' }, { status: 400 })
 
+  // Block sending an offer until Stripe Connect onboarding is complete — the
+  // checkout step needs an account to route the attorney's fee to.
+  const { data: attorney } = await ctx.db
+    .from('attorneys')
+    .select('stripe_account_id, stripe_onboarding_complete')
+    .eq('id', ctx.attorneyId)
+    .single()
+  if (!attorney?.stripe_account_id || !attorney.stripe_onboarding_complete) {
+    return Response.json(
+      { error: 'Connect a payout account before sending an offer.', requires_connect: true },
+      { status: 412 },
+    )
+  }
+
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('id, email, client_profile_id, claimed_by_attorney_id')
+    .select('id, email, client_profile_id, status')
     .eq('id', inquiryId)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
-  if (inquiry.claimed_by_attorney_id !== ctx.attorneyId) {
-    return Response.json({ error: 'Claim the inquiry before sending an offer.' }, { status: 403 })
+  if (inquiry.status === 'converted' || inquiry.status === 'closed' || inquiry.status === 'cancelled') {
+    return Response.json({ error: `Inquiry is ${inquiry.status}.` }, { status: 409 })
   }
+
+  // Snapshot the platform fee percent in case the admin changes it later;
+  // the disclosure on each offer must stay accurate.
+  const settings = await getPlatformSettings()
+  const feePercent = Number(
+    (settings as Record<string, unknown>).attorney_platform_fee_percent ?? 25,
+  )
+  const platformFee = Math.round(price * (feePercent / 100) * 100) / 100
 
   const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
 
@@ -43,15 +65,18 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       inquiry_id: inquiryId,
       attorney_id: ctx.attorneyId,
       attorney_profile_id: ctx.profileId,
+      attorney_stripe_account_id: attorney.stripe_account_id,
       client_email: inquiry.email,
       client_profile_id: inquiry.client_profile_id,
       title,
       description,
       price,
+      platform_fee: platformFee,
+      platform_fee_percent_snapshot: feePercent,
       delivery_days: deliveryDays,
       expires_at: expiresAt,
     })
-    .select('id, title, description, price, currency, delivery_days, status, expires_at, created_at')
+    .select('id, title, description, price, platform_fee, platform_fee_percent_snapshot, currency, delivery_days, status, expires_at, created_at')
     .single()
 
   if (insErr || !offer) return Response.json({ error: insErr?.message || 'Could not create offer.' }, { status: 500 })
@@ -60,7 +85,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     inquiry_id: inquiryId,
     sender_role: 'system',
     sender_profile_id: ctx.profileId,
-    body: `New offer: "${title}" — $${price.toFixed(2)} · ${deliveryDays} day delivery`,
+    body: `New offer from ${ctx.fullName ?? 'an attorney'}: "${title}" — attorney fee $${price.toFixed(2)} + platform fee $${platformFee.toFixed(2)} (${feePercent}%) · ${deliveryDays} day delivery`,
   })
 
   return Response.json({ offer })

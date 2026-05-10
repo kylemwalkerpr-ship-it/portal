@@ -1,6 +1,8 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 
-
+// Multi-attorney model: any approved attorney can message any open inquiry.
+// Their messages are tagged with sender_profile_id so the student UI can
+// group messages into per-attorney threads.
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
@@ -18,12 +20,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('claimed_by_attorney_id, status')
+    .select('id, status')
     .eq('id', id)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
-  if (inquiry.claimed_by_attorney_id !== ctx.attorneyId) {
-    return Response.json({ error: 'Claim the inquiry before sending messages.' }, { status: 403 })
+  if (inquiry.status === 'converted' || inquiry.status === 'closed' || inquiry.status === 'cancelled') {
+    return Response.json({ error: `Inquiry is ${inquiry.status}.` }, { status: 409 })
   }
 
   const { data: msg, error: insErr } = await ctx.db
@@ -39,10 +41,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   if (insErr || !msg) return Response.json({ error: insErr?.message || 'Could not send message.' }, { status: 500 })
 
-  await ctx.db
-    .from('inquiries')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', id)
+  // Mark the inquiry as engaged the first time any attorney replies.
+  if (inquiry.status === 'open') {
+    await ctx.db.from('inquiries').update({ status: 'engaged', updated_at: new Date().toISOString() }).eq('id', id)
+  } else {
+    await ctx.db.from('inquiries').update({ updated_at: new Date().toISOString() }).eq('id', id)
+  }
 
   return Response.json({ message: msg })
 }

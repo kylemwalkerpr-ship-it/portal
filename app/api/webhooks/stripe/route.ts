@@ -46,13 +46,18 @@ export async function POST(req: Request) {
   if (eventType === 'account.updated') {
     const account = event.data.object as Stripe.Account
     const consultantId = account.metadata?.consultantId
-    if (consultantId && account.details_submitted && account.charges_enabled) {
+    const attorneyId = account.metadata?.attorneyId
+    const onboarded = Boolean(account.details_submitted && account.charges_enabled)
+    if (onboarded) {
       const db = createSupabaseAdminClient()
-      await db
-        .from('consultants')
-        .update({ stripe_onboarding_complete: true })
-        .eq('id', consultantId)
-      console.log(`[webhook] Consultant ${consultantId} completed Stripe Connect onboarding`)
+      if (consultantId) {
+        await db.from('consultants').update({ stripe_onboarding_complete: true }).eq('id', consultantId)
+        console.log(`[webhook] Consultant ${consultantId} completed Stripe Connect onboarding`)
+      }
+      if (attorneyId) {
+        await db.from('attorneys').update({ stripe_onboarding_complete: true }).eq('id', attorneyId)
+        console.log(`[webhook] Attorney ${attorneyId} completed Stripe Connect onboarding`)
+      }
     }
     return new Response('OK', { status: 200 })
   }
@@ -118,6 +123,8 @@ export async function POST(req: Request) {
       .eq('id', offerId)
       .single()
 
+    const attorneyFee = Number(session.metadata?.attorney_fee || 0)
+    const platformFee = Number(session.metadata?.platform_fee || 0)
     const acceptedAt = new Date().toISOString()
     const deadline = new Date(Date.now() + deliveryDays * 24 * 60 * 60 * 1000).toISOString()
 
@@ -128,6 +135,8 @@ export async function POST(req: Request) {
         consultant_id: attorneyProfileId,
         status: 'queued',
         total_amount: amountTotal,
+        attorney_fee: attorneyFee,
+        platform_fee: platformFee,
         requirements: offer?.description ?? `Custom attorney offer ${offerId}`,
         terms_accepted_at: acceptedAt,
         refund_policy_accepted_at: acceptedAt,

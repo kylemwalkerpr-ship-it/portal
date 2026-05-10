@@ -1,10 +1,10 @@
 import { getStripe } from '@/lib/stripe'
 import { requireClient } from '@/lib/clientAuth'
 
-
-// Create a Stripe Checkout Session for accepting a custom attorney offer.
-// On `checkout.session.completed`, the existing webhook (extended for offer
-// metadata) creates the order and links it back to the offer.
+// ABA-compliant payment: client pays attorney_fee + platform_fee in one
+// Stripe charge. Stripe destination charge routes the FULL attorney_fee to
+// the attorney's Connect account; the platform_fee is the application_fee.
+// No fee splitting of the attorney's own fee.
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireClient()
   if (!ctx) return Response.json({ error }, { status })
@@ -13,7 +13,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: offer } = await ctx.db
     .from('attorney_offers')
-    .select('id, inquiry_id, attorney_id, attorney_profile_id, client_email, client_profile_id, title, description, price, currency, delivery_days, status, expires_at')
+    .select('id, inquiry_id, attorney_id, attorney_profile_id, attorney_stripe_account_id, client_email, client_profile_id, title, description, price, platform_fee, platform_fee_percent_snapshot, currency, delivery_days, status, expires_at')
     .eq('id', offerId)
     .single()
 
@@ -33,7 +33,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return Response.json({ error: 'Offer has expired.' }, { status: 410 })
   }
 
-  // Lazy-link the client profile_id if missing (anonymous → signed-in path).
+  if (!offer.attorney_stripe_account_id) {
+    return Response.json({ error: 'Attorney is not configured for payouts.' }, { status: 412 })
+  }
+
   if (!ownsByProfile) {
     await ctx.db.from('attorney_offers').update({ client_profile_id: ctx.profileId }).eq('id', offerId)
   }
@@ -50,7 +53,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const cancelUrl = body.cancel_url || `${origin}/dashboard?inquiry=${offer.inquiry_id}&offer_cancelled=${offer.id}`
 
   const stripe = getStripe()
-  const amountCents = Math.round(Number(offer.price) * 100)
+  const attorneyFee = Number(offer.price)
+  const platformFee = Number(offer.platform_fee || 0)
+  const total = attorneyFee + platformFee
+  const totalCents = Math.round(total * 100)
+  const platformFeeCents = Math.round(platformFee * 100)
   const currency = (offer.currency || 'usd').toLowerCase()
 
   const session = await stripe.checkout.sessions.create({
@@ -60,15 +67,19 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       {
         price_data: {
           currency,
-          unit_amount: amountCents,
+          unit_amount: totalCents,
           product_data: {
             name: offer.title,
-            description: offer.description.slice(0, 500),
+            description: `${offer.description.slice(0, 400)}\n\nIncludes a $${platformFee.toFixed(2)} platform fee (${offer.platform_fee_percent_snapshot}%). The attorney's fee of $${attorneyFee.toFixed(2)} is paid in full to them.`,
           },
         },
         quantity: 1,
       },
     ],
+    payment_intent_data: {
+      application_fee_amount: platformFeeCents,
+      transfer_data: { destination: offer.attorney_stripe_account_id },
+    },
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: {
@@ -78,6 +89,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       attorney_profile_id: offer.attorney_profile_id,
       client_profile_id: ctx.profileId,
       delivery_days: String(offer.delivery_days),
+      attorney_fee: String(attorneyFee),
+      platform_fee: String(platformFee),
     },
   })
 

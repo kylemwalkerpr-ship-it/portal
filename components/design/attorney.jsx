@@ -147,10 +147,10 @@ function QueuePage() {
   const [inquiries, setInquiries] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
-  const [claimingId, setClaimingId] = React.useState(null)
+  const [openId, setOpenId] = React.useState(null)
 
-  const load = React.useCallback(() => {
-    setLoading(true)
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
     fetch('/api/attorney/inquiries?view=open', { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
@@ -159,26 +159,21 @@ function QueuePage() {
         setError('')
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (isInitial) setLoading(false)
+      })
   }, [])
 
   React.useEffect(() => {
-    load()
+    load(true)
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') load(false)
+    }, 6000)
+    return () => clearInterval(id)
   }, [load])
 
-  async function claim(id) {
-    if (claimingId) return
-    setClaimingId(id)
-    try {
-      const res = await fetch(`/api/attorney/inquiries/${id}/claim`, { method: 'POST', credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.error || 'Could not claim inquiry.')
-      load()
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setClaimingId(null)
-    }
+  if (openId) {
+    return <InquiryThread inquiryId={openId} onBack={() => { setOpenId(null); load(false) }} />
   }
 
   if (loading) return <Notice>Loading queue...</Notice>
@@ -189,12 +184,12 @@ function QueuePage() {
       <div style={{ marginBottom: '16px', color: C.textMuted, fontSize: '13px' }}>
         {inquiries.length === 0
           ? 'The queue is empty. New intakes will appear here.'
-          : `${inquiries.length} open inquir${inquiries.length === 1 ? 'y' : 'ies'}.`}
+          : `${inquiries.length} open inquir${inquiries.length === 1 ? 'y' : 'ies'} · multiple attorneys can respond to each.`}
       </div>
       <div style={{ display: 'grid', gap: '12px' }}>
         {inquiries.map((q) => (
           <Card key={q.id}>
-            <div style={{ padding: '16px 18px' }}>
+            <div style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => setOpenId(q.id)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '15px' }}>{q.case_type_label || q.case_type || 'Inquiry'}</div>
@@ -202,17 +197,15 @@ function QueuePage() {
                     {q.country || '—'} · {new Date(q.created_at).toLocaleString()}
                   </div>
                 </div>
-                {q.urgency && <Badge color="orange">{q.urgency}</Badge>}
+                <Badge color={q.status === 'engaged' ? 'cyan' : 'orange'}>{q.status}</Badge>
               </div>
               <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '13px' }}>
                 <div><span style={{ color: C.textDim }}>From:</span> {q.full_name} · {q.email}</div>
                 {q.phone && <div><span style={{ color: C.textDim }}>Phone:</span> {q.phone}</div>}
               </div>
               <AnswersPreview answers={q.answers} />
-              <div style={{ marginTop: '12px' }}>
-                <Btn variant="primary" size="sm" disabled={claimingId === q.id} onClick={() => claim(q.id)}>
-                  {claimingId === q.id ? 'Claiming...' : 'Claim this inquiry'}
-                </Btn>
+              <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                <Btn variant="primary" size="sm">Open & respond</Btn>
               </div>
             </div>
           </Card>
@@ -229,8 +222,8 @@ function MyInquiriesPage() {
   const [error, setError] = React.useState('')
   const [openId, setOpenId] = React.useState(null)
 
-  const load = React.useCallback(() => {
-    setLoading(true)
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
     fetch('/api/attorney/inquiries?view=mine', { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
@@ -239,11 +232,17 @@ function MyInquiriesPage() {
         setError('')
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (isInitial) setLoading(false)
+      })
   }, [])
 
   React.useEffect(() => {
-    load()
+    load(true)
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') load(false)
+    }, 6000)
+    return () => clearInterval(id)
   }, [load])
 
   if (loading) return <Notice>Loading your inquiries...</Notice>
@@ -255,7 +254,7 @@ function MyInquiriesPage() {
         inquiryId={openId}
         onBack={() => {
           setOpenId(null)
-          load()
+          load(false)
         }}
       />
     )
@@ -302,9 +301,10 @@ function InquiryThread({ inquiryId, onBack }) {
   const [sending, setSending] = React.useState(false)
   const [showOfferModal, setShowOfferModal] = React.useState(false)
   const [withdrawingId, setWithdrawingId] = React.useState(null)
+  const [connect, setConnect] = React.useState(null)
 
-  const load = React.useCallback(() => {
-    setLoading(true)
+  const load = React.useCallback((isInitial) => {
+    if (isInitial) setLoading(true)
     fetch(`/api/attorney/inquiries/${inquiryId}`, { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
@@ -313,12 +313,33 @@ function InquiryThread({ inquiryId, onBack }) {
         setError('')
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (isInitial) setLoading(false)
+      })
   }, [inquiryId])
 
   React.useEffect(() => {
-    load()
+    load(true)
+    fetch('/api/attorney/connect/status', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((p) => setConnect(p))
+      .catch(() => setConnect({ has_account: false, onboarding_complete: false }))
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') load(false)
+    }, 6000)
+    return () => clearInterval(id)
   }, [load])
+
+  async function startConnect() {
+    try {
+      const res = await fetch('/api/attorney/connect/onboard', { method: 'POST', credentials: 'same-origin' })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start onboarding.')
+      window.location.href = payload.url
+    } catch (e) {
+      setError(e.message)
+    }
+  }
 
   async function sendMessage(e) {
     e.preventDefault()
@@ -334,7 +355,7 @@ function InquiryThread({ inquiryId, onBack }) {
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not send message.')
       setDraft('')
-      load()
+      load(false)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -349,7 +370,7 @@ function InquiryThread({ inquiryId, onBack }) {
       const res = await fetch(`/api/attorney/offers/${offerId}/withdraw`, { method: 'POST', credentials: 'same-origin' })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not withdraw offer.')
-      load()
+      load(false)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -447,16 +468,27 @@ function InquiryThread({ inquiryId, onBack }) {
       <div style={{ marginTop: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
-            Offers
+            My offers
           </h3>
           {!hasPendingOffer && inquiry.status !== 'converted' && (
-            <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
-              + Send custom offer
-            </Btn>
+            connect && connect.onboarding_complete ? (
+              <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
+                + Send custom offer
+              </Btn>
+            ) : (
+              <Btn variant="primary" size="sm" onClick={startConnect}>
+                Connect Stripe to send offers
+              </Btn>
+            )
           )}
         </div>
+        {connect && !connect.onboarding_complete && (
+          <div style={{ marginBottom: '10px', padding: '10px 12px', background: 'rgba(245,180,0,0.10)', border: '1px solid rgba(245,180,0,0.25)', borderRadius: '8px', color: '#f5b400', fontSize: '12px' }}>
+            You can chat with the client now, but you must connect Stripe to send a paid offer. Click the button above to onboard.
+          </div>
+        )}
         {offers.length === 0 ? (
-          <div style={{ color: C.textMuted, fontSize: '13px' }}>No offers yet.</div>
+          <div style={{ color: C.textMuted, fontSize: '13px' }}>You haven&apos;t sent an offer on this inquiry yet.</div>
         ) : (
           <div style={{ display: 'grid', gap: '10px' }}>
             {offers.map((o) => (
@@ -472,13 +504,18 @@ function InquiryThread({ inquiryId, onBack }) {
           onClose={() => setShowOfferModal(false)}
           onCreated={() => {
             setShowOfferModal(false)
-            load()
+            load(false)
           }}
         />
       )}
     </div>
   )
 }
+
+// Default platform fee percent for the live preview. The server snapshots
+// the actual current setting at offer-creation time, which is the source of
+// truth on the offer row.
+const DEFAULT_ATTORNEY_FEE_PERCENT = 25
 
 function OfferModal({ inquiryId, onClose, onCreated }) {
   const [title, setTitle] = React.useState('')
@@ -488,6 +525,10 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
   const [expiresInDays, setExpiresInDays] = React.useState('7')
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState('')
+
+  const numericPrice = Number(price) || 0
+  const previewPlatformFee = Math.round(numericPrice * (DEFAULT_ATTORNEY_FEE_PERCENT / 100) * 100) / 100
+  const previewTotal = numericPrice + previewPlatformFee
 
   async function submit(e) {
     e.preventDefault()
@@ -574,7 +615,7 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
           />
         </Labeled>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-          <Labeled label="Price (USD)">
+          <Labeled label="Your fee (USD)">
             <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" min="1" step="1" placeholder="500" style={inputStyle} />
           </Labeled>
           <Labeled label="Delivery (days)">
@@ -584,6 +625,29 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
             <input value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} type="number" min="1" step="1" style={inputStyle} />
           </Labeled>
         </div>
+
+        {numericPrice > 0 && (
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', fontSize: '13px', display: 'grid', gap: '4px' }}>
+            <div style={{ color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Client sees this breakdown
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: C.text }}>Your fee (paid in full to you)</span>
+              <span style={{ color: C.text }}>${numericPrice.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: C.text }}>Platform fee ({DEFAULT_ATTORNEY_FEE_PERCENT}%)</span>
+              <span style={{ color: C.text }}>${previewPlatformFee.toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${C.border}`, paddingTop: '4px', marginTop: '2px' }}>
+              <span style={{ color: C.text, fontWeight: 700 }}>Client pays</span>
+              <span style={{ color: C.text, fontWeight: 700 }}>${previewTotal.toFixed(2)}</span>
+            </div>
+            <div style={{ color: C.textDim, fontSize: '11px', marginTop: '2px' }}>
+              Per ABA Rule 5.4 we don&apos;t share your fee. The platform fee is added on top, disclosed to the client, and routed separately at checkout.
+            </div>
+          </div>
+        )}
 
         {error && (
           <div style={{ background: 'rgba(220,38,38,0.10)', border: '1px solid rgba(220,38,38,0.25)', color: C.red, padding: '10px 12px', borderRadius: '8px', fontSize: '13px' }}>
@@ -605,6 +669,8 @@ function OfferModal({ inquiryId, onClose, onCreated }) {
 }
 
 function OfferRow({ offer, onWithdraw, withdrawing }) {
+  const platformFee = Number(offer.platform_fee || 0)
+  const total = Number(offer.price) + platformFee
   return (
     <Card>
       <div style={{ padding: '14px 16px' }}>
@@ -612,7 +678,7 @@ function OfferRow({ offer, onWithdraw, withdrawing }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: '14px' }}>{offer.title}</div>
             <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
-              ${Number(offer.price).toFixed(2)} · {offer.delivery_days}d delivery
+              You receive ${Number(offer.price).toFixed(2)} · client pays ${total.toFixed(2)} (incl ${platformFee.toFixed(2)} platform fee) · {offer.delivery_days}d delivery
               {offer.expires_at && offer.status === 'sent'
                 ? ` · expires ${new Date(offer.expires_at).toLocaleDateString()}`
                 : ''}

@@ -28,6 +28,11 @@ export function normalizeVertical(value: unknown): Vertical {
 export const DEFAULT_PLATFORM_SETTINGS = {
   platform_fee_percent: 20,
   consultant_fee_percent: 80,
+  // Attorney offers use additive (not split) pricing for ABA Rule 5.4
+  // compliance: client pays attorney_fee + this percent on top, the attorney
+  // gets the full attorney_fee, the platform gets the percent as a Stripe
+  // application fee. Adjust here or via the admin Settings panel.
+  attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
   platform_name: 'Yousafe Consultancy',
