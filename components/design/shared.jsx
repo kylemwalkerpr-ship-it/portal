@@ -15,6 +15,9 @@ export const C = {
   cyan: '#3C3B6E',
   cyanDark: '#2d2a5e',
   cyanGlow: 'rgba(60,59,110,0.10)',
+  studentMessageBg: '#E8EEF6',
+  studentMessageText: '#172033',
+  studentMessageBorder: '#C9D5E3',
   navy: '#B22234',
   navyGlow: 'rgba(178,34,52,0.10)',
   text: '#1F2937',
@@ -91,11 +94,12 @@ export function Badge({ children, color = 'cyan', style }) {
   )
 }
 
-export function Card({ children, style, onClick, hover = false }) {
+export function Card({ children, style, onClick, hover = false, className }) {
   const [hovered, setHovered] = React.useState(false)
   const isHover = hover || Boolean(onClick)
   return (
     <div
+      className={className}
       onClick={onClick}
       onMouseEnter={() => isHover && setHovered(true)}
       onMouseLeave={() => isHover && setHovered(false)}

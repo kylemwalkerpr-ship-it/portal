@@ -427,8 +427,9 @@ function Bubble({ message }) {
       <div
         style={{
           maxWidth: '78%',
-          background: mine ? C.cyan : C.surface2,
-          color: mine ? '#000' : C.text,
+          background: mine ? C.studentMessageBg : C.surface2,
+          color: mine ? C.studentMessageText : C.text,
+          border: mine ? `1px solid ${C.studentMessageBorder}` : 'none',
           padding: '6px 10px',
           borderRadius: '8px',
           fontSize: '13px',

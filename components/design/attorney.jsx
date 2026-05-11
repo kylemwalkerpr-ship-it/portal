@@ -761,7 +761,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
     : DEFAULT_ATTORNEY_FEE_PERCENT
 
   return (
-    <div style={{ padding: '20px 28px', maxWidth: '920px' }}>
+    <div className="yousafe-thread-page" style={{ padding: '20px 28px', maxWidth: '920px' }}>
       <button
         onClick={onBack}
         style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px', fontFamily: 'inherit' }}
@@ -1405,9 +1405,10 @@ function OrderDetail({ orderId, onBack }) {
 
 function OrderBubble({ message }) {
   const mine = message.sender_role === 'consultant'
+  const fromStudent = message.sender_role === 'client'
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={{ maxWidth: '78%', background: mine ? C.cyan : C.surface2, color: mine ? '#fff' : C.text, padding: '8px 12px', borderRadius: '10px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+      <div style={{ maxWidth: '78%', background: fromStudent ? C.studentMessageBg : mine ? C.cyan : C.surface2, color: fromStudent ? C.studentMessageText : mine ? '#fff' : C.text, border: fromStudent ? `1px solid ${C.studentMessageBorder}` : 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
         {message.body}
         <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
       </div>
@@ -1802,6 +1803,7 @@ function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSen
         </span>
       </div>
       <div
+        className="yousafe-message-scroll"
         ref={scrollRef}
         onScroll={onScroll}
         style={{
@@ -1889,6 +1891,7 @@ function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
         ))}
       </div>
       <form
+        className="yousafe-message-composer"
         onSubmit={(e) => { e.preventDefault(); onSend(e) }}
         style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '8px' }}
       >
@@ -1901,6 +1904,7 @@ function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
           </>
         )}
         <textarea
+          className="yousafe-message-input"
           rows={3}
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, charLimit))}
@@ -1968,6 +1972,7 @@ function MessageBubble({ message, viewerRole }) {
   const mine =
     (viewerRole === 'attorney' && message.sender_role === 'attorney') ||
     (viewerRole === 'client' && message.sender_role === 'client')
+  const fromStudent = message.sender_role === 'client'
   const isSystem = message.sender_role === 'system'
   const ts = message.created_at ? new Date(message.created_at) : null
   const timeLabel = ts && !Number.isNaN(ts.getTime())
@@ -2015,14 +2020,14 @@ function MessageBubble({ message, viewerRole }) {
         </div>
         <div
           style={{
-            background: mine ? C.cyan : C.surface2,
-            color: mine ? '#04212a' : C.text,
+            background: fromStudent ? C.studentMessageBg : mine ? C.cyan : C.surface2,
+            color: fromStudent ? C.studentMessageText : mine ? '#04212a' : C.text,
             padding: '10px 14px',
             borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
             fontSize: '14px',
             whiteSpace: 'pre-wrap',
             lineHeight: 1.55,
-            border: mine ? 'none' : `1px solid ${C.border}`,
+            border: fromStudent ? `1px solid ${C.studentMessageBorder}` : mine ? 'none' : `1px solid ${C.border}`,
             boxShadow: '0 1px 2px rgba(15,18,32,0.04)',
           }}
         >

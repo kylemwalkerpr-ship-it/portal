@@ -631,6 +631,55 @@ h1, h2, .yousafe-serif {
     max-width: 100% !important;
   }
 
+  .yousafe-message-layout {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  .yousafe-conversation-list {
+    max-height: 36svh !important;
+    overflow-y: auto !important;
+    border-radius: 12px !important;
+  }
+
+  .yousafe-message-thread {
+    min-height: 64svh !important;
+    max-height: none !important;
+    border-radius: 12px !important;
+  }
+
+  .yousafe-message-scroll {
+    min-height: 240px !important;
+    max-height: 56svh !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .yousafe-message-composer {
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 12px !important;
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .yousafe-message-input {
+    flex: 1 1 220px !important;
+    min-width: 0 !important;
+    font-size: 16px !important;
+  }
+
+  .yousafe-message-composer button {
+    flex: 0 0 auto !important;
+  }
+
+  .yousafe-thread-page {
+    padding: 18px 14px !important;
+    max-width: 100% !important;
+  }
+
   .yousafe-landing-nav {
     padding: 14px 16px !important;
     gap: 12px !important;

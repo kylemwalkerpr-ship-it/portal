@@ -1592,23 +1592,24 @@ function StudentApp({ onLogout, userId, userName }) {
             {/* Messages */}
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Messages</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '260px', overflowY: 'auto', marginBottom: '16px' }}>
+              <div className="yousafe-message-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '260px', overflowY: 'auto', marginBottom: '16px' }}>
                 {messages.map((m, i) => (
                   <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
                     {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
                     <div style={{ maxWidth: '70%' }}>
                       <div style={{
                         padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5,
-                        background: m.from === 'student' ? C.cyan : C.surface2,
-                        color: m.from === 'student' ? '#000' : C.text,
+                        background: m.from === 'student' ? C.studentMessageBg : C.surface2,
+                        color: m.from === 'student' ? C.studentMessageText : C.text,
+                        border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
                       }}>{m.text}</div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input value={msgInput} onChange={e => setMsgInput(e.target.value)}
+              <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
+                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendMessage()}
                   placeholder="Type a message…"
                   style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
@@ -2538,8 +2539,8 @@ function StudentApp({ onLogout, userId, userName }) {
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-        <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
-          <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="yousafe-mobile-stack yousafe-message-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
+          <div className="yousafe-conversation-list" style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
             {conversations.length === 0 && (
               <div style={{ padding: '24px 16px', color: C.textMuted, fontSize: '13px', lineHeight: 1.5 }}>No conversations yet. Open an attorney profile to start a chat, or place an order to message a consultant.</div>
@@ -2569,7 +2570,7 @@ function StudentApp({ onLogout, userId, userName }) {
           </div>
 
           {selectedAttorneyChatId ? (
-            <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+            <Card className="yousafe-message-thread" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <Avatar name={currentAttorneyChat?.attorney_name || 'Attorney'} src={currentAttorneyChat?.headshot_url} size={38} />
                 <div>
@@ -2579,15 +2580,15 @@ function StudentApp({ onLogout, userId, userName }) {
                   </div>
                 </div>
               </div>
-              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {attorneyChatLoading && currentMessages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
                 {currentMessages.map((m) => <ChatBubble key={m.id} message={m} mine={m.sender_role === 'client'} />)}
                 {currentOffers.map(o => <AttorneyOfferCard key={o.id} offer={o} onAccept={() => acceptAttorneyOffer(o.id)} onDecline={() => declineAttorneyOffer(o.id)} />)}
               </div>
-              <div style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input ref={attorneyChatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendAttorneyChatMessage(e.target.files?.[0])} />
                 <Btn variant="secondary" size="sm" onClick={() => attorneyChatFileRef.current?.click()}>Attach</Btn>
-                <input value={msgInput} onChange={e => setMsgInput(e.target.value)}
+                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendAttorneyChatMessage()}
                   placeholder="Type a message…"
                   style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
@@ -2595,7 +2596,7 @@ function StudentApp({ onLogout, userId, userName }) {
               </div>
             </Card>
           ) : selectedOrder ? (
-            <Card style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
+            <Card className="yousafe-message-thread" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <Avatar name={selectedOrder.consultant} size={36} />
                 <div>
@@ -2603,19 +2604,19 @@ function StudentApp({ onLogout, userId, userName }) {
                   <div style={{ fontSize: '12px', color: C.green }}>● Online</div>
                 </div>
               </div>
-              <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {messages.map((m, i) => (
                   <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
                     {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
                     <div style={{ maxWidth: '60%' }}>
-                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.cyan : C.surface2, color: m.from === 'student' ? '#000' : C.text }}>{m.text}</div>
+                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.surface2, color: m.from === 'student' ? C.studentMessageText : C.text, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}>{m.text}</div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
-                <input value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
+              <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
+                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
                 <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
               </div>
             </Card>
@@ -2656,7 +2657,7 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'documents' && <Documents />}
           {page === 'billing' && <Billing />}
           {page === 'settings' && <Settings />}
-          {page === 'messages' && <StudentMessages />}
+          {page === 'messages' && StudentMessages()}
           </div>
           <DashboardRightPane role="student" />
         </div>
@@ -2673,10 +2674,10 @@ function ChatBubble({ message, mine }) {
   const text = attachmentLine ? lines.filter(line => line !== attachmentLine && line !== labelLine).join('\n').trim() : body
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: mine ? C.cyan : C.surface2, color: mine ? '#000' : C.text, whiteSpace: 'pre-wrap' }}>
+      <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: mine ? C.studentMessageBg : C.surface2, color: mine ? C.studentMessageText : C.text, border: mine ? `1px solid ${C.studentMessageBorder}` : 'none', whiteSpace: 'pre-wrap' }}>
         {text && <div>{text}</div>}
         {attachmentLine && (
-          <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? '#000' : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
+          <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
             {labelLine || 'Open attachment'}
           </a>
         )}
