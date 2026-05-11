@@ -13,13 +13,13 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     .single()
 
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
-  if (!['new', 'pending', 'queued'].includes(order.status)) {
+  if (!['new', 'pending', 'queued', 'created'].includes(order.status)) {
     return Response.json({ error: `Order is already ${order.status}` }, { status: 409 })
   }
 
   const { data, error } = await auth.db
     .from('orders')
-    .update({ status: 'active' })
+    .update({ status: 'in_progress', status_updated_at: new Date().toISOString() })
     .eq('id', id)
     .select('*')
     .single()
@@ -28,9 +28,9 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   await auth.db.from('order_status_history').insert({
     order_id: id,
     from_status: order.status,
-    to_status: 'active',
+    to_status: 'in_progress',
     changed_by_id: auth.profile.id,
-    note: 'Accepted by consultant',
+    note: 'Started by consultant',
   })
 
   return Response.json({ order: data })

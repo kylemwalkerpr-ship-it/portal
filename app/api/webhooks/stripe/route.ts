@@ -1,6 +1,7 @@
 import Stripe from 'stripe'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { sendEmail, inquiryOfferAcceptedEmail } from '@/lib/email'
+import { createOrderFromCheckoutSession } from '@/lib/checkoutOrders'
 
 export async function POST(req: Request) {
   const secret = process.env.STRIPE_SECRET_KEY
@@ -175,6 +176,16 @@ export async function POST(req: Request) {
   const amountTotal = (session.amount_total ?? 0) / 100
 
   const db = createSupabaseAdminClient()
+
+  if (session.metadata?.checkout_source_type && session.metadata?.checkout_source_id) {
+    try {
+      await createOrderFromCheckoutSession(db, session)
+      return new Response('OK', { status: 200 })
+    } catch (err) {
+      console.error('[webhook] Generic checkout order create failed', err instanceof Error ? err.message : err)
+      return new Response('Order create failed', { status: 500 })
+    }
+  }
 
   // ── Attorney offer payment path ────────────────────────────────────────────
   // If the session was created by /api/offers/[id]/checkout it carries the

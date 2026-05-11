@@ -1,5 +1,6 @@
 import { getStripe } from '@/lib/stripe'
 import { requireClient } from '@/lib/clientAuth'
+import { createHostedCheckoutSession, resolveCheckoutItem } from '@/lib/checkoutOrders'
 
 // ABA-compliant payment: client pays attorney_fee + platform_fee in one
 // Stripe charge. Stripe destination charge routes the FULL attorney_fee to
@@ -17,7 +18,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .eq('id', offerId)
     .single()
 
-  if (!offer) return Response.json({ error: 'Offer not found.' }, { status: 404 })
+  if (!offer) {
+    const resolved = await resolveCheckoutItem(ctx.db, 'unified_offer', offerId, ctx.profileId)
+    if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status })
+    const session = await createHostedCheckoutSession(req, resolved)
+    return Response.json({ url: session.url, session_id: session.id })
+  }
 
   const ownsByProfile = offer.client_profile_id === ctx.profileId
   const ownsByEmail = offer.client_email === ctx.email

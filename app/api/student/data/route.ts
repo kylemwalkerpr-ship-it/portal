@@ -55,15 +55,16 @@ export async function GET() {
     const consultant = order.consultant_id ? profileById.get(order.consultant_id) : null
     const totalCents = Math.round(Number(order.total_amount || 0) * 100)
     const storedProgress = Number.isFinite(Number(order.progress)) ? Number(order.progress) : null
-    const fallbackProgress = order.status === 'completed' ? 100 : order.status === 'review' ? 90 : order.status === 'active' ? 50 : 0
+    const fallbackProgress = order.status === 'completed' ? 100 : ['review', 'under_review'].includes(order.status) ? 90 : ['active', 'in_progress'].includes(order.status) ? 50 : 0
     return {
       id: order.id,
-      service: service?.title || 'Service',
+      orderNumber: order.order_number || null,
+      service: service?.title || order.requirements || 'Custom engagement',
       serviceId: service?.id ?? null,
-      deliverable: service?.title || 'Deliverable',
+      deliverable: service?.title || order.requirements || 'Deliverable',
       consultant: consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantId: order.consultant_id ?? null,
-      status: order.status === 'queued' ? 'pending' : order.status || 'pending',
+      status: order.status === 'queued' ? 'pending' : order.status === 'created' ? 'created' : order.status === 'in_progress' ? 'active' : order.status === 'under_review' ? 'review' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',
       createdAt: order.created_at || null,
       deadline: order.deadline ? new Date(order.deadline).toLocaleDateString() : '—',

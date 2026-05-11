@@ -422,7 +422,7 @@ function ConsultantApp({ onLogout }) {
       if (!res.ok) throw new Error(data.error || 'Unable to accept order');
       await refreshConsultantData();
       setSelectedOrder(prev => prev && prev.id === order.id ? { ...prev, status: 'active' } : prev);
-      setActionNotice(`Order ${order.id} accepted.`);
+      setActionNotice(`Order ${order.id} started.`);
     } catch (e) {
       setActionNotice(e.message);
     }
@@ -733,7 +733,7 @@ function ConsultantApp({ onLogout }) {
             <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '3px' }}>A new request is waiting for your review.</div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="success" size="sm" onClick={() => acceptOrder(orders.find(o => o.status === 'new'))}>Accept</Btn>
+            <Btn variant="success" size="sm" onClick={() => acceptOrder(orders.find(o => o.status === 'new'))}>Start</Btn>
             <Btn variant="danger" size="sm" onClick={() => declineOrder(orders.find(o => o.status === 'new'))}>Decline</Btn>
           </div>
         </div>
@@ -803,7 +803,7 @@ function ConsultantApp({ onLogout }) {
               <Avatar name={order.student} size={44} />
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '2px' }}>{order.service}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px' }}>{order.id} · {order.student} · {order.country}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px' }}>{order.orderNumber || order.id} · {order.student} · {order.country}</div>
                 {order.progress > 0 && <ProgressBar value={order.progress} style={{ marginTop: '8px', maxWidth: '200px' }} />}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
@@ -815,7 +815,7 @@ function ConsultantApp({ onLogout }) {
             </div>
             {(order.status === 'new' || order.status === 'pending') && (
               <div style={{ display: 'flex', gap: '8px', marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
-                <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Accept order</Btn>
+                <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Start order</Btn>
                 <Btn variant="danger" size="sm" onClick={() => declineOrder(order)}>Decline</Btn>
               </div>
             )}
@@ -846,9 +846,9 @@ function ConsultantApp({ onLogout }) {
         {(order.status === 'new' || order.status === 'pending') && (
           <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span>📬</span>
-            <span style={{ color: C.orange, fontWeight: 600, fontSize: '14px' }}>New order — waiting for your acceptance</span>
+            <span style={{ color: C.orange, fontWeight: 600, fontSize: '14px' }}>New order — ready for you to start</span>
             <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-              <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Accept</Btn>
+              <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Start order</Btn>
               <Btn variant="danger" size="sm" onClick={() => declineOrder(order)}>Decline</Btn>
             </div>
           </div>

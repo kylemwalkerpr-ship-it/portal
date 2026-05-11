@@ -10,7 +10,7 @@ export async function GET() {
   const [ordersRes, openInquiriesRes, mineInquiriesRes, ratingsRes, attorneyRes] = await Promise.all([
     ctx.db
       .from('orders')
-      .select('id, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, payout_status, stripe_payment_intent_id')
+      .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status, stripe_payment_intent_id')
       .eq('consultant_id', ctx.profileId)
       .not('source_offer_id', 'is', null)
       .order('created_at', { ascending: false }),
@@ -42,13 +42,17 @@ export async function GET() {
   const orderRows = ordersRes.data ?? []
   const orderIds = orderRows.map((o) => o.id)
   const offerIds = orderRows.map((o) => o.source_offer_id).filter(Boolean) as string[]
+  const unifiedOfferIds = orderRows.map((o) => o.offer_id).filter(Boolean) as string[]
 
-  const [{ data: clients }, { data: offers }, { data: messageCounts }] = await Promise.all([
+  const [{ data: clients }, { data: offers }, { data: unifiedOffers }, { data: messageCounts }] = await Promise.all([
     orderRows.length
       ? ctx.db.from('profiles').select('id, full_name, email').in('id', orderRows.map((o) => o.client_id))
       : Promise.resolve({ data: [] }),
     offerIds.length
       ? ctx.db.from('attorney_offers').select('id, title, description').in('id', offerIds)
+      : Promise.resolve({ data: [] }),
+    unifiedOfferIds.length
+      ? ctx.db.from('offers').select('id, title, description').in('id', unifiedOfferIds)
       : Promise.resolve({ data: [] }),
     orderIds.length
       ? ctx.db.from('order_messages').select('order_id').in('order_id', orderIds)
@@ -57,6 +61,7 @@ export async function GET() {
 
   const clientById = new Map((clients ?? []).map((c) => [c.id, c]))
   const offerById = new Map((offers ?? []).map((o) => [o.id, o]))
+  const unifiedOfferById = new Map((unifiedOffers ?? []).map((o) => [o.id, o]))
   const msgCountByOrder = (messageCounts ?? []).reduce((m, r) => {
     m.set(r.order_id, (m.get(r.order_id) || 0) + 1)
     return m
@@ -64,16 +69,17 @@ export async function GET() {
 
   const orders = orderRows.map((o) => {
     const client = clientById.get(o.client_id)
-    const offer = o.source_offer_id ? offerById.get(o.source_offer_id) : null
+    const offer = o.source_offer_id ? offerById.get(o.source_offer_id) : o.offer_id ? unifiedOfferById.get(o.offer_id) : null
     const attorneyFee = Number(o.attorney_fee || 0)
     const platformFee = Number(o.platform_fee || 0)
     const isComplete = o.status === 'completed' || ['released', 'paid', 'completed'].includes(String(o.escrow_status || '').toLowerCase())
-    const fallbackProgress = isComplete ? 100 : o.status === 'review' ? 90 : o.status === 'active' ? 50 : 10
+    const fallbackProgress = isComplete ? 100 : ['review', 'under_review'].includes(o.status) ? 90 : ['active', 'in_progress'].includes(o.status) ? 50 : 10
     return {
       id: o.id,
+      order_number: o.order_number || null,
       title: offer?.title || 'Custom engagement',
       description: offer?.description || null,
-      status: o.status === 'queued' ? 'active' : o.status || 'active',
+      status: ['queued', 'created'].includes(o.status) ? 'created' : o.status === 'in_progress' ? 'active' : o.status === 'under_review' ? 'review' : o.status || 'created',
       escrow_status: o.escrow_status,
       attorney_fee: attorneyFee,
       platform_fee: platformFee,

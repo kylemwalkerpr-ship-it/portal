@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
+import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
 
 const ORDER_COLUMNS = [
@@ -15,6 +16,9 @@ const ORDER_COLUMNS = [
 const STATUS_OPTIONS = ['pending', 'in_progress', 'under_review', 'revision_requested', 'completed', 'released', 'cancelled', 'refunded']
 const CATEGORY_FALLBACK = ['Immigration consultation', 'Document review', 'Study permits', 'University admissions', 'Settlement planning', 'Career mentorship', 'Legal forms review', 'Business immigration']
 const TIERS = ['basic', 'standard', 'premium']
+const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const TERMS_URL = 'https://yousafeconsultancy.com/terms'
+const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 const pageShell = {
   minHeight: '100vh',
@@ -274,6 +278,7 @@ export function MarketplacePage() {
 export function GigDetailPage({ slug }) {
   const [gig, setGig] = React.useState(null)
   const [selectedTierId, setSelectedTierId] = React.useState('')
+  const [checkoutOpen, setCheckoutOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [notice, setNotice] = React.useState('')
   const [error, setError] = React.useState('')
@@ -298,14 +303,7 @@ export function GigDetailPage({ slug }) {
 
   const purchase = async () => {
     if (!selectedTierId || !gig) return
-    setNotice('Preparing checkout...')
-    try {
-      const data = await requestJson(`/api/gigs/${gig.id}/tiers/${selectedTierId}/purchase`, { method: 'POST' })
-      setNotice(data.client_secret ? 'Checkout intent created. Payment collection can now attach to this client secret.' : 'Checkout prepared.')
-      requestJson('/api/gig-metrics/event', { method: 'POST', body: JSON.stringify({ gig_id: gig.id, event_type: 'purchase' }) }).catch(() => {})
-    } catch (e) {
-      setNotice(e.message)
-    }
+    setCheckoutOpen(true)
   }
 
   if (loading) return <LoadingState label="Loading gig..." />
@@ -380,6 +378,18 @@ export function GigDetailPage({ slug }) {
             </Card>
           </aside>
         </div>
+        {checkoutOpen && selectedTier && (
+          <GigCheckoutDialog
+            gig={gig}
+            tier={selectedTier}
+            onClose={() => setCheckoutOpen(false)}
+            onPaid={() => {
+              setCheckoutOpen(false)
+              setNotice('Payment successful. Your order is ready for the provider to start.')
+              requestJson('/api/gig-metrics/event', { method: 'POST', body: JSON.stringify({ gig_id: gig.id, event_type: 'purchase' }) }).catch(() => {})
+            }}
+          />
+        )}
       </main>
       <style jsx global>{`
         @media (max-width: 920px) {
@@ -387,6 +397,146 @@ export function GigDetailPage({ slug }) {
         }
       `}</style>
     </div>
+  )
+}
+
+function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
+  const [payMethod, setPayMethod] = React.useState('stripe')
+  const [walletBalance, setWalletBalance] = React.useState(null)
+  const [cards, setCards] = React.useState([])
+  const [selectedCardId, setSelectedCardId] = React.useState('')
+  const [acceptedTerms, setAcceptedTerms] = React.useState(false)
+  const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const priceDollars = Number(tier.price || 0) / 100
+  const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card'
+  const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy)
+  const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
+  const selectedCard = cards.find(card => card.id === selectedCardId)
+
+  React.useEffect(() => {
+    fetch('/api/wallet/balance')
+      .then(r => r.json())
+      .then(d => setWalletBalance(Number(d.available?.usd ?? d.available ?? 0)))
+      .catch(() => setWalletBalance(0))
+    fetch('/api/wallet/payment-methods')
+      .then(r => r.json())
+      .then(d => {
+        const next = d.cards ?? []
+        setCards(next)
+        setSelectedCardId(next[0]?.id || '')
+      })
+      .catch(() => setCards([]))
+  }, [])
+
+  const pay = async () => {
+    if (busy) return
+    if (!ackComplete) {
+      setError('Please confirm the Terms of Service and Refund Policy before paying.')
+      return
+    }
+    if (payMethod === 'wallet' && !canUseWallet) {
+      setError('Your wallet balance is not enough for this order.')
+      return
+    }
+    if (payMethod === 'saved_card' && !selectedCardId) {
+      setError('Choose a saved card first.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const payload = await requestJson('/api/checkout/order', {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceType: 'gig',
+          sourceId: gig.id,
+          tierId: tier.id,
+          paymentMethod: payMethod,
+          paymentMethodId: selectedCardId,
+          acceptedTerms,
+          acceptedRefundPolicy,
+        }),
+      })
+      if (payload.url) {
+        window.location.href = payload.url
+        return
+      }
+      if (payload.requiresAction) {
+        if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.')
+        const stripe = await loadStripe(STRIPE_PUB_KEY)
+        if (!stripe) throw new Error('Unable to load Stripe.')
+        const result = await stripe.confirmCardPayment(payload.clientSecret)
+        if (result.error) throw new Error(result.error.message)
+        await requestJson('/api/checkout/order', {
+          method: 'PATCH',
+          body: JSON.stringify({ paymentIntentId: payload.paymentIntentId }),
+        })
+      }
+      onPaid?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(15,18,32,0.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }}>
+      <div style={{ width: '100%', maxWidth: '540px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden' }}>
+        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '14px' }}>
+          <div>
+            <div style={{ color: C.textMuted, fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 800 }}>Gig checkout</div>
+            <div style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, marginTop: '4px' }}>{gig.title}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close checkout" style={{ width: '34px', height: '34px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface2, cursor: 'pointer', color: C.text }}>x</button>
+        </div>
+        <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
+          <Card style={{ padding: '14px' }}>
+            <div style={{ fontWeight: 900, textTransform: 'capitalize' }}>{tier.tier}</div>
+            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{tier.delivery_days} day delivery · {tier.revisions >= 999 ? 'Unlimited' : tier.revisions} revisions</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
+              <span style={{ fontWeight: 800 }}>Total</span>
+              <span style={{ fontFamily: C.serif, fontSize: '26px' }}>{money(tier.price)}</span>
+            </div>
+          </Card>
+          <CheckoutButton active={payMethod === 'wallet'} disabled={!canUseWallet} onClick={() => canUseWallet && setPayMethod('wallet')} title="Wallet balance" detail={walletBalance === null ? 'Loading balance...' : `${money((walletBalance || 0) * 100)} available${canUseWallet ? '' : ' - insufficient'}`} />
+          <CheckoutButton active={payMethod === 'saved_card'} disabled={!cards.length} onClick={() => cards.length && setPayMethod('saved_card')} title="Saved card" detail={selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'} />
+          {payMethod === 'saved_card' && cards.length > 0 && (
+            <select value={selectedCardId} onChange={e => setSelectedCardId(e.target.value)} style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}>
+              {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4}</option>)}
+            </select>
+          )}
+          <CheckoutButton active={payMethod === 'stripe'} onClick={() => setPayMethod('stripe')} title="Stripe hosted checkout" detail="Open Stripe's secure payment page" />
+          {requiresAck && (
+            <Card style={{ padding: '14px' }}>
+              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', marginBottom: '8px' }}>
+                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
+                <span>I agree to the <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Terms of Service</a>.</span>
+              </label>
+              <label style={{ display: 'flex', gap: '10px', fontSize: '13px' }}>
+                <input type="checkbox" checked={acceptedRefundPolicy} onChange={e => setAcceptedRefundPolicy(e.target.checked)} />
+                <span>I accept the <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Refund Policy</a>.</span>
+              </label>
+            </Card>
+          )}
+          {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
+          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
+            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${money(tier.price)}`}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CheckoutButton({ active, disabled, onClick, title, detail }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} style={{ width: '100%', border: `2px solid ${active ? C.cyan : C.border}`, background: active ? C.cyanGlow : C.surface2, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', borderRadius: '12px', padding: '13px 14px', color: C.text, display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', fontFamily: 'inherit', textAlign: 'left' }}>
+      <span><span style={{ display: 'block', fontWeight: 900, fontSize: '14px' }}>{title}</span><span style={{ display: 'block', color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{detail}</span></span>
+      <span style={{ color: active ? C.cyan : C.textDim, fontWeight: 900 }}>{active ? '✓' : '○'}</span>
+    </button>
   )
 }
 

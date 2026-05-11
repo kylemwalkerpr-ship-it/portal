@@ -61,7 +61,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   }
 
-  const threadsMap = new Map<string, { attorney_profile_id: string; attorney_name: string; messages: typeof messages; offers: typeof offers }>()
+  const threadsMap = new Map<string, { attorney_profile_id: string; attorney_name: string; messages: typeof messages; offers: any[] }>()
   for (const apid of ids) {
     const prof = attorneyProfilesById.get(apid)
     threadsMap.set(apid, {
@@ -82,7 +82,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   }
   for (const o of offers ?? []) {
-    if (o.attorney_profile_id) threadsMap.get(o.attorney_profile_id)?.offers.push(o)
+    if (o.attorney_profile_id) threadsMap.get(o.attorney_profile_id)?.offers.push({ ...o, source_type: 'attorney_offer' })
   }
 
   const threads = Array.from(threadsMap.values()).sort((a, b) => a.attorney_name.localeCompare(b.attorney_name))

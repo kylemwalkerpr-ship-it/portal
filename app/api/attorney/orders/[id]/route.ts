@@ -8,7 +8,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const { data: order } = await ctx.db
     .from('orders')
-    .select('id, client_id, consultant_id, status, escrow_status, total_amount, attorney_fee, platform_fee, requirements, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, payout_status, stripe_payment_intent_id')
+    .select('id, client_id, consultant_id, status, escrow_status, total_amount, attorney_fee, platform_fee, requirements, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status, stripe_payment_intent_id, order_number')
     .eq('id', id)
     .single()
   if (!order) return Response.json({ error: 'Order not found.' }, { status: 404 })
@@ -22,6 +22,12 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
           .select('id, title, description, delivery_days, expires_at')
           .eq('id', order.source_offer_id)
           .single()
+      : order.offer_id
+        ? ctx.db
+            .from('offers')
+            .select('id, title, description, delivery_days, expires_at')
+            .eq('id', order.offer_id)
+            .single()
       : Promise.resolve({ data: null }),
     ctx.db
       .from('order_messages')

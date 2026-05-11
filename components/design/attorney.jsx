@@ -1390,6 +1390,21 @@ function OrderDetail({ orderId, onBack }) {
     } catch (e) { setError(e.message) } finally { setCompleting(false) }
   }
 
+  async function startOrder() {
+    setSavingProgress(true)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ status: 'in_progress', note: 'Started by attorney' }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error?.message || payload?.error || 'Could not start order.')
+      load(false)
+    } catch (e) { setError(e.message) } finally { setSavingProgress(false) }
+  }
+
   if (loading) return <Notice>Loading order...</Notice>
   if (error) return <Notice tone="error">{error}</Notice>
   if (!data) return null
@@ -1419,6 +1434,11 @@ function OrderDetail({ orderId, onBack }) {
             <div style={{ marginTop: '10px', fontFamily: C.serif, fontSize: '24px', color: C.text }}>${Number(order.attorney_fee || 0).toFixed(2)}</div>
             <div style={{ color: C.textMuted, fontSize: '11px' }}>your fee · client paid ${(Number(order.attorney_fee || 0) + Number(order.platform_fee || 0)).toFixed(2)}</div>
             <div style={{ color: C.textDim, fontSize: '11px', marginTop: '4px' }}>Payout: {order.payout_status}</div>
+            {order.status === 'created' && (
+              <Btn variant="primary" size="sm" disabled={savingProgress} onClick={startOrder} style={{ marginTop: '10px' }}>
+                {savingProgress ? 'Starting...' : 'Start order'}
+              </Btn>
+            )}
           </div>
         </div>
       </Card>
@@ -1483,7 +1503,7 @@ function OrderDetail({ orderId, onBack }) {
           <Card>
             <div style={{ padding: '16px 18px' }}>
               <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '8px' }}>Order details</div>
-              <DetailRow label="Order ID" value={order.id} mono />
+              <DetailRow label="Order #" value={order.order_number || order.id} mono />
               {order.offer?.delivery_days && <DetailRow label="Promised delivery" value={`${order.offer.delivery_days} days`} />}
               <DetailRow label="Started" value={new Date(order.created_at).toLocaleString()} />
               {order.completed_at && <DetailRow label="Completed" value={new Date(order.completed_at).toLocaleString()} />}

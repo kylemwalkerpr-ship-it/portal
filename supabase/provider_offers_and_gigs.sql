@@ -63,6 +63,8 @@ create index if not exists consultant_offers_status_idx on public.consultant_off
 create index if not exists consultant_offers_session_idx on public.consultant_offers(stripe_session_id);
 
 alter table public.orders
+  add column if not exists order_sequence integer,
+  add column if not exists order_number text,
   add column if not exists source_consultant_offer_id uuid references public.consultant_offers(id) on delete set null,
   add column if not exists refund_status text,
   add column if not exists refunded_amount numeric(12,2),
@@ -71,6 +73,9 @@ alter table public.orders
   add column if not exists wallet_credit_amount numeric(12,2),
   add column if not exists cancelled_at timestamptz,
   add column if not exists cancelled_by uuid references public.profiles(id) on delete set null;
+
+create unique index if not exists orders_order_sequence_idx on public.orders (order_sequence) where order_sequence is not null;
+create unique index if not exists orders_order_number_idx on public.orders (order_number) where order_number is not null;
 
 create table if not exists public.provider_gigs (
   id uuid primary key default gen_random_uuid(),

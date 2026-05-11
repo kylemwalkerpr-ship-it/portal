@@ -157,6 +157,8 @@ on conflict (id) do update set public = false;
 -- E5/E6/E7: order lifecycle, admin audit, refunds, wallet fallback.
 alter table public.orders
   add column if not exists offer_id uuid references public.offers(id) on delete set null,
+  add column if not exists order_sequence integer,
+  add column if not exists order_number text,
   add column if not exists attorney_id uuid references public.attorneys(id) on delete set null,
   add column if not exists amount_paid integer,
   add column if not exists net_payout integer,
@@ -186,6 +188,8 @@ create table if not exists public.order_events (
 );
 
 create index if not exists order_events_order_idx on public.order_events (order_id, created_at);
+create unique index if not exists orders_order_sequence_idx on public.orders (order_sequence) where order_sequence is not null;
+create unique index if not exists orders_order_number_idx on public.orders (order_number) where order_number is not null;
 
 create table if not exists public.admin_audit_log (
   id uuid primary key default gen_random_uuid(),

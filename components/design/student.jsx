@@ -978,6 +978,162 @@ function Billing() {
   );
 }
 
+function OrderCheckoutDialog({ request, onClose, onPaid }) {
+  const [payMethod, setPayMethod] = React.useState('stripe');
+  const [walletBalance, setWalletBalance] = React.useState(null);
+  const [cards, setCards] = React.useState([]);
+  const [selectedCardId, setSelectedCardId] = React.useState('');
+  const [acceptedTerms, setAcceptedTerms] = React.useState(false);
+  const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card';
+  const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
+  const total = Number(request?.total || 0);
+  const canUseWallet = walletBalance !== null && walletBalance >= total;
+  const selectedCard = cards.find(card => card.id === selectedCardId);
+
+  React.useEffect(() => {
+    fetch('/api/wallet/balance')
+      .then(r => r.json())
+      .then(d => setWalletBalance(Number(d.available?.usd ?? d.available ?? 0)))
+      .catch(() => setWalletBalance(0));
+    fetch('/api/wallet/payment-methods')
+      .then(r => r.json())
+      .then(d => {
+        const next = d.cards ?? [];
+        setCards(next);
+        setSelectedCardId(next[0]?.id || '');
+      })
+      .catch(() => setCards([]));
+  }, []);
+
+  const pay = async () => {
+    if (!request || busy) return;
+    if (!ackComplete) {
+      setError('Please confirm the Terms of Service and Refund Policy before paying.');
+      return;
+    }
+    if (payMethod === 'wallet' && !canUseWallet) {
+      setError('Your wallet balance is not enough for this order.');
+      return;
+    }
+    if (payMethod === 'saved_card' && !selectedCardId) {
+      setError('Choose a saved card first.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/checkout/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceType: request.sourceType,
+          sourceId: request.sourceId,
+          tierId: request.tierId,
+          paymentMethod: payMethod,
+          paymentMethodId: selectedCardId,
+          acceptedTerms,
+          acceptedRefundPolicy,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Checkout failed.');
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      if (data.requiresAction) {
+        if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.');
+        const stripe = await loadStripe(STRIPE_PUB_KEY);
+        if (!stripe) throw new Error('Unable to load Stripe.');
+        const result = await stripe.confirmCardPayment(data.clientSecret);
+        if (result.error) throw new Error(result.error.message);
+        const completeRes = await fetch('/api/checkout/order', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentIntentId: data.paymentIntentId }),
+        });
+        const completeData = await completeRes.json();
+        if (!completeRes.ok) throw new Error(completeData.error || 'Payment confirmation failed.');
+      }
+      await onPaid?.(data.orderId);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!request) return null;
+
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(15,18,32,0.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }}>
+      <div style={{ width: '100%', maxWidth: '560px', background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 24px 70px rgba(15,18,32,0.22)' }}>
+        <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '14px' }}>
+          <div>
+            <div style={{ color: C.textMuted, fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 800 }}>Secure checkout</div>
+            <div style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, marginTop: '4px' }}>{request.title}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close checkout" style={{ width: '34px', height: '34px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface2, cursor: 'pointer', color: C.text }}>x</button>
+        </div>
+        <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
+          <Card style={{ padding: '14px' }}>
+            <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{request.description || 'Fixed-scope order'}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
+              <span style={{ fontWeight: 800 }}>Total</span>
+              <span style={{ fontFamily: C.serif, fontSize: '26px', color: C.text }}>{formatMoney(total, request.currency || 'usd')}</span>
+            </div>
+          </Card>
+
+          <div style={{ display: 'grid', gap: '10px' }}>
+            <CheckoutChoice active={payMethod === 'wallet'} disabled={!canUseWallet} onClick={() => canUseWallet && setPayMethod('wallet')} title="Wallet balance" detail={walletBalance === null ? 'Loading balance...' : `${formatMoney(walletBalance, 'usd')} available${canUseWallet ? '' : ' - insufficient'}`} />
+            <CheckoutChoice active={payMethod === 'saved_card'} disabled={!cards.length} onClick={() => cards.length && setPayMethod('saved_card')} title="Saved card" detail={selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'} />
+            {payMethod === 'saved_card' && cards.length > 0 && (
+              <select value={selectedCardId} onChange={e => setSelectedCardId(e.target.value)} style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}>
+                {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4} - exp {card.exp_month}/{card.exp_year}</option>)}
+              </select>
+            )}
+            <CheckoutChoice active={payMethod === 'stripe'} onClick={() => setPayMethod('stripe')} title="Stripe hosted checkout" detail="Open Stripe's secure payment page" />
+          </div>
+
+          {requiresAck && (
+            <Card style={{ padding: '14px' }}>
+              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', marginBottom: '8px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
+                <span>I agree to the <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Terms of Service</a>.</span>
+              </label>
+              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={acceptedRefundPolicy} onChange={e => setAcceptedRefundPolicy(e.target.checked)} />
+                <span>I accept the <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Refund Policy</a>.</span>
+              </label>
+            </Card>
+          )}
+
+          {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
+          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
+            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${formatMoney(total, request.currency || 'usd')}`}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CheckoutChoice({ active, disabled, onClick, title, detail }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} style={{ width: '100%', border: `2px solid ${active ? C.cyan : C.border}`, background: active ? `${C.cyan}10` : C.surface2, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', borderRadius: '12px', padding: '13px 14px', color: C.text, display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', fontFamily: 'inherit', textAlign: 'left' }}>
+      <span>
+        <span style={{ display: 'block', fontWeight: 800, fontSize: '14px' }}>{title}</span>
+        <span style={{ display: 'block', color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{detail}</span>
+      </span>
+      <span style={{ color: active ? C.cyan : C.textDim, fontWeight: 900 }}>{active ? '✓' : '○'}</span>
+    </button>
+  );
+}
+
 function StudentApp({ onLogout, userId, userName }) {
   const [page, setPage] = React.useState('dashboard');
   // Cross-component navigation: child views (e.g. FindAttorney) dispatch a
@@ -1008,6 +1164,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
   const [orderPlaced, setOrderPlaced] = React.useState(false);
+  const [checkoutRequest, setCheckoutRequest] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [ordersLoading, setOrdersLoading] = React.useState(true);
   const [ordersError, setOrdersError] = React.useState(null);
@@ -1221,30 +1378,22 @@ function StudentApp({ onLogout, userId, userName }) {
     }
   };
 
-  const acceptAttorneyOffer = async offerId => {
-    try {
-      let res = await fetch(`/api/offers/${offerId}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      let data = await res.json();
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      res = await fetch(`/api/offers/${offerId}/accept`, { method: 'PATCH' });
-      data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not start payment.');
-      if (data.data?.client_secret) {
-        const stripe = await loadStripe(STRIPE_PUB_KEY);
-        if (!stripe) throw new Error('Unable to load Stripe.');
-        setActionNotice(`Payment sheet ready. Total: ${formatMoney((data.data.breakdown?.total || 0) / 100, 'usd')}`);
-      }
-      await loadAttorneyChats();
-    } catch (e) {
-      setActionNotice(e.message);
-    }
+  const acceptAttorneyOffer = offer => {
+    const sourceType = offer.source_type || (offer.platform_fee != null ? 'attorney_offer' : 'unified_offer');
+    const subtotal = Number(offer.price || 0);
+    const total = subtotal + Number(offer.platform_fee || 0);
+    setCheckoutRequest({
+      sourceType,
+      sourceId: offer.id,
+      title: offer.title,
+      description: offer.description,
+      total,
+      currency: offer.currency || 'usd',
+      onSuccess: async () => {
+        await loadAttorneyChats();
+        if (selectedAttorneyChatId) await loadAttorneyChat(selectedAttorneyChatId);
+      },
+    });
   };
 
   const declineAttorneyOffer = async offerId => {
@@ -1262,26 +1411,19 @@ function StudentApp({ onLogout, userId, userName }) {
     }
   };
 
-  const acceptConsultantOffer = async offerId => {
-    try {
-      let res = await fetch(`/api/consultant/offers/${offerId}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      let data = await res.json();
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      res = await fetch(`/api/offers/${offerId}/accept`, { method: 'PATCH' });
-      data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not start payment.');
-      setActionNotice(`Payment sheet ready. Total: ${formatMoney((data.data?.breakdown?.total || 0) / 100, 'usd')}`);
-      await loadMessagesFor(selectedOrder);
-    } catch (e) {
-      setActionNotice(e.message);
-    }
+  const acceptConsultantOffer = offer => {
+    setCheckoutRequest({
+      sourceType: offer.source_type || 'consultant_offer',
+      sourceId: offer.id,
+      title: offer.title,
+      description: offer.description,
+      total: Number(offer.price || 0),
+      currency: offer.currency || 'usd',
+      onSuccess: async () => {
+        await refreshStudentData();
+        await loadMessagesFor(selectedOrder);
+      },
+    });
   };
 
   const declineConsultantOffer = async offerId => {
@@ -1620,7 +1762,7 @@ function StudentApp({ onLogout, userId, userName }) {
               <Avatar name={order.consultant} size={44} />
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <div style={{ fontFamily: C.serif, fontWeight: 500, fontSize: '18px', color: C.text, lineHeight: 1.2, letterSpacing: '-0.005em', marginBottom: '2px' }}>{order.service}</div>
-                <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.id} · with {order.consultant} · {order.date}</div>
+                <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.orderNumber || order.id} · with {order.consultant} · {order.date}</div>
                 <ProgressBar value={order.progress} style={{ marginTop: '10px', maxWidth: '260px' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
@@ -1652,7 +1794,7 @@ function StudentApp({ onLogout, userId, userName }) {
             <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: 0 }}>{order.service}</h2>
             <StatusBadge status={order.status} />
           </div>
-          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>{order.id} · started {order.date}</div>
+          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>{order.orderNumber || order.id} · started {order.date}</div>
         </div>
         <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
           {/* Main */}
@@ -1697,7 +1839,7 @@ function StudentApp({ onLogout, userId, userName }) {
                     </div>
                   </div>
                 ))}
-                {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o.id)} onDecline={() => declineConsultantOffer(o.id)} />)}
+                {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o)} onDecline={() => declineConsultantOffer(o.id)} />)}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -1714,7 +1856,7 @@ function StudentApp({ onLogout, userId, userName }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '16px' }}>Order Details</div>
-              {[['Order ID', order.id], ['Date placed', order.date], ['Price', order.price], ['Deliverable', order.deliverable]].map(([k, v]) => (
+              {[['Order #', order.orderNumber || order.id], ['Date placed', order.date], ['Price', order.price], ['Deliverable', order.deliverable]].map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
                   <span style={{ color: C.textMuted }}>{k}</span>
                   <span style={{ color: C.text, fontWeight: 600 }}>{v}</span>
@@ -2676,7 +2818,7 @@ function StudentApp({ onLogout, userId, userName }) {
               <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {attorneyChatLoading && currentMessages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
                 {currentMessages.map((m) => <ChatBubble key={m.id} message={m} mine={m.sender_role === 'client'} />)}
-                {currentOffers.map(o => <AttorneyOfferCard key={o.id} offer={o} onAccept={() => acceptAttorneyOffer(o.id)} onDecline={() => declineAttorneyOffer(o.id)} />)}
+                {currentOffers.map(o => <AttorneyOfferCard key={o.id} offer={o} onAccept={() => acceptAttorneyOffer(o)} onDecline={() => declineAttorneyOffer(o.id)} />)}
               </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input ref={attorneyChatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendAttorneyChatMessage(e.target.files?.[0])} />
@@ -2707,7 +2849,7 @@ function StudentApp({ onLogout, userId, userName }) {
                     </div>
                 </div>
               ))}
-              {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o.id)} onDecline={() => declineConsultantOffer(o.id)} />)}
+              {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o)} onDecline={() => declineConsultantOffer(o.id)} />)}
             </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -2758,6 +2900,19 @@ function StudentApp({ onLogout, userId, userName }) {
           <DashboardRightPane role="student" />
         </div>
       </div>
+      {checkoutRequest && (
+        <OrderCheckoutDialog
+          request={checkoutRequest}
+          onClose={() => setCheckoutRequest(null)}
+          onPaid={async (orderId) => {
+            setOrderPlaced(true);
+            setActionNotice(`Payment successful. Order ${orderId || ''} is ready for the provider to start.`);
+            await checkoutRequest.onSuccess?.(orderId);
+            await refreshStudentData();
+            setTimeout(() => setOrderPlaced(false), 6000);
+          }}
+        />
+      )}
     </div>
   );
 }

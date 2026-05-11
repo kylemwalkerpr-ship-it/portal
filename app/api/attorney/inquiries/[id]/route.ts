@@ -56,6 +56,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     offers: [
       ...((unifiedOffers ?? []).map((o) => ({
         id: o.id,
+        source_type: 'unified_offer',
         title: o.title,
         description: o.description,
         original_price: Number(o.price || 0) / 100,
@@ -69,7 +70,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
         expires_at: o.expires_at,
         created_at: o.created_at,
       }))),
-      ...(offers ?? []),
+      ...((offers ?? []).map((o) => ({ ...o, source_type: 'attorney_offer' }))),
     ],
   })
 }

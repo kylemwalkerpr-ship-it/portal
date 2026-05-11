@@ -20,8 +20,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
 
   const payload: Record<string, unknown> = { progress }
-  if (progress >= 90 && order.status === 'active') payload.status = 'review'
-  else if (progress > 0 && order.status === 'pending') payload.status = 'active'
+  if (progress >= 90 && ['active', 'in_progress'].includes(order.status)) payload.status = 'under_review'
+  else if (progress > 0 && ['pending', 'queued', 'created', 'new'].includes(order.status)) payload.status = 'in_progress'
 
   const { data, error } = await auth.db
     .from('orders')

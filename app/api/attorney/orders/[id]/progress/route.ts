@@ -18,7 +18,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (!Number.isFinite(n) || n < 0 || n > 100) return Response.json({ error: 'progress must be 0–100.' }, { status: 400 })
     update.progress = Math.round(n)
   }
-  if (body.status === 'review') update.status = 'review'
+  if (body.status === 'review' || body.status === 'under_review') update.status = 'under_review'
   if (Object.keys(update).length === 0) return Response.json({ error: 'Nothing to update.' }, { status: 400 })
 
   const { data: order, error: updErr } = await ctx.db

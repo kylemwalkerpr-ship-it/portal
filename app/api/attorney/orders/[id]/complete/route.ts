@@ -10,7 +10,7 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
 
   const { data: order, error: updErr } = await ctx.db
     .from('orders')
-    .update({ status: 'review', progress: 100 })
+    .update({ status: 'under_review', progress: 100 })
     .eq('id', id)
     .eq('consultant_id', ctx.profileId)
     .select('id, status')

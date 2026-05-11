@@ -52,14 +52,15 @@ export async function GET() {
     const student = profileById.get(order.client_id)
     const payoutCents = Number(order.consultant_payout_amount || Math.round(Number(order.total_amount || 0) * 80))
     const storedProgress = Number.isFinite(Number(order.progress)) ? Number(order.progress) : null
-    const fallbackProgress = order.status === 'completed' ? 100 : order.status === 'review' ? 90 : order.status === 'active' ? 50 : 0
+    const fallbackProgress = order.status === 'completed' ? 100 : ['review', 'under_review'].includes(order.status) ? 90 : ['active', 'in_progress'].includes(order.status) ? 50 : 0
     return {
       id: order.id,
-      service: service?.title || 'Service unavailable',
+      orderNumber: order.order_number || null,
+      service: service?.title || order.requirements || 'Custom engagement',
       student: student?.full_name || student?.email || 'Unknown student',
       clientId: order.client_id,
       country: student?.country || '—',
-      status: order.status === 'queued' ? 'pending' : order.status || 'pending',
+      status: ['queued', 'created'].includes(order.status) ? 'new' : order.status === 'in_progress' ? 'active' : order.status === 'under_review' ? 'review' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',
       createdAt: order.created_at || null,
       completedAt: order.completed_at || null,
