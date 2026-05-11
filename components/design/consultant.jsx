@@ -73,6 +73,7 @@ function ConsultantApp({ onLogout }) {
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
   const [profileAvatarUrl, setProfileAvatarUrl] = React.useState('');
+  const [gigUsage, setGigUsage] = React.useState({ used: 0, limit: 5 });
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
   const [available, setAvailable] = React.useState(true);
   const [notifPrefs, setNotifPrefs] = React.useState({ orders: true, messages: true, payments: true });
@@ -222,6 +223,29 @@ function ConsultantApp({ onLogout }) {
   };
 
   React.useEffect(() => { refreshConsultantData(); }, [refreshConsultantData]);
+
+  React.useEffect(() => {
+    const key = 'consultant:gig-count';
+    try {
+      const cached = JSON.parse(window.sessionStorage.getItem(key) || 'null');
+      if (cached && Date.now() - cached.ts < 60000) {
+        setGigUsage({ used: Number(cached.used || 0), limit: Number(cached.limit || 5) });
+        return;
+      }
+    } catch { /* ignore */ }
+    let cancelled = false;
+    fetch('/api/gigs?countOnly=true', { credentials: 'same-origin' })
+      .then(async r => {
+        const payload = await r.json().catch(() => ({}));
+        const data = payload?.data || payload;
+        if (!r.ok) throw new Error(payload?.error?.message || payload?.error || 'Could not load gig count');
+        const next = { used: Number(data.used || data.count || 0), limit: Number(data.limit || 5) };
+        if (!cancelled) setGigUsage(next);
+        try { window.sessionStorage.setItem(key, JSON.stringify({ ...next, ts: Date.now() })); } catch { /* ignore */ }
+      })
+      .catch(() => !cancelled && setGigUsage({ used: 0, limit: 5 }));
+    return () => { cancelled = true; };
+  }, []);
 
   const refreshNotifReads = React.useCallback(async () => {
     try {
@@ -532,7 +556,15 @@ function ConsultantApp({ onLogout }) {
   }, [refreshConsultantData]);
 
   // ── SIDEBAR ──
-  const Sidebar = () => (
+  const Sidebar = () => {
+    const goToRoute = href => {
+      if (typeof window !== 'undefined') window.location.href = href;
+    };
+    const gigsActive = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/gigs');
+    const gigsBadge = `${Number(gigUsage?.used || 0)}/${Number(gigUsage?.limit || 5)}`;
+    const gigsAtLimit = Number(gigUsage?.used || 0) >= Number(gigUsage?.limit || 5);
+
+    return (
     <div className="yousafe-sidebar" style={{
       width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`,
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0,
@@ -549,6 +581,7 @@ function ConsultantApp({ onLogout }) {
         <NavItem icon="📦" label="Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={newOrders > 0 ? `${newOrders} new` : null} />
         <NavItem icon="👥" label="Clients" active={page === 'clients'} onClick={() => setPage('clients')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); }} badge={notifications.length > 0 ? `${notifications.length} new` : null} />
+        <NavItem icon="💼" label="Gigs" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <NavItem icon="🏦" label="Payout Setup" active={page === 'connect'} onClick={() => setPage('connect')} />
@@ -594,7 +627,8 @@ function ConsultantApp({ onLogout }) {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   // ── TOPBAR ──
   const TopBar = ({ title }) => (

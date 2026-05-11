@@ -2,6 +2,27 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { buildSlug } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
 
+export async function GET(req: Request) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+  if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
+
+  const url = new URL(req.url)
+  if (url.searchParams.get('countOnly') === 'true') {
+    const { count, error } = await auth.db
+      .from('gigs')
+      .select('id', { count: 'exact', head: true })
+      .eq('provider_id', auth.profileId)
+      .eq('provider_type', auth.role)
+      .in('status', ['draft', 'active', 'paused'])
+
+    if (error) return fail(error.message, 500)
+    return ok({ used: count ?? 0, count: count ?? 0, limit: 5 })
+  }
+
+  return fail('Unsupported gigs query.', 400)
+}
+
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)

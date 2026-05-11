@@ -123,13 +123,13 @@ export function Card({ children, style, onClick, hover = false, className }) {
   )
 }
 
-export function Input({ label, type = 'text', value, onChange, placeholder, icon, hint, error, style }) {
+export function Input({ label, type = 'text', value, onChange, placeholder, icon, hint, error, style, ...props }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {label && <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted }}>{label}</label>}
       <div style={{ position: 'relative' }}>
         {icon && <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: C.textDim, fontSize: '16px' }}>{icon}</span>}
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} {...props}
           style={{
             width: '100%', padding: icon ? '11px 14px 11px 38px' : '11px 14px',
             background: C.surface2, border: `1px solid ${error ? C.red : C.border2}`,
@@ -467,7 +467,7 @@ export function ProgressBar({ value, color = C.cyan, style }) {
   )
 }
 
-export function NavItem({ icon, label, active, onClick, badge }) {
+export function NavItem({ icon, label, active, onClick, badge, badgeColor = 'red' }) {
   const [hovered, setHovered] = React.useState(false)
   return (
     <div
@@ -486,7 +486,7 @@ export function NavItem({ icon, label, active, onClick, badge }) {
     >
       <span style={{ fontSize: '16px', width: '20px', textAlign: 'center', opacity: active ? 1 : 0.85 }}>{icon}</span>
       <span style={{ flex: 1, letterSpacing: '0.005em' }}>{label}</span>
-      {badge && <Badge color="red" style={{ fontSize: '10px', padding: '1px 6px' }}>{badge}</Badge>}
+      {badge && <Badge color={badgeColor} style={{ fontSize: '10px', padding: '1px 6px' }}>{badge}</Badge>}
     </div>
   )
 }

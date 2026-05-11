@@ -15,6 +15,7 @@ const PAGE_TITLES = {
   orders: 'Active Orders',
   messages: 'Messages',
   earnings: 'Earnings',
+  gigs: 'Gigs',
   profile: 'My Profile',
   settings: 'Settings',
 }
@@ -25,6 +26,7 @@ export default function AttorneyApp({ onLogout, userName }) {
   const [profileError, setProfileError] = React.useState('')
   const [dashboardData, setDashboardData] = React.useState(null)
   const [available, setAvailable] = React.useState(true)
+  const [gigUsage, setGigUsage] = React.useState({ used: 0, limit: 5 })
   const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set())
   const headshotInputRef = React.useRef(null)
   const [uploadingHeadshot, setUploadingHeadshot] = React.useState(false)
@@ -66,6 +68,29 @@ export default function AttorneyApp({ onLogout, userName }) {
     }, 30000)
     return () => clearInterval(id)
   }, [refreshDashboard])
+
+  React.useEffect(() => {
+    const key = 'attorney:gig-count'
+    try {
+      const cached = JSON.parse(window.sessionStorage.getItem(key) || 'null')
+      if (cached && Date.now() - cached.ts < 60000) {
+        setGigUsage({ used: Number(cached.used || 0), limit: Number(cached.limit || 5) })
+        return
+      }
+    } catch { /* ignore */ }
+    let cancelled = false
+    fetch('/api/gigs?countOnly=true', { credentials: 'same-origin' })
+      .then(async r => {
+        const payload = await r.json().catch(() => ({}))
+        const data = payload?.data || payload
+        if (!r.ok) throw new Error(payload?.error?.message || payload?.error || 'Could not load gig count')
+        const next = { used: Number(data.used || data.count || 0), limit: Number(data.limit || 5) }
+        if (!cancelled) setGigUsage(next)
+        try { window.sessionStorage.setItem(key, JSON.stringify({ ...next, ts: Date.now() })) } catch { /* ignore */ }
+      })
+      .catch(() => !cancelled && setGigUsage({ used: 0, limit: 5 }))
+    return () => { cancelled = true }
+  }, [])
 
   const profileId = profileData?.profile?.id || ''
   const readKey = profileId ? `attorney:notif-read:${profileId}` : ''
@@ -194,6 +219,7 @@ export default function AttorneyApp({ onLogout, userName }) {
         headshotUrl={headshotUrl}
         available={available}
         toggleAvailable={toggleAvailable}
+        gigUsage={gigUsage}
       />
       <div className="yousafe-dashboard-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar
@@ -323,7 +349,14 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
   )
 }
 
-function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable }) {
+function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable, gigUsage }) {
+  const goToRoute = (href) => {
+    if (typeof window !== 'undefined') window.location.href = href
+  }
+  const gigsActive = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/gigs')
+  const gigsBadge = `${Number(gigUsage?.used || 0)}/${Number(gigUsage?.limit || 5)}`
+  const gigsAtLimit = Number(gigUsage?.used || 0) >= Number(gigUsage?.limit || 5)
+
   return (
     <div
       className="yousafe-sidebar"
@@ -359,6 +392,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
         <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
+        <NavItem icon="💼" label="Gigs" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />

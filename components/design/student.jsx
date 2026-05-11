@@ -1013,6 +1013,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [ordersError, setOrdersError] = React.useState(null);
   const [viewerVertical, setViewerVertical] = React.useState('study_abroad');
   const [profileData, setProfileData] = React.useState({ name: userName || '', email: '' });
+  const [walletSummary, setWalletSummary] = React.useState({ available: 0, pending: 0 });
   const [orderFiles, setOrderFiles] = React.useState([]);
   const [filesLoading, setFilesLoading] = React.useState(false);
   const [uploadingOrderFile, setUploadingOrderFile] = React.useState(false);
@@ -1042,6 +1043,22 @@ function StudentApp({ onLogout, userId, userName }) {
   }, []);
 
   React.useEffect(() => { refreshStudentData(); }, [refreshStudentData]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/wallet/balance', { credentials: 'same-origin' })
+      .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'Unable to load wallet');
+        if (!cancelled) setWalletSummary({ available: Number(data.available || 0), pending: Number(data.pending || 0) });
+      })
+      .catch(() => !cancelled && setWalletSummary({ available: 0, pending: 0 }));
+    return () => { cancelled = true; };
+  }, []);
+
+  const goToRoute = React.useCallback((href) => {
+    if (typeof window !== 'undefined') window.location.href = href;
+  }, []);
 
   const loadAttorneyChats = React.useCallback(() => {
     return fetch('/api/client/attorney-chats')
@@ -1401,6 +1418,7 @@ function StudentApp({ onLogout, userId, userName }) {
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
+        <NavItem icon="🏬" label="Marketplace" active={typeof window !== 'undefined' && window.location.pathname === '/marketplace'} onClick={() => goToRoute('/marketplace')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Browse Services" active={page === 'services'} onClick={() => setPage('services')} />
         <NavItem icon="⚖️" label="Find an Attorney" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
@@ -1412,6 +1430,9 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '10px', background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: '12px', fontWeight: 800 }}>
+          Wallet: {formatMoney(walletSummary.available, 'usd')}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
           <Avatar name={profileData.name || 'Student'} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>

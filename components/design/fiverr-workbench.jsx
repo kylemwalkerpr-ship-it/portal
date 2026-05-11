@@ -152,7 +152,7 @@ function Cover({ gig, height = 150 }) {
 export function MarketplacePage() {
   const [gigs, setGigs] = React.useState([])
   const [categories, setCategories] = React.useState(CATEGORY_FALLBACK)
-  const [filters, setFilters] = React.useState({ q: '', category: '', provider_type: '', sort: 'relevance' })
+  const [filters, setFilters] = React.useState({ q: '', category: '', provider_type: '', min_price: '', max_price: '', min_rating: '', sort: 'relevance' })
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
@@ -161,7 +161,9 @@ export function MarketplacePage() {
     setError('')
     try {
       const params = new URLSearchParams()
-      Object.entries(filters).forEach(([key, value]) => value && params.set(key, value))
+      for (const key of ['q', 'category', 'provider_type', 'sort']) {
+        if (filters[key]) params.set(key, filters[key])
+      }
       const [gigData, catData] = await Promise.all([
         requestJson(`/api/marketplace/gigs?${params.toString()}`),
         requestJson('/api/gig-categories').catch(() => ({ categories: CATEGORY_FALLBACK })),
@@ -180,6 +182,18 @@ export function MarketplacePage() {
 
   React.useEffect(() => { load() }, [load])
 
+  const visibleGigs = gigs.filter(gig => {
+    const price = Number(gig.starting_price || 0) / 100
+    const min = Number(filters.min_price || 0)
+    const max = Number(filters.max_price || 0)
+    const rating = Number(gig.avg_rating || 0)
+    const minRating = Number(filters.min_rating || 0)
+    if (min && price < min) return false
+    if (max && price > max) return false
+    if (minRating && rating < minRating) return false
+    return true
+  })
+
   if (error && !gigs.length) return <ErrorState message={error} onRetry={load} />
 
   return (
@@ -193,10 +207,13 @@ export function MarketplacePage() {
         />
 
         <Card style={{ padding: '16px', marginBottom: '18px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.4fr) repeat(3, minmax(140px, 0.7fr))', gap: '10px' }} className="ys-market-filters">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }} className="ys-market-filters">
             <Input value={filters.q} onChange={q => setFilters(f => ({ ...f, q }))} placeholder="Search services" />
             <Select value={filters.category} onChange={category => setFilters(f => ({ ...f, category }))} options={[{ value: '', label: 'All categories' }, ...categories.map(c => ({ value: c, label: c }))]} />
             <Select value={filters.provider_type} onChange={provider_type => setFilters(f => ({ ...f, provider_type }))} options={[{ value: '', label: 'All providers' }, { value: 'attorney', label: 'Attorneys' }, { value: 'consultant', label: 'Consultants' }]} />
+            <Input type="number" value={filters.min_price} onChange={min_price => setFilters(f => ({ ...f, min_price }))} placeholder="Min price" />
+            <Input type="number" value={filters.max_price} onChange={max_price => setFilters(f => ({ ...f, max_price }))} placeholder="Max price" />
+            <Select value={filters.min_rating} onChange={min_rating => setFilters(f => ({ ...f, min_rating }))} options={[{ value: '', label: 'Any rating' }, { value: '4.5', label: '4.5+ stars' }, { value: '4', label: '4.0+ stars' }, { value: '3', label: '3.0+ stars' }]} />
             <Select value={filters.sort} onChange={sort => setFilters(f => ({ ...f, sort }))} options={[
               { value: 'relevance', label: 'Recommended' },
               { value: 'best_rated', label: 'Best rated' },
@@ -210,11 +227,11 @@ export function MarketplacePage() {
 
         {loading ? (
           <Card><div style={{ color: C.textMuted }}>Loading gigs...</div></Card>
-        ) : gigs.length === 0 ? (
+        ) : visibleGigs.length === 0 ? (
           <EmptyState title="No gigs match these filters." body="Try a broader search or clear the category/provider filters." />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-            {gigs.map(gig => (
+            {visibleGigs.map(gig => (
               <Link key={gig.id} href={`/marketplace/gigs/${gig.slug}`} onClick={() => requestJson('/api/gig-metrics/event', { method: 'POST', body: JSON.stringify({ gig_id: gig.id, event_type: 'click' }) }).catch(() => {})} style={{ textDecoration: 'none', color: 'inherit' }}>
                 <Card hover style={{ padding: '14px', height: '100%', display: 'grid', gap: '12px', alignContent: 'start' }}>
                   <Cover gig={gig} />
@@ -373,7 +390,7 @@ export function GigDetailPage({ slug }) {
   )
 }
 
-export function ProviderGigsPage() {
+export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) {
   const [gigs, setGigs] = React.useState([])
   const [selectedId, setSelectedId] = React.useState('')
   const [categories, setCategories] = React.useState(CATEGORY_FALLBACK)
@@ -392,13 +409,16 @@ export function ProviderGigsPage() {
       ])
       setGigs(data.gigs || [])
       setCategories(cats.categories || CATEGORY_FALLBACK)
-      setSelectedId(current => current && (data.gigs || []).some(g => g.id === current) ? current : data.gigs?.[0]?.id || '')
+      setSelectedId(current => {
+        if (selectedGigId && (data.gigs || []).some(g => g.id === selectedGigId)) return selectedGigId
+        return current && (data.gigs || []).some(g => g.id === current) ? current : data.gigs?.[0]?.id || ''
+      })
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedGigId])
 
   React.useEffect(() => { load() }, [load])
 
@@ -534,6 +554,7 @@ export function ProviderGigsPage() {
 
   if (loading) return <LoadingState label="Loading your gigs..." />
   if (error) return <ErrorState message={error} onRetry={load} />
+  if (startNew) return <GigBuilderStepOne categories={categories} onCreated={(id) => { if (typeof window !== 'undefined') window.location.href = `/dashboard/gigs/${id}/edit` }} />
 
   return (
     <div style={pageShell}>
@@ -542,11 +563,11 @@ export function ProviderGigsPage() {
           eyebrow="Provider workspace"
           title="Gig manager."
           sub={`${gigs.filter(g => ['draft', 'active', 'paused'].includes(g.status)).length} of 5 active slots used. Build fixed-scope services with tiers, publishing checks, and marketplace visibility.`}
-          actions={<><Link href="/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Dashboard</Link><Btn variant="primary" size="sm" onClick={createGig} disabled={saving || gigs.length >= 5}>New gig</Btn></>}
+          actions={<><Link href="/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Dashboard</Link><Btn variant="primary" size="sm" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs/new' }} disabled={saving || gigs.length >= 5}>+ Create new gig</Btn></>}
         />
         {notice && <div style={{ marginBottom: '14px', color: notice.includes('saved') || notice.includes('published') || notice.includes('created') || notice.includes('added') || notice.includes('removed') ? C.green : C.red, fontSize: '13px', fontWeight: 700 }}>{notice}</div>}
         {gigs.length === 0 ? (
-          <EmptyState title="No gigs yet." body="Create a draft, add a clear scope and tier pricing, then publish it to the marketplace." action={<Btn variant="primary" onClick={createGig}>Create first gig</Btn>} />
+          <EmptyState title="You haven't created any gigs yet." body="Create a draft, add a clear scope and tier pricing, then publish it to the marketplace." action={<Btn variant="primary" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs/new' }}>+ Create new gig</Btn>} />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: '16px' }} className="ys-gigs-grid">
             <aside style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
@@ -605,6 +626,88 @@ export function ProviderGigsPage() {
           .ys-gigs-grid, .ys-two-col { grid-template-columns: 1fr !important; }
         }
       `}</style>
+    </div>
+  )
+}
+
+function GigBuilderStepOne({ categories, onCreated }) {
+  const [draft, setDraft] = React.useState({
+    title: '',
+    category: categories?.[0] || '',
+    tagsText: '',
+    pitch: '',
+    seo_title: '',
+    seo_description: '',
+  })
+  const [gigId, setGigId] = React.useState('')
+  const [status, setStatus] = React.useState('Not saved')
+  const [saving, setSaving] = React.useState(false)
+
+  const payload = React.useCallback(() => ({
+    title: draft.title || 'New YouSafe gig',
+    category: draft.category || categories?.[0] || null,
+    tags: draft.tagsText.split(',').map(s => s.trim()).filter(Boolean).slice(0, 5),
+    pitch: draft.pitch,
+    seo_title: draft.seo_title || draft.title,
+    seo_description: draft.seo_description || draft.pitch,
+  }), [categories, draft])
+
+  const autosave = async () => {
+    setSaving(true)
+    setStatus('Autosaving...')
+    try {
+      if (!gigId) {
+        const data = await requestJson('/api/gigs', { method: 'POST', body: JSON.stringify(payload()) })
+        setGigId(data.gig.id)
+        setStatus('Autosaved')
+        return data.gig.id
+      } else {
+        await requestJson(`/api/gigs/${gigId}`, { method: 'PATCH', body: JSON.stringify(payload()) })
+        setStatus('Autosaved')
+        return gigId
+      }
+    } catch (e) {
+      setStatus(e.message)
+      return ''
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const update = (key, value) => setDraft(prev => ({ ...prev, [key]: value }))
+
+  return (
+    <div style={pageShell}>
+      <main style={inner}>
+        <Header
+          eyebrow="Gig builder"
+          title="Step 1: Service basics."
+          sub="Start with the public marketplace copy. Pricing, gallery, and publish checks happen after this foundation is saved."
+          actions={<Link href="/dashboard/gigs" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Back to gigs</Link>}
+        />
+        <Card style={{ padding: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={sectionTitle}>Title, category, tags, pitch, and SEO</h2>
+            <Badge color={status === 'Autosaved' ? 'green' : status === 'Autosaving...' ? 'orange' : status === 'Not saved' ? 'gray' : 'red'}>{status}</Badge>
+          </div>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            <Input label="Gig title" value={draft.title} onChange={v => update('title', v)} onBlur={autosave} placeholder="Review my study permit documents" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 0.7fr)', gap: '12px' }} className="ys-two-col">
+              <Select label="Category" value={draft.category} onChange={v => update('category', v)} options={(categories || CATEGORY_FALLBACK).map(c => ({ value: c, label: c }))} />
+              <Input label="Tags" value={draft.tagsText} onChange={v => update('tagsText', v)} onBlur={autosave} placeholder="visa, documents, review" />
+            </div>
+            <label style={labelStyle}>Pitch<textarea style={{ ...textareaStyle, minHeight: '74px' }} value={draft.pitch} onChange={e => update('pitch', e.target.value)} onBlur={autosave} placeholder="One clear sentence students will see in the marketplace." /></label>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '12px', display: 'grid', gap: '12px' }}>
+              <Input label="SEO title" value={draft.seo_title} onChange={v => update('seo_title', v)} onBlur={autosave} placeholder={draft.title || 'SEO title'} />
+              <label style={labelStyle}>SEO description<textarea style={{ ...textareaStyle, minHeight: '74px' }} value={draft.seo_description} onChange={e => update('seo_description', e.target.value)} onBlur={autosave} placeholder="Short search/social description." /></label>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+              <Btn variant="secondary" onClick={autosave} disabled={saving}>{saving ? 'Saving...' : 'Save draft'}</Btn>
+              <Btn variant="primary" onClick={async () => { const id = gigId || await autosave(); if (id) onCreated?.(id) }} disabled={saving}>Continue</Btn>
+            </div>
+          </div>
+        </Card>
+      </main>
     </div>
   )
 }
