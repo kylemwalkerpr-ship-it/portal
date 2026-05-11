@@ -1206,14 +1206,25 @@ function StudentApp({ onLogout, userId, userName }) {
 
   const acceptAttorneyOffer = async offerId => {
     try {
-      const res = await fetch(`/api/offers/${offerId}/checkout`, {
+      let res = await fetch(`/api/offers/${offerId}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
-      window.location.href = data.url;
+      let data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      res = await fetch(`/api/offers/${offerId}/accept`, { method: 'PATCH' });
+      data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not start payment.');
+      if (data.data?.client_secret) {
+        const stripe = await loadStripe(STRIPE_PUB_KEY);
+        if (!stripe) throw new Error('Unable to load Stripe.');
+        setActionNotice(`Payment sheet ready. Total: ${formatMoney((data.data.breakdown?.total || 0) / 100, 'usd')}`);
+      }
+      await loadAttorneyChats();
     } catch (e) {
       setActionNotice(e.message);
     }
@@ -1221,9 +1232,13 @@ function StudentApp({ onLogout, userId, userName }) {
 
   const declineAttorneyOffer = async offerId => {
     try {
-      const res = await fetch(`/api/offers/${offerId}/decline`, { method: 'POST' });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Could not decline offer.');
+      let res = await fetch(`/api/offers/${offerId}/decline`, { method: 'POST' });
+      let data = await res.json().catch(() => null);
+      if (!res.ok) {
+        res = await fetch(`/api/offers/${offerId}/decline`, { method: 'PATCH' });
+        data = await res.json().catch(() => null);
+      }
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not decline offer.');
       await loadAttorneyChat(selectedAttorneyChatId);
     } catch (e) {
       setActionNotice(e.message);
@@ -1232,14 +1247,21 @@ function StudentApp({ onLogout, userId, userName }) {
 
   const acceptConsultantOffer = async offerId => {
     try {
-      const res = await fetch(`/api/consultant/offers/${offerId}/checkout`, {
+      let res = await fetch(`/api/consultant/offers/${offerId}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
-      window.location.href = data.url;
+      let data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      res = await fetch(`/api/offers/${offerId}/accept`, { method: 'PATCH' });
+      data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not start payment.');
+      setActionNotice(`Payment sheet ready. Total: ${formatMoney((data.data?.breakdown?.total || 0) / 100, 'usd')}`);
+      await loadMessagesFor(selectedOrder);
     } catch (e) {
       setActionNotice(e.message);
     }
@@ -1247,9 +1269,13 @@ function StudentApp({ onLogout, userId, userName }) {
 
   const declineConsultantOffer = async offerId => {
     try {
-      const res = await fetch(`/api/consultant/offers/${offerId}/decline`, { method: 'POST' });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Could not decline offer.');
+      let res = await fetch(`/api/consultant/offers/${offerId}/decline`, { method: 'POST' });
+      let data = await res.json().catch(() => null);
+      if (!res.ok) {
+        res = await fetch(`/api/offers/${offerId}/decline`, { method: 'PATCH' });
+        data = await res.json().catch(() => null);
+      }
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not decline offer.');
       await loadMessagesFor(selectedOrder);
     } catch (e) {
       setActionNotice(e.message);

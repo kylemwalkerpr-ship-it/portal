@@ -1,6 +1,33 @@
 import { requireClient } from '@/lib/clientAuth'
+import { ok, fail } from '@/lib/apiEnvelope'
+import { requirePortalUser } from '@/lib/portalAuth'
 import { sendEmail, inquiryOfferDeclinedEmail } from '@/lib/email'
 
+export async function PATCH(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+  if (auth.role !== 'client') return fail('Only students can decline offers.', 403)
+
+  const { id } = await context.params
+  const { data: offer, error } = await auth.db
+    .from('offers')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !offer) return fail(error?.message || 'Offer not found.', 404)
+  if (offer.recipient_id !== auth.profileId) return fail('Forbidden.', 403)
+  if (offer.status !== 'pending') return fail('Only pending offers can be declined.', 409)
+
+  const { data: updated, error: updErr } = await auth.db
+    .from('offers')
+    .update({ status: 'declined', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (updErr || !updated) return fail(updErr?.message || 'Could not decline offer.', 500)
+  return ok({ offer: updated })
+}
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireClient()

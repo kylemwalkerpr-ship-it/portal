@@ -182,13 +182,73 @@ export function MessageBody({ body, linkColor = C.cyan }) {
   const lines = raw.split('\n')
   const attachmentLine = lines.find(line => /^https?:\/\//.test(line.trim()))
   const labelLine = lines.find(line => line.startsWith('Attachment:'))
+  const metaLine = lines.find(line => line.startsWith('AttachmentMeta:'))
+  const attachmentMeta = React.useMemo(() => {
+    if (!metaLine) return null
+    try { return JSON.parse(metaLine.replace(/^AttachmentMeta:\s*/, '')) } catch { return null }
+  }, [metaLine])
   const text = attachmentLine
     ? lines.filter(line => line !== attachmentLine && line !== labelLine).join('\n').trim()
+    : attachmentMeta
+      ? lines.filter(line => line !== labelLine && line !== metaLine).join('\n').trim()
     : raw
+  const [signed, setSigned] = React.useState(null)
+  const [lightbox, setLightbox] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    if (!attachmentMeta?.id) return
+    setSigned(null)
+    fetch(`/api/chat-attachments/${attachmentMeta.id}/signed-url`)
+      .then(r => r.json().then(p => ({ ok: r.ok, status: r.status, payload: p })))
+      .then(({ payload }) => {
+        if (!cancelled) setSigned(payload?.data || null)
+      })
+      .catch(() => !cancelled && setSigned({ attachment: attachmentMeta, signed_url: null }))
+    return () => { cancelled = true }
+  }, [attachmentMeta?.id])
+
+  const meta = signed?.attachment || attachmentMeta
+  const signedUrl = signed?.signed_url
+  const isImage = String(meta?.mime_type || '').startsWith('image/')
 
   return (
     <>
       {text && <div>{text}</div>}
+      {attachmentMeta && (
+        <div style={{ marginTop: text ? '8px' : 0, display: 'grid', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', border: `1px solid ${C.border}`, background: C.surface2, borderRadius: '8px', padding: '8px 10px' }}>
+            <span aria-hidden="true">{isImage ? '▧' : String(meta?.mime_type || '').includes('pdf') ? 'PDF' : 'FILE'}</span>
+            <span style={{ color: C.text, fontWeight: 800, fontSize: '13px' }}>{meta?.file_name || labelLine?.replace('Attachment:', '').trim() || 'Attachment'}</span>
+            <span style={{ color: C.textMuted, fontSize: '12px' }}>{humanFileSize(meta?.file_size)} {meta?.mime_type ? `· ${meta.mime_type}` : ''}</span>
+            {meta?.scan_status !== 'clean' ? (
+              <span style={{ color: C.orange, fontSize: '12px', fontWeight: 800 }}>Scanning...</span>
+            ) : signedUrl ? (
+              <a href={signedUrl} download={meta?.file_name} style={{ marginLeft: 'auto', color: linkColor, fontWeight: 800, textDecoration: 'none', fontSize: '12px' }}>
+                Download
+              </a>
+            ) : (
+              <span style={{ marginLeft: 'auto', color: C.textDim, fontSize: '12px', fontWeight: 800 }}>Preparing...</span>
+            )}
+          </div>
+          {isImage && signedUrl && (
+            <button type="button" onClick={() => setLightbox(true)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', width: 'fit-content' }}>
+              <img src={signedUrl} alt={meta?.file_name || 'Attachment thumbnail'} style={{ width: '160px', maxWidth: '100%', borderRadius: '8px', border: `1px solid ${C.border}`, display: 'block' }} />
+            </button>
+          )}
+          {lightbox && (
+            <div onClick={() => setLightbox(false)} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+              <div onClick={e => e.stopPropagation()} style={{ maxWidth: '92vw', maxHeight: '88vh', display: 'grid', gap: '12px' }}>
+                <img src={signedUrl} alt={meta?.file_name || 'Attachment'} style={{ maxWidth: '92vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: '8px' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+                  <button type="button" onClick={() => setLightbox(false)} style={{ border: 'none', background: '#fff', color: C.text, borderRadius: '999px', padding: '8px 12px', cursor: 'pointer', fontWeight: 800 }}>Close</button>
+                  <a href={signedUrl} download={meta?.file_name} style={{ background: '#fff', color: C.text, borderRadius: '999px', padding: '8px 12px', textDecoration: 'none', fontWeight: 800 }}>Download</a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {attachmentLine && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: text ? '8px' : 0 }}>
           <a
@@ -227,6 +287,13 @@ export function MessageBody({ body, linkColor = C.cyan }) {
       )}
     </>
   )
+}
+
+function humanFileSize(bytes) {
+  const n = Number(bytes || 0)
+  if (!n) return ''
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
 export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLogout, items = [] }) {

@@ -4,6 +4,7 @@ import React from 'react'
 import { C, Btn, Badge, Card, NavItem, Avatar, UserMenu, PayoutBadge, StatCard as SharedStatCard, MessageBody } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
 import DashboardRightPane from './dashboard-right-pane'
+import CustomOfferDialog from './custom-offer-dialog'
 import { CountryChip } from './country-glyphs'
 import { LanguageSelector } from '../language-selector'
 
@@ -866,9 +867,9 @@ function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) 
       </div>
 
       {showOfferModal && (
-        <OfferModal
-          inquiryId={inquiryId}
-          feePercent={livePercent}
+        <CustomOfferDialog
+          chatId={inquiryId}
+          recipientName={inquiry?.full_name || inquiry?.email || 'Client'}
           onClose={() => setShowOfferModal(false)}
           onCreated={() => {
             setShowOfferModal(false)

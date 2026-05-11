@@ -36,6 +36,91 @@ export async function POST(req: Request) {
     return new Response('OK', { status: 200 })
   }
 
+  if (event.type === 'payment_intent.succeeded') {
+    const pi = event.data.object as Stripe.PaymentIntent
+    const db = createSupabaseAdminClient()
+    const source = pi.metadata?.source
+
+    if (source === 'custom_offer' && pi.metadata?.offer_id) {
+      const offerId = pi.metadata.offer_id
+      const { data: existing } = await db.from('orders').select('id').eq('offer_id', offerId).maybeSingle()
+      if (existing) return new Response('OK', { status: 200 })
+
+      const { data: offer } = await db.from('offers').select('*').eq('id', offerId).single()
+      if (offer) {
+        const amount = Number(offer.discounted_price || offer.price || 0)
+        const platformFee = Number(pi.metadata?.platform_fee_cents || 0)
+        const netPayout = Number(pi.metadata?.net_payout_cents || Math.max(0, amount - platformFee))
+        let attorneyId: string | null = null
+        if (offer.sender_type === 'attorney') {
+          const { data: attorney } = await db.from('attorneys').select('id').eq('profile_id', offer.sender_id).maybeSingle()
+          attorneyId = attorney?.id || null
+        }
+        const delivery = new Date(Date.now() + Number(offer.delivery_days || 1) * 24 * 60 * 60 * 1000).toISOString()
+        const { data: order } = await db.from('orders').insert({
+          offer_id: offer.id,
+          gig_id: offer.gig_id,
+          attorney_id: attorneyId,
+          consultant_id: offer.sender_id,
+          client_id: offer.recipient_id,
+          status: 'created',
+          escrow_status: 'held',
+          amount_paid: pi.amount_received,
+          platform_fee_amount: platformFee,
+          platform_fee: platformFee / 100,
+          net_payout: netPayout,
+          total_amount: pi.amount_received / 100,
+          stripe_payment_intent_id: pi.id,
+          delivery_deadline: delivery,
+          deadline: delivery,
+        }).select('id').single()
+        await db.from('offers').update({ status: 'paid', stripe_payment_intent_id: pi.id }).eq('id', offer.id)
+        if (order?.id) {
+          await db.from('order_events').insert({ order_id: order.id, actor_id: offer.recipient_id, actor_role: 'client', to_status: 'created', note: 'Order created from paid custom offer.' })
+        }
+      }
+      return new Response('OK', { status: 200 })
+    }
+
+    if (source === 'gig_express_purchase' && pi.metadata?.gig_id && pi.metadata?.tier_id) {
+      const { data: existing } = await db.from('orders').select('id').eq('stripe_payment_intent_id', pi.id).maybeSingle()
+      if (existing) return new Response('OK', { status: 200 })
+      const { data: gig } = await db.from('gigs').select('*').eq('id', pi.metadata.gig_id).single()
+      const { data: tier } = await db.from('gig_tiers').select('*').eq('id', pi.metadata.tier_id).single()
+      if (gig && tier) {
+        const platformFee = Number(pi.metadata?.platform_fee_cents || 0)
+        const netPayout = Number(pi.metadata?.net_payout_cents || Math.max(0, Number(tier.price || 0) - platformFee))
+        let attorneyId: string | null = null
+        if (gig.provider_type === 'attorney') {
+          const { data: attorney } = await db.from('attorneys').select('id').eq('profile_id', gig.provider_id).maybeSingle()
+          attorneyId = attorney?.id || null
+        }
+        const delivery = new Date(Date.now() + Number(tier.delivery_days || 1) * 24 * 60 * 60 * 1000).toISOString()
+        const { data: order } = await db.from('orders').insert({
+          gig_id: gig.id,
+          attorney_id: attorneyId,
+          consultant_id: gig.provider_id,
+          client_id: pi.metadata.student_id,
+          status: 'created',
+          escrow_status: 'held',
+          amount_paid: pi.amount_received,
+          platform_fee_amount: platformFee,
+          platform_fee: platformFee / 100,
+          net_payout: netPayout,
+          total_amount: pi.amount_received / 100,
+          stripe_payment_intent_id: pi.id,
+          delivery_deadline: delivery,
+          deadline: delivery,
+        }).select('id').single()
+        await db.from('gigs').update({ order_count: Number(gig.order_count || 0) + 1 }).eq('id', gig.id)
+        if (order?.id) {
+          await db.from('order_events').insert({ order_id: order.id, actor_id: pi.metadata.student_id, actor_role: 'client', to_status: 'created', note: 'Order created from express gig purchase.' })
+        }
+      }
+      return new Response('OK', { status: 200 })
+    }
+  }
+
   if (event.type === 'payment_method.detached') {
     const pm = event.data.object as Stripe.PaymentMethod
     console.log(`[webhook] PaymentMethod detached: ${pm.id}`)

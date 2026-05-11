@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test": "jest",
     "build": "next build && opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare deploy"
@@ -19,8 +20,13 @@
     "stripe": "^22.1.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.0.0",
     "@types/react": "^19.0.0",
+    "@types/supertest": "^6.0.3",
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.5",
     "typescript": "^6.0.0"
   }
 }

@@ -341,21 +341,26 @@ function AdminApp({ onLogout }) {
       return;
     }
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/stripe-bypass`, {
+      const connect = connectByProfile[user.id] || {};
+      const directPath = connect.record_id
+        ? `/api/${user.role === 'attorney' ? 'attorneys' : 'consultants'}/${connect.record_id}`
+        : `/api/admin/users/${user.id}/stripe-bypass`;
+      const body = connect.record_id ? { stripe_bypass: enabled } : { enabled };
+      const res = await fetch(directPath, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Could not update Stripe bypass.');
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not update Stripe bypass.');
       setConnectByProfile(prev => ({
         ...prev,
         [user.id]: { ...(prev[user.id] || { role: user.role }), stripe_bypass: enabled },
       }));
       setActionNotice(
         enabled
-          ? `Stripe Connect bypass ENABLED for ${user.name}. They can work while Connect verifies; payouts stay pending until the account lands.`
-          : `Stripe Connect bypass DISABLED for ${user.name}.`
+          ? `Stripe bypass enabled for ${user.name}.`
+          : `Stripe bypass disabled for ${user.name}.`
       );
     } catch (e) {
       setActionNotice(e.message || 'Could not update Stripe bypass.');
@@ -705,7 +710,14 @@ function AdminApp({ onLogout }) {
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <Avatar name={selectedUser.name} size={48} color={selectedUser.role === 'consultant' ? C.purple : selectedUser.role === 'support' ? C.orange : C.cyan} />
                 <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 800 }}>{selectedUser.name}</h3>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {selectedUser.name}
+                    {['consultant', 'attorney'].includes(selectedUser.role) && (
+                      <span style={{ color: connectByProfile[selectedUser.id]?.stripe_bypass ? C.orange : C.textDim, fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Stripe bypass {connectByProfile[selectedUser.id]?.stripe_bypass ? 'on' : 'off'}
+                      </span>
+                    )}
+                  </h3>
                   <div style={{ color: C.textMuted, fontSize: '13px' }}>{selectedUser.email}</div>
                 </div>
               </div>

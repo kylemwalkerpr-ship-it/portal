@@ -38,7 +38,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   if (form) {
     try {
-      text = await messageBodyFromFormData(form, ctx.db, `inquiries/${id}`)
+      text = await messageBodyFromFormData(form, ctx.db, `inquiries/${id}`, ctx.profileId)
     } catch (err) {
       const status = (err as Error & { status?: number }).status || 500
       return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })

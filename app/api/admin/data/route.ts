@@ -62,6 +62,7 @@ export async function GET() {
 
   const connectSummary = (profilesRes.data ?? []).reduce<Record<string, {
     role: string
+    record_id: string | null
     stripe_account_id: string | null
     stripe_onboarding_complete: boolean
     stripe_bypass: boolean
@@ -72,6 +73,7 @@ export async function GET() {
         (p.email ? consultantByEmail.get(String(p.email).toLowerCase()) : null)
       acc[p.id] = {
         role: 'consultant',
+        record_id: (row?.id as string) || null,
         stripe_account_id: (row?.stripe_account_id as string) || null,
         stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
         stripe_bypass: Boolean(row?.stripe_bypass),
@@ -80,6 +82,7 @@ export async function GET() {
       const row = attorneyByProfile.get(p.id)
       acc[p.id] = {
         role: 'attorney',
+        record_id: (row?.id as string) || null,
         stripe_account_id: (row?.stripe_account_id as string) || null,
         stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
         stripe_bypass: Boolean(row?.stripe_bypass),

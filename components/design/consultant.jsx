@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
 import DashboardRightPane from './dashboard-right-pane'
+import CustomOfferDialog from './custom-offer-dialog'
 import { LanguageSelector } from '../language-selector'
 
 function EarningsChart({ days }) {
@@ -1319,8 +1320,9 @@ function ConsultantApp({ onLogout }) {
         </div>
       </div>
       {showOfferModal && selectedOrder && (
-        <ConsultantOfferModal
-          order={selectedOrder}
+        <CustomOfferDialog
+          chatId={selectedOrder.id}
+          recipientName={selectedOrder.clientName || selectedOrder.student || 'Client'}
           onClose={() => setShowOfferModal(false)}
           onCreated={async () => {
             setShowOfferModal(false);
