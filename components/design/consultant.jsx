@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
 
@@ -85,6 +85,7 @@ function ConsultantApp({ onLogout }) {
   const [uploadingFile, setUploadingFile] = React.useState(false);
   const [orderDetailProgress, setOrderDetailProgress] = React.useState(0);
   const fileInputRef = React.useRef(null);
+  const messageFileInputRef = React.useRef(null);
   const avatarInputRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -458,16 +459,25 @@ function ConsultantApp({ onLogout }) {
     }
   }, []);
 
-  const sendMessage = async () => {
+  const sendMessage = async (file) => {
     const text = msgInput.trim();
-    if (!text || !selectedOrder?.id) return;
+    if ((!text && !file) || !selectedOrder?.id) return;
     setMsgInput('');
     try {
-      const res = await fetch('/api/consultant/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
-      });
+      let res;
+      if (file) {
+        const form = new FormData();
+        form.append('orderId', selectedOrder.id);
+        form.append('body', text);
+        form.append('file', file);
+        res = await fetch('/api/consultant/messages', { method: 'POST', body: form });
+      } else {
+        res = await fetch('/api/consultant/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Unable to send message');
       const m = data.message;
@@ -480,6 +490,8 @@ function ConsultantApp({ onLogout }) {
     } catch (e) {
       setMsgInput(text);
       setActionNotice(e.message);
+    } finally {
+      if (messageFileInputRef.current) messageFileInputRef.current.value = '';
     }
   };
 
@@ -833,16 +845,18 @@ function ConsultantApp({ onLogout }) {
                     <div style={{ maxWidth: '70%' }}>
                       <div style={{
                         padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5,
-                        background: m.from === 'student' ? C.studentMessageBg : C.cyan,
-                        color: m.from === 'student' ? C.studentMessageText : '#000',
-                        border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
-                      }}>{m.text}</div>
+                        background: m.from === 'student' ? C.studentMessageBg : C.outboundMessageBg,
+                        color: m.from === 'student' ? C.studentMessageText : C.outboundMessageText,
+                        border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : `1px solid ${C.outboundMessageBorder}`,
+                      }}><MessageBody body={m.text} linkColor={C.cyan} /></div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'consultant' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
+                <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+                <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
                 <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendMessage()}
                   placeholder="Message student…"
@@ -1231,13 +1245,15 @@ function ConsultantApp({ onLogout }) {
                 <div key={m.id || i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'consultant' ? 'row-reverse' : 'row' }}>
                   {m.from === 'student' && <Avatar name={m.name} size={30} />}
                   <div style={{ maxWidth: '60%' }}>
-                    <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.cyan, color: m.from === 'student' ? C.studentMessageText : '#000', border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}>{m.text}</div>
+                    <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.outboundMessageBg, color: m.from === 'student' ? C.studentMessageText : C.outboundMessageText, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : `1px solid ${C.outboundMessageBorder}` }}><MessageBody body={m.text} linkColor={C.cyan} /></div>
                     <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'consultant' ? 'right' : 'left' }}>{m.time}</div>
                   </div>
                 </div>
               ))}
             </div>
             <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
+              <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+              <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
               <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Message student…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
               <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
             </div>

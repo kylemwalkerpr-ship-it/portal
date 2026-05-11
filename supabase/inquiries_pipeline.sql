@@ -45,6 +45,12 @@ create table if not exists public.inquiry_messages (
 
 create index if not exists inquiry_messages_inquiry_idx on public.inquiry_messages(inquiry_id, created_at);
 
+-- Message attachment uploads use public URLs embedded in chat bodies.
+-- Writes happen through service-role API routes.
+insert into storage.buckets (id, name, public)
+values ('chat-attachments', 'chat-attachments', true)
+on conflict (id) do update set public = true;
+
 -- 3. Custom offers (Fiverr-style). Attorney composes title/description/price/
 --    delivery. Client accepts via Stripe checkout; on payment success the
 --    webhook creates an order linked back via source_offer_id.

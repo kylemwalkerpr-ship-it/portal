@@ -1,18 +1,25 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { messageBodyFromFormData } from '@/lib/messageAttachments'
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
   const { id } = await context.params
-  let body: { body?: string }
-  try {
-    body = await req.json()
-  } catch {
-    return Response.json({ error: 'Invalid JSON.' }, { status: 400 })
+  const contentType = req.headers.get('content-type') || ''
+  let text = ''
+  let form: FormData | null = null
+  if (contentType.includes('multipart/form-data')) {
+    try {
+      form = await req.formData()
+    } catch (err) {
+      return Response.json({ error: err instanceof Error ? err.message : 'Expected multipart/form-data' }, { status: 400 })
+    }
+  } else {
+    const body = await req.json().catch(() => ({}))
+    text = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : ''
   }
-  const text = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : ''
-  if (!text) return Response.json({ error: 'Message body required.' }, { status: 400 })
+  if (!form && !text) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
 
   const { data: order } = await ctx.db
     .from('orders')
@@ -21,6 +28,16 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .single()
   if (!order) return Response.json({ error: 'Order not found.' }, { status: 404 })
   if (order.consultant_id !== ctx.profileId) return Response.json({ error: 'Forbidden.' }, { status: 403 })
+
+  if (form) {
+    try {
+      text = await messageBodyFromFormData(form, ctx.db, `orders/${id}`)
+    } catch (err) {
+      const status = (err as Error & { status?: number }).status || 500
+      return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
+    }
+    if (!text) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
+  }
 
   const { data: msg, error: insErr } = await ctx.db
     .from('order_messages')

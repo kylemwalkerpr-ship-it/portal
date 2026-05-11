@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { C, Btn, Badge, Card, NavItem, Avatar, UserMenu, PayoutBadge, StatCard as SharedStatCard } from './shared'
+import { C, Btn, Badge, Card, NavItem, Avatar, UserMenu, PayoutBadge, StatCard as SharedStatCard, MessageBody } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
 import DashboardRightPane from './dashboard-right-pane'
 import { CountryChip } from './country-glyphs'
@@ -595,7 +595,7 @@ function AttorneyMessagesPage() {
   const [chats, setChats] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
-  const [openId, setOpenId] = React.useState(null)
+  const [activeId, setActiveId] = React.useState(null)
 
   const load = React.useCallback((isInitial) => {
     if (isInitial) setLoading(true)
@@ -603,7 +603,12 @@ function AttorneyMessagesPage() {
       .then(async r => {
         const payload = await r.json().catch(() => null)
         if (!r.ok) throw new Error(payload?.error || 'Could not load chats.')
-        setChats(payload.chats || [])
+        const rows = payload.chats || []
+        setChats(rows)
+        setActiveId(prev => {
+          if (rows.some(chat => chat.id === prev)) return prev
+          return rows[0]?.id || null
+        })
         setError('')
       })
       .catch(e => setError(e.message))
@@ -616,11 +621,10 @@ function AttorneyMessagesPage() {
     return () => clearInterval(id)
   }, [load])
 
-  if (openId) {
-    return <InquiryThread inquiryId={openId} isChat onBack={() => { setOpenId(null); load(false) }} />
-  }
   if (loading) return <Notice>Loading chats...</Notice>
   if (error) return <Notice tone="error">{error}</Notice>
+
+  const activeChat = chats.find(chat => chat.id === activeId)
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -631,21 +635,56 @@ function AttorneyMessagesPage() {
       {chats.length === 0 ? (
         <Notice>No pre-intake chats yet. Students can start one from your public profile.</Notice>
       ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {chats.map(chat => (
-            <Card key={chat.id}>
-              <button type="button" onClick={() => setOpenId(chat.id)} style={{ width: '100%', padding: '14px 16px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, textAlign: 'left', fontFamily: 'inherit' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '14px' }}>{chat.client_name}</div>
-                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{chat.client_email}</div>
-                    <div style={{ color: C.textDim, fontSize: '12px', marginTop: '6px', maxWidth: '540px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.last_message || 'No messages yet'}</div>
+        <div className="yousafe-message-layout" style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: '20px', minHeight: 'calc(100vh - 210px)' }}>
+          <div className="yousafe-conversation-list" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', overflow: 'hidden', alignSelf: 'start' }}>
+            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 800 }}>Conversations</div>
+            </div>
+            {chats.map(chat => {
+              const active = chat.id === activeId
+              return (
+                <button
+                  key={chat.id}
+                  type="button"
+                  onClick={() => setActiveId(chat.id)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 16px',
+                    border: 'none',
+                    borderBottom: `1px solid ${C.border}`,
+                    background: active ? C.surface2 : 'transparent',
+                    cursor: 'pointer',
+                    color: C.text,
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                    display: 'flex',
+                    gap: '12px',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <Avatar name={chat.client_name || chat.client_email || 'Client'} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 800, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.client_name || 'Client'}</div>
+                      {chat.pending_offers > 0 && <span style={{ color: C.orange, fontSize: '11px', fontWeight: 800, flexShrink: 0 }}>{chat.pending_offers}</span>}
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.client_email}</div>
+                    <div style={{ color: active ? C.textMuted : C.textDim, fontSize: '12px', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.last_message || 'No messages yet'}</div>
                   </div>
-                  {chat.pending_offers > 0 && <Badge color="orange">{chat.pending_offers} pending offer</Badge>}
-                </div>
-              </button>
-            </Card>
-          ))}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="yousafe-message-thread" style={{ minWidth: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', overflow: 'hidden' }}>
+            {activeChat ? (
+              <InquiryThread inquiryId={activeChat.id} isChat embedded onBack={() => load(false)} />
+            ) : (
+              <div style={{ height: '100%', minHeight: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '13px' }}>
+                Select a conversation.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -653,7 +692,7 @@ function AttorneyMessagesPage() {
 }
 
 // ── Inquiry thread ──────────────────────────────────────────────────────────
-function InquiryThread({ inquiryId, onBack, isChat = false }) {
+function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -708,11 +747,11 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
     setSending(true)
     try {
       let res
-      if (isChat && file) {
+      if (file) {
         const form = new FormData()
         form.append('body', draft)
         form.append('file', file)
-        res = await fetch(`/api/attorney/chats/${inquiryId}/messages`, { method: 'POST', credentials: 'same-origin', body: form })
+        res = await fetch(isChat ? `/api/attorney/chats/${inquiryId}/messages` : `/api/attorney/inquiries/${inquiryId}/messages`, { method: 'POST', credentials: 'same-origin', body: form })
       } else {
         res = await fetch(isChat ? `/api/attorney/chats/${inquiryId}/messages` : `/api/attorney/inquiries/${inquiryId}/messages`, {
           method: 'POST',
@@ -748,8 +787,8 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
     }
   }
 
-  if (loading) return <Notice>Loading thread...</Notice>
-  if (error) return <Notice tone="error">{error}</Notice>
+  if (loading) return embedded ? <div style={{ padding: '20px', color: C.textMuted, fontSize: '13px' }}>Loading thread...</div> : <Notice>Loading thread...</Notice>
+  if (error) return embedded ? <div style={{ padding: '20px', color: C.red, fontSize: '13px' }}>{error}</div> : <Notice tone="error">{error}</Notice>
   if (!data) return null
 
   const inquiry = data.inquiry
@@ -763,13 +802,15 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
     : DEFAULT_ATTORNEY_FEE_PERCENT
 
   return (
-    <div className="yousafe-thread-page" style={{ padding: '20px 28px', maxWidth: '920px' }}>
-      <button
-        onClick={onBack}
-        style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px', fontFamily: 'inherit' }}
-      >
-        ← Back to {isChat ? 'messages' : 'my inquiries'}
-      </button>
+    <div className="yousafe-thread-page" style={{ padding: embedded ? '18px 20px' : '20px 28px', maxWidth: embedded ? 'none' : '920px' }}>
+      {!embedded && (
+        <button
+          onClick={onBack}
+          style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '13px', marginBottom: '12px', fontFamily: 'inherit' }}
+        >
+          ← Back to {isChat ? 'messages' : 'my inquiries'}
+        </button>
+      )}
 
       <ClientBanner inquiry={inquiry} isChat={isChat} />
 
@@ -782,7 +823,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false }) {
         setDraft={setDraft}
         sending={sending}
         onSend={sendMessage}
-        fileRef={isChat ? chatFileRef : null}
+        fileRef={chatFileRef}
       />
 
       <div style={{ marginTop: '24px' }}>
@@ -1241,6 +1282,7 @@ function OrderDetail({ orderId, onBack }) {
   const [progressDraft, setProgressDraft] = React.useState(0)
   const [savingProgress, setSavingProgress] = React.useState(false)
   const [completing, setCompleting] = React.useState(false)
+  const fileRef = React.useRef(null)
 
   const load = React.useCallback((isInitial) => {
     if (isInitial) setLoading(true)
@@ -1262,20 +1304,31 @@ function OrderDetail({ orderId, onBack }) {
     return () => clearInterval(id)
   }, [load])
 
-  async function send(e) {
-    e.preventDefault()
-    if (!draft.trim() || sending) return
+  async function send(e, file) {
+    e?.preventDefault?.()
+    if ((!draft.trim() && !file) || sending) return
     setSending(true)
     try {
-      const res = await fetch(`/api/attorney/orders/${orderId}/messages`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-        body: JSON.stringify({ body: draft }),
-      })
+      let res
+      if (file) {
+        const form = new FormData()
+        form.append('body', draft)
+        form.append('file', file)
+        res = await fetch(`/api/attorney/orders/${orderId}/messages`, { method: 'POST', credentials: 'same-origin', body: form })
+      } else {
+        res = await fetch(`/api/attorney/orders/${orderId}/messages`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+          body: JSON.stringify({ body: draft }),
+        })
+      }
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Send failed.')
       setDraft('')
       load(false)
-    } catch (e) { setError(e.message) } finally { setSending(false) }
+    } catch (e) { setError(e.message) } finally {
+      setSending(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function saveProgress() {
@@ -1345,7 +1398,9 @@ function OrderDetail({ orderId, onBack }) {
                 {messages.map((m) => <OrderBubble key={m.id} message={m} />)}
               </div>
               {!completed && (
-                <form onSubmit={send} style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                <form onSubmit={send} style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                  <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => send(e, e.target.files?.[0])} />
+                  <Btn type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()} title="Attach a file">📎</Btn>
                   <textarea rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply to your client..." style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', color: C.text, fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }} />
                   <Btn type="submit" variant="primary" size="sm" disabled={sending || !draft.trim()}>{sending ? 'Sending...' : 'Send'}</Btn>
                 </form>
@@ -1410,8 +1465,8 @@ function OrderBubble({ message }) {
   const fromStudent = message.sender_role === 'client'
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={{ maxWidth: '78%', background: fromStudent ? C.studentMessageBg : mine ? C.cyan : C.surface2, color: fromStudent ? C.studentMessageText : mine ? '#fff' : C.text, border: fromStudent ? `1px solid ${C.studentMessageBorder}` : 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
-        {message.body}
+      <div style={{ maxWidth: '78%', background: fromStudent ? C.studentMessageBg : mine ? C.outboundMessageBg : C.surface2, color: fromStudent ? C.studentMessageText : mine ? C.outboundMessageText : C.text, border: fromStudent ? `1px solid ${C.studentMessageBorder}` : mine ? `1px solid ${C.outboundMessageBorder}` : 'none', padding: '8px 12px', borderRadius: '10px', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+        <MessageBody body={message.body} linkColor={C.cyan} />
         <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
       </div>
     </div>
@@ -2022,18 +2077,18 @@ function MessageBubble({ message, viewerRole }) {
         </div>
         <div
           style={{
-            background: fromStudent ? C.studentMessageBg : mine ? C.cyan : C.surface2,
-            color: fromStudent ? C.studentMessageText : mine ? '#04212a' : C.text,
+            background: fromStudent ? C.studentMessageBg : mine ? C.outboundMessageBg : C.surface2,
+            color: fromStudent ? C.studentMessageText : mine ? C.outboundMessageText : C.text,
             padding: '10px 14px',
             borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
             fontSize: '14px',
             whiteSpace: 'pre-wrap',
             lineHeight: 1.55,
-            border: fromStudent ? `1px solid ${C.studentMessageBorder}` : mine ? 'none' : `1px solid ${C.border}`,
+            border: fromStudent ? `1px solid ${C.studentMessageBorder}` : mine ? `1px solid ${C.outboundMessageBorder}` : `1px solid ${C.border}`,
             boxShadow: '0 1px 2px rgba(15,18,32,0.04)',
           }}
         >
-          {message.body}
+          <MessageBody body={message.body} linkColor={C.cyan} />
         </div>
         {timeLabel && (
           <div style={{ fontSize: '10.5px', color: C.textDim, fontWeight: 600 }}>

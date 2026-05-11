@@ -1,4 +1,5 @@
 import { getCurrentStudent } from '@/lib/student'
+import { messageBodyFromFormData } from '@/lib/messageAttachments'
 
 export async function GET(req: Request) {
   const auth = await getCurrentStudent()
@@ -30,11 +31,24 @@ export async function POST(req: Request) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
-  const body = await req.json().catch(() => ({}))
-  const orderId = String(body.orderId || '').trim()
-  const text = String(body.body || '').trim()
+  const contentType = req.headers.get('content-type') || ''
+  let orderId = ''
+  let text = ''
+  let form: FormData | null = null
+  if (contentType.includes('multipart/form-data')) {
+    try {
+      form = await req.formData()
+      orderId = String(form.get('orderId') || '').trim()
+    } catch (err) {
+      return Response.json({ error: err instanceof Error ? err.message : 'Expected multipart/form-data' }, { status: 400 })
+    }
+  } else {
+    const body = await req.json().catch(() => ({}))
+    orderId = String(body.orderId || '').trim()
+    text = String(body.body || '').trim()
+  }
   if (!orderId) return Response.json({ error: 'orderId is required' }, { status: 400 })
-  if (!text) return Response.json({ error: 'body is required' }, { status: 400 })
+  if (!form && !text) return Response.json({ error: 'body or file is required' }, { status: 400 })
 
   const { data: order } = await auth.db
     .from('orders')
@@ -43,6 +57,16 @@ export async function POST(req: Request) {
     .eq('client_id', auth.profile.id)
     .single()
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
+
+  if (form) {
+    try {
+      text = await messageBodyFromFormData(form, auth.db, `orders/${orderId}`)
+    } catch (err) {
+      const status = (err as Error & { status?: number }).status || 500
+      return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
+    }
+    if (!text) return Response.json({ error: 'body or file is required' }, { status: 400 })
+  }
 
   const { data, error } = await auth.db
     .from('order_messages')

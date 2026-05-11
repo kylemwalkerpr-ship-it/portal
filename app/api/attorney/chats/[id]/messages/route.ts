@@ -1,7 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
-
-const MAX_BYTES = 25 * 1024 * 1024
-const BUCKET = 'chat-attachments'
+import { messageBodyFromRequest } from '@/lib/messageAttachments'
 
 async function ensureOwnsChat(ctx: any, id: string) {
   const { data: chat } = await ctx.db
@@ -21,27 +19,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const own = await ensureOwnsChat(ctx, id)
   if ('error' in own) return Response.json({ error: own.error }, { status: own.status })
 
-  const contentType = req.headers.get('content-type') || ''
   let body = ''
-  if (contentType.includes('multipart/form-data')) {
-    const form = await req.formData()
-    body = typeof form.get('body') === 'string' ? String(form.get('body')).trim().slice(0, 4000) : ''
-    const file = form.get('file')
-    if (file instanceof File && file.size > 0) {
-      if (file.size > MAX_BYTES) return Response.json({ error: 'File exceeds 25 MB limit.' }, { status: 413 })
-      const safeName = file.name.replace(/[^\w.\- ]+/g, '').slice(0, 120) || 'attachment'
-      const path = `${id}/${crypto.randomUUID()}-${safeName}`
-      const { error: uploadErr } = await ctx.db.storage.from(BUCKET).upload(path, await file.arrayBuffer(), {
-        contentType: file.type || 'application/octet-stream',
-        upsert: false,
-      })
-      if (uploadErr) return Response.json({ error: `Upload failed: ${uploadErr.message}` }, { status: 500 })
-      const { data: pub } = ctx.db.storage.from(BUCKET).getPublicUrl(path)
-      body = [body, `Attachment: ${safeName}\n${pub?.publicUrl || ''}`].filter(Boolean).join('\n\n')
-    }
-  } else {
-    const json = await req.json().catch(() => ({}))
-    body = typeof json.body === 'string' ? json.body.trim().slice(0, 4000) : ''
+  try {
+    body = await messageBodyFromRequest(req, ctx.db, `attorney-chats/${id}`)
+  } catch (err) {
+    const status = (err as Error & { status?: number }).status || 500
+    return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
   }
 
   if (!body) return Response.json({ error: 'Message body or file required.' }, { status: 400 })

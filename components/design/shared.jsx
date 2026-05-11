@@ -18,6 +18,9 @@ export const C = {
   studentMessageBg: '#E8EEF6',
   studentMessageText: '#172033',
   studentMessageBorder: '#C9D5E3',
+  outboundMessageBg: '#FFFFFF',
+  outboundMessageText: '#1F2937',
+  outboundMessageBorder: 'rgba(0,0,0,0.16)',
   navy: '#B22234',
   navyGlow: 'rgba(178,34,52,0.10)',
   text: '#1F2937',
@@ -171,6 +174,39 @@ export function Avatar({ name, src, size = 36, color }) {
     }}>
       {src ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={name} /> : initials}
     </div>
+  )
+}
+
+export function MessageBody({ body, linkColor = C.cyan }) {
+  const raw = String(body || '')
+  const lines = raw.split('\n')
+  const attachmentLine = lines.find(line => /^https?:\/\//.test(line.trim()))
+  const labelLine = lines.find(line => line.startsWith('Attachment:'))
+  const text = attachmentLine
+    ? lines.filter(line => line !== attachmentLine && line !== labelLine).join('\n').trim()
+    : raw
+
+  return (
+    <>
+      {text && <div>{text}</div>}
+      {attachmentLine && (
+        <a
+          href={attachmentLine.trim()}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: 'inline-flex',
+            marginTop: text ? '8px' : 0,
+            color: linkColor,
+            fontWeight: 800,
+            textDecoration: 'none',
+            wordBreak: 'break-word',
+          }}
+        >
+          {labelLine || 'Open attachment'}
+        </a>
+      )}
+    </>
   )
 }
 

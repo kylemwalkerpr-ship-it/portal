@@ -1,5 +1,6 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { sendEmail, inquiryAttorneyEngagedEmail } from '@/lib/email'
+import { messageBodyFromFormData } from '@/lib/messageAttachments'
 
 // Multi-attorney model: any approved attorney can message any open inquiry.
 // Their messages are tagged with sender_profile_id so the student UI can
@@ -10,14 +11,20 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { id } = await context.params
 
-  let body: { body?: string }
-  try {
-    body = await req.json()
-  } catch {
-    return Response.json({ error: 'Invalid JSON.' }, { status: 400 })
+  const contentType = req.headers.get('content-type') || ''
+  let text = ''
+  let form: FormData | null = null
+  if (contentType.includes('multipart/form-data')) {
+    try {
+      form = await req.formData()
+    } catch (err) {
+      return Response.json({ error: err instanceof Error ? err.message : 'Expected multipart/form-data' }, { status: 400 })
+    }
+  } else {
+    const body = await req.json().catch(() => ({}))
+    text = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : ''
   }
-  const text = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : ''
-  if (!text) return Response.json({ error: 'Message body required.' }, { status: 400 })
+  if (!form && !text) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
@@ -27,6 +34,16 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
   if (inquiry.status === 'converted' || inquiry.status === 'closed' || inquiry.status === 'cancelled') {
     return Response.json({ error: `Inquiry is ${inquiry.status}.` }, { status: 409 })
+  }
+
+  if (form) {
+    try {
+      text = await messageBodyFromFormData(form, ctx.db, `inquiries/${id}`)
+    } catch (err) {
+      const status = (err as Error & { status?: number }).status || 500
+      return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
+    }
+    if (!text) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
   }
 
   // First-message detection BEFORE inserting (so we know whether to email).

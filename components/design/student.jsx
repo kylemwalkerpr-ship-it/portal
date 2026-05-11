@@ -2,7 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
-import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
 import FindAttorney from './find-attorney'
 import MyInquiries from './my-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
@@ -1002,6 +1002,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [attorneyChatData, setAttorneyChatData] = React.useState(null);
   const [attorneyChatLoading, setAttorneyChatLoading] = React.useState(false);
   const attorneyChatFileRef = React.useRef(null);
+  const orderMessageFileRef = React.useRef(null);
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
@@ -1134,16 +1135,25 @@ function StudentApp({ onLogout, userId, userName }) {
     return () => clearInterval(interval);
   }, [selectedOrder, loadMessagesFor, page]);
 
-  const sendMessage = async () => {
+  const sendMessage = async (file) => {
     const text = msgInput.trim();
-    if (!text || !selectedOrder?.id) return;
+    if ((!text && !file) || !selectedOrder?.id) return;
     setMsgInput('');
     try {
-      const res = await fetch('/api/student/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
-      });
+      let res;
+      if (file) {
+        const form = new FormData();
+        form.append('orderId', selectedOrder.id);
+        form.append('body', text);
+        form.append('file', file);
+        res = await fetch('/api/student/messages', { method: 'POST', body: form });
+      } else {
+        res = await fetch('/api/student/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: selectedOrder.id, body: text }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Unable to send message');
       const m = data.message;
@@ -1156,6 +1166,8 @@ function StudentApp({ onLogout, userId, userName }) {
     } catch (e) {
       setMsgInput(text);
       setActionNotice(e.message);
+    } finally {
+      if (orderMessageFileRef.current) orderMessageFileRef.current.value = '';
     }
   };
 
@@ -1604,13 +1616,15 @@ function StudentApp({ onLogout, userId, userName }) {
                         background: m.from === 'student' ? C.studentMessageBg : C.surface2,
                         color: m.from === 'student' ? C.studentMessageText : C.text,
                         border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
-                      }}>{m.text}</div>
+                      }}><MessageBody body={m.text} linkColor={m.from === 'student' ? C.studentMessageText : C.cyan} /></div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
+                <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+                <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
                 <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendMessage()}
                   placeholder="Type a message…"
@@ -2611,13 +2625,15 @@ function StudentApp({ onLogout, userId, userName }) {
                   <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
                     {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
                     <div style={{ maxWidth: '60%' }}>
-                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.surface2, color: m.from === 'student' ? C.studentMessageText : C.text, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}>{m.text}</div>
+                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.surface2, color: m.from === 'student' ? C.studentMessageText : C.text, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}><MessageBody body={m.text} linkColor={m.from === 'student' ? C.studentMessageText : C.cyan} /></div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
+                <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+                <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
                 <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
                 <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
               </div>
