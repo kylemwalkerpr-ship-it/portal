@@ -258,8 +258,6 @@ export async function createPaidOrder(
     net_payout: item.netPayoutCents,
     payout_status: 'pending',
     requirements: item.description || item.title,
-    terms_accepted_at: acceptedAt,
-    refund_policy_accepted_at: acceptedAt,
     stripe_payment_intent_id: opts.paymentIntentId || null,
     deadline,
     delivery_deadline: deadline,
@@ -269,6 +267,10 @@ export async function createPaidOrder(
     source_inquiry_id: item.sourceInquiryId || null,
     gig_id: item.gigId || null,
     ...(identity || {}),
+  }
+  if (opts.paymentMethod !== 'stripe') {
+    orderInsert.terms_accepted_at = acceptedAt
+    orderInsert.refund_policy_accepted_at = acceptedAt
   }
 
   let { data: order, error } = await db.from('orders').insert(orderInsert).select('id').single()
@@ -396,7 +398,6 @@ export async function createHostedCheckoutSession(req: Request, item: CheckoutIt
         },
       },
     ],
-    consent_collection: { terms_of_service: 'required' },
     metadata: checkoutMetadata(item, 'stripe'),
   })
 }

@@ -853,12 +853,15 @@ function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) 
 
       <ConversationBox
         messages={messages}
+        offers={offers}
         viewerRole="attorney"
         draft={draft}
         setDraft={setDraft}
         sending={sending}
         onSend={sendMessage}
         fileRef={chatFileRef}
+        onWithdrawOffer={withdrawOffer}
+        withdrawingOfferId={withdrawingId}
       />
 
       <div style={{ marginTop: '24px' }}>
@@ -1886,14 +1889,15 @@ function ClientBanner({ inquiry, isChat }) {
   )
 }
 
-function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSend, fileRef }) {
+function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, sending, onSend, fileRef, onWithdrawOffer, withdrawingOfferId }) {
   const scrollRef = React.useRef(null)
   const [autoScroll, setAutoScroll] = React.useState(true)
+  const timeline = React.useMemo(() => buildOfferTimeline(messages, offers), [messages, offers])
 
   React.useEffect(() => {
     if (!autoScroll || !scrollRef.current) return
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length, autoScroll])
+  }, [timeline.length, autoScroll])
 
   const onScroll = () => {
     const el = scrollRef.current
@@ -1902,7 +1906,7 @@ function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSen
     setAutoScroll(distance < 80)
   }
 
-  const groups = React.useMemo(() => groupByDay(messages), [messages])
+  const groups = React.useMemo(() => groupByDay(timeline), [timeline])
 
   return (
     <div style={{ marginTop: '20px' }}>
@@ -1911,7 +1915,7 @@ function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSen
           Conversation
         </h3>
         <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700 }}>
-          {messages.length === 0 ? 'No messages yet' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+          {timeline.length === 0 ? 'No messages yet' : `${timeline.length} item${timeline.length === 1 ? '' : 's'}`}
         </span>
       </div>
       <div
@@ -1943,8 +1947,15 @@ function ConversationBox({ messages, viewerRole, draft, setDraft, sending, onSen
               <span>{group.label}</span>
               <div style={{ flex: 1, height: '1px', background: C.border }} />
             </div>
-            {group.messages.map(m => (
-              <MessageBubble key={m.id} message={m} viewerRole={viewerRole} />
+            {group.messages.map(item => item.kind === 'offer' ? (
+              <OfferMessageBubble
+                key={item.key}
+                offer={item.offer}
+                onWithdraw={() => onWithdrawOffer?.(item.offer.id)}
+                withdrawing={withdrawingOfferId === item.offer.id}
+              />
+            ) : (
+              <MessageBubble key={item.key} message={item.message} viewerRole={viewerRole} />
             ))}
           </React.Fragment>
         ))}
@@ -2051,6 +2062,27 @@ function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
   )
 }
 
+function isOfferSystemMessage(message) {
+  const body = String(message?.body || '')
+  return /^(New offer from|Custom offer:)/i.test(body.trim())
+}
+
+function timelineItemTime(item) {
+  const raw = item?.created_at || item?.message?.created_at || item?.offer?.created_at
+  const ts = raw ? new Date(raw).getTime() : 0
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function buildOfferTimeline(messages = [], offers = []) {
+  const hasOffers = offers.length > 0
+  return [
+    ...messages
+      .filter(message => !(hasOffers && isOfferSystemMessage(message)))
+      .map(message => ({ kind: 'message', key: `message-${message.id || timelineItemTime({ message })}`, message, created_at: message.created_at })),
+    ...offers.map(offer => ({ kind: 'offer', key: `offer-${offer.id}`, offer, created_at: offer.created_at })),
+  ].sort((a, b) => timelineItemTime(a) - timelineItemTime(b))
+}
+
 function groupByDay(messages) {
   const buckets = new Map()
   for (const m of messages) {
@@ -2078,6 +2110,63 @@ function isYesterday(d) {
   const y = new Date()
   y.setDate(y.getDate() - 1)
   return d.getFullYear() === y.getFullYear() && d.getMonth() === y.getMonth() && d.getDate() === y.getDate()
+}
+
+function OfferMessageBubble({ offer, onWithdraw, withdrawing }) {
+  const platformFee = Number(offer.platform_fee || 0)
+  const total = Number(offer.price || 0) + platformFee
+  const pending = offer.status === 'sent'
+  const ts = offer.created_at ? new Date(offer.created_at) : null
+  const timeLabel = ts && !Number.isNaN(ts.getTime())
+    ? ts.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : ''
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+        <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          You
+        </div>
+        <div
+          style={{
+            background: C.outboundMessageBg,
+            color: C.outboundMessageText,
+            padding: '12px 14px',
+            borderRadius: '14px 14px 4px 14px',
+            fontSize: '14px',
+            lineHeight: 1.55,
+            border: `1px solid ${pending ? C.cyan : C.outboundMessageBorder}`,
+            boxShadow: '0 1px 2px rgba(15,18,32,0.04)',
+            minWidth: '260px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ fontWeight: 800, color: C.text }}>{offer.title}</div>
+            <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : offer.status === 'declined' ? 'red' : 'gray'}>{offer.status}</Badge>
+          </div>
+          <div style={{ marginTop: '6px', color: C.textMuted, fontSize: '13px', whiteSpace: 'pre-wrap' }}>{offer.description}</div>
+          <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}><span>Attorney fee</span><strong>${Number(offer.price || 0).toFixed(2)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}><span>Platform fee</span><strong>${platformFee.toFixed(2)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', borderTop: `1px solid ${C.border}`, paddingTop: '5px', marginTop: '3px' }}><span>Client pays</span><strong>${total.toFixed(2)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}><span>Delivery</span><strong>{offer.delivery_days} days</strong></div>
+          </div>
+          {pending && (
+            <div style={{ marginTop: '10px' }}>
+              <Btn variant="danger" size="sm" disabled={withdrawing} onClick={onWithdraw}>
+                {withdrawing ? 'Withdrawing...' : 'Withdraw'}
+              </Btn>
+            </div>
+          )}
+        </div>
+        {timeLabel && (
+          <div style={{ fontSize: '10.5px', color: C.textDim, fontWeight: 600 }}>
+            {timeLabel}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function MessageBubble({ message, viewerRole }) {

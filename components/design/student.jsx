@@ -1290,6 +1290,7 @@ function StudentApp({ onLogout, userId, userName }) {
         from: m.sender_role === 'client' ? 'student' : 'consultant',
         text: m.body,
         name: order.consultant,
+        created_at: m.created_at,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       })));
       setConsultantOffers(data.offers ?? []);
@@ -1338,6 +1339,7 @@ function StudentApp({ onLogout, userId, userName }) {
         id: m.id,
         from: 'student',
         text: m.body,
+        created_at: m.created_at,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
     } catch (e) {
@@ -1786,6 +1788,7 @@ function StudentApp({ onLogout, userId, userName }) {
       { label: 'Sent for review', date: order.deadline || '—', done: (order.progress || 0) >= 90 },
       { label: 'Completed', date: order.status === 'completed' ? 'Done' : '—', done: order.status === 'completed' },
     ];
+    const orderTimeline = buildOfferTimeline(messages, consultantOffers);
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
@@ -1825,21 +1828,24 @@ function StudentApp({ onLogout, userId, userName }) {
             <Card style={{ padding: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Messages</div>
               <div className="yousafe-message-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '260px', overflowY: 'auto', marginBottom: '16px' }}>
-                {messages.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
-                    {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
+                {orderTimeline.map((item, i) => item.kind === 'offer' ? (
+                  <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
+                    <ConsultantOfferCard offer={item.offer} onAccept={() => acceptConsultantOffer(item.offer)} onDecline={() => declineConsultantOffer(item.offer.id)} />
+                  </OfferBubble>
+                ) : (
+                  <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'student' ? 'row-reverse' : 'row' }}>
+                    {item.message.from === 'consultant' && <Avatar name={item.message.name} size={30} />}
                     <div style={{ maxWidth: '70%' }}>
                       <div style={{
                         padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5,
-                        background: m.from === 'student' ? C.studentMessageBg : C.surface2,
-                        color: m.from === 'student' ? C.studentMessageText : C.text,
-                        border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
-                      }}><MessageBody body={m.text} linkColor={m.from === 'student' ? C.studentMessageText : C.cyan} /></div>
-                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
+                        background: item.message.from === 'student' ? C.studentMessageBg : C.surface2,
+                        color: item.message.from === 'student' ? C.studentMessageText : C.text,
+                        border: item.message.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
+                      }}><MessageBody body={item.message.text} linkColor={item.message.from === 'student' ? C.studentMessageText : C.cyan} /></div>
+                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: item.message.from === 'student' ? 'right' : 'left' }}>{item.message.time}</div>
                     </div>
                   </div>
                 ))}
-                {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o)} onDecline={() => declineConsultantOffer(o.id)} />)}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -2771,6 +2777,8 @@ function StudentApp({ onLogout, userId, userName }) {
     const currentAttorneyChat = attorneyChatData?.chat;
     const currentMessages = attorneyChatData?.messages || [];
     const currentOffers = attorneyChatData?.offers || [];
+    const attorneyTimeline = buildOfferTimeline(currentMessages, currentOffers);
+    const orderTimeline = buildOfferTimeline(messages, consultantOffers);
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
@@ -2816,9 +2824,14 @@ function StudentApp({ onLogout, userId, userName }) {
                 </div>
               </div>
               <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {attorneyChatLoading && currentMessages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
-                {currentMessages.map((m) => <ChatBubble key={m.id} message={m} mine={m.sender_role === 'client'} />)}
-                {currentOffers.map(o => <AttorneyOfferCard key={o.id} offer={o} onAccept={() => acceptAttorneyOffer(o)} onDecline={() => declineAttorneyOffer(o.id)} />)}
+                {attorneyChatLoading && attorneyTimeline.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
+                {attorneyTimeline.map((item) => item.kind === 'offer' ? (
+                  <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
+                    <AttorneyOfferCard offer={item.offer} onAccept={() => acceptAttorneyOffer(item.offer)} onDecline={() => declineAttorneyOffer(item.offer.id)} />
+                  </OfferBubble>
+                ) : (
+                  <ChatBubble key={item.key} message={item.message} mine={item.message.sender_role === 'client'} />
+                ))}
               </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input ref={attorneyChatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendAttorneyChatMessage(e.target.files?.[0])} />
@@ -2840,16 +2853,19 @@ function StudentApp({ onLogout, userId, userName }) {
                 </div>
               </div>
               <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {messages.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
-                    {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
+              {orderTimeline.map((item, i) => item.kind === 'offer' ? (
+                <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
+                  <ConsultantOfferCard offer={item.offer} onAccept={() => acceptConsultantOffer(item.offer)} onDecline={() => declineConsultantOffer(item.offer.id)} />
+                </OfferBubble>
+              ) : (
+                  <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'student' ? 'row-reverse' : 'row' }}>
+                    {item.message.from === 'consultant' && <Avatar name={item.message.name} size={30} />}
                     <div style={{ maxWidth: '60%' }}>
-                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.surface2, color: m.from === 'student' ? C.studentMessageText : C.text, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}><MessageBody body={m.text} linkColor={m.from === 'student' ? C.studentMessageText : C.cyan} /></div>
-                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
+                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: item.message.from === 'student' ? C.studentMessageBg : C.surface2, color: item.message.from === 'student' ? C.studentMessageText : C.text, border: item.message.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}><MessageBody body={item.message.text} linkColor={item.message.from === 'student' ? C.studentMessageText : C.cyan} /></div>
+                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: item.message.from === 'student' ? 'right' : 'left' }}>{item.message.time}</div>
                     </div>
                 </div>
               ))}
-              {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o)} onDecline={() => declineConsultantOffer(o.id)} />)}
             </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -2915,6 +2931,39 @@ function StudentApp({ onLogout, userId, userName }) {
       )}
     </div>
   );
+}
+
+function isOfferSystemMessage(message) {
+  const body = String(message?.body || message?.text || '')
+  return /^(New offer from|New consultant offer:|Custom offer:)/i.test(body.trim())
+}
+
+function itemTime(item) {
+  const raw = item?.created_at || item?.message?.created_at || item?.offer?.created_at
+  const ts = raw ? new Date(raw).getTime() : 0
+  return Number.isFinite(ts) ? ts : 0
+}
+
+function buildOfferTimeline(messages = [], offers = []) {
+  const hasOffers = offers.length > 0
+  return [
+    ...messages
+      .filter(message => !(hasOffers && isOfferSystemMessage(message)))
+      .map(message => ({ kind: 'message', key: `message-${message.id || itemTime({ message })}`, message, created_at: message.created_at })),
+    ...offers.map(offer => ({ kind: 'offer', key: `offer-${offer.id}`, offer, created_at: offer.created_at })),
+  ].sort((a, b) => itemTime(a) - itemTime(b))
+}
+
+function OfferBubble({ children, mine, createdAt }) {
+  const timeLabel = createdAt ? new Date(createdAt).toLocaleString() : ''
+  return (
+    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+      <div style={{ maxWidth: '70%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: '4px' }}>
+        {children}
+        {timeLabel && <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px', textAlign: mine ? 'right' : 'left' }}>{timeLabel}</div>}
+      </div>
+    </div>
+  )
 }
 
 function ChatBubble({ message, mine }) {
