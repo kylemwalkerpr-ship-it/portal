@@ -3,6 +3,9 @@
 html, body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background: #FBFAF7;
   color: #1F2937;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -65,6 +68,9 @@ h1, h2, .yousafe-serif {
 
 .ys-auth-brand-panel {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: min(760px, calc(100vh - 48px));
   overflow: hidden;
   border: 1px solid #d8cdb6;
@@ -85,6 +91,7 @@ h1, h2, .yousafe-serif {
 
 .ys-auth-brand-inner {
   min-height: inherit;
+  min-width: 0;
   padding: 40px;
   display: flex;
   flex-direction: column;
@@ -158,6 +165,7 @@ h1, h2, .yousafe-serif {
 .ys-auth-copy {
   margin: auto 0;
   padding: 56px 0;
+  min-width: 0;
   max-width: 740px;
 }
 
@@ -223,9 +231,11 @@ h1, h2, .yousafe-serif {
 }
 
 .ys-auth-detail-item p {
+  min-width: 0;
   margin: 0;
   font-size: 14px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .ys-auth-stats {
@@ -258,6 +268,7 @@ h1, h2, .yousafe-serif {
 
 .ys-auth-form-panel {
   min-width: 0;
+  width: 100%;
 }
 
 .ys-auth-lane-card {
@@ -298,6 +309,9 @@ h1, h2, .yousafe-serif {
 
 .ys-auth-clerk-frame {
   padding: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.46);
@@ -338,10 +352,13 @@ h1, h2, .yousafe-serif {
 
 .ys-clerk-root {
   width: 100%;
+  min-width: 0;
 }
 
 .ys-clerk-card-box {
-  width: 100%;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   overflow: hidden;
   border: 1px solid #d8cdb6 !important;
   border-radius: 16px !important;
@@ -349,6 +366,9 @@ h1, h2, .yousafe-serif {
 }
 
 .ys-clerk-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   background: #fff !important;
   padding: 30px !important;
 }
@@ -428,11 +448,40 @@ h1, h2, .yousafe-serif {
   }
 
   .ys-auth-copy h1 {
-    font-size: clamp(38px, 11vw, 56px);
+    font-size: clamp(36px, 10vw, 54px);
   }
 }
 
 @media (max-width: 560px) {
+  .ys-auth-page {
+    min-height: 100svh;
+    overflow-x: hidden;
+  }
+
+  .ys-auth-shell {
+    width: 100%;
+    min-height: 100svh;
+    padding: 10px;
+  }
+
+  .ys-auth-brand-inner {
+    padding: 20px;
+  }
+
+  .ys-auth-copy {
+    padding: 34px 0;
+  }
+
+  .ys-auth-copy h1 {
+    font-size: clamp(34px, 9vw, 42px);
+    line-height: 1.04;
+  }
+
+  .ys-auth-copy > p:not(.ys-auth-eyebrow) {
+    font-size: 16px;
+    line-height: 1.65;
+  }
+
   .ys-auth-brand-top,
   .ys-auth-lane-card,
   .ys-auth-actions {
@@ -458,7 +507,11 @@ h1, h2, .yousafe-serif {
   }
 
   .ys-clerk-card {
-    padding: 22px !important;
+    padding: 20px 16px !important;
+  }
+
+  .ys-clerk-title {
+    font-size: 28px !important;
   }
 }
 
