@@ -19,6 +19,449 @@ h1, h2, .yousafe-serif {
   letter-spacing: -0.012em;
 }
 
+/* Premium auth pages for Clerk sign-in/sign-up. This portal does not use
+   Tailwind, so these real classes intentionally own the full presentation. */
+.ys-auth-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #f3eee5;
+  color: #1d2433;
+}
+
+.ys-auth-glow,
+.ys-auth-grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ys-auth-glow {
+  opacity: 0.9;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(178, 34, 52, 0.12) 0%, transparent 34%),
+    radial-gradient(circle at 96% 6%, rgba(60, 59, 110, 0.16) 0%, transparent 38%),
+    radial-gradient(circle at 50% 100%, rgba(135, 168, 106, 0.16) 0%, transparent 48%);
+}
+
+.ys-auth-grain {
+  opacity: 0.18;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.20 0 0 0 0.16 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.ys-auth-shell {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1280px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+  gap: 32px;
+  align-items: center;
+}
+
+.ys-auth-brand-panel {
+  position: relative;
+  min-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid #d8cdb6;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(247, 243, 234, 0.64)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.50), rgba(236, 230, 214, 0.68));
+  box-shadow: 0 24px 80px rgba(29, 36, 51, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.ys-auth-flag-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #3c3b6e 0%, #3c3b6e 42%, #fff 42%, #fff 58%, #b22234 58%, #b22234 100%);
+}
+
+.ys-auth-brand-inner {
+  min-height: inherit;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ys-auth-brand-top,
+.ys-auth-actions,
+.ys-auth-lane-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ys-auth-logo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: #1d2433;
+  text-decoration: none;
+}
+
+.ys-auth-logo-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #3c3b6e;
+  color: #fff;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
+  box-shadow: 0 12px 28px rgba(60, 59, 110, 0.24);
+}
+
+.ys-auth-logo-name {
+  display: block;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ys-auth-logo-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #4a4f5b;
+}
+
+.ys-auth-secure-pill,
+.ys-auth-lane-card > strong {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ys-auth-secure-pill {
+  border: 1px solid #d8cdb6;
+  background: #fff;
+  color: #4a4f5b;
+  padding: 7px 12px;
+}
+
+.ys-auth-copy {
+  margin: auto 0;
+  padding: 56px 0;
+  max-width: 740px;
+}
+
+.ys-auth-eyebrow {
+  margin: 0;
+  color: #4a4f5b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ys-auth-copy h1 {
+  margin: 16px 0 0;
+  max-width: 780px;
+  color: #1d2433;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(44px, 6vw, 76px);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.ys-auth-copy > p:not(.ys-auth-eyebrow) {
+  max-width: 650px;
+  margin: 24px 0 0;
+  color: #4a4f5b;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.ys-auth-detail-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.ys-auth-detail-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid rgba(216, 205, 182, 0.88);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1d2433;
+  box-shadow: 0 1px 2px rgba(29, 36, 51, 0.04);
+}
+
+.ys-auth-detail-item span {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(60, 59, 110, 0.11);
+  color: #3c3b6e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ys-auth-detail-item p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.ys-auth-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding-top: 22px;
+  border-top: 1px solid #d8cdb6;
+}
+
+.ys-auth-stats strong {
+  display: block;
+  color: #3c3b6e;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ys-auth-stats div:nth-child(2) strong { color: #b22234; }
+.ys-auth-stats div:nth-child(3) strong { color: #1d2433; }
+
+.ys-auth-stats span {
+  display: block;
+  margin-top: 6px;
+  color: #4a4f5b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ys-auth-form-panel {
+  min-width: 0;
+}
+
+.ys-auth-lane-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #d8cdb6;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 24px rgba(29, 36, 51, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.ys-auth-lane-card span {
+  display: block;
+  color: #4a4f5b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ys-auth-lane-card p {
+  margin: 5px 0 0;
+  color: #4a4f5b;
+  font-size: 14px;
+}
+
+.ys-auth-lane-card p strong {
+  color: #1d2433;
+}
+
+.ys-auth-lane-card > strong {
+  padding: 7px 12px;
+  background: rgba(60, 59, 110, 0.10);
+  color: #3c3b6e;
+}
+
+.ys-auth-clerk-frame {
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 28px 90px rgba(29, 36, 51, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.ys-auth-actions {
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.ys-auth-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #1d2433;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.ys-auth-actions a:first-child {
+  padding: 10px 14px;
+  border: 1px solid #d8cdb6;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(29, 36, 51, 0.05);
+}
+
+.ys-auth-actions a:last-child {
+  color: #3c3b6e;
+}
+
+.ys-auth-actions a:hover {
+  color: #b22234;
+}
+
+.ys-clerk-root {
+  width: 100%;
+}
+
+.ys-clerk-card-box {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d8cdb6 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 70px rgba(29, 36, 51, 0.14) !important;
+}
+
+.ys-clerk-card {
+  background: #fff !important;
+  padding: 30px !important;
+}
+
+.ys-clerk-title {
+  color: #1d2433 !important;
+  font-family: 'Cormorant Garamond', Georgia, serif !important;
+  font-size: 30px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+.ys-clerk-subtitle,
+.ys-clerk-divider-text {
+  color: #4a4f5b !important;
+}
+
+.ys-clerk-social-button {
+  border-color: #d8cdb6 !important;
+  background: #f7f3ea !important;
+  color: #1d2433 !important;
+}
+
+.ys-clerk-primary-button {
+  border-radius: 8px !important;
+  background: #3c3b6e !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 24px rgba(60, 59, 110, 0.22) !important;
+}
+
+.ys-clerk-primary-button:hover {
+  background: #2d2a5e !important;
+}
+
+.ys-clerk-link {
+  color: #3c3b6e !important;
+  font-weight: 800 !important;
+}
+
+.ys-clerk-link:hover {
+  color: #b22234 !important;
+}
+
+.ys-clerk-input {
+  border-color: #d8cdb6 !important;
+  background: #f7f3ea !important;
+  color: #1d2433 !important;
+}
+
+.ys-clerk-label {
+  color: #1d2433 !important;
+  font-weight: 800 !important;
+}
+
+.ys-clerk-divider-line {
+  background: #d8cdb6 !important;
+}
+
+@media (max-width: 980px) {
+  .ys-auth-shell {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 18px;
+  }
+
+  .ys-auth-brand-panel {
+    min-height: auto;
+  }
+
+  .ys-auth-brand-inner {
+    padding: 26px;
+  }
+
+  .ys-auth-copy {
+    padding: 40px 0;
+  }
+
+  .ys-auth-copy h1 {
+    font-size: clamp(38px, 11vw, 56px);
+  }
+}
+
+@media (max-width: 560px) {
+  .ys-auth-brand-top,
+  .ys-auth-lane-card,
+  .ys-auth-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ys-auth-secure-pill,
+  .ys-auth-lane-card > strong,
+  .ys-auth-actions a {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .ys-auth-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .ys-auth-clerk-frame {
+    padding: 4px;
+    border-radius: 18px;
+  }
+
+  .ys-clerk-card {
+    padding: 22px !important;
+  }
+}
+
 /* Hide the dashboard right rail on smaller viewports — main column always
    gets full width when there isn't enough space for a 3-column layout. */
 @media (max-width: 1280px) {
