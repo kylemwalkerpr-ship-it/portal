@@ -34,7 +34,7 @@
       primary: '#3C3B6E',
       primaryHover: '#2d2a5e',
       greeting:
-        "Hi! I'm Yara, the YouSafe assistant. I can answer questions about services, payments, refunds, document uploads, or how the portal works. If you need a person, just ask to talk to a human and I'll connect you with our support team.",
+        "Hi, I'm Yara. Ask me about YouSafe services, the portal, checkout, legal-panel inquiries, documents, refunds, or getting help from a real person. Tell me what you're trying to do and I'll point you to the right next step.",
       storageKey: 'yousafe.chat.history.v1',
       openKey: 'yousafe.chat.open.v1',
       supportKey: 'yousafe.chat.support.v1',
@@ -313,6 +313,16 @@
       body: JSON.stringify({
         messages: apiHistory,
         requestAgent: !!(opts && opts.requestAgent),
+        topic: cfg.topic || document.location.hostname,
+        pageContext: {
+          url: document.location.href,
+          origin: document.location.origin,
+          hostname: document.location.hostname,
+          pathname: document.location.pathname,
+          title: document.title,
+          referrer: document.referrer || null,
+          surface: cfg.surface || document.location.hostname,
+        },
       }),
     })
     var data = {}

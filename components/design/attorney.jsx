@@ -209,9 +209,9 @@ export default function AttorneyApp({ onLogout, userName }) {
           onChangeHeadshot={() => headshotInputRef.current?.click()}
           uploadingHeadshot={uploadingHeadshot}
         />
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
-            <main style={{ flex: 1, minWidth: 0 }}>
+        <div className="yousafe-dashboard-scroll" style={{ flex: 1, overflow: 'auto' }}>
+          <div className="yousafe-dashboard-body" style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
+            <main className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
               {page === 'overview' && <OverviewPage onJump={setPage} />}
               {page === 'queue' && <QueuePage />}
               {page === 'mine' && <MyInquiriesPage />}
@@ -262,7 +262,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
             <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
           )}
           {notifOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+            <div className="yousafe-notification-menu" style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700 }}>Notifications</span>
                 {notifications.length > 0 && (
@@ -323,6 +323,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
 function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable }) {
   return (
     <div
+      className="yousafe-sidebar"
       style={{
         width: '240px',
         flexShrink: 0,

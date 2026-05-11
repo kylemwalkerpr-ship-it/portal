@@ -1,38 +1,41 @@
 'use client'
 import { SignUp } from '@clerk/nextjs'
-import { usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { AuthShell, clerkAppearance, safeReturnTo } from '@/components/auth-shell'
 import { dashboardForLane, normalizeAuthLane, signInForLane } from '@/lib/roleLanes'
 
 const ADMIN_SIGN_IN_URL = '/sign-in/admin'
 const STUDENT_SIGN_UP_URL = '/sign-up/student'
 const VALID_SIGN_UP_LANES = new Set(['student', 'client', 'consultant', 'attorney'])
 
-const FLAGS = [
-  '🇺🇸','🇨🇦','🇬🇧','🇫🇷','🇩🇪','🇦🇺','🇯🇵','🇧🇷','🇮🇳','🇨🇳',
-  '🇲🇽','🇿🇦','🇰🇪','🇳🇬','🇬🇭','🇪🇹','🇹🇳','🇸🇳','🇰🇷','🇵🇭',
-  '🇻🇳','🇹🇭','🇮🇩','🇸🇬','🇵🇰','🇧🇩','🇳🇵','🇺🇬','🇹🇿','🇲🇦',
-  '🇩🇿','🇿🇲','🇲🇿','🇨🇮','🇨🇲','🇦🇴','🇷🇼','🇺🇦','🇵🇱','🇮🇹',
-  '🇪🇸','🇵🇹','🇳🇱','🇧🇪','🇸🇪','🇳🇴','🇨🇭','🇦🇹','🇬🇷','🇹🇷',
-  '🇸🇦','🇦🇪','🇮🇶','🇯🇴','🇱🇧','🇮🇷','🇦🇫','🇲🇾','🇱🇰','🇲🇲',
-]
-
 export default function SignUpPage() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [referrer, setReferrer] = useState<string | null>(null)
   const laneSegment = pathname.split('/').filter(Boolean)[1]
   const lane = normalizeAuthLane(laneSegment)
   const shouldRedirect =
     laneSegment === 'admin' ||
     (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment))
   const signUpPath = `/sign-up/${laneSegment || 'student'}`
-  const repeated = Array.from({ length: 300 }, (_, i) => FLAGS[i % FLAGS.length])
+  const returnTo = useMemo(() => safeReturnTo(searchParams.get('return_to')), [searchParams])
+  const previousUrl = returnTo || referrer
+  const redirectUrl = returnTo || dashboardForLane(lane)
+  const signInUrl = `${signInForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
+  const laneLabel = lane === 'client' ? 'student / client' : lane
 
   useEffect(() => {
     if (laneSegment === 'admin') window.location.replace(ADMIN_SIGN_IN_URL)
     else if (shouldRedirect) window.location.replace(STUDENT_SIGN_UP_URL)
   }, [laneSegment, shouldRedirect])
 
-  // Clear any lingering redirect query params to prevent nested loops
+  useEffect(() => {
+    setReferrer(safeReturnTo(document.referrer))
+  }, [])
+
+  // Clear Clerk's internal redirect query params to prevent nested loops while
+  // preserving our own return_to value for protected-route bounce-backs.
   useEffect(() => {
     const url = new URL(window.location.href)
     if (url.searchParams.has('redirect_url') || url.searchParams.has('sign_in_force_redirect_url') || url.searchParams.has('sign_up_force_redirect_url')) {
@@ -61,63 +64,21 @@ export default function SignUpPage() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#E8E8E8',
-        overflow: 'hidden',
-      }}
+    <AuthShell
+      eyebrow="Create your secure account"
+      title="Start inside the right YouSafe lane."
+      body="Create the account type that matches your work: student/client, consultant, or attorney. That keeps your dashboard, messages, files, escrow, and payouts routed correctly."
+      laneLabel={laneLabel}
+      previousUrl={previousUrl}
     >
-      {/* World flags tiled background */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignContent: 'flex-start',
-          gap: '2px',
-          padding: '8px',
-          opacity: 0.18,
-          fontSize: '26px',
-          lineHeight: '38px',
-          userSelect: 'none',
-          pointerEvents: 'none',
-          overflow: 'hidden',
-        }}
-      >
-        {repeated.map((flag, i) => (
-          <span key={i} style={{ display: 'inline-block' }}>{flag}</span>
-        ))}
-      </div>
-
-      {/* Radial gradient overlay — fades flags toward centre so the form stays readable */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            'radial-gradient(ellipse 55% 55% at 50% 50%, rgba(232,232,232,0.75) 0%, rgba(232,232,232,0.55) 40%, rgba(232,232,232,0.88) 100%)',
-          pointerEvents: 'none',
-        }}
+      <SignUp
+        routing="path"
+        path={signUpPath}
+        forceRedirectUrl={redirectUrl}
+        signInUrl={signInUrl}
+        unsafeMetadata={{ requestedRole: lane }}
+        appearance={clerkAppearance}
       />
-
-      {/* Clerk sign-up form */}
-      <div style={{ position: 'relative', zIndex: 10 }}>
-        <SignUp
-          routing="path"
-          path={signUpPath}
-          forceRedirectUrl={dashboardForLane(lane)}
-          signInUrl={signInForLane(lane)}
-          unsafeMetadata={{ requestedRole: lane }}
-        />
-      </div>
-    </div>
+    </AuthShell>
   )
 }

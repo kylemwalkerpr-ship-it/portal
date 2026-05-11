@@ -1,6 +1,7 @@
 import './globals.css'
 import { ClerkProvider } from '@clerk/nextjs'
 import { TranslationProvider } from '@/components/translation-provider'
+import ChatWidget from '@/components/ChatWidget'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
@@ -35,7 +36,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           signInUrl="/sign-in/student"
           signUpUrl="/sign-up/student"
         >
-          <TranslationProvider>{children}</TranslationProvider>
+          <TranslationProvider>
+            {children}
+            <ChatWidget />
+          </TranslationProvider>
         </ClerkProvider>
       </body>
     </html>

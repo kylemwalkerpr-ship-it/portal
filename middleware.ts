@@ -39,6 +39,7 @@ export default clerkMiddleware(
         : lane === 'attorney' ? 'attorney'
         : 'student'
       const signInUrl = new URL(`/sign-in/${laneSegment}`, req.nextUrl.origin)
+      signInUrl.searchParams.set('return_to', `${pathname}${search}`)
       return NextResponse.redirect(signInUrl)
     }
 

@@ -70,12 +70,32 @@ function asVisitor(input: unknown): SupportVisitor | null {
   }
 }
 
+function asPageContext(input: unknown) {
+  if (!input || typeof input !== 'object') return ''
+  const value = input as Record<string, unknown>
+  const clean = (key: string) => {
+    const raw = value[key]
+    if (typeof raw !== 'string') return null
+    const trimmed = raw.trim()
+    return trimmed ? trimmed.slice(0, 300) : null
+  }
+  const bits = [
+    clean('surface') ? `Surface: ${clean('surface')}` : null,
+    clean('hostname') || clean('origin') ? `Site: ${clean('hostname') || clean('origin')}` : null,
+    clean('pathname') ? `Path: ${clean('pathname')}` : null,
+    clean('title') ? `Page title: ${clean('title')}` : null,
+    clean('referrer') ? `Referrer: ${clean('referrer')}` : null,
+  ].filter(Boolean)
+  return bits.length > 0 ? `\n\n# Current page context\n${bits.join('\n')}` : ''
+}
+
 export async function POST(req: Request) {
   let body: {
     messages?: unknown
     requestAgent?: unknown
     visitor?: unknown
     topic?: unknown
+    pageContext?: unknown
   }
   try {
     body = await req.json()
@@ -128,6 +148,7 @@ export async function POST(req: Request) {
   } catch {
     /* anonymous viewers are fine */
   }
+  const pageContext = asPageContext(body.pageContext)
 
   // ── LIVE-AGENT ESCALATION ────────────────────────────────────────────────
   // Triggered either by an explicit `requestAgent: true` from the widget
@@ -187,7 +208,7 @@ export async function POST(req: Request) {
     : ''
 
   try {
-    const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + liveSection, cleaned)
+    const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + pageContext + liveSection, cleaned)
     return withCors(req, { reply, provider: provider.name, supportApiUrl: SUPPORT_WIDGET_API })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

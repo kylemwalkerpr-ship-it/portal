@@ -581,7 +581,7 @@ function ConsultantApp({ onLogout }) {
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           {visibleNotifications.length > 0 && <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />}
           {notifOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+            <div className="yousafe-notification-menu" style={{ position: 'absolute', right: 0, top: '44px', width: '320px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700 }}>Notifications</span>
                 {visibleNotifications.length > 0 && (
@@ -780,16 +780,16 @@ function ConsultantApp({ onLogout }) {
           <StatusBadge status={order.status} />
         </div>
         {(order.status === 'new' || order.status === 'pending') && (
-          <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span>📬</span>
             <span style={{ color: C.orange, fontWeight: 600, fontSize: '14px' }}>New order — waiting for your acceptance</span>
-            <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
               <Btn variant="success" size="sm" onClick={() => acceptOrder(order)}>Accept</Btn>
               <Btn variant="danger" size="sm" onClick={() => declineOrder(order)}>Decline</Btn>
             </div>
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px' }}>
+        <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Update progress */}
             <Card>
@@ -1256,8 +1256,8 @@ function ConsultantApp({ onLogout }) {
       {Sidebar()}
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {TopBar({ title: { dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard' })}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minHeight: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minHeight: 0 }}>
+          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
             {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
             {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
             {actionNotice && (

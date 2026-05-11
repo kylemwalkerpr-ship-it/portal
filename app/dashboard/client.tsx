@@ -11,7 +11,6 @@ const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { 
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
 const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
-const ChatWidget = dynamic(() => import('@/components/ChatWidget'), { ssr: false })
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
@@ -172,12 +171,7 @@ export default function DashboardClient({ role, status, userName, userId, expect
     : role === 'attorney' ? <AttorneyApp onLogout={handleLogout} userName={userName} />
     : <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
 
-  return (
-    <>
-      {app}
-      <ChatWidget />
-    </>
-  )
+  return app
 }
 
 function hasFirstAndLastName(name) {

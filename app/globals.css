@@ -40,10 +40,27 @@ h1, h2, .yousafe-serif {
     min-width: 0 !important;
   }
 
+  .yousafe-dashboard-scroll,
+  .yousafe-dashboard-body,
+  .yousafe-dashboard-content {
+    overflow: visible !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .yousafe-dashboard-body {
+    display: block !important;
+  }
+
+  .yousafe-dashboard-content > div {
+    max-width: 100% !important;
+    padding: 18px 14px !important;
+  }
+
   .yousafe-sidebar {
     width: 100% !important;
     height: auto !important;
-    max-height: 55vh !important;
+    max-height: none !important;
     position: sticky !important;
     top: 0 !important;
     z-index: 30 !important;
@@ -64,6 +81,10 @@ h1, h2, .yousafe-serif {
     flex: 0 0 auto !important;
   }
 
+  .yousafe-sidebar-nav > * span:last-child {
+    white-space: nowrap !important;
+  }
+
   .yousafe-sidebar-user {
     display: none !important;
   }
@@ -78,6 +99,7 @@ h1, h2, .yousafe-serif {
 
   .yousafe-topbar h1 {
     font-size: 15px !important;
+    margin: 0 !important;
   }
 
   .yousafe-page-content {
@@ -89,9 +111,28 @@ h1, h2, .yousafe-serif {
     height: auto !important;
   }
 
+  .yousafe-mobile-stack > * {
+    min-width: 0 !important;
+  }
+
   .yousafe-mobile-row {
     flex-direction: column !important;
     align-items: stretch !important;
+  }
+
+  .yousafe-notification-menu {
+    left: auto !important;
+    right: 0 !important;
+    width: min(320px, calc(100vw - 28px)) !important;
+    max-height: min(70vh, 520px) !important;
+    overflow-y: auto !important;
+  }
+
+  .yousafe-dashboard-shell input,
+  .yousafe-dashboard-shell select,
+  .yousafe-dashboard-shell textarea,
+  .yousafe-dashboard-shell button {
+    max-width: 100% !important;
   }
 
   .yousafe-landing-nav {

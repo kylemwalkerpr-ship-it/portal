@@ -1390,7 +1390,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           {notifOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
+            <div className="yousafe-notification-menu" style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Notifications</div>
               <div style={{ padding: '28px 16px', textAlign: 'center', color: C.textMuted, fontSize: '13px' }}>No notifications yet.</div>
             </div>
@@ -2639,8 +2639,8 @@ function StudentApp({ onLogout, userId, userName }) {
           messages: 'Messages', documents: 'Documents', billing: 'Billing', settings: 'Settings',
           'order-detail': 'Order Details',
         }[page] || 'Dashboard'} />
-        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minWidth: 0 }}>
+          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
           {actionNotice && (
             <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span>{actionNotice}</span>

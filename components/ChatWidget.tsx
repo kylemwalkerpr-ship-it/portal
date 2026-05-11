@@ -169,6 +169,16 @@ export default function ChatWidget() {
     const apiHistory = history
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => ({ role: m.role, content: m.content }))
+    const pageContext = typeof window !== 'undefined'
+      ? {
+          url: window.location.href,
+          origin: window.location.origin,
+          pathname: window.location.pathname,
+          title: document.title,
+          referrer: document.referrer || null,
+          surface: 'portal',
+        }
+      : null
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -176,6 +186,7 @@ export default function ChatWidget() {
         messages: apiHistory,
         requestAgent: options?.requestAgent === true,
         topic: options?.topic,
+        pageContext,
       }),
     })
     const data = await res.json().catch(() => ({}))
