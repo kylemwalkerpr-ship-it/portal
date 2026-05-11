@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 // Legacy alias kept temporarily; new call sites should use formatPrimary from
@@ -457,6 +458,7 @@ function AdminApp({ onLogout }) {
     <div className="yousafe-topbar" style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <LanguageSelector placement="inline" />
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>

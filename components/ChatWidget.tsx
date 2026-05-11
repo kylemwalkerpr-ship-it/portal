@@ -6,6 +6,7 @@ import React from 'react'
 const STORAGE_KEY = 'yousafe.chat.history.v1'
 const OPEN_KEY = 'yousafe.chat.open.v1'
 const SUPPORT_KEY = 'yousafe.chat.support.v1'
+const CONTACT_KEY = 'yousafe.chat.contact.v1'
 const MAX_PERSISTED = 30
 const SUPPORT_API_DEFAULT = 'https://support.yousafeconsultancy.com/api/chat/widget'
 const SUPPORT_POLL_MS = 5000
@@ -92,6 +93,10 @@ function senderLabel(role, name) {
   return 'Yara'
 }
 
+function looksLikeHumanRequest(text) {
+  return /\b(human|agent|support|representative|person|real person|live chat|talk to someone)\b/i.test(text)
+}
+
 export default function ChatWidget() {
   const [open, setOpen] = React.useState(false)
   const [history, setHistory] = React.useState([])
@@ -100,6 +105,10 @@ export default function ChatWidget() {
   const [error, setError] = React.useState(null)
   const [hydrated, setHydrated] = React.useState(false)
   const [supportSession, setSupportSession] = React.useState(null)
+  const [maximized, setMaximized] = React.useState(false)
+  const [contact, setContact] = React.useState(null)
+  const [contactDraft, setContactDraft] = React.useState({ name: '', email: '' })
+  const [pendingHuman, setPendingHuman] = React.useState(false)
   const scrollRef = React.useRef(null)
   const inputRef = React.useRef(null)
 
@@ -107,6 +116,11 @@ export default function ChatWidget() {
     setHistory(loadJSON(STORAGE_KEY, []))
     setOpen(loadJSON(OPEN_KEY, false) === true)
     setSupportSession(loadJSON(SUPPORT_KEY, null))
+    const savedContact = loadJSON(CONTACT_KEY, null)
+    if (savedContact?.name && savedContact?.email) {
+      setContact(savedContact)
+      setContactDraft(savedContact)
+    }
     setHydrated(true)
   }, [])
 
@@ -121,6 +135,10 @@ export default function ChatWidget() {
   React.useEffect(() => {
     if (hydrated) saveJSON(SUPPORT_KEY, supportSession)
   }, [supportSession, hydrated])
+
+  React.useEffect(() => {
+    if (hydrated && contact?.name && contact?.email) saveJSON(CONTACT_KEY, contact)
+  }, [contact, hydrated])
 
   React.useEffect(() => {
     if (!open) return
@@ -187,6 +205,7 @@ export default function ChatWidget() {
         requestAgent: options?.requestAgent === true,
         topic: options?.topic,
         pageContext,
+        visitor: options?.visitor || contact,
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -205,6 +224,7 @@ export default function ChatWidget() {
         message: text,
         conversationId: session.conversationId,
         topic: 'portal',
+        visitor: contact,
       }),
     })
     const data = await res.json().catch(() => ({}))
@@ -217,6 +237,13 @@ export default function ChatWidget() {
   const send = async (overrideText = undefined, options = undefined) => {
     const text = (typeof overrideText === 'string' ? overrideText : input).trim()
     if (!text || sending) return
+    const activeSupport = supportSession?.conversationId && supportSession.status !== 'resolved' && supportSession.status !== 'closed'
+    const visitor = options?.visitor || contact
+    if (!activeSupport && (!visitor?.name || !visitor?.email) && (options?.requestAgent || looksLikeHumanRequest(text))) {
+      setPendingHuman(true)
+      setError(null)
+      return
+    }
 
     const localUserTurn = { role: 'user', content: text, ts: Date.now() }
     let next = [...history, localUserTurn]
@@ -265,14 +292,38 @@ export default function ChatWidget() {
 
   const requestHumanSupport = () => {
     if (sending) return
+    if (!contact?.name || !contact?.email) {
+      setPendingHuman(true)
+      return
+    }
+    if (supportSession?.status === 'resolved' || supportSession?.status === 'closed') {
+      setSupportSession(null)
+    }
     const userMessage = "I'd like to talk to a human support agent."
     send(userMessage, { requestAgent: true })
+  }
+
+  const saveContactAndContinue = e => {
+    e.preventDefault()
+    const next = { name: contactDraft.name.trim(), email: contactDraft.email.trim() }
+    if (!next.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email)) {
+      setError('Please enter your name and a valid email before starting live support.')
+      return
+    }
+    setContact(next)
+    setPendingHuman(false)
+    setError(null)
+    setTimeout(() => {
+      const userMessage = "I'd like to talk to a human support agent."
+      send(userMessage, { requestAgent: true, visitor: next })
+    }, 0)
   }
 
   const reset = () => {
     setHistory([])
     setSupportSession(null)
     setError(null)
+    setPendingHuman(false)
   }
 
   const onKeyDown = e => {
@@ -328,10 +379,10 @@ export default function ChatWidget() {
           aria-label="YouSafe assistant"
           style={{
             position: 'fixed',
-            right: '20px',
-            bottom: '88px',
-            width: 'min(380px, calc(100vw - 40px))',
-            height: 'min(580px, calc(100vh - 120px))',
+            right: maximized ? '20px' : '20px',
+            bottom: maximized ? '20px' : '88px',
+            width: maximized ? 'min(760px, calc(100vw - 40px))' : 'min(380px, calc(100vw - 40px))',
+            height: maximized ? 'min(760px, calc(100vh - 40px))' : 'min(580px, calc(100vh - 120px))',
             background: styles.panelBg,
             border: `1px solid ${styles.panelBorder}`,
             borderRadius: '16px',
@@ -392,6 +443,9 @@ export default function ChatWidget() {
             >
               Reset
             </button>
+            <button type="button" onClick={() => setOpen(false)} title="Minimize chat" style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>−</button>
+            <button type="button" onClick={() => setMaximized(v => !v)} title={maximized ? 'Restore chat' : 'Maximize chat'} style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>{maximized ? '▣' : '□'}</button>
+            <button type="button" onClick={() => setOpen(false)} title="Close chat" style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>×</button>
           </div>
 
           <div
@@ -493,6 +547,15 @@ export default function ChatWidget() {
                 Talk to a human →
               </button>
             </div>
+          )}
+
+          {pendingHuman && !inLiveSession && (
+            <form onSubmit={saveContactAndContinue} style={{ margin: '10px 12px 0', padding: '12px', border: `1px solid ${styles.border}`, borderRadius: '12px', background: '#fff', display: 'grid', gap: '8px' }}>
+              <div style={{ fontSize: '12px', color: styles.textMuted, fontWeight: 700 }}>Before live support</div>
+              <input value={contactDraft.name} onChange={e => setContactDraft(d => ({ ...d, name: e.target.value }))} placeholder="Your name" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: '8px', font: 'inherit', fontSize: '14px' }} />
+              <input value={contactDraft.email} onChange={e => setContactDraft(d => ({ ...d, email: e.target.value }))} placeholder="Email address" type="email" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: '8px', font: 'inherit', fontSize: '14px' }} />
+              <button type="submit" style={{ height: '34px', border: 'none', borderRadius: '8px', background: styles.bubbleBg, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start live conversation</button>
+            </form>
           )}
 
           <div

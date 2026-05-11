@@ -2,17 +2,23 @@
 
 import { languages, useLanguage } from "@/contexts/language-context"
 
-export function LanguageSelector() {
+type LanguageSelectorProps = {
+  placement?: "fixed" | "inline"
+}
+
+export function LanguageSelector({ placement = "fixed" }: LanguageSelectorProps) {
   const { language, setLanguage } = useLanguage()
+  const fixed = placement === "fixed"
 
   return (
     <label
       data-no-translate
+      className={fixed ? "yousafe-language-selector yousafe-language-selector-fixed" : "yousafe-language-selector"}
       style={{
-        position: "fixed",
-        right: 16,
-        bottom: 16,
-        zIndex: 10000,
+        position: fixed ? "fixed" : "static",
+        right: fixed ? 16 : undefined,
+        bottom: fixed ? 16 : undefined,
+        zIndex: fixed ? 10000 : undefined,
         display: "flex",
         alignItems: "center",
         gap: 8,
@@ -20,9 +26,9 @@ export function LanguageSelector() {
         borderRadius: 8,
         background: "rgba(255, 255, 255, 0.95)",
         color: "#0f172a",
-        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.16)",
+        boxShadow: fixed ? "0 12px 30px rgba(15, 23, 42, 0.16)" : "none",
         padding: "8px 10px",
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: 600,
       }}
     >

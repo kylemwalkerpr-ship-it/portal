@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
 import DashboardRightPane from './dashboard-right-pane'
+import { LanguageSelector } from '../language-selector'
 
 function EarningsChart({ days }) {
   const data = Array.isArray(days) && days.length > 0 ? days : [];
@@ -576,6 +577,7 @@ function ConsultantApp({ onLogout }) {
     }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <LanguageSelector placement="inline" />
         {newOrders > 0 && <Badge color="orange">{newOrders} new order{newOrders > 1 ? 's' : ''}</Badge>}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>

@@ -5,6 +5,7 @@ import { C, Btn, Badge, Card, NavItem, Avatar, UserMenu, PayoutBadge, StatCard a
 import AttorneyProfileEditor from './attorney-profile-editor'
 import DashboardRightPane from './dashboard-right-pane'
 import { CountryChip } from './country-glyphs'
+import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
   overview: 'Overview',
@@ -249,6 +250,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
     >
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <LanguageSelector placement="inline" />
         <div style={{ position: 'relative' }}>
           <button
             type="button"

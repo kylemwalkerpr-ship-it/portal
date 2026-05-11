@@ -38,6 +38,7 @@
       storageKey: 'yousafe.chat.history.v1',
       openKey: 'yousafe.chat.open.v1',
       supportKey: 'yousafe.chat.support.v1',
+      contactKey: 'yousafe.chat.contact.v1',
       maxPersisted: 30,
       pollMs: 5000,
     },
@@ -63,15 +64,21 @@
   var history = (load(cfg.storageKey, []) || []).slice(-cfg.maxPersisted)
   var open = load(cfg.openKey, false) === true
   var support = load(cfg.supportKey, null)
+  var contact = load(cfg.contactKey, null)
   var sending = false
   var error = null
   var pollTimer = null
+  var maximized = false
+  var contactPromptOpen = false
 
   function persist() {
     save(cfg.storageKey, history.slice(-cfg.maxPersisted))
   }
   function persistSupport() {
     save(cfg.supportKey, support)
+  }
+  function persistContact() {
+    save(cfg.contactKey, contact)
   }
   function inLive() {
     return Boolean(
@@ -94,6 +101,8 @@
     '.yara-title-name{font-size:14px;font-weight:700}',
     '.yara-title-sub{font-size:11px;opacity:.85}',
     '.yara-reset{background:rgba(255,255,255,.12);border:none;color:#fff;cursor:pointer;font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;font-family:inherit}',
+    '.yara-window-btn{width:28px;height:28px;border-radius:8px;border:none;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;font-size:16px;font-weight:800;font-family:inherit;line-height:1}',
+    '.yara-panel.maximized{right:20px;bottom:20px;width:min(760px,calc(100vw - 40px));height:min(760px,calc(100vh - 40px));max-height:calc(100vh - 40px)}',
     '.yara-stream{flex:1;overflow-y:auto;padding:16px;background:#F9FAFB;display:flex;flex-direction:column;gap:10px}',
     '.yara-row{display:flex;flex-direction:column}',
     '.yara-row.user{align-items:flex-end}',
@@ -110,6 +119,11 @@
     '.yara-cta-row{padding:8px 12px 0;display:flex;justify-content:center}',
     '.yara-cta{background:transparent;border:1px dashed #D1D5DB;border-radius:999px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:600;color:' + cfg.primary + ';font-family:inherit}',
     '.yara-cta:disabled{opacity:.6;cursor:not-allowed}',
+    '.yara-contact{display:none;margin:10px 12px 0;padding:12px;border:1px solid #E5E7EB;border-radius:12px;background:#fff;gap:8px}',
+    '.yara-contact.open{display:grid}',
+    '.yara-contact-title{font-size:12px;color:#6B7280;font-weight:700}',
+    '.yara-contact-input{padding:9px 10px;border:1px solid #D1D5DB;border-radius:8px;font:inherit;font-size:14px;outline:none}',
+    '.yara-contact-submit{height:34px;border:none;border-radius:8px;background:' + cfg.primary + ';color:#fff;font-weight:800;cursor:pointer;font-family:inherit}',
     '.yara-composer{border-top:1px solid #E5E7EB;padding:10px 12px;background:#fff;display:flex;gap:8px;align-items:flex-end}',
     '.yara-textarea{flex:1;resize:none;max-height:120px;min-height:38px;border:1px solid #D1D5DB;border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;background:#fff;color:#111827;line-height:1.4}',
     '.yara-send{height:38px;padding:0 14px;background:' + cfg.primary + ';color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit}',
@@ -136,9 +150,18 @@
     '    <div class="yara-title-sub">AI assistant online</div>' +
     '  </div>' +
     '  <button class="yara-reset" type="button" title="Start a new conversation">Reset</button>' +
+    '  <button class="yara-window-btn yara-minimize" type="button" title="Minimize chat">−</button>' +
+    '  <button class="yara-window-btn yara-maximize" type="button" title="Maximize chat">□</button>' +
+    '  <button class="yara-window-btn yara-close" type="button" title="Close chat">×</button>' +
     '</div>' +
     '<div class="yara-stream"></div>' +
     '<div class="yara-cta-row" style="display:none"><button class="yara-cta" type="button">Talk to a human →</button></div>' +
+    '<form class="yara-contact">' +
+    '  <div class="yara-contact-title">Before live support</div>' +
+    '  <input class="yara-contact-input yara-contact-name" type="text" autocomplete="name" placeholder="Your name">' +
+    '  <input class="yara-contact-input yara-contact-email" type="email" autocomplete="email" placeholder="Email address">' +
+    '  <button class="yara-contact-submit" type="submit">Start live conversation</button>' +
+    '</form>' +
     '<div class="yara-composer">' +
     '  <textarea class="yara-textarea" rows="1" placeholder="Type a message…"></textarea>' +
     '  <button class="yara-send" type="button">Send</button>' +
@@ -151,8 +174,14 @@
   var textarea = panel.querySelector('.yara-textarea')
   var sendBtn = panel.querySelector('.yara-send')
   var resetBtn = panel.querySelector('.yara-reset')
+  var minimizeBtn = panel.querySelector('.yara-minimize')
+  var maximizeBtn = panel.querySelector('.yara-maximize')
+  var closeBtn = panel.querySelector('.yara-close')
   var ctaRow = panel.querySelector('.yara-cta-row')
   var ctaBtn = panel.querySelector('.yara-cta')
+  var contactForm = panel.querySelector('.yara-contact')
+  var contactName = panel.querySelector('.yara-contact-name')
+  var contactEmail = panel.querySelector('.yara-contact-email')
   var avatarEl = panel.querySelector('.yara-avatar-icon')
   var titleEl = panel.querySelector('.yara-title-name')
   var subEl = panel.querySelector('.yara-title-sub')
@@ -177,6 +206,14 @@
     return 'AI assistant online'
   }
 
+  function hasContact() {
+    return Boolean(contact && contact.name && contact.email)
+  }
+
+  function looksLikeHumanRequest(text) {
+    return /\b(human|agent|support|representative|person|real person|live chat|talk to someone)\b/i.test(text)
+  }
+
   function senderLabel(role, name) {
     if (role === 'user') return ''
     if (role === 'agent') return name ? escapeHtml(name) + ' · Support' : 'Support team'
@@ -188,6 +225,9 @@
     launcher.textContent = open ? '×' : '💬'
     launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat')
     panel.style.display = open ? 'flex' : 'none'
+    panel.classList.toggle('maximized', maximized)
+    maximizeBtn.textContent = maximized ? '▣' : '□'
+    maximizeBtn.title = maximized ? 'Restore chat' : 'Maximize chat'
 
     var live = inLive()
     avatarEl.textContent = live ? '🛟' : 'Y'
@@ -195,6 +235,7 @@
     subEl.textContent = statusLabel()
     ctaRow.style.display = live ? 'none' : 'flex'
     ctaBtn.disabled = sending
+    contactForm.classList.toggle('open', contactPromptOpen && !live)
 
     var visible = history.length > 0 ? history : [{ role: 'assistant', content: cfg.greeting }]
     var html = ''
@@ -313,6 +354,7 @@
       body: JSON.stringify({
         messages: apiHistory,
         requestAgent: !!(opts && opts.requestAgent),
+        visitor: (opts && opts.visitor) || contact,
         topic: cfg.topic || document.location.hostname,
         pageContext: {
           url: document.location.href,
@@ -339,6 +381,7 @@
         message: text,
         conversationId: support.conversationId,
         topic: support.topic || 'website',
+        visitor: contact,
       }),
     })
     var data = {}
@@ -350,6 +393,12 @@
   async function send(overrideText, opts) {
     var text = (typeof overrideText === 'string' ? overrideText : textarea.value).trim()
     if (!text || sending) return
+    if (!inLive() && !hasContact() && ((opts && opts.requestAgent) || looksLikeHumanRequest(text))) {
+      contactPromptOpen = true
+      error = null
+      render()
+      return
+    }
 
     history.push({ role: 'user', content: text, ts: Date.now() })
     persist()
@@ -400,6 +449,7 @@
     history = []
     support = null
     error = null
+    contactPromptOpen = false
     persist()
     persistSupport()
     stopPolling()
@@ -409,9 +459,33 @@
   launcher.addEventListener('click', function () { toggle() })
   sendBtn.addEventListener('click', function () { send() })
   resetBtn.addEventListener('click', reset)
+  minimizeBtn.addEventListener('click', function () { toggle(false) })
+  closeBtn.addEventListener('click', function () { toggle(false) })
+  maximizeBtn.addEventListener('click', function () { maximized = !maximized; render() })
   ctaBtn.addEventListener('click', function () {
     if (sending) return
+    if (support && (support.status === 'resolved' || support.status === 'closed')) {
+      support = null
+      persistSupport()
+    }
     send("I'd like to talk to a human support agent.", { requestAgent: true })
+  })
+  contactForm.addEventListener('submit', function (e) {
+    e.preventDefault()
+    var next = {
+      name: contactName.value.trim(),
+      email: contactEmail.value.trim(),
+    }
+    if (!next.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email)) {
+      error = 'Please enter your name and a valid email before starting live support.'
+      render()
+      return
+    }
+    contact = next
+    persistContact()
+    contactPromptOpen = false
+    error = null
+    send("I'd like to talk to a human support agent.", { requestAgent: true, visitor: next })
   })
   textarea.addEventListener('input', render)
   textarea.addEventListener('keydown', function (e) {

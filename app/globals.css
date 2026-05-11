@@ -598,6 +598,21 @@ h1, h2, .yousafe-serif {
     margin: 0 !important;
   }
 
+  .yousafe-topbar > div:last-child {
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+    flex: 1 1 220px !important;
+    min-width: 0 !important;
+  }
+
+  .yousafe-topbar .yousafe-language-selector {
+    order: 20;
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 7px 9px !important;
+    font-size: 12px !important;
+  }
+
   .yousafe-page-content {
     padding: 18px 14px !important;
   }
