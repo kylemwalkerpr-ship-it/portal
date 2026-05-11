@@ -89,7 +89,7 @@ export default function LandingPage({ onLogin, onSignup }) {
       </Section>
 
       <Section id="practices" eyebrow="What we do" title="Two practices, one portal.">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '28px', marginTop: '40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '28px', marginTop: '40px' }}>
           {PRACTICES.map((p) => (
             <PracticeCard key={p.title} practice={p} />
           ))}
@@ -143,6 +143,7 @@ export default function LandingPage({ onLogin, onSignup }) {
 function Nav({ onSignIn }) {
   return (
     <nav
+      className="yousafe-landing-nav"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -180,7 +181,7 @@ function Nav({ onSignIn }) {
         </span>
       </a>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <div className="yousafe-landing-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <a href="#how" style={navLinkStyle}>How it works</a>
         <a href="#practices" style={navLinkStyle}>Practices</a>
         <a href="#lanes" style={navLinkStyle}>Sign in</a>

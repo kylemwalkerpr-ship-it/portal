@@ -24,3 +24,86 @@ h1, h2, .yousafe-serif {
 @media (max-width: 1280px) {
   .yousafe-right-pane { display: none !important; }
 }
+
+/* Responsive dashboard shell for the inline-styled portal apps. Desktop keeps
+   the side rail; phones turn it into a compact, horizontally scrollable rail. */
+@media (max-width: 760px) {
+  .yousafe-dashboard-shell {
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    overflow: visible !important;
+  }
+
+  .yousafe-dashboard-main {
+    overflow: visible !important;
+    min-width: 0 !important;
+  }
+
+  .yousafe-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 55vh !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+  }
+
+  .yousafe-sidebar-nav {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 6px !important;
+    padding: 10px 8px !important;
+    scrollbar-width: thin;
+  }
+
+  .yousafe-sidebar-nav > * {
+    flex: 0 0 auto !important;
+  }
+
+  .yousafe-sidebar-user {
+    display: none !important;
+  }
+
+  .yousafe-topbar {
+    height: auto !important;
+    min-height: 58px !important;
+    padding: 10px 14px !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .yousafe-topbar h1 {
+    font-size: 15px !important;
+  }
+
+  .yousafe-page-content {
+    padding: 18px 14px !important;
+  }
+
+  .yousafe-mobile-stack {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+  }
+
+  .yousafe-mobile-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .yousafe-landing-nav {
+    padding: 14px 16px !important;
+    gap: 12px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .yousafe-landing-nav-links {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+}

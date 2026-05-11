@@ -182,7 +182,7 @@ export default function AttorneyApp({ onLogout, userName }) {
   const profileEmail = profileData?.profile?.email || ''
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
+    <div className="yousafe-dashboard-shell" style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
       <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
       <Sidebar
         page={page}
@@ -193,7 +193,7 @@ export default function AttorneyApp({ onLogout, userName }) {
         available={available}
         toggleAvailable={toggleAvailable}
       />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="yousafe-dashboard-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar
           title={PAGE_TITLES[page]}
           notifications={visibleNotifications}
@@ -233,6 +233,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
   const [notifOpen, setNotifOpen] = React.useState(false)
   return (
     <div
+      className="yousafe-topbar"
       style={{
         height: '60px',
         background: C.surface,
@@ -348,7 +349,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
           {displayName || 'Panel member'}
         </div>
       </div>
-      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Overview" active={page === 'overview'} onClick={() => setPage('overview')} />
         <NavItem icon="📥" label="Inquiry Queue" active={page === 'queue'} onClick={() => setPage('queue')} />
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
@@ -359,7 +360,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
-      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+      <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
           <Avatar name={displayName || 'Attorney'} src={headshotUrl} size={32} color={C.cyan} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1331,7 +1332,7 @@ function OrderDetail({ orderId, onBack }) {
         </div>
       </Card>
 
-      <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', alignItems: 'flex-start' }}>
+      <div className="yousafe-mobile-stack" style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', alignItems: 'flex-start' }}>
         <div style={{ display: 'grid', gap: '12px' }}>
           <Card>
             <div style={{ padding: '16px 18px' }}>

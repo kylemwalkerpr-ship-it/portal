@@ -397,7 +397,7 @@ function AdminApp({ onLogout }) {
 
   // ── SIDEBAR ──
   const Sidebar = () => (
-    <div style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
+    <div className="yousafe-sidebar" style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
         <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
           <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
@@ -405,7 +405,7 @@ function AdminApp({ onLogout }) {
         </a>
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Admin console</div>
       </div>
-      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
         <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
@@ -417,7 +417,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="🛒" label="Services" active={page === 'services'} onClick={() => setPage('services')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
-      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+      <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
           <Avatar name="Admin" size={32} color={C.red} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -454,7 +454,7 @@ function AdminApp({ onLogout }) {
 
   // ── TOPBAR ──
   const TopBar = ({ title }) => (
-    <div style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
+    <div className="yousafe-topbar" style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
@@ -1000,7 +1000,7 @@ function AdminApp({ onLogout }) {
           <h2 style={adminPageTitle}>Escrow.</h2>
           <p style={{ color: C.textMuted, fontSize: '14px' }}>Payments held pending student approval. Released {consultantFeePercent}% to consultant, {platformFeePercent}% to platform.</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
           <StatCard label="Total Held" value={formatPrimary(totalHeld)} icon="🔒" color={C.orange} />
           <StatCard label="Orders in Escrow" value={held.length} icon="📦" color={C.cyan} />
           <StatCard label="Released All Time" value={formatPrimary(released.reduce((a, o) => a + o.amountValue, 0))} icon="✅" color={C.green} />
@@ -1558,9 +1558,9 @@ function AdminApp({ onLogout }) {
   const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', services: 'Service Catalogue', settings: 'Settings' };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={pages[page] || 'Admin'} />
         <div style={{ flex: 1 }}>
           {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}

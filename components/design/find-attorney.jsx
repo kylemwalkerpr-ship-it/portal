@@ -407,7 +407,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
       </div>
 
       {/* Two-column body */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginTop: '20px', alignItems: 'flex-start' }}>
+      <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginTop: '20px', alignItems: 'flex-start' }}>
         <div style={{ display: 'grid', gap: '16px' }}>
           {a.intro && (
             <Section title="Introduction">

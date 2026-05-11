@@ -1320,7 +1320,7 @@ function StudentApp({ onLogout, userId, userName }) {
 
   // ── SIDEBAR ──
   const Sidebar = () => (
-    <div style={{
+    <div className="yousafe-sidebar" style={{
       width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`,
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0,
     }}>
@@ -1331,7 +1331,7 @@ function StudentApp({ onLogout, userId, userName }) {
         </a>
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Student portal</div>
       </div>
-      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Browse Services" active={page === 'services'} onClick={() => setPage('services')} />
@@ -1343,7 +1343,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
-      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+      <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
           <Avatar name={profileData.name || 'Student'} size={32} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -1380,7 +1380,7 @@ function StudentApp({ onLogout, userId, userName }) {
 
   // ── TOPBAR ──
   const TopBar = ({ title }) => (
-    <div style={{
+    <div className="yousafe-topbar" style={{
       height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 28px', position: 'sticky', top: 0, zIndex: 10,
@@ -1564,7 +1564,7 @@ function StudentApp({ onLogout, userId, userName }) {
           </div>
           <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>{order.id} · started {order.date}</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
+        <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
           {/* Main */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Progress */}
@@ -2538,7 +2538,7 @@ function StudentApp({ onLogout, userId, userName }) {
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
+        <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
           <div style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
             {conversations.length === 0 && (
@@ -2631,9 +2631,9 @@ function StudentApp({ onLogout, userId, userName }) {
 
   // ── RENDER ──
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={{
           dashboard: 'Dashboard', orders: 'My Orders', services: 'Browse Services',
           messages: 'Messages', documents: 'Documents', billing: 'Billing', settings: 'Settings',

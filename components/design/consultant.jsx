@@ -504,7 +504,7 @@ function ConsultantApp({ onLogout }) {
 
   // ── SIDEBAR ──
   const Sidebar = () => (
-    <div style={{
+    <div className="yousafe-sidebar" style={{
       width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`,
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0,
     }}>
@@ -515,7 +515,7 @@ function ConsultantApp({ onLogout }) {
         </a>
         <Badge color="purple" style={{ fontSize: '10px', padding: '2px 8px' }}>Consultant</Badge>
       </div>
-      <div style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={newOrders > 0 ? `${newOrders} new` : null} />
         <NavItem icon="👥" label="Clients" active={page === 'clients'} onClick={() => setPage('clients')} />
@@ -525,7 +525,7 @@ function ConsultantApp({ onLogout }) {
         <NavItem icon="🏦" label="Payout Setup" active={page === 'connect'} onClick={() => setPage('connect')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
-      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
+      <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
           <Avatar name={profileName || 'Consultant'} src={profileAvatarUrl} size={32} color={C.purple} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -569,7 +569,7 @@ function ConsultantApp({ onLogout }) {
 
   // ── TOPBAR ──
   const TopBar = ({ title }) => (
-    <div style={{
+    <div className="yousafe-topbar" style={{
       height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 28px', position: 'sticky', top: 0, zIndex: 10,
@@ -1252,9 +1252,9 @@ function ConsultantApp({ onLogout }) {
   );
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       {Sidebar()}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {TopBar({ title: { dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard' })}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minHeight: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
