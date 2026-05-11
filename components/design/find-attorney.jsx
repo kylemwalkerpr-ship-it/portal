@@ -300,6 +300,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
 
   const a = data.attorney
   const ratings = data.ratings || []
+  const gigs = data.gigs || []
   const initial = (a.full_name || '?').trim().charAt(0).toUpperCase()
 
   async function sendPreIntakeMessage() {
@@ -427,6 +428,14 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
                 {a.specialties.map((s) => (
                   <Tag key={s}>{s}</Tag>
                 ))}
+              </div>
+            </Section>
+          )}
+
+          {gigs.length > 0 && (
+            <Section title="Gigs">
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {gigs.map(gig => <GigPreview key={gig.id} gig={gig} />)}
               </div>
             </Section>
           )}
@@ -603,6 +612,37 @@ function Review({ review }) {
         <span style={{ color: C.textDim, fontSize: '11px' }}>{new Date(review.created_at).toLocaleDateString()}</span>
       </div>
       {review.comment && <p style={{ color: C.text, fontSize: '13px', lineHeight: 1.55, margin: 0 }}>{review.comment}</p>}
+    </div>
+  )
+}
+
+function GigPreview({ gig }) {
+  const tiers = (gig.tiers || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: '10px', padding: '14px', background: C.surface2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: '14px', color: C.text }}>{gig.title}</div>
+          <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.5, marginTop: '4px' }}>{gig.summary}</div>
+        </div>
+        {tiers[0] && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>From</div>
+            <div style={{ fontFamily: C.serif, fontSize: '22px', color: C.text }}>${Number(tiers[0].price || 0).toFixed(0)}</div>
+          </div>
+        )}
+      </div>
+      {tiers.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(tiers.length, 3)}, minmax(0, 1fr))`, gap: '8px', marginTop: '12px' }}>
+          {tiers.map(t => (
+            <div key={t.id} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px', background: C.surface }}>
+              <div style={{ color: C.text, fontWeight: 800, fontSize: '12px', textTransform: 'capitalize' }}>{t.tier_name}</div>
+              <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{t.delivery_days} days · {t.revision_count} rev.</div>
+              <div style={{ color: C.cyan, fontWeight: 800, fontSize: '14px', marginTop: '6px' }}>${Number(t.price || 0).toFixed(2)}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

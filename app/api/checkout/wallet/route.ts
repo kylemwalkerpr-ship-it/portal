@@ -53,6 +53,48 @@ export async function POST(req: Request) {
     const stripe = getStripe()
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
 
+    const { data: walletCredits } = await db
+      .from('orders')
+      .select('id, wallet_credit_amount')
+      .eq('client_id', profile.id)
+      .eq('refund_status', 'wallet_credit_pending')
+    const walletCreditCents = Math.round((walletCredits ?? []).reduce((sum, row) => sum + Number(row.wallet_credit_amount || 0), 0) * 100)
+
+    if (walletCreditCents >= amountCents) {
+      const acceptedAt = new Date().toISOString()
+      const orderInsert: Record<string, unknown> = {
+        client_id: profile.id,
+        status: 'queued',
+        total_amount: amountCents / 100,
+        requirements: `Wallet credit payment — ${title}`,
+        terms_accepted_at: acceptedAt,
+        refund_policy_accepted_at: acceptedAt,
+      }
+      const orderResult = await db.from('orders').insert(orderInsert).select('id').single()
+      if (orderResult.error || !orderResult.data) {
+        return Response.json({ error: orderResult.error?.message || 'Order creation failed.' }, { status: 500 })
+      }
+      await db.from('order_items').insert({
+        order_id: orderResult.data.id,
+        service_id: service.id,
+        quantity: 1,
+        unit_price: amountCents / 100,
+        subtotal: amountCents / 100,
+      })
+      await db.from('order_status_history').insert({
+        order_id: orderResult.data.id,
+        from_status: null,
+        to_status: 'queued',
+        changed_by_id: profile.id,
+        note: `Paid from wallet credit — ${title}`,
+      })
+      await db
+        .from('orders')
+        .update({ refund_status: 'wallet_credit_used', wallet_credit_amount: 0 })
+        .in('id', (walletCredits ?? []).map(row => row.id))
+      return Response.json({ success: true, orderId: orderResult.data.id })
+    }
+
     // Check available balance
     const balance = await stripe.customers.retrieveCashBalance(customerId)
     const available = balance.available?.usd ?? 0

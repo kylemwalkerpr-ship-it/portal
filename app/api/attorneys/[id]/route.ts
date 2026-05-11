@@ -18,7 +18,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   if (attErr || !attorney) return Response.json({ error: 'Attorney not found.' }, { status: 404 })
 
-  const [{ data: profile }, { data: application }, { data: ratingsRows }, completedOrders] = await Promise.all([
+  const [{ data: profile }, { data: application }, { data: ratingsRows }, completedOrders, { data: gigs }] = await Promise.all([
     db.from('profiles').select('id, full_name, email, status').eq('id', attorney.profile_id).single(),
     db
       .from('attorney_applications')
@@ -39,6 +39,13 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .select('id', { count: 'exact', head: true })
       .eq('consultant_id', attorney.profile_id)
       .in('status', ['completed', 'released']),
+    db
+      .from('provider_gigs')
+      .select('*, tiers:provider_gig_tiers(*)')
+      .eq('provider_role', 'attorney')
+      .eq('provider_profile_id', attorney.profile_id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false }),
   ])
 
   if (!profile || profile.status !== 'active') {
@@ -98,5 +105,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       completed_engagements: completedOrders?.count ?? 0,
     },
     ratings,
+    gigs: gigs ?? [],
   })
 }

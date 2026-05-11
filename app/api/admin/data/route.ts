@@ -22,7 +22,7 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db } = auth
 
-  const [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes] = await Promise.all([
+  let [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes] = await Promise.all([
     db.from('profiles').select('*').order('created_at', { ascending: false }),
     db.from('orders').select('*').order('created_at', { ascending: false }),
     db.from('order_items').select('*'),
@@ -31,6 +31,13 @@ export async function GET() {
     db.from('consultants').select('id, profile_id, user_id, email, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
     db.from('attorneys').select('id, profile_id, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
   ])
+
+  if (consultantsRes.error && /stripe_bypass|schema cache|column/i.test(consultantsRes.error.message)) {
+    consultantsRes = await db.from('consultants').select('id, profile_id, user_id, email, stripe_account_id, stripe_onboarding_complete')
+  }
+  if (attorneysRes.error && /stripe_bypass|schema cache|column/i.test(attorneysRes.error.message)) {
+    attorneysRes = await db.from('attorneys').select('id, profile_id, stripe_account_id, stripe_onboarding_complete')
+  }
 
   const error = profilesRes.error || ordersRes.error || itemsRes.error || servicesRes.error
   if (error) return Response.json({ error: error.message }, { status: 500 })

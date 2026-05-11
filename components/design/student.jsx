@@ -996,6 +996,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
+  const [consultantOffers, setConsultantOffers] = React.useState([]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [attorneyChats, setAttorneyChats] = React.useState([]);
   const [selectedAttorneyChatId, setSelectedAttorneyChatId] = React.useState(null);
@@ -1117,6 +1118,7 @@ function StudentApp({ onLogout, userId, userName }) {
         name: order.consultant,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       })));
+      setConsultantOffers(data.offers ?? []);
     } catch (e) {
       setActionNotice(e.message);
     } finally {
@@ -1127,6 +1129,7 @@ function StudentApp({ onLogout, userId, userName }) {
   React.useEffect(() => {
     if (!selectedOrder) {
       setMessages([]);
+      setConsultantOffers([]);
       return undefined;
     }
     loadMessagesFor(selectedOrder);
@@ -1222,6 +1225,32 @@ function StudentApp({ onLogout, userId, userName }) {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not decline offer.');
       await loadAttorneyChat(selectedAttorneyChatId);
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
+  const acceptConsultantOffer = async offerId => {
+    try {
+      const res = await fetch(`/api/consultant/offers/${offerId}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Could not start checkout.');
+      window.location.href = data.url;
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
+  const declineConsultantOffer = async offerId => {
+    try {
+      const res = await fetch(`/api/consultant/offers/${offerId}/decline`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Could not decline offer.');
+      await loadMessagesFor(selectedOrder);
     } catch (e) {
       setActionNotice(e.message);
     }
@@ -1621,6 +1650,7 @@ function StudentApp({ onLogout, userId, userName }) {
                     </div>
                   </div>
                 ))}
+                {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o.id)} onDecline={() => declineConsultantOffer(o.id)} />)}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -2621,16 +2651,17 @@ function StudentApp({ onLogout, userId, userName }) {
                 </div>
               </div>
               <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {messages.map((m, i) => (
+              {messages.map((m, i) => (
                   <div key={i} style={{ display: 'flex', gap: '10px', flexDirection: m.from === 'student' ? 'row-reverse' : 'row' }}>
                     {m.from === 'consultant' && <Avatar name={m.name} size={30} />}
                     <div style={{ maxWidth: '60%' }}>
                       <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: m.from === 'student' ? C.studentMessageBg : C.surface2, color: m.from === 'student' ? C.studentMessageText : C.text, border: m.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}><MessageBody body={m.text} linkColor={m.from === 'student' ? C.studentMessageText : C.cyan} /></div>
                       <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: m.from === 'student' ? 'right' : 'left' }}>{m.time}</div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                </div>
+              ))}
+              {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onAccept={() => acceptConsultantOffer(o.id)} onDecline={() => declineConsultantOffer(o.id)} />)}
+            </div>
               <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
                 <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
                 <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
@@ -2695,9 +2726,14 @@ function ChatBubble({ message, mine }) {
       <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: mine ? C.studentMessageBg : C.surface2, color: mine ? C.studentMessageText : C.text, border: mine ? `1px solid ${C.studentMessageBorder}` : 'none', whiteSpace: 'pre-wrap' }}>
         {text && <div>{text}</div>}
         {attachmentLine && (
-          <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
-            {labelLine || 'Open attachment'}
-          </a>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: text ? '8px' : 0 }}>
+            <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
+              {labelLine || 'Open attachment'}
+            </a>
+            <a href={attachmentLine.trim()} download target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, border: `1px solid ${mine ? C.studentMessageText : C.cyan}`, borderRadius: '999px', padding: '2px 8px', fontSize: '12px', fontWeight: 800, textDecoration: 'none' }}>
+              Download
+            </a>
+          </div>
         )}
         <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
       </div>
@@ -2723,6 +2759,34 @@ function AttorneyOfferCard({ offer, onAccept, onDecline }) {
       </div>
       {pending && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+          <Btn variant="primary" size="sm" onClick={onAccept}>Accept & pay ${total.toFixed(2)}</Btn>
+          <Btn variant="ghost" size="sm" onClick={onDecline}>Decline</Btn>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ConsultantOfferCard({ offer, onAccept, onDecline }) {
+  const total = Number(offer.price || 0)
+  const pending = offer.status === 'sent'
+  return (
+    <div style={{ alignSelf: 'stretch', border: `1px solid ${pending ? C.cyan : C.border}`, borderRadius: '12px', padding: '14px', background: pending ? `${C.cyan}0d` : C.surface2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 800, fontSize: '14px', color: C.text }}>{offer.title}</div>
+        <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : 'gray'}>{offer.status}</Badge>
+      </div>
+      <div style={{ marginTop: '6px', color: C.textMuted, fontSize: '13px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{offer.description}</div>
+      <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '12px' }}>
+        {Number(offer.discount_percent || 0) > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>List price</span><strong style={{ textDecoration: 'line-through' }}>${Number(offer.original_price || 0).toFixed(2)}</strong></div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Custom offer</span><strong>${total.toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Delivery</span><strong>{offer.delivery_days} days</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Revisions</span><strong>{offer.revision_count ?? 1}</strong></div>
+      </div>
+      {pending && (
+        <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
           <Btn variant="primary" size="sm" onClick={onAccept}>Accept & pay ${total.toFixed(2)}</Btn>
           <Btn variant="ghost" size="sm" onClick={onDecline}>Decline</Btn>
         </div>

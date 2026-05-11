@@ -190,21 +190,40 @@ export function MessageBody({ body, linkColor = C.cyan }) {
     <>
       {text && <div>{text}</div>}
       {attachmentLine && (
-        <a
-          href={attachmentLine.trim()}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: 'inline-flex',
-            marginTop: text ? '8px' : 0,
-            color: linkColor,
-            fontWeight: 800,
-            textDecoration: 'none',
-            wordBreak: 'break-word',
-          }}
-        >
-          {labelLine || 'Open attachment'}
-        </a>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: text ? '8px' : 0 }}>
+          <a
+            href={attachmentLine.trim()}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'inline-flex',
+              color: linkColor,
+              fontWeight: 800,
+              textDecoration: 'none',
+              wordBreak: 'break-word',
+            }}
+          >
+            {labelLine || 'Open attachment'}
+          </a>
+          <a
+            href={attachmentLine.trim()}
+            download
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'inline-flex',
+              border: `1px solid ${linkColor}`,
+              color: linkColor,
+              borderRadius: '999px',
+              padding: '2px 8px',
+              fontSize: '12px',
+              fontWeight: 800,
+              textDecoration: 'none',
+            }}
+          >
+            Download
+          </a>
+        </div>
       )}
     </>
   )

@@ -138,6 +138,9 @@ export async function POST(req: Request) {
         total_amount: amountTotal,
         attorney_fee: attorneyFee,
         platform_fee: platformFee,
+        platform_fee_amount: Math.round(platformFee * 100),
+        consultant_payout_amount: Math.round(attorneyFee * 100),
+        payout_status: session.metadata?.stripe_bypassed === 'true' ? 'pending' : 'transferred',
         requirements: offer?.description ?? `Custom attorney offer ${offerId}`,
         terms_accepted_at: acceptedAt,
         refund_policy_accepted_at: acceptedAt,
@@ -202,6 +205,92 @@ export async function POST(req: Request) {
     return new Response('OK', { status: 200 })
   }
   // ── /Attorney offer payment path ───────────────────────────────────────────
+
+  const consultantOfferId = session.metadata?.consultant_offer_id
+  if (consultantOfferId) {
+    const clientProfileId = session.metadata?.client_profile_id
+    const consultantProfileId = session.metadata?.consultant_profile_id
+    const sourceOrderId = session.metadata?.source_order_id
+    const deliveryDays = Number(session.metadata?.delivery_days || 7)
+
+    if (!clientProfileId || !consultantProfileId) {
+      console.error('[webhook] Consultant offer payment missing metadata', session.id)
+      return new Response('OK', { status: 200 })
+    }
+
+    const { data: existingOrder } = await db
+      .from('orders')
+      .select('id')
+      .eq('source_consultant_offer_id', consultantOfferId)
+      .maybeSingle()
+    if (existingOrder) return new Response('OK', { status: 200 })
+
+    const { data: offer } = await db
+      .from('consultant_offers')
+      .select('title, description, platform_fee, consultant_payout')
+      .eq('id', consultantOfferId)
+      .single()
+
+    const acceptedAt = new Date().toISOString()
+    const deadline = new Date(Date.now() + deliveryDays * 24 * 60 * 60 * 1000).toISOString()
+    const platformFee = Number(session.metadata?.platform_fee || offer?.platform_fee || 0)
+    const consultantPayout = Number(session.metadata?.consultant_payout || offer?.consultant_payout || 0)
+
+    const { data: order, error: orderErr } = await db
+      .from('orders')
+      .insert({
+        client_id: clientProfileId,
+        consultant_id: consultantProfileId,
+        status: 'new',
+        total_amount: amountTotal,
+        platform_fee: platformFee,
+        platform_fee_amount: Math.round(platformFee * 100),
+        consultant_payout_amount: Math.round(consultantPayout * 100),
+        payout_status: 'pending',
+        requirements: offer?.description ?? `Custom consultant offer ${consultantOfferId}`,
+        terms_accepted_at: acceptedAt,
+        refund_policy_accepted_at: acceptedAt,
+        stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        deadline,
+        source_consultant_offer_id: consultantOfferId,
+      })
+      .select('id')
+      .single()
+
+    if (orderErr || !order) {
+      console.error('[webhook] Consultant offer order create failed', orderErr?.message)
+      return new Response('Order create failed', { status: 500 })
+    }
+
+    await db
+      .from('consultant_offers')
+      .update({
+        status: 'accepted',
+        decided_at: acceptedAt,
+        accepted_order_id: order.id,
+        stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+      })
+      .eq('id', consultantOfferId)
+
+    if (sourceOrderId) {
+      await db.from('order_messages').insert({
+        order_id: sourceOrderId,
+        sender_id: clientProfileId,
+        sender_role: 'system',
+        body: `Student accepted consultant offer "${offer?.title ?? ''}". New order #${order.id} is now queued.`,
+      })
+    }
+
+    await db.from('order_status_history').insert({
+      order_id: order.id,
+      from_status: null,
+      to_status: 'new',
+      changed_by_id: clientProfileId,
+      note: `Paid consultant offer ${consultantOfferId}`,
+    })
+
+    return new Response('OK', { status: 200 })
+  }
 
   // Find the user's profile — by clerk_user_id if we have it, otherwise by email
   let profile: { id: string; role?: string; status?: string } | null = null

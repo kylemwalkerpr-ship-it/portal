@@ -33,7 +33,23 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return Response.json({ error: 'Offer has expired.' }, { status: 410 })
   }
 
-  if (!offer.attorney_stripe_account_id) {
+  let { data: attorney, error: attorneyErr } = await ctx.db
+    .from('attorneys')
+    .select('stripe_account_id, stripe_onboarding_complete, stripe_bypass')
+    .eq('id', offer.attorney_id)
+    .single()
+  if (attorneyErr && /stripe_bypass|schema cache|column/i.test(attorneyErr.message)) {
+    const fallback = await ctx.db
+      .from('attorneys')
+      .select('stripe_account_id, stripe_onboarding_complete')
+      .eq('id', offer.attorney_id)
+      .single()
+    attorney = fallback.data ? { ...fallback.data, stripe_bypass: false } : null
+  }
+  const stripeAccountId = offer.attorney_stripe_account_id || attorney?.stripe_account_id || null
+  const connectReady = Boolean(stripeAccountId && attorney?.stripe_onboarding_complete)
+  const bypassed = Boolean(attorney?.stripe_bypass)
+  if (!connectReady && !bypassed) {
     return Response.json({ error: 'Attorney is not configured for payouts.' }, { status: 412 })
   }
 
@@ -60,6 +76,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const platformFeeCents = Math.round(platformFee * 100)
   const currency = (offer.currency || 'usd').toLowerCase()
 
+  const paymentIntentData: Record<string, unknown> = {}
+  if (connectReady && stripeAccountId) {
+    paymentIntentData.application_fee_amount = platformFeeCents
+    paymentIntentData.transfer_data = { destination: stripeAccountId }
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     customer_email: ctx.email,
@@ -76,10 +98,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
         quantity: 1,
       },
     ],
-    payment_intent_data: {
-      application_fee_amount: platformFeeCents,
-      transfer_data: { destination: offer.attorney_stripe_account_id },
-    },
+    payment_intent_data: paymentIntentData,
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: {
@@ -91,6 +110,8 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       delivery_days: String(offer.delivery_days),
       attorney_fee: String(attorneyFee),
       platform_fee: String(platformFee),
+      connect_ready: String(connectReady),
+      stripe_bypassed: String(bypassed && !connectReady),
     },
   })
 

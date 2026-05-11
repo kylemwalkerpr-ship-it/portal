@@ -61,6 +61,8 @@ function ConsultantApp({ onLogout }) {
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
+  const [consultantOffers, setConsultantOffers] = React.useState([]);
+  const [showOfferModal, setShowOfferModal] = React.useState(false);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [orders, setOrders] = React.useState([]);
   const [earningsByDay, setEarningsByDay] = React.useState([]);
@@ -452,6 +454,7 @@ function ConsultantApp({ onLogout }) {
         name: order.student,
         time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       })));
+      setConsultantOffers(data.offers ?? []);
     } catch (e) {
       setActionNotice(e.message);
     } finally {
@@ -495,9 +498,21 @@ function ConsultantApp({ onLogout }) {
     }
   };
 
+  const withdrawConsultantOffer = async offerId => {
+    try {
+      const res = await fetch(`/api/consultant/offers/${offerId}/withdraw`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Could not withdraw offer.');
+      await loadMessagesFor(selectedOrder);
+    } catch (e) {
+      setActionNotice(e.message);
+    }
+  };
+
   React.useEffect(() => {
     if (!selectedOrder) {
       setMessages([]);
+      setConsultantOffers([]);
       return undefined;
     }
     loadMessagesFor(selectedOrder);
@@ -831,7 +846,10 @@ function ConsultantApp({ onLogout }) {
             </Card>
             {/* Messages */}
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Chat with {order.student}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 700, fontSize: '15px' }}>Chat with {order.student}</div>
+                <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Send offer</Btn>
+              </div>
               <div className="yousafe-message-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '240px', overflowY: 'auto', marginBottom: '16px' }}>
                 {messagesLoading && messages.length === 0 && (
                   <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading messages…</div>
@@ -853,6 +871,7 @@ function ConsultantApp({ onLogout }) {
                     </div>
                   </div>
                 ))}
+                {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onWithdraw={() => withdrawConsultantOffer(o.id)} />)}
               </div>
               <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
                 <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
@@ -1250,9 +1269,11 @@ function ConsultantApp({ onLogout }) {
                   </div>
                 </div>
               ))}
+              {consultantOffers.map(o => <ConsultantOfferCard key={o.id} offer={o} onWithdraw={() => withdrawConsultantOffer(o.id)} />)}
             </div>
             <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
               <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+              <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Offer</Btn>
               <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
               <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Message student…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
               <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
@@ -1297,8 +1318,104 @@ function ConsultantApp({ onLogout }) {
           <DashboardRightPane role="consultant" />
         </div>
       </div>
+      {showOfferModal && selectedOrder && (
+        <ConsultantOfferModal
+          order={selectedOrder}
+          onClose={() => setShowOfferModal(false)}
+          onCreated={async () => {
+            setShowOfferModal(false);
+            await loadMessagesFor(selectedOrder);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function ConsultantOfferCard({ offer, onWithdraw }) {
+  const pending = offer.status === 'sent'
+  return (
+    <div style={{ alignSelf: 'stretch', border: `1px solid ${pending ? C.cyan : C.border}`, borderRadius: '12px', padding: '14px', background: pending ? `${C.cyan}0d` : C.surface2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+        <div style={{ fontWeight: 800, fontSize: '14px', color: C.text }}>{offer.title}</div>
+        <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : 'gray'}>{offer.status}</Badge>
+      </div>
+      <div style={{ marginTop: '6px', color: C.textMuted, fontSize: '13px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{offer.description}</div>
+      <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Client pays</span><strong>${Number(offer.price || 0).toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Your payout</span><strong>${Number(offer.consultant_payout || 0).toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Delivery</span><strong>{offer.delivery_days} days</strong></div>
+      </div>
+      {pending && <Btn variant="ghost" size="sm" onClick={onWithdraw} style={{ marginTop: '10px' }}>Withdraw</Btn>}
+    </div>
+  )
+}
+
+function ConsultantOfferModal({ order, onClose, onCreated }) {
+  const [title, setTitle] = React.useState('')
+  const [description, setDescription] = React.useState('')
+  const [price, setPrice] = React.useState('')
+  const [discount, setDiscount] = React.useState('0')
+  const [deliveryDays, setDeliveryDays] = React.useState('7')
+  const [revisionCount, setRevisionCount] = React.useState('1')
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState('')
+  const discounted = Math.max(0, Number(price || 0) * (1 - Math.min(Math.max(Number(discount || 0), 0), 95) / 100))
+
+  async function submit(e) {
+    e.preventDefault()
+    if (submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/consultant/orders/${order.id}/offers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+          price: Number(price),
+          discount_percent: Number(discount),
+          delivery_days: Number(deliveryDays),
+          revision_count: Number(revisionCount),
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || 'Could not create offer.')
+      onCreated()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <form onClick={e => e.stopPropagation()} onSubmit={submit} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '24px', maxWidth: '520px', width: '100%', display: 'grid', gap: '12px', color: C.text }}>
+        <div style={{ fontWeight: 800, fontSize: '17px' }}>Send custom offer</div>
+        <Input label="Offer title" value={title} onChange={e => setTitle(e.target.value)} placeholder="Add-on document review" />
+        <label style={{ display: 'grid', gap: '6px', fontSize: '12px', color: C.textMuted, fontWeight: 700 }}>
+          Details
+          <textarea rows={5} value={description} onChange={e => setDescription(e.target.value)} style={{ padding: '10px 12px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontFamily: 'inherit', fontSize: '14px' }} />
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <Input label="Price" type="number" min="1" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
+          <Input label="Discount %" type="number" min="0" max="95" step="1" value={discount} onChange={e => setDiscount(e.target.value)} />
+          <Input label="Delivery days" type="number" min="1" step="1" value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} />
+          <Input label="Revisions" type="number" min="0" max="10" step="1" value={revisionCount} onChange={e => setRevisionCount(e.target.value)} />
+        </div>
+        <div style={{ padding: '10px 12px', borderRadius: '10px', background: C.surface2, fontSize: '13px' }}>
+          Client pays <strong>${discounted.toFixed(2)}</strong>. Platform payout split uses the live admin payment settings.
+        </div>
+        {error && <div style={{ color: C.red, fontSize: '13px' }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn type="submit" variant="primary" disabled={submitting}>{submitting ? 'Sending…' : 'Send offer'}</Btn>
+        </div>
+      </form>
+    </div>
+  )
 }
 
 export default ConsultantApp;

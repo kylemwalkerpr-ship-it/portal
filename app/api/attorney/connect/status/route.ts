@@ -5,7 +5,7 @@ export async function GET() {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
-  const [{ data: attorney }, settings] = await Promise.all([
+  let [{ data: attorney, error: attorneyErr }, settings] = await Promise.all([
     ctx.db
       .from('attorneys')
       .select('stripe_account_id, stripe_onboarding_complete, stripe_bypass')
@@ -13,6 +13,14 @@ export async function GET() {
       .single(),
     getPlatformSettings(),
   ])
+  if (attorneyErr && /stripe_bypass|schema cache|column/i.test(attorneyErr.message)) {
+    const fallback = await ctx.db
+      .from('attorneys')
+      .select('stripe_account_id, stripe_onboarding_complete')
+      .eq('id', ctx.attorneyId)
+      .single()
+    attorney = fallback.data ? { ...fallback.data, stripe_bypass: false } : null
+  }
 
   const onboardingComplete = Boolean(attorney?.stripe_onboarding_complete)
   const bypassed = Boolean(attorney?.stripe_bypass)

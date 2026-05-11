@@ -2,6 +2,7 @@ import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { triggerConsultantPayout } from '@/lib/payouts'
 import { getPlatformSettings } from '@/lib/platformConfig'
+import { getStripe } from '@/lib/stripe'
 
 async function requireAdmin() {
   const clerkUserId = await getClerkUserId()
@@ -29,6 +30,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if ('consultant_id' in body) payload.consultant_id = body.consultant_id || null
   if ('status' in body) payload.status = body.status
   if ('escrow_status' in body) payload.escrow_status = body.escrow_status
+  const refundRequested = body.refund === true || body.status === 'refunded'
 
   if (payload.escrow_status === 'released' && body.force === true) {
     const settings = await getPlatformSettings()
@@ -37,7 +39,38 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
-  const { data: before } = await auth.db.from('orders').select('status').eq('id', id).single()
+  const { data: before } = await auth.db.from('orders').select('*').eq('id', id).single()
+  if (refundRequested && before?.stripe_payment_intent_id && !before.refund_id) {
+    try {
+      const refund = await getStripe().refunds.create({
+        payment_intent: before.stripe_payment_intent_id,
+        metadata: { order_id: id, requested_by: auth.profile.id, source: 'admin_order_action' },
+      })
+      payload.refund_status = refund.status || 'submitted'
+      payload.refund_id = refund.id
+      payload.refunded_amount = Number(before.total_amount || 0)
+      payload.refunded_at = new Date().toISOString()
+      payload.escrow_status = 'refunded'
+      payload.status = 'cancelled'
+      payload.cancelled_at = new Date().toISOString()
+      payload.cancelled_by = auth.profile.id
+    } catch (e) {
+      console.error('[admin/orders] original-method refund failed; recording wallet credit fallback', e)
+      payload.refund_status = 'wallet_credit_pending'
+      payload.wallet_credit_amount = Number(before.total_amount || 0)
+      payload.escrow_status = 'refunded'
+      payload.status = 'cancelled'
+      payload.cancelled_at = new Date().toISOString()
+      payload.cancelled_by = auth.profile.id
+    }
+  } else if (refundRequested) {
+    payload.refund_status = before?.refund_id ? before.refund_status || 'submitted' : 'wallet_credit_pending'
+    payload.wallet_credit_amount = before?.refund_id ? before.wallet_credit_amount || null : Number(before?.total_amount || 0)
+    payload.escrow_status = 'refunded'
+    payload.status = 'cancelled'
+    payload.cancelled_at = new Date().toISOString()
+    payload.cancelled_by = auth.profile.id
+  }
   const { data, error } = await auth.db.from('orders').update(payload).eq('id', id).select('*').single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
 

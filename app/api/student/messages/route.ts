@@ -17,14 +17,25 @@ export async function GET(req: Request) {
     .single()
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
 
-  const { data, error } = await auth.db
-    .from('order_messages')
-    .select('id, sender_id, sender_role, body, created_at')
-    .eq('order_id', orderId)
-    .order('created_at', { ascending: true })
+  const [{ data, error }, { data: offers, error: offersError }] = await Promise.all([
+    auth.db
+      .from('order_messages')
+      .select('id, sender_id, sender_role, body, created_at')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true }),
+    auth.db
+      .from('consultant_offers')
+      .select('*')
+      .eq('order_id', orderId)
+      .eq('client_profile_id', auth.profile.id)
+      .order('created_at', { ascending: false }),
+  ])
   if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (offersError && !/does not exist|schema cache/i.test(offersError.message)) {
+    return Response.json({ error: offersError.message }, { status: 500 })
+  }
 
-  return Response.json({ messages: data ?? [] })
+  return Response.json({ messages: data ?? [], offers: offers ?? [] })
 }
 
 export async function POST(req: Request) {

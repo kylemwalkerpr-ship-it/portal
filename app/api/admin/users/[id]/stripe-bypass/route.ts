@@ -86,7 +86,17 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     .update({ stripe_bypass: enabled })
     .eq('id', recordId)
 
-  if (updErr) return Response.json({ error: updErr.message }, { status: 500 })
+  if (updErr) {
+    const missingBypass = /stripe_bypass|schema cache|column/i.test(updErr.message)
+    return Response.json(
+      {
+        error: missingBypass
+          ? 'Stripe bypass column is missing from the database schema cache. Run supabase/provider_offers_and_gigs.sql in Supabase SQL Editor, then refresh the PostgREST schema cache.'
+          : updErr.message,
+      },
+      { status: 500 },
+    )
+  }
 
   return Response.json({ ok: true, role: profile.role, stripe_bypass: enabled })
 }
