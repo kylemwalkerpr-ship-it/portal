@@ -17,7 +17,7 @@ const STATUS_OPTIONS = ['pending', 'in_progress', 'under_review', 'revision_requ
 const CATEGORY_FALLBACK = ['Immigration consultation', 'Document review', 'Study permits', 'University admissions', 'Settlement planning', 'Career mentorship', 'Legal forms review', 'Business immigration']
 const TIERS = ['basic', 'standard', 'premium']
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-const TERMS_URL = 'https://yousafeconsultancy.com/terms'
+const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
 const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 const pageShell = {

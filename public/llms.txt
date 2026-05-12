@@ -1,0 +1,46 @@
+# Yousafe Consultancy
+
+> Comprehensive information on study-abroad planning, visa documentation, university admissions, and settlement guidance for international students seeking to study in the USA or Canada.
+
+Yousafe Consultancy offers detailed resources, service descriptions, and platform insights focused on international education pathways. Its content is valuable for models aiming to understand student support services, legal and visa procedures, portal-based workflows, and client engagement strategies for educational consulting and immigration services.
+
+## Core Content
+
+- [Study in the USA](https://usa.yousafeconsultancy.com)
+  Guidance on F-1 visas, OPT, and documentation needed for studying in the United States.
+
+- [Study in Canada](https://ca.yousafeconsultancy.com)
+  Information on permits, PGWP, settlement, and immigration pathways in Canada.
+
+- [Student Visa and Settlement Guides](https://yousafeconsultancy.com/blog)
+  Step-by-step instructions and advice for student visa applications, study permits, and post-graduation work permits.
+
+- Service descriptions, including client onboarding, secure portals, escrow-based payments, and dedicated workspaces for students, consultants, and attorneys.
+
+## Platform and Workflow Information
+
+- Description of the client portal features, such as live currency selection, document vaults, and payment workflows.
+- Details on how students, consultants, and attorneys interact within the platform, including messaging, order management, and payouts.
+- Explanation of platform compliance with legal and financial standards, including escrow and transparent fee breakdowns.
+
+## Resources
+
+- Legal articles and guides from the YouSafe library, covering legal and procedural topics relevant to international students.
+- Guides to using the platform's legal vertical, MyCaseworks, for attorney-client matters.
+
+## Optional
+
+- Client and professional testimonials and reviews.
+- Details on the security methods, encrypted transactions, and transparent pricing policies.
+- Step-by-step process for account creation, inquiry management, payment, and approval workflows.
+
+## Important Links
+
+- [Yousafe Consultancy official site](https://yousafeconsultancy.com)
+- [Study in USA](https://usa.yousafeconsultancy.com)
+- [Study in Canada](https://ca.yousafeconsultancy.com)
+- [Blog and guides](https://yousafeconsultancy.com/blog)
+- [Client portal login](https://portal.yousafeconsultancy.com/sign-in/student)
+- [Legal article feed](https://legal.yousafeconsultancy.com)
+- [Apply as attorney](https://portal.yousafeconsultancy.com/sign-up/attorney)
+- [Contact page](https://yousafeconsultancy.com/contact)

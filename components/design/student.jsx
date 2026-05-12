@@ -71,7 +71,7 @@ function QuickActionTile({ icon, label, sub, onClick }) {
 
 const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
-const TERMS_URL = 'https://yousafeconsultancy.com/terms'
+const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
 const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
