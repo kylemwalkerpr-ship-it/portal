@@ -2,6 +2,9 @@
 // @ts-nocheck
 import React from 'react'
 
+// Warm editorial palette. Off-white paper background, indigo accent (legacy
+// `cyan` key kept for compatibility with existing code), and a serif font
+// reference for premium headings.
 export const C = {
   bg: '#FBFAF7',
   surface: '#FFFFFF',
@@ -443,7 +446,7 @@ export function Divider({ style }) {
   return <div style={{ height: '1px', background: C.border, ...style }} />
 }
 
-export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }) {
+export function StatCard({ label, value, delta, icon, color = C.cyan }) {
   return (
     <Card style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -452,7 +455,6 @@ export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }
       </div>
       <div style={{ fontSize: '28px', fontWeight: 700, color: C.text }}>{value}</div>
       {delta && <div style={{ fontSize: '12px', color: delta.startsWith('+') ? C.green : C.red }}>{delta} this month</div>}
-      {subtitle && <div style={{ fontSize: '12px', color: C.textDim }}>{subtitle}</div>}
     </Card>
   )
 }
@@ -460,7 +462,7 @@ export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }
 export function ProgressBar({ value, color = C.cyan, style }) {
   return (
     <div style={{ height: '6px', background: C.surface3, borderRadius: '99px', overflow: 'hidden', ...style }}>
-      <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, value))}%`, background: color, borderRadius: '99px', transition: 'width 0.5s' }} />
+      <div style={{ height: '100%', width: `${value}%`, background: color, borderRadius: '99px', transition: 'width 0.5s' }} />
     </div>
   )
 }
@@ -508,81 +510,11 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', style 
       {value && (
         <button
           onClick={() => onChange('')}
-          style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '14px', padding: '4px' }}
+          style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: '14px', padding: '4px', lineHeight: 1 }}
         >
           ✕
         </button>
       )}
     </div>
-  )
-}
-
-export function Toggle({ checked, onChange, label, disabled }) {
-  return (
-    <button
-      type="button"
-      onClick={() => !disabled && onChange(!checked)}
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      style={{
-        width: '44px', height: '24px', borderRadius: '999px', border: 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer', position: 'relative', flexShrink: 0,
-        background: checked ? C.cyan : C.surface3,
-        opacity: disabled ? 0.5 : 1,
-        transition: 'background 160ms',
-      }}
-    >
-      <span style={{
-        position: 'absolute', top: '3px', left: checked ? '23px' : '3px',
-        width: '18px', height: '18px', borderRadius: '50%', background: '#fff',
-        transition: 'left 160ms', boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-      }} />
-    </button>
-  )
-}
-
-export function Modal({ open, onClose, title, subtitle, children, width = '520px' }) {
-  if (!open) return null
-  return (
-    <div
-      onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: C.surface, border: `1px solid ${C.border}`,
-          borderRadius: '18px', padding: '28px', width: '100%',
-          maxWidth: width, maxHeight: '90vh', overflowY: 'auto',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <div>
-            {title && <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{title}</h3>}
-            {subtitle && <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{subtitle}</div>}
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: 0 }}>✕</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-export function Sparkline({ data = [], color = C.cyan, height = 32, width = 80 }) {
-  if (!data.length) return null
-  const max = Math.max(...data, 1)
-  const min = Math.min(...data, 0)
-  const range = max - min || 1
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width
-    const y = height - ((v - min) / range) * (height - 4) - 2
-    return `${x},${y}`
-  }).join(' ')
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ flexShrink: 0 }}>
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   )
 }

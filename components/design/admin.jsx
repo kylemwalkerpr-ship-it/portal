@@ -1,12 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import {
-  LayoutDashboard, Users, FileText, ShoppingBag, Lock, DollarSign,
-  BarChart3, Settings, LogOut, Bell, Eye, UserPlus, CheckCircle,
-  Clock, TrendingUp, TrendingDown, Star, Globe, CreditCard,
-} from 'lucide-react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput, Toggle, Modal, Sparkline } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -117,11 +112,11 @@ function AdminApp({ onLogout }) {
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [orderSearch, setOrderSearch] = React.useState('');
   const [gigs, setGigs] = React.useState([]);
   const [selectedGig, setSelectedGig] = React.useState(null);
   const [gigFilter, setGigFilter] = React.useState('all');
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [orderSearch, setOrderSearch] = React.useState('');
 
   const consultantFeePercent = Number(platformSettings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
   const platformFeePercent = Number(platformSettings.platform_fee_percent || (100 - consultantFeePercent));
@@ -453,16 +448,17 @@ function AdminApp({ onLogout }) {
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Admin console</div>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <NavItem icon={<LayoutDashboard size={18} strokeWidth={1.6} />} label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
-        <NavItem icon={<Users size={18} strokeWidth={1.6} />} label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
-        <NavItem icon={<FileText size={18} strokeWidth={1.6} />} label="Attorney Apps" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
-        <NavItem icon={<ShoppingBag size={18} strokeWidth={1.6} />} label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
-        <NavItem icon={<Lock size={18} strokeWidth={1.6} />} label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
-        <NavItem icon={<DollarSign size={18} strokeWidth={1.6} />} label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
-        <NavItem icon={<BarChart3 size={18} strokeWidth={1.6} />} label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
-        <NavItem icon={<Star size={18} strokeWidth={1.6} />} label="Gigs" active={page === 'gigs'} onClick={() => setPage('gigs')} />
-        <NavItem icon={<Globe size={18} strokeWidth={1.6} />} label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
-        <NavItem icon={<Settings size={18} strokeWidth={1.6} />} label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
+        <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
+        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
+        <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
+        <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
+        <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
+        <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
+        <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
+        <NavItem icon="⭐" label="Gigs" active={page === 'gigs'} onClick={() => setPage('gigs')} />
+        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
+        <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
@@ -474,7 +470,7 @@ function AdminApp({ onLogout }) {
           <button
             type="button"
             onClick={onLogout}
-            aria-label="Log out"
+            aria-label="Log out and return to Yousafe Consultancy"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -491,7 +487,7 @@ function AdminApp({ onLogout }) {
             }}
             title="Log out"
           >
-            <LogOut size={14} strokeWidth={2} />
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
             <span>Logout</span>
           </button>
         </div>
@@ -508,7 +504,7 @@ function AdminApp({ onLogout }) {
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>
-          <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, display: 'inline-flex', alignItems: 'center' }}><Bell size={16} strokeWidth={1.8} /></button>
+          <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
@@ -681,7 +677,7 @@ function AdminApp({ onLogout }) {
       </div>
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
-          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search users by name or email..." />
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search by name or email..." />
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
@@ -706,7 +702,7 @@ function AdminApp({ onLogout }) {
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               {['User', 'Role', 'Country', 'Joined', 'Orders', 'Financials', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -729,7 +725,7 @@ function AdminApp({ onLogout }) {
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.joined}</td>
                 <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{u.orders}</td>
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: u.role === 'consultant' ? C.green : C.text, fontWeight: 600 }}>{u.spend}</td>
-                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : u.status === 'suspended' ? 'red' : 'orange'}>{u.status}</Badge></td>
+                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : 'orange'}>{u.status}</Badge></td>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
@@ -933,7 +929,7 @@ function AdminApp({ onLogout }) {
         </div>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
-            <SearchInput value={orderSearch} onChange={setOrderSearch} placeholder="Search by ID, service, student, consultant..." />
+            <SearchInput value={orderSearch} onChange={setOrderSearch} placeholder="Search by ID, service, name..." />
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {['all','new','active','review','pending','completed','cancelled'].map(f => (
@@ -943,7 +939,7 @@ function AdminApp({ onLogout }) {
         </div>
         <Card style={{ padding: '0', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['Order','Service','Student','Consultant','Amount','Split','Escrow','Status','Actions'].map(h=><th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['Order','Service','Student','Consultant','Amount','Split','Escrow','Status','Actions'].map(h=><th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{orderSearch ? 'No orders match your search.' : 'No orders in this status.'}</td></tr>
@@ -1136,10 +1132,10 @@ function AdminApp({ onLogout }) {
     const heldOrders = orders.filter(o => o.escrow === 'held');
     const payoutByConsultant = React.useMemo(() => {
       const map = {};
-      consultants.forEach(c => { map[c.id] = { ...c, paid: 0, pending: 0, orderCount: 0 }; });
+      consultants.forEach(c => { map[c.id] = { name: c.name, paid: 0, pending: 0, orderCount: 0 }; });
       orders.forEach(o => {
         if (!o.consultantId) return;
-        map[o.consultantId] = map[o.consultantId] || { id: o.consultantId, name: o.consultant || 'Unknown', paid: 0, pending: 0, orderCount: 0 };
+        map[o.consultantId] = map[o.consultantId] || { name: o.consultant || 'Unknown', paid: 0, pending: 0, orderCount: 0 };
         map[o.consultantId].orderCount++;
         if (o.escrow === 'released') map[o.consultantId].paid += moneyValue(o.consultantPay);
         else map[o.consultantId].pending += moneyValue(o.consultantPay);
@@ -1151,13 +1147,13 @@ function AdminApp({ onLogout }) {
         <div>
           <div style={adminEyebrow}>Disbursements</div>
           <h2 style={adminPageTitle}>Payouts.</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Real-time payout tracking per consultant.</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Per-consultant payout tracking.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
-          <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon={<DollarSign size={20} />} color={C.green} subtitle={`${releasedOrders.length} released orders`} />
-          <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon={<CreditCard size={20} />} color={C.cyan} subtitle={`${payoutByConsultant.filter(c => c.paid > 0).length} consultants paid`} />
-          <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon={<Clock size={20} />} color={C.orange} subtitle={`${heldOrders.length} orders in escrow`} />
-          <StatCard label="Total Processed" value={formatPrimary(releasedOrders.reduce((a, o) => a + o.amountValue, 0))} icon={<CheckCircle size={20} />} color={C.purple} subtitle={`${orders.length} total orders`} />
+          <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
+          <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon="👤" color={C.cyan} />
+          <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon="⏳" color={C.orange} />
+          <StatCard label="Total Processed" value={formatPrimary(releasedOrders.reduce((a, o) => a + o.amountValue, 0))} icon="📊" color={C.purple} />
         </div>
         <Card>
           <div style={adminSectionHeading}>Consultant Payout Queue</div>
@@ -1167,7 +1163,7 @@ function AdminApp({ onLogout }) {
                 <span>Consultant</span><span style={{ textAlign: 'right' }}>Paid</span><span style={{ textAlign: 'right' }}>Pending</span><span style={{ textAlign: 'right' }}>Orders</span><span></span>
               </div>
               {payoutByConsultant.map(c => (
-                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px', gap: '12px', padding: '12px 14px', alignItems: 'center', borderBottom: `1px solid ${C.border}` }}>
+                <div key={c.name} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px', gap: '12px', padding: '12px 14px', alignItems: 'center', borderBottom: `1px solid ${C.border}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Avatar name={c.name} size={32} color={C.purple} />
                     <span style={{ fontWeight: 600, fontSize: '14px' }}>{c.name}</span>
@@ -1175,7 +1171,7 @@ function AdminApp({ onLogout }) {
                   <span style={{ fontWeight: 700, textAlign: 'right', color: c.paid > 0 ? C.green : C.textDim }}>{c.paid > 0 ? formatPrimary(c.paid) : '—'}</span>
                   <span style={{ fontWeight: 700, textAlign: 'right', color: c.pending > 0 ? C.orange : C.textDim }}>{c.pending > 0 ? formatPrimary(c.pending) : '—'}</span>
                   <span style={{ textAlign: 'right', fontSize: '14px', fontWeight: 600 }}>{c.orderCount}</span>
-                  <Btn variant="ghost" size="sm" onClick={() => setActionNotice(`Payout review opened for ${c.name}. Stripe payout automation will process eligible released balances.`)}>Review</Btn>
+                  <Btn variant="ghost" size="sm" onClick={() => setActionNotice(`Payout review for ${c.name}.`)}>Review</Btn>
                 </div>
               ))}
             </div>
@@ -1194,15 +1190,13 @@ function AdminApp({ onLogout }) {
       orders.forEach(o => {
         if (!o.createdAt) return;
         const m = o.createdAt.substring(0, 7);
-        months[m] = months[m] || { revenue: 0, platform: 0, consultant: 0, orders: 0, students: new Set() };
+        months[m] = months[m] || { platform: 0, consultant: 0, orders: 0 };
         months[m].orders++;
-        months[m].revenue += o.amountValue;
         months[m].platform += moneyValue(o.adminCut);
         months[m].consultant += moneyValue(o.consultantPay);
-        if (o.student) months[m].students.add(o.student);
       });
       return Object.entries(months).sort().slice(-12).map(([m, d]) => ({
-        month: m, label: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), ...d, students: d.students.size,
+        month: m, label: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), ...d,
       }));
     }, [orders]);
     const servicePerformance = React.useMemo(() => {
@@ -1212,123 +1206,78 @@ function AdminApp({ onLogout }) {
     }, [orders]);
     const userGrowth = React.useMemo(() => {
       const months = {};
-      users.forEach(u => { if (!u.createdAt) return; const m = u.createdAt.substring(0, 7); months[m] = months[m] || { students: 0, consultants: 0, attorneys: 0, total: 0 }; months[m].total++; if (u.role === 'student') months[m].students++; else if (u.role === 'consultant') months[m].consultants++; else if (u.role === 'attorney') months[m].attorneys++; });
+      users.forEach(u => { if (!u.createdAt) return; const m = u.createdAt.substring(0, 7); months[m] = months[m] || { total: 0 }; months[m].total++; });
       return Object.entries(months).sort().slice(-12).map(([m, d]) => ({ month: m, label: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), ...d }));
     }, [users]);
     const maxRevenue = Math.max(...monthlyData.map(d => d.platform), 1);
     const maxOrders = Math.max(...monthlyData.map(d => d.orders), 1);
     const maxUsers = Math.max(...userGrowth.map(d => d.total), 1);
-    const barH = 140, barW = 36;
+    const barH = 140;
     const completionRate = orders.length ? Math.round(orders.filter(o => o.status === 'completed').length / orders.length * 100) : 0;
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <div>
           <div style={adminEyebrow}>Insight</div>
           <h2 style={adminPageTitle}>Analytics.</h2>
-          <p style={{ color: C.textMuted, fontSize: '14px' }}>Real platform metrics derived from {orders.length} orders and {users.length} users.</p>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Derived from {orders.length} orders and {users.length} users.</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={adminSectionHeading}>Revenue Trend</div>
-              <span style={{ fontSize: '12px', color: C.textMuted }}>Monthly platform revenue</span>
-            </div>
+            <div style={adminSectionHeading}>Revenue (monthly)</div>
             {monthlyData.length > 0 ? (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: `${barH + 24}px`, paddingTop: '8px' }}>
                 {monthlyData.map(d => (
-                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{formatPrimary(d.platform)}</div>
-                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <div style={{ width: '100%', maxWidth: `${barW}px`, height: `${(d.platform / maxRevenue) * barH}px`, background: `linear-gradient(180deg, ${C.green}, ${C.green}88)`, borderRadius: '4px 4px 0 0', transition: 'height 0.3s' }} />
-                    </div>
-                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                    <div style={{ fontSize: '9px', color: C.textMuted }}>{formatPrimary(d.platform)}</div>
+                    <div style={{ width: '100%', height: `${Math.max(2, (d.platform / maxRevenue) * barH)}px`, background: C.green, borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
+                    <div style={{ fontSize: '9px', color: C.textDim }}>{d.label}</div>
                   </div>
                 ))}
               </div>
-            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No revenue data yet.</div>}
+            ) : <div style={{ padding: '40px 0', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No data yet.</div>}
           </Card>
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={adminSectionHeading}>Order Volume</div>
-              <span style={{ fontSize: '12px', color: C.textMuted }}>Orders per month</span>
-            </div>
+            <div style={adminSectionHeading}>Order Volume</div>
             {monthlyData.length > 0 ? (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: `${barH + 24}px`, paddingTop: '8px' }}>
                 {monthlyData.map(d => (
-                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{d.orders}</div>
-                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <div style={{ width: '100%', maxWidth: `${barW}px`, height: `${(d.orders / maxOrders) * barH}px`, background: `linear-gradient(180deg, ${C.cyan}, ${C.cyan}88)`, borderRadius: '4px 4px 0 0', transition: 'height 0.3s' }} />
-                    </div>
-                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                    <div style={{ fontSize: '9px', color: C.textMuted }}>{d.orders}</div>
+                    <div style={{ width: '100%', height: `${Math.max(2, (d.orders / maxOrders) * barH)}px`, background: C.cyan, borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
+                    <div style={{ fontSize: '9px', color: C.textDim }}>{d.label}</div>
                   </div>
                 ))}
               </div>
-            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No order data yet.</div>}
+            ) : <div style={{ padding: '40px 0', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No data yet.</div>}
           </Card>
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={adminSectionHeading}>User Growth</div>
-              <span style={{ fontSize: '12px', color: C.textMuted }}>New users per month</span>
-            </div>
+            <div style={adminSectionHeading}>User Growth</div>
             {userGrowth.length > 0 ? (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: `${barH + 24}px`, paddingTop: '8px' }}>
                 {userGrowth.map(d => (
-                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{d.total}</div>
-                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '2px' }}>
-                      <div style={{ flex: 1, height: `${(d.students / maxUsers) * barH}px`, background: C.cyan, borderRadius: '2px 2px 0 0' }} title={`${d.students} students`} />
-                      {d.consultants > 0 && <div style={{ flex: 1, height: `${(d.consultants / maxUsers) * barH}px`, background: C.purple, borderRadius: '2px 2px 0 0' }} title={`${d.consultants} consultants`} />}
-                      {d.attorneys > 0 && <div style={{ flex: 1, height: `${(d.attorneys / maxUsers) * barH}px`, background: C.green, borderRadius: '2px 2px 0 0' }} title={`${d.attorneys} attorneys`} />}
-                    </div>
-                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                    <div style={{ fontSize: '9px', color: C.textMuted }}>{d.total}</div>
+                    <div style={{ width: '100%', height: `${Math.max(2, (d.total / maxUsers) * barH)}px`, background: C.purple, borderRadius: '3px 3px 0 0', transition: 'height 0.3s' }} />
+                    <div style={{ fontSize: '9px', color: C.textDim }}>{d.label}</div>
                   </div>
                 ))}
               </div>
-            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No user growth data yet.</div>}
-            <div style={{ display: 'flex', gap: '16px', marginTop: '12px', justifyContent: 'center', fontSize: '11px', color: C.textMuted }}>
-              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.cyan, marginRight: '4px' }} /> Students</span>
-              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.purple, marginRight: '4px' }} /> Consultants</span>
-              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.green, marginRight: '4px' }} /> Attorneys</span>
-            </div>
-          </Card>
-          <Card>
-            <div style={adminSectionHeading}>Top Services</div>
-            {servicePerformance.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {servicePerformance.map((s, i) => {
-                  const maxSvcRev = servicePerformance[0].revenue || 1;
-                  return (
-                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, width: '18px' }}>{i + 1}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
-                          <span style={{ fontWeight: 600 }}>{s.name}</span>
-                          <span style={{ fontWeight: 700 }}>{formatPrimary(s.revenue)} ({s.orders})</span>
-                        </div>
-                        <ProgressBar value={(s.revenue / maxSvcRev) * 100} color={i === 0 ? C.cyan : C.textMuted} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No service data yet.</div>}
+            ) : <div style={{ padding: '40px 0', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No data yet.</div>}
           </Card>
           <Card>
             <div style={adminSectionHeading}>Key Metrics</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               {[
-                { label: 'Total revenue', value: formatPrimary(totalRevenue), sub: `${orders.length} orders` },
-                { label: 'Avg order', value: orders.length ? formatPrimary(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A', sub: 'per engagement' },
-                { label: 'Completion rate', value: `${completionRate}%`, sub: `${orders.filter(o => o.status === 'completed').length} completed` },
-                { label: 'Conversion', value: users.length ? `${(orders.length / Math.max(1, users.filter(u => u.role === 'student').length) * 100).toFixed(1)}%` : 'N/A', sub: 'orders per student' },
-                { label: 'Consultants', value: totalConsultants, sub: `${consultants.length} active` },
-                { label: 'Support ratio', value: totalSupport && totalConsultants ? `${(totalConsultants / totalSupport).toFixed(1)}:1` : 'N/A', sub: 'consultants per support' },
+                { label: 'Total revenue', value: formatPrimary(orders.filter(o => o.escrow === 'released').reduce((a, o) => a + moneyValue(o.adminCut), 0)) },
+                { label: 'Avg order', value: orders.length ? formatPrimary(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A' },
+                { label: 'Completion rate', value: `${completionRate}%` },
+                { label: 'Total orders', value: orders.length },
+                { label: 'Active consultants', value: users.filter(u => u.role === 'consultant' && u.status === 'active').length },
+                { label: 'Pending approvals', value: users.filter(u => ['consultant', 'support', 'attorney'].includes(u.role) && u.status === 'pending').length },
               ].map(m => (
-                <div key={m.label} style={{ background: C.surface2, borderRadius: '10px', padding: '14px' }}>
-                  <div style={{ fontSize: '11px', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{m.label}</div>
-                  <div style={{ fontSize: '20px', fontWeight: 700, color: C.text, marginTop: '4px' }}>{m.value}</div>
-                  <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px' }}>{m.sub}</div>
+                <div key={m.label} style={{ background: C.surface2, borderRadius: '10px', padding: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{m.label}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.text, marginTop: '4px' }}>{m.value}</div>
                 </div>
               ))}
             </div>
@@ -1678,7 +1627,7 @@ function AdminApp({ onLogout }) {
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                 {['Gig', 'Provider', 'Category', 'Price', 'Status', 'Rank', 'Tiers', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1706,7 +1655,7 @@ function AdminApp({ onLogout }) {
                     <td style={{ padding: '14px 16px', fontSize: '13px' }}>{g.tiers?.length || 0}</td>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <Btn variant="ghost" size="sm" onClick={() => setSelectedGig(g)}><Eye size={14} /></Btn>
+                        <Btn variant="ghost" size="sm" onClick={() => setSelectedGig(g)}>View</Btn>
                         {g.status === 'active' && <Btn variant="danger" size="sm" onClick={() => updateGigStatus(g.id, 'paused')}>Pause</Btn>}
                         {g.status === 'paused' && <Btn variant="success" size="sm" onClick={() => updateGigStatus(g.id, 'active')}>Activate</Btn>}
                         {g.status === 'draft' && <Btn variant="primary" size="sm" onClick={() => updateGigStatus(g.id, 'active')}>Publish</Btn>}
