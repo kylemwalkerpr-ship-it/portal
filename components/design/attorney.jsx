@@ -906,6 +906,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) 
       {showOfferModal && (
         <CustomOfferDialog
           chatId={inquiryId}
+          providerRole="attorney"
           recipientName={inquiry?.full_name || inquiry?.email || 'Client'}
           onClose={() => setShowOfferModal(false)}
           onCreated={() => {

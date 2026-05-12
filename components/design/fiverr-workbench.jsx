@@ -404,12 +404,26 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
   const [payMethod, setPayMethod] = React.useState('stripe')
   const [walletBalance, setWalletBalance] = React.useState(null)
   const [cards, setCards] = React.useState([])
+  const [settings, setSettings] = React.useState(null)
   const [selectedCardId, setSelectedCardId] = React.useState('')
   const [acceptedTerms, setAcceptedTerms] = React.useState(false)
   const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
-  const priceDollars = Number(tier.price || 0) / 100
+  const providerType = String(gig.provider_type || '').toLowerCase() === 'attorney' ? 'attorney' : 'consultant'
+  const subtotalCents = Number(tier.price || 0)
+  const platformPercent = providerType === 'attorney'
+    ? Number(settings?.attorney_platform_fee_percent ?? 25)
+    : Number(settings?.platform_fee_percent ?? 20)
+  const providerSharePercent = providerType === 'attorney'
+    ? 100
+    : Number(settings?.consultant_fee_percent ?? Math.max(0, 100 - platformPercent))
+  const platformFeeCents = Math.round(subtotalCents * (platformPercent / 100))
+  const providerPayoutCents = providerType === 'attorney'
+    ? subtotalCents
+    : Math.max(0, Math.round(subtotalCents * (providerSharePercent / 100)) || (subtotalCents - platformFeeCents))
+  const totalCents = providerType === 'attorney' ? subtotalCents + platformFeeCents : subtotalCents
+  const priceDollars = totalCents / 100
   const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card'
   const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy)
   const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
@@ -428,6 +442,9 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
         setSelectedCardId(next[0]?.id || '')
       })
       .catch(() => setCards([]))
+    requestJson('/api/admin/payment-settings')
+      .then(setSettings)
+      .catch(() => setSettings(null))
   }, [])
 
   const pay = async () => {
@@ -496,9 +513,28 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
           <Card style={{ padding: '14px' }}>
             <div style={{ fontWeight: 900, textTransform: 'capitalize' }}>{tier.tier}</div>
             <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{tier.delivery_days} day delivery · {tier.revisions >= 999 ? 'Unlimited' : tier.revisions} revisions</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
-              <span style={{ fontWeight: 800 }}>Total</span>
-              <span style={{ fontFamily: C.serif, fontSize: '26px' }}>{money(tier.price)}</span>
+            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${C.border}`, display: 'grid', gap: '7px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ color: C.textMuted }}>{providerType === 'attorney' ? 'Provider fee' : 'Package price'}</span>
+                <strong>{money(subtotalCents)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ color: C.textMuted }}>Platform amount ({platformPercent}%)</span>
+                <strong>{money(platformFeeCents)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span style={{ color: C.textMuted }}>Provider receives{providerType === 'consultant' ? ` (${providerSharePercent}%)` : ''}</span>
+                <strong>{money(providerPayoutCents)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: '8px', marginTop: '2px' }}>
+                <span style={{ fontWeight: 900 }}>You pay</span>
+                <span style={{ fontFamily: C.serif, fontSize: '26px' }}>{money(totalCents)}</span>
+              </div>
+              <div style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.45 }}>
+                {providerType === 'attorney'
+                  ? 'Attorney gigs add the platform amount on top of the provider fee.'
+                  : 'Consultant gig platform amount is included in the package price.'}
+              </div>
             </div>
           </Card>
           <CheckoutButton active={payMethod === 'wallet'} disabled={!canUseWallet} onClick={() => canUseWallet && setPayMethod('wallet')} title="Wallet balance" detail={walletBalance === null ? 'Loading balance...' : `${money((walletBalance || 0) * 100)} available${canUseWallet ? '' : ' - insufficient'}`} />
@@ -523,7 +559,7 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
           )}
           {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
           <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
-            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${money(tier.price)}`}
+            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${money(totalCents)}`}
           </Btn>
         </div>
       </div>

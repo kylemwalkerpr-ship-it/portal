@@ -1368,6 +1368,7 @@ function ConsultantApp({ onLogout }) {
       {showOfferModal && selectedOrder && (
         <CustomOfferDialog
           chatId={selectedOrder.id}
+          providerRole="consultant"
           recipientName={selectedOrder.clientName || selectedOrder.student || 'Client'}
           onClose={() => setShowOfferModal(false)}
           onCreated={async () => {

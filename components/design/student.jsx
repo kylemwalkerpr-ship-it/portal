@@ -1976,6 +1976,7 @@ function StudentApp({ onLogout, userId, userName }) {
   const ServicesBrowse = React.useMemo(() => function ServicesBrowse() {
     const [catFilter, setCatFilter] = React.useState('All');
     const [templateFilter, setTemplateFilter] = React.useState('All');
+    const [catalogueView, setCatalogueView] = React.useState('services');
     const [cart, setCart] = React.useState(null);
     const [selectedService, setSelectedService] = React.useState(null);
     const [selectedTemplate, setSelectedTemplate] = React.useState(null);
@@ -2387,12 +2388,12 @@ function StudentApp({ onLogout, userId, userName }) {
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
               setPaying(true); setPayError(null);
               try {
-                const res = await fetch(cartIsTemplate ? '/api/checkout/template' : '/api/checkout/service', {
+                const res = await fetch('/api/checkout/service', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(cartIsTemplate
-                    ? { templateId: cart.id, currency: effectiveDisplayCurrency }
-                    : { serviceId: cart.id }),
+                    ? { templateId: cart.id, productType: 'template', currency: effectiveDisplayCurrency }
+                    : { serviceId: cart.id, productType: 'service' }),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Checkout failed');
@@ -2416,17 +2417,48 @@ function StudentApp({ onLogout, userId, userName }) {
 
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
           <div style={sectionEyebrow}>Catalogue</div>
-          <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Browse services.</h2>
-          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '560px' }}>
-            Expert support at every stage of your study-abroad journey. Funds held in escrow until you approve the deliverable.
+          <h2 style={{ fontFamily: C.serif, fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>
+            {catalogueView === 'templates' ? 'Browse immigration templates.' : 'Browse services and templates.'}
+          </h2>
+          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '640px', lineHeight: 1.55 }}>
+            {catalogueView === 'templates'
+              ? 'Instant-access digital preparation templates for USA and Canada applications. These are not consultation bookings.'
+              : 'Book expert services or switch to digital templates for self-guided immigration document preparation.'}
             {' '}
             <span style={{ color: C.cyan, fontWeight: 700 }}>
               Prices shown in {effectiveDisplayCurrency.toUpperCase()}
               {effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? ` (1 USD ≈ ${usdToCadRate.toFixed(2)} CAD)` : ''}.
             </span>
           </p>
+          </div>
+          <div style={{ display: 'inline-flex', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '4px', alignSelf: 'flex-start' }}>
+            {[
+              { value: 'services', label: 'Services' },
+              { value: 'templates', label: 'Templates' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setCatalogueView(opt.value)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  background: catalogueView === opt.value ? C.cyan : 'transparent',
+                  color: catalogueView === opt.value ? '#fff' : C.textMuted,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
         {orderPlaced && (
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -2439,6 +2471,8 @@ function StudentApp({ onLogout, userId, userName }) {
           </div>
         )}
         {/* Category filter + currency selector */}
+        {catalogueView === 'services' && (
+        <>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {categories.map(c => (
@@ -2533,7 +2567,10 @@ function StudentApp({ onLogout, userId, userName }) {
             </Card>
           )})}
         </div>
-        <div style={{ marginTop: '18px', display: 'grid', gap: '16px' }}>
+        </>
+        )}
+        {catalogueView === 'templates' && (
+        <div style={{ display: 'grid', gap: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div>
               <div style={sectionEyebrow}>Templates</div>
@@ -2543,15 +2580,44 @@ function StudentApp({ onLogout, userId, userName }) {
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {templateFilters.map(c => (
-              <button key={c} onClick={() => setTemplateFilter(c)} style={{
-                padding: '6px 14px', borderRadius: '20px', border: `1px solid ${templateFilter === c ? C.cyan : C.border}`,
-                background: templateFilter === c ? `${C.cyan}18` : C.surface2,
-                color: templateFilter === c ? C.cyan : C.textMuted,
-                fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: templateFilter === c ? 700 : 500,
-              }}>{c}</button>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {templateFilters.map(c => (
+                <button key={c} onClick={() => setTemplateFilter(c)} style={{
+                  padding: '6px 14px', borderRadius: '20px', border: `1px solid ${templateFilter === c ? C.cyan : C.border}`,
+                  background: templateFilter === c ? `${C.cyan}18` : C.surface2,
+                  color: templateFilter === c ? C.cyan : C.textMuted,
+                  fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: templateFilter === c ? 700 : 500,
+                }}>{c}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>Show prices in</span>
+              <div style={{ display: 'inline-flex', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px' }}>
+                {[
+                  { value: 'usd', label: 'USD' },
+                  { value: 'cad', label: 'CAD' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setAndPersistDisplayCurrency(opt.value)}
+                    style={{
+                      padding: '5px 14px',
+                      borderRadius: '999px',
+                      border: 'none',
+                      background: effectiveDisplayCurrency === opt.value ? C.cyan : 'transparent',
+                      color: effectiveDisplayCurrency === opt.value ? '#fff' : C.textMuted,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {templatesError && <div style={{ color: C.red, fontSize: '14px', padding: '12px 0' }}>{templatesError}</div>}
           {templatesLoading && <div style={{ color: C.textMuted, fontSize: '14px', padding: '12px 0' }}>Loading templates…</div>}
@@ -2604,6 +2670,7 @@ function StudentApp({ onLogout, userId, userName }) {
             })}
           </div>
         </div>
+        )}
         {selectedService && (() => {
           const details = getServiceDetails(selectedService);
           const serviceCurrency = String(selectedService.currency || 'usd').toLowerCase();
@@ -3263,6 +3330,8 @@ function AttorneyOfferCard({ offer, onAccept, onDecline }) {
 
 function ConsultantOfferCard({ offer, onAccept, onDecline }) {
   const total = Number(offer.price || 0)
+  const platformFee = Number(offer.platform_fee || 0)
+  const consultantPayout = Number(offer.consultant_payout || 0) || Math.max(0, total - platformFee)
   const pending = offer.status === 'sent'
   return (
     <div style={{ alignSelf: 'stretch', border: `1px solid ${pending ? C.cyan : C.border}`, borderRadius: '12px', padding: '14px', background: pending ? `${C.cyan}0d` : C.surface2 }}>
@@ -3276,6 +3345,12 @@ function ConsultantOfferCard({ offer, onAccept, onDecline }) {
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>List price</span><strong style={{ textDecoration: 'line-through' }}>${Number(offer.original_price || 0).toFixed(2)}</strong></div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Custom offer</span><strong>${total.toFixed(2)}</strong></div>
+        {platformFee > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Platform amount</span><strong>${platformFee.toFixed(2)}</strong></div>
+        )}
+        {consultantPayout > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Consultant receives</span><strong>${consultantPayout.toFixed(2)}</strong></div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Delivery</span><strong>{offer.delivery_days} days</strong></div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Revisions</span><strong>{offer.revision_count ?? 1}</strong></div>
       </div>

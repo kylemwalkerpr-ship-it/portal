@@ -25,7 +25,7 @@ const defaults = {
   gigId: '',
 }
 
-export default function CustomOfferDialog({ chatId, recipientName = 'Client', recipientAvatar, onClose, onCreated }) {
+export default function CustomOfferDialog({ chatId, providerRole = 'consultant', recipientName = 'Client', recipientAvatar, onClose, onCreated }) {
   const [form, setForm] = React.useState(defaults)
   const [files, setFiles] = React.useState([])
   const [settings, setSettings] = React.useState(null)
@@ -69,10 +69,19 @@ export default function CustomOfferDialog({ chatId, recipientName = 'Client', re
 
   const update = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
   const currency = settings?.primary_currency || 'usd'
-  const fee = Number(settings?.platform_fee_percent ?? settings?.attorney_platform_fee_percent ?? 20)
+  const isAttorney = providerRole === 'attorney'
+  const fee = isAttorney
+    ? Number(settings?.attorney_platform_fee_percent ?? 25)
+    : Number(settings?.platform_fee_percent ?? 20)
+  const consultantShare = Number(settings?.consultant_fee_percent ?? Math.max(0, 100 - fee))
   const priceCents = toCents(form.price)
   const finalCents = form.hasDiscount && form.discountPrice ? toCents(form.discountPrice) : priceCents
-  const receiveCents = Math.max(0, Math.round(finalCents * (1 - fee / 100)))
+  const safeFinalCents = Number.isFinite(finalCents) ? finalCents : 0
+  const platformFeeCents = Math.max(0, Math.round(safeFinalCents * (fee / 100)))
+  const receiveCents = isAttorney
+    ? safeFinalCents
+    : Math.max(0, Math.round(safeFinalCents * (consultantShare / 100)) || (safeFinalCents - platformFeeCents))
+  const clientPaysCents = isAttorney ? safeFinalCents + platformFeeCents : safeFinalCents
   const savings = form.hasDiscount && priceCents > 0 && finalCents > 0 ? Math.round((1 - finalCents / priceCents) * 100) : 0
 
   const validate = () => {
@@ -204,7 +213,32 @@ export default function CustomOfferDialog({ chatId, recipientName = 'Client', re
                 </div>
               </Field>
             )}
-            <div aria-live="polite" style={{ color: C.textMuted, fontSize: '13px', fontStyle: 'italic' }}>You'll receive {money(receiveCents, currency)} after {fee}% platform fee</div>
+            <div aria-live="polite" style={{ border: `1px solid ${C.border}`, borderRadius: '10px', background: C.surface2, padding: '12px', display: 'grid', gap: '6px', fontSize: '13px' }}>
+              <div style={{ color: C.textDim, fontSize: '11px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Live client preview
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span>{isAttorney ? 'Your attorney fee' : 'Offer price'}</span>
+                <strong>{money(finalCents, currency)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span>Platform amount ({fee}%)</span>
+                <strong>{money(platformFeeCents, currency)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                <span>{isAttorney ? 'You receive' : `You receive (${consultantShare}%)`}</span>
+                <strong>{money(receiveCents, currency)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', borderTop: `1px solid ${C.border}`, paddingTop: '6px', fontWeight: 900 }}>
+                <span>Client pays</span>
+                <strong>{money(clientPaysCents, currency)}</strong>
+              </div>
+              <div style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.45 }}>
+                {isAttorney
+                  ? 'Attorney offers add the platform fee on top, so your fee is not split.'
+                  : 'Consultant offers include the platform amount inside the client price.'}
+              </div>
+            </div>
           </Section>
 
           <Section title="Delivery terms">
@@ -240,7 +274,7 @@ export default function CustomOfferDialog({ chatId, recipientName = 'Client', re
         </div>
         <Divider />
         <div style={{ position: 'sticky', bottom: 0, background: '#fff', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
-          <div style={{ color: C.textMuted, fontSize: '13px', fontWeight: 700 }}>Your client pays: {money(finalCents, currency)} | You receive: {money(receiveCents, currency)}</div>
+          <div style={{ color: C.textMuted, fontSize: '13px', fontWeight: 700 }}>Client pays: {money(clientPaysCents, currency)} | You receive: {money(receiveCents, currency)} | Platform: {money(platformFeeCents, currency)}</div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" onClick={onClose} style={secondaryBtn}>Cancel</button>
             <button type="submit" disabled={submitting || !settings} style={{ ...primaryBtn, opacity: submitting || !settings ? 0.55 : 1 }}>{submitting ? 'Sending...' : 'Send Offer >'}</button>

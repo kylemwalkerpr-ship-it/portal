@@ -27,9 +27,8 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
   const [region, setRegion] = React.useState('ALL')
   const [isLoading, setIsLoading] = React.useState(true)
   const [feedError, setFeedError] = React.useState(null)
-  const [hidden, setHidden] = React.useState(false)
+  const [hidden, setHidden] = React.useState(true)
   const [isNarrow, setIsNarrow] = React.useState(false)
-  const hoverCapable = useHoverCapable()
 
   // Track viewport width
   React.useEffect(() => {
@@ -41,10 +40,9 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
     return () => mq.removeEventListener?.('change', apply)
   }, [])
 
-  // Reset hidden state when crossing the breakpoint so the user starts fresh
-  // at the new layout (otherwise hiding the drawer leaves the wide rail stuck
-  // closed, or vice versa).
-  React.useEffect(() => { setHidden(false) }, [isNarrow])
+  // Keep the feed minimized by default across dashboard roles and viewport
+  // changes. Users can still expand it on demand from the launcher/tab.
+  React.useEffect(() => { setHidden(true) }, [isNarrow])
 
   // Fetch the article feed (region-aware).
   React.useEffect(() => {
@@ -155,7 +153,6 @@ export default function DashboardRightPane({ role = 'student', variant = 'rail' 
               <ArticleCard
                 key={article.url || article.path || article.title}
                 article={article}
-                hoverCapable={hoverCapable}
               />
             ))}
           </div>
@@ -510,10 +507,9 @@ function ArticleFeedHeader({ region }) {
 
 // ── Article card ────────────────────────────────────────────────────────────
 
-function ArticleCard({ article, hoverCapable }) {
+function ArticleCard({ article }) {
   const [pinned, setPinned] = React.useState(false)
-  const [hovered, setHovered] = React.useState(false)
-  const open = pinned || (hoverCapable && hovered)
+  const open = pinned
 
   const region = article?.region || 'COMPARE'
   const accent = REGION_ACCENTS[region] || C.cyan
@@ -526,10 +522,10 @@ function ArticleCard({ article, hoverCapable }) {
   const path = article?.path ? `Library path: ${article.path}` : null
   const description = article?.description || 'Read the latest guide from the YouSafe legal library.'
 
-  // Hover handlers only matter when the device is hover-capable. On touch
-  // devices we never set `hovered`, so the card stays in its pinned state.
-  const onEnter = hoverCapable ? () => setHovered(true) : undefined
-  const onLeave = hoverCapable ? () => setHovered(false) : undefined
+  // The feed opens minimized. Hover is intentionally disabled so cards only
+  // expand when a user explicitly presses the expand control.
+  const onEnter = undefined
+  const onLeave = undefined
 
   const toggle = (e) => {
     e?.preventDefault?.()
@@ -683,21 +679,6 @@ function Footnote({ feedError }) {
         : 'Articles update from the YouSafe legal library so dashboard readers can click through to full guides.'}
     </div>
   )
-}
-
-// ── Hooks ───────────────────────────────────────────────────────────────────
-
-function useHoverCapable() {
-  const [capable, setCapable] = React.useState(false)
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
-    const apply = () => setCapable(mq.matches)
-    apply()
-    mq.addEventListener?.('change', apply)
-    return () => mq.removeEventListener?.('change', apply)
-  }, [])
-  return capable
 }
 
 const eyebrowStyle = {
