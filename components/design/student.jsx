@@ -1801,13 +1801,20 @@ function StudentApp({ onLogout, userId, userName }) {
 
   // ── ORDER DETAIL ──
   const OrderDetail = ({ order }) => {
-    const timeline = [
-      { label: 'Order placed', date: order.date || '—', done: true },
-      { label: 'Consultant assigned', date: order.consultantId ? 'Assigned' : 'Pending', done: Boolean(order.consultantId) },
-      { label: 'Working on deliverable', date: 'In progress', done: (order.progress || 0) >= 40 },
-      { label: 'Sent for review', date: order.deadline || '—', done: (order.progress || 0) >= 90 },
-      { label: 'Completed', date: order.status === 'completed' ? 'Done' : '—', done: order.status === 'completed' },
-    ];
+    const isTemplateOrder = order.productType === 'template';
+    const timeline = isTemplateOrder
+      ? [
+        { label: 'Template purchased', date: order.date || '—', done: true },
+        { label: 'Payment confirmed', date: 'Done', done: true },
+        { label: 'Digital delivery recorded', date: 'Done', done: true },
+      ]
+      : [
+        { label: 'Order placed', date: order.date || '—', done: true },
+        { label: 'Consultant assigned', date: order.consultantId ? 'Assigned' : 'Pending', done: Boolean(order.consultantId) },
+        { label: 'Working on deliverable', date: 'In progress', done: (order.progress || 0) >= 40 },
+        { label: 'Sent for review', date: order.deadline || '—', done: (order.progress || 0) >= 90 },
+        { label: 'Completed', date: order.status === 'completed' ? 'Done' : '—', done: order.status === 'completed' },
+      ];
     const orderTimeline = buildOfferTimeline(messages, consultantOffers);
     return (
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -1979,7 +1986,6 @@ function StudentApp({ onLogout, userId, userName }) {
     const [templatesLoading, setTemplatesLoading] = React.useState(true);
     const [servicesError, setServicesError] = React.useState(null);
     const [templatesError, setTemplatesError] = React.useState(null);
-    const [templateBuyingId, setTemplateBuyingId] = React.useState(null);
     const [primaryCurrency, setPrimaryCurrency] = React.useState('usd');
     const [usdToCadRate, setUsdToCadRate] = React.useState(1.37);
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
@@ -2020,36 +2026,35 @@ function StudentApp({ onLogout, userId, userName }) {
     const formatTemplateUSD = value => `$${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2 })} USD`;
     const formatTemplateCAD = value => `approx. $${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD`;
     const templateCadValue = template => Number(template.price_cad_display || 0) || (templatePrice(template) * usdToCadRate);
-    const openTemplateCheckout = async template => {
-      setTemplateBuyingId(template.id);
+    const openTemplateCheckout = template => {
+      const usdPrice = templatePrice(template);
+      setCart({
+        ...template,
+        product_type: 'template',
+        title: template.title,
+        category: 'Templates',
+        price: usdPrice,
+        currency: 'usd',
+        delivery_days: 0,
+        delivery_type: template.delivery_type || 'Digital Template',
+        icon: templateIcon(template),
+      });
+      setSelectedTemplate(null);
+      setShowCheckout(true);
+      setPayMethod('stripe');
       setPayError(null);
-      try {
-        const directLink = effectiveDisplayCurrency === 'cad'
-          ? (template.stripe_payment_link_cad || template.stripe_payment_link_usd)
-          : template.stripe_payment_link_usd;
-        if (directLink) {
-          window.location.href = directLink;
-          return;
-        }
-        const res = await fetch('/api/checkout/template', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId: template.id, currency: effectiveDisplayCurrency }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Template checkout failed');
-        window.location.href = data.url;
-      } catch (e) {
-        setTemplatesError(e.message);
-        setTemplateBuyingId(null);
-      }
+      setAcceptedTerms(false);
+      setAcceptedRefundPolicy(false);
     };
     const openCheckoutForService = service => {
       const details = getServiceDetails(service);
       setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
       setSelectedService(null);
       setShowCheckout(true);
+      setPayMethod('stripe');
       setPayError(null);
+      setAcceptedTerms(false);
+      setAcceptedRefundPolicy(false);
     };
 
     React.useEffect(() => {
@@ -2111,6 +2116,7 @@ function StudentApp({ onLogout, userId, userName }) {
     }, [showCheckout]);
 
     if (showCheckout && cart) {
+      const cartIsTemplate = normalizeProductType(cart.product_type) === 'template';
       const priceNum = Number(cart.price || 0);
       const amountCents = priceNum * 100;
       const serviceCurrency = String(cart.currency || 'usd').toLowerCase();
@@ -2132,7 +2138,7 @@ function StudentApp({ onLogout, userId, userName }) {
             body: JSON.stringify({
               title: cart.title,
               amountCents,
-              serviceId: cart.id,
+              ...(cartIsTemplate ? { templateId: cart.id, productType: 'template' } : { serviceId: cart.id, productType: 'service' }),
               acceptedTerms: true,
               acceptedRefundPolicy: true,
             }),
@@ -2140,6 +2146,7 @@ function StudentApp({ onLogout, userId, userName }) {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
         } catch (e) {
@@ -2163,7 +2170,7 @@ function StudentApp({ onLogout, userId, userName }) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              serviceId: cart.id,
+              ...(cartIsTemplate ? { templateId: cart.id, productType: 'template' } : { serviceId: cart.id, productType: 'service' }),
               paymentMethodId: selectedCardId,
               acceptedTerms: true,
               acceptedRefundPolicy: true,
@@ -2189,6 +2196,7 @@ function StudentApp({ onLogout, userId, userName }) {
           }
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
         } catch (e) {
@@ -2198,16 +2206,18 @@ function StudentApp({ onLogout, userId, userName }) {
 
       return (
         <div style={{ padding: '28px', maxWidth: '560px' }}>
-          <Btn variant="ghost" size="sm" onClick={() => { setShowCheckout(false); setPayError(null); }} style={{ marginBottom: '20px' }}>← Back to services</Btn>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '24px' }}>Checkout</h2>
+          <Btn variant="ghost" size="sm" onClick={() => { setShowCheckout(false); setPayError(null); }} style={{ marginBottom: '20px' }}>← Back to catalogue</Btn>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '24px' }}>{cartIsTemplate ? 'Template Checkout' : 'Checkout'}</h2>
           {/* Service summary */}
           <Card style={{ marginBottom: '16px' }}>
             <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
               <div style={{ fontSize: '32px' }}>{cart.icon}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: '15px' }}>{cart.title}</div>
-                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cart.category || 'General'}</div>
-                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>⏱ {deliveryLabel(cart.delivery_days)}</div>
+                <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{cartIsTemplate ? 'Digital Template' : (cart.category || 'General')}</div>
+                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '8px' }}>
+                  {cartIsTemplate ? 'Instant-access digital preparation aid' : `⏱ ${deliveryLabel(cart.delivery_days)}`}
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan }}>
@@ -2313,8 +2323,8 @@ function StudentApp({ onLogout, userId, userName }) {
           <Card style={{ marginBottom: '24px' }}>
             <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '14px' }}>Order summary</div>
             {[
-              ['Service', cart.title],
-              ['Delivery', deliveryLabel(cart.delivery_days)],
+              [cartIsTemplate ? 'Template' : 'Service', cart.title],
+              ['Delivery', cartIsTemplate ? (cart.delivery_type || 'Digital Template') : deliveryLabel(cart.delivery_days)],
               ['Currency', `${effectiveDisplayCurrency.toUpperCase()}${effectiveDisplayCurrency === 'cad' && Number.isFinite(usdToCadRate) ? ` · 1 USD ≈ ${usdToCadRate.toFixed(2)} CAD` : ''}`],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, fontSize: '13px' }}>
@@ -2329,7 +2339,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
                 {effectiveDisplayCurrency === 'cad' && (
                   <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 600, marginTop: '2px' }}>
-                    ≈ {formatMoney(priceNum, 'usd')} · charged in USD
+                    ≈ {formatMoney(priceNum, serviceCurrency)} · charged in {serviceCurrency.toUpperCase()}
                   </div>
                 )}
               </span>
@@ -2377,10 +2387,12 @@ function StudentApp({ onLogout, userId, userName }) {
             <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
               setPaying(true); setPayError(null);
               try {
-                const res = await fetch('/api/checkout/service', {
+                const res = await fetch(cartIsTemplate ? '/api/checkout/template' : '/api/checkout/service', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ serviceId: cart.id }),
+                  body: JSON.stringify(cartIsTemplate
+                    ? { templateId: cart.id, currency: effectiveDisplayCurrency }
+                    : { serviceId: cart.id }),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Checkout failed');
@@ -2394,7 +2406,9 @@ function StudentApp({ onLogout, userId, userName }) {
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
-            Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.
+            {cartIsTemplate
+              ? 'Digital templates are preparation aids only. Checkout is processed in USD; CAD is a display estimate.'
+              : 'Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.'}
           </p>
         </div>
       );
@@ -2418,8 +2432,8 @@ function StudentApp({ onLogout, userId, userName }) {
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
             <span style={{ fontSize: '20px' }}>✅</span>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: C.green }}>Order placed! Payment held in escrow.</div>
-              <div style={{ fontSize: '13px', color: C.textMuted }}>Funds are safe. A consultant will be assigned within 24 hours. You release payment on approval.</div>
+              <div style={{ fontWeight: 700, fontSize: '14px', color: C.green }}>Payment successful.</div>
+              <div style={{ fontSize: '13px', color: C.textMuted }}>Your purchase is recorded. Services continue through escrow; digital templates are handled as instant-access products.</div>
             </div>
             <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View order →</Btn>
           </div>
@@ -2580,8 +2594,8 @@ function StudentApp({ onLogout, userId, userName }) {
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setSelectedTemplate(template); }}>View Details</Btn>
-                      <Btn variant="primary" size="sm" disabled={templateBuyingId === template.id} onClick={e => { e.stopPropagation(); openTemplateCheckout(template); }}>
-                        {templateBuyingId === template.id ? 'Opening…' : 'Buy Template'}
+                      <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); openTemplateCheckout(template); }}>
+                        Buy Template
                       </Btn>
                     </div>
                   </div>
@@ -2770,8 +2784,8 @@ function StudentApp({ onLogout, userId, userName }) {
                       </div>
                     </div>
                   </div>
-                  <Btn variant="primary" size="lg" fullWidth disabled={templateBuyingId === selectedTemplate.id} onClick={() => openTemplateCheckout(selectedTemplate)}>
-                    {templateBuyingId === selectedTemplate.id ? 'Opening checkout…' : 'Buy Template'}
+                  <Btn variant="primary" size="lg" fullWidth onClick={() => openTemplateCheckout(selectedTemplate)}>
+                    Buy Template
                   </Btn>
                 </div>
               </aside>

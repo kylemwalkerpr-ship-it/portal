@@ -5,6 +5,14 @@ import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { dollarsToCents } from '@/lib/money'
 
+function isTemplateProduct(service: Record<string, unknown>) {
+  return String(service.product_type || '').toLowerCase() === 'template'
+}
+
+function priceForCheckout(service: Record<string, unknown>) {
+  return Number(isTemplateProduct(service) ? service.usd_price ?? service.price : service.price)
+}
+
 async function createOrderForPaymentIntent(paymentIntent: Stripe.PaymentIntent) {
   if (paymentIntent.status !== 'succeeded') {
     throw new Error(`Cannot create order — payment status is ${paymentIntent.status}`)
@@ -34,11 +42,12 @@ async function createOrderForPaymentIntent(paymentIntent: Stripe.PaymentIntent) 
 
   const { data: service } = await db
     .from('services')
-    .select('id, title, price, currency')
+    .select('*')
     .eq('id', serviceId)
     .single()
 
   if (!service) throw new Error('Service not found')
+  const template = isTemplateProduct(service)
 
   const amount = (paymentIntent.amount_received || paymentIntent.amount) / 100
 
@@ -70,20 +79,30 @@ async function createOrderForPaymentIntent(paymentIntent: Stripe.PaymentIntent) 
 
   const orderInsert: Record<string, unknown> = {
     client_id: profile.id,
-    status: 'queued',
+    status: template ? 'completed' : 'queued',
     total_amount: amount,
-    requirements: `Saved card payment - Stripe PI: ${paymentIntent.id}`,
+    requirements: template
+      ? `Digital template purchase — ${service.title}`
+      : `Saved card payment - Stripe PI: ${paymentIntent.id}`,
     terms_accepted_at: acceptedAt,
     refund_policy_accepted_at: acceptedAt,
     stripe_payment_intent_id: paymentIntent.id,
   }
+  if (template) {
+    orderInsert.escrow_status = 'released'
+    orderInsert.payout_status = 'not_applicable'
+    orderInsert.completed_at = acceptedAt
+  }
 
   let { data: order, error } = await db.from('orders').insert(orderInsert).select('id').single()
 
-  if (error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id/i.test(error.message)) {
+  if (error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id|escrow_status|payout_status|completed_at/i.test(error.message)) {
     delete orderInsert.terms_accepted_at
     delete orderInsert.refund_policy_accepted_at
     delete orderInsert.stripe_payment_intent_id
+    delete orderInsert.escrow_status
+    delete orderInsert.payout_status
+    delete orderInsert.completed_at
     const retry = await db.from('orders').insert(orderInsert).select('id').single()
     order = retry.data
     error = retry.error
@@ -102,9 +121,9 @@ async function createOrderForPaymentIntent(paymentIntent: Stripe.PaymentIntent) 
   await db.from('order_status_history').insert({
     order_id: order.id,
     from_status: null,
-    to_status: 'queued',
+    to_status: template ? 'completed' : 'queued',
     changed_by_id: profile.id,
-    note: `Paid with saved card - ${service.title}`,
+    note: template ? `Digital template purchased — ${service.title}` : `Paid with saved card - ${service.title}`,
   })
 
   return order.id
@@ -115,8 +134,10 @@ export async function POST(req: Request) {
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { serviceId, paymentMethodId, acceptedTerms, acceptedRefundPolicy } = body
-  if (!serviceId || !paymentMethodId) {
+  const { serviceId, templateId, productType, paymentMethodId, acceptedTerms, acceptedRefundPolicy } = body
+  const requestedServiceId = templateId || serviceId
+  const requestedType = templateId || String(productType || '').toLowerCase() === 'template' ? 'template' : 'service'
+  if (!requestedServiceId || !paymentMethodId) {
     return Response.json({ error: 'Missing service or payment method' }, { status: 400 })
   }
 
@@ -139,18 +160,23 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
     }
 
-    const { data: service } = await db
+    let query = db
       .from('services')
       .select('*')
-      .eq('id', serviceId)
+      .eq('id', requestedServiceId)
       .eq('is_active', true)
-      .single()
+    if (requestedType === 'template') {
+      query = query.eq('product_type', 'template').eq('status', 'active')
+    } else {
+      query = query.or('product_type.is.null,product_type.eq.service')
+    }
+    const { data: service } = await query.single()
 
-    if (!service) return Response.json({ error: 'Service not found' }, { status: 404 })
+    if (!service) return Response.json({ error: requestedType === 'template' ? 'Template not found' : 'Service not found' }, { status: 404 })
 
-    const amount = dollarsToCents(service.price)
+    const amount = dollarsToCents(priceForCheckout(service))
     const currency = 'usd'
-    if (amount < 100) return Response.json({ error: 'Service price is invalid' }, { status: 400 })
+    if (amount < 100) return Response.json({ error: `${requestedType === 'template' ? 'Template' : 'Service'} price is invalid` }, { status: 400 })
 
     const stripe = getStripe()
     const customerId = await getOrCreateStripeCustomer(clerkUserId)
@@ -175,6 +201,7 @@ export async function POST(req: Request) {
       metadata: {
         clerk_user_id: clerkUserId,
         service_id: String(service.id),
+        product_type: isTemplateProduct(service) ? 'template' : 'service',
         accepted_terms: 'true',
         accepted_refund_policy: 'true',
         acknowledged_at: String(acknowledgedAt),

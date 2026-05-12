@@ -33,13 +33,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Template not found' }, { status: 404 })
   }
 
-  const wantsCad = String(currency).toLowerCase() === 'cad'
-  const configuredLink = wantsCad
-    ? template.stripe_payment_link_cad || template.stripe_payment_link_usd || template.stripe_payment_link_url
-    : template.stripe_payment_link_usd || template.stripe_payment_link_url
-
-  if (configuredLink) return Response.json({ url: configuredLink })
-
   const amount = dollarsToCents(template.usd_price ?? template.price)
   if (amount < 100) return Response.json({ error: 'Template price is invalid' }, { status: 400 })
 
@@ -52,6 +45,13 @@ export async function POST(req: Request) {
     client_reference_id: clerkUserId,
     success_url: `${origin}/dashboard?lane=student&template=success`,
     cancel_url: `${origin}/dashboard?lane=student&template=cancelled`,
+    metadata: {
+      product_type: 'template',
+      service_id: String(template.id),
+      slug: template.slug ?? '',
+      file_path: template.file_path ?? '',
+      display_currency: String(currency || 'usd').toLowerCase(),
+    },
     line_items: [
       {
         quantity: 1,
@@ -71,12 +71,6 @@ export async function POST(req: Request) {
         },
       },
     ],
-    metadata: {
-      product_type: 'template',
-      service_id: String(template.id),
-      slug: template.slug ?? '',
-      file_path: template.file_path ?? '',
-    },
   })
 
   return Response.json({ url: session.url })

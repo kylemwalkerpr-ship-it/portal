@@ -52,6 +52,8 @@ export async function GET() {
   const orders = orderRows.map(order => {
     const item = itemsByOrder.get(order.id)
     const service = serviceById.get(item?.service_id)
+    const productType = service?.product_type === 'template' ? 'template' : 'service'
+    const isTemplate = productType === 'template'
     const consultant = order.consultant_id ? profileById.get(order.consultant_id) : null
     const totalCents = Math.round(Number(order.total_amount || 0) * 100)
     const storedProgress = Number.isFinite(Number(order.progress)) ? Number(order.progress) : null
@@ -61,8 +63,11 @@ export async function GET() {
       orderNumber: order.order_number || null,
       service: service?.title || order.requirements || 'Custom engagement',
       serviceId: service?.id ?? null,
-      deliverable: service?.title || order.requirements || 'Deliverable',
-      consultant: consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
+      productType,
+      deliverable: service?.title || order.requirements || (isTemplate ? 'Digital template' : 'Deliverable'),
+      consultant: isTemplate
+        ? 'Digital delivery'
+        : consultant?.full_name || consultant?.email || (order.consultant_id ? 'Assigned consultant' : 'Awaiting assignment'),
       consultantId: order.consultant_id ?? null,
       status: order.status === 'queued' ? 'pending' : order.status === 'created' ? 'created' : order.status === 'in_progress' ? 'active' : order.status === 'under_review' ? 'review' : order.status || 'pending',
       date: order.created_at ? new Date(order.created_at).toLocaleDateString() : '—',

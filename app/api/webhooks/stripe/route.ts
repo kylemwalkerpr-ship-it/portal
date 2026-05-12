@@ -433,21 +433,22 @@ export async function POST(req: Request) {
     expand: ['line_items'],
   })
   const lineItem = sessionWithItems.line_items?.data[0]
-  const serviceName = lineItem?.description ?? lineItem?.price?.product?.toString() ?? 'Consultancy Service'
+  let serviceName = lineItem?.description ?? lineItem?.price?.product?.toString() ?? 'Consultancy Service'
 
   // Prefer the service selected in the app checkout. Legacy payment links fall back to title matching.
   let serviceId: string
   const metadataServiceId = session.metadata?.service_id
   const { data: existingService } = metadataServiceId
-    ? await db.from('services').select('id').eq('id', metadataServiceId).single()
+    ? await db.from('services').select('id, title, product_type').eq('id', metadataServiceId).single()
     : await db
         .from('services')
-        .select('id')
+        .select('id, title, product_type')
         .ilike('title', `%${serviceName.split(' ').slice(0, 3).join(' ')}%`)
         .single()
 
   if (existingService) {
     serviceId = existingService.id
+    serviceName = existingService.title || serviceName
   } else {
     const { data: newService } = await db
       .from('services')
@@ -463,17 +464,27 @@ export async function POST(req: Request) {
     serviceId = newService?.id ?? ''
   }
 
+  const productType = String(session.metadata?.product_type || '').toLowerCase()
+  const isTemplate = productType === 'template'
+
   // Hosted Stripe Checkout includes ToS/refund acknowledgment via the consent_collection
   // page. The presence of session.payment_status === 'paid' is our trigger to record acceptance.
   const acceptedAt = new Date().toISOString()
   const orderInsert: Record<string, unknown> = {
     client_id: profile.id,
-    status: 'queued',
+    status: isTemplate ? 'completed' : 'queued',
     total_amount: amountTotal,
-    requirements: `Stripe session: ${session.id}`,
+    requirements: isTemplate
+      ? `Digital template purchase — ${serviceName}`
+      : `Stripe session: ${session.id}`,
     terms_accepted_at: acceptedAt,
     refund_policy_accepted_at: acceptedAt,
     stripe_payment_intent_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+  }
+  if (isTemplate) {
+    orderInsert.escrow_status = 'released'
+    orderInsert.payout_status = 'not_applicable'
+    orderInsert.completed_at = acceptedAt
   }
 
   let { data: order, error } = await db
@@ -482,10 +493,13 @@ export async function POST(req: Request) {
     .select('id')
     .single()
 
-  if (error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id/i.test(error.message)) {
+  if (error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id|escrow_status|payout_status|completed_at/i.test(error.message)) {
     delete orderInsert.terms_accepted_at
     delete orderInsert.refund_policy_accepted_at
     delete orderInsert.stripe_payment_intent_id
+    delete orderInsert.escrow_status
+    delete orderInsert.payout_status
+    delete orderInsert.completed_at
     const retry = await db.from('orders').insert(orderInsert).select('id').single()
     order = retry.data
     error = retry.error
@@ -511,9 +525,9 @@ export async function POST(req: Request) {
   await db.from('order_status_history').insert({
     order_id: order.id,
     from_status: null,
-    to_status: 'queued',
+    to_status: isTemplate ? 'completed' : 'queued',
     changed_by_id: profile.id,
-    note: `Payment received via Stripe — session ${session.id}`,
+    note: isTemplate ? `Digital template purchased via Stripe — session ${session.id}` : `Payment received via Stripe — session ${session.id}`,
   })
 
   console.log(`Order created: ${order.id} for ${customerEmail} — ${serviceName} — $${amountTotal}`)

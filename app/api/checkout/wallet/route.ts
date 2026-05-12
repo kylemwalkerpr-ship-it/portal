@@ -3,12 +3,99 @@ import { getStripe } from '@/lib/stripe'
 import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
+function isTemplateProduct(service: Record<string, unknown>) {
+  return String(service.product_type || '').toLowerCase() === 'template'
+}
+
+function expectedAmountCents(service: Record<string, unknown>) {
+  const source = isTemplateProduct(service) ? service.usd_price ?? service.price : service.price
+  return Math.round(Number(source || 0) * 100)
+}
+
+async function insertPaidOrder(db: ReturnType<typeof createSupabaseAdminClient>, {
+  profileId,
+  service,
+  amountCents,
+  title,
+  note,
+  paymentIntentId,
+}: {
+  profileId: string
+  service: Record<string, unknown>
+  amountCents: number
+  title: string
+  note: string
+  paymentIntentId?: string
+}) {
+  const template = isTemplateProduct(service)
+  const acceptedAt = new Date().toISOString()
+  const orderInsert: Record<string, unknown> = {
+    client_id: profileId,
+    status: template ? 'completed' : 'queued',
+    total_amount: amountCents / 100,
+    requirements: template
+      ? `Digital template purchase — ${title}`
+      : note,
+    terms_accepted_at: acceptedAt,
+    refund_policy_accepted_at: acceptedAt,
+    ...(paymentIntentId ? { stripe_payment_intent_id: paymentIntentId } : {}),
+  }
+
+  if (template) {
+    orderInsert.escrow_status = 'released'
+    orderInsert.payout_status = 'not_applicable'
+    orderInsert.completed_at = acceptedAt
+  }
+
+  let orderResult = await db.from('orders').insert(orderInsert).select('id').single()
+  if (orderResult.error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id|escrow_status|payout_status|completed_at/i.test(orderResult.error.message)) {
+    delete orderInsert.terms_accepted_at
+    delete orderInsert.refund_policy_accepted_at
+    delete orderInsert.stripe_payment_intent_id
+    delete orderInsert.escrow_status
+    delete orderInsert.payout_status
+    delete orderInsert.completed_at
+    orderResult = await db.from('orders').insert(orderInsert).select('id').single()
+  }
+
+  if (orderResult.error || !orderResult.data) {
+    return { error: orderResult.error?.message || 'Order creation failed.' }
+  }
+
+  await db.from('order_items').insert({
+    order_id: orderResult.data.id,
+    service_id: service.id,
+    quantity: 1,
+    unit_price: amountCents / 100,
+    subtotal: amountCents / 100,
+  })
+  await db.from('order_status_history').insert({
+    order_id: orderResult.data.id,
+    from_status: null,
+    to_status: template ? 'completed' : 'queued',
+    changed_by_id: profileId,
+    note: template ? `Digital template purchased — ${title}` : note,
+  })
+
+  return { orderId: orderResult.data.id }
+}
+
 export async function POST(req: Request) {
   const clerkUserId = await getClerkUserId()
   if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => ({}))
-  const { title, amountCents, serviceId: requestedServiceId, acceptedTerms, acceptedRefundPolicy } = body
+  const {
+    title,
+    amountCents,
+    serviceId,
+    templateId,
+    productType,
+    acceptedTerms,
+    acceptedRefundPolicy,
+  } = body
+  const requestedServiceId = templateId || serviceId
+  const requestedType = templateId || String(productType || '').toLowerCase() === 'template' ? 'template' : 'service'
 
   if (!title || !Number.isInteger(amountCents) || amountCents < 100) {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
@@ -34,20 +121,25 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
     }
 
-    const { data: service } = await db
+    let query = db
       .from('services')
       .select('*')
       .eq('id', requestedServiceId)
       .eq('is_active', true)
-      .single()
+    if (requestedType === 'template') {
+      query = query.eq('product_type', 'template').eq('status', 'active')
+    } else {
+      query = query.or('product_type.is.null,product_type.eq.service')
+    }
+    const { data: service } = await query.single()
 
     if (!service) {
-      return Response.json({ error: 'Service not found' }, { status: 404 })
+      return Response.json({ error: requestedType === 'template' ? 'Template not found' : 'Service not found' }, { status: 404 })
     }
 
-    const expectedAmountCents = Math.round(Number(service.price || 0) * 100)
-    if (expectedAmountCents !== amountCents) {
-      return Response.json({ error: 'Service price changed. Please refresh and try again.' }, { status: 409 })
+    const expected = expectedAmountCents(service)
+    if (expected !== amountCents) {
+      return Response.json({ error: `${requestedType === 'template' ? 'Template' : 'Service'} price changed. Please refresh and try again.` }, { status: 409 })
     }
 
     const stripe = getStripe()
@@ -61,38 +153,19 @@ export async function POST(req: Request) {
     const walletCreditCents = Math.round((walletCredits ?? []).reduce((sum, row) => sum + Number(row.wallet_credit_amount || 0), 0) * 100)
 
     if (walletCreditCents >= amountCents) {
-      const acceptedAt = new Date().toISOString()
-      const orderInsert: Record<string, unknown> = {
-        client_id: profile.id,
-        status: 'queued',
-        total_amount: amountCents / 100,
-        requirements: `Wallet credit payment — ${title}`,
-        terms_accepted_at: acceptedAt,
-        refund_policy_accepted_at: acceptedAt,
-      }
-      const orderResult = await db.from('orders').insert(orderInsert).select('id').single()
-      if (orderResult.error || !orderResult.data) {
-        return Response.json({ error: orderResult.error?.message || 'Order creation failed.' }, { status: 500 })
-      }
-      await db.from('order_items').insert({
-        order_id: orderResult.data.id,
-        service_id: service.id,
-        quantity: 1,
-        unit_price: amountCents / 100,
-        subtotal: amountCents / 100,
+      const created = await insertPaidOrder(db, {
+        profileId: profile.id,
+        service,
+        amountCents,
+        title,
+        note: `Wallet credit payment — ${title}`,
       })
-      await db.from('order_status_history').insert({
-        order_id: orderResult.data.id,
-        from_status: null,
-        to_status: 'queued',
-        changed_by_id: profile.id,
-        note: `Paid from wallet credit — ${title}`,
-      })
+      if ('error' in created) return Response.json({ error: created.error }, { status: 500 })
       await db
         .from('orders')
         .update({ refund_status: 'wallet_credit_used', wallet_credit_amount: 0 })
         .in('id', (walletCredits ?? []).map(row => row.id))
-      return Response.json({ success: true, orderId: orderResult.data.id })
+      return Response.json({ success: true, orderId: created.orderId })
     }
 
     // Check available balance
@@ -113,6 +186,7 @@ export async function POST(req: Request) {
       metadata: {
         clerk_user_id: clerkUserId,
         service_id: String(service.id),
+        product_type: isTemplateProduct(service) ? 'template' : 'service',
         funding_source: 'wallet',
       },
     })
@@ -125,50 +199,20 @@ export async function POST(req: Request) {
       )
     }
 
-    const acceptedAt = new Date().toISOString()
-
-    const orderInsert: Record<string, unknown> = {
-      client_id: profile.id,
-      status: 'queued',
-      total_amount: amountCents / 100,
-      requirements: `Wallet payment — Stripe PI: ${pi.id}`,
-      terms_accepted_at: acceptedAt,
-      refund_policy_accepted_at: acceptedAt,
-      stripe_payment_intent_id: pi.id,
-    }
-
-    let orderResult = await db.from('orders').insert(orderInsert).select('id').single()
-
-    if (orderResult.error && /terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id/i.test(orderResult.error.message)) {
-      // Legacy schema without acknowledgment columns — retry without them
-      delete orderInsert.terms_accepted_at
-      delete orderInsert.refund_policy_accepted_at
-      delete orderInsert.stripe_payment_intent_id
-      orderResult = await db.from('orders').insert(orderInsert).select('id').single()
-    }
-
-    if (orderResult.error || !orderResult.data) {
-      console.error('[checkout/wallet] order insert failed', orderResult.error)
+    const created = await insertPaidOrder(db, {
+      profileId: profile.id,
+      service,
+      amountCents,
+      title,
+      note: `Wallet payment — Stripe PI: ${pi.id}`,
+      paymentIntentId: pi.id,
+    })
+    if ('error' in created) {
+      console.error('[checkout/wallet] order insert failed', created.error)
       return Response.json({ error: 'Order creation failed after successful payment. Contact support.' }, { status: 500 })
     }
 
-    const order = orderResult.data
-    await db.from('order_items').insert({
-      order_id: order.id,
-      service_id: service.id,
-      quantity: 1,
-      unit_price: amountCents / 100,
-      subtotal: amountCents / 100,
-    })
-    await db.from('order_status_history').insert({
-      order_id: order.id,
-      from_status: null,
-      to_status: 'queued',
-      changed_by_id: profile.id,
-      note: `Paid from wallet — ${title}`,
-    })
-
-    return Response.json({ success: true, orderId: order.id })
+    return Response.json({ success: true, orderId: created.orderId })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     console.error('[checkout/wallet]', message)
