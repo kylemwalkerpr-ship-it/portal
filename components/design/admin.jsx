@@ -52,29 +52,17 @@ const approvalLabel = role =>
 
 // ── Premium section primitives ─────────────────────────────────────────────
 const adminEyebrow = {
-  color: C.textMuted,
-  fontSize: '11px',
-  letterSpacing: '0.16em',
-  textTransform: 'uppercase',
-  fontWeight: 700,
-  marginBottom: '4px',
+  color: C.textMuted, fontSize: '10px', letterSpacing: '0.18em',
+  textTransform: 'uppercase', fontWeight: 800, marginBottom: '4px',
 };
 const adminPageTitle = {
-  fontFamily: C.serif,
-  fontSize: '32px',
-  fontWeight: 500,
-  color: C.text,
-  letterSpacing: '-0.012em',
-  margin: '0 0 6px',
+  fontFamily: C.serif, fontSize: '30px', fontWeight: 500, color: C.text,
+  letterSpacing: '-0.015em', margin: '0 0 6px',
 };
-const adminPageSub = { color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '640px' };
+const adminPageSub = { color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '640px', lineHeight: '1.5' };
 const adminSectionHeading = {
-  fontFamily: C.serif,
-  fontSize: '20px',
-  fontWeight: 500,
-  color: C.text,
-  letterSpacing: '-0.005em',
-  margin: '0 0 12px',
+  fontFamily: C.serif, fontSize: '18px', fontWeight: 500, color: C.text,
+  letterSpacing: '-0.005em', margin: '0 0 10px',
 };
 
 function AdminApp({ onLogout }) {
@@ -440,12 +428,14 @@ function AdminApp({ onLogout }) {
   // ── SIDEBAR ──
   const Sidebar = () => (
     <div className="yousafe-sidebar" style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
-      <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ padding: '20px 18px', borderBottom: `1px solid ${C.border}` }}>
         <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-          <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
-          <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
+          <span style={{ width: '30px', height: '30px', borderRadius: '8px', background: `linear-gradient(135deg, ${C.cyan}, ${C.cyan}dd)`, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(60,59,110,0.25)' }}>Y</span>
+          <div>
+            <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em', display: 'block', lineHeight: 1.2 }}>YouSafe</span>
+            <span style={{ fontSize: '9px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700 }}>Admin console</span>
+          </div>
         </a>
-        <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Admin console</div>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
@@ -707,10 +697,10 @@ function AdminApp({ onLogout }) {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+              {filteredUsers.length === 0 ? (
               <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{searchQuery ? 'No users match your search.' : 'No users in this category.'}</td></tr>
             ) : filteredUsers.map((u, i) => (
-              <tr key={u.id} style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+              <tr key={u.id} className="yousafe-table-row" style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Avatar name={u.name} size={32} color={u.role === 'consultant' ? C.purple : u.role === 'support' ? C.orange : C.cyan} />
@@ -944,7 +934,7 @@ function AdminApp({ onLogout }) {
               {filteredOrders.length === 0 ? (
                 <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{orderSearch ? 'No orders match your search.' : 'No orders in this status.'}</td></tr>
               ) : filteredOrders.map((o, i) => (
-                <tr key={o.id} style={{ borderBottom: i < filteredOrders.length-1 ? `1px solid ${C.border}` : 'none' }}>
+                <tr key={o.id} className="yousafe-table-row" style={{ borderBottom: i < filteredOrders.length-1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
                   <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600, color: C.cyan }}>{o.id}</td>
                   <td style={{ padding: '14px 16px', fontSize: '13px', maxWidth: '150px' }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div></td>
                   <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{o.student}</td>
@@ -1437,7 +1427,7 @@ function AdminApp({ onLogout }) {
             </thead>
             <tbody>
               {visibleItems.length > 0 ? visibleItems.map((s, i) => (
-                <tr key={s.id} style={{ borderBottom: i < visibleItems.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                <tr key={s.id} className="yousafe-table-row" style={{ borderBottom: i < visibleItems.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>
                     <div>{s.title}</div>
                     <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>
@@ -1637,7 +1627,7 @@ function AdminApp({ onLogout }) {
               ) : filteredGigs.map((g, i) => {
                 const minPrice = g.tiers?.length ? Math.min(...g.tiers.map(t => Number(t.price || 0))) : 0;
                 return (
-                  <tr key={g.id} style={{ borderBottom: i < filteredGigs.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                  <tr key={g.id} className="yousafe-table-row" style={{ borderBottom: i < filteredGigs.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ fontWeight: 600, fontSize: '14px' }}>{g.title || 'Untitled'}</div>
                       <div style={{ color: C.textMuted, fontSize: '11px' }}>{g.slug}</div>

@@ -90,8 +90,9 @@ export function Badge({ children, color = 'cyan', style }) {
   const c = colors[color] || colors.cyan
   return (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '5px',
-      padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
+      letterSpacing: '0.01em',
       background: c.bg, color: c.text, border: `1px solid ${c.border}`, ...style
     }}>{children}</span>
   )
@@ -108,13 +109,15 @@ export function Card({ children, style, onClick, hover = false, className }) {
       onMouseLeave={() => isHover && setHovered(false)}
       style={{
         background: C.surface,
-        border: `1px solid ${hovered ? 'rgba(0,0,0,0.14)' : C.border}`,
+        border: `1px solid ${hovered ? 'rgba(0,0,0,0.12)' : C.border}`,
         borderRadius: '14px',
         padding: '24px',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
+        transition: 'border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease',
         cursor: onClick ? 'pointer' : undefined,
         transform: hovered && isHover ? 'translateY(-2px)' : undefined,
-        boxShadow: hovered && isHover ? '0 12px 28px rgba(15,18,32,0.08)' : '0 1px 2px rgba(15,18,32,0.03)',
+        boxShadow: hovered && isHover
+          ? '0 12px 32px rgba(15,18,32,0.10)'
+          : '0 1px 3px rgba(15,18,32,0.04)',
         ...style,
       }}
     >
@@ -446,15 +449,16 @@ export function Divider({ style }) {
   return <div style={{ height: '1px', background: C.border, ...style }} />
 }
 
-export function StatCard({ label, value, delta, icon, color = C.cyan }) {
+export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }) {
   return (
-    <Card style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '13px', color: C.textMuted, fontWeight: 500 }}>{label}</span>
-        <span style={{ fontSize: '20px', background: `${color}18`, padding: '8px', borderRadius: '10px' }}>{icon}</span>
+        <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+        <span style={{ fontSize: '18px', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}15`, borderRadius: '10px' }}>{icon}</span>
       </div>
-      <div style={{ fontSize: '28px', fontWeight: 700, color: C.text }}>{value}</div>
+      <div style={{ fontSize: '26px', fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>{value}</div>
       {delta && <div style={{ fontSize: '12px', color: delta.startsWith('+') ? C.green : C.red }}>{delta} this month</div>}
+      {subtitle && <div style={{ fontSize: '11px', color: C.textDim, marginTop: '-2px' }}>{subtitle}</div>}
     </Card>
   )
 }
@@ -476,15 +480,18 @@ export function NavItem({ icon, label, active, onClick, badge, badgeColor = 'red
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: '12px',
-        padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+        padding: '10px 12px 10px 14px', borderRadius: '0 10px 10px 0',
+        marginLeft: '8px',
+        cursor: 'pointer',
         background: active ? C.surface2 : (hovered ? 'rgba(0,0,0,0.03)' : 'transparent'),
         color: active ? C.text : C.textMuted,
         fontWeight: active ? 600 : 500, fontSize: '14px',
         transition: 'background 120ms ease, color 120ms ease',
         position: 'relative',
+        borderLeft: active ? `3px solid ${C.cyan}` : '3px solid transparent',
       }}
     >
-      <span style={{ fontSize: '16px', width: '20px', textAlign: 'center', opacity: active ? 1 : 0.85 }}>{icon}</span>
+      <span style={{ fontSize: '16px', width: '22px', textAlign: 'center', opacity: active ? 1 : 0.8 }}>{icon}</span>
       <span style={{ flex: 1, letterSpacing: '0.005em' }}>{label}</span>
       {badge && <Badge color={badgeColor} style={{ fontSize: '10px', padding: '1px 6px' }}>{badge}</Badge>}
     </div>

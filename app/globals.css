@@ -521,6 +521,17 @@ h1, h2, .yousafe-serif {
   .yousafe-right-pane { display: none !important; }
 }
 
+/* Admin table row hover effect — light background on hover for better data
+   readability without relying on JavaScript hover state on every cell. */
+.yousafe-table-row:hover {
+  background: rgba(0,0,0,0.025) !important;
+}
+.yousafe-filter-pill {
+  padding: 6px 16px; border-radius: 20px; font-size: 13px;
+  cursor: pointer; font-family: inherit; text-transform: capitalize;
+  transition: all 0.15s;
+}
+
 /* Responsive dashboard shell for the inline-styled portal apps. Desktop keeps
    the side rail; phones turn it into a compact, horizontally scrollable rail. */
 @media (max-width: 760px) {
