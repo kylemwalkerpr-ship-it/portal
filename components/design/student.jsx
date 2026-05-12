@@ -3160,7 +3160,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 <Avatar name={selectedOrder.consultant} size={36} />
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '14px' }}>{selectedOrder.consultant}</div>
-                  <div style={{ fontSize: '12px', color: C.green }}>● Online</div>
+                  <div style={{ fontSize: '12px', color: C.textDim }}>○ Offline</div>
                 </div>
               </div>
               <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>

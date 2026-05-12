@@ -495,7 +495,7 @@ function AdminApp({ onLogout }) {
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
-          <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
+          {alerts.length > 0 && <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />}
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700 }}>Admin Alerts</div>
@@ -1767,11 +1767,11 @@ function AdminApp({ onLogout }) {
           <div>
             <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted, display: 'block', marginBottom: '8px' }}>Consultant share</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <input type="range" min="5" max="95" step="1" value={consultantShare} onChange={e => setConsultantShare(Number(e.target.value))} style={{ flex: 1, accentColor: C.cyan }} />
+              <input type="range" min="0" max="100" step="2.5" value={consultantShare} onChange={e => setConsultantShare(Number(e.target.value))} style={{ flex: 1, accentColor: C.cyan }} />
               <span style={{ fontSize: '16px', fontWeight: 800, color: C.cyan, width: '52px', textAlign: 'right' }}>{consultantShare}%</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: C.textDim, marginTop: '4px' }}>
-              <span>5%</span><span>50%</span><span>95%</span>
+              <span>0%</span><span>50%</span><span>100%</span>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: C.surface2, borderRadius: '10px', fontSize: '14px' }}>

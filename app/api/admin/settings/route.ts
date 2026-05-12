@@ -35,7 +35,7 @@ export async function PATCH(req: Request) {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const body = await req.json()
-  const consultantFee = Math.min(95, Math.max(5, Number(body.consultant_fee_percent ?? DEFAULT_PLATFORM_SETTINGS.consultant_fee_percent)))
+  const consultantFee = Math.min(100, Math.max(0, Number(body.consultant_fee_percent ?? DEFAULT_PLATFORM_SETTINGS.consultant_fee_percent)))
   const platformFee = 100 - consultantFee
   // Attorney platform fee is additive (on top of attorney's fee) for ABA 5.4
   // compliance, so it follows different bounds than the consultant split.
