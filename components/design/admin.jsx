@@ -1,7 +1,12 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem } from './shared'
+import {
+  LayoutDashboard, Users, FileText, ShoppingBag, Lock, DollarSign,
+  BarChart3, Settings, LogOut, Bell, Eye, UserPlus, CheckCircle,
+  Clock, TrendingUp, TrendingDown, Star, Globe, CreditCard,
+} from 'lucide-react'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput, Toggle, Modal, Sparkline } from './shared'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -112,6 +117,11 @@ function AdminApp({ onLogout }) {
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [orderSearch, setOrderSearch] = React.useState('');
+  const [gigs, setGigs] = React.useState([]);
+  const [selectedGig, setSelectedGig] = React.useState(null);
+  const [gigFilter, setGigFilter] = React.useState('all');
 
   const consultantFeePercent = Number(platformSettings.consultant_fee_percent || DEFAULT_SETTINGS.consultant_fee_percent);
   const platformFeePercent = Number(platformSettings.platform_fee_percent || (100 - consultantFeePercent));
@@ -258,6 +268,12 @@ function AdminApp({ onLogout }) {
       .catch(e => { setInvitesLoaded(true); console.error('[admin] invites load failed', e.message) });
   }, []);
 
+  const refreshGigs = React.useCallback(() => {
+    fetch('/api/admin/gigs')
+      .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Unable to load gigs'); setGigs(Array.isArray(data.gigs) ? data.gigs : []); })
+      .catch(e => console.error('[admin] gigs load failed', e.message));
+  }, []);
+
   const sendInvite = async (payload) => {
     const res = await fetch('/api/admin/invite', {
       method: 'POST',
@@ -287,7 +303,8 @@ function AdminApp({ onLogout }) {
     refreshAdminData();
     refreshAttorneyApplications();
     refreshInvites();
-  }, [refreshAdminData, refreshAttorneyApplications, refreshInvites]);
+    refreshGigs();
+  }, [refreshAdminData, refreshAttorneyApplications, refreshInvites, refreshGigs]);
 
   const decideAttorneyApplication = async (applicationId, action) => {
     if (attorneyAppDecisionId) return;
@@ -418,12 +435,10 @@ function AdminApp({ onLogout }) {
   const pendingAttorneyApps = attorneyApplications.filter(a => a.status === 'pending');
   const filteredAttorneyApps = attorneyAppFilter === 'all' ? attorneyApplications : attorneyApplications.filter(a => a.status === attorneyAppFilter);
   const pendingOrders = orders.filter(o => o.status === 'new' || o.status === 'pending').length;
-  const filteredUsers = userFilter === 'all'
-    ? users
-    : userFilter === 'pending'
-      ? pendingApprovals
-      : users.filter(u => u.role === userFilter);
-  const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
+  const searchedUsers = searchQuery ? users.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase())) : users;
+  const filteredUsers = userFilter === 'all' ? searchedUsers : userFilter === 'pending' ? searchedUsers.filter(u => u.status === 'pending' && ['consultant', 'support', 'attorney'].includes(u.role)) : searchedUsers.filter(u => u.role === userFilter);
+  const searchedOrders = orderSearch ? orders.filter(o => o.id.toLowerCase().includes(orderSearch.toLowerCase()) || o.service.toLowerCase().includes(orderSearch.toLowerCase()) || o.student.toLowerCase().includes(orderSearch.toLowerCase()) || (o.consultant && o.consultant.toLowerCase().includes(orderSearch.toLowerCase()))) : orders;
+  const filteredOrders = orderFilter === 'all' ? searchedOrders : searchedOrders.filter(o => o.status === orderFilter);
   const consultants = users.filter(u => u.role === 'consultant' && u.status === 'active');
   const consultantNames = consultants.map(u => u.name);
 
@@ -438,16 +453,16 @@ function AdminApp({ onLogout }) {
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Admin console</div>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
-        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
-        <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
-        <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
-        <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
-        <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
-        <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
-        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
-        <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
-        <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
+        <NavItem icon={<LayoutDashboard size={18} strokeWidth={1.6} />} label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
+        <NavItem icon={<Users size={18} strokeWidth={1.6} />} label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
+        <NavItem icon={<FileText size={18} strokeWidth={1.6} />} label="Attorney Apps" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
+        <NavItem icon={<ShoppingBag size={18} strokeWidth={1.6} />} label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
+        <NavItem icon={<Lock size={18} strokeWidth={1.6} />} label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
+        <NavItem icon={<DollarSign size={18} strokeWidth={1.6} />} label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
+        <NavItem icon={<BarChart3 size={18} strokeWidth={1.6} />} label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
+        <NavItem icon={<Star size={18} strokeWidth={1.6} />} label="Gigs" active={page === 'gigs'} onClick={() => setPage('gigs')} />
+        <NavItem icon={<Globe size={18} strokeWidth={1.6} />} label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon={<Settings size={18} strokeWidth={1.6} />} label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
@@ -459,7 +474,7 @@ function AdminApp({ onLogout }) {
           <button
             type="button"
             onClick={onLogout}
-            aria-label="Log out and return to Yousafe Consultancy"
+            aria-label="Log out"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -476,7 +491,7 @@ function AdminApp({ onLogout }) {
             }}
             title="Log out"
           >
-            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
+            <LogOut size={14} strokeWidth={2} />
             <span>Logout</span>
           </button>
         </div>
@@ -493,7 +508,7 @@ function AdminApp({ onLogout }) {
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>
-          <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
+          <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, display: 'inline-flex', alignItems: 'center' }}><Bell size={16} strokeWidth={1.8} /></button>
           <div style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', background: C.red, borderRadius: '50%', border: `2px solid ${C.surface}` }} />
           {notifOpen && (
             <div style={{ position: 'absolute', right: 0, top: '44px', width: '300px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100 }}>
@@ -664,34 +679,41 @@ function AdminApp({ onLogout }) {
         </div>
         <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
-          <button key={f} onClick={() => setUserFilter(f)} style={{
-            padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
-            background: userFilter === f ? `${C.cyan}18` : C.surface2,
-            color: userFilter === f ? C.cyan : C.textMuted,
-            fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
-          }}>{
-            f === 'all' ? 'All users'
-            : f === 'pending' ? `Pending approvals (${pendingApprovals.length})`
-            : f === 'student' ? `Students (${totalStudents})`
-            : f === 'consultant' ? `Consultants (${totalConsultants})`
-            : f === 'attorney' ? `Attorneys (${totalAttorneys})`
-            : `Support (${totalSupport})`
-          }</button>
-        ))}
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
+          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search users by name or email..." />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
+            <button key={f} onClick={() => setUserFilter(f)} style={{
+              padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
+              background: userFilter === f ? `${C.cyan}18` : C.surface2,
+              color: userFilter === f ? C.cyan : C.textMuted,
+              fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
+            }}>{
+              f === 'all' ? 'All users'
+              : f === 'pending' ? `Pending (${pendingApprovals.length})`
+              : f === 'student' ? `Students (${totalStudents})`
+              : f === 'consultant' ? `Consultants (${totalConsultants})`
+              : f === 'attorney' ? `Attorneys (${totalAttorneys})`
+              : `Support (${totalSupport})`
+            }</button>
+          ))}
+        </div>
       </div>
-      <Card style={{ padding: '0', overflow: 'hidden' }}>
+      <Card style={{ padding: '0', overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
               {['User', 'Role', 'Country', 'Joined', 'Orders', 'Financials', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.map((u, i) => (
+            {filteredUsers.length === 0 ? (
+              <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{searchQuery ? 'No users match your search.' : 'No users in this category.'}</td></tr>
+            ) : filteredUsers.map((u, i) => (
               <tr key={u.id} style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none' }}>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -707,7 +729,7 @@ function AdminApp({ onLogout }) {
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.joined}</td>
                 <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{u.orders}</td>
                 <td style={{ padding: '14px 16px', fontSize: '13px', color: u.role === 'consultant' ? C.green : C.text, fontWeight: 600 }}>{u.spend}</td>
-                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : 'orange'}>{u.status}</Badge></td>
+                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : u.status === 'suspended' ? 'red' : 'orange'}>{u.status}</Badge></td>
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
@@ -872,7 +894,6 @@ function AdminApp({ onLogout }) {
   const Orders = () => {
     const [assignModal, setAssignModal] = React.useState(null);
     const CONSULTANTS = consultants;
-    const filtered = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
     const updateOrder = async (orderId, payload) => {
       const res = await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PATCH',
@@ -910,17 +931,24 @@ function AdminApp({ onLogout }) {
           <h2 style={adminPageTitle}>All orders.</h2>
           <p style={adminPageSub}>{orders.length} total orders across the platform.</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {['all','new','active','review','pending','completed','cancelled'].map(f => (
-            <button key={f} onClick={() => setOrderFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter===f?C.cyan:C.border}`, background: orderFilter===f?`${C.cyan}18`:C.surface2, color: orderFilter===f?C.cyan:C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter===f?600:400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
-          ))}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
+            <SearchInput value={orderSearch} onChange={setOrderSearch} placeholder="Search by ID, service, student, consultant..." />
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {['all','new','active','review','pending','completed','cancelled'].map(f => (
+              <button key={f} onClick={() => setOrderFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${orderFilter===f?C.cyan:C.border}`, background: orderFilter===f?`${C.cyan}18`:C.surface2, color: orderFilter===f?C.cyan:C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: orderFilter===f?600:400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{f}</button>
+            ))}
+          </div>
         </div>
-        <Card style={{ padding: '0', overflow: 'hidden' }}>
+        <Card style={{ padding: '0', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['Order','Service','Student','Consultant','Amount','Split','Escrow','Status','Actions'].map(h=><th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ borderBottom: `1px solid ${C.border}` }}>{['Order','Service','Student','Consultant','Amount','Split','Escrow','Status','Actions'].map(h=><th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
             <tbody>
-              {filtered.map((o, i) => (
-                <tr key={o.id} style={{ borderBottom: i < filtered.length-1 ? `1px solid ${C.border}` : 'none' }}>
+              {filteredOrders.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{orderSearch ? 'No orders match your search.' : 'No orders in this status.'}</td></tr>
+              ) : filteredOrders.map((o, i) => (
+                <tr key={o.id} style={{ borderBottom: i < filteredOrders.length-1 ? `1px solid ${C.border}` : 'none' }}>
                   <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600, color: C.cyan }}>{o.id}</td>
                   <td style={{ padding: '14px 16px', fontSize: '13px', maxWidth: '150px' }}><div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div></td>
                   <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{o.student}</td>
@@ -1103,73 +1131,212 @@ function AdminApp({ onLogout }) {
   };
 
   // ── PAYOUTS ──
-  const Payouts = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div>
-        <div style={adminEyebrow}>Disbursements</div>
-        <h2 style={adminPageTitle}>Payouts.</h2>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-        <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
-        <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon="👤" color={C.cyan} />
-        <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon="⏳" color={C.orange} />
-      </div>
-      <Card>
-        <div style={adminSectionHeading}>Consultant Payout Queue</div>
-        {consultantNames.length > 0 ? consultantNames.map((name, i) => (
-          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-            <Avatar name={name} size={36} color={C.purple} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '14px' }}>{name}</div>
-              <div style={{ fontSize: '12px', color: C.textMuted }}>Pending payout details will appear here</div>
+  const Payouts = () => {
+    const releasedOrders = orders.filter(o => o.escrow === 'released');
+    const heldOrders = orders.filter(o => o.escrow === 'held');
+    const payoutByConsultant = React.useMemo(() => {
+      const map = {};
+      consultants.forEach(c => { map[c.id] = { ...c, paid: 0, pending: 0, orderCount: 0 }; });
+      orders.forEach(o => {
+        if (!o.consultantId) return;
+        map[o.consultantId] = map[o.consultantId] || { id: o.consultantId, name: o.consultant || 'Unknown', paid: 0, pending: 0, orderCount: 0 };
+        map[o.consultantId].orderCount++;
+        if (o.escrow === 'released') map[o.consultantId].paid += moneyValue(o.consultantPay);
+        else map[o.consultantId].pending += moneyValue(o.consultantPay);
+      });
+      return Object.values(map).filter(c => c.orderCount > 0 || c.paid > 0 || c.pending > 0);
+    }, [orders, consultants]);
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div>
+          <div style={adminEyebrow}>Disbursements</div>
+          <h2 style={adminPageTitle}>Payouts.</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Real-time payout tracking per consultant.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
+          <StatCard label="Platform Revenue" value={formatPrimary(totalRevenue)} icon={<DollarSign size={20} />} color={C.green} subtitle={`${releasedOrders.length} released orders`} />
+          <StatCard label="Paid to Consultants" value={formatPrimary(paidToConsultants)} icon={<CreditCard size={20} />} color={C.cyan} subtitle={`${payoutByConsultant.filter(c => c.paid > 0).length} consultants paid`} />
+          <StatCard label="Pending Payouts" value={formatPrimary(pendingEscrow)} icon={<Clock size={20} />} color={C.orange} subtitle={`${heldOrders.length} orders in escrow`} />
+          <StatCard label="Total Processed" value={formatPrimary(releasedOrders.reduce((a, o) => a + o.amountValue, 0))} icon={<CheckCircle size={20} />} color={C.purple} subtitle={`${orders.length} total orders`} />
+        </div>
+        <Card>
+          <div style={adminSectionHeading}>Consultant Payout Queue</div>
+          {payoutByConsultant.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px', gap: '12px', padding: '10px 14px', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${C.border}` }}>
+                <span>Consultant</span><span style={{ textAlign: 'right' }}>Paid</span><span style={{ textAlign: 'right' }}>Pending</span><span style={{ textAlign: 'right' }}>Orders</span><span></span>
+              </div>
+              {payoutByConsultant.map(c => (
+                <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 80px', gap: '12px', padding: '12px 14px', alignItems: 'center', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Avatar name={c.name} size={32} color={C.purple} />
+                    <span style={{ fontWeight: 600, fontSize: '14px' }}>{c.name}</span>
+                  </div>
+                  <span style={{ fontWeight: 700, textAlign: 'right', color: c.paid > 0 ? C.green : C.textDim }}>{c.paid > 0 ? formatPrimary(c.paid) : '—'}</span>
+                  <span style={{ fontWeight: 700, textAlign: 'right', color: c.pending > 0 ? C.orange : C.textDim }}>{c.pending > 0 ? formatPrimary(c.pending) : '—'}</span>
+                  <span style={{ textAlign: 'right', fontSize: '14px', fontWeight: 600 }}>{c.orderCount}</span>
+                  <Btn variant="ghost" size="sm" onClick={() => setActionNotice(`Payout review opened for ${c.name}. Stripe payout automation will process eligible released balances.`)}>Review</Btn>
+                </div>
+              ))}
             </div>
-            <span style={{ fontWeight: 800, fontSize: '16px', color: C.cyan }}>{formatPrimary(0)}</span>
-            <Btn variant="primary" size="sm" onClick={() => setActionNotice(`Payout review opened for ${name}. Stripe payout automation will process eligible released balances.`)}>Pay out</Btn>
-          </div>
-        )) : (
-          <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>
-            No payout queue data available
-          </div>
-        )}
-      </Card>
-    </div>
-  );
+          ) : (
+            <div style={{ padding: '20px', color: C.textMuted, fontSize: '14px', textAlign: 'center' }}>No payout data available yet.</div>
+          )}
+        </Card>
+      </div>
+    );
+  };
 
   // ── ANALYTICS ──
-  const Analytics = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div>
-        <div style={adminEyebrow}>Insight</div>
-        <h2 style={adminPageTitle}>Analytics.</h2>
+  const Analytics = () => {
+    const monthlyData = React.useMemo(() => {
+      const months = {};
+      orders.forEach(o => {
+        if (!o.createdAt) return;
+        const m = o.createdAt.substring(0, 7);
+        months[m] = months[m] || { revenue: 0, platform: 0, consultant: 0, orders: 0, students: new Set() };
+        months[m].orders++;
+        months[m].revenue += o.amountValue;
+        months[m].platform += moneyValue(o.adminCut);
+        months[m].consultant += moneyValue(o.consultantPay);
+        if (o.student) months[m].students.add(o.student);
+      });
+      return Object.entries(months).sort().slice(-12).map(([m, d]) => ({
+        month: m, label: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), ...d, students: d.students.size,
+      }));
+    }, [orders]);
+    const servicePerformance = React.useMemo(() => {
+      const map = {};
+      orders.forEach(o => { map[o.service] = map[o.service] || { name: o.service, orders: 0, revenue: 0 }; map[o.service].orders++; map[o.service].revenue += o.amountValue; });
+      return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+    }, [orders]);
+    const userGrowth = React.useMemo(() => {
+      const months = {};
+      users.forEach(u => { if (!u.createdAt) return; const m = u.createdAt.substring(0, 7); months[m] = months[m] || { students: 0, consultants: 0, attorneys: 0, total: 0 }; months[m].total++; if (u.role === 'student') months[m].students++; else if (u.role === 'consultant') months[m].consultants++; else if (u.role === 'attorney') months[m].attorneys++; });
+      return Object.entries(months).sort().slice(-12).map(([m, d]) => ({ month: m, label: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), ...d }));
+    }, [users]);
+    const maxRevenue = Math.max(...monthlyData.map(d => d.platform), 1);
+    const maxOrders = Math.max(...monthlyData.map(d => d.orders), 1);
+    const maxUsers = Math.max(...userGrowth.map(d => d.total), 1);
+    const barH = 140, barW = 36;
+    const completionRate = orders.length ? Math.round(orders.filter(o => o.status === 'completed').length / orders.length * 100) : 0;
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div>
+          <div style={adminEyebrow}>Insight</div>
+          <h2 style={adminPageTitle}>Analytics.</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Real platform metrics derived from {orders.length} orders and {users.length} users.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={adminSectionHeading}>Revenue Trend</div>
+              <span style={{ fontSize: '12px', color: C.textMuted }}>Monthly platform revenue</span>
+            </div>
+            {monthlyData.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+                {monthlyData.map(d => (
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{formatPrimary(d.platform)}</div>
+                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <div style={{ width: '100%', maxWidth: `${barW}px`, height: `${(d.platform / maxRevenue) * barH}px`, background: `linear-gradient(180deg, ${C.green}, ${C.green}88)`, borderRadius: '4px 4px 0 0', transition: 'height 0.3s' }} />
+                    </div>
+                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No revenue data yet.</div>}
+          </Card>
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={adminSectionHeading}>Order Volume</div>
+              <span style={{ fontSize: '12px', color: C.textMuted }}>Orders per month</span>
+            </div>
+            {monthlyData.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+                {monthlyData.map(d => (
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{d.orders}</div>
+                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <div style={{ width: '100%', maxWidth: `${barW}px`, height: `${(d.orders / maxOrders) * barH}px`, background: `linear-gradient(180deg, ${C.cyan}, ${C.cyan}88)`, borderRadius: '4px 4px 0 0', transition: 'height 0.3s' }} />
+                    </div>
+                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No order data yet.</div>}
+          </Card>
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={adminSectionHeading}>User Growth</div>
+              <span style={{ fontSize: '12px', color: C.textMuted }}>New users per month</span>
+            </div>
+            {userGrowth.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: `${barH + 24}px`, paddingTop: '8px' }}>
+                {userGrowth.map(d => (
+                  <div key={d.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ fontSize: '10px', color: C.textMuted, fontWeight: 600 }}>{d.total}</div>
+                    <div style={{ width: '100%', height: `${barH}px`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '2px' }}>
+                      <div style={{ flex: 1, height: `${(d.students / maxUsers) * barH}px`, background: C.cyan, borderRadius: '2px 2px 0 0' }} title={`${d.students} students`} />
+                      {d.consultants > 0 && <div style={{ flex: 1, height: `${(d.consultants / maxUsers) * barH}px`, background: C.purple, borderRadius: '2px 2px 0 0' }} title={`${d.consultants} consultants`} />}
+                      {d.attorneys > 0 && <div style={{ flex: 1, height: `${(d.attorneys / maxUsers) * barH}px`, background: C.green, borderRadius: '2px 2px 0 0' }} title={`${d.attorneys} attorneys`} />}
+                    </div>
+                    <div style={{ fontSize: '10px', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No user growth data yet.</div>}
+            <div style={{ display: 'flex', gap: '16px', marginTop: '12px', justifyContent: 'center', fontSize: '11px', color: C.textMuted }}>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.cyan, marginRight: '4px' }} /> Students</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.purple, marginRight: '4px' }} /> Consultants</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: C.green, marginRight: '4px' }} /> Attorneys</span>
+            </div>
+          </Card>
+          <Card>
+            <div style={adminSectionHeading}>Top Services</div>
+            {servicePerformance.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {servicePerformance.map((s, i) => {
+                  const maxSvcRev = servicePerformance[0].revenue || 1;
+                  return (
+                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: C.textMuted, width: '18px' }}>{i + 1}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '2px' }}>
+                          <span style={{ fontWeight: 600 }}>{s.name}</span>
+                          <span style={{ fontWeight: 700 }}>{formatPrimary(s.revenue)} ({s.orders})</span>
+                        </div>
+                        <ProgressBar value={(s.revenue / maxSvcRev) * 100} color={i === 0 ? C.cyan : C.textMuted} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <div style={{ color: C.textMuted, fontSize: '14px', padding: '40px 0', textAlign: 'center' }}>No service data yet.</div>}
+          </Card>
+          <Card>
+            <div style={adminSectionHeading}>Key Metrics</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              {[
+                { label: 'Total revenue', value: formatPrimary(totalRevenue), sub: `${orders.length} orders` },
+                { label: 'Avg order', value: orders.length ? formatPrimary(orders.reduce((a, o) => a + o.amountValue, 0) / orders.length) : 'N/A', sub: 'per engagement' },
+                { label: 'Completion rate', value: `${completionRate}%`, sub: `${orders.filter(o => o.status === 'completed').length} completed` },
+                { label: 'Conversion', value: users.length ? `${(orders.length / Math.max(1, users.filter(u => u.role === 'student').length) * 100).toFixed(1)}%` : 'N/A', sub: 'orders per student' },
+                { label: 'Consultants', value: totalConsultants, sub: `${consultants.length} active` },
+                { label: 'Support ratio', value: totalSupport && totalConsultants ? `${(totalConsultants / totalSupport).toFixed(1)}:1` : 'N/A', sub: 'consultants per support' },
+              ].map(m => (
+                <div key={m.label} style={{ background: C.surface2, borderRadius: '10px', padding: '14px' }}>
+                  <div style={{ fontSize: '11px', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{m.label}</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: C.text, marginTop: '4px' }}>{m.value}</div>
+                  <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px' }}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        <Card>
-          <div style={adminSectionHeading}>Revenue summary</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Analytics will appear here once platform order and payout history is available.
-          </div>
-        </Card>
-        <Card>
-          <div style={adminSectionHeading}>Service trends</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Real service volume and country breakdowns are not yet available.
-          </div>
-        </Card>
-        <Card>
-          <div style={adminSectionHeading}>Student origins</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            Country analytics will be populated when student and order data are connected.
-          </div>
-        </Card>
-        <Card>
-          <div style={adminSectionHeading}>Key metrics</div>
-          <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-            No key metrics are available until platform data is sourced from the backend.
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ── CATALOGUE MANAGEMENT ──
   const ServicesAdmin = () => {
@@ -1481,6 +1648,123 @@ function AdminApp({ onLogout }) {
     );
   };
 
+  // ── GIGS MANAGEMENT ──
+  const GigsManager = () => {
+    const filteredGigs = gigFilter === 'all' ? gigs : gigs.filter(g => g.status === gigFilter);
+    const updateGigStatus = async (gigId, status) => {
+      try {
+        const res = await fetch(`/api/admin/gigs/${gigId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, action_type: 'update_gig_status' }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Update failed');
+        setActionNotice(`Gig status updated to ${status}.`);
+        refreshGigs();
+      } catch (e) { setActionNotice(e.message); }
+    };
+    const statusCounts = { all: gigs.length, draft: gigs.filter(g => g.status === 'draft').length, active: gigs.filter(g => g.status === 'active').length, paused: gigs.filter(g => g.status === 'paused').length, archived: gigs.filter(g => g.status === 'archived').length };
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div>
+          <div style={adminEyebrow}>Marketplace</div>
+          <h2 style={adminPageTitle}>Gigs.</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage marketplace service listings from all providers.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {Object.entries(statusCounts).map(([key, count]) => (
+            <button key={key} onClick={() => setGigFilter(key)} style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${gigFilter === key ? C.cyan : C.border}`, background: gigFilter === key ? `${C.cyan}18` : C.surface2, color: gigFilter === key ? C.cyan : C.textMuted, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: gigFilter === key ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s' }}>{key} ({count})</button>
+          ))}
+        </div>
+        <Card style={{ padding: '0', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {['Gig', 'Provider', 'Category', 'Price', 'Status', 'Rank', 'Tiers', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGigs.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No gigs in this view.</td></tr>
+              ) : filteredGigs.map((g, i) => {
+                const minPrice = g.tiers?.length ? Math.min(...g.tiers.map(t => Number(t.price || 0))) : 0;
+                return (
+                  <tr key={g.id} style={{ borderBottom: i < filteredGigs.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 600, fontSize: '14px' }}>{g.title || 'Untitled'}</div>
+                      <div style={{ color: C.textMuted, fontSize: '11px' }}>{g.slug}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Avatar name={g.provider?.full_name || 'P'} size={24} color={C.cyan} />
+                        <span style={{ fontSize: '13px' }}>{g.provider?.full_name || 'Unknown'}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{g.category || '—'}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: 700, fontSize: '14px' }}>{minPrice > 0 ? formatPrimary(minPrice) : '—'}</td>
+                    <td style={{ padding: '14px 16px' }}><Badge color={g.status === 'active' ? 'green' : g.status === 'paused' ? 'orange' : g.status === 'draft' ? 'gray' : 'red'}>{g.status || 'draft'}</Badge></td>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600 }}>{g.rank_score ?? '—'}</td>
+                    <td style={{ padding: '14px 16px', fontSize: '13px' }}>{g.tiers?.length || 0}</td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <Btn variant="ghost" size="sm" onClick={() => setSelectedGig(g)}><Eye size={14} /></Btn>
+                        {g.status === 'active' && <Btn variant="danger" size="sm" onClick={() => updateGigStatus(g.id, 'paused')}>Pause</Btn>}
+                        {g.status === 'paused' && <Btn variant="success" size="sm" onClick={() => updateGigStatus(g.id, 'active')}>Activate</Btn>}
+                        {g.status === 'draft' && <Btn variant="primary" size="sm" onClick={() => updateGigStatus(g.id, 'active')}>Publish</Btn>}
+                        {g.status !== 'archived' && <Btn variant="danger" size="sm" onClick={() => updateGigStatus(g.id, 'archived')}>Archive</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+        {selectedGig && (
+          <div onClick={() => setSelectedGig(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '600px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{selectedGig.title || 'Gig details'}</h3>
+                  <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>{selectedGig.slug}</div>
+                </div>
+                <button onClick={() => setSelectedGig(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  ['Provider', selectedGig.provider?.full_name || 'Unknown'],
+                  ['Category', selectedGig.category || '—'],
+                  ['Status', selectedGig.status || 'draft'],
+                  ['Rank Score', selectedGig.rank_score ?? '—'],
+                  ['Tiers', selectedGig.tiers?.length || 0],
+                  ['Featured', selectedGig.featured_until ? new Date(selectedGig.featured_until).toLocaleDateString() : 'Not featured'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ background: C.surface2, borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              {selectedGig.tiers?.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>Tier Pricing</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {selectedGig.tiers.map(t => (
+                      <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: C.surface2, borderRadius: '8px', fontSize: '13px' }}>
+                        <span style={{ fontWeight: 600 }}>{t.title || 'Tier'}</span>
+                        <span style={{ fontWeight: 700 }}>{formatPrimary(t.price || 0)}{t.delivery_days ? ` · ${t.delivery_days}d` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Btn variant="ghost" size="sm" onClick={() => setSelectedGig(null)}>Close</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── SETTINGS ──
   const Settings = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
@@ -1770,7 +2054,7 @@ function AdminApp({ onLogout }) {
     </div>
   );
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'Gigs', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -1793,6 +2077,7 @@ function AdminApp({ onLogout }) {
           {page === 'escrow' && <Escrow />}
           {page === 'payouts' && <Payouts />}
           {page === 'analytics' && <Analytics />}
+          {page === 'gigs' && <GigsManager />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
         </div>
