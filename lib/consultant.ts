@@ -12,7 +12,7 @@ export async function getCurrentConsultant(): Promise<ConsultantAuth> {
   const db = createSupabaseAdminClient()
   const { data: profile } = await db
     .from('profiles')
-    .select('*')
+    .select('id, clerk_user_id, role, status, email, full_name')
     .eq('clerk_user_id', clerkUserId)
     .single()
 

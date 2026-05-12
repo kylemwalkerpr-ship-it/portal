@@ -18,7 +18,7 @@ export async function requirePortalUser(): Promise<
   const db = createSupabaseAdminClient()
   const { data: profile, error } = await db
     .from('profiles')
-    .select('*')
+    .select('id, clerk_user_id, role, status, email, full_name')
     .eq('clerk_user_id', clerkUserId)
     .single()
 

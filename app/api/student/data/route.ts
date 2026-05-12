@@ -10,18 +10,34 @@ export async function GET() {
 
   const { db, profile } = auth
 
-  const [ordersRes, itemsRes, servicesRes, profilesRes] = await Promise.all([
-    db.from('orders').select('*').eq('client_id', profile.id).order('created_at', { ascending: false }),
-    db.from('order_items').select('*'),
-    db.from('services').select('*'),
-    db.from('profiles').select('id, email, full_name, role'),
-  ])
+  const ordersRes = await db
+    .from('orders')
+    .select('id, order_number, consultant_id, status, requirements, created_at, deadline, progress, total_amount, payout_status, escrow_status, terms_accepted_at, refund_policy_accepted_at')
+    .eq('client_id', profile.id)
+    .order('created_at', { ascending: false })
 
-  const error = ordersRes.error || itemsRes.error || servicesRes.error || profilesRes.error
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (ordersRes.error) return Response.json({ error: ordersRes.error.message }, { status: 500 })
 
   const orderRows = ordersRes.data ?? []
   const orderIds = orderRows.map(o => o.id)
+  const consultantIds = Array.from(new Set(orderRows.map(o => o.consultant_id).filter(Boolean)))
+
+  const [itemsRes, profilesRes] = await Promise.all([
+    orderIds.length
+      ? db.from('order_items').select('order_id, service_id').in('order_id', orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    consultantIds.length
+      ? db.from('profiles').select('id, email, full_name, role').in('id', consultantIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  const serviceIds = Array.from(new Set((itemsRes.data ?? []).map(item => item.service_id).filter(Boolean)))
+  const servicesRes = serviceIds.length
+    ? await db.from('services').select('id, title, product_type').in('id', serviceIds)
+    : { data: [], error: null }
+
+  const error = itemsRes.error || servicesRes.error || profilesRes.error
+  if (error) return Response.json({ error: error.message }, { status: 500 })
 
   let fileCountByOrder = new Map<string, number>()
   let lastMessageByOrder = new Map<string, string>()

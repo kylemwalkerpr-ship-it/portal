@@ -22,14 +22,15 @@ const isPublicRoute = createRouteMatcher([
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
+
+    if (pathname !== '/' && isPublicRoute(req)) return NextResponse.next()
+
     const { userId } = await auth()
 
     if (pathname === '/') {
       if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))
       return NextResponse.next()
     }
-
-    if (isPublicRoute(req)) return NextResponse.next()
 
     if (!userId) {
       const lane = req.nextUrl.searchParams.get('lane')

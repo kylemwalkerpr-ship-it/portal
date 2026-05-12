@@ -65,13 +65,43 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   if (!userId) redirect('/sign-in/student')
 
   const db = createSupabaseAdminClient()
-  const clerkData = await getClerkUserData(userId)
-  requestedRole = params.lane ? requestedRole : clerkData.requestedRole ?? requestedRole
 
   // Fetch profile — try with status column first, fall back without it
   let profile: { id?: string; clerk_user_id?: string | null; role: string; status: string; full_name: string | null; email: string } | null = null
 
-  if (clerkData.email) {
+  const { data: full, error: fullErr } = await db
+    .from('profiles')
+    .select('id, clerk_user_id, role, status, full_name, email')
+    .eq('clerk_user_id', userId)
+    .single()
+
+  if (full) {
+    profile = full
+    if (profile.role === 'support' && profile.status === 'active') {
+      redirect(SUPPORT_DASHBOARD_URL)
+    }
+  } else {
+    // status column may not exist — try without it
+    const { data: basic } = await db
+      .from('profiles')
+      .select('id, clerk_user_id, role, full_name, email')
+      .eq('clerk_user_id', userId)
+      .single()
+    if (basic) profile = { ...basic, status: 'active' }
+    else if (fullErr) console.error('[dashboard] fetch error:', fullErr.message)
+  }
+
+  if (profile && !params.lane) {
+    requestedRole = normalizeAuthLane(profile.role)
+  }
+
+  let clerkData: Awaited<ReturnType<typeof getClerkUserData>> | null = null
+  if (!profile) {
+    clerkData = await getClerkUserData(userId)
+    requestedRole = params.lane ? requestedRole : clerkData.requestedRole ?? requestedRole
+  }
+
+  if (!profile && clerkData?.email) {
     const { data: existingByEmail } = await db
       .from('profiles')
       .select('id, clerk_user_id, role, status, full_name, email')
@@ -98,32 +128,9 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     }
   }
 
-  if (!profile) {
-    const { data: full, error: fullErr } = await db
-      .from('profiles')
-      .select('id, clerk_user_id, role, status, full_name, email')
-      .eq('clerk_user_id', userId)
-      .single()
-
-    if (full) {
-      profile = full
-      if (profile.role === 'support' && profile.status === 'active') {
-        redirect(SUPPORT_DASHBOARD_URL)
-      }
-    } else {
-      // status column may not exist — try without it
-      const { data: basic } = await db
-        .from('profiles')
-        .select('id, clerk_user_id, role, full_name, email')
-        .eq('clerk_user_id', userId)
-        .single()
-      if (basic) profile = { ...basic, status: 'active' }
-      else if (fullErr) console.error('[dashboard] fetch error:', fullErr.message)
-    }
-  }
-
   // Profile not in DB yet — create it using real Clerk data
   if (!profile) {
+    if (!clerkData) clerkData = await getClerkUserData(userId)
     const defaultStatus =
       requestedRole === 'client' ? 'active'
       : requestedRole === 'attorney' ? 'incomplete'

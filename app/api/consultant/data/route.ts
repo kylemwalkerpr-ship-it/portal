@@ -10,23 +10,39 @@ export async function GET() {
 
   const { db, profile, consultant } = auth
 
-  const [ordersRes, itemsRes, servicesRes] = await Promise.all([
-    db.from('orders').select('*').eq('consultant_id', profile.id).order('created_at', { ascending: false }),
-    db.from('order_items').select('*'),
-    db.from('services').select('*'),
-  ])
+  const ordersRes = await db
+    .from('orders')
+    .select('id, order_number, client_id, status, requirements, created_at, updated_at, completed_at, deadline, progress, total_amount, consultant_payout_amount, payout_status')
+    .eq('consultant_id', profile.id)
+    .order('created_at', { ascending: false })
 
-  // Profiles select tolerates legacy schemas that don't yet have the `country` column
-  let profilesRes = await db.from('profiles').select('id, email, full_name, country')
-  if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
-    profilesRes = await db.from('profiles').select('id, email, full_name')
-  }
-
-  const error = ordersRes.error || itemsRes.error || servicesRes.error || profilesRes.error
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (ordersRes.error) return Response.json({ error: ordersRes.error.message }, { status: 500 })
 
   const orderRows = ordersRes.data ?? []
   const orderIds = orderRows.map(o => o.id)
+  const clientIds = Array.from(new Set(orderRows.map(o => o.client_id).filter(Boolean)))
+
+  const [itemsRes] = await Promise.all([
+    orderIds.length
+      ? db.from('order_items').select('order_id, service_id').in('order_id', orderIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  const serviceIds = Array.from(new Set((itemsRes.data ?? []).map(item => item.service_id).filter(Boolean)))
+  const servicesRes = serviceIds.length
+    ? await db.from('services').select('id, title').in('id', serviceIds)
+    : { data: [], error: null }
+
+  // Profiles select tolerates legacy schemas that don't yet have the `country` column.
+  let profilesRes = clientIds.length
+    ? await db.from('profiles').select('id, email, full_name, country').in('id', clientIds)
+    : { data: [], error: null }
+  if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
+    profilesRes = await db.from('profiles').select('id, email, full_name').in('id', clientIds)
+  }
+
+  const error = itemsRes.error || servicesRes.error || profilesRes.error
+  if (error) return Response.json({ error: error.message }, { status: 500 })
 
   let fileCountByOrder = new Map<string, number>()
   if (orderIds.length > 0) {
