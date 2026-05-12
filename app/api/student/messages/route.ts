@@ -1,5 +1,6 @@
 import { getCurrentStudent } from '@/lib/student'
 import { messageBodyFromFormData } from '@/lib/messageAttachments'
+import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from '@/lib/fiverr'
 
 export async function GET(req: Request) {
   const auth = await getCurrentStudent()
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     .single()
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
 
-  const [{ data, error }, { data: offers, error: offersError }, { data: unifiedOffers }] = await Promise.all([
+  const [{ data, error }, { data: offers, error: offersError }, { data: unifiedOffers }, settings] = await Promise.all([
     auth.db
       .from('order_messages')
       .select('id, sender_id, sender_role, body, created_at')
@@ -36,25 +37,35 @@ export async function GET(req: Request) {
       .eq('recipient_id', auth.profile.id)
       .eq('sender_type', 'consultant')
       .order('created_at', { ascending: false }),
+    getPaymentSettingsForApi(),
   ])
   if (error) return Response.json({ error: error.message }, { status: 500 })
   if (offersError && !/does not exist|schema cache/i.test(offersError.message)) {
     return Response.json({ error: offersError.message }, { status: 500 })
   }
 
-  const normalized = (unifiedOffers ?? []).map((o) => ({
+  const normalized = (unifiedOffers ?? []).map((o) => {
+    const effectivePrice = Number(o.discounted_price || o.price || 0)
+    const platformFee = computePlatformFeeCents(effectivePrice, 'consultant', settings)
+    const payout = computeNetPayoutCents(effectivePrice, 'consultant', settings)
+    return {
     id: o.id,
     source_type: 'unified_offer',
     title: o.title,
     description: o.description,
     original_price: Number(o.price || 0) / 100,
-    price: Number(o.discounted_price || o.price || 0) / 100,
+    price: effectivePrice / 100,
+    platform_fee: platformFee / 100,
+    consultant_payout: payout / 100,
+    platform_fee_percent_snapshot: settings.platform_fee_percent,
+    consultant_fee_percent_snapshot: settings.consultant_fee_percent,
     delivery_days: o.delivery_days,
     revision_count: o.revisions,
-    status: o.status === 'pending' ? 'sent' : o.status,
+    status: o.status === 'pending' ? 'sent' : o.status === 'cancelled' ? 'withdrawn' : o.status,
     expires_at: o.expires_at,
     created_at: o.created_at,
-  }))
+    }
+  })
   return Response.json({ messages: data ?? [], offers: [...normalized, ...((offers ?? []).map((o) => ({ ...o, source_type: 'consultant_offer' })))] })
 }
 

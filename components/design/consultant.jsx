@@ -525,11 +525,18 @@ function ConsultantApp({ onLogout }) {
     }
   };
 
-  const withdrawConsultantOffer = async offerId => {
+  const withdrawConsultantOffer = async offerOrId => {
+    const offer = typeof offerOrId === 'object' && offerOrId ? offerOrId : null;
+    const offerId = offer?.id || offerOrId;
+    const unified = offer?.source_type === 'unified_offer';
     try {
-      const res = await fetch(`/api/consultant/offers/${offerId}/withdraw`, { method: 'POST' });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || 'Could not withdraw offer.');
+      let res = await fetch(unified ? `/api/offers/${offerId}/withdraw` : `/api/consultant/offers/${offerId}/withdraw`, { method: 'POST' });
+      let data = await res.json().catch(() => null);
+      if (!res.ok && !unified) {
+        res = await fetch(`/api/offers/${offerId}/withdraw`, { method: 'POST' });
+        data = await res.json().catch(() => null);
+      }
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not withdraw offer.');
       await loadMessagesFor(selectedOrder);
     } catch (e) {
       setActionNotice(e.message);
@@ -897,7 +904,7 @@ function ConsultantApp({ onLogout }) {
                 )}
                 {orderTimeline.map((item, i) => item.kind === 'offer' ? (
                   <OfferBubble key={item.key} mine createdAt={item.created_at}>
-                    <ConsultantOfferCard offer={item.offer} onWithdraw={() => withdrawConsultantOffer(item.offer.id)} />
+                    <ConsultantOfferCard offer={item.offer} onWithdraw={() => withdrawConsultantOffer(item.offer)} />
                   </OfferBubble>
                 ) : (
                   <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'consultant' ? 'row-reverse' : 'row' }}>
@@ -1305,7 +1312,7 @@ function ConsultantApp({ onLogout }) {
               )}
               {orderTimeline.map((item, i) => item.kind === 'offer' ? (
                 <OfferBubble key={item.key} mine createdAt={item.created_at}>
-                  <ConsultantOfferCard offer={item.offer} onWithdraw={() => withdrawConsultantOffer(item.offer.id)} />
+                  <ConsultantOfferCard offer={item.offer} onWithdraw={() => withdrawConsultantOffer(item.offer)} />
                 </OfferBubble>
               ) : (
                 <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'consultant' ? 'row-reverse' : 'row' }}>
@@ -1416,16 +1423,19 @@ function OfferBubble({ children, mine, createdAt }) {
 
 function ConsultantOfferCard({ offer, onWithdraw }) {
   const pending = offer.status === 'sent'
+  const platformFee = Number(offer.platform_fee || 0)
+  const payout = Number(offer.consultant_payout || 0) || Math.max(0, Number(offer.price || 0) - platformFee)
   return (
     <div style={{ alignSelf: 'stretch', border: `1px solid ${pending ? C.cyan : C.border}`, borderRadius: '12px', padding: '14px', background: pending ? `${C.cyan}0d` : C.surface2 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
         <div style={{ fontWeight: 800, fontSize: '14px', color: C.text }}>{offer.title}</div>
-        <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : 'gray'}>{offer.status}</Badge>
+        <Badge color={pending ? 'orange' : offer.status === 'accepted' ? 'green' : offer.status === 'withdrawn' ? 'gray' : 'gray'}>{offer.status}</Badge>
       </div>
       <div style={{ marginTop: '6px', color: C.textMuted, fontSize: '13px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{offer.description}</div>
       <div style={{ marginTop: '10px', display: 'grid', gap: '4px', fontSize: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Client pays</span><strong>${Number(offer.price || 0).toFixed(2)}</strong></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Your payout</span><strong>${Number(offer.consultant_payout || 0).toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Platform amount</span><strong>${platformFee.toFixed(2)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Your payout</span><strong>${payout.toFixed(2)}</strong></div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Delivery</span><strong>{offer.delivery_days} days</strong></div>
       </div>
       {pending && <Btn variant="ghost" size="sm" onClick={onWithdraw} style={{ marginTop: '10px' }}>Withdraw</Btn>}

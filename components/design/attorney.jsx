@@ -807,13 +807,20 @@ function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) 
     }
   }
 
-  async function withdrawOffer(offerId) {
+  async function withdrawOffer(offerOrId) {
     if (withdrawingId) return
+    const offer = typeof offerOrId === 'object' && offerOrId ? offerOrId : null
+    const offerId = offer?.id || offerOrId
+    const unified = offer?.source_type === 'unified_offer'
     setWithdrawingId(offerId)
     try {
-      const res = await fetch(`/api/attorney/offers/${offerId}/withdraw`, { method: 'POST', credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.error || 'Could not withdraw offer.')
+      let res = await fetch(unified ? `/api/offers/${offerId}/withdraw` : `/api/attorney/offers/${offerId}/withdraw`, { method: 'POST', credentials: 'same-origin' })
+      let payload = await res.json().catch(() => null)
+      if (!res.ok && !unified) {
+        res = await fetch(`/api/offers/${offerId}/withdraw`, { method: 'POST', credentials: 'same-origin' })
+        payload = await res.json().catch(() => null)
+      }
+      if (!res.ok) throw new Error(payload?.error?.message || payload?.error || 'Could not withdraw offer.')
       load(false)
     } catch (e) {
       setError(e.message)
@@ -897,7 +904,7 @@ function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) 
         ) : (
           <div style={{ display: 'grid', gap: '10px' }}>
             {offers.map((o) => (
-              <OfferRow key={o.id} offer={o} onWithdraw={() => withdrawOffer(o.id)} withdrawing={withdrawingId === o.id} />
+              <OfferRow key={o.id} offer={o} onWithdraw={() => withdrawOffer(o)} withdrawing={withdrawingId === o.id} />
             ))}
           </div>
         )}
@@ -1952,7 +1959,7 @@ function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, s
               <OfferMessageBubble
                 key={item.key}
                 offer={item.offer}
-                onWithdraw={() => onWithdrawOffer?.(item.offer.id)}
+                onWithdraw={() => onWithdrawOffer?.(item.offer)}
                 withdrawing={withdrawingOfferId === item.offer.id}
               />
             ) : (

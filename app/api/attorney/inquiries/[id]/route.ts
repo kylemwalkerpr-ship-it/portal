@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { computePlatformFeeCents, getPaymentSettingsForApi } from '@/lib/fiverr'
 
 // Returns a single attorney's view of an inquiry: only this attorney's
 // messages, the client's messages, system events, and this attorney's offers.
@@ -23,7 +24,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   // only THIS attorney's own messages. (Supabase REST .or() with multiple
   // conditions is awkward; client-side filter is simpler and the volume is
   // tiny.)
-  const [{ data: allMessages }, { data: offers }, { data: unifiedOffers }] = await Promise.all([
+  const [{ data: allMessages }, { data: offers }, { data: unifiedOffers }, settings] = await Promise.all([
     ctx.db
       .from('inquiry_messages')
       .select('id, sender_role, sender_profile_id, body, created_at')
@@ -42,6 +43,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .eq('sender_id', ctx.profileId)
       .eq('sender_type', 'attorney')
       .order('created_at', { ascending: false }),
+    getPaymentSettingsForApi(),
   ])
 
   const messages = (allMessages ?? []).filter((m) => {
@@ -54,22 +56,26 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     inquiry,
     messages,
     offers: [
-      ...((unifiedOffers ?? []).map((o) => ({
+      ...((unifiedOffers ?? []).map((o) => {
+        const effectivePrice = Number(o.discounted_price || o.price || 0)
+        const platformFee = computePlatformFeeCents(effectivePrice, 'attorney', settings)
+        return {
         id: o.id,
         source_type: 'unified_offer',
         title: o.title,
         description: o.description,
         original_price: Number(o.price || 0) / 100,
-        price: Number(o.discounted_price || o.price || 0) / 100,
-        platform_fee: 0,
-        platform_fee_percent_snapshot: 0,
+        price: effectivePrice / 100,
+        platform_fee: platformFee / 100,
+        platform_fee_percent_snapshot: settings.attorney_platform_fee_percent,
         currency: o.currency,
         delivery_days: o.delivery_days,
         revision_count: o.revisions,
-        status: o.status === 'pending' ? 'sent' : o.status,
+        status: o.status === 'pending' ? 'sent' : o.status === 'cancelled' ? 'withdrawn' : o.status,
         expires_at: o.expires_at,
         created_at: o.created_at,
-      }))),
+        }
+      })),
       ...((offers ?? []).map((o) => ({ ...o, source_type: 'attorney_offer' }))),
     ],
   })
