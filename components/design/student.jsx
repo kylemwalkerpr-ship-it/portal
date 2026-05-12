@@ -76,6 +76,7 @@ const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 const formatUSD = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
+const normalizeProductType = value => String(value || 'service').toLowerCase() === 'template' ? 'template' : 'service';
 const serviceIcon = category => ({
   'Study Permits': '📋',
   'University Admissions': '🎓',
@@ -1584,7 +1585,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="🏬" label="Marketplace" active={typeof window !== 'undefined' && window.location.pathname === '/marketplace'} onClick={() => goToRoute('/marketplace')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
-        <NavItem icon="🛒" label="Browse Services" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="🛒" label="Services & Templates" active={page === 'services'} onClick={() => setPage('services')} />
         <NavItem icon="⚖️" label="Find an Attorney" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
@@ -1674,7 +1675,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: '4px' }}>Today</div>
         <h2 style={{ fontFamily: C.serif, fontSize: '34px', fontWeight: 500, marginBottom: '6px', letterSpacing: '-0.012em', color: C.text }}>Welcome back{profileData.name ? `, ${profileData.name.split(' ').slice(-2, -1)[0] || profileData.name.split(' ')[0]}` : ''}.</h2>
         <p style={{ color: C.textMuted, fontSize: '14px' }}>
-          {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services and place your first order to get started.'}
+          {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services or templates and place your first order to get started.'}
         </p>
       </div>
       {/* Stats — only shown once there's real activity */}
@@ -1696,7 +1697,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {orders.filter(o => o.status !== 'completed').length === 0 && (
             <Card style={{ padding: '20px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
-              Nothing in progress right now. Browse services or submit an inquiry to start.
+              Nothing in progress right now. Browse services, templates, or submit an inquiry to start.
             </Card>
           )}
           {orders.filter(o => o.status !== 'completed').map(order => (
@@ -1734,7 +1735,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
           {[
             { icon: '⚖️', label: 'Find an attorney', sub: 'Browse the legal panel', action: () => setPage('attorneys') },
-            { icon: '🛒', label: 'Browse services', sub: 'Study-abroad catalogue', action: () => setPage('services') },
+            { icon: '🛒', label: 'Services & templates', sub: 'Catalogue and digital templates', action: () => setPage('services') },
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
             { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
             { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },
@@ -2929,7 +2930,7 @@ function StudentApp({ onLogout, userId, userName }) {
             <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>No documents yet</div>
             <div style={{ fontSize: '13px', color: C.textMuted, lineHeight: 1.6, maxWidth: '380px', margin: '0 auto' }}>
               {orders.length === 0
-                ? 'Place an order from Browse Services to start exchanging files with your consultant.'
+                ? 'Place an order from Services & Templates to start exchanging files with your consultant.'
                 : 'Upload transcripts, IDs, or supporting docs to share them with your consultant.'}
             </div>
           </Card>
@@ -3200,7 +3201,7 @@ function StudentApp({ onLogout, userId, userName }) {
       <Sidebar />
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={{
-          dashboard: 'Dashboard', orders: 'My Orders', services: 'Browse Services',
+          dashboard: 'Dashboard', orders: 'My Orders', services: 'Services & Templates',
           messages: 'Messages', documents: 'Documents', billing: 'Billing', settings: 'Settings',
           'order-detail': 'Order Details',
         }[page] || 'Dashboard'} />
