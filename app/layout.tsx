@@ -18,6 +18,19 @@ export const metadata = {
   alternates: {
     canonical: '/',
   },
+  openGraph: {
+    title: 'YouSafe Portal — Study & Legal Services',
+    description: 'Members portal for YouSafe Consultancy. Student, attorney, consultant, and admin access.',
+    type: 'website',
+    siteName: 'YouSafe Portal',
+    locale: 'en_US',
+    url: 'https://portal.yousafeconsultancy.com',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'YouSafe Portal — Study & Legal Services',
+    description: 'Secure members portal for YouSafe Consultancy.',
+  },
 }
 
 export const viewport: Viewport = {
@@ -34,6 +47,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap"
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'YouSafe Portal',
+              url: 'https://portal.yousafeconsultancy.com',
+            }),
+          }}
         />
       </head>
       <body>
