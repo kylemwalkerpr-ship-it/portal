@@ -13,7 +13,9 @@ values (
     'auto_release_days', 14,
     'allow_admin_force_release', true,
     'platform_name', 'Yousafe Consultancy',
-    'support_email', 'support@yousafeconsultancy.com'
+    'support_email', 'support@yousafeconsultancy.com',
+    'primary_currency', 'usd',
+    'usd_to_cad_rate', 1.37
   )
 )
 on conflict (key) do nothing;

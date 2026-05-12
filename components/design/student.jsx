@@ -86,6 +86,26 @@ const serviceIcon = category => ({
   Credentials: '📜',
   Career: '💼',
 })[category] || '🛒';
+const templateIcon = item => {
+  const text = `${item?.region || ''} ${item?.template_type || ''} ${item?.title || ''}`.toLowerCase();
+  if (text.includes('canada')) return '🍁';
+  if (text.includes('usa') || text.includes('ds-160') || text.includes('f-1')) return '🇺🇸';
+  if (text.includes('bundle')) return '📦';
+  return '📄';
+};
+const TEMPLATE_DISCLAIMER = 'Templates are preparation aids only. Government forms and final applications must be completed through the official government portals. YouSafe Consultancy is not a government agency and does not guarantee visa approval.';
+const templateMatchesFilter = (template, filter) => {
+  if (filter === 'All') return true;
+  const text = `${template?.region || ''} ${template?.template_type || ''} ${template?.title || ''} ${template?.short_description || ''}`.toLowerCase();
+  if (filter === 'USA') return text.includes('usa') || text.includes('us ') || text.includes('f-1') || text.includes('ds-160') || text.includes('opt');
+  if (filter === 'Canada') return text.includes('canada') || text.includes('pgwp') || text.includes('trv');
+  if (filter === 'Bundles') return text.includes('bundle');
+  if (filter === 'Refusal Support') return text.includes('refusal') || text.includes('reapplication');
+  if (filter === 'Visitor Visa') return text.includes('visitor') || text.includes('b-1') || text.includes('b1') || text.includes('trv');
+  if (filter === 'Study Permit') return text.includes('study') || text.includes('f-1') || text.includes('student');
+  if (filter === 'Work Permit') return text.includes('work') || text.includes('opt') || text.includes('pgwp') || text.includes('i-765');
+  return true;
+};
 const deliveryLabel = days => {
   const n = Number(days || 0);
   if (!n) return 'Timeline TBD';
@@ -1948,12 +1968,18 @@ function StudentApp({ onLogout, userId, userName }) {
   // ── SERVICES BROWSE ──
   const ServicesBrowse = React.useMemo(() => function ServicesBrowse() {
     const [catFilter, setCatFilter] = React.useState('All');
+    const [templateFilter, setTemplateFilter] = React.useState('All');
     const [cart, setCart] = React.useState(null);
     const [selectedService, setSelectedService] = React.useState(null);
+    const [selectedTemplate, setSelectedTemplate] = React.useState(null);
     const [showCheckout, setShowCheckout] = React.useState(false);
     const [services, setServices] = React.useState([]);
+    const [templates, setTemplates] = React.useState([]);
     const [servicesLoading, setServicesLoading] = React.useState(true);
+    const [templatesLoading, setTemplatesLoading] = React.useState(true);
     const [servicesError, setServicesError] = React.useState(null);
+    const [templatesError, setTemplatesError] = React.useState(null);
+    const [templateBuyingId, setTemplateBuyingId] = React.useState(null);
     const [primaryCurrency, setPrimaryCurrency] = React.useState('usd');
     const [usdToCadRate, setUsdToCadRate] = React.useState(1.37);
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
@@ -1988,6 +2014,36 @@ function StudentApp({ onLogout, userId, userName }) {
     const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     const filtered = catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter);
+    const templateFilters = ['All', 'USA', 'Canada', 'Bundles', 'Refusal Support', 'Visitor Visa', 'Study Permit', 'Work Permit'];
+    const filteredTemplates = templates.filter(t => templateMatchesFilter(t, templateFilter));
+    const templatePrice = template => Number(template.price_usd ?? template.usd_price ?? template.price ?? 0);
+    const formatTemplateUSD = value => `$${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2 })} USD`;
+    const formatTemplateCAD = value => `approx. $${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD`;
+    const templateCadValue = template => Number(template.price_cad_display || 0) || (templatePrice(template) * usdToCadRate);
+    const openTemplateCheckout = async template => {
+      setTemplateBuyingId(template.id);
+      setPayError(null);
+      try {
+        const directLink = effectiveDisplayCurrency === 'cad'
+          ? (template.stripe_payment_link_cad || template.stripe_payment_link_usd)
+          : template.stripe_payment_link_usd;
+        if (directLink) {
+          window.location.href = directLink;
+          return;
+        }
+        const res = await fetch('/api/checkout/template', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: template.id, currency: effectiveDisplayCurrency }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Template checkout failed');
+        window.location.href = data.url;
+      } catch (e) {
+        setTemplatesError(e.message);
+        setTemplateBuyingId(null);
+      }
+    };
     const openCheckoutForService = service => {
       const details = getServiceDetails(service);
       setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
@@ -2018,6 +2074,22 @@ function StudentApp({ onLogout, userId, userName }) {
         .finally(() => setServicesLoading(false));
     }, [viewerVertical]);
 
+    React.useEffect(() => {
+      setTemplatesLoading(true);
+      fetch('/api/templates')
+        .then(async r => {
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || 'Unable to load templates');
+          setTemplates(d.templates ?? []);
+          if (d.primaryCurrency) setPrimaryCurrency(String(d.primaryCurrency).toLowerCase());
+          const rate = Number(d.rates?.usd_to_cad);
+          if (Number.isFinite(rate) && rate > 0) setUsdToCadRate(rate);
+          setTemplatesError(null);
+        })
+        .catch(e => setTemplatesError(e.message))
+        .finally(() => setTemplatesLoading(false));
+    }, []);
+
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
       if (!showCheckout) return;
@@ -2041,8 +2113,8 @@ function StudentApp({ onLogout, userId, userName }) {
     if (showCheckout && cart) {
       const priceNum = Number(cart.price || 0);
       const amountCents = priceNum * 100;
-      const serviceCurrency = 'usd';
-      const displayPriceNum = effectiveDisplayCurrency === 'cad' ? convertPrice(priceNum, 'usd') : priceNum;
+      const serviceCurrency = String(cart.currency || 'usd').toLowerCase();
+      const displayPriceNum = convertPrice(priceNum, serviceCurrency);
       const canUseWallet = walletBalance !== null && walletBalance >= priceNum;
       const selectedCard = savedCards.find(card => card.id === selectedCardId);
       const canUseSavedCard = Boolean(selectedCardId);
@@ -2143,9 +2215,9 @@ function StudentApp({ onLogout, userId, userName }) {
                   <span style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, marginLeft: '4px' }}>{effectiveDisplayCurrency.toUpperCase()}</span>
                 </div>
                 <div style={{ fontSize: '11px', color: C.textDim, marginTop: '2px' }}>
-                  {effectiveDisplayCurrency === 'cad'
-                    ? `≈ ${formatMoney(priceNum, 'usd')} · charged in USD`
-                    : 'charged in USD'}
+                  {serviceCurrency !== effectiveDisplayCurrency
+                    ? `≈ ${formatMoney(priceNum, serviceCurrency)} · charged in ${serviceCurrency.toUpperCase()}`
+                    : `charged in ${serviceCurrency.toUpperCase()}`}
                 </div>
               </div>
             </div>
@@ -2422,10 +2494,9 @@ function StudentApp({ onLogout, userId, userName }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto', gap: '12px' }}>
                 <div style={{ minWidth: 0 }}>
                   {(() => {
-                    const usdValue = Number(s.price || 0);
-                    const displayed = effectiveDisplayCurrency === 'cad'
-                      ? convertPrice(s.price, 'usd')
-                      : usdValue;
+                    const serviceCurrency = String(s.currency || 'usd').toLowerCase();
+                    const nativeValue = Number(s.price || 0);
+                    const displayed = convertPrice(nativeValue, serviceCurrency);
                     return (
                       <>
                         <div style={{ fontSize: '20px', fontWeight: 800, color: C.cyan, lineHeight: 1.05 }}>
@@ -2435,9 +2506,9 @@ function StudentApp({ onLogout, userId, userName }) {
                           </span>
                         </div>
                         <div style={{ fontSize: '11px', color: C.textDim, marginTop: '3px' }}>
-                          {effectiveDisplayCurrency === 'cad'
-                            ? `≈ ${formatMoney(usdValue, 'usd')} · charged in USD`
-                            : 'one-time package · charged in USD'}
+                          {effectiveDisplayCurrency !== serviceCurrency
+                            ? `≈ ${formatMoney(nativeValue, serviceCurrency)} · charged in ${serviceCurrency.toUpperCase()}`
+                            : `one-time package · charged in ${serviceCurrency.toUpperCase()}`}
                         </div>
                       </>
                     );
@@ -2448,9 +2519,81 @@ function StudentApp({ onLogout, userId, userName }) {
             </Card>
           )})}
         </div>
+        <div style={{ marginTop: '18px', display: 'grid', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div>
+              <div style={sectionEyebrow}>Templates</div>
+              <h2 style={{ fontFamily: C.serif, fontSize: '30px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Immigration Templates</h2>
+              <p style={{ color: C.textMuted, fontSize: '13px', margin: 0, maxWidth: '680px', lineHeight: 1.55 }}>
+                Instant-access digital preparation templates for USA and Canada applications. Checkout is processed in USD. CAD pricing is shown as an estimate.
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {templateFilters.map(c => (
+              <button key={c} onClick={() => setTemplateFilter(c)} style={{
+                padding: '6px 14px', borderRadius: '20px', border: `1px solid ${templateFilter === c ? C.cyan : C.border}`,
+                background: templateFilter === c ? `${C.cyan}18` : C.surface2,
+                color: templateFilter === c ? C.cyan : C.textMuted,
+                fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: templateFilter === c ? 700 : 500,
+              }}>{c}</button>
+            ))}
+          </div>
+          {templatesError && <div style={{ color: C.red, fontSize: '14px', padding: '12px 0' }}>{templatesError}</div>}
+          {templatesLoading && <div style={{ color: C.textMuted, fontSize: '14px', padding: '12px 0' }}>Loading templates…</div>}
+          {!templatesLoading && !templatesError && filteredTemplates.length === 0 && (
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '12px 0' }}>No active templates are available yet.</div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {filteredTemplates.map(template => {
+              const usd = templatePrice(template);
+              const cad = templateCadValue(template);
+              return (
+                <Card key={template.id} onClick={() => setSelectedTemplate(template)} style={{ display: 'flex', flexDirection: 'column', gap: '13px', minHeight: '284px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '26px' }}>{templateIcon(template)}</span>
+                      <Badge color="purple">Digital Template</Badge>
+                    </div>
+                    {(template.badge || template.region) && <Badge color="gray">{template.badge || template.region}</Badge>}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: C.serif, fontWeight: 600, fontSize: '20px', lineHeight: 1.15, letterSpacing: '-0.006em', marginBottom: '8px', color: C.text }}>{template.title}</div>
+                    <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.55 }}>{template.short_description || 'Instant-access digital preparation template. Designed to help you organize your immigration documents before submitting through official government channels.'}</div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: C.textDim, lineHeight: 1.45 }}>
+                    {template.region || 'General'} · {template.template_type || 'Immigration'} · Downloadable preparation aid
+                  </div>
+                  <div style={{ border: `1px solid rgba(217,119,6,0.20)`, background: 'rgba(217,119,6,0.05)', borderRadius: '10px', padding: '10px', fontSize: '11px', color: C.textMuted, lineHeight: 1.45 }}>
+                    {TEMPLATE_DISCLAIMER}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '12px', marginTop: 'auto' }}>
+                    <div>
+                      <div style={{ fontSize: '20px', fontWeight: 900, color: C.cyan, lineHeight: 1.05 }}>
+                        {effectiveDisplayCurrency === 'cad' ? formatTemplateCAD(cad) : formatTemplateUSD(usd)}
+                      </div>
+                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px' }}>
+                        {effectiveDisplayCurrency === 'cad'
+                          ? `${formatTemplateUSD(usd)} · checkout in USD`
+                          : `${formatTemplateCAD(cad)} display estimate`}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setSelectedTemplate(template); }}>View Details</Btn>
+                      <Btn variant="primary" size="sm" disabled={templateBuyingId === template.id} onClick={e => { e.stopPropagation(); openTemplateCheckout(template); }}>
+                        {templateBuyingId === template.id ? 'Opening…' : 'Buy Template'}
+                      </Btn>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
         {selectedService && (() => {
           const details = getServiceDetails(selectedService);
-          const displayed = effectiveDisplayCurrency === 'cad' ? convertPrice(selectedService.price, 'usd') : Number(selectedService.price || 0);
+          const serviceCurrency = String(selectedService.currency || 'usd').toLowerCase();
+          const displayed = convertPrice(selectedService.price, serviceCurrency);
           return (
             <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -2529,9 +2672,9 @@ function StudentApp({ onLogout, userId, userName }) {
                     <div>
                       <div style={{ color: C.textMuted, fontSize: '12px', fontWeight: 700 }}>Package price ({effectiveDisplayCurrency.toUpperCase()})</div>
                       <div style={{ color: C.text, fontSize: '13px' }}>
-                        Escrow protected · {effectiveDisplayCurrency === 'cad'
-                          ? `≈ ${formatMoney(Number(selectedService.price || 0), 'usd')} charged in USD`
-                          : 'charged in USD'}
+                        Escrow protected · {effectiveDisplayCurrency !== serviceCurrency
+                          ? `≈ ${formatMoney(Number(selectedService.price || 0), serviceCurrency)} charged in ${serviceCurrency.toUpperCase()}`
+                          : `charged in ${serviceCurrency.toUpperCase()}`}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2543,6 +2686,92 @@ function StudentApp({ onLogout, userId, userName }) {
                   </div>
                   <Btn variant="primary" size="lg" fullWidth onClick={() => openCheckoutForService(selectedService)}>
                     Buy now
+                  </Btn>
+                </div>
+              </aside>
+            </div>
+          );
+        })()}
+        {selectedTemplate && (() => {
+          const usd = templatePrice(selectedTemplate);
+          const cad = templateCadValue(selectedTemplate);
+          return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 90, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                aria-label="Close template details"
+                onClick={() => setSelectedTemplate(null)}
+                style={{ flex: 1, border: 'none', background: 'rgba(31,41,55,0.28)', cursor: 'pointer' }}
+              />
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${selectedTemplate.title} template details`}
+                style={{
+                  width: 'min(460px, 100vw)',
+                  height: '100vh',
+                  background: C.surface,
+                  boxShadow: '-24px 0 60px rgba(15,18,32,0.18)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderLeft: `1px solid ${C.border}`,
+                }}
+              >
+                <div style={{ padding: '22px 24px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flex: '0 0 auto' }}>
+                    {templateIcon(selectedTemplate)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <Badge color="purple">Digital Template</Badge>
+                      {(selectedTemplate.badge || selectedTemplate.region) && <Badge color="gray">{selectedTemplate.badge || selectedTemplate.region}</Badge>}
+                    </div>
+                    <h3 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 600, color: C.text, letterSpacing: '-0.012em', lineHeight: 1.08, margin: 0 }}>{selectedTemplate.title}</h3>
+                    <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '8px' }}>{selectedTemplate.template_type || 'Immigration preparation template'}</div>
+                  </div>
+                  <button type="button" onClick={() => setSelectedTemplate(null)} style={{ border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, borderRadius: '999px', width: '34px', height: '34px', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }} aria-label="Close">
+                    ×
+                  </button>
+                </div>
+                <div style={{ padding: '22px 24px 120px', overflowY: 'auto', flex: 1 }}>
+                  <div style={{ color: C.text, fontSize: '14px', lineHeight: 1.7, marginBottom: '18px' }}>
+                    {selectedTemplate.full_description || selectedTemplate.short_description || 'Instant-access digital preparation template. Designed to help you organize your immigration documents before submitting through official government channels.'}
+                  </div>
+                  <div style={{ display: 'grid', gap: '12px', marginBottom: '18px' }}>
+                    {[
+                      ['Delivery', selectedTemplate.delivery_type || 'Digital Template'],
+                      ['Region', selectedTemplate.region || 'General'],
+                      ['Template type', selectedTemplate.template_type || 'Immigration'],
+                      ['File reference', selectedTemplate.file_path || 'Available after payment setup'],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', borderBottom: `1px solid ${C.border}`, paddingBottom: '9px', fontSize: '13px' }}>
+                        <span style={{ color: C.textMuted }}>{k}</span>
+                        <span style={{ color: C.text, fontWeight: 700, textAlign: 'right' }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <section style={{ border: `1px solid rgba(217,119,6,0.22)`, background: 'rgba(217,119,6,0.06)', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ fontWeight: 800, color: C.orange, fontSize: '13px', marginBottom: '5px' }}>Important disclaimer</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.55 }}>{TEMPLATE_DISCLAIMER}</div>
+                  </section>
+                </div>
+                <div style={{ position: 'sticky', bottom: 0, padding: '16px 24px 20px', borderTop: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(10px)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', fontWeight: 700 }}>Template price</div>
+                      <div style={{ color: C.text, fontSize: '13px' }}>Checkout is processed in USD.</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '22px', fontWeight: 900, color: C.cyan }}>
+                        {effectiveDisplayCurrency === 'cad' ? formatTemplateCAD(cad) : formatTemplateUSD(usd)}
+                      </div>
+                      <div style={{ color: C.textDim, fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>
+                        {effectiveDisplayCurrency === 'cad' ? formatTemplateUSD(usd) : formatTemplateCAD(cad)}
+                      </div>
+                    </div>
+                  </div>
+                  <Btn variant="primary" size="lg" fullWidth disabled={templateBuyingId === selectedTemplate.id} onClick={() => openTemplateCheckout(selectedTemplate)}>
+                    {templateBuyingId === selectedTemplate.id ? 'Opening checkout…' : 'Buy Template'}
                   </Btn>
                 </div>
               </aside>

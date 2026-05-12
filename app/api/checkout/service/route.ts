@@ -21,12 +21,24 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Student checkout requires an active student account' }, { status: 403 })
   }
 
-  const { data: service, error } = await db
+  let { data: service, error } = await db
     .from('services')
     .select('*')
     .eq('id', serviceId)
     .eq('is_active', true)
+    .or('product_type.is.null,product_type.eq.service')
     .single()
+
+  if (error && /product_type|schema cache|column/i.test(error.message)) {
+    const legacy = await db
+      .from('services')
+      .select('*')
+      .eq('id', serviceId)
+      .eq('is_active', true)
+      .single()
+    service = legacy.data
+    error = legacy.error
+  }
 
   if (error || !service) return Response.json({ error: 'Service not found' }, { status: 404 })
 
@@ -34,6 +46,7 @@ export async function POST(req: Request) {
     return Response.json({ url: service.stripe_payment_link_url })
   }
 
+  const checkoutCurrency = String(service.currency || 'usd').toLowerCase()
   const amount = dollarsToCents(service.price)
   if (amount < 100) return Response.json({ error: 'Service price is invalid' }, { status: 400 })
 
@@ -48,7 +61,7 @@ export async function POST(req: Request) {
       {
         quantity: 1,
         price_data: {
-          currency: 'usd',
+          currency: checkoutCurrency,
           unit_amount: amount,
           product_data: {
             name: service.title ?? 'YouSafe service',

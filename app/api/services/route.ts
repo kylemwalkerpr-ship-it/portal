@@ -14,6 +14,7 @@ export async function GET(req: Request) {
     .from('services')
     .select('*')
     .eq('is_active', true)
+    .or('product_type.is.null,product_type.eq.service')
     .order('category', { ascending: true })
     .order('title', { ascending: true })
 
@@ -27,6 +28,25 @@ export async function GET(req: Request) {
   ])
 
   if (error) {
+    if (/product_type|schema cache|column/i.test(error.message)) {
+      const { data: legacyServices, error: legacyErr } = await db
+        .from('services')
+        .select('*')
+        .eq('is_active', true)
+        .order('category', { ascending: true })
+        .order('title', { ascending: true })
+      if (legacyErr) return Response.json({ error: legacyErr.message }, { status: 500 })
+      return Response.json({
+        services: (legacyServices ?? []).map((service) => ({
+          ...service,
+          product_type: 'service',
+          currency: service.currency || 'usd',
+        })),
+        primaryCurrency: settings.primary_currency,
+        rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+        vertical,
+      })
+    }
     // Older databases may not have the vertical column yet — retry without
     // the filter so the storefront degrades gracefully until the migration
     // runs.
@@ -39,7 +59,11 @@ export async function GET(req: Request) {
         .order('title', { ascending: true })
       if (legacyErr) return Response.json({ error: legacyErr.message }, { status: 500 })
       return Response.json({
-        services: (legacyServices ?? []).map((service) => ({ ...service, currency: 'usd' })),
+        services: (legacyServices ?? []).map((service) => ({
+          ...service,
+          product_type: service.product_type || 'service',
+          currency: service.currency || 'usd',
+        })),
         primaryCurrency: settings.primary_currency,
         rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
         vertical,
@@ -49,7 +73,11 @@ export async function GET(req: Request) {
   }
 
   return Response.json({
-    services: (services ?? []).map((service) => ({ ...service, currency: 'usd' })),
+    services: (services ?? []).map((service) => ({
+      ...service,
+      product_type: 'service',
+      currency: service.currency || 'usd',
+    })),
     primaryCurrency: settings.primary_currency,
     rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
     vertical,
