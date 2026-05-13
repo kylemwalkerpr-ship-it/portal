@@ -2,15 +2,15 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
-import { C, Card, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { C, Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
 import {
   SellerProfileCard,
   PricingTiers,
-  ReviewsSection,
   FAQSection,
   SimilarGigs,
   OrderCTA,
 } from './GigDetailComponents'
+import { ReviewsSection } from './ReviewComponents'
 
 const pageShell = {
   minHeight: '100vh',

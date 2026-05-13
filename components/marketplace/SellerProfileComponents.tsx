@@ -314,6 +314,10 @@ export function SellerGigs({ gigs, loading }: { gigs?: SellerGig[]; loading?: bo
 
 import { ReviewsSection as NewReviewsSection } from './ReviewComponents'
 
+export function SellerReviews({ reviews }: { reviews?: any[] }) {
+  return <NewReviewsSection reviews={reviews || []} />
+}
+
 // ── Badges ─────────────────────────────────────────────────────────────────────
 
 function SellerLevelBadge({ level }: { level: string }) {

@@ -525,3 +525,53 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', style 
     </div>
   )
 }
+
+export function LoadingState({ message = 'Loading...' }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px' }}>
+      <div style={{ width: '40px', height: '40px', border: `3px solid ${C.surface3}`, borderTopColor: C.cyan, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <span style={{ color: C.textMuted, fontSize: '14px' }}>{message}</span>
+    </div>
+  )
+}
+
+export function ErrorState({ message, onRetry }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px', textAlign: 'center' }}>
+      <span style={{ fontSize: '48px' }}>⚠️</span>
+      <div>
+        <h3 style={{ fontSize: '16px', fontWeight: 600, color: C.text, margin: '0 0 8px' }}>Something went wrong</h3>
+        <p style={{ fontSize: '14px', color: C.textMuted, margin: 0 }}>{message}</p>
+      </div>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          style={{
+            padding: '10px 20px',
+            background: C.cyan,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '10px',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Try Again
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function EmptyState({ message, submessage }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px', textAlign: 'center' }}>
+      <span style={{ fontSize: '48px', opacity: 0.5 }}>📭</span>
+      <div>
+        <h3 style={{ fontSize: '16px', fontWeight: 600, color: C.text, margin: '0 0 8px' }}>{message}</h3>
+        {submessage && <p style={{ fontSize: '14px', color: C.textMuted, margin: 0 }}>{submessage}</p>}
+      </div>
+    </div>
+  )
+}

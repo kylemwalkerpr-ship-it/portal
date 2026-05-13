@@ -4,8 +4,9 @@ import { auth } from '@clerk/nextjs/server'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const db = createSupabaseAdminClient()
 
   const { data: review, error } = await db
@@ -26,7 +27,7 @@ export async function GET(
         provider_type
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !review) {
@@ -38,13 +39,14 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth()
   if (!userId) {
     return fail('Authentication required', 401)
   }
 
+  const { id } = await params
   const body = await request.json()
   const { rating, title, comment } = body
 
@@ -65,7 +67,7 @@ export async function PUT(
   const { data: review } = await db
     .from('gig_reviews')
     .select('id, client_id, gig_id, status')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!review) {
@@ -101,7 +103,7 @@ export async function PUT(
   const { data: updatedReview, error } = await db
     .from('gig_reviews')
     .update(updateData)
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 
@@ -117,13 +119,14 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth()
   if (!userId) {
     return fail('Authentication required', 401)
   }
 
+  const { id } = await params
   const db = createSupabaseAdminClient()
 
   // Get user's profile
@@ -141,7 +144,7 @@ export async function DELETE(
   const { data: review } = await db
     .from('gig_reviews')
     .select('id, client_id, gig_id')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!review) {
@@ -157,7 +160,7 @@ export async function DELETE(
   const { error } = await db
     .from('gig_reviews')
     .delete()
-    .eq('id', params.id)
+    .eq('id', id)
 
   if (error) {
     return fail('Failed to delete review', 500)

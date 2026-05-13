@@ -4,13 +4,14 @@ import { auth } from '@clerk/nextjs/server'
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth()
   if (!userId) {
     return fail('Authentication required', 401)
   }
 
+  const { id } = await params
   const body = await request.json()
   const { reply } = body
 
@@ -48,7 +49,7 @@ export async function POST(
         provider_type
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!review) {
@@ -69,7 +70,7 @@ export async function POST(
       seller_reply_at: new Date().toISOString(),
       seller_reply_by: profile.id,
     })
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 
@@ -82,13 +83,14 @@ export async function POST(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth()
   if (!userId) {
     return fail('Authentication required', 401)
   }
 
+  const { id } = await params
   const db = createSupabaseAdminClient()
 
   // Get user's profile
@@ -114,7 +116,7 @@ export async function DELETE(
         provider_type
       )
     `)
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!review) {
@@ -135,7 +137,7 @@ export async function DELETE(
       seller_reply_at: null,
       seller_reply_by: null,
     })
-    .eq('id', params.id)
+    .eq('id', id)
     .select()
     .single()
 

@@ -134,7 +134,7 @@ const tierMeta = {
   display: 'flex',
   gap: '16px',
   fontSize: '13px',
-  color: C.textMuted',
+  color: C.textMuted,
   marginBottom: '12px',
 }
 

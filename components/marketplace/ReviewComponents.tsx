@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Badge, Card, Input, Textarea, Button, LoadingState } from '../shared'
+import { C, Badge, Card, Input, Textarea, Btn, LoadingState } from '../design/shared'
 
 const containerStyle = {
   display: 'flex',
@@ -567,15 +567,15 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
                 style={replyTextarea}
               />
               <div style={replyButtons}>
-                <Button
+                <Btn
                   onClick={handleSubmitReply}
                   disabled={submitting || !replyText.trim()}
                   variant="primary"
                   size="sm"
                 >
                   {submitting ? 'Sending...' : 'Send Reply'}
-                </Button>
-                <Button
+                </Btn>
+                <Btn
                   onClick={() => {
                     setShowReplyForm(false)
                     setReplyText('')
@@ -584,7 +584,7 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
                   size="sm"
                 >
                   Cancel
-                </Button>
+                </Btn>
               </div>
             </div>
           ) : (
