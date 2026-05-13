@@ -1,23 +1,24 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { C, Card, Btn, Badge, Avatar, Input, Textarea } from '../design/shared'
 
-const pageShell = {
+const pageShell: CSSProperties = {
   minHeight: '100vh',
   background: C.bg,
   color: C.text,
   fontFamily: C.sans,
 }
 
-const inner = {
+const inner: CSSProperties = {
   width: 'min(1280px, calc(100vw - 32px))',
   margin: '0 auto',
   padding: '32px 0 64px',
 }
 
-const toolbar = {
+const toolbar: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -25,7 +26,7 @@ const toolbar = {
   marginBottom: '24px',
 }
 
-const titleStyle = {
+const titleStyle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '36px',
   fontWeight: 500,
@@ -34,19 +35,19 @@ const titleStyle = {
   color: C.text,
 }
 
-const contentLayout = {
+const contentLayout: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 380px',
   gap: '32px',
 }
 
-const mainContent = {
+const mainContent: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '24px',
 }
 
-const sidebar = {
+const sidebar: CSSProperties = {
   position: 'sticky',
   top: '24px',
   display: 'flex',
@@ -54,7 +55,7 @@ const sidebar = {
   gap: '16px',
 }
 
-const gigImage = {
+const gigImage: CSSProperties = {
   width: '100%',
   height: '400px',
   objectFit: 'cover',
@@ -62,14 +63,14 @@ const gigImage = {
   background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
 }
 
-const galleryGrid = {
+const galleryGrid: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
   gap: '12px',
   marginTop: '16px',
 }
 
-const galleryThumbnail = {
+const galleryThumbnail: CSSProperties = {
   width: '100%',
   aspectRatio: '1',
   objectFit: 'cover',
@@ -79,7 +80,7 @@ const galleryThumbnail = {
   transition: 'border-color 200ms',
 }
 
-const sectionTitle = {
+const sectionTitle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '24px',
   fontWeight: 500,
@@ -87,7 +88,7 @@ const sectionTitle = {
   color: C.text,
 }
 
-const sectionSubtitle = {
+const sectionSubtitle: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   color: C.textMuted,
@@ -96,7 +97,7 @@ const sectionSubtitle = {
   margin: '0 0 12px',
 }
 
-const tierCard = {
+const tierCard: CSSProperties = {
   border: `1px solid ${C.border}`,
   borderRadius: '16px',
   padding: '20px',
@@ -105,32 +106,32 @@ const tierCard = {
   background: C.surface,
 }
 
-const tierCardSelected = {
+const tierCardSelected: CSSProperties = {
   borderColor: C.cyan,
   background: `${C.cyan}08`,
 }
 
-const tierHeader = {
+const tierHeader: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: '12px',
 }
 
-const tierName = {
+const tierName: CSSProperties = {
   fontSize: '18px',
   fontWeight: 700,
   margin: 0,
   color: C.text,
 }
 
-const tierPrice = {
+const tierPrice: CSSProperties = {
   fontSize: '24px',
   fontWeight: 900,
   color: C.text,
 }
 
-const tierMeta = {
+const tierMeta: CSSProperties = {
   display: 'flex',
   gap: '16px',
   fontSize: '13px',
@@ -138,13 +139,13 @@ const tierMeta = {
   marginBottom: '12px',
 }
 
-const tierFeatures = {
+const tierFeatures: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '8px',
 }
 
-const tierFeature = {
+const tierFeature: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
@@ -152,7 +153,7 @@ const tierFeature = {
   color: C.text,
 }
 
-const sellerCard = {
+const sellerCard: CSSProperties = {
   display: 'flex',
   gap: '16px',
   padding: '20px',
@@ -161,7 +162,7 @@ const sellerCard = {
   borderRadius: '16px',
 }
 
-const sellerAvatar = {
+const sellerAvatar: CSSProperties = {
   width: '64px',
   height: '64px',
   borderRadius: '50%',
@@ -175,73 +176,73 @@ const sellerAvatar = {
   flexShrink: 0,
 }
 
-const sellerInfo = {
+const sellerInfo: CSSProperties = {
   flex: 1,
 }
 
-const sellerName = {
+const sellerName: CSSProperties = {
   fontSize: '18px',
   fontWeight: 700,
   margin: '0 0 4px',
   color: C.text,
 }
 
-const sellerRole = {
+const sellerRole: CSSProperties = {
   fontSize: '13px',
   color: C.textMuted,
   margin: '0 0 8px',
 }
 
-const sellerStats = {
+const sellerStats: CSSProperties = {
   display: 'flex',
   gap: '16px',
   fontSize: '13px',
 }
 
-const sellerStat = {
+const sellerStat: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
 }
 
-const sellerStatLabel = {
+const sellerStatLabel: CSSProperties = {
   color: C.textMuted,
   fontSize: '11px',
   margin: '0 0 2px',
 }
 
-const sellerStatValue = {
+const sellerStatValue: CSSProperties = {
   fontWeight: 700,
   color: C.text,
   margin: 0,
 }
 
-const reviewCard = {
+const reviewCard: CSSProperties = {
   padding: '16px',
   background: C.surface2,
   borderRadius: '12px',
   marginBottom: '12px',
 }
 
-const reviewHeader = {
+const reviewHeader: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: '8px',
 }
 
-const reviewAuthor = {
+const reviewAuthor: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   margin: 0,
   color: C.text,
 }
 
-const reviewDate = {
+const reviewDate: CSSProperties = {
   fontSize: '12px',
   color: C.textMuted,
 }
 
-const reviewRating = {
+const reviewRating: CSSProperties = {
   display: 'flex',
   gap: '2px',
   fontSize: '14px',
@@ -249,33 +250,33 @@ const reviewRating = {
   marginBottom: '8px',
 }
 
-const reviewBody = {
+const reviewBody: CSSProperties = {
   fontSize: '14px',
   lineHeight: 1.6,
   color: C.text,
   margin: 0,
 }
 
-const faqItem = {
+const faqItem: CSSProperties = {
   borderBottom: `1px solid ${C.border}`,
   padding: '16px 0',
 }
 
-const faqQuestion = {
+const faqQuestion: CSSProperties = {
   fontSize: '15px',
   fontWeight: 700,
   margin: '0 0 8px',
   color: C.text,
 }
 
-const faqAnswer = {
+const faqAnswer: CSSProperties = {
   fontSize: '14px',
   lineHeight: 1.6,
   color: C.textMuted,
   margin: 0,
 }
 
-const similarGigCard = {
+const similarGigCard: CSSProperties = {
   background: C.surface,
   border: `1px solid ${C.border}`,
   borderRadius: '12px',
@@ -285,17 +286,17 @@ const similarGigCard = {
   display: 'block',
 }
 
-const similarGigImage = {
+const similarGigImage: CSSProperties = {
   width: '100%',
   height: '120px',
   objectFit: 'cover',
 }
 
-const similarGigContent = {
+const similarGigContent: CSSProperties = {
   padding: '12px',
 }
 
-const similarGigTitle = {
+const similarGigTitle: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   margin: '0 0 8px',
@@ -306,13 +307,13 @@ const similarGigTitle = {
   overflow: 'hidden',
 }
 
-const similarGigPrice = {
+const similarGigPrice: CSSProperties = {
   fontSize: '16px',
   fontWeight: 900,
   color: C.text,
 }
 
-const trustBadge = {
+const trustBadge: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
@@ -325,7 +326,7 @@ const trustBadge = {
   fontWeight: 600,
 }
 
-const availabilityIndicator = {
+const availabilityIndicator: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '6px',
@@ -333,17 +334,17 @@ const availabilityIndicator = {
   color: C.textMuted,
 }
 
-const availabilityDot = {
+const availabilityDot: CSSProperties = {
   width: '8px',
   height: '8px',
   borderRadius: '50%',
 }
 
-const availabilityDotOnline = {
+const availabilityDotOnline: CSSProperties = {
   background: C.green,
 }
 
-const availabilityDotOffline = {
+const availabilityDotOffline: CSSProperties = {
   background: C.textDim,
 }
 

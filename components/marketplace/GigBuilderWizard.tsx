@@ -1,19 +1,20 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import { C, Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
 import { CATEGORIES, getCategoryById } from '@/lib/categories'
 
-const wizardContainer = {
+const wizardContainer: CSSProperties = {
   maxWidth: '800px',
   margin: '0 auto',
 }
 
-const headerStyle = {
+const headerStyle: CSSProperties = {
   marginBottom: '32px',
 }
 
-const titleStyle = {
+const titleStyle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '32px',
   fontWeight: 500,
@@ -21,23 +22,23 @@ const titleStyle = {
   color: C.text,
 }
 
-const subtitleStyle = {
+const subtitleStyle: CSSProperties = {
   fontSize: '15px',
   color: C.textMuted,
   margin: 0,
 }
 
-const progressContainer = {
+const progressContainer: CSSProperties = {
   marginBottom: '32px',
 }
 
-const stepIndicator = {
+const stepIndicator: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   marginBottom: '16px',
 }
 
-const stepDot = {
+const stepDot: CSSProperties = {
   width: '32px',
   height: '32px',
   borderRadius: '50%',
@@ -51,35 +52,35 @@ const stepDot = {
   border: `2px solid ${C.border}`,
 }
 
-const stepDotActive = {
+const stepDotActive: CSSProperties = {
   background: C.cyan,
   color: '#fff',
   borderColor: C.cyan,
 }
 
-const stepDotCompleted = {
+const stepDotCompleted: CSSProperties = {
   background: C.green,
   color: '#fff',
   borderColor: C.green,
 }
 
-const stepLabel = {
+const stepLabel: CSSProperties = {
   fontSize: '12px',
   color: C.textMuted,
   textAlign: 'center',
   marginTop: '8px',
 }
 
-const stepLabelActive = {
+const stepLabelActive: CSSProperties = {
   color: C.text,
   fontWeight: 600,
 }
 
-const formSection = {
+const formSection: CSSProperties = {
   marginBottom: '24px',
 }
 
-const formLabel = {
+const formLabel: CSSProperties = {
   display: 'block',
   fontSize: '14px',
   fontWeight: 600,
@@ -87,19 +88,19 @@ const formLabel = {
   marginBottom: '8px',
 }
 
-const formHint = {
+const formHint: CSSProperties = {
   fontSize: '12px',
   color: C.textMuted,
   marginTop: '4px',
 }
 
-const formError = {
+const formError: CSSProperties = {
   fontSize: '12px',
   color: C.red,
   marginTop: '4px',
 }
 
-const inputStyle = {
+const inputStyle: CSSProperties = {
   width: '100%',
   padding: '12px 16px',
   border: `1px solid ${C.border2}`,
@@ -111,18 +112,18 @@ const inputStyle = {
   boxSizing: 'border-box',
 }
 
-const textareaStyle = {
+const textareaStyle: CSSProperties = {
   ...inputStyle,
   minHeight: '120px',
   resize: 'vertical',
 }
 
-const selectStyle = {
+const selectStyle: CSSProperties = {
   ...inputStyle,
   cursor: 'pointer',
 }
 
-const buttonContainer = {
+const buttonContainer: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   marginTop: '32px',

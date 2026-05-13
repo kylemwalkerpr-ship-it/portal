@@ -1,5 +1,5 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -78,7 +78,7 @@ function money(cents: number, currency = 'usd') {
   }).format(Number(cents || 0) / 100)
 }
 
-async function requestJson(url: string, options = {}) {
+async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     credentials: 'same-origin',
     ...options,

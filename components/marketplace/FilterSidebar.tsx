@@ -1,9 +1,10 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import { C, Card, Input, Select, Badge, Btn } from '../design/shared'
 
-const sidebarStyle = {
+const sidebarStyle: CSSProperties = {
   width: '280px',
   flexShrink: 0,
   display: 'flex',
@@ -11,12 +12,12 @@ const sidebarStyle = {
   gap: '20px',
 }
 
-const sectionStyle = {
+const sectionStyle: CSSProperties = {
   borderBottom: `1px solid ${C.border}`,
   paddingBottom: '20px',
 }
 
-const sectionTitle = {
+const sectionTitle: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   color: C.text,
@@ -25,7 +26,7 @@ const sectionTitle = {
   letterSpacing: '0.05em',
 }
 
-const checkboxStyle = {
+const checkboxStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
@@ -35,20 +36,20 @@ const checkboxStyle = {
   color: C.text,
 }
 
-const checkboxInput = {
+const checkboxInput: CSSProperties = {
   width: '18px',
   height: '18px',
   cursor: 'pointer',
   accentColor: C.cyan,
 }
 
-const rangeStyle = {
+const rangeStyle: CSSProperties = {
   display: 'flex',
   gap: '8px',
   alignItems: 'center',
 }
 
-const rangeInput = {
+const rangeInput: CSSProperties = {
   flex: 1,
   padding: '8px 12px',
   border: `1px solid ${C.border2}`,
@@ -59,7 +60,7 @@ const rangeInput = {
   fontFamily: 'inherit',
 }
 
-const clearButton = {
+const clearButton: CSSProperties = {
   fontSize: '13px',
   color: C.cyan,
   background: 'none',

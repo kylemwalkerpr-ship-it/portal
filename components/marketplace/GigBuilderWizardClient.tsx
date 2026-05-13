@@ -1,11 +1,11 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { GigBuilderWizard } from './GigBuilderWizard'
 import { C, LoadingState, ErrorState } from '../design/fiverr-workbench'
 
-async function requestJson(url: string, options = {}) {
+async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     credentials: 'same-origin',
     ...options,

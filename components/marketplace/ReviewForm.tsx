@@ -1,5 +1,5 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
 import { C, Card, Button, Input, Textarea, Badge, LoadingState } from '../shared'
 

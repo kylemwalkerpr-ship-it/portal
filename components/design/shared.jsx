@@ -34,7 +34,7 @@ export const C = {
   sans: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
 }
 
-export function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, style, type = 'button', fullWidth, ...props }) {
+export function Btn({ children, variant = 'primary', size = 'md', onClick = undefined, disabled = false, style = {}, type = 'button', fullWidth = false, ...props }) {
   const [hovered, setHovered] = React.useState(false)
   const base = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -78,7 +78,7 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick, disab
   )
 }
 
-export function Badge({ children, color = 'cyan', style }) {
+export function Badge({ children, color = 'cyan', style = {}, ...props }) {
   const colors = {
     cyan: { bg: 'rgba(60,59,110,0.10)', text: C.cyan, border: 'rgba(60,59,110,0.25)' },
     green: { bg: 'rgba(5,150,105,0.10)', text: C.green, border: 'rgba(5,150,105,0.25)' },
@@ -89,16 +89,21 @@ export function Badge({ children, color = 'cyan', style }) {
   }
   const c = colors[color] || colors.cyan
   return (
-    <span style={{
+    <span
+      {...props}
+      style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
       padding: '2px 9px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
       letterSpacing: '0.01em',
       background: c.bg, color: c.text, border: `1px solid ${c.border}`, ...style
-    }}>{children}</span>
+      }}
+    >
+      {children}
+    </span>
   )
 }
 
-export function Card({ children, style, onClick, hover = false, className }) {
+export function Card({ children, style = {}, onClick = undefined, hover = false, className = undefined }) {
   const [hovered, setHovered] = React.useState(false)
   const isHover = hover || Boolean(onClick)
   return (
@@ -140,6 +145,37 @@ export function Input({ label, type = 'text', value, onChange, placeholder, icon
             outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', ...style
           }} />
       </div>
+      {hint && !error && <span style={{ fontSize: '12px', color: C.textDim }}>{hint}</span>}
+      {error && <span style={{ fontSize: '12px', color: C.red }}>{error}</span>}
+    </div>
+  )
+}
+
+export function Textarea({ label, value, onChange, placeholder, hint, error, style = {}, rows = 4, ...props }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {label && <label style={{ fontSize: '13px', fontWeight: 600, color: C.textMuted }}>{label}</label>}
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        {...props}
+        style={{
+          width: '100%',
+          padding: '11px 14px',
+          background: C.surface2,
+          border: `1px solid ${error ? C.red : C.border2}`,
+          borderRadius: '10px',
+          color: C.text,
+          fontSize: '14px',
+          outline: 'none',
+          fontFamily: 'inherit',
+          boxSizing: 'border-box',
+          resize: 'vertical',
+          ...style,
+        }}
+      />
       {hint && !error && <span style={{ fontSize: '12px', color: C.textDim }}>{hint}</span>}
       {error && <span style={{ fontSize: '12px', color: C.red }}>{error}</span>}
     </div>
@@ -463,7 +499,7 @@ export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }
   )
 }
 
-export function ProgressBar({ value, color = C.cyan, style }) {
+export function ProgressBar({ value, color = C.cyan, style = {} }) {
   return (
     <div style={{ height: '6px', background: C.surface3, borderRadius: '99px', overflow: 'hidden', ...style }}>
       <div style={{ height: '100%', width: `${value}%`, background: color, borderRadius: '99px', transition: 'width 0.5s' }} />
@@ -526,16 +562,17 @@ export function SearchInput({ value, onChange, placeholder = 'Search...', style 
   )
 }
 
-export function LoadingState({ message = 'Loading...' }) {
+export function LoadingState({ message = undefined, label = 'Loading...' }) {
+  const text = message || label
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px' }}>
       <div style={{ width: '40px', height: '40px', border: `3px solid ${C.surface3}`, borderTopColor: C.cyan, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <span style={{ color: C.textMuted, fontSize: '14px' }}>{message}</span>
+      <span style={{ color: C.textMuted, fontSize: '14px' }}>{text}</span>
     </div>
   )
 }
 
-export function ErrorState({ message, onRetry }) {
+export function ErrorState({ message, onRetry = undefined }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px', textAlign: 'center' }}>
       <span style={{ fontSize: '48px' }}>⚠️</span>
@@ -564,14 +601,17 @@ export function ErrorState({ message, onRetry }) {
   )
 }
 
-export function EmptyState({ message, submessage }) {
+export function EmptyState({ message = undefined, submessage = undefined, title = undefined, body = undefined, action = undefined }) {
+  const heading = message || title
+  const detail = submessage || body
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '48px 24px', textAlign: 'center' }}>
       <span style={{ fontSize: '48px', opacity: 0.5 }}>📭</span>
       <div>
-        <h3 style={{ fontSize: '16px', fontWeight: 600, color: C.text, margin: '0 0 8px' }}>{message}</h3>
-        {submessage && <p style={{ fontSize: '14px', color: C.textMuted, margin: 0 }}>{submessage}</p>}
+        <h3 style={{ fontSize: '16px', fontWeight: 600, color: C.text, margin: '0 0 8px' }}>{heading}</h3>
+        {detail && <p style={{ fontSize: '14px', color: C.textMuted, margin: 0 }}>{detail}</p>}
       </div>
+      {action}
     </div>
   )
 }

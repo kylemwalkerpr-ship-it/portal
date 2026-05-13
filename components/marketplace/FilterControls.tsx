@@ -1,9 +1,10 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import { C, Card, Btn, Badge } from '../design/shared'
 
-const drawerOverlay = {
+const drawerOverlay: CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,0.5)',
@@ -12,7 +13,7 @@ const drawerOverlay = {
   alignItems: 'flex-end',
 }
 
-const drawerContent = {
+const drawerContent: CSSProperties = {
   width: '100%',
   maxWidth: '480px',
   margin: '0 auto',
@@ -25,7 +26,7 @@ const drawerContent = {
   flexDirection: 'column',
 }
 
-const drawerHeader = {
+const drawerHeader: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -33,27 +34,27 @@ const drawerHeader = {
   borderBottom: `1px solid ${C.border}`,
 }
 
-const drawerTitle = {
+const drawerTitle: CSSProperties = {
   fontSize: '18px',
   fontWeight: 700,
   margin: 0,
   color: C.text,
 }
 
-const drawerBody = {
+const drawerBody: CSSProperties = {
   flex: 1,
   overflow: 'auto',
   padding: '20px',
 }
 
-const drawerFooter = {
+const drawerFooter: CSSProperties = {
   padding: '20px',
   borderTop: `1px solid ${C.border}`,
   display: 'flex',
   gap: '12px',
 }
 
-const closeButton = {
+const closeButton: CSSProperties = {
   width: '32px',
   height: '32px',
   borderRadius: '50%',

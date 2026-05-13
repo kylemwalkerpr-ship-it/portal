@@ -1,11 +1,12 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { C, Btn, Badge, Card, Input, SearchInput } from '../design/shared'
 import { CATEGORIES, getPopularCategories } from '@/lib/categories'
 
-const heroStyle = {
+const heroStyle: CSSProperties = {
   background: `linear-gradient(135deg, ${C.cyan} 0%, ${C.cyanDark} 100%)`,
   color: '#fff',
   padding: '60px 40px',
@@ -13,7 +14,7 @@ const heroStyle = {
   marginBottom: '32px',
 }
 
-const heroTitle = {
+const heroTitle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '48px',
   fontWeight: 600,
@@ -22,26 +23,26 @@ const heroTitle = {
   letterSpacing: '-0.02em',
 }
 
-const heroSubtitle = {
+const heroSubtitle: CSSProperties = {
   fontSize: '18px',
   margin: '0 0 32px',
   opacity: 0.9,
   lineHeight: 1.6,
 }
 
-const searchContainer = {
+const searchContainer: CSSProperties = {
   maxWidth: '640px',
   margin: '0 auto',
 }
 
-const categoryGrid = {
+const categoryGrid: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
   gap: '16px',
   marginBottom: '40px',
 }
 
-const categoryCard = {
+const categoryCard: CSSProperties = {
   background: C.surface,
   border: `1px solid ${C.border}`,
   borderRadius: '16px',
@@ -55,32 +56,32 @@ const categoryCard = {
   gap: '12px',
 }
 
-const categoryIcon = {
+const categoryIcon: CSSProperties = {
   fontSize: '40px',
   lineHeight: 1,
 }
 
-const categoryName = {
+const categoryName: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   color: C.text,
   margin: 0,
 }
 
-const categoryCount = {
+const categoryCount: CSSProperties = {
   fontSize: '12px',
   color: C.textMuted,
   margin: 0,
 }
 
-const sectionHeader = {
+const sectionHeader: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: '24px',
 }
 
-const sectionTitle = {
+const sectionTitle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '28px',
   fontWeight: 500,
@@ -88,20 +89,20 @@ const sectionTitle = {
   color: C.text,
 }
 
-const sectionLink = {
+const sectionLink: CSSProperties = {
   color: C.cyan,
   fontSize: '14px',
   fontWeight: 600,
   textDecoration: 'none',
 }
 
-const gigGrid = {
+const gigGrid: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
   gap: '20px',
 }
 
-const gigCard = {
+const gigCard: CSSProperties = {
   background: C.surface,
   border: `1px solid ${C.border}`,
   borderRadius: '16px',
@@ -113,18 +114,18 @@ const gigCard = {
   display: 'block',
 }
 
-const gigImage = {
+const gigImage: CSSProperties = {
   width: '100%',
   height: '180px',
   objectFit: 'cover',
   background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
 }
 
-const gigContent = {
+const gigContent: CSSProperties = {
   padding: '16px',
 }
 
-const gigTitle = {
+const gigTitle: CSSProperties = {
   fontSize: '16px',
   fontWeight: 700,
   margin: '0 0 8px',
@@ -136,20 +137,20 @@ const gigTitle = {
   overflow: 'hidden',
 }
 
-const gigMeta = {
+const gigMeta: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginTop: '12px',
 }
 
-const gigPrice = {
+const gigPrice: CSSProperties = {
   fontSize: '20px',
   fontWeight: 900,
   color: C.text,
 }
 
-const gigRating = {
+const gigRating: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
@@ -157,7 +158,7 @@ const gigRating = {
   color: C.textMuted,
 }
 
-const gigProvider = {
+const gigProvider: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
@@ -166,7 +167,7 @@ const gigProvider = {
   borderTop: `1px solid ${C.border}`,
 }
 
-const providerAvatar = {
+const providerAvatar: CSSProperties = {
   width: '32px',
   height: '32px',
   borderRadius: '50%',
@@ -179,13 +180,13 @@ const providerAvatar = {
   color: C.cyan,
 }
 
-const providerName = {
+const providerNameStyle: CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
   color: C.text,
 }
 
-const trustSection = {
+const trustSection: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
   gap: '20px',
@@ -195,23 +196,23 @@ const trustSection = {
   borderRadius: '16px',
 }
 
-const trustItem = {
+const trustItem: CSSProperties = {
   textAlign: 'center',
 }
 
-const trustIcon = {
+const trustIcon: CSSProperties = {
   fontSize: '32px',
   marginBottom: '12px',
 }
 
-const trustLabel = {
+const trustLabel: CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
   color: C.text,
   margin: '0 0 4px',
 }
 
-const trustDescription = {
+const trustDescription: CSSProperties = {
   fontSize: '12px',
   color: C.textMuted,
   margin: 0,
@@ -384,7 +385,7 @@ export function GigCard({ gig }: GigCardProps) {
           <div style={providerAvatar}>
             {providerName.split(' ').map(n => n[0]).join('').toUpperCase()}
           </div>
-          <span style={providerName}>{providerName}</span>
+          <span style={providerNameStyle}>{providerName}</span>
           {gig.provider_type && (
             <Badge color={gig.provider_type === 'attorney' ? 'green' : 'purple'} style={{ marginLeft: 'auto' }}>
               {gig.provider_type}

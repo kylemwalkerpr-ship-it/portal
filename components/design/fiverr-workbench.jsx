@@ -114,7 +114,7 @@ function Header({ eyebrow, title, sub, actions }) {
   )
 }
 
-export function EmptyState({ title, body, action }) {
+export function EmptyState({ title, body, action = null }) {
   return (
     <Card style={{ padding: '28px', textAlign: 'center' }}>
       <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '6px' }}>{title}</div>

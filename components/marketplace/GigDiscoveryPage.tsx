@@ -1,29 +1,30 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { C, Card, Btn } from '../design/shared'
+import { C, Card, Btn, Badge } from '../design/shared'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
 import { GigCard } from './MarketplaceHero'
 import { CATEGORIES, getCategoryById } from '@/lib/categories'
 
-const pageShell = {
+const pageShell: CSSProperties = {
   minHeight: '100vh',
   background: C.bg,
   color: C.text,
   fontFamily: C.sans,
 }
 
-const inner = {
+const inner: CSSProperties = {
   width: 'min(1280px, calc(100vw - 32px))',
   margin: '0 auto',
   padding: '32px 0 64px',
 }
 
-const toolbar = {
+const toolbar: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -32,7 +33,7 @@ const toolbar = {
   flexWrap: 'wrap',
 }
 
-const titleStyle = {
+const titleStyle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '36px',
   fontWeight: 500,
@@ -41,25 +42,25 @@ const titleStyle = {
   color: C.text,
 }
 
-const contentLayout = {
+const contentLayout: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '280px 1fr',
   gap: '32px',
 }
 
-const gigGrid = {
+const gigGrid: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
   gap: '20px',
 }
 
-const gigList = {
+const gigList: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '16px',
 }
 
-const gigListItem = {
+const gigListItem: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '200px 1fr',
   gap: '20px',
@@ -72,7 +73,7 @@ const gigListItem = {
   color: 'inherit',
 }
 
-const gigListImage = {
+const gigListImage: CSSProperties = {
   width: '100%',
   height: '140px',
   objectFit: 'cover',
@@ -80,7 +81,7 @@ const gigListImage = {
   background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
 }
 
-const pagination = {
+const pagination: CSSProperties = {
   display: 'flex',
   justifyContent: 'center',
   alignItems: 'center',
@@ -88,7 +89,7 @@ const pagination = {
   marginTop: '32px',
 }
 
-const pageButton = {
+const pageButton: CSSProperties = {
   minWidth: '40px',
   height: '40px',
   borderRadius: '10px',
@@ -104,14 +105,14 @@ const pageButton = {
   justifyContent: 'center',
 }
 
-const activePageButton = {
+const activePageButton: CSSProperties = {
   ...pageButton,
   background: C.cyan,
   color: '#fff',
   borderColor: C.cyan,
 }
 
-const mobileFilterButton = {
+const mobileFilterButton: CSSProperties = {
   display: 'none',
   padding: '12px 20px',
   background: C.surface,
@@ -144,7 +145,7 @@ function money(cents: number, currency = 'usd') {
   }).format(Number(cents || 0) / 100)
 }
 
-async function requestJson(url: string, options = {}) {
+async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     credentials: 'same-origin',
     ...options,
@@ -199,13 +200,14 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     { id: 'consultant', label: 'Consultants' },
   ]
 
-  const hasActiveFilters =
+  const hasActiveFilters = Boolean(
     selectedCategories.length > 0 ||
     selectedProviderTypes.length > 0 ||
     minPrice ||
     maxPrice ||
     selectedRating ||
     selectedDeliveryTimes.length > 0
+  )
 
   const loadGigs = React.useCallback(async () => {
     setLoading(true)

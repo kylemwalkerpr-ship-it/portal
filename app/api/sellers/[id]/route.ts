@@ -78,7 +78,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   // Determine if online (simplified - in production, use last_active timestamp)
-  const isOnline = provider.available !== false
+  const is_online = provider.available !== false
 
   // Calculate response time (simplified - in production, track actual response times)
   const responseTime = '1 hour'

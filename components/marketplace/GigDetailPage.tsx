@@ -1,6 +1,7 @@
-'use client'
 // @ts-nocheck
+'use client'
 import React from 'react'
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { C, Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
 import {
@@ -12,20 +13,20 @@ import {
 } from './GigDetailComponents'
 import { ReviewsSection } from './ReviewComponents'
 
-const pageShell = {
+const pageShell: CSSProperties = {
   minHeight: '100vh',
   background: C.bg,
   color: C.text,
   fontFamily: C.sans,
 }
 
-const inner = {
+const inner: CSSProperties = {
   width: 'min(1280px, calc(100vw - 32px))',
   margin: '0 auto',
   padding: '32px 0 64px',
 }
 
-const toolbar = {
+const toolbar: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '16px',
@@ -33,7 +34,7 @@ const toolbar = {
   flexWrap: 'wrap',
 }
 
-const breadcrumb = {
+const breadcrumb: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
@@ -41,25 +42,25 @@ const breadcrumb = {
   color: C.textMuted,
 }
 
-const breadcrumbLink = {
+const breadcrumbLink: CSSProperties = {
   color: C.cyan,
   textDecoration: 'none',
   fontWeight: 600,
 }
 
-const contentLayout = {
+const contentLayout: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 380px',
   gap: '32px',
 }
 
-const mainContent = {
+const mainContent: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '24px',
 }
 
-const sidebar = {
+const sidebar: CSSProperties = {
   position: 'sticky',
   top: '24px',
   display: 'flex',
@@ -67,7 +68,7 @@ const sidebar = {
   gap: '16px',
 }
 
-const gigImage = {
+const gigImage: CSSProperties = {
   width: '100%',
   height: '400px',
   objectFit: 'cover',
@@ -75,14 +76,14 @@ const gigImage = {
   background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
 }
 
-const galleryGrid = {
+const galleryGrid: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
   gap: '12px',
   marginTop: '16px',
 }
 
-const galleryThumbnail = {
+const galleryThumbnail: CSSProperties = {
   width: '100%',
   aspectRatio: '1',
   objectFit: 'cover',
@@ -92,7 +93,7 @@ const galleryThumbnail = {
   transition: 'border-color 200ms',
 }
 
-const sectionTitle = {
+const sectionTitle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '24px',
   fontWeight: 500,
@@ -100,7 +101,7 @@ const sectionTitle = {
   color: C.text,
 }
 
-const gigTitle = {
+const gigTitle: CSSProperties = {
   fontFamily: C.serif,
   fontSize: '32px',
   fontWeight: 500,
@@ -109,7 +110,7 @@ const gigTitle = {
   lineHeight: 1.2,
 }
 
-const gigMeta = {
+const gigMeta: CSSProperties = {
   display: 'flex',
   gap: '16px',
   alignItems: 'center',
@@ -118,21 +119,21 @@ const gigMeta = {
   marginBottom: '16px',
 }
 
-const gigDescription = {
+const gigDescription: CSSProperties = {
   fontSize: '15px',
   lineHeight: 1.75,
   color: C.text,
   whiteSpace: 'pre-wrap',
 }
 
-const tagsContainer = {
+const tagsContainer: CSSProperties = {
   display: 'flex',
   gap: '8px',
   flexWrap: 'wrap',
   marginTop: '16px',
 }
 
-const tagBadge = {
+const tagBadge: CSSProperties = {
   padding: '6px 12px',
   background: `${C.cyan}10`,
   border: `1px solid ${C.cyan}33`,
@@ -151,7 +152,7 @@ function money(cents: number, currency = 'usd') {
   }).format(Number(cents || 0) / 100)
 }
 
-async function requestJson(url: string, options = {}) {
+async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     credentials: 'same-origin',
     ...options,
@@ -384,9 +385,8 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             {faq.length > 0 && <FAQSection faq={faq} />}
 
             <ReviewsSection
-              reviews={gig.reviews || []}
-              avgRating={gig.avg_rating || 0}
-              reviewCount={gig.review_count || 0}
+              gigId={gig.id}
+              showFilters={false}
             />
 
             {gig.similar_gigs && gig.similar_gigs.length > 0 && (
