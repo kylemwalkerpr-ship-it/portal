@@ -114,7 +114,7 @@ function Header({ eyebrow, title, sub, actions }) {
   )
 }
 
-function EmptyState({ title, body, action }) {
+export function EmptyState({ title, body, action }) {
   return (
     <Card style={{ padding: '28px', textAlign: 'center' }}>
       <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '6px' }}>{title}</div>
@@ -124,11 +124,11 @@ function EmptyState({ title, body, action }) {
   )
 }
 
-function LoadingState({ label = 'Loading...' }) {
+export function LoadingState({ label = 'Loading...' }) {
   return <div style={pageShell}><main style={inner}><Card><div style={{ color: C.textMuted }}>{label}</div></Card></main></div>
 }
 
-function ErrorState({ message, onRetry }) {
+export function ErrorState({ message, onRetry }) {
   return (
     <div style={pageShell}>
       <main style={inner}>

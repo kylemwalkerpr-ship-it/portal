@@ -114,7 +114,7 @@ const gigMeta = {
   gap: '16px',
   alignItems: 'center',
   fontSize: '14px',
-  color: C.textMuted',
+  color: C.textMuted,
   marginBottom: '16px',
 }
 

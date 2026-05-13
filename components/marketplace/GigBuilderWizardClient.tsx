@@ -3,7 +3,7 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { GigBuilderWizard } from './GigBuilderWizard'
-import { C, LoadingState, ErrorState } from '../../design/shared'
+import { C, LoadingState, ErrorState } from '../design/fiverr-workbench'
 
 async function requestJson(url: string, options = {}) {
   const res = await fetch(url, {

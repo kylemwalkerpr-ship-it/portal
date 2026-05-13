@@ -1,3 +1,5 @@
+'use client'
+
 // @ts-nocheck
 import React from 'react'
 import { useSearchParams } from 'next/navigation'

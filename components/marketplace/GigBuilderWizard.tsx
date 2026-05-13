@@ -690,7 +690,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: any) {
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700', marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
         Additional Details
       </h2>
 
@@ -789,7 +789,7 @@ function ReviewStep({ gigData, onEdit }: any) {
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700', marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
         Review Your Gig
       </h2>
 

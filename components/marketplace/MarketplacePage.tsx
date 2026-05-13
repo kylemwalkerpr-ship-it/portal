@@ -3,7 +3,8 @@
 import React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { C, Btn, Card, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { C, Btn, Card } from '../design/shared'
+import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import {
   MarketplaceHero,
   CategoryGrid,

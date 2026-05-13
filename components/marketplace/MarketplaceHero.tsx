@@ -2,7 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
-import { C, Btn, Badge, Card, Input, SearchInput } from '../shared'
+import { C, Btn, Badge, Card, Input, SearchInput } from '../design/shared'
 import { CATEGORIES, getPopularCategories } from '@/lib/categories'
 
 const heroStyle = {
