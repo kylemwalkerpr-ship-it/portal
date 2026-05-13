@@ -30,8 +30,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const body = await req.json().catch(() => ({}))
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  for (const key of ['title', 'category', 'pitch', 'description', 'seo_title', 'seo_description', 'video_url']) {
+  for (const key of ['title', 'category', 'subcategory', 'pitch', 'description', 'requirements', 'seo_title', 'seo_description', 'video_url']) {
     if (key in body) payload[key] = typeof body[key] === 'string' ? body[key].trim() : body[key]
+  }
+  if (body.status && ['draft', 'active', 'paused'].includes(body.status)) {
+    payload.status = body.status
+    if (body.status === 'active' && !existing.published_at) payload.published_at = new Date().toISOString()
   }
   if ('tags' in body) payload.tags = Array.isArray(body.tags) ? body.tags.map(String).slice(0, 5) : []
   if ('faq' in body) payload.faq = Array.isArray(body.faq) ? body.faq.slice(0, 10) : []
@@ -40,6 +44,23 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const { data: gig, error } = await auth.db.from('gigs').update(payload).eq('id', id).select('*, tiers:gig_tiers(*)').single()
   if (error || !gig) return fail(error?.message || 'Could not update gig.', 500)
+
+  if (Array.isArray(body.tiers)) {
+    const tierRows = body.tiers.slice(0, 3).map((tier: any, index: number) => ({
+      gig_id: id,
+      tier: ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index],
+      title: String(tier.title || tier.tier || 'Package').slice(0, 80),
+      description: String(tier.description || ''),
+      price: Math.max(100, Number(tier.price || 100)),
+      delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
+      revisions: Math.max(0, Number(tier.revisions || 0)),
+      features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
+      is_active: tier.is_active !== false,
+    }))
+    const { error: tierError } = await auth.db.from('gig_tiers').upsert(tierRows, { onConflict: 'gig_id,tier' })
+    if (tierError) return fail(tierError.message, 500)
+  }
+
   return ok({ gig })
 }
 

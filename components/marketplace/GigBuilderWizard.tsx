@@ -3,7 +3,7 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
 import { C, Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
-import { CATEGORIES, getCategoryById } from '@/lib/categories'
+import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
 
 const wizardContainer: CSSProperties = {
   maxWidth: '800px',
@@ -139,6 +139,17 @@ const STEPS = [
   { id: 'review', title: 'Review', description: 'Preview and publish' },
 ]
 
+const BUILDER_DRAFT_KEY = 'ys_marketplace_gig_builder_draft'
+
+function loadPersistedDraft(existingGig: any) {
+  if (existingGig || typeof window === 'undefined') return null
+  try {
+    return JSON.parse(window.localStorage.getItem(BUILDER_DRAFT_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+
 interface GigBuilderWizardProps {
   gigId?: string
   existingGig?: any
@@ -148,24 +159,25 @@ interface GigBuilderWizardProps {
 
 export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: GigBuilderWizardProps) {
   const [currentStep, setCurrentStep] = React.useState(0)
+  const persistedDraft = loadPersistedDraft(existingGig)
   const [gigData, setGigData] = React.useState({
-    category: existingGig?.category || '',
-    subcategory: existingGig?.subcategory || '',
-    title: existingGig?.title || '',
-    pitch: existingGig?.pitch || '',
-    description: existingGig?.description || '',
-    tags: existingGig?.tags || [],
-    tiers: existingGig?.tiers || [
+    category: existingGig?.category || persistedDraft?.category || '',
+    subcategory: existingGig?.subcategory || persistedDraft?.subcategory || '',
+    title: existingGig?.title || persistedDraft?.title || '',
+    pitch: existingGig?.pitch || persistedDraft?.pitch || '',
+    description: existingGig?.description || persistedDraft?.description || '',
+    tags: existingGig?.tags || persistedDraft?.tags || [],
+    tiers: existingGig?.tiers || persistedDraft?.tiers || [
       { tier: 'basic', title: 'Basic', price: 2500, delivery_days: 7, revisions: 1, features: [], is_active: true },
       { tier: 'standard', title: 'Standard', price: 5000, delivery_days: 14, revisions: 2, features: [], is_active: true },
       { tier: 'premium', title: 'Premium', price: 10000, delivery_days: 21, revisions: 3, features: [], is_active: true },
     ],
-    faq: existingGig?.faq || [],
-    requirements: existingGig?.requirements || '',
-    gallery_images: existingGig?.gallery_images || [],
-    video_url: existingGig?.video_url || '',
-    seo_title: existingGig?.seo_title || '',
-    seo_description: existingGig?.seo_description || '',
+    faq: existingGig?.faq || persistedDraft?.faq || [],
+    requirements: existingGig?.requirements || persistedDraft?.requirements || '',
+    gallery_images: existingGig?.gallery_images || persistedDraft?.gallery_images || [],
+    video_url: existingGig?.video_url || persistedDraft?.video_url || '',
+    seo_title: existingGig?.seo_title || persistedDraft?.seo_title || '',
+    seo_description: existingGig?.seo_description || persistedDraft?.seo_description || '',
   })
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
@@ -201,6 +213,11 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
+
+  React.useEffect(() => {
+    if (gigId || existingGig || typeof window === 'undefined') return
+    window.localStorage.setItem(BUILDER_DRAFT_KEY, JSON.stringify(gigData))
+  }, [gigData, gigId, existingGig])
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
@@ -243,6 +260,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       const savedGigId = data.gig?.id || gigId
 
       setAutoSaveStatus('Draft saved!')
+      if (typeof window !== 'undefined') window.localStorage.removeItem(BUILDER_DRAFT_KEY)
       setTimeout(() => setAutoSaveStatus(''), 3000)
 
       if (onComplete && savedGigId) {
@@ -284,6 +302,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       const savedGigId = data.gig?.id || gigId
 
       setAutoSaveStatus('Published!')
+      if (typeof window !== 'undefined') window.localStorage.removeItem(BUILDER_DRAFT_KEY)
       setTimeout(() => setAutoSaveStatus(''), 3000)
 
       if (onComplete && savedGigId) {
@@ -452,6 +471,10 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
 
 function CategoryStep({ gigData, errors, onChange }: any) {
   const selectedCategory = getCategoryById(gigData.category)
+  const selectedSubcategory = selectedCategory && gigData.subcategory
+    ? getSubcategoryById(selectedCategory.id, gigData.subcategory)
+    : null
+  const sourceLabels = getCategorySourceLabels(gigData.subcategory || gigData.category).slice(0, 8)
 
   return (
     <div>
@@ -463,7 +486,10 @@ function CategoryStep({ gigData, errors, onChange }: any) {
         <label style={formLabel}>Category *</label>
         <select
           value={gigData.category}
-          onChange={e => onChange('category', e.target.value)}
+          onChange={e => {
+            onChange('category', e.target.value)
+            onChange('subcategory', '')
+          }}
           style={selectStyle}
         >
           <option value="">Select a category</option>
@@ -491,6 +517,35 @@ function CategoryStep({ gigData, errors, onChange }: any) {
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {sourceLabels.length > 0 && (
+        <div style={{ padding: '16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', marginTop: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: C.text, marginBottom: '10px' }}>
+            Matched to existing YouSafe offerings
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {sourceLabels.map(label => (
+              <Badge key={label} color="gray">
+                {label}
+              </Badge>
+            ))}
+          </div>
+          <p style={{ fontSize: '12px', color: C.textMuted, margin: '10px 0 0' }}>
+            This keeps marketplace gigs aligned with services already sold across the portal.
+          </p>
+        </div>
+      )}
+
+      {selectedSubcategory && (
+        <div style={{ padding: '16px', background: `${C.green}10`, border: `1px solid ${C.green}33`, borderRadius: '12px', marginTop: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: C.text, marginBottom: '4px' }}>
+            Recommended positioning
+          </div>
+          <p style={{ fontSize: '13px', color: C.textMuted, margin: 0 }}>
+            Lead with a concrete outcome for {selectedSubcategory.name.toLowerCase()}, then separate document prep, advisory time, and attorney review into tiers.
+          </p>
         </div>
       )}
 

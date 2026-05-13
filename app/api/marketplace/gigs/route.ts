@@ -1,4 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { getCategoryFilterTerms } from '@/lib/categories'
 import { requirePortalUser } from '@/lib/portalAuth'
 
 export async function GET(req: Request) {
@@ -7,13 +8,13 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim()
-  const category = url.searchParams.get('category')
-  const providerType = url.searchParams.get('provider_type')
+  const categories = url.searchParams.getAll('category').filter(Boolean)
+  const providerTypes = url.searchParams.getAll('provider_type').filter(Boolean)
   const sort = url.searchParams.get('sort') || 'relevance'
   const minPrice = url.searchParams.get('min_price')
   const maxPrice = url.searchParams.get('max_price')
   const minRating = url.searchParams.get('min_rating')
-  const deliveryDays = url.searchParams.get('delivery_days')
+  const deliveryDays = url.searchParams.getAll('delivery_days').filter(Boolean)
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10))
   const limit = Math.min(60, parseInt(url.searchParams.get('limit') || '20', 10))
   const offset = (page - 1) * limit
@@ -24,8 +25,13 @@ export async function GET(req: Request) {
     .eq('status', 'active')
 
   if (q.length >= 2) query = query.or(`title.ilike.%${q}%,pitch.ilike.%${q}%,description.ilike.%${q}%`)
-  if (category) query = query.eq('category', category)
-  if (providerType && ['attorney', 'consultant'].includes(providerType)) query = query.eq('provider_type', providerType)
+  if (categories.length > 0) {
+    const terms = Array.from(new Set(categories.flatMap(category => getCategoryFilterTerms(category))))
+    if (terms.length > 0) query = query.in('category', terms)
+  }
+  const validProviderTypes = providerTypes.filter(type => ['attorney', 'consultant'].includes(type))
+  if (validProviderTypes.length === 1) query = query.eq('provider_type', validProviderTypes[0])
+  else if (validProviderTypes.length > 1) query = query.in('provider_type', validProviderTypes)
   if (minRating) query = query.gte('avg_rating', parseFloat(minRating))
 
   if (sort === 'best_rated') query = query.gte('review_count', 3).order('avg_rating', { ascending: false })
@@ -53,13 +59,17 @@ export async function GET(req: Request) {
       // Apply client-side filters for complex conditions
       if (minPrice && gig.starting_price && Number(gig.starting_price) < Number(minPrice) * 100) return false
       if (maxPrice && gig.starting_price && Number(gig.starting_price) > Number(maxPrice) * 100) return false
-      if (deliveryDays && gig.delivery_days) {
+      if (deliveryDays.length > 0 && gig.delivery_days) {
         const days = Number(gig.delivery_days)
-        const filterDays = Number(deliveryDays)
-        if (filterDays === 1 && days > 1) return false
-        if (filterDays === 3 && days > 3) return false
-        if (filterDays === 7 && days > 7) return false
-        if (filterDays === 14 && days < 14) return false
+        const matchesDelivery = deliveryDays.some(value => {
+          const filterDays = Number(value)
+          if (filterDays === 1) return days <= 1
+          if (filterDays === 3) return days <= 3
+          if (filterDays === 7) return days <= 7
+          if (filterDays === 14) return days >= 14
+          return true
+        })
+        if (!matchesDelivery) return false
       }
       return true
     })

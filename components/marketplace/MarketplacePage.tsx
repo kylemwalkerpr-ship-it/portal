@@ -69,6 +69,20 @@ const sectionLink = {
   textDecoration: 'none',
 }
 
+const localRail = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  gap: '16px',
+}
+
+const actionCard = {
+  padding: '20px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  minHeight: '150px',
+}
+
 function money(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -104,6 +118,8 @@ export function MarketplacePage() {
   const [gigs, setGigs] = React.useState([])
   const [featuredGigs, setFeaturedGigs] = React.useState([])
   const [trendingGigs, setTrendingGigs] = React.useState([])
+  const [savedGigs, setSavedGigs] = React.useState([])
+  const [recentGigs, setRecentGigs] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
@@ -139,6 +155,17 @@ export function MarketplacePage() {
     if (hasFilters) return
     load()
   }, [hasFilters, load])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      setSavedGigs(JSON.parse(window.localStorage.getItem('ys_marketplace_saved_gigs') || '[]').slice(0, 4))
+      setRecentGigs(JSON.parse(window.localStorage.getItem('ys_marketplace_recent_gigs') || '[]').slice(0, 4))
+    } catch {
+      setSavedGigs([])
+      setRecentGigs([])
+    }
+  }, [])
 
   // If there are filters, show the discovery page instead.
   if (hasFilters) {
@@ -193,6 +220,50 @@ export function MarketplacePage() {
         <MarketplaceHero onSearch={handleSearch} />
 
         <section style={sectionStyle}>
+          <div style={localRail}>
+            <Card style={actionCard}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: C.text }}>
+                  Saved services
+                </h2>
+                <p style={{ ...subStyle, margin: 0 }}>
+                  Shortlist providers and come back when you are ready to order.
+                </p>
+              </div>
+              <Link href="/marketplace?sort=best_rated" style={{ marginTop: 'auto' }}>
+                <Btn variant="secondary">Browse top rated</Btn>
+              </Link>
+            </Card>
+            <Card style={actionCard}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: C.text }}>
+                  Need guided help?
+                </h2>
+                <p style={{ ...subStyle, margin: 0 }}>
+                  Start from dashboard context and match with attorneys or consultants.
+                </p>
+              </div>
+              <Link href="/dashboard" style={{ marginTop: 'auto' }}>
+                <Btn variant="primary">Open dashboard</Btn>
+              </Link>
+            </Card>
+            <Card style={actionCard}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 6px', color: C.text }}>
+                  Provider tools
+                </h2>
+                <p style={{ ...subStyle, margin: 0 }}>
+                  Attorneys and consultants can package services into clear tiers.
+                </p>
+              </div>
+              <Link href="/dashboard/gigs" style={{ marginTop: 'auto' }}>
+                <Btn variant="secondary">Manage gigs</Btn>
+              </Link>
+            </Card>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h2 style={sectionTitle}>Browse by Category</h2>
             <Link href="/marketplace/categories" style={sectionLink}>
@@ -228,6 +299,18 @@ export function MarketplacePage() {
         {trendingGigs.length > 0 && (
           <section style={sectionStyle}>
             <GigGrid gigs={trendingGigs} title="Trending Services" viewAllLink="/marketplace?sort=trending" />
+          </section>
+        )}
+
+        {savedGigs.length > 0 && (
+          <section style={sectionStyle}>
+            <GigGrid gigs={savedGigs} title="Saved Services" viewAllLink="/marketplace?sort=best_rated" />
+          </section>
+        )}
+
+        {recentGigs.length > 0 && (
+          <section style={sectionStyle}>
+            <GigGrid gigs={recentGigs} title="Recently Viewed" viewAllLink="/marketplace?sort=newest" />
           </section>
         )}
 

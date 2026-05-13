@@ -22,6 +22,8 @@ export interface Category {
   subcategories: Subcategory[]
   popular: boolean
   order: number
+  sourceLabels?: string[]
+  sourceCount?: number
 }
 
 export interface Subcategory {
@@ -441,6 +443,10 @@ export function getSubcategoryById(
   )
 }
 
+export function getCategoryBySubcategoryId(subcategoryId: SubcategoryId): Category | undefined {
+  return CATEGORIES.find(cat => cat.subcategories.some(sub => sub.id === subcategoryId))
+}
+
 export function getPopularCategories(): Category[] {
   return CATEGORIES.filter(cat => cat.popular).sort((a, b) => a.order - b.order)
 }
@@ -473,6 +479,148 @@ export function getAllSubcategories(): Subcategory[] {
       categoryName: cat.name,
     }))
   )
+}
+
+/**
+ * Category provenance pulled from the existing portal/service catalogue,
+ * legal service seeds, and public consultancy service pages. This lets the
+ * marketplace use one normalized taxonomy while still matching legacy service
+ * rows and older gig categories already stored in Supabase.
+ */
+export const CATEGORY_SOURCE_LABELS: Record<CategoryId, string[]> = {
+  immigration: [
+    'Immigration consultation',
+    'Business immigration',
+    'USA Study',
+    'USA Visitor',
+    'USA Work After Study',
+    'USA Financial Support',
+    'Canada Study',
+    'Canada Visitor',
+    'Canada Work',
+    'Canada Work After Study',
+    'Canada General',
+    'Refusal Recovery',
+    'General Intake',
+    'Bundle',
+  ],
+  'study-permits': [
+    'Study Permits',
+    'Study Permit Starter Package',
+    'Study Permit Standard Package',
+    'Study Permit Premium Package',
+    'Study Permit & Visa Consulting',
+    'USA F-1 Student Visa DS-160 + I-20 Preparation Pack',
+    'Canada Study Permit Complete Application Preparation Pack',
+    'Canada Study Plan + Letter of Explanation Pack',
+  ],
+  'visitor-visas': [
+    'USA Visitor',
+    'Canada Visitor',
+    'USA B-1/B-2 Visitor Visa DS-160 + Invitation Pack',
+    'Canada Temporary Resident Visa Visitor Pack',
+  ],
+  'work-permits': [
+    'USA Work After Study',
+    'Canada Work',
+    'Canada Work After Study',
+    'PGWP Only Package',
+    'USA F-1 OPT I-765 Application Preparation Pack',
+    'USA STEM OPT I-765 + I-983 Companion Pack',
+    'Canada Work Permit Outside Canada Preparation Pack',
+    'Canada PGWP Post-Graduation Work Permit Pack',
+  ],
+  'pr-immigration': [
+    'Post-Graduate',
+    'PR & Immigration',
+    'PR Roadmap Package',
+    'Full PR Acceleration Package',
+    'USA/Canada Refusal Review + Reapplication Response Pack',
+  ],
+  education: ['University Admissions', 'Education planning', 'Admissions'],
+  'university-admissions': [
+    'University Admission Basic',
+    'University Admission Comprehensive',
+    'University Admission Elite',
+  ],
+  legal: ['Legal Consulting', 'Legal Services', 'Attorney Engagement'],
+  'document-prep': [
+    'Document review',
+    'Legal forms review',
+    'Document Preparation',
+    'Legal Document Prep — Basic',
+    'Universal Immigration Client Intake + Document Review Kit',
+  ],
+  'attorney-review': [
+    'Attorney Review',
+    'Legal Document Prep + Attorney Review — Essential',
+    'Document Prep + Live Consultation — Enhanced',
+  ],
+  'legal-consultation': ['Attorney Engagement', 'Full Attorney Engagement — Professional'],
+  settlement: [
+    'Settlement',
+    'Settlement planning',
+    'Arrival Essentials Package',
+    'Full Settlement Package',
+    'Premium Integration Package',
+  ],
+  career: ['Career', 'Resume Services', 'Career mentorship'],
+  'resume-cv': ['Resume & LinkedIn Glow-Up', 'Resume Services'],
+  linkedin: ['Resume & LinkedIn Glow-Up', 'LinkedIn'],
+  'job-search': ['Job Search Mastery', 'Premium Placement Package'],
+  mentorship: ['Mentorship', 'Monthly Mentorship', 'Quarterly Mentorship', 'Annual Mentorship'],
+  credentials: ['Credentials', 'Credential Assessment Guided', 'Credential Assessment Full + Appeal'],
+  business: ['Business Services', 'Business Formation', 'Tax Advisory', 'Compliance', 'Grant Writing'],
+  'business-formation': ['Business Formation'],
+  compliance: ['Compliance'],
+  'grant-writing': ['Grant Writing'],
+  'tax-advisory': ['Tax Advisory'],
+}
+
+export function getCategorySourceLabels(categoryId: CategoryId): string[] {
+  const category = getCategoryById(categoryId)
+  const subcategoryCategory = category ? undefined : getCategoryBySubcategoryId(categoryId)
+  const sourceIds = category
+    ? [category.id, ...category.subcategories.map(sub => sub.id)]
+    : [categoryId]
+
+  const labels = new Set<string>()
+  if (category) labels.add(category.name)
+  if (subcategoryCategory) {
+    const sub = getSubcategoryById(subcategoryCategory.id, categoryId)
+    if (sub) labels.add(sub.name)
+  }
+  sourceIds.forEach(id => {
+    ;(CATEGORY_SOURCE_LABELS[id] || []).forEach(label => labels.add(label))
+  })
+  return Array.from(labels)
+}
+
+export function getCategoryFilterTerms(categoryId: CategoryId): string[] {
+  const category = getCategoryById(categoryId)
+  const subcategoryCategory = category ? undefined : getCategoryBySubcategoryId(categoryId)
+  const terms = new Set<string>()
+
+  if (category) {
+    terms.add(category.id)
+    terms.add(category.name)
+    category.subcategories.forEach(sub => {
+      terms.add(sub.id)
+      terms.add(sub.name)
+      ;(CATEGORY_SOURCE_LABELS[sub.id] || []).forEach(label => terms.add(label))
+    })
+  } else if (subcategoryCategory) {
+    const sub = getSubcategoryById(subcategoryCategory.id, categoryId)
+    terms.add(subcategoryCategory.id)
+    terms.add(subcategoryCategory.name)
+    terms.add(categoryId)
+    if (sub) terms.add(sub.name)
+  } else if (categoryId) {
+    terms.add(categoryId)
+  }
+
+  getCategorySourceLabels(categoryId).forEach(label => terms.add(label))
+  return Array.from(terms).filter(Boolean)
 }
 
 export function getCategoryPath(
@@ -516,6 +664,18 @@ export const LEGACY_CATEGORY_MAP: Record<string, CategoryId> = {
   'Document Preparation': 'document-prep',
   'Attorney Review': 'attorney-review',
   'Attorney Engagement': 'legal-consultation',
+  'USA Study': 'study-permits',
+  'USA Visitor': 'visitor-visas',
+  'USA Work After Study': 'work-permits',
+  'USA Financial Support': 'family-sponsorship',
+  'Canada Study': 'study-permits',
+  'Canada Visitor': 'visitor-visas',
+  'Canada Work': 'work-permits',
+  'Canada Work After Study': 'work-permits',
+  'Canada General': 'immigration',
+  'Refusal Recovery': 'pr-immigration',
+  'General Intake': 'document-prep',
+  'Bundle': 'immigration',
 }
 
 /**

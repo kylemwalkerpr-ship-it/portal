@@ -1,5 +1,5 @@
 import { ok } from '@/lib/apiEnvelope'
-import { CATEGORIES, getCategoryById, getPopularCategories } from '@/lib/categories'
+import { CATEGORIES, getCategorySourceLabels, getPopularCategories } from '@/lib/categories'
 
 export async function GET() {
   // Return all categories with their subcategories
@@ -10,11 +10,15 @@ export async function GET() {
     icon: cat.icon,
     vertical: cat.vertical,
     popular: cat.popular,
+    sourceLabels: getCategorySourceLabels(cat.id),
+    sourceCount: getCategorySourceLabels(cat.id).length,
     subcategories: cat.subcategories.map(sub => ({
       id: sub.id,
       name: sub.name,
       description: sub.description,
       popular: sub.popular,
+      sourceLabels: getCategorySourceLabels(sub.id),
+      sourceCount: getCategorySourceLabels(sub.id).length,
     })),
   }))
 

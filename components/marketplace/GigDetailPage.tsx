@@ -143,6 +143,19 @@ const tagBadge: CSSProperties = {
   fontWeight: 600,
 }
 
+const SAVED_GIGS_KEY = 'ys_marketplace_saved_gigs'
+const RECENT_GIGS_KEY = 'ys_marketplace_recent_gigs'
+
+function readLocalList(key: string) {
+  if (typeof window === 'undefined') return []
+  try {
+    const value = JSON.parse(window.localStorage.getItem(key) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
 function money(cents: number, currency = 'usd') {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -201,6 +214,29 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       setGig(loaded)
       setSelectedTierId(tiers[0]?.id || '')
       setMainImage(loaded.gallery_images?.[0]?.url || '')
+      if (typeof window !== 'undefined') {
+        const saved = readLocalList(SAVED_GIGS_KEY)
+        setIsSaved(saved.some((item: any) => item.id === loaded.id))
+
+        const recent = readLocalList(RECENT_GIGS_KEY)
+        const recentGig = {
+          id: loaded.id,
+          slug: loaded.slug,
+          title: loaded.title,
+          pitch: loaded.pitch,
+          starting_price: loaded.starting_price,
+          avg_rating: loaded.avg_rating,
+          review_count: loaded.review_count,
+          provider_type: loaded.provider_type,
+          provider_id: loaded.provider_id,
+          provider: loaded.provider,
+          gallery_images: loaded.gallery_images || [],
+        }
+        window.localStorage.setItem(
+          RECENT_GIGS_KEY,
+          JSON.stringify([recentGig, ...recent.filter((item: any) => item.id !== loaded.id)].slice(0, 8)),
+        )
+      }
 
       // Track view
       requestJson('/api/gig-metrics/event', {
@@ -218,20 +254,58 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     load()
   }, [load])
 
-  const handleOrder = () => {
+  const handleOrder = async () => {
     if (!selectedTierId || !gig) return
-    // Navigate to checkout or open checkout dialog
-    window.location.href = `/marketplace/gigs/${slug}/checkout?tier=${selectedTierId}`
+    try {
+      const payload = await requestJson('/api/checkout/order', {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceType: 'gig',
+          sourceId: gig.id,
+          tierId: selectedTierId,
+          paymentMethod: 'stripe',
+        }),
+      })
+      requestJson('/api/gig-metrics/event', {
+        method: 'POST',
+        body: JSON.stringify({ gig_id: gig.id, event_type: 'purchase' }),
+      }).catch(() => {})
+      if (payload?.url) window.location.href = payload.url
+    } catch (e: any) {
+      setError(e.message || 'Checkout could not be started.')
+    }
   }
 
   const handleSave = async () => {
     if (!gig) return
     try {
-      await requestJson('/api/saved-gigs', {
-        method: 'POST',
-        body: JSON.stringify({ gig_id: gig.id }),
-      })
+      const saved = readLocalList(SAVED_GIGS_KEY)
+      const nextSaved = isSaved
+        ? saved.filter((item: any) => item.id !== gig.id)
+        : [
+            {
+              id: gig.id,
+              slug: gig.slug,
+              title: gig.title,
+              pitch: gig.pitch,
+              starting_price: gig.starting_price,
+              avg_rating: gig.avg_rating,
+              review_count: gig.review_count,
+              provider_type: gig.provider_type,
+              provider_id: gig.provider_id,
+              provider: gig.provider,
+              gallery_images: gig.gallery_images || [],
+            },
+            ...saved.filter((item: any) => item.id !== gig.id),
+          ].slice(0, 48)
+      window.localStorage.setItem(SAVED_GIGS_KEY, JSON.stringify(nextSaved))
       setIsSaved(!isSaved)
+      if (!isSaved) {
+        requestJson('/api/gig-metrics/event', {
+          method: 'POST',
+          body: JSON.stringify({ gig_id: gig.id, event_type: 'save' }),
+        }).catch(() => {})
+      }
     } catch (e) {
       console.error('Failed to save gig:', e)
     }
@@ -252,6 +326,12 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       // Fallback: copy to clipboard
       navigator.clipboard.writeText(window.location.href)
       alert('Link copied to clipboard!')
+    }
+    if (gig?.id) {
+      requestJson('/api/gig-metrics/event', {
+        method: 'POST',
+        body: JSON.stringify({ gig_id: gig.id, event_type: 'share' }),
+      }).catch(() => {})
     }
   }
 
@@ -315,7 +395,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           </div>
         </div>
 
-        <div style={contentLayout}>
+        <div style={contentLayout} className="ys-content-layout">
           <div style={mainContent}>
             <div>
               {mainImage ? (
@@ -394,7 +474,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             )}
           </div>
 
-          <aside style={sidebar}>
+          <aside style={sidebar} className="ys-sidebar">
             <SellerProfileCard
               seller={{
                 id: gig.provider_id,
@@ -408,10 +488,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 is_online: gig.provider_is_online,
               }}
               onViewProfile={() => {
-                window.location.href = `/providers/${gig.provider_id}`
+                window.location.href = `/sellers/${gig.provider_id}`
               }}
               onMessage={() => {
-                window.location.href = `/messages?provider=${gig.provider_id}`
+                window.location.href = `/dashboard?message_provider=${gig.provider_id}`
               }}
             />
 

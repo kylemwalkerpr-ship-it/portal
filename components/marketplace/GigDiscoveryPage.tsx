@@ -4,12 +4,12 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { C, Card, Btn, Badge } from '../design/shared'
+import { C, Card, Btn, Badge, SearchInput } from '../design/shared'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
 import { GigCard } from './MarketplaceHero'
-import { CATEGORIES, getCategoryById } from '@/lib/categories'
+import { CATEGORIES, getCategoryById, getCategorySourceLabels } from '@/lib/categories'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -31,6 +31,14 @@ const toolbar: CSSProperties = {
   gap: '16px',
   marginBottom: '24px',
   flexWrap: 'wrap',
+}
+
+const searchBar: CSSProperties = {
+  display: 'flex',
+  gap: '10px',
+  alignItems: 'center',
+  width: 'min(560px, 100%)',
+  margin: '18px 0 0',
 }
 
 const titleStyle: CSSProperties = {
@@ -193,6 +201,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const categoryOptions = CATEGORIES.map(cat => ({
     id: cat.id,
     label: cat.name,
+    count: getCategorySourceLabels(cat.id).length,
   }))
 
   const providerTypeOptions = [
@@ -214,7 +223,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setError('')
     try {
       const params = new URLSearchParams()
-      if (searchQuery) params.set('q', searchQuery)
+      if (searchQuery.trim()) params.set('q', searchQuery.trim())
       selectedCategories.forEach(cat => params.append('category', cat))
       selectedProviderTypes.forEach(type => params.append('provider_type', type))
       if (minPrice) params.set('min_price', minPrice)
@@ -259,7 +268,6 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
   const handleApplyFilters = () => {
     setPage(1)
-    loadGigs()
     setFilterDrawerOpen(false)
   }
 
@@ -270,8 +278,8 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setMaxPrice('')
     setSelectedRating('')
     setSelectedDeliveryTimes([])
+    setSearchQuery('')
     setPage(1)
-    loadGigs()
     setFilterDrawerOpen(false)
   }
 
@@ -306,6 +314,12 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
   const totalPages = Math.ceil(total / 20)
 
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    setPage(1)
+    loadGigs()
+  }
+
   return (
     <div style={pageShell}>
       <main style={inner}>
@@ -315,6 +329,20 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
               {categoryName || 'All Services'}
             </h1>
             <ResultsCount total={total} showing={gigs.length} />
+            <form onSubmit={handleSearchSubmit} style={searchBar}>
+              <SearchInput
+                value={searchQuery}
+                onChange={value => {
+                  setSearchQuery(value)
+                  setPage(1)
+                }}
+                placeholder="Search visas, legal review, business formation..."
+                style={{ flex: 1 }}
+              />
+              <Btn variant="primary" type="submit">
+                Search
+              </Btn>
+            </form>
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
@@ -335,25 +363,37 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
         <ActiveFilters filters={activeFilters} onRemove={handleRemoveFilter} onClearAll={handleClearFilters} />
 
-        <div style={contentLayout}>
-          <FilterSidebar
-            categories={categoryOptions}
-            providerTypes={providerTypeOptions}
-            selectedCategories={selectedCategories}
-            selectedProviderTypes={selectedProviderTypes}
-            minPrice={minPrice}
-            maxPrice={maxPrice}
-            selectedRating={selectedRating}
-            selectedDeliveryTimes={selectedDeliveryTimes}
-            onCategoriesChange={setSelectedCategories}
-            onProviderTypesChange={setSelectedProviderTypes}
-            onPriceChange={setMinPrice}
-            onRatingChange={setSelectedRating}
-            onDeliveryTimesChange={setSelectedDeliveryTimes}
-            onClear={handleClearFilters}
-            onApply={handleApplyFilters}
-            hasActiveFilters={hasActiveFilters}
-          />
+        <div style={contentLayout} className="ys-content-layout">
+          <div className="ys-filter-sidebar">
+            <FilterSidebar
+              categories={categoryOptions}
+              providerTypes={providerTypeOptions}
+              selectedCategories={selectedCategories}
+              selectedProviderTypes={selectedProviderTypes}
+              minPrice={minPrice}
+              maxPrice={maxPrice}
+              selectedRating={selectedRating}
+              selectedDeliveryTimes={selectedDeliveryTimes}
+              onCategoriesChange={setSelectedCategories}
+              onProviderTypesChange={setSelectedProviderTypes}
+              onPriceChange={(min, max) => {
+                setMinPrice(min)
+                setMaxPrice(max)
+                setPage(1)
+              }}
+              onRatingChange={value => {
+                setSelectedRating(value)
+                setPage(1)
+              }}
+              onDeliveryTimesChange={value => {
+                setSelectedDeliveryTimes(value)
+                setPage(1)
+              }}
+              onClear={handleClearFilters}
+              onApply={handleApplyFilters}
+              hasActiveFilters={hasActiveFilters}
+            />
+          </div>
 
           <div>
             {loading ? (

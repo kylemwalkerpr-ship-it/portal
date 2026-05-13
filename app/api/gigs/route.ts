@@ -39,6 +39,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Untitled service'
   const slug = `${buildSlug(title)}-${crypto.randomUUID().slice(0, 8)}`
+  const status = body.status === 'active' ? 'active' : 'draft'
+  const category = String(body.category || body.subcategory || '').trim() || null
+  const subcategory = String(body.subcategory || '').trim() || null
+  const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
 
   const { data: gig, error } = await auth.db
     .from('gigs')
@@ -46,10 +50,17 @@ export async function POST(req: Request) {
       provider_id: auth.profileId,
       provider_type: auth.role,
       title,
-      category: body.category || null,
+      category,
+      subcategory,
       tags: Array.isArray(body.tags) ? body.tags.slice(0, 5) : [],
       pitch: body.pitch || '',
-      status: 'draft',
+      description: body.description || '',
+      requirements: body.requirements || '',
+      faq: Array.isArray(body.faq) ? body.faq.slice(0, 10) : [],
+      gallery_images: Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 5) : [],
+      video_url: body.video_url || null,
+      status,
+      published_at: status === 'active' ? new Date().toISOString() : null,
       seo_title: body.seo_title || title,
       seo_description: body.seo_description || body.pitch || '',
       slug,
@@ -59,16 +70,21 @@ export async function POST(req: Request) {
 
   if (error || !gig) return fail(error?.message || 'Could not create gig.', 500)
 
-  await auth.db.from('gig_tiers').insert({
-    gig_id: gig.id,
-    tier: 'basic',
-    title: 'Basic',
-    description: '',
-    price: 100,
-    delivery_days: 1,
-    revisions: 1,
-    features: [],
-  })
+  const tierRows = (tiers.length ? tiers : [{ tier: 'basic', title: 'Basic', price: 100, delivery_days: 1, revisions: 1, features: [], is_active: true }])
+    .map((tier: any, index: number) => ({
+      gig_id: gig.id,
+      tier: ['basic', 'standard', 'premium'].includes(tier.tier) ? tier.tier : ['basic', 'standard', 'premium'][index],
+      title: String(tier.title || tier.tier || 'Package').slice(0, 80),
+      description: String(tier.description || ''),
+      price: Math.max(100, Number(tier.price || 100)),
+      delivery_days: Math.max(1, Number(tier.delivery_days || 1)),
+      revisions: Math.max(0, Number(tier.revisions || 0)),
+      features: Array.isArray(tier.features) ? tier.features.map(String).slice(0, 12) : [],
+      is_active: tier.is_active !== false,
+    }))
+
+  const { error: tierError } = await auth.db.from('gig_tiers').insert(tierRows)
+  if (tierError) return fail(tierError.message, 500)
 
   return ok({ gig }, { status: 201 })
 }
