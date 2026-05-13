@@ -101,11 +101,6 @@ export function MarketplacePage() {
   const searchParams = useSearchParams()
   const hasFilters = searchParams.has('q') || searchParams.has('category') || searchParams.has('sort')
 
-  // If there are filters, show the discovery page instead
-  if (hasFilters) {
-    return <GigDiscoveryPage />
-  }
-
   const [gigs, setGigs] = React.useState([])
   const [featuredGigs, setFeaturedGigs] = React.useState([])
   const [trendingGigs, setTrendingGigs] = React.useState([])
@@ -141,8 +136,14 @@ export function MarketplacePage() {
   }, [])
 
   React.useEffect(() => {
+    if (hasFilters) return
     load()
-  }, [load])
+  }, [hasFilters, load])
+
+  // If there are filters, show the discovery page instead.
+  if (hasFilters) {
+    return <GigDiscoveryPage />
+  }
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
