@@ -3,7 +3,9 @@
 import React from 'react'
 import Link from 'next/link'
 import { loadStripe } from '@stripe/stripe-js'
-export { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
+import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
+
+export { C, Btn, Badge, Card, Input, Select, ProgressBar }
 
 const ORDER_COLUMNS = [
   { id: 'pending', label: 'Pending', statuses: ['pending', 'queued', 'created', 'new'], color: 'orange' },

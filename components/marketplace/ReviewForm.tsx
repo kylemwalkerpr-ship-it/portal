@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { C, Card, Button, Input, Textarea, Badge, LoadingState } from '../shared'
+import { C, Card, Btn as Button, Input, Textarea } from '../design/shared'
 
 const containerStyle = {
   maxWidth: '600px',
@@ -301,7 +301,7 @@ export function ReviewForm({
             <label style={labelStyle}>Review Title (Optional)</label>
             <Input
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={setTitle}
               placeholder="Summarize your experience"
               maxLength={100}
             />
@@ -315,7 +315,7 @@ export function ReviewForm({
             </label>
             <Textarea
               value={comment}
-              onChange={e => setComment(e.target.value)}
+              onChange={setComment}
               placeholder="Tell others about your experience. What did you like? What could be improved?"
               style={textareaStyle}
             />
