@@ -1,4 +1,4 @@
-import { ProviderGigsPage } from '@/components/design/fiverr-workbench'
+import { GigBuilderWizardClient } from '@/components/marketplace/GigBuilderWizardClient'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 
@@ -8,5 +8,5 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (auth.role === 'client') redirect('/marketplace')
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
   const { id } = await params
-  return <ProviderGigsPage selectedGigId={id} />
+  return <GigBuilderWizardClient gigId={id} />
 }

@@ -1,4 +1,4 @@
-import { MarketplacePage } from '@/components/design/fiverr-workbench'
+import { MarketplacePage } from '@/components/marketplace/MarketplacePage'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 
