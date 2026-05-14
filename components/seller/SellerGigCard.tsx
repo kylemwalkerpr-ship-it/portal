@@ -29,231 +29,211 @@ interface SellerGigCardProps {
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 
-const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; accent: string; label: string }> = {
-  active:    { bg: '#EAF5EE', text: '#1A6B45', border: 'rgba(26,107,69,0.25)',  accent: '#1A6B45', label: 'Active' },
-  draft:     { bg: '#F5EDD6', text: '#9A7B3B', border: 'rgba(154,123,59,0.30)', accent: '#9A7B3B', label: 'Draft' },
-  suspended: { bg: '#FEF5E4', text: '#8B5E0A', border: 'rgba(139,94,10,0.28)',  accent: '#8B5E0A', label: 'Suspended' },
-  archived:  { bg: '#EDEAF7', text: '#3D2B6B', border: 'rgba(61,43,107,0.25)', accent: '#3D2B6B', label: 'Archived' },
-  deleted:   { bg: '#FAEAEA', text: '#8B1A1A', border: 'rgba(139,26,26,0.25)', accent: '#8B1A1A', label: 'Deleted' },
+const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; accent: string; dot: string; label: string }> = {
+  active:    { bg: '#EAF5EE', text: '#1A6B45', border: 'rgba(26,107,69,0.22)',  accent: '#1A6B45', dot: '#1A6B45', label: 'Active' },
+  draft:     { bg: '#F5EDD6', text: '#7A6030', border: 'rgba(154,123,59,0.28)', accent: '#9A7B3B', dot: '#9A7B3B', label: 'Draft' },
+  suspended: { bg: '#FEF5E4', text: '#7A4D08', border: 'rgba(139,94,10,0.25)',  accent: '#8B5E0A', dot: '#D97706', label: 'Suspended' },
+  archived:  { bg: '#EDEAF7', text: '#3D2B6B', border: 'rgba(61,43,107,0.22)', accent: '#3D2B6B', dot: '#6B5AB0', label: 'Archived' },
+  deleted:   { bg: '#FAEAEA', text: '#7A1A1A', border: 'rgba(139,26,26,0.22)', accent: '#8B1A1A', dot: '#8B1A1A', label: 'Deleted' },
 }
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft
   return (
     <span style={{
-      display: 'inline-block',
-      padding: '2px 9px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '5px',
+      padding: '3px 9px 3px 7px',
       borderRadius: '4px',
       fontSize: '11px',
-      fontWeight: 700,
-      letterSpacing: '0.06em',
+      fontWeight: 600,
+      letterSpacing: '0.04em',
       textTransform: 'uppercase' as const,
       background: cfg.bg,
       color: cfg.text,
       border: `1px solid ${cfg.border}`,
-      fontFamily: sans,
     }}>
+      <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: cfg.dot, display: 'inline-block', flexShrink: 0 }} />
       {cfg.label}
     </span>
   )
 }
 
-function ContentScoreBar({ score }: { score: number }) {
-  const clamped = Math.max(0, Math.min(100, score))
-  const color = clamped >= 75 ? '#1A6B45' : clamped >= 50 ? '#8B5E0A' : '#8B1A1A'
+function MetricCell({ label, value }: { label: string; value: number }) {
   return (
-    <div style={{ paddingTop: '12px', borderTop: '1px solid #DDD8CE' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <span style={{ fontSize: '11px', color: '#5C6070', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' as const, fontFamily: sans }}>
-          Content Score
-        </span>
-        <span style={{ fontSize: '12px', color: '#1A1F2E', fontWeight: 700, fontFamily: sans }}>{clamped}%</span>
+    <div style={{ textAlign: 'center' as const, padding: '14px 18px' }}>
+      <div style={{ fontWeight: 700, fontSize: '20px', color: '#1B2D4F', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+        {value.toLocaleString()}
       </div>
-      <div style={{ height: '5px', borderRadius: '2px', background: '#F2EFE9', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${clamped}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
+      <div style={{ fontSize: '10px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: '4px' }}>
+        {label}
       </div>
     </div>
   )
 }
 
-function ActionBtn({
-  onClick,
-  href,
-  target,
-  rel,
-  color,
-  children,
-}: {
+function ScoreBar({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(100, score))
+  const color = clamped >= 75 ? '#1A6B45' : clamped >= 45 ? '#8B5E0A' : '#8B1A1A'
+  return (
+    <div style={{ padding: '12px 20px', borderTop: '1px solid #F2EFE9', display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <span style={{ fontSize: '11px', color: '#9097A8', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' as const, flexShrink: 0 }}>
+        Profile Strength
+      </span>
+      <div style={{ flex: 1, height: '4px', borderRadius: '2px', background: '#F2EFE9', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${clamped}%`, background: color, borderRadius: '2px', transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: '12px', color: '#1A1F2E', fontWeight: 700, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+        {clamped}%
+      </span>
+    </div>
+  )
+}
+
+interface ActionBtnProps {
   onClick?: () => void
   href?: string
   target?: string
   rel?: string
-  color: string
+  variant?: 'navy' | 'green' | 'purple' | 'red' | 'ghost'
   children: React.ReactNode
-}) {
+}
+
+function ActionBtn({ onClick, href, target, rel, variant = 'ghost', children }: ActionBtnProps) {
+  const colors = {
+    navy:   { color: '#1B2D4F', border: '#1B2D4F', bg: 'transparent' },
+    green:  { color: '#1A6B45', border: 'rgba(26,107,69,0.50)', bg: '#EAF5EE' },
+    purple: { color: '#3D2B6B', border: 'rgba(61,43,107,0.45)', bg: '#EDEAF7' },
+    red:    { color: '#8B1A1A', border: 'rgba(139,26,26,0.45)', bg: '#FAEAEA' },
+    ghost:  { color: '#5C6070', border: '#DDD8CE', bg: 'transparent' },
+  }
+  const c = colors[variant]
   const style: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '5px 13px',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontWeight: 600,
-    background: 'transparent',
-    color,
-    border: `1px solid ${color}`,
-    cursor: 'pointer',
-    textDecoration: 'none',
-    fontFamily: sans,
-    lineHeight: 1.4,
-    transition: 'background 0.12s',
-    whiteSpace: 'nowrap' as const,
+    display: 'inline-flex', alignItems: 'center', padding: '5px 12px',
+    borderRadius: '5px', fontSize: '12px', fontWeight: 600,
+    color: c.color, border: `1px solid ${c.border}`, background: c.bg,
+    cursor: 'pointer', textDecoration: 'none', fontFamily: sans,
+    letterSpacing: '0.01em', whiteSpace: 'nowrap', transition: 'opacity 0.12s',
   }
-  if (href) {
-    return <Link href={href} target={target} rel={rel} style={style}>{children}</Link>
-  }
-  return (
-    <button type="button" onClick={onClick} style={{ ...style, border: `1px solid ${color}` }}>
-      {children}
-    </button>
-  )
+  if (href) return <Link href={href} target={target} rel={rel} style={style}>{children}</Link>
+  return <button type="button" onClick={onClick} style={style}>{children}</button>
 }
 
 export default function SellerGigCard({ gig, onStatusChange, onPublish }: SellerGigCardProps) {
   const [confirming, setConfirming] = React.useState(false)
+  const [hovered, setHovered] = React.useState(false)
   const metrics = gig.metrics
+  const cfg = STATUS_CONFIG[gig.status] ?? STATUS_CONFIG.draft
 
-  const canPublish = ['draft', 'suspended'].includes(gig.status)
-  const canArchive = ['active', 'draft', 'suspended'].includes(gig.status)
+  const canPublish  = ['draft', 'suspended'].includes(gig.status)
+  const canArchive  = ['active', 'draft', 'suspended'].includes(gig.status)
   const canActivate = gig.status === 'archived'
-  const canDelete = gig.status !== 'deleted'
-
-  const handleDelete = () => {
-    if (!confirming) { setConfirming(true); return }
-    onStatusChange(gig.id, 'deleted')
-    setConfirming(false)
-  }
-
-  const accentColor = (STATUS_CONFIG[gig.status] ?? STATUS_CONFIG.draft).accent
+  const canDelete   = gig.status !== 'deleted'
 
   return (
-    <div style={{
-      background: '#FFFFFF',
-      border: '1px solid #DDD8CE',
-      borderLeft: `4px solid ${accentColor}`,
-      borderRadius: '8px',
-      boxShadow: '0 1px 3px rgba(27,45,79,0.08), 0 1px 2px rgba(27,45,79,0.04)',
-      opacity: gig.status === 'deleted' ? 0.55 : 1,
-      overflow: 'hidden',
-      fontFamily: sans,
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setConfirming(false) }}
+      style={{
+        background: '#FFFFFF',
+        border: `1px solid ${hovered ? '#C8C2B6' : '#DDD8CE'}`,
+        borderLeft: `4px solid ${cfg.accent}`,
+        borderRadius: '8px',
+        boxShadow: hovered
+          ? '0 4px 16px rgba(27,45,79,0.12), 0 2px 6px rgba(27,45,79,0.07)'
+          : '0 1px 3px rgba(27,45,79,0.06), 0 1px 2px rgba(27,45,79,0.04)',
+        opacity: gig.status === 'deleted' ? 0.50 : 1,
+        overflow: 'hidden',
+        fontFamily: sans,
+        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+      }}
+    >
       {/* Main row */}
-      <div style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
-        {/* Left: title + category + pitch */}
-        <div style={{ flex: '1 1 0', minWidth: 0, padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const, marginBottom: '6px' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+
+        {/* Left: info */}
+        <div style={{ flex: '1 1 0', minWidth: 0, padding: '18px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const, marginBottom: '8px' }}>
             <StatusBadge status={gig.status} />
             {gig.category && (
-              <span style={{ fontSize: '12px', color: '#5C6070', background: '#F2EFE9', border: '1px solid #DDD8CE', padding: '2px 8px', borderRadius: '4px', fontWeight: 500 }}>
+              <span style={{
+                fontSize: '11px', color: '#5C6070',
+                background: '#F7F5F0', border: '1px solid #DDD8CE',
+                padding: '2px 8px', borderRadius: '4px', fontWeight: 500,
+                letterSpacing: '0.02em',
+              }}>
                 {gig.category}
               </span>
             )}
           </div>
+
           <h3 style={{
-            fontFamily: serif,
-            fontWeight: 600,
-            fontSize: '18px',
-            color: '#1B2D4F',
-            lineHeight: 1.3,
-            margin: '0 0 6px',
+            fontFamily: serif, fontWeight: 600, fontSize: '19px',
+            color: '#1B2D4F', lineHeight: 1.25, margin: '0 0 6px',
             letterSpacing: '-0.01em',
           }}>
             {gig.title}
           </h3>
+
           {gig.pitch && (
             <p style={{
-              color: '#5C6070',
-              fontSize: '13px',
-              lineHeight: 1.55,
-              margin: 0,
-              overflow: 'hidden',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical' as const,
+              color: '#5C6070', fontSize: '13px', lineHeight: 1.6, margin: 0,
+              overflow: 'hidden', display: '-webkit-box',
+              WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
             }}>
               {gig.pitch}
             </p>
           )}
         </div>
 
-        {/* Center: metrics */}
+        {/* Center: metrics — only shown when data exists */}
         {metrics && (
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0,
-            borderLeft: '1px solid #DDD8CE',
-            borderRight: '1px solid #DDD8CE',
+            display: 'flex', alignItems: 'stretch',
+            borderLeft: '1px solid #F2EFE9', borderRight: '1px solid #F2EFE9',
             flexShrink: 0,
           }}>
-            {([
+            {[
               ['Impressions', metrics.impressions],
               ['Clicks', metrics.clicks],
               ['Saves', metrics.saves],
-            ] as [string, number][]).map(([label, val], i) => (
-              <div key={label} style={{
-                textAlign: 'center' as const,
-                padding: '16px 20px',
-                borderRight: i < 2 ? '1px solid #F2EFE9' : 'none',
-              }}>
-                <div style={{ fontWeight: 700, fontSize: '22px', color: '#1B2D4F', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
-                <div style={{ fontSize: '10px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: '3px' }}>{label}</div>
+            ].map(([label, val], i) => (
+              <div key={String(label)} style={{ borderRight: i < 2 ? '1px solid #F2EFE9' : 'none' }}>
+                <MetricCell label={String(label)} value={Number(val)} />
               </div>
             ))}
           </div>
         )}
 
         {/* Right: actions */}
-        <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', justifyContent: 'center', gap: '7px', padding: '16px 20px', flexShrink: 0 }}>
-          <ActionBtn href={`/dashboard/gigs/${gig.id}/edit`} color="#1B2D4F">Edit</ActionBtn>
-          <ActionBtn href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" color="#5C6070">Preview ↗</ActionBtn>
-          {canPublish && (
-            <ActionBtn onClick={() => onPublish(gig.id)} color="#1A6B45">Publish</ActionBtn>
-          )}
-          {canActivate && (
-            <ActionBtn onClick={() => onStatusChange(gig.id, 'active')} color="#1A6B45">Activate</ActionBtn>
-          )}
-          {canArchive && (
-            <ActionBtn onClick={() => onStatusChange(gig.id, 'archived')} color="#3D2B6B">Archive</ActionBtn>
-          )}
+        <div style={{
+          display: 'flex', flexDirection: 'column' as const,
+          alignItems: 'flex-start', justifyContent: 'center',
+          gap: '6px', padding: '16px 20px', flexShrink: 0,
+          borderLeft: '1px solid #F2EFE9', minWidth: '140px',
+        }}>
+          <ActionBtn href={`/dashboard/gigs/${gig.id}/edit`} variant="navy">Edit</ActionBtn>
+          <ActionBtn href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" variant="ghost">Preview ↗</ActionBtn>
+          {canPublish && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Publish</ActionBtn>}
+          {canActivate && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Re-publish</ActionBtn>}
+          {canArchive && <ActionBtn onClick={() => onStatusChange(gig.id, 'archived')} variant="purple">Archive</ActionBtn>}
           {canDelete && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              style={{
-                display: 'inline-flex', alignItems: 'center',
-                padding: '5px 13px',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: 600,
-                background: confirming ? '#8B1A1A' : 'transparent',
-                color: confirming ? '#FFFFFF' : '#8B1A1A',
-                border: '1px solid #8B1A1A',
-                cursor: 'pointer',
-                fontFamily: sans,
-                transition: 'background 0.12s',
-                whiteSpace: 'nowrap' as const,
+            <ActionBtn
+              onClick={() => {
+                if (!confirming) { setConfirming(true); return }
+                onStatusChange(gig.id, 'deleted')
               }}
+              variant="red"
             >
-              {confirming ? 'Confirm delete?' : 'Delete'}
-            </button>
+              {confirming ? 'Confirm?' : 'Delete'}
+            </ActionBtn>
           )}
         </div>
       </div>
 
-      {/* Bottom: content score */}
-      <div style={{ padding: '0 20px 14px' }}>
-        <ContentScoreBar score={gig.content_score} />
-      </div>
+      {/* Score bar */}
+      <ScoreBar score={gig.content_score} />
     </div>
   )
 }
