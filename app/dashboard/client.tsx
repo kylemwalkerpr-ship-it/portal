@@ -5,6 +5,9 @@ import { useClerk } from '@clerk/nextjs'
 import { C } from '@/components/design/shared'
 import dynamic from 'next/dynamic'
 import { roleLabel, signInForLane } from '@/lib/roleLanes'
+// BuyerDashboardWidgets is rendered inside StudentApp (components/design/student.jsx)
+// for the client/student role. Import kept here for reference.
+import { BuyerDashboardWidgets } from '@/components/marketplace/BuyerDashboardWidgets'
 
 const StudentApp = dynamic(() => import('@/components/design/student'), { ssr: false })
 const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { ssr: false })

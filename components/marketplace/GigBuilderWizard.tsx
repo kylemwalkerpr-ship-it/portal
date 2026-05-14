@@ -164,13 +164,14 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     category: existingGig?.category || persistedDraft?.category || '',
     subcategory: existingGig?.subcategory || persistedDraft?.subcategory || '',
     title: existingGig?.title || persistedDraft?.title || '',
+    tagline: existingGig?.tagline || persistedDraft?.tagline || '',
     pitch: existingGig?.pitch || persistedDraft?.pitch || '',
     description: existingGig?.description || persistedDraft?.description || '',
     tags: existingGig?.tags || persistedDraft?.tags || [],
     tiers: existingGig?.tiers || persistedDraft?.tiers || [
-      { tier: 'basic', title: 'Basic', price: 2500, delivery_days: 7, revisions: 1, features: [], is_active: true },
-      { tier: 'standard', title: 'Standard', price: 5000, delivery_days: 14, revisions: 2, features: [], is_active: true },
-      { tier: 'premium', title: 'Premium', price: 10000, delivery_days: 21, revisions: 3, features: [], is_active: true },
+      { tier: 'basic', title: 'Basic', description: '', price: 2500, delivery_days: 7, revisions: 1, features: [], is_active: true },
+      { tier: 'standard', title: 'Standard', description: '', price: 5000, delivery_days: 14, revisions: 2, features: [], is_active: true },
+      { tier: 'premium', title: 'Premium', description: '', price: 10000, delivery_days: 21, revisions: 3, features: [], is_active: true },
     ],
     faq: existingGig?.faq || persistedDraft?.faq || [],
     requirements: existingGig?.requirements || persistedDraft?.requirements || '',
@@ -179,6 +180,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     seo_title: existingGig?.seo_title || persistedDraft?.seo_title || '',
     seo_description: existingGig?.seo_description || persistedDraft?.seo_description || '',
   })
+  const [currentGigId, setCurrentGigId] = React.useState<string | undefined>(gigId)
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = React.useState('')
@@ -188,16 +190,21 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
 
     if (step === 0) {
       if (!gigData.category) newErrors.category = 'Please select a category'
+      if (!gigData.subcategory) newErrors.subcategory = 'Please select a subcategory'
     }
 
     if (step === 1) {
       if (!gigData.title.trim()) newErrors.title = 'Title is required'
-      if (gigData.title.length < 10) newErrors.title = 'Title must be at least 10 characters'
-      if (gigData.title.length > 120) newErrors.title = 'Title must be less than 120 characters'
-      if (!gigData.pitch.trim()) newErrors.pitch = 'Pitch is required'
-      if (gigData.pitch.length < 30) newErrors.pitch = 'Pitch must be at least 30 characters'
+      if (gigData.title.length < 20) newErrors.title = 'Title must be at least 20 characters'
+      if (gigData.title.length > 80) newErrors.title = 'Title must be 80 characters or fewer'
+      if (!gigData.tagline.trim()) newErrors.tagline = 'Tagline / Pitch is required'
+      if (gigData.tagline.length < 40) newErrors.tagline = 'Tagline must be at least 40 characters'
+      if (gigData.tagline.length > 160) newErrors.tagline = 'Tagline must be 160 characters or fewer'
       if (!gigData.description.trim()) newErrors.description = 'Description is required'
-      if (gigData.description.length < 100) newErrors.description = 'Description must be at least 100 characters'
+      if (gigData.description.length < 300) newErrors.description = 'Description must be at least 300 characters'
+      if (gigData.description.length > 2500) newErrors.description = 'Description must be 2500 characters or fewer'
+      if (gigData.tags.length < 3) newErrors.tags = 'Add at least 3 tags'
+      if (gigData.tags.length > 5) newErrors.tags = 'Maximum 5 tags allowed'
     }
 
     if (step === 2) {
@@ -242,8 +249,8 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         status: 'draft',
       }
 
-      const url = gigId ? `/api/gigs/${gigId}` : '/api/gigs'
-      const method = gigId ? 'PATCH' : 'POST'
+      const url = currentGigId ? `/api/gigs/${currentGigId}` : '/api/gigs'
+      const method = currentGigId ? 'PATCH' : 'POST'
 
       const res = await fetch(url, {
         method,
@@ -257,7 +264,8 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       }
 
       const data = await res.json()
-      const savedGigId = data.gig?.id || gigId
+      const savedGigId = data.gig?.id || currentGigId
+      if (savedGigId && !currentGigId) setCurrentGigId(savedGigId)
 
       setAutoSaveStatus('Draft saved!')
       if (typeof window !== 'undefined') window.localStorage.removeItem(BUILDER_DRAFT_KEY)
@@ -274,39 +282,43 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   }
 
   const handlePublish = async () => {
-    if (!validateStep(STEPS.length - 1)) return
-
     setSaving(true)
     setAutoSaveStatus('Publishing...')
     try {
-      const payload = {
-        ...gigData,
-        status: 'active',
-      }
+      // Step 1: save draft (creates gig if new, or patches existing)
+      const draftPayload = { ...gigData, status: 'draft' }
+      const draftUrl = currentGigId ? `/api/gigs/${currentGigId}` : '/api/gigs'
+      const draftMethod = currentGigId ? 'PATCH' : 'POST'
 
-      const url = gigId ? `/api/gigs/${gigId}` : '/api/gigs'
-      const method = gigId ? 'PATCH' : 'POST'
-
-      const res = await fetch(url, {
-        method,
+      const draftRes = await fetch(draftUrl, {
+        method: draftMethod,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(draftPayload),
       })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to publish gig')
+      if (!draftRes.ok) {
+        const d = await draftRes.json()
+        throw new Error(d.error || 'Failed to save gig before publishing')
       }
+      const draftData = await draftRes.json()
+      const resolvedGigId = draftData.gig?.id || currentGigId
+      if (resolvedGigId && !currentGigId) setCurrentGigId(resolvedGigId)
 
-      const data = await res.json()
-      const savedGigId = data.gig?.id || gigId
+      // Step 2: call the publish endpoint
+      const publishRes = await fetch(`/api/gigs/${resolvedGigId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!publishRes.ok) {
+        const d = await publishRes.json()
+        throw new Error(d.error || 'Failed to publish gig')
+      }
 
       setAutoSaveStatus('Published!')
       if (typeof window !== 'undefined') window.localStorage.removeItem(BUILDER_DRAFT_KEY)
       setTimeout(() => setAutoSaveStatus(''), 3000)
 
-      if (onComplete && savedGigId) {
-        onComplete(savedGigId)
+      if (onComplete && resolvedGigId) {
+        onComplete(resolvedGigId)
       }
     } catch (e: any) {
       setAutoSaveStatus(`Error: ${e.message}`)
@@ -504,19 +516,20 @@ function CategoryStep({ gigData, errors, onChange }: any) {
 
       {selectedCategory && (
         <div style={formSection}>
-          <label style={formLabel}>Subcategory</label>
+          <label style={formLabel}>Subcategory *</label>
           <select
             value={gigData.subcategory}
             onChange={e => onChange('subcategory', e.target.value)}
             style={selectStyle}
           >
-            <option value="">Select a subcategory (optional)</option>
+            <option value="">Select a subcategory</option>
             {selectedCategory.subcategories.map(sub => (
               <option key={sub.id} value={sub.id}>
                 {sub.name}
               </option>
             ))}
           </select>
+          {errors.subcategory && <div style={formError}>{errors.subcategory}</div>}
         </div>
       )}
 
@@ -560,6 +573,25 @@ function CategoryStep({ gigData, errors, onChange }: any) {
 }
 
 function BasicsStep({ gigData, errors, onChange }: any) {
+  const [tagInput, setTagInput] = React.useState('')
+
+  const addTag = (raw: string) => {
+    const tag = raw.trim().toLowerCase()
+    if (!tag) return
+    if (gigData.tags.length >= 5) return
+    if (!gigData.tags.includes(tag)) {
+      onChange('tags', [...gigData.tags, tag])
+    }
+    setTagInput('')
+  }
+
+  const removeTag = (tag: string) => {
+    onChange('tags', gigData.tags.filter((t: string) => t !== tag))
+  }
+
+  const descLen = gigData.description.length
+  const descColor = descLen < 300 ? C.red : descLen > 2500 ? C.red : C.textMuted
+
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
@@ -567,62 +599,105 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </h2>
 
       <div style={formSection}>
-        <label style={formLabel}>Gig Title *</label>
+        <label style={formLabel}>Gig Title * <span style={{ fontWeight: 400, color: C.textMuted }}>(20–80 chars)</span></label>
         <input
           type="text"
           value={gigData.title}
           onChange={e => onChange('title', e.target.value)}
-          placeholder="e.g., Study Permit Document Review"
+          placeholder="e.g., Study Permit Document Review and Feedback"
           style={inputStyle}
-          maxLength={120}
+          maxLength={80}
         />
         <div style={formHint}>
-          {gigData.title.length}/120 characters
+          {gigData.title.length}/80 characters
         </div>
         {errors.title && <div style={formError}>{errors.title}</div>}
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>One-Line Pitch *</label>
+        <label style={formLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: C.textMuted }}>(40–160 chars)</span></label>
         <textarea
-          value={gigData.pitch}
-          onChange={e => onChange('pitch', e.target.value)}
-          placeholder="A clear, compelling description that appears in search results"
+          value={gigData.tagline}
+          onChange={e => onChange('tagline', e.target.value)}
+          placeholder="A clear, compelling pitch that appears in search results and on your gig card"
           style={{ ...textareaStyle, minHeight: '80px' }}
-          maxLength={300}
+          maxLength={160}
         />
-        <div style={formHint}>
-          {gigData.pitch.length}/300 characters
+        <div style={{ ...formHint, color: gigData.tagline.length < 40 || gigData.tagline.length > 160 ? C.red : C.textMuted }}>
+          {gigData.tagline.length}/160 characters (min 40)
         </div>
-        {errors.pitch && <div style={formError}>{errors.pitch}</div>}
+        {errors.tagline && <div style={formError}>{errors.tagline}</div>}
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Detailed Description *</label>
+        <label style={formLabel}>Detailed Description * <span style={{ fontWeight: 400, color: C.textMuted }}>(300–2500 chars)</span></label>
         <textarea
           value={gigData.description}
           onChange={e => onChange('description', e.target.value)}
           placeholder="Describe your service in detail. What do clients get? What's included? What makes your service unique?"
-          style={textareaStyle}
+          style={{ ...textareaStyle, minHeight: '160px' }}
+          maxLength={2500}
         />
-        <div style={formHint}>
-          {gigData.description.length} characters
+        <div style={{ ...formHint, color: descColor }}>
+          {descLen}/2500 characters
+          {descLen < 300 && <span> — {300 - descLen} more needed</span>}
         </div>
         {errors.description && <div style={formError}>{errors.description}</div>}
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Tags</label>
-        <input
-          type="text"
-          value={gigData.tags.join(', ')}
-          onChange={e => onChange('tags', e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
-          placeholder="visa, documents, review (comma-separated)"
-          style={inputStyle}
-        />
-        <div style={formHint}>
-          Add up to 5 relevant tags to help clients find your service
+        <label style={formLabel}>Tags * <span style={{ fontWeight: 400, color: C.textMuted }}>(3–5 tags)</span></label>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          {gigData.tags.map((tag: string) => (
+            <span
+              key={tag}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                padding: '4px 10px', background: `${C.cyan}20`, borderRadius: '20px',
+                fontSize: '13px', color: C.text, border: `1px solid ${C.cyan}40`,
+              }}
+            >
+              {tag}
+              <button
+                onClick={() => removeTag(tag)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: '14px', lineHeight: 1, padding: '0 2px' }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
+        {gigData.tags.length < 5 && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              value={tagInput}
+              onChange={e => setTagInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ',') {
+                  e.preventDefault()
+                  addTag(tagInput)
+                }
+              }}
+              placeholder="Type a tag and press Enter"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button
+              onClick={() => addTag(tagInput)}
+              style={{
+                padding: '10px 16px', background: C.cyan, color: '#fff',
+                border: 'none', borderRadius: '10px', fontSize: '13px',
+                fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              Add
+            </button>
+          </div>
+        )}
+        <div style={formHint}>
+          {gigData.tags.length}/5 tags — add 3–5 relevant tags to help clients find your service
+        </div>
+        {errors.tags && <div style={formError}>{errors.tags}</div>}
       </div>
     </div>
   )
@@ -671,7 +746,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
             <div>
-              <label style={formLabel}>Tier Title</label>
+              <label style={formLabel}>Tier Title *</label>
               <input
                 type="text"
                 value={tier.title}
@@ -694,6 +769,16 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
               />
               {errors[`tier_${index}_price`] && <div style={formError}>{errors[`tier_${index}_price`]}</div>}
             </div>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={formLabel}>Tier Description</label>
+            <textarea
+              value={tier.description || ''}
+              onChange={e => onTierChange(index, 'description', e.target.value)}
+              placeholder="What's included in this tier?"
+              style={{ ...textareaStyle, minHeight: '72px' }}
+            />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -744,6 +829,19 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 }
 
 function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: any) {
+  const [imageUrlInput, setImageUrlInput] = React.useState('')
+
+  const addImageUrl = () => {
+    const url = imageUrlInput.trim()
+    if (!url) return
+    onChange('gallery_images', [...(gigData.gallery_images || []), url])
+    setImageUrlInput('')
+  }
+
+  const removeImage = (index: number) => {
+    onChange('gallery_images', gigData.gallery_images.filter((_: string, i: number) => i !== index))
+  }
+
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
@@ -751,7 +849,7 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
       </h2>
 
       <div style={formSection}>
-        <label style={formLabel}>Client Requirements</label>
+        <label style={formLabel}>Client Requirements *</label>
         <textarea
           value={gigData.requirements}
           onChange={e => onChange('requirements', e.target.value)}
@@ -761,6 +859,68 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
         <div style={formHint}>
           Help clients understand what they need to provide before you can start.
         </div>
+      </div>
+
+      <div style={formSection}>
+        <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: C.textMuted }}>(at least 1 required)</span></label>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input
+            type="url"
+            value={imageUrlInput}
+            onChange={e => setImageUrlInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrl() } }}
+            placeholder="https://example.com/image.jpg"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            onClick={addImageUrl}
+            style={{
+              padding: '10px 16px', background: C.cyan, color: '#fff',
+              border: 'none', borderRadius: '10px', fontSize: '13px',
+              fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Add Image
+          </button>
+        </div>
+        {(gigData.gallery_images || []).length > 0 ? (
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {(gigData.gallery_images as string[]).map((url: string, i: number) => (
+              <div
+                key={i}
+                style={{
+                  position: 'relative', width: '120px', height: '80px',
+                  borderRadius: '8px', overflow: 'hidden',
+                  border: `1px solid ${C.border}`, background: C.surface2,
+                }}
+              >
+                <img
+                  src={url}
+                  alt={`Gallery ${i + 1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+                <button
+                  onClick={() => removeImage(i)}
+                  style={{
+                    position: 'absolute', top: '4px', right: '4px',
+                    background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
+                    borderRadius: '50%', width: '20px', height: '20px',
+                    cursor: 'pointer', fontSize: '12px', lineHeight: 1, display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '16px', textAlign: 'center', color: C.textMuted, background: C.surface2, borderRadius: '12px', fontSize: '13px' }}>
+            No images added yet. Paste an image URL above to add gallery images.
+          </div>
+        )}
+        <div style={formHint}>{(gigData.gallery_images || []).length} image(s) added</div>
       </div>
 
       <div style={formSection}>
@@ -775,6 +935,31 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
         <div style={formHint}>
           Add a video introduction to showcase your service (YouTube, Vimeo, etc.)
         </div>
+      </div>
+
+      <div style={formSection}>
+        <label style={formLabel}>SEO Title (optional)</label>
+        <input
+          type="text"
+          value={gigData.seo_title}
+          onChange={e => onChange('seo_title', e.target.value)}
+          placeholder="Optimised title for search engines (leave blank to use gig title)"
+          style={inputStyle}
+          maxLength={80}
+        />
+        <div style={formHint}>{(gigData.seo_title || '').length}/80 characters</div>
+      </div>
+
+      <div style={formSection}>
+        <label style={formLabel}>SEO Description (optional)</label>
+        <textarea
+          value={gigData.seo_description}
+          onChange={e => onChange('seo_description', e.target.value)}
+          placeholder="A short meta description for search engines (160 chars recommended)"
+          style={{ ...textareaStyle, minHeight: '80px' }}
+          maxLength={300}
+        />
+        <div style={formHint}>{(gigData.seo_description || '').length}/300 characters</div>
       </div>
 
       <div style={{ marginBottom: '24px' }}>
@@ -829,13 +1014,6 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
           ))
         )}
       </div>
-
-      <div style={{ padding: '16px', background: `${C.cyan}08`, borderRadius: '12px' }}>
-        <p style={{ fontSize: '13px', color: C.text, margin: 0 }}>
-          <strong>Note:</strong> Gallery images will be added after publishing. You can upload
-          images and manage your gig gallery from the gig management page.
-        </p>
-      </div>
     </div>
   )
 }
@@ -843,11 +1021,67 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
 function ReviewStep({ gigData, onEdit }: any) {
   const category = getCategoryById(gigData.category)
 
+  const activeTiers = gigData.tiers.filter((t: any) => t.is_active && t.price > 0 && t.delivery_days >= 1)
+
+  const checks = [
+    { label: 'Title (20–80 chars)', ok: gigData.title.length >= 20 && gigData.title.length <= 80, step: 1 },
+    { label: 'Tagline / Pitch (40–160 chars)', ok: gigData.tagline.length >= 40 && gigData.tagline.length <= 160, step: 1 },
+    { label: 'Description (300–2500 chars)', ok: gigData.description.length >= 300 && gigData.description.length <= 2500, step: 1 },
+    { label: 'Category selected', ok: !!gigData.category, step: 0 },
+    { label: 'Subcategory selected', ok: !!gigData.subcategory, step: 0 },
+    { label: 'Tags (3–5)', ok: gigData.tags.length >= 3 && gigData.tags.length <= 5, step: 1 },
+    { label: 'At least one complete pricing tier', ok: activeTiers.length >= 1, step: 2 },
+    { label: 'Requirements filled in', ok: !!gigData.requirements.trim(), step: 3 },
+    { label: 'At least one gallery image', ok: (gigData.gallery_images || []).length >= 1, step: 3 },
+  ]
+
+  const allPassed = checks.every(c => c.ok)
+
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
         Review Your Gig
       </h2>
+
+      <Card style={{ padding: '24px', marginBottom: '24px', border: `1px solid ${allPassed ? C.green : C.border}` }}>
+        <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', color: C.text }}>
+          Publish Checklist
+        </h3>
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {checks.map(check => (
+            <div
+              key={check.label}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}
+            >
+              <span style={{
+                width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
+                background: check.ok ? C.green : C.red,
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '11px', fontWeight: 700,
+              }}>
+                {check.ok ? '✓' : '✗'}
+              </span>
+              <span style={{ color: check.ok ? C.text : C.red, flex: 1 }}>{check.label}</span>
+              {!check.ok && (
+                <button
+                  onClick={() => onEdit(check.step)}
+                  style={{
+                    background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
+                    padding: '2px 8px', fontSize: '11px', cursor: 'pointer', color: C.textMuted,
+                  }}
+                >
+                  Fix
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        {allPassed && (
+          <div style={{ marginTop: '12px', padding: '10px 14px', background: `${C.green}15`, borderRadius: '8px', fontSize: '13px', color: C.green, fontWeight: 600 }}>
+            All checks passed — ready to publish!
+          </div>
+        )}
+      </Card>
 
       <Card style={{ padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'grid', gap: '16px' }}>
@@ -869,12 +1103,14 @@ function ReviewStep({ gigData, onEdit }: any) {
             </div>
           </div>
 
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
-              Pitch
-            </label>
-            <div style={{ fontSize: '14px', color: C.text }}>{gigData.pitch}</div>
-          </div>
+          {gigData.tagline && (
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+                Tagline / Pitch
+              </label>
+              <div style={{ fontSize: '14px', color: C.text }}>{gigData.tagline}</div>
+            </div>
+          )}
 
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>

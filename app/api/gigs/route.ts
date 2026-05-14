@@ -8,19 +8,76 @@ export async function GET(req: Request) {
   if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
 
   const url = new URL(req.url)
+
   if (url.searchParams.get('countOnly') === 'true') {
     const { count, error } = await auth.db
       .from('gigs')
       .select('id', { count: 'exact', head: true })
       .eq('provider_id', auth.profileId)
       .eq('provider_type', auth.role)
-      .in('status', ['draft', 'active', 'paused'])
+      .neq('status', 'deleted')
 
     if (error) return fail(error.message, 500)
     return ok({ used: count ?? 0, count: count ?? 0, limit: 5 })
   }
 
-  return fail('Unsupported gigs query.', 400)
+  // Full gig list with metrics and promotion
+  const { data: rows, error } = await auth.db
+    .from('gigs')
+    .select(`
+      id, slug, title, pitch, tagline, category, subcategory, tags, status,
+      gig_status_reason, suspended_at, archived_at, deleted_at,
+      content_score, featured_until, boost_until, created_at,
+      tiers:gig_tiers(tier, title, price_cents, delivery_days, revisions),
+      metrics:gig_metrics(impressions, clicks, saves, order_count, avg_rating, review_count, rank_score),
+      promotion:gig_promotion_campaigns(campaign_type, status, ends_at, impressions, clicks)
+    `)
+    .eq('provider_id', auth.profileId)
+    .eq('provider_type', auth.role)
+    .order('created_at', { ascending: false })
+
+  if (error) return fail(error.message, 500)
+
+  const allRows = rows ?? []
+
+  // Build byStatus counts
+  const byStatus: Record<string, number> = { draft: 0, active: 0, suspended: 0, archived: 0, deleted: 0 }
+  for (const row of allRows) {
+    const s = String(row.status || '')
+    if (s in byStatus) byStatus[s]++
+  }
+
+  // count = non-deleted
+  const count = allRows.filter((r: any) => r.status !== 'deleted').length
+
+  // Shape each gig — pick first active promotion if any
+  const gigs = allRows.map((row: any) => {
+    const promotions = Array.isArray(row.promotion) ? row.promotion : (row.promotion ? [row.promotion] : [])
+    const activePromo = promotions.find((p: any) => p.status === 'active') ?? null
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      pitch: row.pitch,
+      tagline: row.tagline,
+      category: row.category,
+      subcategory: row.subcategory,
+      tags: row.tags,
+      status: row.status,
+      gig_status_reason: row.gig_status_reason,
+      suspended_at: row.suspended_at,
+      archived_at: row.archived_at,
+      deleted_at: row.deleted_at,
+      content_score: row.content_score,
+      featured_until: row.featured_until,
+      boost_until: row.boost_until,
+      tiers: Array.isArray(row.tiers) ? row.tiers : (row.tiers ? [row.tiers] : []),
+      metrics: Array.isArray(row.metrics) ? (row.metrics[0] ?? null) : (row.metrics ?? null),
+      promotion: activePromo,
+    }
+  })
+
+  return ok({ gigs, count, limit: 5, byStatus })
 }
 
 export async function POST(req: Request) {

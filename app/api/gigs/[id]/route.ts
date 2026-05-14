@@ -30,7 +30,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   const body = await req.json().catch(() => ({}))
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
-  for (const key of ['title', 'category', 'subcategory', 'pitch', 'description', 'requirements', 'seo_title', 'seo_description', 'video_url']) {
+  for (const key of ['title', 'category', 'subcategory', 'pitch', 'tagline', 'description', 'requirements', 'seo_title', 'seo_description', 'video_url']) {
     if (key in body) payload[key] = typeof body[key] === 'string' ? body[key].trim() : body[key]
   }
   if (body.status && ['draft', 'active', 'paused'].includes(body.status)) {
@@ -71,7 +71,13 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   const { data: existing } = await loadGig(auth, id)
   if (!existing) return fail('Gig not found.', 404)
   if (!owns(auth, existing)) return fail('Forbidden.', 403)
-  const { data: gig, error } = await auth.db.from('gigs').update({ status: 'archived', updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
-  if (error || !gig) return fail(error?.message || 'Could not archive gig.', 500)
+  const now = new Date().toISOString()
+  const { data: gig, error } = await auth.db
+    .from('gigs')
+    .update({ status: 'deleted', deleted_at: now, deleted_by: auth.profileId, updated_at: now })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error || !gig) return fail(error?.message || 'Could not delete gig.', 500)
   return ok({ gig })
 }
