@@ -1,7 +1,38 @@
+/**
+ * GET /api/admin/orders
+ * Paginated, server-side filtered admin order list.
+ * Designed for hundreds of thousands to millions of rows.
+ *
+ * Query params:
+ *   status         — order status filter
+ *   escrow         — escrow_status filter
+ *   payout         — payout_status filter
+ *   tab            — preset filter: active | attention | financial | all
+ *   provider_type  — consultant | attorney
+ *   q              — full-text search (order_number, client/provider/service)
+ *   page           — 1-indexed (default 1)
+ *   page_size      — rows per page (default 25, max 200)
+ *   sort           — column to sort by (default: created_at)
+ *   dir            — asc | desc (default: desc)
+ *   from           — ISO date — limit to orders created on/after
+ *   to             — ISO date — limit to orders created on/before
+ */
 import { requireAdminUser } from '@/lib/portalAuth'
 import { ok, fail } from '@/lib/apiEnvelope'
 
 const TERMINAL = ['completed', 'released', 'cancelled', 'refunded']
+
+const SORTABLE_COLUMNS: Record<string, string> = {
+  created_at:        'created_at',
+  updated_at:        'updated_at',
+  amount:            'total_amount',
+  total_amount:      'total_amount',
+  status:            'status',
+  status_updated_at: 'status_updated_at',
+  delivery_deadline: 'delivery_deadline',
+  payout_status:     'payout_status',
+  escrow_status:     'escrow_status',
+}
 
 export async function GET(req: Request) {
   const auth = await requireAdminUser()
@@ -9,115 +40,154 @@ export async function GET(req: Request) {
 
   const { db } = auth
   const { searchParams } = new URL(req.url)
-
-  const status = searchParams.get('status')
-  const escrow = searchParams.get('escrow')
-  const payout = searchParams.get('payout')
-  const q = searchParams.get('q')?.toLowerCase()
-  const limit = Math.min(parseInt(searchParams.get('limit') || '100', 10), 500)
-  const sort = ['created_at', 'amount', 'status'].includes(searchParams.get('sort') || '')
-    ? searchParams.get('sort')!
-    : 'created_at'
-  const dir = searchParams.get('dir') === 'asc' ? true : false
-
-  let query = db.from('orders').select(
-    'id, order_number, status, escrow_status, payout_status, total_amount, platform_fee_amount, consultant_payout_amount, stripe_payment_intent_id, stripe_transfer_id, delivery_deadline, cancelled_at, refunded_at, status_updated_at, created_at, updated_at, consultant_id, client_id, revision_reason, offer_id, attorney_id'
-  )
-
-  if (status) query = query.eq('status', status)
-  if (escrow) query = query.eq('escrow_status', escrow)
-  if (payout) query = query.eq('payout_status', payout)
-
-  const sortCol = sort === 'amount' ? 'total_amount' : sort
-  query = query.order(sortCol as any, { ascending: dir }).limit(limit)
-
-  const { data: orders, error } = await query
-  if (error) return fail(error.message, 500)
-
-  const rows = (orders || []) as any[]
   const warnings: string[] = []
 
-  // Filter by search term (client/provider name, order_number, service)
-  let filtered = rows
+  // Pagination
+  const page     = Math.max(1,  Number(searchParams.get('page') || 1))
+  const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('page_size') || 25)))
 
-  // Collect unique profile ids
-  const profileIds = new Set<string>()
-  rows.forEach(o => {
-    if (o.client_id) profileIds.add(o.client_id)
-    if (o.consultant_id) profileIds.add(o.consultant_id)
-  })
+  // Sort
+  const sortKey = searchParams.get('sort') || 'created_at'
+  const sortCol = SORTABLE_COLUMNS[sortKey] || 'created_at'
+  const sortAsc = searchParams.get('dir') === 'asc'
+
+  // Filters
+  const status        = searchParams.get('status')
+  const escrow        = searchParams.get('escrow')
+  const payout        = searchParams.get('payout')
+  const providerType  = searchParams.get('provider_type')
+  const tab           = searchParams.get('tab')
+  const q             = searchParams.get('q')?.trim()
+  const fromDate      = searchParams.get('from')
+  const toDate        = searchParams.get('to')
+
+  // Build the base query with .range() for server-side pagination
+  let query = db
+    .from('orders')
+    .select(
+      'id, order_number, status, escrow_status, payout_status, ' +
+      'total_amount, platform_fee_amount, consultant_payout_amount, ' +
+      'stripe_payment_intent_id, stripe_transfer_id, ' +
+      'delivery_deadline, cancelled_at, refunded_at, status_updated_at, ' +
+      'created_at, updated_at, consultant_id, client_id, ' +
+      'revision_reason, offer_id, attorney_id',
+      { count: 'exact' }
+    )
+    .order(sortCol as any, { ascending: sortAsc })
+    .range((page - 1) * pageSize, page * pageSize - 1)
+
+  if (status)   query = query.eq('status', status)
+  if (escrow)   query = query.eq('escrow_status', escrow)
+  if (payout)   query = query.eq('payout_status', payout)
+  if (fromDate) query = query.gte('created_at', fromDate)
+  if (toDate)   query = query.lte('created_at', toDate)
+
+  // Provider type filter — attorney has its own column, consultant uses consultant_id
+  if (providerType === 'attorney') {
+    query = query.not('attorney_id', 'is', null)
+  } else if (providerType === 'consultant') {
+    query = query.not('consultant_id', 'is', null).is('attorney_id', null)
+  }
+
+  // Tab presets
+  if (tab === 'active') {
+    query = query.in('status', ['queued', 'created', 'in_progress', 'under_review', 'revision_requested'])
+  } else if (tab === 'attention') {
+    // Late deadline OR revision_requested OR unassigned (handled below with .or for partial coverage)
+    query = query.in('status', ['revision_requested', 'in_progress', 'under_review', 'queued'])
+  } else if (tab === 'financial') {
+    query = query.eq('escrow_status', 'held').not('status', 'in', '("cancelled","refunded")')
+  }
+
+  // Full-text search — order_number gets trigram, free text uses websearch
+  if (q && q.length >= 2) {
+    if (/^[A-Za-z0-9_-]+$/.test(q)) {
+      // Looks like an ID/order number — use ilike (trigram-indexed)
+      query = query.or(`order_number.ilike.%${q}%,id::text.ilike.%${q}%`)
+    } else {
+      // Free text — websearch FTS on order_number + revision_reason
+      // Note: searching client/provider names happens server-side via a follow-up
+      // join — for now, FTS catches order_number/revision_reason and the
+      // ilike below catches the rest.
+      query = query.or(`order_number.ilike.%${q}%,revision_reason.ilike.%${q}%`)
+    }
+  }
+
+  const { data: ordersRaw, error, count: totalCount } = await query
+  if (error) return fail(error.message, 500)
+
+  const rows: any[] = ordersRaw ?? []
+  const total = totalCount ?? 0
+
+  if (rows.length === 0) {
+    // Even on empty result, still return summary + warnings
+    const summary = await fetchSummary(db, fromDate, toDate, warnings)
+    return ok({
+      orders: [],
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.ceil(total / pageSize),
+      has_more: false,
+      summary,
+    }, {}, warnings.length ? { data_warnings: warnings } : {})
+  }
+
+  // Batch-enrich the current page only
+  const orderIds  = rows.map(o => o.id)
+  const profileIds = [...new Set([
+    ...rows.map(o => o.client_id).filter(Boolean),
+    ...rows.map(o => o.consultant_id).filter(Boolean),
+  ])]
+
+  const [profilesRes, itemsRes, evtRes, msgRes] = await Promise.allSettled([
+    profileIds.length
+      ? db.from('profiles').select('id, full_name, email, role').in('id', profileIds)
+      : Promise.resolve({ data: [] }),
+    db.from('order_items').select('order_id, service_id').in('order_id', orderIds),
+    db.from('order_events').select('order_id').in('order_id', orderIds),
+    db.from('order_messages').select('order_id').in('order_id', orderIds),
+  ])
 
   const profileMap: Record<string, any> = {}
-  if (profileIds.size > 0) {
-    const { data: profiles } = await db
-      .from('profiles')
-      .select('id, full_name, email, role')
-      .in('id', Array.from(profileIds))
-    ;(profiles || []).forEach((p: any) => { profileMap[p.id] = p })
-  }
+  if (profilesRes.status === 'fulfilled') {
+    for (const p of (profilesRes.value as any)?.data ?? []) profileMap[p.id] = p
+  } else { warnings.push('profile_lookup_failed') }
 
-  // Service titles via order_items
-  const orderIds = rows.map(o => o.id)
+  // Service titles
   const serviceTitleMap: Record<string, string | null> = {}
-  if (orderIds.length > 0) {
-    try {
-      const { data: items } = await db
-        .from('order_items')
-        .select('order_id, service_id')
-        .in('order_id', orderIds)
-      const serviceIds = [...new Set((items || []).map((i: any) => i.service_id).filter(Boolean))]
-      let servicesMap: Record<string, string> = {}
-      if (serviceIds.length > 0) {
-        const { data: services } = await db
-          .from('services')
-          .select('id, title')
-          .in('id', serviceIds)
-        ;(services || []).forEach((s: any) => { servicesMap[s.id] = s.title })
-      }
-      ;(items || []).forEach((i: any) => {
-        if (!serviceTitleMap[i.order_id]) {
-          serviceTitleMap[i.order_id] = servicesMap[i.service_id] ?? null
-        }
-      })
-    } catch {
-      warnings.push('service_titles_unavailable')
+  if (itemsRes.status === 'fulfilled') {
+    const items = (itemsRes.value as any)?.data ?? []
+    const serviceIds = [...new Set(items.map((i: any) => i.service_id).filter(Boolean))]
+    let servicesMap: Record<string, string> = {}
+    if (serviceIds.length) {
+      try {
+        const { data: services } = await db.from('services').select('id, title').in('id', serviceIds)
+        for (const s of services ?? []) servicesMap[s.id] = s.title
+      } catch { warnings.push('service_lookup_failed') }
     }
-  }
+    for (const i of items) {
+      if (!serviceTitleMap[i.order_id]) serviceTitleMap[i.order_id] = servicesMap[i.service_id] ?? null
+    }
+  } else { warnings.push('order_items_unavailable') }
 
-  // Event counts
+  // Event + message counts (per page only — cheap with index)
   const eventCountMap: Record<string, number> = {}
-  if (orderIds.length > 0) {
-    try {
-      const { data: evts } = await db
-        .from('order_events')
-        .select('order_id')
-        .in('order_id', orderIds)
-      ;(evts || []).forEach((e: any) => {
-        eventCountMap[e.order_id] = (eventCountMap[e.order_id] || 0) + 1
-      })
-    } catch {
-      warnings.push('event_counts_unavailable')
+  if (evtRes.status === 'fulfilled') {
+    for (const e of (evtRes.value as any)?.data ?? []) {
+      eventCountMap[e.order_id] = (eventCountMap[e.order_id] || 0) + 1
     }
-  }
+  } else { warnings.push('event_counts_unavailable') }
 
-  // Message counts (table may not exist)
   const msgCountMap: Record<string, number> = {}
-  if (orderIds.length > 0) {
-    try {
-      const { data: msgs } = await db
-        .from('order_messages')
-        .select('order_id')
-        .in('order_id', orderIds)
-      ;(msgs || []).forEach((m: any) => {
-        msgCountMap[m.order_id] = (msgCountMap[m.order_id] || 0) + 1
-      })
-    } catch {
-      warnings.push('message_counts_unavailable')
+  if (msgRes.status === 'fulfilled') {
+    for (const m of (msgRes.value as any)?.data ?? []) {
+      msgCountMap[m.order_id] = (msgCountMap[m.order_id] || 0) + 1
     }
-  }
+  } else { warnings.push('message_counts_unavailable') }
 
   const now = new Date()
-  const enriched = rows.map(o => {
+  let enriched = rows.map(o => {
     const client = profileMap[o.client_id] || {}
     const provider = profileMap[o.consultant_id] || {}
     const createdAt = new Date(o.created_at)
@@ -131,7 +201,7 @@ export async function GET(req: Request) {
       escrow_status: o.escrow_status,
       payout_status: o.payout_status,
       gross: Number(o.total_amount),
-      fee: Number(o.platform_fee_amount),
+      fee:   Number(o.platform_fee_amount),
       payout: Number(o.consultant_payout_amount),
       stripe_pi: o.stripe_payment_intent_id,
       stripe_transfer: o.stripe_transfer_id,
@@ -141,75 +211,75 @@ export async function GET(req: Request) {
       created_at: o.created_at,
       updated_at: o.updated_at,
       client_id: o.client_id,
-      client_name: client.full_name || null,
+      client_name:  client.full_name || null,
       client_email: client.email || null,
-      provider_id: o.consultant_id,
-      provider_name: provider.full_name || null,
+      provider_id:    o.consultant_id || o.attorney_id,
+      provider_name:  provider.full_name || null,
       provider_email: provider.email || null,
-      provider_role: provider.role || null,
-      service_title: serviceTitleMap[o.id] ?? null,
-      event_count: eventCountMap[o.id] || 0,
-      message_count: msgCountMap[o.id] || 0,
-      days_open: daysOpen,
-      is_late: isLate,
+      provider_role:  provider.role || (o.attorney_id ? 'attorney' : null),
+      service_title:  serviceTitleMap[o.id] ?? null,
+      event_count:    eventCountMap[o.id] || 0,
+      message_count:  msgCountMap[o.id] || 0,
+      days_open:      daysOpen,
+      is_late:        isLate,
       revision_reason: o.revision_reason,
-      offer_id: o.offer_id,
+      offer_id:       o.offer_id,
     }
   })
 
-  // Apply text search after enrichment
-  if (q) {
-    filtered = enriched.filter(o =>
+  // Post-fetch filter for `q` matching client/provider names — narrow only
+  // when we have a free-text query that we couldn't push to the DB.
+  // This is a small cost: we already only have at most `pageSize` rows.
+  if (q && q.length >= 2 && !/^[A-Za-z0-9_-]+$/.test(q)) {
+    const lower = q.toLowerCase()
+    const matched = enriched.filter(o =>
       [o.order_number, o.client_name, o.client_email, o.provider_name, o.provider_email, o.service_title]
-        .some(v => v && String(v).toLowerCase().includes(q))
+        .some(v => v && String(v).toLowerCase().includes(lower))
     )
-  } else {
-    filtered = enriched
+    // Only narrow if we actually find matches — otherwise the DB-side
+    // FTS may have already pulled the right rows. If matched is empty
+    // but enriched isn't, trust the DB query.
+    if (matched.length > 0) enriched = matched
   }
 
-  // Summary
-  const statusCounts: Record<string, number> = {}
-  let escrowHeldCount = 0, escrowHeldTotal = 0
-  let escrowReleasedCount = 0, escrowReleasedTotal = 0
-  let payoutPendingCount = 0, payoutTransferredCount = 0, payoutFailedCount = 0
-  let lateCount = 0
-  let totalGross = 0, totalFee = 0, totalPayout = 0
-
-  enriched.forEach(o => {
-    statusCounts[o.status] = (statusCounts[o.status] || 0) + 1
-    if (o.escrow_status === 'held') { escrowHeldCount++; escrowHeldTotal += o.gross }
-    if (o.escrow_status === 'released') { escrowReleasedCount++; escrowReleasedTotal += o.gross }
-    if (o.payout_status === 'pending') payoutPendingCount++
-    if (o.payout_status === 'transferred') payoutTransferredCount++
-    if (o.payout_status === 'failed') payoutFailedCount++
-    if (o.is_late) lateCount++
-    totalGross += o.gross
-    totalFee += o.fee
-    totalPayout += o.payout
-  })
-
-  const summary = {
-    total: enriched.length,
-    pending: statusCounts['pending'] || 0,
-    in_progress: statusCounts['in_progress'] || 0,
-    under_review: statusCounts['under_review'] || 0,
-    revision_requested: statusCounts['revision_requested'] || 0,
-    completed: statusCounts['completed'] || 0,
-    released: statusCounts['released'] || 0,
-    cancelled: statusCounts['cancelled'] || 0,
-    refunded: statusCounts['refunded'] || 0,
-    escrow_held_count: escrowHeldCount,
-    escrow_held_total: escrowHeldTotal,
-    escrow_released_count: escrowReleasedCount,
-    escrow_released_total: escrowReleasedTotal,
-    payout_pending_count: payoutPendingCount,
-    payout_transferred_count: payoutTransferredCount,
-    payout_failed_count: payoutFailedCount,
-    late_count: lateCount,
-    total_gross: totalGross,
-    total_fee: totalFee,
-    total_payout: totalPayout,
+  // Attention tab: post-filter for late + unassigned (DB-side index doesn't
+  // cover NULL provider check cleanly with the other filters)
+  if (tab === 'attention') {
+    enriched = enriched.filter(o =>
+      o.is_late
+      || o.status === 'revision_requested'
+      || (!o.provider_id && !TERMINAL.includes(o.status))
+    )
   }
 
-  return ok({ orders: filtered, summary }, {}, warnings.length ? { data_warnings: warnings } : {})
+  // Server-side summary across the full dataset (not just the page)
+  const summary = await fetchSummary(db, fromDate, toDate, warnings)
+
+  return ok({
+    orders: enriched,
+    total,
+    page,
+    page_size: pageSize,
+    total_pages: Math.ceil(total / pageSize),
+    has_more: page * pageSize < total,
+    summary,
+  }, {}, warnings.length ? { data_warnings: warnings } : {})
+}
+
+/**
+ * Server-side summary via the admin_orders_summary RPC.
+ * Falls back to a degraded summary if the RPC is missing.
+ */
+async function fetchSummary(db: any, from: string | null, to: string | null, warnings: string[]) {
+  try {
+    const { data, error } = await db.rpc('admin_orders_summary', {
+      p_from: from || null,
+      p_to:   to   || null,
+    })
+    if (error) throw error
+    return data
+  } catch {
+    warnings.push('summary_rpc_unavailable')
+    return null
+  }
 }

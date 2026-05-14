@@ -443,18 +443,40 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
 
   const flash=(type,msg)=>{setNotice({type,msg});setTimeout(()=>setNotice({type:'',msg:''}),5000)}
 
+  const [serverTotal,setServerTotal] = React.useState(0)
+  const [debouncedQ,setDebouncedQ]   = React.useState('')
+
+  // Debounce search input — avoids per-keystroke API calls
+  React.useEffect(()=>{
+    const t=setTimeout(()=>{setDebouncedQ(searchQ);setLocalPage(1)},300)
+    return()=>clearTimeout(t)
+  },[searchQ])
+
+  // Server-side paginated fetch — every filter/sort/page change triggers one
+  // targeted query; we never load the full table into memory.
   const load=React.useCallback(async()=>{
     setLoading(true);setError('')
     try{
-      const res=await fetch('/api/admin/orders',{credentials:'same-origin'})
+      const params=new URLSearchParams()
+      if(tab!=='all'&&tab!=='stats')   params.set('tab',tab)
+      if(statusFilter!=='all')         params.set('status',statusFilter)
+      if(escrowFilter!=='all')         params.set('escrow',escrowFilter)
+      if(payoutFilter!=='all')         params.set('payout',payoutFilter)
+      if(debouncedQ.trim())            params.set('q',debouncedQ.trim())
+      params.set('page',String(localPage))
+      params.set('page_size',String(PER_PAGE))
+      params.set('sort',sortCol)
+      params.set('dir',sortDir)
+      const res=await fetch(`/api/admin/orders?${params}`,{credentials:'same-origin'})
       const data=await res.json().catch(()=>({}))
       if(!res.ok) throw new Error(data?.error?.message||data?.error||'Failed')
       const d=data?.data??data
       setOrders(d?.orders??[])
       setSummary(d?.summary??{})
+      setServerTotal(d?.total??0)
     }catch(e){setError(e.message)}
     finally{setLoading(false)}
-  },[])
+  },[tab,statusFilter,escrowFilter,payoutFilter,debouncedQ,localPage,sortCol,sortDir])
 
   React.useEffect(()=>{load()},[load])
 
@@ -515,33 +537,11 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
     }catch(e){flash('err',e.message)}
   }
 
-  // Filtering
-  const afterFilters=React.useMemo(()=>{
-    let out=[...orders]
-    // Tab filter
-    if(tab==='active')    out=out.filter(o=>['in_progress','under_review','revision_requested','queued','created'].includes(o.status))
-    if(tab==='attention') out=out.filter(o=>o.is_late||o.status==='revision_requested'||(!o.provider_id&&!['cancelled','refunded','released'].includes(o.status)))
-    if(tab==='financial') out=out.filter(o=>o.escrow_status==='held'&&!['cancelled','refunded'].includes(o.status))
-    // Explicit filters
-    if(statusFilter!=='all') out=out.filter(o=>o.status===statusFilter)
-    if(escrowFilter!=='all') out=out.filter(o=>o.escrow_status===escrowFilter)
-    if(payoutFilter!=='all') out=out.filter(o=>o.payout_status===payoutFilter)
-    if(searchQ.trim()){const q=searchQ.toLowerCase();out=out.filter(o=>o.id?.toLowerCase().includes(q)||o.order_number?.toLowerCase().includes(q)||o.client_name?.toLowerCase().includes(q)||o.provider_name?.toLowerCase().includes(q)||o.service_title?.toLowerCase().includes(q))}
-    // Sort
-    out.sort((a,b)=>{
-      let av=a[sortCol]??'',bv=b[sortCol]??''
-      if(['gross','fee','payout'].includes(sortCol)){av=Number(av);bv=Number(bv)}
-      if(typeof av==='string') av=av.toLowerCase()
-      if(typeof bv==='string') bv=bv.toLowerCase()
-      if(av<bv) return sortDir==='asc'?-1:1
-      if(av>bv) return sortDir==='asc'?1:-1
-      return 0
-    })
-    return out
-  },[orders,tab,statusFilter,escrowFilter,payoutFilter,searchQ,sortCol,sortDir])
-
-  const totalPages=Math.max(1,Math.ceil(afterFilters.length/PER_PAGE))
-  const pagedOrders=afterFilters.slice((localPage-1)*PER_PAGE,localPage*PER_PAGE)
+  // Server returns the page already filtered, sorted, and paginated.
+  // Keep these locals as pass-throughs so the rest of the JSX needs no rewrite.
+  const afterFilters = orders
+  const pagedOrders  = orders
+  const totalPages   = Math.max(1, Math.ceil(serverTotal / PER_PAGE))
 
   const handleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc')};setLocalPage(1)}
   const SortArrow=({col})=>sortCol!==col?<span style={{opacity:.25,marginLeft:'3px',fontSize:'10px'}}>⇅</span>:<span style={{color:'#C4A45A',marginLeft:'3px',fontSize:'10px'}}>{sortDir==='asc'?'▲':'▼'}</span>
@@ -574,7 +574,7 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
           {l:'Completed',n:summary.completed||0,c:GREEN,tab:'all'},
           {l:'Cancelled',n:summary.cancelled||0,c:RED,tab:'all'},
         ].map(s=>(
-          <button key={s.l} onClick={()=>{setTab(s.tab);if(s.tab==='all'&&s.l!=='Total'){setStatusFilter(s.l.toLowerCase())}else{setStatusFilter('all')}}} style={{padding:'12px 14px',borderRadius:'8px',border:`1px solid ${tab===s.tab?s.c:'#DDD8CE'}`,background:tab===s.tab?`${s.c}12`:'#fff',cursor:'pointer',textAlign:'left',fontFamily:sans}}>
+          <button key={s.l} onClick={()=>{setTab(s.tab);if(s.tab==='all'&&s.l!=='Total'){setStatusFilter(s.l.toLowerCase())}else{setStatusFilter('all')}setLocalPage(1)}} style={{padding:'12px 14px',borderRadius:'8px',border:`1px solid ${tab===s.tab?s.c:'#DDD8CE'}`,background:tab===s.tab?`${s.c}12`:'#fff',cursor:'pointer',textAlign:'left',fontFamily:sans}}>
             <div style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',color:'#9097A8',marginBottom:'4px'}}>{s.l}</div>
             <div style={{fontWeight:800,fontSize:'20px',color:s.c,fontVariantNumeric:'tabular-nums'}}>{loading?'—':s.n}</div>
           </button>
@@ -615,7 +615,7 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
               <option value="transferred">Paid</option>
               <option value="failed">Failed</option>
             </select>
-            <span style={{marginLeft:'auto',fontSize:'12px',color:'#9097A8'}}>{afterFilters.length} orders{selectedRows.size>0&&<span style={{marginLeft:'8px',fontWeight:700,color:NAVY}}>· {selectedRows.size} selected</span>}</span>
+            <span style={{marginLeft:'auto',fontSize:'12px',color:'#9097A8'}}>{serverTotal.toLocaleString()} orders{selectedRows.size>0&&<span style={{marginLeft:'8px',fontWeight:700,color:NAVY}}>· {selectedRows.size} selected</span>}</span>
           </div>
 
           {/* Bulk bar */}
@@ -682,9 +682,9 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
                   </tbody>
                   {pagedOrders.length>0&&!loading&&(
                     <tfoot><tr style={{background:'#F8F7F4',borderTop:'2px solid #DDD8CE'}}>
-                      <td colSpan={7} style={{padding:'9px 12px',fontSize:'12px',color:'#9097A8',fontWeight:600}}>{(localPage-1)*PER_PAGE+1}–{Math.min(localPage*PER_PAGE,afterFilters.length)} of {afterFilters.length}</td>
-                      <td style={{padding:'9px 12px',textAlign:'right',fontSize:'12px',fontWeight:700,color:NAVY}}>{$(afterFilters.reduce((s,o)=>s+o.gross,0))}</td>
-                      <td style={{padding:'9px 12px',textAlign:'right',fontSize:'12px',fontWeight:700,color:GREEN}}>{$(afterFilters.reduce((s,o)=>s+o.payout,0))}</td>
+                      <td colSpan={7} style={{padding:'9px 12px',fontSize:'12px',color:'#9097A8',fontWeight:600}}>{(localPage-1)*PER_PAGE+1}–{Math.min(localPage*PER_PAGE,serverTotal)} of {serverTotal.toLocaleString()}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontSize:'12px',fontWeight:700,color:NAVY}} title="Sum across this page only">{$(orders.reduce((s,o)=>s+o.gross,0))}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontSize:'12px',fontWeight:700,color:GREEN}} title="Sum across this page only">{$(orders.reduce((s,o)=>s+o.payout,0))}</td>
                       <td colSpan={3}/>
                     </tr></tfoot>
                   )}
