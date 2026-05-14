@@ -232,17 +232,20 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
 
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'stretch' }}>
 
-        {/* Brand */}
-        <button onClick={() => onNav('browse')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 18px 0 0', marginRight: '2px', background: 'none', border: 'none', borderRight: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', flexShrink: 0 }}>
+        {/* Brand — clicking takes the user back to their dashboard */}
+        <Link
+          href="/dashboard"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', borderRight: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', flexShrink: 0, height: '48px' }}
+        >
           <div style={{ textAlign: 'left' as const }}>
             <div style={{ fontFamily: serif, fontSize: '15px', fontWeight: 600, color: '#F7F5F0', letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
             <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.38)', letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
               {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : 'Consultant Portal'}
             </div>
           </div>
-        </button>
+        </Link>
 
-        {/* Nav links */}
+        {/* Nav tabs — all navigation stays inside the marketplace shell */}
         <nav style={{ display: 'flex', alignItems: 'stretch', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
           {links.map(link => {
             const active = link.view === activeView
@@ -252,15 +255,16 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
                 onClick={() => onNav(link.view as Section)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '0 14px', height: '48px',
+                  padding: '0 16px', height: '48px',
                   fontSize: '12.5px', fontWeight: active ? 600 : 400,
                   color: active ? '#FFFFFF' : 'rgba(255,255,255,0.52)',
-                  background: 'none', border: 'none',
+                  background: active ? 'rgba(255,255,255,0.06)' : 'none',
+                  border: 'none',
                   borderBottom: active ? '2px solid #C4A45A' : '2px solid transparent',
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
                   letterSpacing: active ? '0.01em' : '0',
                   flexShrink: 0,
-                  transition: 'color 0.12s, border-color 0.12s',
+                  transition: 'color 0.12s, border-color 0.12s, background 0.12s',
                   fontFamily: sans,
                 }}
               >
@@ -270,16 +274,6 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
             )
           })}
         </nav>
-
-        {/* Dashboard exit */}
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-          <Link
-            href="/dashboard"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.04)', textDecoration: 'none', whiteSpace: 'nowrap' as const }}
-          >
-            ← Dashboard
-          </Link>
-        </div>
       </div>
     </header>
   )
