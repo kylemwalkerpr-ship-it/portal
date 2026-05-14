@@ -2,6 +2,7 @@
 // @ts-nocheck
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
+import AdminFinancials from './admin-financials'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -451,6 +452,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
+        <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
         <NavItem icon="⭐" label="Gigs" active={page === 'gigs'} onClick={() => setPage('gigs')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
@@ -2307,6 +2309,7 @@ function AdminApp({ onLogout }) {
           {page === 'escrow' && <Escrow />}
           {page === 'payouts' && <Payouts />}
           {page === 'analytics' && <Analytics />}
+          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
           {page === 'gigs' && <GigsManager />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
