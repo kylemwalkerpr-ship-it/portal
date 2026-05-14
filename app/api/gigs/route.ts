@@ -21,22 +21,32 @@ export async function GET(req: Request) {
     return ok({ used: count ?? 0, count: count ?? 0, limit: 5 })
   }
 
-  // Full gig list with metrics and promotion
+  // Fetch gigs with tiers — avoid joining new tables (gig_promotion_campaigns,
+  // gig_metrics) via PostgREST until schema cache is confirmed refreshed.
   const { data: rows, error } = await auth.db
     .from('gigs')
     .select(`
-      id, slug, title, pitch, tagline, category, subcategory, tags, status,
+      id, slug, title, pitch, category, subcategory, tags, status,
       gig_status_reason, suspended_at, archived_at, deleted_at,
-      content_score, featured_until, boost_until, created_at,
-      tiers:gig_tiers(tier, title, price_cents, delivery_days, revisions),
-      metrics:gig_metrics(impressions, clicks, saves),
-      promotion:gig_promotion_campaigns(campaign_type, status, ends_at, impressions, clicks)
+      featured_until, boost_until, created_at,
+      tiers:gig_tiers(tier, title, price_cents, delivery_days, revisions)
     `)
     .eq('provider_id', auth.profileId)
     .eq('provider_type', auth.role)
     .order('created_at', { ascending: false })
 
   if (error) return fail(error.message, 500)
+
+  // Fetch metrics separately to avoid FK-join dependency on PostgREST cache
+  const gigIds = (rows ?? []).map((r: any) => r.id)
+  let metricsMap: Record<string, any> = {}
+  if (gigIds.length > 0) {
+    const { data: metricsRows } = await auth.db
+      .from('gig_metrics')
+      .select('gig_id, impressions, clicks, saves')
+      .in('gig_id', gigIds)
+    for (const m of metricsRows ?? []) metricsMap[m.gig_id] = m
+  }
 
   const allRows = rows ?? []
 
@@ -50,16 +60,13 @@ export async function GET(req: Request) {
   // count = non-deleted
   const count = allRows.filter((r: any) => r.status !== 'deleted').length
 
-  // Shape each gig — pick first active promotion if any
   const gigs = allRows.map((row: any) => {
-    const promotions = Array.isArray(row.promotion) ? row.promotion : (row.promotion ? [row.promotion] : [])
-    const activePromo = promotions.find((p: any) => p.status === 'active') ?? null
     return {
       id: row.id,
       slug: row.slug,
       title: row.title,
       pitch: row.pitch,
-      tagline: row.tagline,
+      tagline: null,
       category: row.category,
       subcategory: row.subcategory,
       tags: row.tags,
@@ -68,12 +75,12 @@ export async function GET(req: Request) {
       suspended_at: row.suspended_at,
       archived_at: row.archived_at,
       deleted_at: row.deleted_at,
-      content_score: row.content_score,
+      content_score: 0,
       featured_until: row.featured_until,
       boost_until: row.boost_until,
       tiers: Array.isArray(row.tiers) ? row.tiers : (row.tiers ? [row.tiers] : []),
-      metrics: Array.isArray(row.metrics) ? (row.metrics[0] ?? null) : (row.metrics ?? null),
-      promotion: activePromo,
+      metrics: metricsMap[row.id] ?? null,
+      promotion: null,
     }
   })
 
