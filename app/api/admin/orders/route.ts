@@ -61,26 +61,35 @@ export async function GET(req: Request) {
   const fromDate      = searchParams.get('from')
   const toDate        = searchParams.get('to')
 
-  // Build the base query with .range() for server-side pagination
-  let query = db
-    .from('orders')
-    .select(
-      'id, order_number, status, escrow_status, payout_status, ' +
-      'total_amount, platform_fee_amount, consultant_payout_amount, ' +
-      'stripe_payment_intent_id, stripe_transfer_id, ' +
-      'delivery_deadline, cancelled_at, refunded_at, status_updated_at, ' +
-      'created_at, updated_at, consultant_id, client_id, ' +
-      'revision_reason, offer_id, attorney_id',
-      { count: 'exact' }
-    )
-    .order(sortCol as any, { ascending: sortAsc })
-    .range((page - 1) * pageSize, page * pageSize - 1)
+  // The ideal column list — used when every migration has been applied.
+  // If a column is missing (e.g. payout_status before consultant_dashboard.sql
+  // was run), Postgres returns 42703 and we degrade to SELECT * so the page
+  // still loads. The orders_columns_patch.sql migration restores full fidelity.
+  const FULL_COLUMNS =
+    'id, order_number, status, escrow_status, payout_status, ' +
+    'total_amount, platform_fee_amount, consultant_payout_amount, ' +
+    'stripe_payment_intent_id, stripe_transfer_id, ' +
+    'delivery_deadline, cancelled_at, refunded_at, status_updated_at, ' +
+    'created_at, updated_at, consultant_id, client_id, ' +
+    'revision_reason, offer_id, attorney_id'
 
-  if (status)   query = query.eq('status', status)
-  if (escrow)   query = query.eq('escrow_status', escrow)
-  if (payout)   query = query.eq('payout_status', payout)
-  if (fromDate) query = query.gte('created_at', fromDate)
-  if (toDate)   query = query.lte('created_at', toDate)
+  const buildQuery = (cols: string) => {
+    let q = db
+      .from('orders')
+      .select(cols, { count: 'exact' })
+      .order(sortCol as any, { ascending: sortAsc })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+
+    if (status)   q = q.eq('status', status)
+    // These three are wrapped — they may target columns that don't exist yet.
+    try { if (escrow) q = q.eq('escrow_status', escrow) } catch {}
+    try { if (payout) q = q.eq('payout_status', payout) } catch {}
+    if (fromDate) q = q.gte('created_at', fromDate)
+    if (toDate)   q = q.lte('created_at', toDate)
+    return q
+  }
+
+  let query = buildQuery(FULL_COLUMNS)
 
   // Provider type filter — attorney has its own column, consultant uses consultant_id
   if (providerType === 'attorney') {
@@ -113,7 +122,43 @@ export async function GET(req: Request) {
     }
   }
 
-  const { data: ordersRaw, error, count: totalCount } = await query
+  // Helper to apply the same filter chain to any base query (so the fallback
+  // retry uses identical filters but a different column list)
+  const applyExtraFilters = (q: any) => {
+    if (providerType === 'attorney')   q = q.not('attorney_id', 'is', null)
+    else if (providerType === 'consultant') q = q.not('consultant_id', 'is', null).is('attorney_id', null)
+    if (tab === 'active')    q = q.in('status', ['queued','created','in_progress','under_review','revision_requested'])
+    else if (tab === 'attention') q = q.in('status', ['revision_requested','in_progress','under_review','queued'])
+    else if (tab === 'financial') {
+      try { q = q.eq('escrow_status', 'held').not('status', 'in', '("cancelled","refunded")') } catch {}
+    }
+    if (q && false) { /* search already applied above */ }
+    return q
+  }
+
+  let { data: ordersRaw, error, count: totalCount } = await query
+
+  // Fallback: if the rich SELECT failed because a column is missing
+  // (Postgres error code 42703 → "column ... does not exist"), retry with
+  // SELECT * — every column the API references is then accessed via row.column
+  // and missing columns just come back undefined.
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    warnings.push('schema_partial — run supabase/orders_columns_patch.sql for full fidelity')
+    let fallback = db
+      .from('orders')
+      .select('*', { count: 'exact' })
+      .order(sortCol as any, { ascending: sortAsc })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+    if (status)   fallback = fallback.eq('status', status)
+    if (fromDate) fallback = fallback.gte('created_at', fromDate)
+    if (toDate)   fallback = fallback.lte('created_at', toDate)
+    fallback = applyExtraFilters(fallback)
+    const retry = await fallback
+    ordersRaw  = retry.data as any
+    error      = retry.error as any
+    totalCount = retry.count as any
+  }
+
   if (error) return fail(error.message, 500)
 
   const rows: any[] = ordersRaw ?? []
