@@ -8,6 +8,7 @@ import AdminAnalyticsPro from './admin-analytics'
 import AdminPayouts from './admin-payouts'
 import AdminOrders from './admin-orders'
 import AdminEscrow from './admin-escrow'
+import AdminDashboard from './admin-dashboard'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -2307,7 +2308,7 @@ function AdminApp({ onLogout }) {
               <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
             </div>
           )}
-          {page === 'dashboard' && <Dashboard />}
+          {page === 'dashboard' && <AdminDashboard onNav={setPage} />}
           {page === 'users' && <Users />}
           {page === 'attorney-applications' && <AttorneyApplications />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
