@@ -542,12 +542,18 @@ function AdminApp({ onLogout }) {
         <p style={adminPageSub}>Full platform visibility — every user, order, and dollar.</p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-        <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3" />
-        <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple} />
-        <StatCard label="Support Team" value={totalSupport} icon="🎧" color={C.orange} />
-        <StatCard label="Approvals" value={pendingApprovals.length} icon="✅" color={C.green} />
-        <StatCard label="In Escrow" value={formatPrimary(pendingEscrow)} icon="🔒" color={C.orange} />
-        <StatCard label="Admin Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green} />
+        <StatCard label="Total Students" value={totalStudents} icon="🎓" color={C.cyan} delta="+3"
+          onClick={() => { setUserFilter('student'); setPage('users'); }} />
+        <StatCard label="Consultants" value={totalConsultants} icon="👤" color={C.purple}
+          onClick={() => { setUserFilter('consultant'); setPage('users'); }} />
+        <StatCard label="Support Team" value={totalSupport} icon="🎧" color={C.orange}
+          onClick={() => { setUserFilter('support'); setPage('users'); }} />
+        <StatCard label="Approvals" value={pendingApprovals.length} icon="✅" color={C.green}
+          onClick={() => { setUserFilter('pending'); setPage('users'); }} />
+        <StatCard label="In Escrow" value={formatPrimary(pendingEscrow)} icon="🔒" color={C.orange}
+          onClick={() => setPage('escrow')} />
+        <StatCard label="Admin Revenue" value={formatPrimary(totalRevenue)} icon="💰" color={C.green}
+          onClick={() => setPage('analytics')} />
       </div>
 
       {/* Unified approvals */}

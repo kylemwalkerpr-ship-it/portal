@@ -485,9 +485,18 @@ export function Divider({ style }) {
   return <div style={{ height: '1px', background: C.border, ...style }} />
 }
 
-export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }) {
+export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle, onClick }) {
+  const interactive = typeof onClick === 'function'
   return (
-    <Card style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <Card
+      hover={interactive}
+      onClick={interactive ? onClick : undefined}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '10px',
+        cursor: interactive ? 'pointer' : 'default',
+        transition: 'border-color 140ms, box-shadow 140ms',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
         <span style={{ fontSize: '18px', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${color}15`, borderRadius: '10px' }}>{icon}</span>
@@ -495,6 +504,11 @@ export function StatCard({ label, value, delta, icon, color = C.cyan, subtitle }
       <div style={{ fontSize: '26px', fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>{value}</div>
       {delta && <div style={{ fontSize: '12px', color: delta.startsWith('+') ? C.green : C.red }}>{delta} this month</div>}
       {subtitle && <div style={{ fontSize: '11px', color: C.textDim, marginTop: '-2px' }}>{subtitle}</div>}
+      {interactive && (
+        <div style={{ fontSize: '11px', color: color, fontWeight: 600, marginTop: '2px', letterSpacing: '0.02em' }}>
+          View details →
+        </div>
+      )}
     </Card>
   )
 }
