@@ -2013,11 +2013,15 @@ function StudentApp({ onLogout, userId, userName }) {
     const [templatesError, setTemplatesError] = React.useState(null);
     const [primaryCurrency, setPrimaryCurrency] = React.useState('usd');
     const [usdToCadRate, setUsdToCadRate] = React.useState(1.37);
+    // displayCurrency is the sole source of truth for what the user sees.
+    // Initialise from localStorage so it survives navigation; default to 'usd'.
+    // Never fall through to primaryCurrency — that would let API responses
+    // silently override the user's explicit toggle choice.
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
-      if (typeof window === 'undefined') return null;
-      try { return window.localStorage.getItem('yousafe.displayCurrency') || null; } catch { return null; }
+      if (typeof window === 'undefined') return 'usd';
+      try { return window.localStorage.getItem('yousafe.displayCurrency') || 'usd'; } catch { return 'usd'; }
     });
-    const effectiveDisplayCurrency = (displayCurrency || primaryCurrency || 'usd').toLowerCase();
+    const effectiveDisplayCurrency = displayCurrency;
     const setAndPersistDisplayCurrency = c => {
       const next = c.toLowerCase();
       setDisplayCurrency(next);
