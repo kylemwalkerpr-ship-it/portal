@@ -369,8 +369,14 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
 }
 
 function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable, gigUsage }) {
+  const [loggingOut, setLoggingOut] = React.useState(false)
   const goToRoute = (href) => {
     if (typeof window !== 'undefined') window.location.href = href
+  }
+  const handleLogout = () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    onLogout?.()
   }
   const gigsActive = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/gigs')
   const gigsBadge = `${Number(gigUsage?.used || 0)}/${Number(gigUsage?.limit || 5)}`
@@ -433,7 +439,8 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
           </div>
           <button
             type="button"
-            onClick={onLogout}
+            onClick={handleLogout}
+            disabled={loggingOut}
             aria-label="Log out and return to Yousafe Consultancy"
             style={{
               display: 'inline-flex',
@@ -442,14 +449,15 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
               border: `1px solid ${C.border}`,
               borderRadius: '8px',
               background: C.surface,
-              color: C.textMuted,
-              cursor: 'pointer',
+              color: loggingOut ? C.textDim : C.textMuted,
+              cursor: loggingOut ? 'not-allowed' : 'pointer',
               fontSize: '12px',
               fontWeight: 700,
               padding: '7px 9px',
               whiteSpace: 'nowrap',
+              opacity: loggingOut ? 0.6 : 1,
             }}
-            title="Log out"
+            title={loggingOut ? 'Signing out…' : 'Log out'}
           >
             <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
             <span>Logout</span>

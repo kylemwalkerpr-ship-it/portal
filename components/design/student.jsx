@@ -1578,6 +1578,31 @@ function StudentApp({ onLogout, userId, userName }) {
   };
 
   // ── SIDEBAR ──
+  // Wraps the sidebar logout button with a loading guard
+  function SidebarLogoutBtn() {
+    const [loggingOut, setLoggingOut] = React.useState(false);
+    return (
+      <button
+        type="button"
+        onClick={() => { if (loggingOut) return; setLoggingOut(true); onLogout?.(); }}
+        disabled={loggingOut}
+        aria-label="Log out"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          border: `1px solid ${C.border}`, borderRadius: '8px',
+          background: C.surface, color: loggingOut ? C.textDim : C.textMuted,
+          cursor: loggingOut ? 'not-allowed' : 'pointer',
+          fontSize: '12px', fontWeight: 700, padding: '7px 9px',
+          whiteSpace: 'nowrap', opacity: loggingOut ? 0.6 : 1,
+        }}
+        title={loggingOut ? 'Signing out…' : 'Log out'}
+      >
+        <span>{loggingOut ? '⏳' : '⏻'}</span>
+        <span>{loggingOut ? 'Signing out…' : 'Log out'}</span>
+      </button>
+    );
+  }
+
   const Sidebar = () => (
     <div className="yousafe-sidebar" style={{
       width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`,
@@ -1613,29 +1638,7 @@ function StudentApp({ onLogout, userId, userName }) {
             <div style={{ fontSize: '13px', fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profileData.name || 'Student'}</div>
             <div style={{ fontSize: '11px', color: C.textMuted }}>Student</div>
           </div>
-          <button
-            type="button"
-            onClick={onLogout}
-            aria-label="Log out and return to Yousafe Consultancy"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              border: `1px solid ${C.border}`,
-              borderRadius: '8px',
-              background: C.surface,
-              color: C.textMuted,
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 700,
-              padding: '7px 9px',
-              whiteSpace: 'nowrap',
-            }}
-            title="Log out"
-          >
-            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
-            <span>Logout</span>
-          </button>
+          <SidebarLogoutBtn />
         </div>
       </div>
     </div>

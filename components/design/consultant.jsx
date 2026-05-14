@@ -585,8 +585,14 @@ function ConsultantApp({ onLogout }) {
 
   // ── SIDEBAR ──
   const Sidebar = () => {
+    const [loggingOut, setLoggingOut] = React.useState(false);
     const goToRoute = href => {
       if (typeof window !== 'undefined') window.location.href = href;
+    };
+    const handleLogout = () => {
+      if (loggingOut) return;
+      setLoggingOut(true);
+      onLogout?.();
     };
     const gigsActive = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/gigs');
     const gigsBadge = `${Number(gigUsage?.used || 0)}/${Number(gigUsage?.limit || 5)}`;
@@ -631,7 +637,8 @@ function ConsultantApp({ onLogout }) {
           </div>
           <button
             type="button"
-            onClick={onLogout}
+            onClick={handleLogout}
+            disabled={loggingOut}
             aria-label="Log out and return to Yousafe Consultancy"
             style={{
               display: 'inline-flex',
@@ -640,11 +647,12 @@ function ConsultantApp({ onLogout }) {
               border: `1px solid ${C.border}`,
               borderRadius: '8px',
               background: C.surface,
-              color: C.textMuted,
-              cursor: 'pointer',
+              color: loggingOut ? C.textDim : C.textMuted,
+              cursor: loggingOut ? 'not-allowed' : 'pointer',
               fontSize: '12px',
               fontWeight: 700,
               padding: '7px 9px',
+              opacity: loggingOut ? 0.6 : 1,
               whiteSpace: 'nowrap',
             }}
             title="Log out"

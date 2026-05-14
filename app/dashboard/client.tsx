@@ -19,13 +19,26 @@ const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
 export default function DashboardClient({ role, status, userName, userId, expectedRole, errorState }) {
   const { signOut } = useClerk()
-  const handleLogout = async () => {
+  const loggingOut = React.useRef(false)
+
+  const handleLogout = React.useCallback(async () => {
+    // Prevent double-clicks / concurrent calls
+    if (loggingOut.current) return
+    loggingOut.current = true
+
     try {
-      await signOut({ redirectUrl: PORTAL_URL })
-    } finally {
-      window.location.replace(PORTAL_URL)
-    }
-  }
+      // Race against a 5-second timeout so a slow/failed Clerk API call
+      // never leaves the button frozen indefinitely
+      await Promise.race([
+        signOut(),
+        new Promise<void>(resolve => setTimeout(resolve, 5000)),
+      ])
+    } catch { /* ignore — redirect regardless */ }
+
+    // Hard-navigate to the sign-in page so the user always ends up somewhere
+    // expected, even if Clerk's session clear failed or partially succeeded
+    window.location.replace(PORTAL_URL)
+  }, [signOut])
 
   if (errorState) {
     return (

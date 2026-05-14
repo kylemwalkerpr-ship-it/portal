@@ -66,6 +66,12 @@ const adminSectionHeading = {
 };
 
 function AdminApp({ onLogout }) {
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const handleLogout = () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    onLogout?.();
+  };
   const [page, setPage] = React.useState('dashboard');
   const [userFilter, setUserFilter] = React.useState('all');
   const [orderFilter, setOrderFilter] = React.useState('all');
@@ -459,8 +465,9 @@ function AdminApp({ onLogout }) {
           </div>
           <button
             type="button"
-            onClick={onLogout}
-            aria-label="Log out and return to Yousafe Consultancy"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            aria-label="Log out"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -468,17 +475,18 @@ function AdminApp({ onLogout }) {
               border: `1px solid ${C.border}`,
               borderRadius: '8px',
               background: C.surface,
-              color: C.textMuted,
-              cursor: 'pointer',
+              color: loggingOut ? C.textDim : C.textMuted,
+              cursor: loggingOut ? 'not-allowed' : 'pointer',
               fontSize: '12px',
               fontWeight: 700,
               padding: '7px 9px',
               whiteSpace: 'nowrap',
+              opacity: loggingOut ? 0.6 : 1,
             }}
-            title="Log out"
+            title={loggingOut ? 'Signing out…' : 'Log out'}
           >
-            <span style={{ fontSize: '14px', lineHeight: 1 }}>⏻</span>
-            <span>Logout</span>
+            <span style={{ fontSize: '14px', lineHeight: 1 }}>{loggingOut ? '⏳' : '⏻'}</span>
+            <span>{loggingOut ? 'Signing out…' : 'Logout'}</span>
           </button>
         </div>
       </div>

@@ -337,6 +337,7 @@ function humanFileSize(bytes) {
 
 export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLogout, items = [] }) {
   const [open, setOpen] = React.useState(false)
+  const [loggingOut, setLoggingOut] = React.useState(false)
   const displayName = name || role || 'User'
   const defaultItems = [
     { label: 'Profile settings', icon: '⚙️', action: () => onNavigate?.('settings') },
@@ -348,6 +349,19 @@ export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLo
   const run = action => {
     setOpen(false)
     action?.()
+  }
+
+  const handleLogoutClick = () => {
+    if (loggingOut) return
+    setLoggingOut(true)
+    setOpen(false)
+    // If onLogout is missing, fall back to a hard page reload which will
+    // trigger the auth middleware and send the user to sign-in
+    if (typeof onLogout === 'function') {
+      onLogout()
+    } else {
+      window.location.replace('/')
+    }
   }
 
   return (
@@ -429,13 +443,14 @@ export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLo
             <button
               type="button"
               role="menuitem"
-              onClick={() => run(onLogout)}
+              disabled={loggingOut}
+              onClick={handleLogoutClick}
               style={{
                 width: '100%',
                 border: 'none',
-                background: 'transparent',
-                color: C.red,
-                cursor: 'pointer',
+                background: loggingOut ? `${C.red}10` : 'transparent',
+                color: loggingOut ? `${C.red}80` : C.red,
+                cursor: loggingOut ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
@@ -445,10 +460,12 @@ export function UserMenu({ name, role, email, color, avatarSrc, onNavigate, onLo
                 fontSize: '13px',
                 fontWeight: 700,
                 textAlign: 'left',
+                opacity: loggingOut ? 0.7 : 1,
+                transition: 'opacity 0.15s',
               }}
             >
-              <span style={{ width: '18px', textAlign: 'center' }}>⏻</span>
-              <span>Logout</span>
+              <span style={{ width: '18px', textAlign: 'center' }}>{loggingOut ? '⏳' : '⏻'}</span>
+              <span>{loggingOut ? 'Signing out…' : 'Logout'}</span>
             </button>
           </div>
         </div>
