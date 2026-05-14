@@ -1,7 +1,7 @@
 // lib/startConversation.ts - New helper for Fiverr-style gig messaging
 export async function startOrGetConversation(clientId: string, sellerId: string, gigId?: string, initialMessage?: string) {
-  const { createSupabaseClient } = await import('./supabase');
-  const supabase = createSupabaseClient();
+  const { createSupabaseAdminClient } = await import('./supabase');
+  const supabase = createSupabaseAdminClient();
 
   // Try to find existing conversation between these two users
   let { data: existing } = await supabase
