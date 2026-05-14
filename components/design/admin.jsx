@@ -661,87 +661,364 @@ function AdminApp({ onLogout }) {
   const Users = () => {
     const [inviteEmail, setInviteEmail] = React.useState('');
     const [inviteRole, setInviteRole] = React.useState('student');
+    const [sortCol, setSortCol] = React.useState('joined');
+    const [sortDir, setSortDir] = React.useState('desc');
+    const [statusFilter, setStatusFilter] = React.useState('all');
+    const [countryFilter, setCountryFilter] = React.useState('all');
+    const [selectedRows, setSelectedRows] = React.useState(new Set());
+    const [tableHoverRow, setTableHoverRow] = React.useState(null);
+    const [localPage, setLocalPage] = React.useState(1);
+    const PER_PAGE = 15;
+
+    const ROLE_COLORS = { student: '#0891B2', consultant: '#7C3AED', attorney: '#1B2D4F', support: '#D97706', admin: '#DC2626' };
+    const ROLE_BG     = { student: '#EFF6FF', consultant: '#F5F3FF', attorney: '#EFF6FF', support: '#FFF7ED', admin: '#FEF2F2' };
+
+    const countries = React.useMemo(() => {
+      const set = new Set(filteredUsers.map(u => u.country).filter(Boolean));
+      return ['all', ...Array.from(set).sort()];
+    }, [filteredUsers]);
+
+    const handleSort = col => {
+      if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+      else { setSortCol(col); setSortDir('asc'); }
+      setLocalPage(1);
+    };
+
+    const afterSort = React.useMemo(() => {
+      return [...filteredUsers].sort((a, b) => {
+        let av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+        if (sortCol === 'orders') { av = Number(av) || 0; bv = Number(bv) || 0; }
+        if (typeof av === 'string') av = av.toLowerCase();
+        if (typeof bv === 'string') bv = bv.toLowerCase();
+        if (av < bv) return sortDir === 'asc' ? -1 : 1;
+        if (av > bv) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }, [filteredUsers, sortCol, sortDir]);
+
+    const afterFilters = React.useMemo(() => {
+      return afterSort
+        .filter(u => statusFilter === 'all' || u.status === statusFilter)
+        .filter(u => countryFilter === 'all' || u.country === countryFilter);
+    }, [afterSort, statusFilter, countryFilter]);
+
+    const totalPages = Math.max(1, Math.ceil(afterFilters.length / PER_PAGE));
+    const pagedUsers = afterFilters.slice((localPage - 1) * PER_PAGE, localPage * PER_PAGE);
+    const maxOrders  = Math.max(1, ...filteredUsers.map(u => Number(u.orders) || 0));
+
+    // Role breakdown for the mini stacked bar
+    const roleDist = ['student','consultant','attorney','support','admin'].map(r => ({
+      role: r, count: filteredUsers.filter(u => u.role === r).length, color: ROLE_COLORS[r],
+    })).filter(r => r.count > 0);
+    const totalForDist = Math.max(1, roleDist.reduce((s, r) => s + r.count, 0));
+
+    // Status breakdown
+    const activeCt  = filteredUsers.filter(u => u.status === 'active').length;
+    const pendingCt = filteredUsers.filter(u => u.status === 'pending').length;
+    const suspCt    = filteredUsers.filter(u => u.status === 'suspended').length;
+
+    const toggleRow = id => setSelectedRows(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    const toggleAll = () => setSelectedRows(prev =>
+      prev.size === pagedUsers.length ? new Set() : new Set(pagedUsers.map(u => u.id))
+    );
+    const allSelected = pagedUsers.length > 0 && selectedRows.size === pagedUsers.length;
+
+    const SortIcon = ({ col }) => {
+      if (sortCol !== col) return <span style={{ opacity: 0.25, fontSize: '10px', marginLeft: '4px' }}>⇅</span>;
+      return <span style={{ fontSize: '10px', marginLeft: '4px', color: '#C4A45A' }}>{sortDir === 'asc' ? '▲' : '▼'}</span>;
+    };
+
+    const thStyle = (col, extra = {}) => ({
+      padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700,
+      color: sortCol === col ? '#C4A45A' : 'rgba(255,255,255,0.70)',
+      background: '#1B2D4F', whiteSpace: 'nowrap', cursor: 'pointer',
+      letterSpacing: '0.06em', textTransform: 'uppercase', userSelect: 'none',
+      borderBottom: '2px solid rgba(255,255,255,0.08)',
+      transition: 'color 0.12s', ...extra,
+    });
+
+    const tdStyle = (extra = {}) => ({
+      padding: '11px 14px', fontSize: '13px', color: C.text,
+      borderBottom: `1px solid ${C.border}`, verticalAlign: 'middle', ...extra,
+    });
+
     return (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Page header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <div style={adminEyebrow}>Members</div>
-          <h2 style={adminPageTitle}>Users.</h2>
+          <h2 style={adminPageTitle}>Users</h2>
           <p style={adminPageSub}>{users.length} total · {totalStudents} students · {totalConsultants} consultants · {totalAttorneys} attorneys · {totalSupport} support</p>
         </div>
         <Btn variant="primary" size="sm" onClick={() => setInviteModal(true)}>+ Invite user</Btn>
       </div>
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
-          <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search by name or email..." />
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
-            <button key={f} onClick={() => setUserFilter(f)} style={{
-              padding: '6px 16px', borderRadius: '20px', border: `1px solid ${userFilter === f ? C.cyan : C.border}`,
-              background: userFilter === f ? `${C.cyan}18` : C.surface2,
-              color: userFilter === f ? C.cyan : C.textMuted,
-              fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: userFilter === f ? 600 : 400, textTransform: 'capitalize', transition: 'all 0.15s',
-            }}>{
-              f === 'all' ? 'All users'
-              : f === 'pending' ? `Pending (${pendingApprovals.length})`
-              : f === 'student' ? `Students (${totalStudents})`
-              : f === 'consultant' ? `Consultants (${totalConsultants})`
-              : f === 'attorney' ? `Attorneys (${totalAttorneys})`
-              : `Support (${totalSupport})`
-            }</button>
-          ))}
-        </div>
-      </div>
-      <Card style={{ padding: '0', overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['User', 'Role', 'Country', 'Joined', 'Orders', 'Financials', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-              {filteredUsers.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{searchQuery ? 'No users match your search.' : 'No users in this category.'}</td></tr>
-            ) : filteredUsers.map((u, i) => (
-              <tr key={u.id} className="yousafe-table-row" style={{ borderBottom: i < filteredUsers.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
-                <td style={{ padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Avatar name={u.name} size={32} color={u.role === 'consultant' ? C.purple : u.role === 'support' ? C.orange : C.cyan} />
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600 }}>{u.name}</div>
-                      <div style={{ fontSize: '12px', color: C.textMuted }}>{u.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '14px 16px' }}><Badge color={roleBadgeColor(u.role)}>{u.role}</Badge></td>
-                <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.country}</td>
-                <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{u.joined}</td>
-                <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{u.orders}</td>
-                <td style={{ padding: '14px 16px', fontSize: '13px', color: u.role === 'consultant' ? C.green : C.text, fontWeight: 600 }}>{u.spend}</td>
-                <td style={{ padding: '14px 16px' }}><Badge color={u.status === 'active' ? 'green' : 'orange'}>{u.status}</Badge></td>
-                <td style={{ padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
-                    {['consultant', 'support'].includes(u.role) && u.status === 'pending' && (
-                      <Btn variant="success" size="sm" onClick={() => approveUser(u)}>Approve</Btn>
-                    )}
-                    {isCurrentAdmin(u) ? (
-                      <Badge color="red">You</Badge>
-                    ) : (
-                      <Btn variant="danger" size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>{u.status === 'active' ? 'Suspend' : 'Activate'}</Btn>
-                    )}
-                    {['consultant', 'support'].includes(u.role) && !isCurrentAdmin(u) && (
-                      <Btn variant="danger" size="sm" onClick={() => deleteUser(u)}>Delete</Btn>
-                    )}
-                  </div>
-                </td>
-              </tr>
+
+      {/* Summary strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        {/* Role distribution bar */}
+        <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Role breakdown</div>
+          <div style={{ display: 'flex', height: '10px', borderRadius: '5px', overflow: 'hidden', gap: '1px' }}>
+            {roleDist.map(r => (
+              <div key={r.role} title={`${r.role}: ${r.count}`} style={{ width: `${(r.count / totalForDist) * 100}%`, background: r.color, minWidth: r.count > 0 ? '4px' : '0' }} />
             ))}
-          </tbody>
-        </table>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {roleDist.map(r => (
+              <span key={r.role} style={{ fontSize: '11px', color: C.textMuted, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: r.color, display: 'inline-block' }} />
+                {r.role} <strong style={{ color: C.text }}>{r.count}</strong>
+              </span>
+            ))}
+          </div>
+        </Card>
+
+        {/* Status distribution */}
+        <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Account status</div>
+          {[{ label: 'Active', count: activeCt, color: C.green }, { label: 'Pending', count: pendingCt, color: C.orange }, { label: 'Suspended', count: suspCt, color: C.red }].map(s => (
+            <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', color: C.textMuted, width: '64px' }}>{s.label}</span>
+              <div style={{ flex: 1, height: '6px', background: C.surface3, borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(s.count / Math.max(1, filteredUsers.length)) * 100}%`, background: s.color, borderRadius: '3px', transition: 'width 0.4s' }} />
+              </div>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: C.text, minWidth: '20px', textAlign: 'right' }}>{s.count}</span>
+            </div>
+          ))}
+        </Card>
+
+        {/* Quick filters */}
+        <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick filters</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
+              <button key={f} onClick={() => { setUserFilter(f); setLocalPage(1); }} style={{
+                padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
+                border: `1px solid ${userFilter === f ? '#1B2D4F' : C.border}`,
+                background: userFilter === f ? '#1B2D4F' : C.surface2,
+                color: userFilter === f ? '#fff' : C.textMuted,
+                fontWeight: userFilter === f ? 600 : 400, fontFamily: 'inherit',
+              }}>
+                {f === 'all' ? 'All' : f === 'pending' ? `Pending (${pendingApprovals.length})` : f === 'student' ? `Students (${totalStudents})` : f === 'consultant' ? `Consultants (${totalConsultants})` : f === 'attorney' ? `Attorneys (${totalAttorneys})` : `Support (${totalSupport})`}
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: '220px', maxWidth: '340px' }}>
+          <SearchInput value={searchQuery} onChange={v => { setSearchQuery(v); setLocalPage(1); }} placeholder="Search name or email…" />
+        </div>
+
+        {/* Status sub-filter */}
+        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setLocalPage(1); }}
+          style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit', cursor: 'pointer' }}>
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="suspended">Suspended</option>
+        </select>
+
+        {/* Country filter */}
+        <select value={countryFilter} onChange={e => { setCountryFilter(e.target.value); setLocalPage(1); }}
+          style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit', cursor: 'pointer' }}>
+          {countries.map(c => <option key={c} value={c}>{c === 'all' ? 'All countries' : c}</option>)}
+        </select>
+
+        {/* Results count */}
+        <span style={{ fontSize: '12px', color: C.textMuted, marginLeft: 'auto' }}>
+          {afterFilters.length} result{afterFilters.length !== 1 ? 's' : ''}
+          {selectedRows.size > 0 && <span style={{ marginLeft: '8px', color: C.cyan, fontWeight: 700 }}>· {selectedRows.size} selected</span>}
+        </span>
+      </div>
+
+      {/* Table */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
+            <thead>
+              <tr>
+                {/* Checkbox */}
+                <th style={{ ...thStyle(''), width: '40px', cursor: 'default', padding: '12px 10px 12px 16px' }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#C4A45A' }} />
+                </th>
+                {[
+                  { key: 'name',    label: 'User'       },
+                  { key: 'role',    label: 'Role'       },
+                  { key: 'country', label: 'Country'    },
+                  { key: 'joined',  label: 'Joined'     },
+                  { key: 'orders',  label: 'Orders'     },
+                  { key: 'spend',   label: 'Financials' },
+                  { key: 'status',  label: 'Status'     },
+                ].map(({ key, label }) => (
+                  <th key={key} style={thStyle(key)} onClick={() => handleSort(key)}>
+                    {label}<SortIcon col={key} />
+                  </th>
+                ))}
+                <th style={{ ...thStyle('', { cursor: 'default' }) }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: '48px 24px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
+                    No users match the current filters.
+                  </td>
+                </tr>
+              ) : pagedUsers.map((u, i) => {
+                const isSelected = selectedRows.has(u.id);
+                const isHovered  = tableHoverRow === u.id;
+                const roleColor  = ROLE_COLORS[u.role] || C.cyan;
+                const roleBg     = ROLE_BG[u.role]    || '#EFF6FF';
+                const orderPct   = Math.round(((Number(u.orders) || 0) / maxOrders) * 100);
+                const rowBg = isSelected
+                  ? 'rgba(196,164,90,0.08)'
+                  : isHovered
+                  ? C.surface2
+                  : i % 2 === 0 ? '#FFFFFF' : C.surface;
+
+                return (
+                  <tr key={u.id}
+                    onMouseEnter={() => setTableHoverRow(u.id)}
+                    onMouseLeave={() => setTableHoverRow(null)}
+                    style={{ background: rowBg, transition: 'background 100ms', cursor: 'default' }}>
+
+                    {/* Checkbox */}
+                    <td style={{ ...tdStyle({ padding: '11px 10px 11px 16px', width: '40px' }) }}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleRow(u.id)}
+                        style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#C4A45A' }} />
+                    </td>
+
+                    {/* User */}
+                    <td style={tdStyle()}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: roleBg, border: `1px solid ${roleColor}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 800, color: roleColor, flexShrink: 0 }}>
+                          {(u.name || '?')[0].toUpperCase()}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{u.name}</div>
+                          <div style={{ fontSize: '11px', color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Role chip */}
+                    <td style={tdStyle()}>
+                      <span style={{ display: 'inline-block', padding: '3px 9px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', background: roleBg, color: roleColor, border: `1px solid ${roleColor}25` }}>
+                        {u.role}
+                      </span>
+                    </td>
+
+                    {/* Country */}
+                    <td style={tdStyle({ color: C.textMuted })}>{u.country || '—'}</td>
+
+                    {/* Joined */}
+                    <td style={tdStyle({ color: C.textMuted, whiteSpace: 'nowrap' })}>{u.joined}</td>
+
+                    {/* Orders with mini bar */}
+                    <td style={tdStyle()}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13px', minWidth: '20px' }}>{u.orders || 0}</span>
+                        <div style={{ width: '52px', height: '6px', background: C.surface3, borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${orderPct}%`, background: orderPct >= 80 ? C.green : orderPct >= 40 ? C.cyan : C.border, borderRadius: '3px', transition: 'width 0.4s' }} />
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Financials */}
+                    <td style={tdStyle({ fontWeight: 600, color: u.role === 'consultant' || u.role === 'attorney' ? C.green : C.text })}>
+                      {u.spend || '—'}
+                    </td>
+
+                    {/* Status dot + label */}
+                    <td style={tdStyle()}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                        background: u.status === 'active' ? '#DCFCE7' : u.status === 'pending' ? '#FEF9C3' : '#FEE2E2',
+                        color: u.status === 'active' ? '#166534' : u.status === 'pending' ? '#854D0E' : '#991B1B',
+                      }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.status === 'active' ? '#22C55E' : u.status === 'pending' ? '#EAB308' : '#EF4444', display: 'inline-block' }} />
+                        {u.status}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td style={tdStyle({ whiteSpace: 'nowrap' })}>
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                        <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(u)}>View</Btn>
+                        {['consultant', 'support', 'attorney'].includes(u.role) && u.status === 'pending' && (
+                          <Btn variant="success" size="sm" onClick={() => approveUser(u)}>Approve</Btn>
+                        )}
+                        {isCurrentAdmin(u) ? (
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: C.red, padding: '3px 8px', background: '#FEE2E2', borderRadius: '4px' }}>You</span>
+                        ) : (
+                          <Btn variant={u.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(u, { status: u.status === 'active' ? 'suspended' : 'active' })}>
+                            {u.status === 'active' ? 'Suspend' : 'Activate'}
+                          </Btn>
+                        )}
+                        {['consultant', 'support'].includes(u.role) && !isCurrentAdmin(u) && (
+                          <Btn variant="danger" size="sm" onClick={() => deleteUser(u)}>Delete</Btn>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+
+            {/* Summary footer */}
+            {pagedUsers.length > 0 && (
+              <tfoot>
+                <tr style={{ background: '#F8F7F4', borderTop: `2px solid ${C.border}` }}>
+                  <td colSpan={5} style={{ padding: '10px 14px', fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>
+                    Showing {(localPage - 1) * PER_PAGE + 1}–{Math.min(localPage * PER_PAGE, afterFilters.length)} of {afterFilters.length} users
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 700, color: C.green }}>
+                    {afterFilters.filter(u => u.spend && u.spend !== '—').length} paying
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 700, color: C.cyan }}>
+                    {afterFilters.filter(u => u.status === 'active').length} active
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: `1px solid ${C.border}`, background: C.surface }}>
+            <button onClick={() => setLocalPage(p => Math.max(1, p - 1))} disabled={localPage === 1}
+              style={{ padding: '6px 14px', borderRadius: '6px', border: `1px solid ${C.border}`, background: localPage === 1 ? C.surface3 : C.surface2, color: localPage === 1 ? C.textDim : C.text, cursor: localPage === 1 ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, fontFamily: 'inherit' }}>
+              ← Prev
+            </button>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - localPage) <= 1).reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…');
+                acc.push(p);
+                return acc;
+              }, []).map((p, i) => p === '…' ? (
+                <span key={`ellipsis-${i}`} style={{ padding: '6px 4px', fontSize: '13px', color: C.textMuted }}>…</span>
+              ) : (
+                <button key={p} onClick={() => setLocalPage(p)} style={{ width: '32px', height: '32px', borderRadius: '6px', border: `1px solid ${p === localPage ? '#1B2D4F' : C.border}`, background: p === localPage ? '#1B2D4F' : C.surface2, color: p === localPage ? '#fff' : C.text, cursor: 'pointer', fontSize: '13px', fontWeight: p === localPage ? 700 : 400, fontFamily: 'inherit' }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setLocalPage(p => Math.min(totalPages, p + 1))} disabled={localPage === totalPages}
+              style={{ padding: '6px 14px', borderRadius: '6px', border: `1px solid ${C.border}`, background: localPage === totalPages ? C.surface3 : C.surface2, color: localPage === totalPages ? C.textDim : C.text, cursor: localPage === totalPages ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, fontFamily: 'inherit' }}>
+              Next →
+            </button>
+          </div>
+        )}
       </Card>
       {selectedUser && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setSelectedUser(null)}>
