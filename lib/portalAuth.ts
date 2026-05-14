@@ -1,5 +1,6 @@
 import { getClerkUserId } from './auth'
 import { createSupabaseAdminClient } from './supabase'
+import { clerkClient } from '@clerk/nextjs/server'
 
 export type PortalUserContext = {
   db: ReturnType<typeof createSupabaseAdminClient>
@@ -25,6 +26,22 @@ export async function requirePortalUser(): Promise<
   if (error) return { error: error.message, status: 500 }
   if (!profile) return { error: 'Profile not found.', status: 404 }
   if (profile.status && profile.status !== 'active') return { error: 'Account is not active.', status: 403 }
+
+  // Resolve email from Clerk if missing in the profiles row and backfill silently
+  if (!profile.email) {
+    try {
+      const client = await clerkClient()
+      const clerkUser = await client.users.getUser(clerkUserId)
+      const clerkEmail =
+        clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress ||
+        clerkUser.emailAddresses[0]?.emailAddress ||
+        ''
+      if (clerkEmail) {
+        profile.email = clerkEmail
+        void db.from('profiles').update({ email: clerkEmail }).eq('id', profile.id)
+      }
+    } catch { /* Clerk unavailable — proceed without email */ }
+  }
 
   return { db, profile, profileId: profile.id, role: String(profile.role || '') }
 }
