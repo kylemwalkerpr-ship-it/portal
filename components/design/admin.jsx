@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import AdminFinancials from './admin-financials'
+import AdminGigsManager from './admin-gigs'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -2310,7 +2311,7 @@ function AdminApp({ onLogout }) {
           {page === 'payouts' && <Payouts />}
           {page === 'analytics' && <Analytics />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
-          {page === 'gigs' && <GigsManager />}
+          {page === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
         </div>
