@@ -9,6 +9,7 @@ import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
 import { BuyerDashboardWidgets } from '../marketplace/BuyerDashboardWidgets'
+import DashboardGuide from './DashboardGuide'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -1679,6 +1680,8 @@ function StudentApp({ onLogout, userId, userName }) {
           {activeOrders > 0 ? `You have ${activeOrders} active order${activeOrders !== 1 ? 's' : ''} in progress.` : 'Browse services or templates and place your first order to get started.'}
         </p>
       </div>
+      <DashboardGuide role="client" />
+
       {/* Stats — only shown once there's real activity */}
       {orders.length > 0 && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>

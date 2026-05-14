@@ -2,6 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
+import DashboardGuide from '@/components/design/DashboardGuide'
 
 interface GigApiResponse {
   gigs: Array<{ status: string; metrics?: { avg_rating: number } | null }>
@@ -136,6 +137,9 @@ export default function SellerDashboardHome() {
           </>
         )}
       </div>
+
+      {/* How-to guide for sellers */}
+      <DashboardGuide role="seller" />
 
       {/* Divider */}
       <div style={{ borderTop: '1px solid #E8E4DC' }} />

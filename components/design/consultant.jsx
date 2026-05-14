@@ -5,6 +5,7 @@ import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge,
 import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { LanguageSelector } from '../language-selector'
+import DashboardGuide from './DashboardGuide'
 
 function EarningsChart({ days }) {
   const data = Array.isArray(days) && days.length > 0 ? days : [];
@@ -715,8 +716,12 @@ function ConsultantApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
         <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome back, {profileName || 'Consultant'} 👋</h2>
+
         <p style={{ color: C.textMuted, fontSize: '14px' }}>{newOrders > 0 ? `You have ${newOrders} new order${newOrders === 1 ? '' : 's'} waiting for acceptance.` : 'All orders are up to date.'}</p>
       </div>
+
+      <DashboardGuide role="consultant" />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
         <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} />
         <StatCard label="New Requests" value={newOrders} icon="🆕" color={C.orange} />

@@ -6,6 +6,7 @@ import AttorneyProfileEditor from './attorney-profile-editor'
 import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { CountryChip } from './country-glyphs'
+import DashboardGuide from './DashboardGuide'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -1159,6 +1160,8 @@ function OverviewPage({ onJump }) {
         <div style={eyebrowStyle}>Dashboard</div>
         <h2 style={pageTitleStyle}>What's happening today.</h2>
       </div>
+
+      <DashboardGuide role="attorney" />
 
       {!data?.connect?.onboarding_complete && (
         <Card>
