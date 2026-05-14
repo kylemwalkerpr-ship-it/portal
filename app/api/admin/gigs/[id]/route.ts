@@ -1,6 +1,23 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdminUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+
+  const { id } = await context.params
+
+  const { data: gig, error } = await auth.db
+    .from('gigs')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !gig) return fail('Gig not found.', 404)
+
+  return ok({ gig })
+}
+
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser()
   if ('error' in auth) return fail(auth.error, auth.status)

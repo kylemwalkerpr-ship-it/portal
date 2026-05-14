@@ -4,6 +4,7 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { C, Card, Btn, Avatar, Badge } from '../design/shared'
+import { SaveGigButton } from './SaveGigButton'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,9 +68,11 @@ interface OrderCTAProps {
     revisions?: number | null
   }
   onOrder: () => void
-  onSave: () => void
+  onSave?: () => void
   onShare: () => void
-  isSaved: boolean
+  isSaved?: boolean
+  gigId?: string
+  savedGigRecordId?: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -450,7 +453,7 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
 
 // ── OrderCTA ──────────────────────────────────────────────────────────────────
 
-export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved }: OrderCTAProps) {
+export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = false, gigId, savedGigRecordId }: OrderCTAProps) {
   return (
     <Card style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
@@ -469,14 +472,22 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved }: Or
       </Btn>
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        <Btn
-          variant="secondary"
-          fullWidth
-          onClick={onSave}
-          style={{ fontSize: '13px' }}
-        >
-          {isSaved ? '♥ Saved' : '♡ Save'}
-        </Btn>
+        {gigId ? (
+          <SaveGigButton
+            gigId={gigId}
+            initialSaved={isSaved}
+            savedGigRecordId={savedGigRecordId}
+          />
+        ) : (
+          <Btn
+            variant="secondary"
+            fullWidth
+            onClick={onSave}
+            style={{ fontSize: '13px' }}
+          >
+            {isSaved ? '♥ Saved' : '♡ Save'}
+          </Btn>
+        )}
         <Btn
           variant="secondary"
           fullWidth

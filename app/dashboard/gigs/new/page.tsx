@@ -1,4 +1,4 @@
-import { GigBuilderWizard } from '@/components/marketplace/GigBuilderWizard'
+import { GigBuilderWizardNew } from '@/components/marketplace/GigBuilderWizardNew'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 
@@ -8,5 +8,5 @@ export default async function Page() {
   if (auth.role === 'client') redirect('/marketplace')
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
 
-  return <GigBuilderWizard onComplete={(gigId) => redirect(`/dashboard/gigs/${gigId}/edit`)} />
+  return <GigBuilderWizardNew />
 }

@@ -1,10 +1,15 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getCategoryFilterTerms } from '@/lib/categories'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function GET(req: Request) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
+  // Auth is optional for this public endpoint — do not require it
+  const authResult = await requirePortalUser()
+  const auth = 'error' in authResult ? null : authResult
+
+  // Use authenticated db when available, otherwise create a shared admin client
+  const db = auth ? auth.db : createSupabaseAdminClient()
 
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') || '').trim()
@@ -19,7 +24,7 @@ export async function GET(req: Request) {
   const limit = Math.min(60, parseInt(url.searchParams.get('limit') || '20', 10))
   const offset = (page - 1) * limit
 
-  let query = auth.db
+  let query = db
     .from('gigs')
     .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email)', { count: 'exact' })
     .eq('status', 'active')
@@ -44,6 +49,18 @@ export async function GET(req: Request) {
   const { data: gigs, error, count } = await query.range(offset, offset + limit - 1)
   if (error) return fail(error.message, 500)
 
+  // Fetch saved gig IDs for client users to populate is_saved
+  const savedGigIds = new Set<string>()
+  if (auth && auth.role === 'client' && (gigs ?? []).length > 0) {
+    const gigIds = (gigs ?? []).map((g: any) => g.id)
+    const { data: saved } = await db
+      .from('saved_gigs')
+      .select('gig_id')
+      .eq('client_profile_id', auth.profileId)
+      .in('gig_id', gigIds)
+    if (saved) saved.forEach((s: any) => savedGigIds.add(s.gig_id))
+  }
+
   const shaped = (gigs ?? [])
     .map((gig: any) => {
       const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
@@ -53,6 +70,7 @@ export async function GET(req: Request) {
         starting_price: cheapest?.price ?? null,
         delivery_days: cheapest?.delivery_days ?? null,
         new_badge: Number(gig.order_count || 0) < 5 && Number(gig.review_count || 0) < 3,
+        is_saved: savedGigIds.has(gig.id),
       }
     })
     .filter((gig: any) => {

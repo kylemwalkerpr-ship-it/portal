@@ -8,6 +8,7 @@ import MyInquiries from './my-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
+import { BuyerDashboardWidgets } from '../marketplace/BuyerDashboardWidgets'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -1736,6 +1737,7 @@ function StudentApp({ onLogout, userId, userName }) {
           {[
             { icon: '⚖️', label: 'Find an attorney', sub: 'Browse the legal panel', action: () => setPage('attorneys') },
             { icon: '🛒', label: 'Services & templates', sub: 'Catalogue and digital templates', action: () => setPage('services') },
+            { icon: '🏬', label: 'Marketplace', sub: 'Browse all gigs & services', action: () => goToRoute('/marketplace') },
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
             { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
             { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },
@@ -1743,6 +1745,17 @@ function StudentApp({ onLogout, userId, userName }) {
             <QuickActionTile key={label} icon={icon} label={label} sub={sub} onClick={action} />
           ))}
         </div>
+      </section>
+
+      {/* Marketplace widgets — saved gigs, recent orders, pending offers */}
+      <section>
+        <div style={sectionHeaderRow}>
+          <div>
+            <div style={sectionEyebrow}>Marketplace</div>
+            <h3 style={sectionHeading}>Your activity</h3>
+          </div>
+        </div>
+        <BuyerDashboardWidgets />
       </section>
     </div>
   );
