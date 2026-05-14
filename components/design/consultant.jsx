@@ -782,8 +782,70 @@ function ConsultantApp({ onLogout }) {
           <EarningsChart days={earningsByDay} />
         </Card>
       </div>
+
+      {/* Active services */}
+      <ConsultantActiveGigs />
     </div>
   );
+
+  // ── ACTIVE GIGS PANEL (used in Dashboard) ──
+  function ConsultantActiveGigs() {
+    const [gigs, setGigs] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+      fetch('/api/gigs', { credentials: 'same-origin' })
+        .then(async r => {
+          const payload = await r.json().catch(() => ({}));
+          const data = payload?.data ?? payload;
+          setGigs((data?.gigs ?? []).filter(g => g.status === 'active'));
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return null;
+
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '15px', margin: 0 }}>Your active services</h3>
+          <a href="/dashboard/gigs" style={{ color: C.cyan, fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>Manage all →</a>
+        </div>
+        {gigs.length === 0 ? (
+          <Card style={{ padding: '18px' }}>
+            <div style={{ color: C.textMuted, fontSize: '13px' }}>
+              No active services yet.{' '}
+              <a href="/dashboard/gigs/new" style={{ color: C.cyan, textDecoration: 'none', fontWeight: 600 }}>Create your first service →</a>
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {gigs.map(gig => (
+              <Card key={gig.id} style={{ padding: '14px 18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{gig.title}</div>
+                    {gig.category && <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>{gig.category}</div>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                    {gig.metrics && (
+                      <div style={{ fontSize: '11px', color: C.textMuted, display: 'flex', gap: '10px' }}>
+                        <span>{gig.metrics.impressions ?? 0} views</span>
+                        <span>{gig.metrics.clicks ?? 0} clicks</span>
+                      </div>
+                    )}
+                    <a href={`/dashboard/gigs/${gig.id}/edit`} style={{ fontSize: '12px', color: C.cyan, fontWeight: 600, textDecoration: 'none' }}>Edit</a>
+                    <a href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: C.textMuted, fontWeight: 500, textDecoration: 'none' }}>View ↗</a>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ── ORDERS ──
   const Orders = () => (

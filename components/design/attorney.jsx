@@ -1195,7 +1195,64 @@ function OverviewPage({ onJump }) {
           )}
         </div>
       </Card>
+
+      <ActiveGigsPanel />
     </div>
+  )
+}
+
+function ActiveGigsPanel() {
+  const [gigs, setGigs] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    fetch('/api/gigs', { credentials: 'same-origin' })
+      .then(async r => {
+        const payload = await r.json().catch(() => ({}))
+        const data = payload?.data ?? payload
+        setGigs((data?.gigs ?? []).filter(g => g.status === 'active'))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return null
+
+  return (
+    <Card>
+      <div style={{ padding: '18px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div style={{ fontWeight: 700, color: C.text, fontSize: '15px' }}>Your active services</div>
+          <a href="/dashboard/gigs" style={{ color: C.cyan, fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>Manage all →</a>
+        </div>
+        {gigs.length === 0 ? (
+          <div style={{ color: C.textMuted, fontSize: '13px' }}>
+            No active services yet.{' '}
+            <a href="/dashboard/gigs/new" style={{ color: C.cyan, textDecoration: 'none', fontWeight: 600 }}>Create your first service →</a>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '8px' }}>
+            {gigs.map(gig => (
+              <div key={gig.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '13px', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{gig.title}</div>
+                  {gig.category && <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>{gig.category}</div>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                  {gig.metrics && (
+                    <div style={{ fontSize: '11px', color: C.textMuted, display: 'flex', gap: '10px' }}>
+                      <span>{gig.metrics.impressions ?? 0} views</span>
+                      <span>{gig.metrics.clicks ?? 0} clicks</span>
+                    </div>
+                  )}
+                  <a href={`/dashboard/gigs/${gig.id}/edit`} style={{ fontSize: '12px', color: C.cyan, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>Edit</a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
   )
 }
 
