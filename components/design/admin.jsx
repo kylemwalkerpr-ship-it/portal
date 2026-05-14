@@ -551,13 +551,13 @@ function AdminApp({ onLogout }) {
       </div>
 
       {/* Unified approvals */}
-      <div>
-        <h3 style={adminSectionHeading}>Pending user approvals</h3>
+      <Card style={{ padding: '20px 22px' }}>
+        <h3 style={{ ...adminSectionHeading, marginBottom: '14px' }}>Pending user approvals</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {pendingApprovals.length === 0 ? (
-            <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No consultant or support approvals waiting.</div>
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '16px', textAlign: 'center', background: C.surface2, borderRadius: '10px' }}>No consultant or support approvals waiting.</div>
           ) : pendingApprovals.map(user => (
-            <Card key={user.id} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', padding: '14px 16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px' }}>
               <Avatar name={user.name} size={38} color={user.role === 'support' ? C.orange : C.purple} />
               <div style={{ flex: 1, minWidth: '220px' }}>
                 <div style={{ fontWeight: 700, fontSize: '14px' }}>{user.name}</div>
@@ -566,19 +566,19 @@ function AdminApp({ onLogout }) {
               <Badge color={roleBadgeColor(user.role)}>{approvalLabel(user.role)}</Badge>
               <Btn variant="success" size="sm" onClick={() => approveUser(user)}>Approve</Btn>
               <Btn variant="danger" size="sm" onClick={() => updateUser(user, { status: 'suspended' })}>Reject</Btn>
-            </Card>
+            </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Escrow alerts */}
-      <div>
-        <h3 style={adminSectionHeading}>Pending Escrow Releases</h3>
+      <Card style={{ padding: '20px 22px' }}>
+        <h3 style={{ ...adminSectionHeading, marginBottom: '14px' }}>Pending Escrow Releases</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {orders.filter(o => o.status === 'completed' && o.escrow === 'held').length === 0 ? (
-            <div style={{ color: C.textMuted, fontSize: '14px', padding: '20px', textAlign: 'center' }}>No pending escrow releases</div>
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '16px', textAlign: 'center', background: C.surface2, borderRadius: '10px' }}>No pending escrow releases</div>
           ) : orders.filter(o => o.status === 'completed' && o.escrow === 'held').map(order => (
-            <Card key={order.id} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div key={order.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '14px 16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px' }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: '14px' }}>{order.service}</div>
                 <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.student} → {order.consultant}</div>
@@ -588,35 +588,35 @@ function AdminApp({ onLogout }) {
                 <div style={{ fontSize: '12px', color: C.textMuted }}>{order.consultantPay} / {order.adminCut}</div>
               </div>
               <Btn variant="success" size="sm" onClick={() => releaseOrder(order.id)}>Release</Btn>
-            </Card>
+            </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Recent orders */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={adminSectionHeading}>Recent Orders</h3>
+      <Card style={{ padding: '20px 22px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <h3 style={{ ...adminSectionHeading, margin: 0 }}>Recent Orders</h3>
           <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View all →</Btn>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {orders.slice(0, 5).map(order => (
-            <Card key={order.id} style={{ padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{order.service}</div>
-                  <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.id} · {order.student} · {order.consultant}</div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <StatusBadge status={order.status} />
-                  <Badge color={order.escrow === 'released' ? 'green' : 'orange'}>{order.escrow === 'released' ? 'Released' : 'In escrow'}</Badge>
-                  <span style={{ fontWeight: 700, fontSize: '14px' }}>{order.amount}</span>
-                </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {orders.slice(0, 5).length === 0 ? (
+            <div style={{ color: C.textMuted, fontSize: '14px', padding: '16px', textAlign: 'center', background: C.surface2, borderRadius: '10px' }}>No orders yet.</div>
+          ) : orders.slice(0, 5).map(order => (
+            <div key={order.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', padding: '12px 14px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '10px' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <div style={{ fontWeight: 600, fontSize: '14px' }}>{order.service}</div>
+                <div style={{ color: C.textMuted, fontSize: '12px' }}>{order.id} · {order.student} · {order.consultant}</div>
               </div>
-            </Card>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <StatusBadge status={order.status} />
+                <Badge color={order.escrow === 'released' ? 'green' : 'orange'}>{order.escrow === 'released' ? 'Released' : 'In escrow'}</Badge>
+                <span style={{ fontWeight: 700, fontSize: '14px' }}>{order.amount}</span>
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Revenue split summary */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
