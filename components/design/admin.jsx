@@ -6,6 +6,7 @@ import AdminFinancials from './admin-financials'
 import AdminGigsManager from './admin-gigs'
 import AdminAnalyticsPro from './admin-analytics'
 import AdminPayouts from './admin-payouts'
+import AdminOrders from './admin-orders'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -2308,7 +2309,7 @@ function AdminApp({ onLogout }) {
           {page === 'dashboard' && <Dashboard />}
           {page === 'users' && <Users />}
           {page === 'attorney-applications' && <AttorneyApplications />}
-          {page === 'orders' && <Orders />}
+          {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'escrow' && <Escrow />}
           {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}
