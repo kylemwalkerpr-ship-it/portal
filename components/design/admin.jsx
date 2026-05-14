@@ -5,6 +5,7 @@ import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divi
 import AdminFinancials from './admin-financials'
 import AdminGigsManager from './admin-gigs'
 import AdminAnalyticsPro from './admin-analytics'
+import AdminPayouts from './admin-payouts'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -2309,7 +2310,7 @@ function AdminApp({ onLogout }) {
           {page === 'attorney-applications' && <AttorneyApplications />}
           {page === 'orders' && <Orders />}
           {page === 'escrow' && <Escrow />}
-          {page === 'payouts' && <Payouts />}
+          {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
           {page === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
