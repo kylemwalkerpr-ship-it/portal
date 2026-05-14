@@ -55,9 +55,9 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     errors.tags = 'Tags must have between 3 and 5 items.'
   }
 
-  // at least one tier with price_cents > 0 and delivery_days >= 1
+  // at least one tier with price > 0 and delivery_days >= 1
   const activeTiers = (gig.tiers || []).filter(
-    (t: any) => t.is_active && Number(t.price_cents) > 0 && Number(t.delivery_days) >= 1
+    (t: any) => t.is_active && Number(t.price) > 0 && Number(t.delivery_days) >= 1
   )
   if (activeTiers.length === 0) {
     errors.tiers = 'At least one active tier with a price and delivery days is required.'

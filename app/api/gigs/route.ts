@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       id, slug, title, pitch, category, subcategory, tags, status,
       gig_status_reason, suspended_at, archived_at, deleted_at,
       featured_until, boost_until, created_at,
-      tiers:gig_tiers(tier, title, price_cents, delivery_days, revisions)
+      tiers:gig_tiers(tier, title, price, delivery_days, revisions)
     `)
     .eq('provider_id', auth.profileId)
     .eq('provider_type', auth.role)
