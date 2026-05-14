@@ -7,8 +7,7 @@ import SellerGigCard from './SellerGigCard'
 interface GigMetrics {
   impressions: number
   clicks: number
-  order_count: number
-  avg_rating: number
+  saves: number
 }
 
 interface Gig {

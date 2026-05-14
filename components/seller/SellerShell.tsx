@@ -13,8 +13,6 @@ const NAV_LINKS = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Gigs', href: '/dashboard/gigs' },
   { label: 'Orders', href: '/dashboard/orders' },
-  { label: 'Messages', href: '/dashboard/messages' },
-  { label: 'Earnings', href: '/dashboard/earnings' },
 ]
 
 export default function SellerShell({ title, children }: SellerShellProps) {

@@ -29,7 +29,7 @@ export async function GET(req: Request) {
       gig_status_reason, suspended_at, archived_at, deleted_at,
       content_score, featured_until, boost_until, created_at,
       tiers:gig_tiers(tier, title, price_cents, delivery_days, revisions),
-      metrics:gig_metrics(impressions, clicks, saves, order_count, avg_rating, review_count, rank_score),
+      metrics:gig_metrics(impressions, clicks, saves),
       promotion:gig_promotion_campaigns(campaign_type, status, ends_at, impressions, clicks)
     `)
     .eq('provider_id', auth.profileId)

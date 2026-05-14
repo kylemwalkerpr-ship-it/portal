@@ -6,8 +6,7 @@ import Link from 'next/link'
 interface GigMetrics {
   impressions: number
   clicks: number
-  order_count: number
-  avg_rating: number
+  saves: number
 }
 
 interface Gig {
@@ -139,8 +138,7 @@ export default function SellerGigCard({ gig, onStatusChange, onPublish }: Seller
           {([
             ['Impressions', metrics.impressions],
             ['Clicks', metrics.clicks],
-            ['Orders', metrics.order_count],
-            ['Rating', metrics.avg_rating ? metrics.avg_rating.toFixed(1) : '—'],
+            ['Saves', metrics.saves],
           ] as [string, number | string][]).map(([label, val]) => (
             <div key={label} style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: 900, fontSize: '16px', color: '#1F2937' }}>{val}</div>
