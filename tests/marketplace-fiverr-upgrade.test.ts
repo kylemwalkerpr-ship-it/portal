@@ -177,7 +177,7 @@ beforeEach(() => {
 // GIG STATUS TRANSITIONS
 // ════════════════════════════════════════════════════════════
 
-test('seller: draft → active is an allowed transition', async () => {
+test('seller: draft → active via status endpoint is blocked (must use /publish)', async () => {
   state.gig = {
     id: 'gig-1',
     status: 'draft',
@@ -190,9 +190,9 @@ test('seller: draft → active is an allowed transition', async () => {
     .patch('/api/gigs/gig-1/status')
     .send({ status: 'active' })
 
-  // The route updates and returns the gig — 200 means the transition was accepted
-  expect(res.status).toBe(200)
-  expect(res.body.data.gig.status).toBe('active')
+  // Sellers must use POST /api/gigs/[id]/publish to activate a gig
+  expect(res.status).toBe(422)
+  expect(res.body.error.message).toMatch(/publish/)
 })
 
 test('seller: deleted → active is rejected (no allowed forward path from deleted)', async () => {
@@ -209,7 +209,8 @@ test('seller: deleted → active is rejected (no allowed forward path from delet
     .send({ status: 'active' })
 
   expect(res.status).toBe(422)
-  expect(res.body.error.message).toMatch(/Cannot transition/)
+  // 'active' is blocked before the transition matrix check with a /publish hint
+  expect(res.body.error.message).toMatch(/publish/)
 })
 
 test('admin: can move a gig from deleted → active (bypasses seller rules)', async () => {
@@ -253,7 +254,7 @@ function validGigBase() {
 
 test('publish: title shorter than 20 chars returns field error', async () => {
   state.gig = { ...validGigBase(), title: 'Too short' }  // 9 chars
-  state.tiers = [{ is_active: true, price_cents: 5000, delivery_days: 3 }]
+  state.tiers = [{ is_active: true, price: 5000, delivery_days: 3 }]
 
   const { POST } = await import('@/app/api/gigs/[id]/publish/route')
   const res = await request(jsonServer(POST, { id: 'gig-2' }))
@@ -266,7 +267,7 @@ test('publish: title shorter than 20 chars returns field error', async () => {
 
 test('publish: description shorter than 300 chars returns field error', async () => {
   state.gig = { ...validGigBase(), description: 'Too short description.' }
-  state.tiers = [{ is_active: true, price_cents: 5000, delivery_days: 3 }]
+  state.tiers = [{ is_active: true, price: 5000, delivery_days: 3 }]
 
   const { POST } = await import('@/app/api/gigs/[id]/publish/route')
   const res = await request(jsonServer(POST, { id: 'gig-2' }))
@@ -279,7 +280,7 @@ test('publish: description shorter than 300 chars returns field error', async ()
 
 test('publish: no tags returns field error', async () => {
   state.gig = { ...validGigBase(), tags: [] }
-  state.tiers = [{ is_active: true, price_cents: 5000, delivery_days: 3 }]
+  state.tiers = [{ is_active: true, price: 5000, delivery_days: 3 }]
 
   const { POST } = await import('@/app/api/gigs/[id]/publish/route')
   const res = await request(jsonServer(POST, { id: 'gig-2' }))
@@ -292,7 +293,7 @@ test('publish: no tags returns field error', async () => {
 
 test('publish: fully valid gig transitions to active', async () => {
   state.gig = validGigBase()
-  state.tiers = [{ is_active: true, price_cents: 5000, delivery_days: 3 }]
+  state.tiers = [{ is_active: true, price: 5000, delivery_days: 3 }]
 
   const { POST } = await import('@/app/api/gigs/[id]/publish/route')
   const res = await request(jsonServer(POST, { id: 'gig-2' }))

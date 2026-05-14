@@ -80,7 +80,7 @@ export async function GET(req: Request) {
       boost_until: row.boost_until,
       tiers: Array.isArray(row.tiers) ? row.tiers : (row.tiers ? [row.tiers] : []),
       metrics: metricsMap[row.id] ?? null,
-      promotion: null,
+      promotion: null, // Not yet wired: gig_promotion_campaigns FK join pending PostgREST schema cache refresh
     }
   })
 
@@ -97,13 +97,13 @@ export async function POST(req: Request) {
     .select('id', { count: 'exact', head: true })
     .eq('provider_id', auth.profileId)
     .eq('provider_type', auth.role)
-    .in('status', ['draft', 'active', 'paused'])
-  if ((count ?? 0) >= 5) return fail("You've reached your 5-gig limit. Archive one to create another.", 409)
+    .neq('status', 'deleted')
+  if ((count ?? 0) >= 5) return fail("You've reached your 5-gig limit. Delete or archive a gig to create another.", 409)
 
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Untitled service'
   const slug = `${buildSlug(title)}-${crypto.randomUUID().slice(0, 8)}`
-  const status = body.status === 'active' ? 'active' : 'draft'
+  const status = 'draft' // new gigs always start as draft; use /publish to activate
   const category = String(body.category || body.subcategory || '').trim() || null
   const subcategory = String(body.subcategory || '').trim() || null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
@@ -124,7 +124,6 @@ export async function POST(req: Request) {
       gallery_images: Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 5) : [],
       video_url: body.video_url || null,
       status,
-      published_at: status === 'active' ? new Date().toISOString() : null,
       seo_title: body.seo_title || title,
       seo_description: body.seo_description || body.pitch || '',
       slug,

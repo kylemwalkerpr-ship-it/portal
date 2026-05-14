@@ -1,9 +1,11 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 
-// Allowed seller transitions (admin can do anything)
+// Allowed seller transitions (admin can do anything).
+// Sellers cannot set 'active' directly — they must use POST /api/gigs/[id]/publish
+// which runs full content validation before activation.
 const SELLER_TRANSITIONS: Record<string, string[]> = {
-  draft: ['active', 'archived', 'deleted'],
+  draft: ['archived', 'deleted'],
   active: ['archived', 'deleted'],
   suspended: ['archived', 'deleted'],
   archived: ['draft', 'deleted'],
@@ -39,12 +41,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   // Check transition rules for non-admins
   if (!isAdmin) {
+    // Activation must go through /publish which validates content completeness
+    if (newStatus === 'active') {
+      return fail("Use POST /api/gigs/[id]/publish to activate a gig. This ensures all required fields are complete.", 422)
+    }
+    // Sellers cannot suspend — only admins can
+    if (newStatus === 'suspended') return fail('Forbidden.', 403)
     const allowed = SELLER_TRANSITIONS[currentStatus] ?? []
     if (!allowed.includes(newStatus)) {
       return fail(`Cannot transition from '${currentStatus}' to '${newStatus}'.`, 422)
     }
-    // Sellers cannot suspend
-    if (newStatus === 'suspended') return fail('Forbidden.', 403)
   }
 
   const now = new Date().toISOString()

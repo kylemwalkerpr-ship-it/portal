@@ -9,10 +9,19 @@ interface SellerShellProps {
   children: React.ReactNode
 }
 
+// Core seller center pages — messages/earnings/promotions live in the
+// main role dashboard (attorney.jsx / consultant.jsx) until dedicated
+// seller-center routes are built for those sections.
 const NAV_LINKS = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Gigs', href: '/dashboard/gigs' },
   { label: 'Orders', href: '/dashboard/orders' },
+]
+
+// Features not yet wired to dedicated routes — still accessible via main dashboard
+const COMING_LINKS = [
+  { label: 'Messages & Earnings', note: 'available in Dashboard' },
+  { label: 'Promotions', note: 'coming soon' },
 ]
 
 export default function SellerShell({ title, children }: SellerShellProps) {
@@ -43,6 +52,17 @@ export default function SellerShell({ title, children }: SellerShellProps) {
                 </Link>
               )
             })}
+            <div className="ml-auto flex items-center gap-3 py-3 pl-4 border-l border-black/[0.06]">
+              {COMING_LINKS.map((item) => (
+                <span
+                  key={item.label}
+                  title={item.note}
+                  className="whitespace-nowrap text-xs text-[#9CA3AF] cursor-default select-none"
+                >
+                  {item.label} ↗
+                </span>
+              ))}
+            </div>
           </nav>
         </div>
       </div>
