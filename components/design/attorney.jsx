@@ -22,7 +22,13 @@ const PAGE_TITLES = {
 }
 
 export default function AttorneyApp({ onLogout, userName }) {
-  const [page, setPage] = React.useState('overview')
+  const initialPage = React.useMemo(() => {
+    if (typeof window === 'undefined') return 'overview'
+    const goto = new URLSearchParams(window.location.search).get('goto')
+    const allowed = ['overview','queue','mine','orders','messages','earnings','profile','settings']
+    return allowed.includes(goto) ? goto : 'overview'
+  }, [])
+  const [page, setPage] = React.useState(initialPage)
   const [profileData, setProfileData] = React.useState(null)
   const [profileError, setProfileError] = React.useState('')
   const [dashboardData, setDashboardData] = React.useState(null)

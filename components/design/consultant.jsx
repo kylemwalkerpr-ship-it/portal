@@ -59,7 +59,13 @@ function EarningsChart({ days }) {
 }
 
 function ConsultantApp({ onLogout }) {
-  const [page, setPage] = React.useState('dashboard');
+  const initialPage = React.useMemo(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const goto = new URLSearchParams(window.location.search).get('goto');
+    const allowed = ['dashboard','orders','clients','messages','earnings','connect','settings'];
+    return allowed.includes(goto) ? goto : 'dashboard';
+  }, []);
+  const [page, setPage] = React.useState(initialPage);
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);

@@ -1158,7 +1158,14 @@ function CheckoutChoice({ active, disabled, onClick, title, detail }) {
 }
 
 function StudentApp({ onLogout, userId, userName }) {
-  const [page, setPage] = React.useState('dashboard');
+  // Read ?goto=<section> from the URL so marketplace nav header links land on the right tab
+  const initialPage = React.useMemo(() => {
+    if (typeof window === 'undefined') return 'dashboard'
+    const goto = new URLSearchParams(window.location.search).get('goto')
+    const allowed = ['dashboard','orders','attorneys','inquiries','messages','documents','billing','services','settings']
+    return allowed.includes(goto) ? goto : 'dashboard'
+  }, [])
+  const [page, setPage] = React.useState(initialPage);
   // Cross-component navigation: child views (e.g. FindAttorney) dispatch a
   // CustomEvent('yousafe-navigate', { detail: { page } }) to switch tabs.
   React.useEffect(() => {
