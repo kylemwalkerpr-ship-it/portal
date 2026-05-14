@@ -9,6 +9,17 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
 
+  // Resolve dynamic gig limit for this provider (level-aware via DB function)
+  const resolvedLimit = await (async () => {
+    try {
+      const { data } = await auth.db.rpc('get_provider_gig_limit', {
+        p_provider_id:   auth.profileId,
+        p_provider_type: auth.role,
+      })
+      return typeof data === 'number' ? data : 5
+    } catch { return 5 }
+  })()
+
   if (url.searchParams.get('countOnly') === 'true') {
     const { count, error } = await auth.db
       .from('gigs')
@@ -18,7 +29,7 @@ export async function GET(req: Request) {
       .neq('status', 'deleted')
 
     if (error) return fail(error.message, 500)
-    return ok({ used: count ?? 0, count: count ?? 0, limit: 5 })
+    return ok({ used: count ?? 0, count: count ?? 0, limit: resolvedLimit })
   }
 
   // Fetch gigs with tiers — avoid joining new tables (gig_promotion_campaigns,
@@ -84,7 +95,7 @@ export async function GET(req: Request) {
     }
   })
 
-  return ok({ gigs, count, limit: 5, byStatus })
+  return ok({ gigs, count, limit: resolvedLimit, byStatus })
 }
 
 export async function POST(req: Request) {
@@ -92,13 +103,24 @@ export async function POST(req: Request) {
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
 
+  // Dynamic limit — respects seller level and custom admin overrides
+  const postLimit = await (async () => {
+    try {
+      const { data } = await auth.db.rpc('get_provider_gig_limit', {
+        p_provider_id:   auth.profileId,
+        p_provider_type: auth.role,
+      })
+      return typeof data === 'number' ? data : 5
+    } catch { return 5 }
+  })()
+
   const { count } = await auth.db
     .from('gigs')
     .select('id', { count: 'exact', head: true })
     .eq('provider_id', auth.profileId)
     .eq('provider_type', auth.role)
     .neq('status', 'deleted')
-  if ((count ?? 0) >= 5) return fail("You've reached your 5-gig limit. Delete or archive a gig to create another.", 409)
+  if ((count ?? 0) >= postLimit) return fail(`You've reached your ${postLimit}-service limit. Delete or archive an existing service to create another. Grow to a higher seller level to unlock more slots.`, 409)
 
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Untitled service'

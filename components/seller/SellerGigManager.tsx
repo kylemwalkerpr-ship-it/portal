@@ -14,7 +14,8 @@ interface ApiResponse { gigs: Gig[]; count: number; limit: number; byStatus: Rec
 
 const ALL_TABS = ['All', 'Draft', 'Active', 'Suspended', 'Archived', 'Deleted'] as const
 type Tab = typeof ALL_TABS[number]
-const GIG_LIMIT = 5
+// Dynamic limit — resolved from /api/gigs response (varies by seller level + admin overrides)
+const FALLBACK_LIMIT = 5
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
 
@@ -96,6 +97,7 @@ function EmptyState({ tab, onCreateClick }: { tab: Tab; onCreateClick?: () => vo
 export default function SellerGigManager() {
   const [gigs, setGigs] = React.useState<Gig[]>([])
   const [count, setCount] = React.useState(0)
+  const [gigLimit, setGigLimit] = React.useState(FALLBACK_LIMIT)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
@@ -107,6 +109,7 @@ export default function SellerGigManager() {
       const data = (await requestJson('/api/gigs')) as ApiResponse
       setGigs(data.gigs ?? [])
       setCount(data.count ?? (data.gigs ?? []).length)
+      if (typeof data.limit === 'number' && data.limit > 0) setGigLimit(data.limit)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load services.')
     } finally {
@@ -140,7 +143,8 @@ export default function SellerGigManager() {
     ? gigs
     : gigs.filter((g) => g.status === activeTab.toLowerCase())
 
-  const atLimit = count >= GIG_LIMIT
+  const atLimit = count >= gigLimit
+  const nearLimit = count >= gigLimit - 1
   const activeCount = gigs.filter(g => g.status === 'active').length
 
   return (
@@ -162,13 +166,13 @@ export default function SellerGigManager() {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '12px', color: atLimit ? '#8B1A1A' : '#9097A8' }}>
-            {count} / {GIG_LIMIT} slots used
+            {count} / {gigLimit} slots used
           </span>
           <div style={{ width: '80px', height: '4px', borderRadius: '2px', background: '#F2EFE9', overflow: 'hidden' }}>
             <div style={{
               height: '100%', borderRadius: '2px', transition: 'width 0.4s ease',
-              width: `${(count / GIG_LIMIT) * 100}%`,
-              background: atLimit ? '#8B1A1A' : count >= 4 ? '#8B5E0A' : '#1B2D4F',
+              width: `${Math.min(100, (count / gigLimit) * 100)}%`,
+              background: atLimit ? '#8B1A1A' : nearLimit ? '#8B5E0A' : '#1B2D4F',
             }} />
           </div>
         </div>

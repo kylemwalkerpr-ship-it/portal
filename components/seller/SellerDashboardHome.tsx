@@ -10,7 +10,8 @@ interface GigApiResponse {
 }
 interface SellerLevelResponse { level?: string }
 
-const GIG_LIMIT = 5
+// Dynamic limit — resolved from /api/gigs response (varies by seller level)
+const FALLBACK_LIMIT = 5
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
 const sans  = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 
@@ -64,6 +65,7 @@ function SkeletonStat() {
 
 export default function SellerDashboardHome() {
   const [gigCount, setGigCount]   = React.useState(0)
+  const [gigLimit, setGigLimit]   = React.useState(FALLBACK_LIMIT)
   const [activeGigs, setActiveGigs] = React.useState(0)
   const [avgRating, setAvgRating] = React.useState<number | null>(null)
   const [sellerLevel, setSellerLevel] = React.useState('new_seller')
@@ -82,6 +84,7 @@ export default function SellerDashboardHome() {
       if (gigsData) {
         const gigs = gigsData.gigs ?? []
         setGigCount(gigsData.count ?? gigs.length)
+        if (typeof gigsData.limit === 'number' && gigsData.limit > 0) setGigLimit(gigsData.limit)
         setActiveGigs(gigs.filter(g => g.status === 'active').length)
         const ratings = gigs.map(g => g.metrics?.avg_rating).filter((r): r is number => typeof r === 'number' && r > 0)
         if (ratings.length > 0) setAvgRating(ratings.reduce((a, b) => a + b, 0) / ratings.length)
@@ -93,7 +96,7 @@ export default function SellerDashboardHome() {
     return () => { cancelled = true }
   }, [])
 
-  const usagePct  = (gigCount / GIG_LIMIT) * 100
+  const usagePct  = (gigCount / gigLimit) * 100
 
   return (
     <div style={{ display: 'grid', gap: '24px', fontFamily: sans }}>
@@ -113,7 +116,7 @@ export default function SellerDashboardHome() {
         <div style={{ flexShrink: 0, minWidth: '200px', position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.50)', fontWeight: 500 }}>Service Slots</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>{loading ? '—' : gigCount} / {GIG_LIMIT}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>{loading ? '—' : gigCount} / {gigLimit}</span>
           </div>
           <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
             <div style={{ height: '100%', borderRadius: '3px', transition: 'width 0.5s ease', width: loading ? '0%' : `${Math.min(usagePct, 100)}%`, background: usagePct >= 100 ? '#E05252' : 'linear-gradient(90deg, #9A7B3B, #C4A45A)' }} />

@@ -680,18 +680,42 @@ export default function AdminGigsManager({ formatPrimary }) {
 
   const flash=(type,msg)=>{setNotice({type,msg});setTimeout(()=>setNotice({type:'',msg:''}),5000)}
 
+  const [serverTotal,setServerTotal]   = React.useState(0)
+  const [byStatusCounts,setByStatusCounts] = React.useState({})
+  const [categoriesList,setCategoriesList] = React.useState([])
+  const [debouncedQ,setDebouncedQ] = React.useState('')
+
+  // Debounce search input — avoids hammering the API on every keystroke
+  React.useEffect(()=>{
+    const t=setTimeout(()=>{setDebouncedQ(searchQ);setLocalPage(1)},300)
+    return()=>clearTimeout(t)
+  },[searchQ])
+
+  // Server-side fetch — all filtering, sorting, pagination happens in Postgres
   const load=React.useCallback(async()=>{
     setLoading(true);setError('')
     try{
       const params=new URLSearchParams()
-      if(includeDeleted) params.set('include_deleted','true')
+      if(includeDeleted)               params.set('include_deleted','true')
+      if(statusFilter!=='all')         params.set('status',statusFilter)
+      if(typeFilter!=='all')           params.set('provider_type',typeFilter)
+      if(categoryFilter!=='all')       params.set('category',categoryFilter)
+      if(debouncedQ.trim())            params.set('q',debouncedQ.trim())
+      params.set('page',String(localPage))
+      params.set('page_size',String(PER_PAGE))
+      params.set('sort',sortCol)
+      params.set('dir',sortDir)
       const res=await fetch(`/api/admin/gigs?${params}`,{credentials:'same-origin'})
       const data=await res.json().catch(()=>({}))
       if(!res.ok) throw new Error(data?.error?.message||data?.error||'Failed')
-      setGigs((data?.data?.gigs??data?.gigs)??[])
+      const payload=data?.data??data
+      setGigs(payload?.gigs??[])
+      setServerTotal(payload?.total??0)
+      setByStatusCounts(payload?.byStatus??{})
+      setCategoriesList(payload?.categories??[])
     }catch(e){setError(e.message)}
     finally{setLoading(false)}
-  },[includeDeleted])
+  },[includeDeleted,statusFilter,typeFilter,categoryFilter,debouncedQ,localPage,sortCol,sortDir])
 
   React.useEffect(()=>{load()},[load])
 
@@ -730,29 +754,14 @@ export default function AdminGigsManager({ formatPrimary }) {
     moderate(gig.id,action)
   }
 
-  // Filter + sort
-  const afterFilters=React.useMemo(()=>{
-    let out=[...gigs]
-    if(statusFilter!=='all')   out=out.filter(g=>g.status===statusFilter)
-    if(typeFilter!=='all')     out=out.filter(g=>g.provider_type===typeFilter)
-    if(categoryFilter!=='all') out=out.filter(g=>g.category===categoryFilter)
-    if(searchQ.trim()){const q=searchQ.toLowerCase();out=out.filter(g=>g.title?.toLowerCase().includes(q)||g.provider?.name?.toLowerCase().includes(q)||g.category?.toLowerCase().includes(q))}
-    out.sort((a,b)=>{
-      let av=a[sortCol]??'',bv=b[sortCol]??''
-      if(['min_price','impressions','clicks','content_score','rank_score','auto_flag_score'].includes(sortCol)){av=Number(av);bv=Number(bv)}
-      if(typeof av==='string') av=av.toLowerCase()
-      if(typeof bv==='string') bv=bv.toLowerCase()
-      if(av<bv) return sortDir==='asc'?-1:1
-      if(av>bv) return sortDir==='asc'?1:-1
-      return 0
-    })
-    return out
-  },[gigs,statusFilter,typeFilter,categoryFilter,searchQ,sortCol,sortDir])
-
-  const totalPages=Math.max(1,Math.ceil(afterFilters.length/PER_PAGE))
-  const pagedGigs=afterFilters.slice((localPage-1)*PER_PAGE,localPage*PER_PAGE)
-  const categories=[...new Set(gigs.map(g=>g.category).filter(Boolean))].sort()
-  const byStatus=React.useMemo(()=>{const m={};gigs.forEach(g=>{m[g.status]=(m[g.status]||0)+1});return m},[gigs])
+  // Server returns the page already filtered, sorted, and paginated.
+  // Keep these locals as pass-throughs so the rest of the JSX needs no rewrite.
+  const afterFilters = gigs
+  const pagedGigs    = gigs
+  const totalPages   = Math.max(1, Math.ceil(serverTotal / PER_PAGE))
+  const categories   = categoriesList
+  // byStatus comes from the server (counts across all gigs, not just current page)
+  const byStatus = byStatusCounts
 
   const handleSort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc')};setLocalPage(1)}
   const SortArrow=({col})=>sortCol!==col?<span style={{opacity:.25,marginLeft:'3px',fontSize:'10px'}}>⇅</span>:<span style={{color:'#C4A45A',marginLeft:'3px',fontSize:'10px'}}>{sortDir==='asc'?'▲':'▼'}</span>
@@ -793,7 +802,7 @@ export default function AdminGigsManager({ formatPrimary }) {
         <>
           {/* Status strip */}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:'10px'}}>
-            {[{k:'all',l:'Total',c:NAVY,n:gigs.length},{k:'active',l:'Active',c:GREEN,n:byStatus.active||0},{k:'pending_review',l:'Pending',c:'#3B82F6',n:byStatus.pending_review||0},{k:'suspended',l:'Suspended',c:AMBER,n:byStatus.suspended||0},{k:'denied',l:'Denied',c:RED,n:byStatus.denied||0},{k:'archived',l:'Archived',c:PURPLE,n:byStatus.archived||0}].map(s=>(
+            {[{k:'all',l:'Total',c:NAVY,n:Object.values(byStatus).reduce((s,v)=>s+v,0)},{k:'active',l:'Active',c:GREEN,n:byStatus.active||0},{k:'pending_review',l:'Pending',c:'#3B82F6',n:byStatus.pending_review||0},{k:'suspended',l:'Suspended',c:AMBER,n:byStatus.suspended||0},{k:'denied',l:'Denied',c:RED,n:byStatus.denied||0},{k:'archived',l:'Archived',c:PURPLE,n:byStatus.archived||0}].map(s=>(
               <button key={s.k} onClick={()=>{setStatusFilter(s.k);setLocalPage(1)}} style={{padding:'12px 14px',borderRadius:'8px',border:`1px solid ${statusFilter===s.k?s.c:'#DDD8CE'}`,background:statusFilter===s.k?`${s.c}12`:'#fff',cursor:'pointer',textAlign:'left',fontFamily:sans}}>
                 <div style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',color:'#9097A8',marginBottom:'4px'}}>{s.l}</div>
                 <div style={{fontWeight:800,fontSize:'20px',color:s.c,fontVariantNumeric:'tabular-nums'}}>{loading?'—':s.n}</div>
@@ -813,7 +822,7 @@ export default function AdminGigsManager({ formatPrimary }) {
             <label style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'13px',color:'#5C6070',cursor:'pointer'}}>
               <input type="checkbox" checked={includeDeleted} onChange={e=>setIncludeDeleted(e.target.checked)} style={{accentColor:NAVY}}/> Show deleted
             </label>
-            <span style={{marginLeft:'auto',fontSize:'12px',color:'#9097A8'}}>{afterFilters.length} results{selectedRows.size>0&&<span style={{marginLeft:'8px',fontWeight:700,color:NAVY}}>· {selectedRows.size} selected</span>}</span>
+            <span style={{marginLeft:'auto',fontSize:'12px',color:'#9097A8'}}>{serverTotal.toLocaleString()} results{selectedRows.size>0&&<span style={{marginLeft:'8px',fontWeight:700,color:NAVY}}>· {selectedRows.size} selected</span>}</span>
           </div>
 
           {/* Bulk bar */}
@@ -874,7 +883,7 @@ export default function AdminGigsManager({ formatPrimary }) {
                   </tbody>
                   {pagedGigs.length>0&&!loading&&(
                     <tfoot><tr style={{background:'#F8F7F4',borderTop:'2px solid #DDD8CE'}}>
-                      <td colSpan={5} style={{padding:'9px 12px',fontSize:'12px',color:'#9097A8',fontWeight:600}}>{(localPage-1)*PER_PAGE+1}–{Math.min(localPage*PER_PAGE,afterFilters.length)} of {afterFilters.length}</td>
+                      <td colSpan={5} style={{padding:'9px 12px',fontSize:'12px',color:'#9097A8',fontWeight:600}}>{(localPage-1)*PER_PAGE+1}–{Math.min(localPage*PER_PAGE,serverTotal)} of {serverTotal.toLocaleString()}</td>
                       <td colSpan={7}/>
                     </tr></tfoot>
                   )}
