@@ -232,26 +232,38 @@ function ConsultantApp({ onLogout }) {
   React.useEffect(() => { refreshConsultantData(); }, [refreshConsultantData]);
 
   React.useEffect(() => {
-    const key = 'consultant:gig-count';
-    try {
-      const cached = JSON.parse(window.sessionStorage.getItem(key) || 'null');
-      if (cached && Date.now() - cached.ts < 60000) {
-        setGigUsage({ used: Number(cached.used || 0), limit: Number(cached.limit || 5) });
-        return;
-      }
-    } catch { /* ignore */ }
     let cancelled = false;
-    fetch('/api/gigs?countOnly=true', { credentials: 'same-origin' })
-      .then(async r => {
-        const payload = await r.json().catch(() => ({}));
-        const data = payload?.data || payload;
-        if (!r.ok) throw new Error(payload?.error?.message || payload?.error || 'Could not load gig count');
-        const next = { used: Number(data.used || data.count || 0), limit: Number(data.limit || 5) };
-        if (!cancelled) setGigUsage(next);
-        try { window.sessionStorage.setItem(key, JSON.stringify({ ...next, ts: Date.now() })); } catch { /* ignore */ }
-      })
-      .catch(() => !cancelled && setGigUsage({ used: 0, limit: 5 }));
-    return () => { cancelled = true; };
+
+    const fetchGigCount = () => {
+      if (cancelled) return;
+      fetch('/api/gigs?countOnly=true', { credentials: 'same-origin' })
+        .then(async r => {
+          const payload = await r.json().catch(() => ({}));
+          const data = payload?.data || payload;
+          if (!r.ok) return; // keep current value on error — don't reset to 0
+          const next = { used: Number(data.used ?? data.count ?? 0), limit: Number(data.limit ?? 5) };
+          if (!cancelled) setGigUsage(next);
+        })
+        .catch(() => {}); // silent — never reset the badge on a network blip
+    };
+
+    // Fetch immediately on mount (no cache — always fresh)
+    fetchGigCount();
+
+    // Refetch when the user returns to this tab after e.g. creating a gig elsewhere
+    const onVisibility = () => { if (document.visibilityState === 'visible') fetchGigCount(); };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Keep in sync every 30 s (same cadence as refreshConsultantData)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchGigCount();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   const refreshNotifReads = React.useCallback(async () => {
