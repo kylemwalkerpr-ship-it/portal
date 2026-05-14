@@ -26,50 +26,95 @@ interface SellerGigCardProps {
   onPublish: (id: string) => void
 }
 
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  active: { bg: 'rgba(5,150,105,0.10)', text: '#059669', border: 'rgba(5,150,105,0.25)' },
-  draft: { bg: '#F4F2EE', text: '#6B7280', border: 'rgba(0,0,0,0.14)' },
-  suspended: { bg: 'rgba(217,119,6,0.10)', text: '#D97706', border: 'rgba(217,119,6,0.25)' },
-  archived: { bg: 'rgba(60,59,110,0.10)', text: '#3C3B6E', border: 'rgba(60,59,110,0.25)' },
-  deleted: { bg: 'rgba(220,38,38,0.08)', text: '#DC2626', border: 'rgba(220,38,38,0.22)' },
+const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
+
+const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; accent: string; label: string }> = {
+  active:    { bg: '#EAF5EE', text: '#1A6B45', border: 'rgba(26,107,69,0.25)',  accent: '#1A6B45', label: 'Active' },
+  draft:     { bg: '#F5EDD6', text: '#9A7B3B', border: 'rgba(154,123,59,0.30)', accent: '#9A7B3B', label: 'Draft' },
+  suspended: { bg: '#FEF5E4', text: '#8B5E0A', border: 'rgba(139,94,10,0.28)',  accent: '#8B5E0A', label: 'Suspended' },
+  archived:  { bg: '#EDEAF7', text: '#3D2B6B', border: 'rgba(61,43,107,0.25)', accent: '#3D2B6B', label: 'Archived' },
+  deleted:   { bg: '#FAEAEA', text: '#8B1A1A', border: 'rgba(139,26,26,0.25)', accent: '#8B1A1A', label: 'Deleted' },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES.draft
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '3px 10px',
-        borderRadius: '999px',
-        fontSize: '11px',
-        fontWeight: 800,
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        background: style.bg,
-        color: style.text,
-        border: `1px solid ${style.border}`,
-      }}
-    >
-      {status}
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 9px',
+      borderRadius: '4px',
+      fontSize: '11px',
+      fontWeight: 700,
+      letterSpacing: '0.06em',
+      textTransform: 'uppercase' as const,
+      background: cfg.bg,
+      color: cfg.text,
+      border: `1px solid ${cfg.border}`,
+      fontFamily: sans,
+    }}>
+      {cfg.label}
     </span>
   )
 }
 
 function ContentScoreBar({ score }: { score: number }) {
   const clamped = Math.max(0, Math.min(100, score))
-  const color =
-    clamped >= 75 ? '#059669' : clamped >= 50 ? '#D97706' : '#DC2626'
+  const color = clamped >= 75 ? '#1A6B45' : clamped >= 50 ? '#8B5E0A' : '#8B1A1A'
   return (
-    <div>
-      <div className="flex justify-between mb-1">
-        <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 700 }}>Content score</span>
-        <span style={{ fontSize: '11px', color: '#1F2937', fontWeight: 800 }}>{clamped}%</span>
+    <div style={{ paddingTop: '12px', borderTop: '1px solid #DDD8CE' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+        <span style={{ fontSize: '11px', color: '#5C6070', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' as const, fontFamily: sans }}>
+          Content Score
+        </span>
+        <span style={{ fontSize: '12px', color: '#1A1F2E', fontWeight: 700, fontFamily: sans }}>{clamped}%</span>
       </div>
-      <div style={{ height: '4px', borderRadius: '999px', background: '#EAE7E0', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${clamped}%`, background: color, borderRadius: '999px', transition: 'width 0.3s' }} />
+      <div style={{ height: '5px', borderRadius: '2px', background: '#F2EFE9', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${clamped}%`, background: color, borderRadius: '2px', transition: 'width 0.3s' }} />
       </div>
     </div>
+  )
+}
+
+function ActionBtn({
+  onClick,
+  href,
+  target,
+  rel,
+  color,
+  children,
+}: {
+  onClick?: () => void
+  href?: string
+  target?: string
+  rel?: string
+  color: string
+  children: React.ReactNode
+}) {
+  const style: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '5px 13px',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: 600,
+    background: 'transparent',
+    color,
+    border: `1px solid ${color}`,
+    cursor: 'pointer',
+    textDecoration: 'none',
+    fontFamily: sans,
+    lineHeight: 1.4,
+    transition: 'background 0.12s',
+    whiteSpace: 'nowrap' as const,
+  }
+  if (href) {
+    return <Link href={href} target={target} rel={rel} style={style}>{children}</Link>
+  }
+  return (
+    <button type="button" onClick={onClick} style={{ ...style, border: `1px solid ${color}` }}>
+      {children}
+    </button>
   )
 }
 
@@ -83,162 +128,131 @@ export default function SellerGigCard({ gig, onStatusChange, onPublish }: Seller
   const canDelete = gig.status !== 'deleted'
 
   const handleDelete = () => {
-    if (!confirming) {
-      setConfirming(true)
-      return
-    }
+    if (!confirming) { setConfirming(true); return }
     onStatusChange(gig.id, 'deleted')
     setConfirming(false)
   }
 
+  const accentColor = (STATUS_CONFIG[gig.status] ?? STATUS_CONFIG.draft).accent
+
   return (
-    <div
-      style={{
-        background: '#FFFFFF',
-        border: '1px solid rgba(0,0,0,0.08)',
-        borderRadius: '12px',
-        padding: '16px',
-        display: 'grid',
-        gap: '12px',
-        opacity: gig.status === 'deleted' ? 0.6 : 1,
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
+    <div style={{
+      background: '#FFFFFF',
+      border: '1px solid #DDD8CE',
+      borderLeft: `4px solid ${accentColor}`,
+      borderRadius: '8px',
+      boxShadow: '0 1px 3px rgba(27,45,79,0.08), 0 1px 2px rgba(27,45,79,0.04)',
+      opacity: gig.status === 'deleted' ? 0.55 : 1,
+      overflow: 'hidden',
+      fontFamily: sans,
+    }}>
+      {/* Main row */}
+      <div style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
+        {/* Left: title + category + pitch */}
+        <div style={{ flex: '1 1 0', minWidth: 0, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const, marginBottom: '6px' }}>
             <StatusBadge status={gig.status} />
             {gig.category && (
-              <span style={{ fontSize: '12px', color: '#6B7280' }}>{gig.category}</span>
+              <span style={{ fontSize: '12px', color: '#5C6070', background: '#F2EFE9', border: '1px solid #DDD8CE', padding: '2px 8px', borderRadius: '4px', fontWeight: 500 }}>
+                {gig.category}
+              </span>
             )}
           </div>
-          <h3 style={{ fontWeight: 800, fontSize: '15px', color: '#1F2937', lineHeight: 1.35, margin: 0 }}>
+          <h3 style={{
+            fontFamily: serif,
+            fontWeight: 600,
+            fontSize: '18px',
+            color: '#1B2D4F',
+            lineHeight: 1.3,
+            margin: '0 0 6px',
+            letterSpacing: '-0.01em',
+          }}>
             {gig.title}
           </h3>
           {gig.pitch && (
-            <p style={{ color: '#6B7280', fontSize: '13px', lineHeight: 1.5, margin: '4px 0 0', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            <p style={{
+              color: '#5C6070',
+              fontSize: '13px',
+              lineHeight: 1.55,
+              margin: 0,
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical' as const,
+            }}>
               {gig.pitch}
             </p>
           )}
         </div>
+
+        {/* Center: metrics */}
+        {metrics && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0,
+            borderLeft: '1px solid #DDD8CE',
+            borderRight: '1px solid #DDD8CE',
+            flexShrink: 0,
+          }}>
+            {([
+              ['Impressions', metrics.impressions],
+              ['Clicks', metrics.clicks],
+              ['Saves', metrics.saves],
+            ] as [string, number][]).map(([label, val], i) => (
+              <div key={label} style={{
+                textAlign: 'center' as const,
+                padding: '16px 20px',
+                borderRight: i < 2 ? '1px solid #F2EFE9' : 'none',
+              }}>
+                <div style={{ fontWeight: 700, fontSize: '22px', color: '#1B2D4F', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{val}</div>
+                <div style={{ fontSize: '10px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: '3px' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Right: actions */}
+        <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', justifyContent: 'center', gap: '7px', padding: '16px 20px', flexShrink: 0 }}>
+          <ActionBtn href={`/dashboard/gigs/${gig.id}/edit`} color="#1B2D4F">Edit</ActionBtn>
+          <ActionBtn href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" color="#5C6070">Preview ↗</ActionBtn>
+          {canPublish && (
+            <ActionBtn onClick={() => onPublish(gig.id)} color="#1A6B45">Publish</ActionBtn>
+          )}
+          {canActivate && (
+            <ActionBtn onClick={() => onStatusChange(gig.id, 'active')} color="#1A6B45">Activate</ActionBtn>
+          )}
+          {canArchive && (
+            <ActionBtn onClick={() => onStatusChange(gig.id, 'archived')} color="#3D2B6B">Archive</ActionBtn>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '5px 13px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                background: confirming ? '#8B1A1A' : 'transparent',
+                color: confirming ? '#FFFFFF' : '#8B1A1A',
+                border: '1px solid #8B1A1A',
+                cursor: 'pointer',
+                fontFamily: sans,
+                transition: 'background 0.12s',
+                whiteSpace: 'nowrap' as const,
+              }}
+            >
+              {confirming ? 'Confirm delete?' : 'Delete'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Metrics */}
-      {metrics && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '8px',
-            background: '#F4F2EE',
-            borderRadius: '8px',
-            padding: '10px',
-          }}
-        >
-          {([
-            ['Impressions', metrics.impressions],
-            ['Clicks', metrics.clicks],
-            ['Saves', metrics.saves],
-          ] as [string, number | string][]).map(([label, val]) => (
-            <div key={label} style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 900, fontSize: '16px', color: '#1F2937' }}>{val}</div>
-              <div style={{ fontSize: '10px', color: '#6B7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Content score */}
-      <ContentScoreBar score={gig.content_score} />
-
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-        <Link
-          href={`/dashboard/gigs/${gig.id}/edit`}
-          style={{
-            display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-            borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-            background: '#F4F2EE', color: '#1F2937', border: '1px solid rgba(0,0,0,0.12)',
-            textDecoration: 'none',
-          }}
-        >
-          Edit
-        </Link>
-
-        <Link
-          href={`/marketplace/gigs/${gig.slug}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-            borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-            background: '#F4F2EE', color: '#1F2937', border: '1px solid rgba(0,0,0,0.12)',
-            textDecoration: 'none',
-          }}
-        >
-          Preview
-        </Link>
-
-        {canPublish && (
-          <button
-            type="button"
-            onClick={() => onPublish(gig.id)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-              borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-              background: 'rgba(5,150,105,0.10)', color: '#059669',
-              border: '1px solid rgba(5,150,105,0.25)', cursor: 'pointer',
-            }}
-          >
-            Publish
-          </button>
-        )}
-
-        {canActivate && (
-          <button
-            type="button"
-            onClick={() => onStatusChange(gig.id, 'active')}
-            style={{
-              display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-              borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-              background: 'rgba(5,150,105,0.10)', color: '#059669',
-              border: '1px solid rgba(5,150,105,0.25)', cursor: 'pointer',
-            }}
-          >
-            Activate
-          </button>
-        )}
-
-        {canArchive && (
-          <button
-            type="button"
-            onClick={() => onStatusChange(gig.id, 'archived')}
-            style={{
-              display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-              borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-              background: 'rgba(60,59,110,0.10)', color: '#3C3B6E',
-              border: '1px solid rgba(60,59,110,0.25)', cursor: 'pointer',
-            }}
-          >
-            Archive
-          </button>
-        )}
-
-        {canDelete && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            style={{
-              display: 'inline-flex', alignItems: 'center', padding: '6px 14px',
-              borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-              background: confirming ? '#DC2626' : 'rgba(220,38,38,0.08)',
-              color: confirming ? '#fff' : '#DC2626',
-              border: '1px solid rgba(220,38,38,0.22)', cursor: 'pointer',
-            }}
-          >
-            {confirming ? 'Confirm delete?' : 'Delete'}
-          </button>
-        )}
+      {/* Bottom: content score */}
+      <div style={{ padding: '0 20px 14px' }}>
+        <ContentScoreBar score={gig.content_score} />
       </div>
     </div>
   )
