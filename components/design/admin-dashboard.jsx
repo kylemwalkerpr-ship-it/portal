@@ -35,10 +35,49 @@ const fmtPct = v => `${(Number(v)||0).toFixed(1)}%`
 const ago = s => { if(!s) return '—'; const d=Math.floor((Date.now()-new Date(s))/86400000); return d===0?'today':d===1?'1d':d<30?`${d}d`:`${Math.floor(d/30)}mo` }
 
 // ─── live clock ───────────────────────────────────────────────────────────────
+// SSR-safe (null on server → no hydration mismatch), aligned to the second
+// boundary so seconds tick evenly, and re-syncs whenever the tab regains focus
+// (setTimeout is throttled in background tabs and would otherwise leave the
+// clock minutes behind when the user returns).
 function useClock() {
-  const [now,setNow]=React.useState(new Date())
-  React.useEffect(()=>{const i=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(i)},[])
+  const [now,setNow]=React.useState(null)
+  React.useEffect(()=>{
+    let timer
+    let mounted=true
+    const tick=()=>{
+      if(!mounted) return
+      const d=new Date()
+      setNow(d)
+      // schedule the next tick at the *next* second boundary
+      timer=setTimeout(tick, 1000 - (d.getTime() % 1000))
+    }
+    const resync=()=>{
+      if(document.visibilityState!=='visible') return
+      clearTimeout(timer)
+      tick()
+    }
+    tick()
+    document.addEventListener('visibilitychange', resync)
+    window.addEventListener('focus', resync)
+    return()=>{
+      mounted=false
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', resync)
+      window.removeEventListener('focus', resync)
+    }
+  },[])
   return now
+}
+
+// ─── relative "synced Xs ago" — updates every clock tick ──────────────────────
+function syncedAgo(refreshedAt, now) {
+  if(!refreshedAt) return 'syncing…'
+  if(!now) return `synced ${refreshedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`
+  const s=Math.max(0, Math.floor((now.getTime()-refreshedAt.getTime())/1000))
+  if(s<5)   return 'synced just now'
+  if(s<60)  return `synced ${s}s ago`
+  if(s<3600){const m=Math.floor(s/60);return `synced ${m}m ago`}
+  return `synced ${refreshedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}`
 }
 
 // ─── multi-endpoint fetch ─────────────────────────────────────────────────────
@@ -221,12 +260,12 @@ export default function AdminDashboard({onNav}) {
           </div>
           <h1 style={{fontFamily:serif,fontWeight:600,fontSize:'34px',color:'#fff',margin:0,letterSpacing:'-.018em',lineHeight:1.05}}>Command Centre</h1>
           <div style={{fontSize:'13px',color:'rgba(255,255,255,.50)',marginTop:'4px',fontFamily:mono}}>
-            yousafe.portal/admin · {refreshedAt ? `synced ${refreshedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}` : 'syncing…'}
+            yousafe.portal/admin · {syncedAgo(refreshedAt, now)}
           </div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div style={{fontFamily:mono,fontSize:'11px',color:'rgba(255,255,255,.45)',letterSpacing:'.10em',marginBottom:'2px'}}>{now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</div>
-          <div style={{fontFamily:mono,fontSize:'24px',color:GOLD2,fontWeight:300,letterSpacing:'.08em',fontVariantNumeric:'tabular-nums'}}>{now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})}</div>
+          <div style={{fontFamily:mono,fontSize:'11px',color:'rgba(255,255,255,.45)',letterSpacing:'.10em',marginBottom:'2px'}}>{now ? now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : ' '}</div>
+          <div style={{fontFamily:mono,fontSize:'24px',color:GOLD2,fontWeight:300,letterSpacing:'.08em',fontVariantNumeric:'tabular-nums'}}>{now ? now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) : '--:--:--'}</div>
           <button onClick={reload} disabled={loading} style={{marginTop:'8px',padding:'5px 12px',background:'rgba(255,255,255,.10)',border:'1px solid rgba(255,255,255,.18)',borderRadius:'4px',color:'rgba(255,255,255,.80)',cursor:loading?'wait':'pointer',fontSize:'11px',fontFamily:mono,fontWeight:600,letterSpacing:'.04em'}}>{loading?'⟳ syncing':'↻ resync'}</button>
         </div>
       </div>
