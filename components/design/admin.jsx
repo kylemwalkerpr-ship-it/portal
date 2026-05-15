@@ -254,20 +254,32 @@ function AdminApp({ onLogout }) {
   }, []);
 
   const refreshInvites = React.useCallback(() => {
-    fetch('/api/admin/invite')
+    fetch('/api/admin/invite', { credentials: 'same-origin' })
       .then(async r => {
-        const data = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(data?.error || 'Unable to load invitations');
-        setPendingInvites(Array.isArray(data?.invitations) ? data.invitations : []);
+        const body = await r.json().catch(() => null);
+        if (!r.ok) {
+          const msg = body?.error?.message || (typeof body?.error === 'string' ? body.error : null) || `Request failed (${r.status})`;
+          throw new Error(msg);
+        }
+        const payload = body?.data ?? body ?? {};
+        setPendingInvites(Array.isArray(payload.invitations) ? payload.invitations : []);
         setInvitesLoaded(true);
       })
-      .catch(e => { setInvitesLoaded(true); console.error('[admin] invites load failed', e.message) });
+      .catch(e => { setInvitesLoaded(true); console.error('[admin] invites load failed', e?.message || e) });
   }, []);
 
   const refreshGigs = React.useCallback(() => {
-    fetch('/api/admin/gigs')
-      .then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error || 'Unable to load gigs'); setGigs(Array.isArray(data.gigs) ? data.gigs : []); })
-      .catch(e => console.error('[admin] gigs load failed', e.message));
+    fetch('/api/admin/gigs', { credentials: 'same-origin' })
+      .then(async r => {
+        const body = await r.json().catch(() => null);
+        if (!r.ok) {
+          const msg = body?.error?.message || (typeof body?.error === 'string' ? body.error : null) || `Request failed (${r.status})`;
+          throw new Error(msg);
+        }
+        const payload = body?.data ?? body ?? {};
+        setGigs(Array.isArray(payload.gigs) ? payload.gigs : []);
+      })
+      .catch(e => console.error('[admin] gigs load failed', e?.message || e));
   }, []);
 
   const sendInvite = async (payload) => {
