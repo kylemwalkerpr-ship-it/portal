@@ -6,14 +6,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const db = createSupabaseAdminClient()
 
-  // Try to find the seller by attorney_id or consultant_id.
-  // maybeSingle() returns data:null + error:null when 0 rows match — single()
-  // would throw a PGRST116 which made some callers misread the response.
-  const [{ data: attorney }, { data: consultant }] = await Promise.all([
+  // Resolve the seller by ANY of these ids in parallel:
+  //   - attorneys.id        (legacy directory links)
+  //   - consultants.id      (consultant cards)
+  //   - profiles.id         (gig.provider_id and other profile-keyed call sites)
+  // This makes /api/sellers/:id robust to whichever id the caller has on hand —
+  // a Fiverr-scale prerequisite, since gigs / orders / messages all reference
+  // different id surfaces.
+  const [byAttorneyId, byConsultantId, byAttorneyProfileId, byConsultantProfileId] = await Promise.all([
     db.from('attorneys').select('*').eq('id', id).maybeSingle(),
     db.from('consultants').select('*').eq('id', id).maybeSingle(),
+    db.from('attorneys').select('*').eq('profile_id', id).maybeSingle(),
+    db.from('consultants').select('*').eq('profile_id', id).maybeSingle(),
   ])
 
+  const attorney  = byAttorneyId.data  || byAttorneyProfileId.data
+  const consultant = byConsultantId.data || byConsultantProfileId.data
   const provider = attorney || consultant
   if (!provider) {
     return fail('Seller not found', 404)
@@ -21,6 +29,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const profileId = provider.profile_id
   const role = attorney ? 'attorney' : 'consultant'
+  // canonical seller id for the response = the attorney/consultant row id
+  const canonicalId = provider.id
 
   // Get profile data
   const { data: profile, error: profileError } = await db
@@ -54,7 +64,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { data: ratings } = await db
     .from(ratingsTable)
     .select('stars')
-    .eq(providerIdField, id)
+    .eq(providerIdField, canonicalId)
 
   const ratingCount = ratings?.length || 0
   const ratingAvg = ratingCount > 0
@@ -99,7 +109,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const responseTime = '1 hour'
 
   const seller = {
-    id,
+    id: canonicalId,
+    profile_id: profileId,
     role,
     full_name: profile.full_name || profile.email?.split('@')[0] || 'Seller',
     headshot_url: provider.headshot_url,
