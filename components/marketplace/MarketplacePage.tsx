@@ -276,7 +276,7 @@ export function MarketplacePage() {
         <section style={sectionStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h2 style={sectionTitle}>Top Providers</h2>
-            <Link href="/sellers" style={sectionLink}>
+            <Link href="/marketplace/providers" style={sectionLink}>
               Browse all providers →
             </Link>
           </div>
@@ -284,7 +284,7 @@ export function MarketplacePage() {
             <p style={{ color: C.textMuted, marginBottom: '16px' }}>
               Explore our verified attorneys and consultants
             </p>
-            <Link href="/sellers">
+            <Link href="/marketplace/providers">
               <Btn variant="primary">Find a Provider</Btn>
             </Link>
           </Card>
