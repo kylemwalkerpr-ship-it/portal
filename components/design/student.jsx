@@ -4,6 +4,7 @@ import React from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
 import FindAttorney from './find-attorney'
+import StudentFindAttorney from './student-find-attorney'
 import MyInquiries from './my-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
@@ -3297,7 +3298,7 @@ function StudentApp({ onLogout, userId, userName }) {
             />
           )}
           {page === 'services' && <ServicesBrowse />}
-          {page === 'attorneys' && <FindAttorney />}
+          {page === 'attorneys' && <StudentFindAttorney />}
           {page === 'inquiries' && <MyInquiries />}
           {page === 'documents' && (
             <StudentDocuments
