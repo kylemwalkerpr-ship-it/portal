@@ -2015,28 +2015,40 @@ function StudentApp({ onLogout, userId, userName }) {
     const [servicesError, setServicesError] = React.useState(null);
     const [templatesError, setTemplatesError] = React.useState(null);
     const [primaryCurrency, setPrimaryCurrency] = React.useState('usd');
-    const [usdToCadRate, setUsdToCadRate] = React.useState(1.37);
-    // displayCurrency is the sole source of truth for what the user sees.
-    // Initialise from localStorage so it survives navigation; default to 'usd'.
-    // Never fall through to primaryCurrency — that would let API responses
-    // silently override the user's explicit toggle choice.
+    // USD/CAD rate. Sanity-clamped on every set: a real exchange rate sits in
+    // ~[1.05, 2.5]. The DB occasionally holds 1.0 (or 0/NaN) which silently
+    // makes USD and CAD render identically — the most common cause of "the
+    // toggle doesn't change anything". Clamp + fallback keeps conversion alive.
+    const DEFAULT_USD_CAD = 1.37;
+    const sanitiseRate = React.useCallback(raw => {
+      const r = Number(raw);
+      return Number.isFinite(r) && r >= 1.05 && r <= 2.5 ? r : DEFAULT_USD_CAD;
+    }, []);
+    const [usdToCadRate, setUsdToCadRateRaw] = React.useState(DEFAULT_USD_CAD);
+    const setUsdToCadRate = React.useCallback(raw => setUsdToCadRateRaw(sanitiseRate(raw)), [sanitiseRate]);
+    // displayCurrency persists in localStorage. The initialiser runs on every
+    // mount so even when ServicesBrowse remounts (orderPlaced / viewerVertical
+    // changing), the toggle rehydrates to the user's last choice.
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
       if (typeof window === 'undefined') return 'usd';
-      try { return window.localStorage.getItem('yousafe.displayCurrency') || 'usd'; } catch { return 'usd'; }
+      try { return window.localStorage.getItem('yousafe.displayCurrency') === 'cad' ? 'cad' : 'usd'; } catch { return 'usd'; }
     });
     const effectiveDisplayCurrency = displayCurrency;
-    const setAndPersistDisplayCurrency = c => {
-      const next = c.toLowerCase();
+    const setAndPersistDisplayCurrency = React.useCallback(c => {
+      const next = String(c || 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd';
       setDisplayCurrency(next);
       try { window.localStorage.setItem('yousafe.displayCurrency', next); } catch { /* ignore */ }
-    };
+    }, []);
     const convertPrice = (amount, fromCurrency = 'usd') => {
       const from = String(fromCurrency || 'usd').toLowerCase();
       const to = effectiveDisplayCurrency;
       const value = Number(amount || 0);
       if (from === to) return value;
-      if (from === 'usd' && to === 'cad') return value * usdToCadRate;
-      if (from === 'cad' && to === 'usd') return value / (usdToCadRate || 1);
+      // Re-sanitise at use time: state could be stale during a transition or
+      // hot-reload. A rate near 1 silently breaks the toggle.
+      const rate = sanitiseRate(usdToCadRate);
+      if (from === 'usd' && to === 'cad') return value * rate;
+      if (from === 'cad' && to === 'usd') return value / rate;
       return value;
     };
     const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet' | 'saved_card'
