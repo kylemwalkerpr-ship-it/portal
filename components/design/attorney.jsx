@@ -286,7 +286,17 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
-              {page === 'messages' && <UnifiedInbox />}
+              {page === 'messages' && (
+                <UnifiedInbox
+                  defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+                  onThreadChange={(id) => {
+                    if (typeof window === 'undefined') return
+                    const url = new URL(window.location.href)
+                    if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
+                    window.history.replaceState({}, '', url.toString())
+                  }}
+                />
+              )}
               {page === 'earnings' && <AttorneyEarnings />}
               {page === 'profile' && <AttorneyProfile />}
               {page === 'settings' && <AttorneySettings />}

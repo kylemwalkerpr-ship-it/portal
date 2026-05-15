@@ -1193,7 +1193,8 @@ function StudentApp({ onLogout, userId, userName }) {
   // Read ?goto=<section> from the URL so marketplace nav header links land on the right tab
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'dashboard'
-    const goto = new URLSearchParams(window.location.search).get('goto')
+    const params = new URLSearchParams(window.location.search)
+    const goto = params.get('goto') || params.get('page')
     const allowed = ['dashboard','orders','attorneys','inquiries','messages','documents','billing','services','settings']
     return allowed.includes(goto) ? goto : 'dashboard'
   }, [])
@@ -3436,7 +3437,17 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {page === 'billing' && <BillingWithStripe />}
           {page === 'settings' && <StudentSettings userName={userName} />}
-          {page === 'messages' && <UnifiedInbox />}
+          {page === 'messages' && (
+            <UnifiedInbox
+              defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+              onThreadChange={(id) => {
+                if (typeof window === 'undefined') return;
+                const url = new URL(window.location.href);
+                if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread');
+                window.history.replaceState({}, '', url.toString());
+              }}
+            />
+          )}
           </div>
           <DashboardRightPane role="student" />
         </div>

@@ -29,6 +29,7 @@ const fmtDate = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short
 
 export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, attorneyAvatar }) {
   const [chatId, setChatId] = React.useState(null)
+  const [conversationId, setConversationId] = React.useState(null)
   const [messages, setMessages] = React.useState([])
   const [presence, setPresence] = React.useState('online')
   const [loading, setLoading] = React.useState(false)
@@ -88,6 +89,22 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
 
   React.useEffect(() => { if (open) loadChat() }, [open, loadChat])
 
+  // Resolve the unified conversation_id for this attorney so we can offer
+  // an "Open in Messages →" deep link.
+  React.useEffect(() => {
+    if (!attorneyId || !open) return
+    let cancelled = false
+    fetch('/api/messages/start', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ counterpart_attorney_id: attorneyId }),
+    })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => { if (!cancelled && d?.conversation_id) setConversationId(d.conversation_id) })
+      .catch(() => null)
+    return () => { cancelled = true }
+  }, [attorneyId, open])
+
   // Auto-scroll on new messages
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -108,7 +125,8 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
     setSending(true); setError('')
     try {
       if (!chatId) {
-        // Create chat via attorney-message endpoint
+        // Create chat via attorney-message endpoint (also returns the
+        // unified conversation_id for deep-linking into Messages).
         const r = await fetch('/api/client/attorney-message', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
@@ -117,6 +135,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
         const d = await r.json().catch(() => ({}))
         if (!r.ok || !d?.chatId) throw new Error(d?.error || 'Could not start chat.')
         setChatId(d.chatId)
+        if (d.conversationId) setConversationId(d.conversationId)
         setDraft('')
         await loadMessages(d.chatId)
       } else {
@@ -215,8 +234,23 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
           />
           <Btn variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()}>{sending ? 'Sending…' : 'Send'}</Btn>
         </div>
-        <div style={{ padding: '0 14px 12px', fontSize: 10, color: DIM, fontFamily: MONO, textAlign: 'center' }}>
-          Press <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> to send · <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> to close
+        <div style={{ padding: '0 14px 12px', fontSize: 10, color: DIM, fontFamily: MONO, textAlign: 'center', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span>
+            <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
+          </span>
+          {conversationId && (
+            <a
+              href={`/dashboard?page=messages&thread=${conversationId}`}
+              style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none' }}
+              onClick={(e) => {
+                // Use window.location so the dashboard handles the page route directly
+                e.preventDefault()
+                window.location.href = `/dashboard?page=messages&thread=${conversationId}`
+              }}
+            >
+              Open in Messages →
+            </a>
+          )}
         </div>
       </aside>
     </div>
