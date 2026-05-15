@@ -6,6 +6,7 @@ import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divi
 import FindAttorney from './find-attorney'
 import StudentFindAttorney from './student-find-attorney'
 import MyInquiries from './my-inquiries'
+import StudentInquiries from './student-inquiries'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -3299,7 +3300,7 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {page === 'services' && <ServicesBrowse />}
           {page === 'attorneys' && <StudentFindAttorney />}
-          {page === 'inquiries' && <MyInquiries />}
+          {page === 'inquiries' && <StudentInquiries />}
           {page === 'documents' && (
             <StudentDocuments
               onOpenOrder={orderId => {

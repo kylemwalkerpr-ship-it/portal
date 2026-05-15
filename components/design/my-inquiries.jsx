@@ -108,7 +108,7 @@ export default function MyInquiries() {
   )
 }
 
-function InquiryDetail({ inquiryId, onBack }) {
+export function InquiryDetail({ inquiryId, onBack }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
