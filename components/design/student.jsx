@@ -7,6 +7,7 @@ import FindAttorney from './find-attorney'
 import StudentFindAttorney from './student-find-attorney'
 import MyInquiries from './my-inquiries'
 import StudentInquiries from './student-inquiries'
+import StudentConversationList from './student-conversation-list'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -3151,10 +3152,6 @@ function StudentApp({ onLogout, userId, userName }) {
   };
 
   const StudentMessages = () => {
-    const conversations = [
-      ...attorneyChats.map(c => ({ type: 'attorney', id: c.id, name: c.attorney_name, sub: c.last_message || 'Attorney profile chat', avatar: c.headshot_url, presence: c.presence, pending: c.pending_offers })),
-      ...orders.map(o => ({ type: 'order', id: o.id, name: o.consultant, sub: o.service, order: o, pending: o.messages })),
-    ];
     const currentAttorneyChat = attorneyChatData?.chat;
     const currentMessages = attorneyChatData?.messages || [];
     const currentOffers = attorneyChatData?.offers || [];
@@ -3164,34 +3161,24 @@ function StudentApp({ onLogout, userId, userName }) {
       <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
         <div className="yousafe-mobile-stack yousafe-message-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
-          <div className="yousafe-conversation-list" style={{ background: C.surface, borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>CONVERSATIONS</div>
-            {conversations.length === 0 && (
-              <div style={{ padding: '24px 16px', color: C.textMuted, fontSize: '13px', lineHeight: 1.5 }}>No conversations yet. Open an attorney profile to start a chat, or place an order to message a consultant.</div>
-            )}
-            {conversations.map(c => {
-              const active = c.type === 'attorney' ? selectedAttorneyChatId === c.id : selectedOrder?.id === c.id;
-              return (
-                <button
-                  key={`${c.type}-${c.id}`}
-                  type="button"
-                  onClick={() => {
-                    if (c.type === 'attorney') { setSelectedAttorneyChatId(c.id); setSelectedOrder(null); }
-                    else { setSelectedOrder(c.order); setSelectedAttorneyChatId(null); }
-                  }}
-                  style={{ width: '100%', padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer', background: active ? C.surface2 : 'transparent', border: 'none', borderBottom: `1px solid ${C.border}`, textAlign: 'left', fontFamily: 'inherit', color: C.text }}
-                >
-                  <Avatar name={c.name} src={c.avatar} size={36} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                    <div style={{ fontSize: '12px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sub}</div>
-                    {c.type === 'attorney' && <div style={{ fontSize: '11px', color: c.presence === 'online' ? C.green : C.textDim, marginTop: '2px' }}>{c.presence === 'online' ? '● Online' : '○ Offline'}</div>}
-                  </div>
-                  {c.pending > 0 && <Badge color="red" style={{ fontSize: '10px', alignSelf: 'flex-start', padding: '1px 6px' }}>{c.pending}</Badge>}
-                </button>
-              );
-            })}
-          </div>
+          <StudentConversationList
+            selectedKey={
+              selectedAttorneyChatId
+                ? `attorney:${selectedAttorneyChatId}`
+                : selectedOrder?.id ? `order:${selectedOrder.id}` : null
+            }
+            onSelect={(c) => {
+              if (c.type === 'attorney') {
+                setSelectedAttorneyChatId(c.id)
+                setSelectedOrder(null)
+              } else {
+                // Build a minimum-viable order object for the thread renderer.
+                // It reads selectedOrder.id (for API calls) and selectedOrder.consultant (display).
+                setSelectedOrder({ id: c.id, consultant: c.name, service: c.meta?.serviceTitle || c.sub })
+                setSelectedAttorneyChatId(null)
+              }
+            }}
+          />
 
           {selectedAttorneyChatId ? (
             <Card className="yousafe-message-thread" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
