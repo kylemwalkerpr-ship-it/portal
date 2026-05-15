@@ -51,13 +51,34 @@ export async function POST(req: Request) {
     return Response.json({ error: inquiryErr?.message || 'Could not start the conversation.' }, { status: 500 })
   }
 
-  const { error: msgErr } = await ctx.db.from('inquiry_messages').insert({
-    inquiry_id: inquiry.id,
-    sender_role: 'client',
-    sender_profile_id: ctx.profileId,
-    body: message,
-  })
+  const { data: msgRow, error: msgErr } = await ctx.db
+    .from('inquiry_messages')
+    .insert({
+      inquiry_id: inquiry.id,
+      sender_role: 'client',
+      sender_profile_id: ctx.profileId,
+      body: message,
+    })
+    .select('id')
+    .maybeSingle()
 
   if (msgErr) return Response.json({ error: msgErr.message }, { status: 500 })
-  return Response.json({ chatId: inquiry.id, inquiryId: inquiry.id, ok: true })
+
+  // Mirror into the unified inbox (best-effort).
+  const { mirrorMessage, getOrCreateConversation } = await import('@/lib/conversations')
+  const conversationId = await getOrCreateConversation(
+    ctx.db, ctx.profileId, attorney.profile_id, 'inquiry', inquiry.id,
+  )
+  await mirrorMessage(ctx.db, {
+    participantA: ctx.profileId,
+    participantB: attorney.profile_id,
+    senderId:     ctx.profileId,
+    body:         message,
+    contextKind:  'inquiry',
+    contextId:    inquiry.id,
+    refInquiryId: inquiry.id,
+    refMessageId: (msgRow as any)?.id || null,
+  })
+
+  return Response.json({ chatId: inquiry.id, inquiryId: inquiry.id, conversationId, ok: true })
 }

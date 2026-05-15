@@ -23,7 +23,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: order } = await ctx.db
     .from('orders')
-    .select('id, consultant_id')
+    .select('id, client_id, consultant_id')
     .eq('id', id)
     .single()
   if (!order) return Response.json({ error: 'Order not found.' }, { status: 404 })
@@ -45,5 +45,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .select('id, sender_id, sender_role, body, created_at')
     .single()
   if (insErr || !msg) return Response.json({ error: insErr?.message || 'Could not send.' }, { status: 500 })
+
+  // Mirror into the unified inbox (best-effort).
+  if ((order as any).client_id) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(ctx.db, {
+      participantA: ctx.profileId,
+      participantB: (order as any).client_id,
+      senderId:     ctx.profileId,
+      body:         String(text || ''),
+      contextKind:  'order',
+      contextId:    id,
+      refOrderId:   id,
+      refMessageId: (msg as any).id,
+    })
+  }
+
   return Response.json({ message: msg })
 }

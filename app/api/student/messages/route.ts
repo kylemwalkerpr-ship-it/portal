@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
   const { data: order } = await auth.db
     .from('orders')
-    .select('id, client_id')
+    .select('id, client_id, consultant_id')
     .eq('id', orderId)
     .eq('client_id', auth.profile.id)
     .single()
@@ -121,6 +121,21 @@ export async function POST(req: Request) {
     .select('id, sender_id, sender_role, body, created_at')
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Mirror into the unified inbox (best-effort).
+  if ((order as any).consultant_id) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(auth.db, {
+      participantA: auth.profile.id,
+      participantB: (order as any).consultant_id,
+      senderId:     auth.profile.id,
+      body:         String(text || ''),
+      contextKind:  'order',
+      contextId:    orderId,
+      refOrderId:   orderId,
+      refMessageId: (data as any)?.id || null,
+    })
+  }
 
   return Response.json({ message: data })
 }

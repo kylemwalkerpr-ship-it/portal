@@ -19,7 +19,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('email, client_profile_id, claimed_by_attorney_id, status')
+    .select('email, client_profile_id, target_attorney_profile_id, claimed_by_attorney_id, status')
     .eq('id', id)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
@@ -44,6 +44,22 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .from('inquiries')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', id)
+
+  // Mirror into the unified inbox (best-effort).
+  const counterpart = (inquiry as any).target_attorney_profile_id
+  if (counterpart) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(ctx.db, {
+      participantA: ctx.profileId,
+      participantB: counterpart,
+      senderId:     ctx.profileId,
+      body:         text,
+      contextKind:  'inquiry',
+      contextId:    id,
+      refInquiryId: id,
+      refMessageId: (msg as any).id,
+    })
+  }
 
   // Notify every attorney who has previously engaged with this inquiry.
   try {
