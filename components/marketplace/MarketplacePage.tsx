@@ -51,15 +51,16 @@ const subStyle = {
 }
 
 const sectionStyle = {
-  marginBottom: '48px',
+  marginBottom: '36px',
 }
 
 const sectionTitle = {
   fontFamily: C.serif,
-  fontSize: '28px',
-  fontWeight: 500,
-  margin: '0 0 24px',
+  fontSize: '22px',
+  fontWeight: 600,
+  margin: 0,
   color: C.text,
+  letterSpacing: '-.012em',
 }
 
 const sectionLink = {
