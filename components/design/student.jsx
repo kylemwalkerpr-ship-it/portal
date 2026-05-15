@@ -11,6 +11,7 @@ import { LanguageSelector } from '../language-selector'
 import { BuyerDashboardWidgets } from '../marketplace/BuyerDashboardWidgets'
 import DashboardGuide from './DashboardGuide'
 import StudentOrders from './student-orders'
+import StudentOrderDetail from './student-order-detail'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -2032,13 +2033,13 @@ function StudentApp({ onLogout, userId, userName }) {
     // changing), the toggle rehydrates to the user's last choice.
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
       if (typeof window === 'undefined') return 'usd';
-      try { return window.localStorage.getItem('yousafe.displayCurrency') === 'cad' ? 'cad' : 'usd'; } catch { return 'usd'; }
+      try { return window.localStorage.getItem('yousafe.displayCurrency.v2') === 'cad' ? 'cad' : 'usd'; } catch { return 'usd'; }
     });
     const effectiveDisplayCurrency = displayCurrency;
     const setAndPersistDisplayCurrency = React.useCallback(c => {
       const next = String(c || 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd';
       setDisplayCurrency(next);
-      try { window.localStorage.setItem('yousafe.displayCurrency', next); } catch { /* ignore */ }
+      try { window.localStorage.setItem('yousafe.displayCurrency.v2', next); } catch { /* ignore */ }
     }, []);
     const convertPrice = (amount, fromCurrency = 'usd') => {
       const from = String(fromCurrency || 'usd').toLowerCase();
@@ -3259,12 +3260,18 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'dashboard' && <Dashboard />}
           {page === 'orders' && (
             <StudentOrders
-              currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency')) || 'usd'}
+              currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd'}
               onOpenOrder={order => { setSelectedOrder(order); setPage('order-detail'); }}
               onCreateOrder={() => setPage('services')}
             />
           )}
-          {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
+          {page === 'order-detail' && selectedOrder && (
+            <StudentOrderDetail
+              orderId={selectedOrder.id}
+              onBack={() => setPage('orders')}
+              currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd'}
+            />
+          )}
           {page === 'services' && <ServicesBrowse />}
           {page === 'attorneys' && <FindAttorney />}
           {page === 'inquiries' && <MyInquiries />}
