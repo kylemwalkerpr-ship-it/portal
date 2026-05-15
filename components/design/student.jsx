@@ -9,6 +9,7 @@ import MyInquiries from './my-inquiries'
 import StudentInquiries from './student-inquiries'
 import StudentConversationList from './student-conversation-list'
 import StudentSettings from './student-settings'
+import StudentDashboardHome from './student-dashboard-home'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -3271,7 +3272,14 @@ function StudentApp({ onLogout, userId, userName }) {
               <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
             </div>
           )}
-          {page === 'dashboard' && <Dashboard />}
+          {page === 'dashboard' && (
+            <StudentDashboardHome
+              userName={userName}
+              onNavigate={(p) => setPage(p)}
+              onOpenOrder={(order) => { setSelectedOrder(order); setPage('order-detail'); }}
+              marketplaceWidgets={<BuyerDashboardWidgets />}
+            />
+          )}
           {page === 'orders' && (
             <StudentOrders
               currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd'}
