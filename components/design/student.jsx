@@ -10,6 +10,7 @@ import StudentInquiries from './student-inquiries'
 import StudentConversationList from './student-conversation-list'
 import StudentSettings from './student-settings'
 import StudentDashboardHome from './student-dashboard-home'
+import UnifiedInbox from '../messaging/UnifiedInbox'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -1225,6 +1226,21 @@ function StudentApp({ onLogout, userId, userName }) {
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
   const [orderPlaced, setOrderPlaced] = React.useState(false);
+
+  // Unread inbox badge — fetched from the unified /api/messages/unread.
+  const [unreadMessages, setUnreadMessages] = React.useState(0);
+  React.useEffect(() => {
+    let cancelled = false;
+    const pull = () => {
+      fetch('/api/messages/unread', { credentials: 'same-origin' })
+        .then(r => r.json().catch(() => ({})))
+        .then(d => { if (!cancelled) setUnreadMessages(Number(d?.unread || 0)); })
+        .catch(() => null);
+    };
+    pull();
+    const id = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
   const [checkoutRequest, setCheckoutRequest] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [ordersLoading, setOrdersLoading] = React.useState(true);
@@ -1653,7 +1669,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="🛒" label="Services & Templates" active={page === 'services'} onClick={() => setPage('services')} />
         <NavItem icon="⚖️" label="Find an Attorney" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
-        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
@@ -3420,7 +3436,7 @@ function StudentApp({ onLogout, userId, userName }) {
           )}
           {page === 'billing' && <BillingWithStripe />}
           {page === 'settings' && <StudentSettings userName={userName} />}
-          {page === 'messages' && StudentMessages()}
+          {page === 'messages' && <UnifiedInbox />}
           </div>
           <DashboardRightPane role="student" />
         </div>

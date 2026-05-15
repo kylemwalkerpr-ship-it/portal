@@ -14,6 +14,7 @@ import AttorneyMessages from './attorney-messages'
 import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
+import UnifiedInbox from '../messaging/UnifiedInbox'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -41,6 +42,20 @@ export default function AttorneyApp({ onLogout, userName }) {
   const [dashboardData, setDashboardData] = React.useState(null)
   const [available, setAvailable] = React.useState(true)
   const [gigUsage, setGigUsage] = React.useState({ used: 0, limit: 5 })
+  // Unified inbox unread count — fed into the Messages nav item badge.
+  const [unreadMessages, setUnreadMessages] = React.useState(0)
+  React.useEffect(() => {
+    let cancelled = false
+    const pull = () => {
+      fetch('/api/messages/unread', { credentials: 'same-origin' })
+        .then(r => r.json().catch(() => ({})))
+        .then(d => { if (!cancelled) setUnreadMessages(Number(d?.unread || 0)) })
+        .catch(() => null)
+    }
+    pull()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') pull() }, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
   const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set())
   const headshotInputRef = React.useRef(null)
   const [uploadingHeadshot, setUploadingHeadshot] = React.useState(false)
@@ -246,6 +261,7 @@ export default function AttorneyApp({ onLogout, userName }) {
         available={available}
         toggleAvailable={toggleAvailable}
         gigUsage={gigUsage}
+        unreadMessages={unreadMessages}
       />
       <div className="yousafe-dashboard-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar
@@ -270,7 +286,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
-              {page === 'messages' && <AttorneyMessages />}
+              {page === 'messages' && <UnifiedInbox />}
               {page === 'earnings' && <AttorneyEarnings />}
               {page === 'profile' && <AttorneyProfile />}
               {page === 'settings' && <AttorneySettings />}
@@ -375,7 +391,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
   )
 }
 
-function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable, gigUsage }) {
+function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available, toggleAvailable, gigUsage, unreadMessages }) {
   const [loggingOut, setLoggingOut] = React.useState(false)
   const goToRoute = (href) => {
     if (typeof window !== 'undefined') window.location.href = href
@@ -423,7 +439,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
         <NavItem icon="📥" label="Inquiry Queue" active={page === 'queue'} onClick={() => setPage('queue')} />
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
         <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
-        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="💼" label="Gigs" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
