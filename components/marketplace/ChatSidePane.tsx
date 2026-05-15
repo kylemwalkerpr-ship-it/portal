@@ -3,6 +3,13 @@
 import React from 'react'
 import { Btn, Avatar } from '../design/shared'
 
+// Props (loose because this component is JSX-ish via @ts-nocheck):
+//   open, onClose, attorneyName, attorneyAvatar
+//   attorneyId            — attorney row id (legacy callers)
+//   counterpartProfileId  — profile id (any role); preferred new path
+//   contextKind, contextId — passed through to /api/messages/start so the
+//                           conversation row records its first-link context
+
 /**
  * ChatSidePane
  *
@@ -27,7 +34,18 @@ const MONO=`'SF Mono', Menlo, Consolas, monospace`
 const fmtTime = s => s ? new Date(s).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 
-export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, attorneyAvatar }) {
+interface ChatSidePaneProps {
+  open: boolean
+  onClose: () => void
+  attorneyName?: string | null
+  attorneyAvatar?: string | null
+  attorneyId?: string | null            // attorney row id (legacy callers)
+  counterpartProfileId?: string | null  // profile id (preferred new path)
+  contextKind?: 'general' | 'order' | 'inquiry' | 'gig'
+  contextId?: string | null
+}
+
+export default function ChatSidePane({ open, onClose, attorneyId, counterpartProfileId, attorneyName, attorneyAvatar, contextKind, contextId }: ChatSidePaneProps) {
   const [chatId, setChatId] = React.useState(null)
   const [conversationId, setConversationId] = React.useState(null)
   const [messages, setMessages] = React.useState([])
@@ -89,21 +107,25 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
 
   React.useEffect(() => { if (open) loadChat() }, [open, loadChat])
 
-  // Resolve the unified conversation_id for this attorney so we can offer
-  // an "Open in Messages →" deep link.
+  // Resolve the unified conversation_id for this counterpart so we can offer
+  // an "Open in Messages →" deep link. Accepts either an attorney row id
+  // OR a profile id (e.g. gig.provider_id).
   React.useEffect(() => {
-    if (!attorneyId || !open) return
+    if ((!attorneyId && !counterpartProfileId) || !open) return
     let cancelled = false
+    const body = counterpartProfileId
+      ? { counterpart_profile_id: counterpartProfileId, context_kind: contextKind || 'general', context_id: contextId || null }
+      : { counterpart_attorney_id: attorneyId }
     fetch('/api/messages/start', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counterpart_attorney_id: attorneyId }),
+      body: JSON.stringify(body),
     })
       .then(r => r.json().catch(() => ({})))
       .then(d => { if (!cancelled && d?.conversation_id) setConversationId(d.conversation_id) })
       .catch(() => null)
     return () => { cancelled = true }
-  }, [attorneyId, open])
+  }, [attorneyId, counterpartProfileId, open, contextKind, contextId])
 
   // Auto-scroll on new messages
   React.useEffect(() => {
@@ -121,9 +143,37 @@ export default function ChatSidePane({ open, onClose, attorneyId, attorneyName, 
 
   const send = async () => {
     const text = draft.trim()
-    if (!text || sending || !attorneyId) return
+    if (!text || sending || (!attorneyId && !counterpartProfileId)) return
     setSending(true); setError('')
     try {
+      // If we already resolved the unified conversation id, POST straight to it.
+      // This path is the cleanest — no legacy inquiry creation, deep-link-safe.
+      if (conversationId) {
+        const r = await fetch(`/api/messages/conversations/${conversationId}`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text }),
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d?.error || 'Could not send.')
+        setDraft('')
+        // Refresh thread via the conversation endpoint for live history
+        try {
+          const tr = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'same-origin' })
+          const td = await tr.json().catch(() => ({}))
+          if (tr.ok && td?.messages) {
+            // Normalise to the legacy shape so the existing render works
+            setMessages(td.messages.map((m: any) => ({
+              id: m.id,
+              sender_role: m.sender_id ? 'attorney' : 'client', // refined below
+              body: m.body,
+              created_at: m.created_at,
+            })))
+          }
+        } catch { /* non-blocking */ }
+        return
+      }
+
       if (!chatId) {
         // Create chat via attorney-message endpoint (also returns the
         // unified conversation_id for deep-linking into Messages).

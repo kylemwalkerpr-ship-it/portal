@@ -12,6 +12,7 @@ import {
   OrderCTA,
 } from './GigDetailComponents'
 import { ReviewsSection } from './ReviewComponents'
+import ChatSidePane from './ChatSidePane'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -196,10 +197,6 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const [isSaved, setIsSaved] = React.useState(false)
   const [mainImage, setMainImage] = React.useState('')
   const [msgOpen, setMsgOpen] = React.useState(false)
-  const [msgText, setMsgText] = React.useState('')
-  const [msgSending, setMsgSending] = React.useState(false)
-  const [msgStatus, setMsgStatus] = React.useState<'idle' | 'sent' | 'error'>('idle')
-  const [msgError, setMsgError] = React.useState('')
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -495,12 +492,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
               onViewProfile={() => {
                 window.location.href = `/sellers/${gig.provider_id}`
               }}
-              onMessage={() => {
-                setMsgText('')
-                setMsgStatus('idle')
-                setMsgError('')
-                setMsgOpen(true)
-              }}
+              onMessage={() => setMsgOpen(true)}
             />
 
             <PricingTiers
@@ -533,121 +525,18 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         }
       `}</style>
 
-      {/* Message modal */}
-      {msgOpen && (
-        <div
-          onClick={() => !msgSending && setMsgOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(10,16,28,0.55)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', width: '100%', maxWidth: '500px', overflow: 'hidden' }}
-          >
-            {/* Modal header */}
-            <div style={{ background: '#1B2D4F', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '19px', fontWeight: 600, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
-                  Message {gig.provider?.full_name || 'Provider'}
-                </div>
-                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.50)', marginTop: '2px' }}>
-                  {gig.provider_type === 'attorney' ? 'Attorney' : 'Consultant'} · Usually responds within 24 hours
-                </div>
-              </div>
-              <button onClick={() => setMsgOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.60)', fontSize: '22px', cursor: 'pointer', lineHeight: 1, padding: '4px' }}>×</button>
-            </div>
-
-            {/* Modal body */}
-            <div style={{ padding: '24px' }}>
-              {msgStatus === 'sent' ? (
-                <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                  <div style={{ fontSize: '36px', marginBottom: '12px' }}>✓</div>
-                  <div style={{ fontWeight: 700, color: '#1B2D4F', fontSize: '16px', marginBottom: '6px' }}>Message sent</div>
-                  <div style={{ color: '#5C6070', fontSize: '14px', lineHeight: 1.55, marginBottom: '20px' }}>
-                    {gig.provider?.full_name || 'The provider'} will be notified and can reply from their dashboard.
-                  </div>
-                  <button onClick={() => setMsgOpen(false)} style={{ padding: '9px 24px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#1B2D4F', color: '#FFF', border: 'none', cursor: 'pointer' }}>
-                    Close
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '13px', color: '#1B2D4F', fontWeight: 600, marginBottom: '6px' }}>
-                      Re: {gig.title}
-                    </div>
-                    <textarea
-                      value={msgText}
-                      onChange={(e) => setMsgText(e.target.value)}
-                      placeholder={gig.provider_type === 'attorney'
-                        ? "Describe your situation briefly — the attorney will review and respond..."
-                        : "Introduce yourself and describe what you need help with..."}
-                      rows={5}
-                      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #DDD8CE', borderRadius: '8px', padding: '12px 14px', fontSize: '14px', lineHeight: 1.6, color: '#1A1F2E', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                      <span style={{ fontSize: '11px', color: msgText.length > 1800 ? '#8B1A1A' : '#9097A8' }}>{msgText.length} / 2000</span>
-                    </div>
-                  </div>
-
-                  {msgError && (
-                    <div style={{ background: '#FAEAEA', border: '1px solid rgba(139,26,26,0.20)', borderRadius: '6px', padding: '10px 14px', fontSize: '13px', color: '#8B1A1A', marginBottom: '14px' }}>
-                      {msgError}
-                    </div>
-                  )}
-
-                  {gig.provider_type === 'consultant' && (
-                    <div style={{ background: '#F5EDD6', border: '1px solid rgba(154,123,59,0.25)', borderRadius: '6px', padding: '10px 14px', fontSize: '13px', color: '#7A6030', marginBottom: '14px', lineHeight: 1.5 }}>
-                      💡 To work directly with this consultant, place an order from the pricing panel. Messages are for questions before booking.
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                    <button onClick={() => setMsgOpen(false)} disabled={msgSending} style={{ padding: '9px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#5C6070', border: '1px solid #DDD8CE', cursor: 'pointer' }}>
-                      Cancel
-                    </button>
-                    <button
-                      disabled={msgSending || !msgText.trim() || msgText.length > 2000}
-                      onClick={async () => {
-                        if (!msgText.trim()) return
-                        setMsgSending(true)
-                        setMsgError('')
-                        try {
-                          // Use the unified messaging endpoint — accepts the
-                          // gig.provider_id (= profile_id) regardless of
-                          // attorney vs consultant. The endpoint resolves the
-                          // counterpart, opens or reuses the conversation, and
-                          // posts the message in one round trip.
-                          const res = await fetch('/api/messages/start', {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              counterpart_profile_id: gig.provider_id,
-                              message: msgText.trim(),
-                              context_kind: 'gig',
-                              context_id: gig.id,
-                            }),
-                          })
-                          const data = await res.json().catch(() => ({}))
-                          if (!res.ok) throw new Error(data?.error || 'Could not send message.')
-                          setMsgStatus('sent')
-                        } catch (e: any) {
-                          setMsgError(e.message || 'Failed to send. Please try again.')
-                        } finally {
-                          setMsgSending(false)
-                        }
-                      }}
-                      style={{ padding: '9px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: msgSending || !msgText.trim() ? '#9097A8' : '#1B2D4F', color: '#FFFFFF', border: 'none', cursor: msgSending || !msgText.trim() ? 'not-allowed' : 'pointer' }}
-                    >
-                      {msgSending ? 'Sending…' : 'Send Message'}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Side-pane chat — sticky drawer with full live thread.
+         Uses counterpartProfileId so it works for both attorney and
+         consultant gigs without having to map provider_id → attorney_id. */}
+      <ChatSidePane
+        open={msgOpen}
+        onClose={() => setMsgOpen(false)}
+        counterpartProfileId={gig.provider_id}
+        attorneyName={gig.provider?.full_name || 'Provider'}
+        attorneyAvatar={gig.provider_headshot_url || null}
+        contextKind="gig"
+        contextId={gig.id}
+      />
     </div>
   )
 }
