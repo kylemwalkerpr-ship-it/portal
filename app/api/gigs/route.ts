@@ -37,19 +37,40 @@ export async function GET(req: Request) {
   const { data: rows, error } = await auth.db
     .from('gigs')
     .select(`
-      id, slug, title, pitch, category, subcategory, tags, status,
+      id, slug, title, pitch, tagline, description, requirements, faq,
+      gallery_images, video_url, seo_title, seo_description,
+      category, subcategory, tags, status,
       gig_status_reason, suspended_at, archived_at, deleted_at,
       featured_until, boost_until, created_at,
-      tiers:gig_tiers(tier, title, price, delivery_days, revisions)
+      tiers:gig_tiers(tier, title, price, delivery_days, revisions, features, is_active, description)
     `)
     .eq('provider_id', auth.profileId)
     .eq('provider_type', auth.role)
     .order('created_at', { ascending: false })
 
-  if (error) return fail(error.message, 500)
+  // Self-heal: if a column is missing (e.g. tagline before gigs_columns_patch.sql),
+  // retry with a minimal column list so the page still loads.
+  let rowsResolved: any = rows
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const retry = await auth.db
+      .from('gigs')
+      .select(`
+        id, slug, title, pitch, category, subcategory, tags, status,
+        gig_status_reason, suspended_at, archived_at, deleted_at,
+        featured_until, boost_until, created_at,
+        tiers:gig_tiers(tier, title, price, delivery_days, revisions, features, is_active, description)
+      `)
+      .eq('provider_id', auth.profileId)
+      .eq('provider_type', auth.role)
+      .order('created_at', { ascending: false })
+    if (retry.error) return fail(retry.error.message, 500)
+    rowsResolved = retry.data
+  } else if (error) {
+    return fail(error.message, 500)
+  }
 
   // Fetch metrics separately to avoid FK-join dependency on PostgREST cache
-  const gigIds = (rows ?? []).map((r: any) => r.id)
+  const gigIds = (rowsResolved ?? []).map((r: any) => r.id)
   let metricsMap: Record<string, any> = {}
   if (gigIds.length > 0) {
     const { data: metricsRows } = await auth.db
@@ -59,7 +80,7 @@ export async function GET(req: Request) {
     for (const m of metricsRows ?? []) metricsMap[m.gig_id] = m
   }
 
-  const allRows = rows ?? []
+  const allRows = rowsResolved ?? []
 
   // Build byStatus counts
   const byStatus: Record<string, number> = { draft: 0, active: 0, suspended: 0, archived: 0, deleted: 0 }
@@ -77,7 +98,14 @@ export async function GET(req: Request) {
       slug: row.slug,
       title: row.title,
       pitch: row.pitch,
-      tagline: null,
+      tagline: row.tagline ?? null,
+      description: row.description ?? '',
+      requirements: row.requirements ?? '',
+      faq: Array.isArray(row.faq) ? row.faq : [],
+      gallery_images: Array.isArray(row.gallery_images) ? row.gallery_images : [],
+      video_url: row.video_url ?? '',
+      seo_title: row.seo_title ?? '',
+      seo_description: row.seo_description ?? '',
       category: row.category,
       subcategory: row.subcategory,
       tags: row.tags,
@@ -130,28 +158,44 @@ export async function POST(req: Request) {
   const subcategory = String(body.subcategory || '').trim() || null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
 
-  const { data: gig, error } = await auth.db
+  const insertPayload: Record<string, any> = {
+    provider_id: auth.profileId,
+    provider_type: auth.role,
+    title,
+    category,
+    subcategory,
+    tags: Array.isArray(body.tags) ? body.tags.slice(0, 5) : [],
+    pitch: body.pitch || body.tagline || '',
+    tagline: body.tagline || body.pitch || '',
+    description: body.description || '',
+    requirements: body.requirements || '',
+    faq: Array.isArray(body.faq) ? body.faq.slice(0, 10) : [],
+    gallery_images: Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 5) : [],
+    video_url: body.video_url || null,
+    status,
+    seo_title: body.seo_title || title,
+    seo_description: body.seo_description || body.pitch || body.tagline || '',
+    slug,
+  }
+
+  let { data: gig, error } = await auth.db
     .from('gigs')
-    .insert({
-      provider_id: auth.profileId,
-      provider_type: auth.role,
-      title,
-      category,
-      subcategory,
-      tags: Array.isArray(body.tags) ? body.tags.slice(0, 5) : [],
-      pitch: body.pitch || '',
-      description: body.description || '',
-      requirements: body.requirements || '',
-      faq: Array.isArray(body.faq) ? body.faq.slice(0, 10) : [],
-      gallery_images: Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 5) : [],
-      video_url: body.video_url || null,
-      status,
-      seo_title: body.seo_title || title,
-      seo_description: body.seo_description || body.pitch || '',
-      slug,
-    })
+    .insert(insertPayload)
     .select('*')
     .single()
+
+  // Self-heal: tagline (or any other) column missing — retry without it.
+  // Run supabase/gigs_columns_patch.sql to restore full fidelity.
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const match = error.message.match(/column "?([\w_]+)"? of relation/i) || error.message.match(/column "?([\w_]+)"? does not exist/i)
+    const badCol = match?.[1]
+    if (badCol && badCol in insertPayload) {
+      delete insertPayload[badCol]
+      const retry = await auth.db.from('gigs').insert(insertPayload).select('*').single()
+      gig = retry.data as any
+      error = retry.error as any
+    }
+  }
 
   if (error || !gig) return fail(error?.message || 'Could not create gig.', 500)
 

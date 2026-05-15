@@ -217,6 +217,11 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       })
     }
 
+    if (step === 3) {
+      if (!gigData.requirements.trim()) newErrors.requirements = 'Tell clients what you need from them before you can start'
+      if ((gigData.gallery_images || []).length < 1) newErrors.gallery_images = 'Add at least one gallery image'
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -430,6 +435,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         {currentStep === 3 && (
           <DetailsStep
             gigData={gigData}
+            errors={errors}
             onChange={updateGigData}
             onAddFAQ={addFAQ}
             onUpdateFAQ={updateFAQ}
@@ -828,7 +834,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
   )
 }
 
-function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: any) {
+function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: any) {
   const [imageUrlInput, setImageUrlInput] = React.useState('')
 
   const addImageUrl = () => {
@@ -859,10 +865,12 @@ function DetailsStep({ gigData, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: 
         <div style={formHint}>
           Help clients understand what they need to provide before you can start.
         </div>
+        {errors.requirements && <div style={formError}>{errors.requirements}</div>}
       </div>
 
       <div style={formSection}>
         <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: C.textMuted }}>(at least 1 required)</span></label>
+        {errors.gallery_images && <div style={{ ...formError, marginBottom: '8px' }}>{errors.gallery_images}</div>}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input
             type="url"
