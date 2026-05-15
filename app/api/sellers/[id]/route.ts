@@ -6,10 +6,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const db = createSupabaseAdminClient()
 
-  // Try to find the seller by attorney_id or consultant_id
+  // Try to find the seller by attorney_id or consultant_id.
+  // maybeSingle() returns data:null + error:null when 0 rows match — single()
+  // would throw a PGRST116 which made some callers misread the response.
   const [{ data: attorney }, { data: consultant }] = await Promise.all([
-    db.from('attorneys').select('*').eq('id', id).single(),
-    db.from('consultants').select('*').eq('id', id).single(),
+    db.from('attorneys').select('*').eq('id', id).maybeSingle(),
+    db.from('consultants').select('*').eq('id', id).maybeSingle(),
   ])
 
   const provider = attorney || consultant
@@ -39,7 +41,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .select('credential_type, capacity, profile_url')
       .eq('profile_id', profileId)
       .eq('status', 'approved')
-      .single()
+      .order('decided_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle()
     application = appData
   }
 
@@ -57,15 +61,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     ? Number((ratings.reduce((sum: number, r: any) => sum + r.stars, 0) / ratingCount).toFixed(2))
     : null
 
-  // Get gig stats
-  const { data: gigs } = await db
+  // Get gig stats (avg_rating / review_count / order_count are optional —
+  // fall back to a minimal SELECT if any column is missing on the gigs table)
+  let gigs: any[] = []
+  let gigsRes = await db
     .from('gigs')
     .select('id, avg_rating, review_count, order_count')
     .eq('provider_id', profileId)
     .eq('status', 'active')
-
-  const totalGigs = gigs?.length || 0
-  const totalOrders = gigs?.reduce((sum: number, g: any) => sum + (g.order_count || 0), 0) || 0
+  if (gigsRes.error && /column .* does not exist/i.test(gigsRes.error.message || '')) {
+    const fallback = await db
+      .from('gigs')
+      .select('id')
+      .eq('provider_id', profileId)
+      .eq('status', 'active')
+    gigs = fallback.data ?? []
+  } else {
+    gigs = gigsRes.data ?? []
+  }
+  const totalGigs = gigs.length
+  const totalOrders = gigs.reduce((sum: number, g: any) => sum + (g.order_count || 0), 0)
 
   // Calculate seller level
   let level: 'new' | 'level_1' | 'level_2' | 'top_rated' = 'new'

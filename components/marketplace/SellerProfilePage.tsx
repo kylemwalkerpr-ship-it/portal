@@ -5,6 +5,7 @@ import React from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { C, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import ChatSidePane from './ChatSidePane'
 import {
   SellerProfileHeader,
   SellerStats,
@@ -22,6 +23,7 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [activeTab, setActiveTab] = React.useState<'about' | 'gigs' | 'reviews'>('about')
+  const [chatOpen, setChatOpen] = React.useState(false)
 
   const searchParams = useSearchParams()
   const tab = searchParams.get('tab') as 'about' | 'gigs' | 'reviews' | null
@@ -38,28 +40,33 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
       setError('')
 
       try {
-        // Load seller profile
+        // Load seller profile (unwrap {data, error} envelope)
         const profileRes = await fetch(`/api/sellers/${sellerId}`, { credentials: 'same-origin' })
+        const profileBody = await profileRes.json().catch(() => null)
         if (!profileRes.ok) {
-          const err = await profileRes.json().catch(() => null)
-          throw new Error(err?.error || 'Failed to load seller profile')
+          const msg = profileBody?.error?.message || (typeof profileBody?.error === 'string' ? profileBody.error : null) || 'Failed to load seller profile'
+          throw new Error(msg)
         }
-        const profileData = await profileRes.json()
-        setSeller(profileData.seller)
+        const profilePayload = profileBody?.data ?? profileBody ?? {}
+        setSeller(profilePayload.seller || null)
 
         // Load seller gigs
         const gigsRes = await fetch(`/api/sellers/${sellerId}/gigs`, { credentials: 'same-origin' })
         if (gigsRes.ok) {
-          const gigsData = await gigsRes.json()
-          setGigs(gigsData.gigs || [])
+          const gBody = await gigsRes.json().catch(() => null)
+          const gPayload = gBody?.data ?? gBody ?? {}
+          setGigs(gPayload.gigs || [])
         }
 
-        // Load seller reviews
-        const reviewsRes = await fetch(`/api/sellers/${sellerId}/reviews`, { credentials: 'same-origin' })
-        if (reviewsRes.ok) {
-          const reviewsData = await reviewsRes.json()
-          setReviews(reviewsData.reviews || [])
-        }
+        // Load seller reviews — endpoint is optional and may not exist yet
+        try {
+          const reviewsRes = await fetch(`/api/sellers/${sellerId}/reviews`, { credentials: 'same-origin' })
+          if (reviewsRes.ok) {
+            const rBody = await reviewsRes.json().catch(() => null)
+            const rPayload = rBody?.data ?? rBody ?? {}
+            setReviews(rPayload.reviews || [])
+          }
+        } catch { /* reviews route may not exist yet — non-blocking */ }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load seller data')
       } finally {
@@ -104,7 +111,7 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
       </div>
 
       {/* Header */}
-      <SellerProfileHeader seller={seller} />
+      <SellerProfileHeader seller={seller} onContact={() => setChatOpen(true)} />
 
       {/* Stats */}
       <SellerStats seller={seller} />
@@ -140,6 +147,15 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
         {activeTab === 'gigs' && <SellerGigs gigs={gigs} />}
         {activeTab === 'reviews' && <SellerReviews reviews={reviews} />}
       </div>
+
+      {/* Side-pane chat — opens from "Chat now" without leaving the profile */}
+      <ChatSidePane
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        attorneyId={seller.id}
+        attorneyName={seller.full_name}
+        attorneyAvatar={seller.headshot_url}
+      />
     </div>
   )
 }

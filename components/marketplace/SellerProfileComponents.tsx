@@ -51,7 +51,7 @@ export interface SellerGig {
 
 // ── Components ─────────────────────────────────────────────────────────────────
 
-export function SellerProfileHeader({ seller, isOwnProfile = false }: { seller: SellerProfile; isOwnProfile?: boolean }) {
+export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }: { seller: SellerProfile; isOwnProfile?: boolean; onContact?: () => void }) {
   const initial = (seller.full_name || '?').trim().charAt(0).toUpperCase()
 
   return (
@@ -124,8 +124,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false }: { seller: 
             </Link>
           ) : (
             <>
-              <Btn variant="primary" size="md">Contact Me</Btn>
-              <Btn variant="outline" size="md">Follow</Btn>
+              <Btn variant="primary" size="md" onClick={onContact}>💬 Chat now</Btn>
             </>
           )}
         </div>
