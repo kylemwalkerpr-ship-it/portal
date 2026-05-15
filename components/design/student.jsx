@@ -13,6 +13,7 @@ import DashboardGuide from './DashboardGuide'
 import StudentOrders from './student-orders'
 import StudentOrderDetail from './student-order-detail'
 import StudentBilling from './student-billing'
+import StudentDocuments from './student-documents'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -3298,7 +3299,15 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'services' && <ServicesBrowse />}
           {page === 'attorneys' && <FindAttorney />}
           {page === 'inquiries' && <MyInquiries />}
-          {page === 'documents' && <Documents />}
+          {page === 'documents' && (
+            <StudentDocuments
+              onOpenOrder={orderId => {
+                const found = orders.find(o => o.id === orderId)
+                if (found) { setSelectedOrder(found); setPage('order-detail'); }
+                else { setSelectedOrder({ id: orderId }); setPage('order-detail'); }
+              }}
+            />
+          )}
           {page === 'billing' && <BillingWithStripe />}
           {page === 'settings' && <Settings />}
           {page === 'messages' && StudentMessages()}
