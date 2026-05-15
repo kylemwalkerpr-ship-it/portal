@@ -32,28 +32,37 @@ export async function GET(req: Request) {
   const sortCol         = ['created_at','updated_at','rank_score','content_score','auto_flag_score','title','status'].includes(searchParams.get('sort') || '') ? searchParams.get('sort')! : 'created_at'
   const sortDir         = searchParams.get('dir') === 'asc'
 
-  // Build base query with server-side filtering — no client-side post-processing
-  let query = auth.db
-    .from('gigs')
-    .select(
-      'id, slug, title, status, gig_status_reason, provider_id, provider_type, ' +
-      'suspended_at, suspended_by, archived_at, deleted_at, ' +
-      'last_status_changed_at, category, subcategory, tags, pitch, description, ' +
-      'gallery_images, requirements, faq, seo_title, seo_description, ' +
-      'content_score, auto_flag_score, auto_flag_reasons, featured_until, boost_until, ' +
-      'denial_reason, denial_category, appeal_reason, appeal_submitted_at, ' +
-      'rank_score, version_number, ' +
-      'created_at, updated_at, ' +
-      'tiers:gig_tiers(id, tier, title, price, delivery_days, revisions, is_active)',
-      { count: 'exact' }
-    )
-    .order(sortCol, { ascending: sortDir })
-    .range((page - 1) * pageSize, page * pageSize - 1)
+  // The ideal column list — used when every migration has been applied.
+  // If a column is missing the API gracefully falls back to SELECT * so the
+  // page still loads. The gigs_columns_patch.sql migration restores full fidelity.
+  const FULL_COLUMNS =
+    'id, slug, title, status, gig_status_reason, provider_id, provider_type, ' +
+    'suspended_at, suspended_by, archived_at, deleted_at, ' +
+    'last_status_changed_at, category, subcategory, tags, pitch, description, ' +
+    'gallery_images, requirements, faq, seo_title, seo_description, ' +
+    'content_score, auto_flag_score, auto_flag_reasons, featured_until, boost_until, ' +
+    'denial_reason, denial_category, appeal_reason, appeal_submitted_at, ' +
+    'rank_score, version_number, ' +
+    'created_at, updated_at, ' +
+    'tiers:gig_tiers(id, tier, title, price, delivery_days, revisions, is_active)'
 
-  if (!includeDeleted) query = query.is('deleted_at', null)
-  if (statusFilter)    query = query.eq('status', statusFilter)
-  if (providerType)    query = query.eq('provider_type', providerType)
-  if (categoryFilter)  query = query.eq('category', categoryFilter)
+  const buildQuery = (cols: string) => {
+    let q = auth.db
+      .from('gigs')
+      .select(cols, { count: 'exact' })
+      .order(sortCol, { ascending: sortDir })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+
+    // .is('deleted_at', null) can also fail if that column is missing —
+    // wrap defensively. PostgREST will report it via the error path.
+    try { if (!includeDeleted) q = q.is('deleted_at', null) } catch {}
+    if (statusFilter)    q = q.eq('status', statusFilter)
+    if (providerType)    q = q.eq('provider_type', providerType)
+    if (categoryFilter)  q = q.eq('category', categoryFilter)
+    return q
+  }
+
+  let query = buildQuery(FULL_COLUMNS)
 
   // Full-text search using the GIN index (gigs_fts_idx)
   // Falls back to ilike for short queries where FTS may not be ideal
@@ -66,7 +75,35 @@ export async function GET(req: Request) {
     }
   }
 
-  const { data: gigsRaw, error, count: totalCount } = await query
+  let { data: gigsRaw, error, count: totalCount } = await query
+
+  // Fallback: if the rich SELECT failed because a column is missing
+  // (Postgres error code 42703 → "column ... does not exist"), retry with
+  // SELECT * — missing columns just come back as undefined on the row object.
+  // Run supabase/gigs_columns_patch.sql to restore full fidelity.
+  const warnings: string[] = []
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    warnings.push('schema_partial — run supabase/gigs_columns_patch.sql for full fidelity')
+    let fallback = auth.db
+      .from('gigs')
+      .select('*, tiers:gig_tiers(id, tier, title, price, delivery_days, revisions, is_active)', { count: 'exact' })
+      .order(sortCol, { ascending: sortDir })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+    if (statusFilter)    fallback = fallback.eq('status', statusFilter)
+    if (providerType)    fallback = fallback.eq('provider_type', providerType)
+    if (categoryFilter)  fallback = fallback.eq('category', categoryFilter)
+    // Re-apply search if any
+    if (searchQ && searchQ.length >= 3) {
+      fallback = fallback.textSearch('title', searchQ, { type: 'websearch', config: 'english' })
+    } else if (searchQ) {
+      fallback = fallback.ilike('title', `%${searchQ}%`)
+    }
+    const retry = await fallback
+    gigsRaw    = retry.data as any
+    error      = retry.error as any
+    totalCount = retry.count as any
+  }
+
   if (error) return fail(error.message, 500)
 
   const gigs: any[] = gigsRaw ?? []
