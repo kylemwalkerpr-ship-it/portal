@@ -2094,15 +2094,55 @@ function StudentApp({ onLogout, userId, userName }) {
     const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card';
     const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
-    const filtered = catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter);
+    // Catalogue search + sort + recently-viewed (added in Section 10 polish)
+    const [searchQ, setSearchQ] = React.useState('');
+    const [sortMode, setSortMode] = React.useState('default'); // default | price_low | price_high | newest | name
+    const [recentIds, setRecentIds] = React.useState(() => {
+      if (typeof window === 'undefined') return [];
+      try { return JSON.parse(window.localStorage.getItem('yousafe.recentCatalogueIds.v1') || '[]'); } catch { return []; }
+    });
+    const trackRecent = React.useCallback((kind, id, title) => {
+      setRecentIds(prev => {
+        const next = [{ kind, id, title, at: Date.now() }, ...prev.filter(r => !(r.kind === kind && r.id === id))].slice(0, 8);
+        try { window.localStorage.setItem('yousafe.recentCatalogueIds.v1', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }, []);
+    const matchesSearch = (text) => {
+      const q = searchQ.trim().toLowerCase();
+      if (!q) return true;
+      return String(text || '').toLowerCase().includes(q);
+    };
+    const applySort = (list, getPrice, getTitle, getCreated) => {
+      if (sortMode === 'default') return list;
+      const copy = [...list];
+      if (sortMode === 'price_low')  copy.sort((a, b) => getPrice(a) - getPrice(b));
+      if (sortMode === 'price_high') copy.sort((a, b) => getPrice(b) - getPrice(a));
+      if (sortMode === 'name')       copy.sort((a, b) => String(getTitle(a) || '').localeCompare(String(getTitle(b) || '')));
+      if (sortMode === 'newest')     copy.sort((a, b) => new Date(getCreated(b) || 0).getTime() - new Date(getCreated(a) || 0).getTime());
+      return copy;
+    };
+    const filtered = applySort(
+      (catFilter === 'All' ? services : services.filter(s => (s.category || 'General') === catFilter))
+        .filter(s => matchesSearch(`${getServiceDetails(s).label} ${s.category || ''} ${getServiceDetails(s).summary || ''} ${s.title || ''}`)),
+      s => Number(s.price || 0),
+      s => getServiceDetails(s).label,
+      s => s.created_at,
+    );
     const templateFilters = ['All', 'USA', 'Canada', 'Bundles', 'Refusal Support', 'Visitor Visa', 'Study Permit', 'Work Permit'];
-    const filteredTemplates = templates.filter(t => templateMatchesFilter(t, templateFilter));
+    const filteredTemplates = applySort(
+      templates.filter(t => templateMatchesFilter(t, templateFilter)).filter(t => matchesSearch(`${t.title || ''} ${t.region || ''} ${t.template_type || ''} ${t.short_description || ''}`)),
+      t => Number(t.price_usd ?? t.usd_price ?? t.price ?? 0),
+      t => t.title,
+      t => t.created_at,
+    );
     const templatePrice = template => Number(template.price_usd ?? template.usd_price ?? template.price ?? 0);
     const formatTemplateUSD = value => `$${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2 })} USD`;
     const formatTemplateCAD = value => `approx. $${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD`;
     const templateCadValue = template => Number(template.price_cad_display || 0) || (templatePrice(template) * usdToCadRate);
     const openTemplateCheckout = template => {
       const usdPrice = templatePrice(template);
+      trackRecent('template', template.id, template.title);
       setCart({
         ...template,
         product_type: 'template',
@@ -2123,6 +2163,7 @@ function StudentApp({ onLogout, userId, userName }) {
     };
     const openCheckoutForService = service => {
       const details = getServiceDetails(service);
+      trackRecent('service', service.id, details.label);
       setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
       setSelectedService(null);
       setShowCheckout(true);
@@ -2543,6 +2584,77 @@ function StudentApp({ onLogout, userId, userName }) {
             </div>
             <Btn variant="ghost" size="sm" onClick={() => setPage('orders')}>View order →</Btn>
           </div>
+        )}
+        {/* Catalogue toolbar — search + sort */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '12px 14px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.textDim, fontSize: 14 }}>🔍</span>
+            <input
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder={catalogueView === 'templates' ? 'Search templates…' : 'Search services…'}
+              style={{ width: '100%', padding: '8px 12px 8px 32px', fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6, background: C.surface2, color: C.text, fontFamily: 'inherit', boxSizing: 'border-box' }}
+            />
+          </div>
+          <select value={sortMode} onChange={e => setSortMode(e.target.value)} style={{
+            padding: '8px 10px', fontSize: 13, border: `1px solid ${C.border}`, borderRadius: 6,
+            background: C.surface2, color: C.text, fontFamily: 'inherit', cursor: 'pointer',
+          }}>
+            <option value="default">Recommended</option>
+            <option value="price_low">Price: low → high</option>
+            <option value="price_high">Price: high → low</option>
+            <option value="name">Name: A → Z</option>
+            <option value="newest">Newest first</option>
+          </select>
+          {(searchQ || sortMode !== 'default') && (
+            <Btn variant="ghost" size="sm" onClick={() => { setSearchQ(''); setSortMode('default'); }}>Reset</Btn>
+          )}
+        </div>
+
+        {/* Recently viewed strip */}
+        {recentIds.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.10em', color: C.textMuted, textTransform: 'uppercase' }}>Recently viewed</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {recentIds.slice(0, 6).map(r => (
+                <button
+                  key={`${r.kind}:${r.id}`}
+                  onClick={() => {
+                    if (r.kind === 'service') {
+                      const found = services.find(s => s.id === r.id);
+                      if (found) setSelectedService(found);
+                    } else {
+                      const found = templates.find(t => t.id === r.id);
+                      if (found) setSelectedTemplate(found);
+                    }
+                  }}
+                  style={{
+                    padding: '4px 10px', borderRadius: 999, border: `1px solid ${C.border}`,
+                    background: C.surface, color: C.text, fontSize: 11, fontWeight: 600,
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
+                    maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                  title={r.title}
+                >
+                  <span style={{ fontSize: 12 }}>{r.kind === 'template' ? '📄' : '🛒'}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
+                </button>
+              ))}
+              <button onClick={() => { setRecentIds([]); try { window.localStorage.removeItem('yousafe.recentCatalogueIds.v1') } catch {} }}
+                style={{ background: 'none', border: 'none', color: C.textDim, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Clear</button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty-state when search/sort produces no results */}
+        {((catalogueView === 'services' && filtered.length === 0 && services.length > 0)
+          || (catalogueView === 'templates' && filteredTemplates.length === 0 && templates.length > 0)) && (searchQ || sortMode !== 'default') && (
+          <Card style={{ padding: '24px', textAlign: 'center' }}>
+            <div style={{ fontSize: 26, marginBottom: 8 }}>🔎</div>
+            <div style={{ fontFamily: C.serif, fontSize: 18, fontWeight: 600, color: C.text, marginBottom: 4 }}>No matches</div>
+            <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 12 }}>Try a different search term or clear the filters.</div>
+            <Btn variant="secondary" size="sm" onClick={() => { setSearchQ(''); setSortMode('default'); }}>Reset filters</Btn>
+          </Card>
         )}
         {/* Category filter + currency selector */}
         {catalogueView === 'services' && (
