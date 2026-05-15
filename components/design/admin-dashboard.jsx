@@ -69,14 +69,11 @@ function useClock() {
   return now
 }
 
-// ─── relative "synced Xs ago" — updates every clock tick ──────────────────────
-function syncedAgo(refreshedAt, now) {
+// ─── static "synced HH:MM" — frozen at last refresh, does NOT tick ────────────
+// Intentionally not driven by the live clock so the sync indicator doesn't
+// appear to pulse in lockstep with the seconds hand.
+function syncedAt(refreshedAt) {
   if(!refreshedAt) return 'syncing…'
-  if(!now) return `synced ${refreshedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`
-  const s=Math.max(0, Math.floor((now.getTime()-refreshedAt.getTime())/1000))
-  if(s<5)   return 'synced just now'
-  if(s<60)  return `synced ${s}s ago`
-  if(s<3600){const m=Math.floor(s/60);return `synced ${m}m ago`}
   return `synced ${refreshedAt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}`
 }
 
@@ -260,7 +257,7 @@ export default function AdminDashboard({onNav}) {
           </div>
           <h1 style={{fontFamily:serif,fontWeight:600,fontSize:'34px',color:'#fff',margin:0,letterSpacing:'-.018em',lineHeight:1.05}}>Command Centre</h1>
           <div style={{fontSize:'13px',color:'rgba(255,255,255,.50)',marginTop:'4px',fontFamily:mono}}>
-            yousafe.portal/admin · {syncedAgo(refreshedAt, now)}
+            yousafe.portal/admin · {syncedAt(refreshedAt)}
           </div>
         </div>
         <div style={{textAlign:'right'}}>
