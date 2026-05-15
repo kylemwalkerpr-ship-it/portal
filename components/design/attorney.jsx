@@ -10,6 +10,7 @@ import DashboardGuide from './DashboardGuide'
 import AttorneyEarnings from './attorney-earnings'
 import AttorneyOrders from './attorney-orders'
 import AttorneyInquiries from './attorney-inquiries'
+import AttorneyMessages from './attorney-messages'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -266,7 +267,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
-              {page === 'messages' && <AttorneyMessagesPage />}
+              {page === 'messages' && <AttorneyMessages />}
               {page === 'earnings' && <AttorneyEarnings />}
               {page === 'profile' && <AttorneyProfileEditor />}
               {page === 'settings' && <SettingsPage />}
@@ -1328,7 +1329,7 @@ function OrdersPage() {
   return <AttorneyOrders onOpenOrder={(id) => setOpenId(id)} />
 }
 
-function OrderDetail({ orderId, onBack }) {
+export function OrderDetail({ orderId, onBack }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
