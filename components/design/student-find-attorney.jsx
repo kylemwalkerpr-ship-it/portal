@@ -2,6 +2,7 @@
 import React from 'react'
 import { Card, Btn, Badge, Avatar } from './shared'
 import IntakeForm from './inquiry-intake-form'
+import ChatSidePane from '../marketplace/ChatSidePane'
 
 /**
  * Student → Find an Attorney (Fiverr-grade).
@@ -57,6 +58,7 @@ const chipStyle = (active) => ({
 export default function StudentFindAttorney() {
   const [intakeFor, setIntakeFor] = React.useState(null) // {id, name}
   const [openId, setOpenId] = React.useState(null)
+  const [chatFor, setChatFor] = React.useState(null) // {id, name, avatar}
 
   // Filters
   const [searchInput, setSearchInput] = React.useState('')
@@ -276,7 +278,7 @@ export default function StudentFindAttorney() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
                 {attorneys.map(a => (
-                  <AttorneyCard key={a.id} attorney={a} onOpen={() => setOpenId(a.id)} onContact={() => setIntakeFor({ id: a.id, name: a.full_name })} />
+                  <AttorneyCard key={a.id} attorney={a} onOpen={() => setOpenId(a.id)} onContact={() => setChatFor({ id: a.id, name: a.full_name, avatar: a.headshot_url })} />
                 ))}
               </div>
 
@@ -304,8 +306,17 @@ export default function StudentFindAttorney() {
           attorneyFallback={attorneys.find(a => a.id === openId) || null}
           onClose={() => setOpenId(null)}
           onContact={att => { setIntakeFor({ id: att.id, name: att.full_name }) }}
+          onChat={att => { setChatFor({ id: att.id, name: att.full_name, avatar: att.headshot_url }) }}
         />
       )}
+
+      <ChatSidePane
+        open={!!chatFor}
+        onClose={() => setChatFor(null)}
+        attorneyId={chatFor?.id}
+        attorneyName={chatFor?.name}
+        attorneyAvatar={chatFor?.avatar}
+      />
     </div>
   )
 }
@@ -375,7 +386,7 @@ function AttorneyCard({ attorney, onOpen, onContact }) {
   )
 }
 
-function AttorneyDrawer({ attorneyId, attorneyFallback, onClose, onContact }) {
+function AttorneyDrawer({ attorneyId, attorneyFallback, onClose, onContact, onChat }) {
   const [att, setAtt] = React.useState(attorneyFallback)
   const [loading, setLoading] = React.useState(!attorneyFallback)
   const [error, setError] = React.useState('')
@@ -456,9 +467,10 @@ function AttorneyDrawer({ attorneyId, attorneyFallback, onClose, onContact }) {
         </div>
 
         {att && (
-          <div style={{ padding: '14px 24px', borderTop: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', gap: 10 }}>
-            <Btn variant="primary" fullWidth size="md" onClick={() => onContact(att)}>Start an inquiry</Btn>
-            {att.profile_url && <Btn variant="secondary" size="md" onClick={() => window.open(att.profile_url, '_blank', 'noopener,noreferrer')}>Profile ↗</Btn>}
+          <div style={{ padding: '14px 24px', borderTop: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Btn variant="primary" size="md" onClick={() => onContact(att)}>Start an inquiry</Btn>
+            <Btn variant="secondary" size="md" onClick={() => onChat?.(att)}>💬 Chat now</Btn>
+            {att.profile_url && <Btn variant="ghost" size="md" onClick={() => window.open(att.profile_url, '_blank', 'noopener,noreferrer')}>Profile ↗</Btn>}
           </div>
         )}
       </aside>

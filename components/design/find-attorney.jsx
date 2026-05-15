@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
 import IntakeForm from './inquiry-intake-form'
+import ChatSidePane from '../marketplace/ChatSidePane'
 
 // Browse list + full-screen detail (Fiverr-style seller profile).
 export default function FindAttorney() {
@@ -270,9 +271,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
-  const [messageText, setMessageText] = React.useState('')
-  const [messageStatus, setMessageStatus] = React.useState('')
-  const [sendingMessage, setSendingMessage] = React.useState(false)
+  const [chatOpen, setChatOpen] = React.useState(false)
 
   React.useEffect(() => {
     fetch(`/api/attorneys/${attorneyId}`, { credentials: 'same-origin' })
@@ -302,35 +301,6 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const ratings = data.ratings || []
   const gigs = data.gigs || []
   const initial = (a.full_name || '?').trim().charAt(0).toUpperCase()
-
-  async function sendPreIntakeMessage() {
-    const text = messageText.trim()
-    if (!text) {
-      setMessageStatus('Write a short message first.')
-      return
-    }
-    setSendingMessage(true)
-    setMessageStatus('')
-    try {
-      const res = await fetch('/api/client/attorney-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ attorneyId: a.id, message: text }),
-      })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.error || 'Could not send message.')
-      setMessageText('')
-      setMessageStatus('Chat started. Opening Messages...')
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'messages', attorneyChatId: payload?.chatId } }))
-      }
-    } catch (e) {
-      setMessageStatus(e.message)
-    } finally {
-      setSendingMessage(false)
-    }
-  }
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: '1080px' }}>
@@ -487,20 +457,12 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
                 Submit an inquiry →
               </Btn>
               <DividerLite />
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <label style={{ fontSize: '12px', color: C.textMuted, fontWeight: 700 }}>Message before intake</label>
-                <textarea
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Ask a short question before filling the intake form."
-                  rows={4}
-                  style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: '88px', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '10px 12px', fontFamily: 'inherit', color: C.text, background: C.surface2, fontSize: '13px', lineHeight: 1.45, outline: 'none' }}
-                />
-                <Btn variant="secondary" size="sm" fullWidth onClick={sendPreIntakeMessage} disabled={sendingMessage}>
-                  {sendingMessage ? 'Sending...' : 'Start chat'}
-                </Btn>
-                {messageStatus && <div style={{ color: messageStatus.startsWith('Message sent') ? C.green : C.red, fontSize: '12px', lineHeight: 1.45 }}>{messageStatus}</div>}
-              </div>
+              <Btn variant="secondary" size="md" fullWidth onClick={() => setChatOpen(true)}>
+                💬 Chat with {a.full_name?.split(' ')[0] || 'attorney'}
+              </Btn>
+              <p style={{ color: C.textDim, fontSize: '12px', textAlign: 'center', margin: '8px 0 0', lineHeight: 1.5 }}>
+                Opens a chat side-pane — ask a quick question without leaving this profile.
+              </p>
               {a.offers_free_consult && (
                 <p style={{ color: C.green, fontSize: '12px', textAlign: 'center', margin: '10px 0 0' }}>
                   Free 15-minute consult included
@@ -532,6 +494,15 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
           </div>
         </aside>
       </div>
+
+      {/* Slide-in chat — opens from "Chat with …" CTA above */}
+      <ChatSidePane
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        attorneyId={a.id}
+        attorneyName={a.full_name}
+        attorneyAvatar={a.headshot_url}
+      />
     </div>
   )
 }
