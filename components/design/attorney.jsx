@@ -13,6 +13,7 @@ import AttorneyInquiries from './attorney-inquiries'
 import AttorneyMessages from './attorney-messages'
 import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
+import AttorneyOverview from './attorney-overview'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -265,7 +266,7 @@ export default function AttorneyApp({ onLogout, userName }) {
         <div className="yousafe-dashboard-scroll" style={{ flex: 1, overflow: 'auto' }}>
           <div className="yousafe-dashboard-body" style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
             <main className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
-              {page === 'overview' && <OverviewPage onJump={setPage} />}
+              {page === 'overview' && <AttorneyOverview onJump={setPage} displayName={displayName} />}
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
