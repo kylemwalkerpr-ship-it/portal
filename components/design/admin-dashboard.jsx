@@ -34,11 +34,10 @@ const fmtN= (v, compact=false) => {
 const fmtPct = v => `${(Number(v)||0).toFixed(1)}%`
 const ago = s => { if(!s) return '—'; const d=Math.floor((Date.now()-new Date(s))/86400000); return d===0?'today':d===1?'1d':d<30?`${d}d`:`${Math.floor(d/30)}mo` }
 
-// ─── live clock ───────────────────────────────────────────────────────────────
-// SSR-safe (null on server → no hydration mismatch), aligned to the second
-// boundary so seconds tick evenly, and re-syncs whenever the tab regains focus
-// (setTimeout is throttled in background tabs and would otherwise leave the
-// clock minutes behind when the user returns).
+// ─── live clock — minute precision ────────────────────────────────────────────
+// SSR-safe (null on server → no hydration mismatch). Updates once per minute
+// at the minute boundary; no seconds, no pulsating second hand. Re-syncs on
+// focus/visibility so background tabs come back showing the right time.
 function useClock() {
   const [now,setNow]=React.useState(null)
   React.useEffect(()=>{
@@ -48,8 +47,8 @@ function useClock() {
       if(!mounted) return
       const d=new Date()
       setNow(d)
-      // schedule the next tick at the *next* second boundary
-      timer=setTimeout(tick, 1000 - (d.getTime() % 1000))
+      // schedule the next tick at the next minute boundary
+      timer=setTimeout(tick, 60000 - (d.getTime() % 60000))
     }
     const resync=()=>{
       if(document.visibilityState!=='visible') return
@@ -262,7 +261,7 @@ export default function AdminDashboard({onNav}) {
         </div>
         <div style={{textAlign:'right'}}>
           <div style={{fontFamily:mono,fontSize:'11px',color:'rgba(255,255,255,.45)',letterSpacing:'.10em',marginBottom:'2px'}}>{now ? now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : ' '}</div>
-          <div style={{fontFamily:mono,fontSize:'24px',color:GOLD2,fontWeight:300,letterSpacing:'.08em',fontVariantNumeric:'tabular-nums'}}>{now ? now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}) : '--:--:--'}</div>
+          <div style={{fontFamily:mono,fontSize:'24px',color:GOLD2,fontWeight:300,letterSpacing:'.08em',fontVariantNumeric:'tabular-nums'}}>{now ? now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false}) : '--:--'}</div>
           <button onClick={reload} disabled={loading} style={{marginTop:'8px',padding:'5px 12px',background:'rgba(255,255,255,.10)',border:'1px solid rgba(255,255,255,.18)',borderRadius:'4px',color:'rgba(255,255,255,.80)',cursor:loading?'wait':'pointer',fontSize:'11px',fontFamily:mono,fontWeight:600,letterSpacing:'.04em'}}>{loading?'⟳ syncing':'↻ resync'}</button>
         </div>
       </div>
