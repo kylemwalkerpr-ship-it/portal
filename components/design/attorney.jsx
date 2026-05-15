@@ -7,6 +7,7 @@ import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { CountryChip } from './country-glyphs'
 import DashboardGuide from './DashboardGuide'
+import AttorneyEarnings from './attorney-earnings'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -264,7 +265,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'mine' && <MyInquiriesPage />}
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && <AttorneyMessagesPage />}
-              {page === 'earnings' && <EarningsPage data={dashboardData} refresh={refreshDashboard} />}
+              {page === 'earnings' && <AttorneyEarnings />}
               {page === 'profile' && <AttorneyProfileEditor />}
               {page === 'settings' && <SettingsPage />}
             </main>
