@@ -8,6 +8,7 @@ import StudentFindAttorney from './student-find-attorney'
 import MyInquiries from './my-inquiries'
 import StudentInquiries from './student-inquiries'
 import StudentConversationList from './student-conversation-list'
+import StudentSettings from './student-settings'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -3298,7 +3299,7 @@ function StudentApp({ onLogout, userId, userName }) {
             />
           )}
           {page === 'billing' && <BillingWithStripe />}
-          {page === 'settings' && <Settings />}
+          {page === 'settings' && <StudentSettings userName={userName} />}
           {page === 'messages' && StudentMessages()}
           </div>
           <DashboardRightPane role="student" />
