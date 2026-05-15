@@ -67,7 +67,28 @@ export async function GET(req: Request) {
     query = query.ilike('order_number', `%${q}%`)
   }
 
-  const { data: ordersRaw, error, count: totalCount } = await query as any
+  let { data: ordersRaw, error, count: totalCount } = await query as any
+
+  // Self-heal: if a newer escrow column is missing, retry with SELECT * so
+  // missing values come back as undefined instead of 500-ing the whole page.
+  // Run supabase/orders_escrow_columns_patch.sql to restore full fidelity.
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    warnings.push('schema_partial — run supabase/orders_escrow_columns_patch.sql for full fidelity')
+    let fb = db.from('orders').select('*', { count: 'exact' })
+      .order(sortCol as any, { ascending: sortAsc })
+      .range((page - 1) * pageSize, page * pageSize - 1)
+    if (state === 'auto_release_ready') {
+      fb = fb.eq('escrow_status', 'held')
+    } else if (ESCROW_STATES.includes(state)) {
+      fb = fb.eq('escrow_status', state)
+    }
+    if (q && q.length >= 2) fb = fb.ilike('order_number', `%${q}%`)
+    const retry = await fb as any
+    ordersRaw = retry.data
+    error = retry.error
+    totalCount = retry.count
+  }
+
   if (error) return fail(error.message, 500)
 
   const rows: any[] = ordersRaw ?? []
