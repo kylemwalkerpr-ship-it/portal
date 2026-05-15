@@ -612,17 +612,21 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                         setMsgSending(true)
                         setMsgError('')
                         try {
-                          const endpoint = gig.provider_type === 'attorney'
-                            ? '/api/client/attorney-message'
-                            : '/api/client/attorney-message'
-                          const body = gig.provider_type === 'attorney'
-                            ? { attorneyId: gig.provider_id, message: msgText.trim() }
-                            : { attorneyId: gig.provider_id, message: msgText.trim() }
-                          const res = await fetch(endpoint, {
+                          // Use the unified messaging endpoint — accepts the
+                          // gig.provider_id (= profile_id) regardless of
+                          // attorney vs consultant. The endpoint resolves the
+                          // counterpart, opens or reuses the conversation, and
+                          // posts the message in one round trip.
+                          const res = await fetch('/api/messages/start', {
                             method: 'POST',
                             credentials: 'same-origin',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
+                            body: JSON.stringify({
+                              counterpart_profile_id: gig.provider_id,
+                              message: msgText.trim(),
+                              context_kind: 'gig',
+                              context_id: gig.id,
+                            }),
                           })
                           const data = await res.json().catch(() => ({}))
                           if (!res.ok) throw new Error(data?.error || 'Could not send message.')
