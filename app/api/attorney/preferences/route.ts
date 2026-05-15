@@ -35,9 +35,14 @@ export async function GET() {
   if (!ctx) return Response.json({ error }, { status })
   const { db, profileId, attorneyId } = ctx
 
+  // Mirror Clerk-managed state (verified phone, 2FA) into our row before read
+  const { readClerkSnapshot, mirrorClerkSnapshotToProfile } = await import('@/lib/clerkSync')
+  const snap = await readClerkSnapshot()
+  await mirrorClerkSnapshotToProfile(db, profileId, snap)
+
   let { data: profile, error: pErr } = await db
     .from('profiles')
-    .select('id, full_name, email, phone, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
+    .select('id, full_name, email, phone, phone_verified, phone_verified_at, two_factor_enabled, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
     .eq('id', profileId)
     .single()
   if (pErr && /column .* does not exist/i.test(pErr.message || '')) {
@@ -71,7 +76,9 @@ export async function GET() {
       id:        profile.id,
       full_name: profile.full_name,
       email:     profile.email,
-      phone:     (profile as any).phone || '',
+      phone:     (profile as any).phone || snap.primary_phone || '',
+      phone_verified: !!(profile as any).phone_verified || snap.phone_verified,
+      phone_verified_at: (profile as any).phone_verified_at || null,
       timezone:  (profile as any).timezone || '',
       language:  (profile as any).language || 'en',
       avatar_url: (profile as any).avatar_url || null,
@@ -86,6 +93,13 @@ export async function GET() {
     notif_prefs:   mergedNotif,
     privacy_prefs: { ...DEFAULT_PRIVACY, ...((profile as any)?.privacy_prefs || {}) },
     ui_prefs:      (profile as any)?.ui_prefs || {},
+    security: {
+      email_verified:      snap.email_verified,
+      phone_verified:      !!(profile as any).phone_verified || snap.phone_verified,
+      two_factor_enabled:  !!(profile as any).two_factor_enabled || snap.two_factor,
+      totp_enabled:        snap.totp_enabled,
+      backup_codes:        snap.backup_codes,
+    },
     compliance: {
       available:                  (attorney as any)?.available !== false,
       stripe_started:             !!(attorney as any)?.stripe_account_id,

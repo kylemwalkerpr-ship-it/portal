@@ -195,7 +195,21 @@ function ProfileTab({ data, setData, flash, reload }) {
             <Input label="Last name"  value={form.last_name}  onChange={v => setForm(f => ({ ...f, last_name: v }))} />
           </div>
           <Input label="Email" type="email" value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} />
-          <Input label="Phone" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+1 555 555 0123" />
+          <div>
+            <Input label="Phone" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+1 555 555 0123" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: MUTED, fontFamily: MONO }}>
+              {data.profile?.phone_verified
+                ? <span style={{ color: GREEN, fontWeight: 700 }}>✓ Verified</span>
+                : data.profile?.phone
+                  ? <span style={{ color: AMBER, fontWeight: 700 }}>● Unverified</span>
+                  : <span>Add a number to receive SMS notifications</span>}
+              {data.profile?.phone && !data.profile?.phone_verified && (
+                <button type="button" onClick={() => window.location.href = '/user/security#/phone-numbers'} style={{ background: 'none', border: 'none', color: CYAN, fontWeight: 700, fontFamily: SANS, cursor: 'pointer', padding: 0, fontSize: 11 }}>
+                  Verify via SMS →
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </Section>
 
@@ -427,24 +441,58 @@ function PayoutsTab({ data, flash, reload }) {
 
 // ── Security ────────────────────────────────────────────────────────────
 function SecurityTab({ data, flash }) {
+  const security = data.security || {}
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Section title="Sign-in security" sub="Your authentication is managed by Clerk.">
+      <Section title="Sign-in security">
         <div style={{ display: 'grid', gap: 10 }}>
-          <Row label="Email" value={data.profile.email} />
-          <Row label="Account ID" value={<span style={{ fontFamily: MONO, fontSize: 11 }}>{data.profile.id}</span>} />
+          <Row label="Email" value={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {data.profile.email}
+              {security.email_verified
+                ? <Badge color="green" style={{ fontSize: 9 }}>Verified</Badge>
+                : <Badge color="orange" style={{ fontSize: 9 }}>Unverified</Badge>}
+            </span>
+          } />
+          <Row label="Phone" value={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {data.profile.phone || '—'}
+              {data.profile.phone && (security.phone_verified
+                ? <Badge color="green" style={{ fontSize: 9 }}>Verified</Badge>
+                : <Badge color="orange" style={{ fontSize: 9 }}>Unverified</Badge>)}
+            </span>
+          } />
+          <Row label="Two-factor" value={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {security.two_factor_enabled
+                ? <>🛡️ <Badge color="green" style={{ fontSize: 9 }}>Enabled</Badge></>
+                : <Badge color="gray" style={{ fontSize: 9 }}>Off</Badge>}
+              {security.totp_enabled && <Badge color="cyan" style={{ fontSize: 9 }}>TOTP</Badge>}
+              {security.backup_codes && <Badge color="purple" style={{ fontSize: 9 }}>Backup codes</Badge>}
+            </span>
+          } />
           <Row label="Member since" value={data.profile.member_since ? new Date(data.profile.member_since).toLocaleDateString() : '—'} />
         </div>
       </Section>
 
-      <Section title="Security actions">
+      <Section title="Manage security" sub="Verify your phone via SMS OTP, set up two-factor authentication with an authenticator app (Authy, Google Authenticator, 1Password), generate backup codes, and review active sessions.">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Btn variant="secondary" size="sm" onClick={() => window.location.href = '/user'}>🔑 Change password (Clerk)</Btn>
-          <Btn variant="secondary" size="sm" onClick={() => window.location.href = '/user'}>🛡️ Manage 2FA</Btn>
-          <Btn variant="ghost" size="sm" onClick={() => flash('ok', 'Active sessions live in your Clerk dashboard.')}>Active sessions</Btn>
+          <Btn variant="primary" size="md" onClick={() => window.location.href = '/user/security'}>
+            🛡️ Open security panel
+          </Btn>
+          {!security.phone_verified && data.profile.phone && (
+            <Btn variant="secondary" size="md" onClick={() => window.location.href = '/user/security#/phone-numbers'}>
+              📱 Verify phone via SMS
+            </Btn>
+          )}
+          {!security.two_factor_enabled && (
+            <Btn variant="secondary" size="md" onClick={() => window.location.href = '/user/security#/mfa'}>
+              ✨ Enable two-factor auth
+            </Btn>
+          )}
         </div>
-        <div style={{ marginTop: 14, padding: 12, background: `${AMBER}08`, border: `1px solid ${AMBER}33`, borderRadius: 8, fontSize: 12, color: TEXT, lineHeight: 1.55 }}>
-          Password changes and two-factor authentication are managed in your Clerk profile. Click a button above to open it in a new tab.
+        <div style={{ marginTop: 14, padding: 12, background: `${CYAN}08`, border: `1px solid ${CYAN}33`, borderRadius: 8, fontSize: 12, color: TEXT, lineHeight: 1.55 }}>
+          <strong>Recommended:</strong> verify your phone, then enable two-factor with an authenticator app. Backup codes let you sign in if you lose your device.
         </div>
       </Section>
     </div>

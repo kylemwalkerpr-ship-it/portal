@@ -30,9 +30,14 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profile } = auth
 
+  // Mirror Clerk-managed state (verified phone, 2FA) into our row before read
+  const { readClerkSnapshot, mirrorClerkSnapshotToProfile } = await import('@/lib/clerkSync')
+  const snap = await readClerkSnapshot()
+  await mirrorClerkSnapshotToProfile(db, profile.id, snap)
+
   let { data, error } = await db
     .from('profiles')
-    .select('id, full_name, email, phone, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
+    .select('id, full_name, email, phone, phone_verified, phone_verified_at, two_factor_enabled, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
     .eq('id', profile.id)
     .single()
 
@@ -43,27 +48,37 @@ export async function GET() {
     error = r.error as any
   }
   if (error || !data) return Response.json({ error: error?.message || 'Profile not found' }, { status: 500 })
+  const row: any = data
 
   return Response.json({
     profile: {
-      id:        data.id,
-      full_name: data.full_name,
-      email:     data.email,
-      phone:     data.phone || '',
-      timezone:  data.timezone || '',
-      language:  data.language || 'en',
-      avatar_url: data.avatar_url || null,
-      address_line1: data.address_line1 || '',
-      address_line2: data.address_line2 || '',
-      city:      data.city || '',
-      postal_code: data.postal_code || '',
-      country:   data.country || '',
-      vertical:  data.vertical || null,
-      member_since: data.created_at || null,
+      id:        row.id,
+      full_name: row.full_name,
+      email:     row.email,
+      phone:     row.phone || snap.primary_phone || '',
+      phone_verified: !!row.phone_verified || snap.phone_verified,
+      phone_verified_at: row.phone_verified_at || null,
+      timezone:  row.timezone || '',
+      language:  row.language || 'en',
+      avatar_url: row.avatar_url || null,
+      address_line1: row.address_line1 || '',
+      address_line2: row.address_line2 || '',
+      city:      row.city || '',
+      postal_code: row.postal_code || '',
+      country:   row.country || '',
+      vertical:  row.vertical || null,
+      member_since: row.created_at || null,
     },
-    notif_prefs:   { ...DEFAULT_NOTIF,   ...(data.notif_prefs   || {}) },
-    privacy_prefs: { ...DEFAULT_PRIVACY, ...(data.privacy_prefs || {}) },
-    ui_prefs:      data.ui_prefs || {},
+    security: {
+      email_verified:      snap.email_verified,
+      phone_verified:      !!row.phone_verified || snap.phone_verified,
+      two_factor_enabled:  !!row.two_factor_enabled || snap.two_factor,
+      totp_enabled:        snap.totp_enabled,
+      backup_codes:        snap.backup_codes,
+    },
+    notif_prefs:   { ...DEFAULT_NOTIF,   ...(row.notif_prefs   || {}) },
+    privacy_prefs: { ...DEFAULT_PRIVACY, ...(row.privacy_prefs || {}) },
+    ui_prefs:      row.ui_prefs || {},
   })
 }
 
