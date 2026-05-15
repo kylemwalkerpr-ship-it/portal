@@ -9,6 +9,7 @@ import { CountryChip } from './country-glyphs'
 import DashboardGuide from './DashboardGuide'
 import AttorneyEarnings from './attorney-earnings'
 import AttorneyOrders from './attorney-orders'
+import AttorneyInquiries from './attorney-inquiries'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -262,8 +263,8 @@ export default function AttorneyApp({ onLogout, userName }) {
           <div className="yousafe-dashboard-body" style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
             <main className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
               {page === 'overview' && <OverviewPage onJump={setPage} />}
-              {page === 'queue' && <QueuePage />}
-              {page === 'mine' && <MyInquiriesPage />}
+              {page === 'queue' && <AttorneyInquiries mode="queue" />}
+              {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && <AttorneyMessagesPage />}
               {page === 'earnings' && <AttorneyEarnings />}
@@ -756,7 +757,7 @@ function AttorneyMessagesPage() {
 }
 
 // ── Inquiry thread ──────────────────────────────────────────────────────────
-function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) {
+export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -2260,7 +2261,7 @@ function MessageBubble({ message, viewerRole }) {
   )
 }
 
-function AnswersPreview({ answers, expanded }) {
+export function AnswersPreview({ answers, expanded }) {
   const entries = answers && typeof answers === 'object' ? Object.entries(answers) : []
   if (entries.length === 0) return null
   const visible = expanded ? entries : entries.slice(0, 3)
