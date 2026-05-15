@@ -101,29 +101,42 @@ function SavedGigsWidget() {
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
     ;(async () => {
       try {
-        const res = await fetch('/api/saved-gigs', { credentials: 'same-origin' })
-        if (!res.ok) throw new Error('Not available')
-        const data = await res.json()
-        const list: SavedGig[] = data?.data ?? data ?? []
-        setItems(list.slice(0, 4))
+        const res = await fetch('/api/saved-gigs', { credentials: 'same-origin', signal: controller.signal })
+        let list: SavedGig[] = []
+        if (res.ok) {
+          const body = await res.json().catch(() => null)
+          const payload = body?.data ?? body ?? {}
+          list = Array.isArray(payload?.savedGigs) ? payload.savedGigs
+               : Array.isArray(payload?.saved)     ? payload.saved
+               : Array.isArray(payload)            ? payload
+               : []
+        }
+        if (!cancelled) setItems(list.slice(0, 4))
       } catch {
-        setItems([])
+        if (!cancelled) setItems([])
       } finally {
-        setLoading(false)
+        clearTimeout(timeoutId)
+        if (!cancelled) setLoading(false)
       }
     })()
+    return () => { cancelled = true; clearTimeout(timeoutId); controller.abort() }
   }, [])
+
+  const suffix = loading ? '' : items.length > 0 ? ` (${items.length})` : ' (None)'
 
   return (
     <WidgetCard
-      title="Saved Services"
+      title={`Saved Services${suffix}`}
       viewAllHref="/marketplace"
       viewAllLabel="View all saved"
     >
       {loading ? (
-        <p style={{ color: '#9ca3af', fontSize: '13px', margin: 0 }}>Loading…</p>
+        <div style={{ height: 56, background: '#F2EFE9', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
       ) : items.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '8px 0' }}>
           <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 12px' }}>
@@ -190,31 +203,43 @@ function RecentOrdersWidget() {
   const [placeholder, setPlaceholder] = React.useState(false)
 
   React.useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
     ;(async () => {
       try {
-        const res = await fetch('/api/orders?client=true&limit=5', { credentials: 'same-origin' })
-        if (!res.ok) throw new Error('Not available')
-        const data = await res.json()
-        const list: Order[] = data?.data ?? data?.orders ?? data ?? []
-        setOrders(Array.isArray(list) ? list.slice(0, 5) : [])
+        const res = await fetch('/api/orders?client=true&limit=5', { credentials: 'same-origin', signal: controller.signal })
+        let list: Order[] = []
+        if (res.ok) {
+          const body = await res.json().catch(() => null)
+          const payload = body?.data ?? body ?? {}
+          list = Array.isArray(payload?.orders) ? payload.orders
+               : Array.isArray(payload)         ? payload
+               : []
+        } else {
+          if (!cancelled) setPlaceholder(true)
+        }
+        if (!cancelled) setOrders(list.slice(0, 5))
       } catch {
-        // Endpoint may not exist yet — show placeholder rather than crash
-        setPlaceholder(true)
-        setOrders([])
+        if (!cancelled) { setPlaceholder(true); setOrders([]) }
       } finally {
-        setLoading(false)
+        clearTimeout(timeoutId)
+        if (!cancelled) setLoading(false)
       }
     })()
+    return () => { cancelled = true; clearTimeout(timeoutId); controller.abort() }
   }, [])
+
+  const suffix = loading ? '' : orders.length > 0 ? ` (${orders.length})` : placeholder ? '' : ' (None)'
 
   return (
     <WidgetCard
-      title="Recent Orders"
+      title={`Recent Orders${suffix}`}
       viewAllHref="/dashboard/orders"
       viewAllLabel="View all orders"
     >
       {loading ? (
-        <p style={{ color: '#9ca3af', fontSize: '13px', margin: 0 }}>Loading…</p>
+        <div style={{ height: 56, background: '#F2EFE9', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
       ) : placeholder ? (
         <div style={{ textAlign: 'center', padding: '8px 0' }}>
           <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 12px' }}>
@@ -299,26 +324,43 @@ function PendingOffersWidget() {
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    // Hard timeout so we never sit on "Loading…" forever if the network
+    // hangs or the endpoint returns an unexpected payload shape.
+    const timeoutId = setTimeout(() => controller.abort(), 8000)
     ;(async () => {
       try {
-        const res = await fetch('/api/offers?status=pending&client=true', { credentials: 'same-origin' })
-        if (!res.ok) throw new Error('Not available')
-        const data = await res.json()
-        const list: Offer[] = data?.data ?? data?.offers ?? data ?? []
-        setOffers(Array.isArray(list) ? list : [])
+        const res = await fetch('/api/offers?status=pending&client=true', { credentials: 'same-origin', signal: controller.signal })
+        // Unwrap multiple possible payload shapes:
+        //   { data: { offers: [...] } } (envelope), { offers: [...] }, [...]
+        let list: Offer[] = []
+        if (res.ok) {
+          const body = await res.json().catch(() => null)
+          const payload = body?.data ?? body ?? {}
+          list = Array.isArray(payload?.offers) ? payload.offers
+               : Array.isArray(payload)         ? payload
+               : []
+        }
+        if (!cancelled) setOffers(list)
       } catch {
-        // Endpoint may not exist yet — show empty state gracefully
-        setOffers([])
+        // Aborted, 404, JSON parse failure — fall through to empty state
+        if (!cancelled) setOffers([])
       } finally {
-        setLoading(false)
+        clearTimeout(timeoutId)
+        if (!cancelled) setLoading(false)
       }
     })()
+    return () => { cancelled = true; clearTimeout(timeoutId); controller.abort() }
   }, [])
 
+  const headerSuffix = loading ? null : offers.length > 0 ? `(${offers.length})` : '(None)'
+
   return (
-    <WidgetCard title="Pending Offers">
+    <WidgetCard title={`Pending Offers${headerSuffix ? ` ${headerSuffix}` : ''}`}>
       {loading ? (
-        <p style={{ color: '#9ca3af', fontSize: '13px', margin: 0 }}>Loading…</p>
+        // Skeleton placeholder — same height as a row, no "Loading…" text
+        <div style={{ height: 56, background: '#F2EFE9', borderRadius: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
       ) : offers.length === 0 ? (
         <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>No pending offers right now.</p>
       ) : (
