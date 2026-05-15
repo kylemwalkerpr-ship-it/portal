@@ -12,6 +12,7 @@ import { BuyerDashboardWidgets } from '../marketplace/BuyerDashboardWidgets'
 import DashboardGuide from './DashboardGuide'
 import StudentOrders from './student-orders'
 import StudentOrderDetail from './student-order-detail'
+import StudentBilling from './student-billing'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -1000,6 +1001,28 @@ function Billing() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function BillingWithStripe() {
+  const [topUpOpen, setTopUpOpen] = React.useState(false);
+  const [bumpKey, setBumpKey] = React.useState(0); // re-fetch wallet after a successful top-up
+  const currency = (typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd';
+  return (
+    <>
+      <StudentBilling
+        key={bumpKey}
+        currency={currency}
+        onTopUpClick={() => setTopUpOpen(true)}
+        paymentMethodsSlot={<StripePaymentSection />}
+      />
+      {topUpOpen && (
+        <TopUpDialog
+          onClose={() => setTopUpOpen(false)}
+          onSuccess={() => { setTopUpOpen(false); setBumpKey(k => k + 1); }}
+        />
+      )}
+    </>
   );
 }
 
@@ -3276,7 +3299,7 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'attorneys' && <FindAttorney />}
           {page === 'inquiries' && <MyInquiries />}
           {page === 'documents' && <Documents />}
-          {page === 'billing' && <Billing />}
+          {page === 'billing' && <BillingWithStripe />}
           {page === 'settings' && <Settings />}
           {page === 'messages' && StudentMessages()}
           </div>
