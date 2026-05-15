@@ -2017,12 +2017,43 @@ function AdminApp({ onLogout }) {
   };
 
   // ── SETTINGS ──
-  const Settings = () => (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
+  const Settings = () => {
+    const [tab, setTab] = React.useState('financial');
+    const TABS = [
+      { id: 'financial', label: 'Financial', icon: '💰' },
+      { id: 'escrow',    label: 'Escrow & policy', icon: '🔒' },
+      { id: 'platform',  label: 'Platform info', icon: '🏛' },
+      { id: 'stripe',    label: 'Stripe integration', icon: '⚡' },
+    ];
+    const MONO = `'SF Mono', Menlo, Consolas, monospace`;
+    return (
+    <div style={{ padding: '24px 28px 60px', display: 'flex', flexDirection: 'column', gap: 18, maxWidth: '880px' }}>
       <div>
         <div style={adminEyebrow}>Configuration</div>
         <h2 style={adminPageTitle}>Platform settings.</h2>
+        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>
+          Currency, fee splits, escrow rules, and Stripe configuration. Changes apply to new orders only — existing records keep their snapshot values.
+        </div>
       </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: `1px solid ${C.border}`, marginBottom: -2 }}>
+        {TABS.map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: '9px 16px', fontSize: 13, fontFamily: 'inherit', fontWeight: active ? 700 : 500,
+              border: 'none', background: 'transparent',
+              borderBottom: `2px solid ${active ? C.cyan : 'transparent'}`,
+              color: active ? C.text : C.textMuted, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}><span>{t.icon}</span>{t.label}</button>
+          );
+        })}
+      </div>
+
+      {/* Financial tab */}
+      {tab === 'financial' && (<>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Primary Currency</div>
         <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.6 }}>
@@ -2141,6 +2172,10 @@ function AdminApp({ onLogout }) {
           }}>Save attorney fee</Btn>
         </div>
       </Card>
+      </>)}
+
+      {/* Escrow tab */}
+      {tab === 'escrow' && (<>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Escrow Rules</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -2170,6 +2205,10 @@ function AdminApp({ onLogout }) {
           }}>Save rules</Btn>
         </div>
       </Card>
+      </>)}
+
+      {/* Platform info tab */}
+      {tab === 'platform' && (<>
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Platform Info</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -2185,6 +2224,10 @@ function AdminApp({ onLogout }) {
           }}>Save</Btn>
         </div>
       </Card>
+      </>)}
+
+      {/* Stripe tab */}
+      {tab === 'stripe' && (<>
       <Card>
         <div style={adminSectionHeading}>Stripe Integration</div>
         <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2196,10 +2239,15 @@ function AdminApp({ onLogout }) {
           <Input label="Stripe secret key" value={stripeSecretKey} onChange={setStripeSecretKey} type="password" placeholder="sk_live_..." />
           <Input label="Webhook signing secret" value={webhookSigningSecret} onChange={setWebhookSigningSecret} type="password" placeholder="whsec_..." />
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Stripe config saved for this session. Store secrets server-side before production use.')}>Save Stripe config</Btn>
+          <div style={{ marginTop: 8, padding: 10, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 8, fontSize: 12, color: C.textMuted, lineHeight: 1.55 }}>
+            ⚠ Keys entered here are kept in this browser only. For production, set <span style={{ fontFamily: MONO }}>STRIPE_SECRET_KEY</span>, <span style={{ fontFamily: MONO }}>STRIPE_PUBLISHABLE_KEY</span>, and <span style={{ fontFamily: MONO }}>STRIPE_WEBHOOK_SECRET</span> as Cloudflare environment variables.
+          </div>
         </div>
       </Card>
+      </>)}
     </div>
-  );
+    );
+  };
 
   const AttorneyApplications = () => (
     <div style={{ padding: '24px 28px' }}>
