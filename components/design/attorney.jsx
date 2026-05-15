@@ -11,6 +11,7 @@ import AttorneyEarnings from './attorney-earnings'
 import AttorneyOrders from './attorney-orders'
 import AttorneyInquiries from './attorney-inquiries'
 import AttorneyMessages from './attorney-messages'
+import AttorneyProfile from './attorney-profile'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -269,7 +270,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && <AttorneyMessages />}
               {page === 'earnings' && <AttorneyEarnings />}
-              {page === 'profile' && <AttorneyProfileEditor />}
+              {page === 'profile' && <AttorneyProfile />}
               {page === 'settings' && <SettingsPage />}
             </main>
             <DashboardRightPane role="attorney" />
