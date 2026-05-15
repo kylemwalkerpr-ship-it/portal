@@ -12,8 +12,18 @@ interface Gig {
 }
 interface ApiResponse { gigs: Gig[]; count: number; limit: number; byStatus: Record<string, number> }
 
-const ALL_TABS = ['All', 'Draft', 'Active', 'Suspended', 'Archived', 'Deleted'] as const
+const ALL_TABS = ['All', 'Draft', 'Active', 'Paused', 'In Review', 'Suspended', 'Archived', 'Deleted'] as const
 type Tab = typeof ALL_TABS[number]
+const TAB_TO_STATUSES: Record<Tab, string[]> = {
+  All: [],
+  Draft: ['draft'],
+  Active: ['active'],
+  Paused: ['paused'],
+  'In Review': ['pending_review', 'appeal_pending', 'denied'],
+  Suspended: ['suspended'],
+  Archived: ['archived'],
+  Deleted: ['deleted'],
+}
 // Dynamic limit — resolved from /api/gigs response (varies by seller level + admin overrides)
 const FALLBACK_LIMIT = 5
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
@@ -29,7 +39,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
   const payload = await res.json().catch(() => ({}))
   if (!res.ok) {
     const message = (payload?.error?.message as string) || (payload?.error as string) || `Request failed (${res.status})`
-    throw new Error(message)
+    const fields = payload?.error?.fields as Record<string, string> | undefined
+    const err = new Error(message) as Error & { fields?: Record<string, string> }
+    if (fields) err.fields = fields
+    throw err
   }
   return (payload?.data ?? payload) as unknown
 }
@@ -136,12 +149,17 @@ export default function SellerGigManager() {
       await requestJson(`/api/gigs/${id}/publish`, { method: 'POST' })
       flash('ok', 'Service published and live on marketplace.')
       await load()
-    } catch (e: unknown) { flash('err', e instanceof Error ? e.message : 'Publish failed.') }
+    } catch (e: unknown) {
+      const err = e as Error & { fields?: Record<string, string> }
+      const fieldList = err.fields ? Object.values(err.fields).filter(Boolean) : []
+      const detail = fieldList.length ? `${err.message}: ${fieldList.join(' · ')}` : (err.message || 'Publish failed.')
+      flash('err', detail)
+    }
   }
 
   const filteredGigs = activeTab === 'All'
     ? gigs
-    : gigs.filter((g) => g.status === activeTab.toLowerCase())
+    : gigs.filter((g) => TAB_TO_STATUSES[activeTab].includes(g.status))
 
   const atLimit = count >= gigLimit
   const nearLimit = count >= gigLimit - 1
@@ -193,7 +211,7 @@ export default function SellerGigManager() {
           <div style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto' as const }}>
             {ALL_TABS.map((tab) => {
               const isActive = activeTab === tab
-              const tabCount = tab === 'All' ? gigs.length : gigs.filter(g => g.status === tab.toLowerCase()).length
+              const tabCount = tab === 'All' ? gigs.length : gigs.filter(g => TAB_TO_STATUSES[tab].includes(g.status)).length
               return (
                 <button key={tab} type="button" onClick={() => setActiveTab(tab)} style={{
                   padding: '12px 18px', fontSize: '13px', fontWeight: isActive ? 600 : 400,

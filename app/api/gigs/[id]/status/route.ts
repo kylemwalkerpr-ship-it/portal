@@ -5,10 +5,11 @@ import { requirePortalUser } from '@/lib/portalAuth'
 // Sellers cannot set 'active' directly — they must use POST /api/gigs/[id]/publish
 // which runs full content validation before activation.
 const SELLER_TRANSITIONS: Record<string, string[]> = {
-  draft: ['archived', 'deleted'],
-  active: ['archived', 'deleted'],
+  draft:     ['archived', 'deleted'],
+  active:    ['paused', 'archived', 'deleted'],
+  paused:    ['active', 'archived', 'deleted'],
   suspended: ['archived', 'deleted'],
-  archived: ['draft', 'deleted'],
+  archived:  ['draft', 'deleted'],
   // deleted: only admin can restore
 }
 
@@ -34,7 +35,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const newStatus: string = String(body.status || '')
   const reason: string | undefined = typeof body.reason === 'string' ? body.reason.trim() : undefined
 
-  const validStatuses = ['draft', 'active', 'suspended', 'archived', 'deleted']
+  const validStatuses = ['draft', 'active', 'paused', 'suspended', 'archived', 'deleted']
   if (!validStatuses.includes(newStatus)) return fail('Invalid status.', 400)
 
   const currentStatus: string = String(existing.status || '')

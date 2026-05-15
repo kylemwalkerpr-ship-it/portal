@@ -30,11 +30,15 @@ const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', ser
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; border: string; accent: string; dot: string; label: string }> = {
-  active:    { bg: '#EAF5EE', text: '#1A6B45', border: 'rgba(26,107,69,0.22)',  accent: '#1A6B45', dot: '#1A6B45', label: 'Active' },
-  draft:     { bg: '#F5EDD6', text: '#7A6030', border: 'rgba(154,123,59,0.28)', accent: '#9A7B3B', dot: '#9A7B3B', label: 'Draft' },
-  suspended: { bg: '#FEF5E4', text: '#7A4D08', border: 'rgba(139,94,10,0.25)',  accent: '#8B5E0A', dot: '#D97706', label: 'Suspended' },
-  archived:  { bg: '#EDEAF7', text: '#3D2B6B', border: 'rgba(61,43,107,0.22)', accent: '#3D2B6B', dot: '#6B5AB0', label: 'Archived' },
-  deleted:   { bg: '#FAEAEA', text: '#7A1A1A', border: 'rgba(139,26,26,0.22)', accent: '#8B1A1A', dot: '#8B1A1A', label: 'Deleted' },
+  active:         { bg: '#EAF5EE', text: '#1A6B45', border: 'rgba(26,107,69,0.22)',  accent: '#1A6B45', dot: '#1A6B45', label: 'Active' },
+  draft:          { bg: '#F5EDD6', text: '#7A6030', border: 'rgba(154,123,59,0.28)', accent: '#9A7B3B', dot: '#9A7B3B', label: 'Draft' },
+  paused:         { bg: '#E5EEF7', text: '#1F3A6B', border: 'rgba(31,58,107,0.22)', accent: '#1F3A6B', dot: '#1F3A6B', label: 'Paused' },
+  suspended:      { bg: '#FEF5E4', text: '#7A4D08', border: 'rgba(139,94,10,0.25)',  accent: '#8B5E0A', dot: '#D97706', label: 'Suspended' },
+  archived:       { bg: '#EDEAF7', text: '#3D2B6B', border: 'rgba(61,43,107,0.22)', accent: '#3D2B6B', dot: '#6B5AB0', label: 'Archived' },
+  deleted:        { bg: '#FAEAEA', text: '#7A1A1A', border: 'rgba(139,26,26,0.22)', accent: '#8B1A1A', dot: '#8B1A1A', label: 'Deleted' },
+  pending_review: { bg: '#E8F4F6', text: '#0E5563', border: 'rgba(14,124,142,0.25)', accent: '#0E7C8E', dot: '#0E7C8E', label: 'In Review' },
+  denied:         { bg: '#FAEAEA', text: '#7A1A1A', border: 'rgba(139,26,26,0.22)', accent: '#8B1A1A', dot: '#8B1A1A', label: 'Denied' },
+  appeal_pending: { bg: '#FEF5E4', text: '#7A4D08', border: 'rgba(139,94,10,0.25)',  accent: '#8B5E0A', dot: '#D97706', label: 'Appeal Pending' },
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -127,8 +131,11 @@ export default function SellerGigCard({ gig, onStatusChange, onPublish }: Seller
   const cfg = STATUS_CONFIG[gig.status] ?? STATUS_CONFIG.draft
 
   const canPublish  = ['draft', 'suspended'].includes(gig.status)
-  const canArchive  = ['active', 'draft', 'suspended'].includes(gig.status)
-  const canActivate = gig.status === 'archived'
+  const canPause    = gig.status === 'active'
+  const canResume   = gig.status === 'paused'
+  const canArchive  = ['active', 'draft', 'paused', 'suspended'].includes(gig.status)
+  const canRestore  = gig.status === 'archived'
+  const canRepublish = ['paused', 'archived'].includes(gig.status)
   const canDelete   = gig.status !== 'deleted'
 
   return (
@@ -216,7 +223,10 @@ export default function SellerGigCard({ gig, onStatusChange, onPublish }: Seller
           <ActionBtn href={`/dashboard/gigs/${gig.id}/edit`} variant="navy">Edit</ActionBtn>
           <ActionBtn href={`/marketplace/gigs/${gig.slug}`} target="_blank" rel="noreferrer" variant="ghost">Preview ↗</ActionBtn>
           {canPublish && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Publish</ActionBtn>}
-          {canActivate && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Re-publish</ActionBtn>}
+          {canRepublish && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Re-publish</ActionBtn>}
+          {canPause && <ActionBtn onClick={() => onStatusChange(gig.id, 'paused')} variant="ghost">Pause</ActionBtn>}
+          {canResume && <ActionBtn onClick={() => onPublish(gig.id)} variant="green">Resume</ActionBtn>}
+          {canRestore && <ActionBtn onClick={() => onStatusChange(gig.id, 'draft')} variant="navy">Restore</ActionBtn>}
           {canArchive && <ActionBtn onClick={() => onStatusChange(gig.id, 'archived')} variant="purple">Archive</ActionBtn>}
           {canDelete && (
             <ActionBtn

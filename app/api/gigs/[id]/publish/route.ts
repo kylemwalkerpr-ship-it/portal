@@ -18,8 +18,10 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   const isOwner = gig.provider_id === auth.profileId && gig.provider_type === auth.role
   if (!isAdmin && !isOwner) return fail('Forbidden.', 403)
 
-  // Must be draft or suspended to publish
-  if (!['draft', 'suspended'].includes(String(gig.status))) {
+  // Allow publish/re-publish from any non-active, non-deleted state.
+  // suspended → owner re-publishing after admin clears the suspension
+  // paused / archived → owner reactivating a previously-live gig
+  if (!['draft', 'paused', 'suspended', 'archived'].includes(String(gig.status))) {
     return fail(`Cannot publish a gig with status '${gig.status}'.`, 422)
   }
 
@@ -83,6 +85,9 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
       last_status_changed_at: now,
       published_at: gig.published_at || now,
       updated_at: now,
+      archived_at: null,
+      suspended_at: null,
+      gig_status_reason: null,
     })
     .eq('id', id)
     .select('*, tiers:gig_tiers(*)')
