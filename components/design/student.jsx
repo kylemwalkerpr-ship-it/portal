@@ -10,6 +10,7 @@ import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
 import { BuyerDashboardWidgets } from '../marketplace/BuyerDashboardWidgets'
 import DashboardGuide from './DashboardGuide'
+import StudentOrders from './student-orders'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -3256,7 +3257,13 @@ function StudentApp({ onLogout, userId, userName }) {
             </div>
           )}
           {page === 'dashboard' && <Dashboard />}
-          {page === 'orders' && <OrdersList />}
+          {page === 'orders' && (
+            <StudentOrders
+              currency={(typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency')) || 'usd'}
+              onOpenOrder={order => { setSelectedOrder(order); setPage('order-detail'); }}
+              onCreateOrder={() => setPage('services')}
+            />
+          )}
           {page === 'order-detail' && selectedOrder && <OrderDetail order={selectedOrder} />}
           {page === 'services' && <ServicesBrowse />}
           {page === 'attorneys' && <FindAttorney />}
