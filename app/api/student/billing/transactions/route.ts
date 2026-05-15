@@ -56,14 +56,27 @@ export async function GET(req: Request) {
     .limit(500)
 
   if (error && /column .* does not exist/i.test(error.message || '')) {
+    // Strip the offending column from the SELECT and retry.
+    const m = error.message.match(/column .*\.(\w+) does not exist/i)
+    const bad = m?.[1]
+    const baseCols = ['id', 'order_number', 'status', 'requirements', 'created_at', 'total_amount']
+    const optional = ['currency', 'escrow_status', 'escrow_amount', 'escrow_released_amount', 'escrow_refunded_amount', 'refund_status', 'refunded_at', 'refunded_amount', 'wallet_credit_amount']
+    const cols = [...baseCols, ...optional.filter(c => c !== bad)].join(', ')
     const r = await db
       .from('orders')
-      .select('id, order_number, status, requirements, created_at, total_amount, currency')
+      .select(cols)
       .eq('client_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(500)
-    orderRows = r.data as any
-    error = r.error as any
+    // If the retry still fails on another missing column, fall back to SELECT *
+    if (r.error && /column .* does not exist/i.test(r.error.message || '')) {
+      const r2 = await db.from('orders').select('*').eq('client_id', profile.id).order('created_at', { ascending: false }).limit(500)
+      orderRows = r2.data as any
+      error = r2.error as any
+    } else {
+      orderRows = r.data as any
+      error = r.error as any
+    }
   }
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
