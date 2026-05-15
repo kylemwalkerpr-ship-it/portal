@@ -8,6 +8,7 @@ import CustomOfferDialog from './custom-offer-dialog'
 import { CountryChip } from './country-glyphs'
 import DashboardGuide from './DashboardGuide'
 import AttorneyEarnings from './attorney-earnings'
+import AttorneyOrders from './attorney-orders'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -1321,89 +1322,9 @@ function CompactOrderRow({ order }) {
 
 // ── Orders page ────────────────────────────────────────────────────────────
 function OrdersPage() {
-  const [data, setData] = React.useState(null)
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState('')
   const [openId, setOpenId] = React.useState(null)
-  const [filter, setFilter] = React.useState('active')
-
-  const load = React.useCallback((isInitial) => {
-    if (isInitial) setLoading(true)
-    fetch('/api/attorney/data', { credentials: 'same-origin' })
-      .then(async (r) => {
-        const payload = await r.json().catch(() => null)
-        if (!r.ok) throw new Error(payload?.error || 'Could not load orders.')
-        setData(payload)
-        setError('')
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => { if (isInitial) setLoading(false) })
-  }, [])
-
-  React.useEffect(() => {
-    load(true)
-    const id = setInterval(() => { if (document.visibilityState === 'visible') load(false) }, 8000)
-    return () => clearInterval(id)
-  }, [load])
-
-  if (loading) return <Notice>Loading your orders...</Notice>
-  if (error) return <Notice tone="error">{error}</Notice>
-
-  if (openId) return <OrderDetail orderId={openId} onBack={() => { setOpenId(null); load(false) }} />
-
-  const all = data?.orders || []
-  const filtered = filter === 'all' ? all : filter === 'active' ? all.filter((o) => !o.is_complete) : all.filter((o) => o.is_complete)
-
-  return (
-    <div style={{ padding: '24px 28px', maxWidth: '1080px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', marginBottom: '16px' }}>
-        <div>
-          <div style={eyebrowStyle}>Engagements</div>
-          <h2 style={pageTitleStyle}>Active orders.</h2>
-          <p style={{ color: C.textMuted, fontSize: '13px', margin: 0 }}>Orders that came from accepted offers. Update progress as you work, mark deliverables complete to request escrow release.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          {['active', 'completed', 'all'].map((f) => (
-            <button key={f} onClick={() => setFilter(f)} style={pillBtn(filter === f)}>{f}</button>
-          ))}
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <Card><div style={{ padding: '24px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>No {filter} orders.</div></Card>
-      ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {filtered.map((o) => (
-            <Card key={o.id}>
-              <div onClick={() => setOpenId(o.id)} style={{ padding: '16px 18px', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '15px', color: C.text }}>{o.title}</div>
-                    <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
-                      {o.client_name} · {o.client_email} · started {new Date(o.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {o.messages > 0 && <Badge color="cyan">{o.messages} msg</Badge>}
-                    <Badge color={o.is_complete ? 'green' : o.status === 'review' ? 'cyan' : 'orange'}>{o.is_complete ? 'completed' : o.status}</Badge>
-                  </div>
-                </div>
-                <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ flex: 1, minWidth: '160px' }}>
-                    <div style={{ height: '6px', background: C.surface3, borderRadius: '999px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${o.progress}%`, background: C.cyan, transition: 'width 200ms ease' }} />
-                    </div>
-                  </div>
-                  <span style={{ color: C.textMuted, fontSize: '12px', minWidth: '50px', textAlign: 'right' }}>{o.progress}%</span>
-                  <span style={{ fontFamily: C.serif, color: C.text, fontSize: '18px' }}>${o.attorney_fee.toFixed(0)}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  if (openId) return <OrderDetail orderId={openId} onBack={() => setOpenId(null)} />
+  return <AttorneyOrders onOpenOrder={(id) => setOpenId(id)} />
 }
 
 function OrderDetail({ orderId, onBack }) {
