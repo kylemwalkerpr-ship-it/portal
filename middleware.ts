@@ -19,25 +19,43 @@ const isPublicRoute = createRouteMatcher([
   '/api/chat(.*)',
 ])
 
-// Helper: attach the current pathname + search to a NextResponse as a header
-// so server components (e.g. HreflangTags) can construct accurate canonical
-// URLs without parsing the URL themselves.
-function withPathHeaders(res: NextResponse, pathname: string, search: string) {
+const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
+
+function resolveLanguage(req: any): string {
+  // 1. ?lang= takes priority — set by hreflang variants
+  const q = req.nextUrl.searchParams.get('lang')
+  if (q && SUPPORTED_LANGS.has(q)) return q
+  // 2. Accept-Language header (first supported match)
+  const accept = req.headers.get('accept-language')
+  if (accept) {
+    for (const part of String(accept).split(',')) {
+      const code = part.split(';')[0].trim().toLowerCase().slice(0, 2)
+      if (SUPPORTED_LANGS.has(code)) return code
+    }
+  }
+  return 'en'
+}
+
+// Helper: attach navigation + language headers so server components can read
+// them via headers() without re-parsing the URL.
+function withPathHeaders(res: NextResponse, pathname: string, search: string, lang: string) {
   res.headers.set('x-pathname', `${pathname}${search}`)
+  res.headers.set('x-lang', lang)
   return res
 }
 
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
+    const lang = resolveLanguage(req)
 
-    if (pathname !== '/' && isPublicRoute(req)) return withPathHeaders(NextResponse.next(), pathname, search)
+    if (pathname !== '/' && isPublicRoute(req)) return withPathHeaders(NextResponse.next(), pathname, search, lang)
 
     const { userId } = await auth()
 
     if (pathname === '/') {
       if (userId) return NextResponse.redirect(new URL('/dashboard', req.url))
-      return withPathHeaders(NextResponse.next(), pathname, search)
+      return withPathHeaders(NextResponse.next(), pathname, search, lang)
     }
 
     if (!userId) {
@@ -52,7 +70,7 @@ export default clerkMiddleware(
       return NextResponse.redirect(signInUrl)
     }
 
-    return withPathHeaders(NextResponse.next(), pathname, search)
+    return withPathHeaders(NextResponse.next(), pathname, search, lang)
   },
   {
     authorizedParties: AUTHORIZED_PARTIES.length > 0 ? AUTHORIZED_PARTIES : undefined,

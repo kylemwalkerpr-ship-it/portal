@@ -1,6 +1,7 @@
 import './globals.css'
 import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
+import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
@@ -13,6 +14,8 @@ const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 // pick up only one of the two forms, so we emit both. Keep this list in sync
 // with contexts/language-context.tsx (Language type) and HreflangTags.tsx.
 const SUPPORTED_LANGS = ['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'] as const
+const SUPPORTED_LANG_SET = new Set<string>(SUPPORTED_LANGS)
+const RTL_LANGS = new Set(['ar'])
 const ALTERNATE_LANGUAGES: Record<string, string> = Object.fromEntries(
   SUPPORTED_LANGS.map(code => [code, `/?lang=${code}`]),
 )
@@ -50,9 +53,22 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Resolve the active language from middleware-set x-lang. Falls back to
+  // 'en' if the header is missing (e.g. on edge cases that bypass middleware).
+  let lang = 'en'
+  let dir: 'ltr' | 'rtl' = 'ltr'
+  try {
+    const h = await headers()
+    const fromHeader = h.get('x-lang')
+    if (fromHeader && SUPPORTED_LANG_SET.has(fromHeader)) lang = fromHeader
+    if (RTL_LANGS.has(lang)) dir = 'rtl'
+  } catch {
+    /* fall through with default 'en' */
+  }
+
   return (
-    <html lang="en">
+    <html lang={lang} dir={dir}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
