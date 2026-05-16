@@ -519,7 +519,7 @@ function AdminApp({ onLogout }) {
     <div className="yousafe-topbar" style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <LanguageSelector placement="inline" />
+        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>

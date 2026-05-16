@@ -329,7 +329,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
     >
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <LanguageSelector placement="inline" />
+        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
         <div style={{ position: 'relative' }}>
           <button
             type="button"

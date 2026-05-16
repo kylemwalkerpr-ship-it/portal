@@ -3,8 +3,19 @@ import type { Viewport } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
+import { HreflangTags } from '@/components/HreflangTags'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+
+// One entry per supported language for Next's native metadata.alternates.languages.
+// HreflangTags below ALSO emits the same set as raw <link> tags — some crawlers
+// pick up only one of the two forms, so we emit both. Keep this list in sync
+// with contexts/language-context.tsx (Language type) and HreflangTags.tsx.
+const SUPPORTED_LANGS = ['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'] as const
+const ALTERNATE_LANGUAGES: Record<string, string> = Object.fromEntries(
+  SUPPORTED_LANGS.map(code => [code, `/?lang=${code}`]),
+)
 
 export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
@@ -17,6 +28,7 @@ export const metadata = {
   },
   alternates: {
     canonical: '/',
+    languages: ALTERNATE_LANGUAGES,
   },
   openGraph: {
     title: 'YouSafe Portal — Study & Legal Services',
@@ -48,6 +60,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap"
         />
+        {/* hreflang alternates — emitted on every page via root layout */}
+        <HreflangTags />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -67,6 +81,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           signUpUrl="/sign-up/student"
         >
           <TranslationProvider>
+            {/* Site-wide language switcher — fixed top-right, every page */}
+            <GlobalLanguageBar />
             {children}
             <ChatWidget />
           </TranslationProvider>

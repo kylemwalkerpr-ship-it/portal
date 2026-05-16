@@ -1701,7 +1701,7 @@ function StudentApp({ onLogout, userId, userName }) {
     }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <LanguageSelector placement="inline" />
+        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           {notifOpen && (
