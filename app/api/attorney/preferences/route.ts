@@ -35,10 +35,11 @@ export async function GET() {
   if (!ctx) return Response.json({ error }, { status })
   const { db, profileId, attorneyId } = ctx
 
-  // Mirror Clerk-managed state (verified phone, 2FA) into our row before read
+  // Mirror Clerk-managed state. Snapshot is time-bounded + cached (see
+  // lib/clerkSync.ts); DB mirror is fire-and-forget. Prevents 1102.
   const { readClerkSnapshot, mirrorClerkSnapshotToProfile } = await import('@/lib/clerkSync')
   const snap = await readClerkSnapshot()
-  await mirrorClerkSnapshotToProfile(db, profileId, snap)
+  void mirrorClerkSnapshotToProfile(db, profileId, snap)
 
   let { data: profile, error: pErr } = await db
     .from('profiles')

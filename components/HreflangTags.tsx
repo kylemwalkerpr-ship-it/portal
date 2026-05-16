@@ -1,62 +1,60 @@
 /**
  * HreflangTags — server component
  *
- * Emits one <link rel="alternate" hreflang> per supported language, plus an
- * x-default. Mounted once in <head> from app/layout.tsx so EVERY page emits
- * the full set automatically (root layout wraps every route in Next App
- * Router).
+ * Emits one <link rel="alternate" hreflang> per supported language plus
+ * x-default on every page (mounted from app/layout.tsx). Designed to be
+ * dirt-cheap on the request path so it can't contribute to Cloudflare
+ * Workers 1102 (CPU/wall-time) errors:
  *
- * The href encodes the language as a `?lang=<code>` query param against the
- * current pathname. This matches our language-context.tsx which reads
- * ?lang= on first load. If we ever move to subpath routing (/es/...,
- * /fr/...), only the href construction below needs to change — every page
- * still gets every variant.
- *
- * Important: this is a SERVER component (no "use client") so it runs on
- * every request, captures the current pathname via headers(), and emits the
- * correct URLs even on dynamic routes like /marketplace/gigs/[slug].
+ *   - Pure synchronous string concat after a single headers() read.
+ *   - All exceptions swallowed; falls back to static portal-root URLs.
+ *   - No external I/O, no DB, no fetch.
  */
-import { headers } from "next/headers"
+import { headers } from 'next/headers'
 
-const SITE_URL = "https://portal.yousafeconsultancy.com"
+const SITE_FALLBACK = 'https://portal.yousafeconsultancy.com'
 
-const LANGUAGES = [
-  { code: "en", hreflang: "en" },
-  { code: "es", hreflang: "es" },
-  { code: "fr", hreflang: "fr" },
-  { code: "ar", hreflang: "ar" },
-  { code: "zh", hreflang: "zh" },
-  { code: "hi", hreflang: "hi" },
-  { code: "pt", hreflang: "pt" },
-]
+const LANGUAGES = ['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'] as const
 
 export async function HreflangTags() {
-  const headerList = await headers()
-  // Try X-Forwarded-* first (Cloudflare / proxies set these), then host
-  const host = headerList.get("x-forwarded-host") || headerList.get("host") || "portal.yousafeconsultancy.com"
-  const proto = headerList.get("x-forwarded-proto") || "https"
-  const pathname = headerList.get("x-pathname") || headerList.get("next-url") || "/"
+  let host = ''
+  let proto = 'https'
+  let pathname = '/'
 
-  // Strip any existing ?lang= so we don't double-stack params
-  const [path, query = ""] = pathname.split("?")
-  const params = new URLSearchParams(query)
-  params.delete("lang")
-  const baseQuery = params.toString()
+  try {
+    const h = await headers()
+    host  = h.get('x-forwarded-host') || h.get('host') || ''
+    proto = h.get('x-forwarded-proto') || 'https'
+    pathname = h.get('x-pathname') || '/'
+  } catch {
+    /* headers() can fail in some edge runtime contexts — fall through */
+  }
+
+  const origin = host ? `${proto}://${host}` : SITE_FALLBACK
+
+  // Split path / query without instantiating URLSearchParams (saves CPU
+  // on the hot path).
+  const qIdx = pathname.indexOf('?')
+  const path = qIdx >= 0 ? pathname.slice(0, qIdx) : pathname
+  const rawQuery = qIdx >= 0 ? pathname.slice(qIdx + 1) : ''
+
+  // Strip an existing lang= so we don't double-stack.
+  const baseQuery = rawQuery
+    .split('&')
+    .filter(p => p && !p.startsWith('lang='))
+    .join('&')
 
   const buildHref = (langCode: string | null) => {
-    const merged = new URLSearchParams(baseQuery)
-    if (langCode) merged.set("lang", langCode)
-    const q = merged.toString()
-    return `${proto}://${host}${path}${q ? `?${q}` : ""}`
+    let q = baseQuery
+    if (langCode) q = q ? `${q}&lang=${langCode}` : `lang=${langCode}`
+    return `${origin}${path}${q ? `?${q}` : ''}`
   }
 
   return (
     <>
-      {LANGUAGES.map(({ code, hreflang }) => (
-        <link key={hreflang} rel="alternate" hrefLang={hreflang} href={buildHref(code)} />
+      {LANGUAGES.map(code => (
+        <link key={code} rel="alternate" hrefLang={code} href={buildHref(code)} />
       ))}
-      {/* x-default: the URL search engines should serve when no language
-          preference is known (English fallback). */}
       <link rel="alternate" hrefLang="x-default" href={buildHref(null)} />
     </>
   )

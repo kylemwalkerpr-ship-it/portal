@@ -30,10 +30,14 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profile } = auth
 
-  // Mirror Clerk-managed state (verified phone, 2FA) into our row before read
+  // Mirror Clerk-managed state (verified phone, 2FA) into our row before read.
+  // Snapshot read is time-bounded (1.5s) and cached for 60s per user — see
+  // lib/clerkSync.ts. The DB mirror is fire-and-forget so we never block
+  // the response on a profiles UPDATE. Together these prevent Cloudflare
+  // Workers 1102 (CPU/wall-time) on slow Clerk responses.
   const { readClerkSnapshot, mirrorClerkSnapshotToProfile } = await import('@/lib/clerkSync')
   const snap = await readClerkSnapshot()
-  await mirrorClerkSnapshotToProfile(db, profile.id, snap)
+  void mirrorClerkSnapshotToProfile(db, profile.id, snap)
 
   let { data, error } = await db
     .from('profiles')
