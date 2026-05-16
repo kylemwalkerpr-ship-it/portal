@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import { Card, Btn, Badge, Avatar, Input, Select } from './shared'
+import { PhoneVerificationCard } from '../PhoneVerificationCard'
 
 /**
  * Student → Settings (Fiverr-grade).
@@ -394,7 +395,10 @@ function SecurityTab({ data, flash }) {
         </div>
       </Section>
 
-      <Section title="Manage security" sub="Opens the secure account panel where you can verify your phone via SMS OTP, set up an authenticator app (Authy / Google Authenticator / 1Password), generate backup codes, change your password, and review active sessions.">
+      {/* Inline phone verification — no Clerk modal, no redirect */}
+      <PhoneVerificationCard />
+
+      <Section title="Two-factor & advanced" sub="Set up an authenticator app (Authy / Google Authenticator / 1Password), generate backup codes, change your password, and review active sessions.">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Btn variant="primary" size="md" onClick={() => window.location.href = '/user/security'}>
             🛡️ Open security panel
