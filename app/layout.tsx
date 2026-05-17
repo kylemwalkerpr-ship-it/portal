@@ -1,10 +1,28 @@
 import './globals.css'
 import type { Viewport } from 'next'
+import { Inter, Cormorant_Garamond } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
 import { HreflangTags } from '@/components/HreflangTags'
+
+// Self-host fonts via next/font for better LCP + no render-blocking
+// stylesheet from fonts.googleapis.com. Variables are consumed by the
+// existing `font-family` declarations in globals.css.
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-inter',
+  display: 'swap',
+})
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-cormorant',
+  display: 'swap',
+})
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
@@ -24,8 +42,12 @@ export const metadata = {
   title: 'YouSafe Portal — Study & Legal Services',
   description:
     'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK and Canada legal document review — students, attorneys, consultants and admins, in one secure portal.',
+  // Portal is a members area — keep it OUT of Google. The marketing surfaces
+  // (yousafeconsultancy.com landing, usa.*, ca.*, checkout.*, legal.*) carry
+  // the SEO weight. Per-page generateMetadata can opt back in for any future
+  // public route.
   robots: {
-    index: true,
+    index: false,
     follow: true,
   },
   alternates: {
@@ -67,29 +89,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <html lang={lang} dir={dir}>
+    <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable}`}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap"
-        />
         {/* hreflang alternates — emitted on every page via root layout */}
         <HreflangTags />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'WebSite',
-              name: 'YouSafe Portal',
-              url: 'https://portal.yousafeconsultancy.com',
-            }),
-          }}
-        />
       </head>
       <body>
+        <a href="#main" className="yousafe-skip-link">Skip to main content</a>
         <ClerkProvider
           afterSignOutUrl={PORTAL_URL}
           signInUrl="/sign-in/student"

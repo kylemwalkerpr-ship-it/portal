@@ -35,9 +35,46 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
+const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+const BRAND_URL = 'https://yousafeconsultancy.com'
+
+// WebSite + Organization JSON-LD, server-rendered so crawlers see it on the
+// initial HTML response. SearchAction targets /marketplace?q= which is the
+// portal's gig search endpoint (params consumed by GigDiscoveryPage).
+const HOMEPAGE_JSONLD = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'YouSafe Portal',
+    url: PORTAL_URL,
+    publisher: { '@id': `${BRAND_URL}#org` },
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${PORTAL_URL}/marketplace?q={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `${BRAND_URL}#org`,
+    name: 'YouSafe Consultancy',
+    url: BRAND_URL,
+    logo: `${BRAND_URL}/logo.png`,
+    sameAs: [BRAND_URL],
+  },
+]
+
 export default async function Page() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(HOMEPAGE_JSONLD) }}
+      />
       <SeoIntroBlock
         eyebrow="YouSafe Consultancy"
         title="Study abroad consulting and legal document review in one secure portal."

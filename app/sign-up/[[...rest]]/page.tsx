@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     openGraph: { title, description, type: 'website' },
     twitter:   { title, description, card: 'summary' },
-    robots:    { index: true, follow: true },
+    robots:    { index: false, follow: true },
   }
 }
 

@@ -11,7 +11,7 @@ import { C, Btn, Card, Badge } from '../design/shared'
  */
 
 const NAVY='#1B2D4F', GOLD='#9A7B3B', CYAN='#0E7C8E', PURPLE='#3D2B6B', AMBER='#8B5E0A', GREEN='#1A6B45', RED='#8B1A1A'
-const BG='#F7F5F0', SURFACE='#FFFFFF', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
+const BG='#F7F5F0', SURFACE='#FFFFFF', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#6B7180'
 const SERIF=`'Cormorant Garamond', Georgia, serif`
 const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
