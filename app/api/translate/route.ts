@@ -1,42 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-
-const MYMEMORY_URL = "https://api.mymemory.translated.net/get"
-
-const myMemoryLangMap: Record<string, string> = {
-  en: "en",
-  es: "es",
-  fr: "fr",
-  ar: "ar",
-  zh: "zh-CN",
-  hi: "hi",
-  pt: "pt",
-}
-
-async function translateWithMyMemory(text: string, sourceLang: string, targetLang: string): Promise<string | null> {
-  try {
-    const url = new URL(MYMEMORY_URL)
-    url.searchParams.set("q", text.substring(0, 500))
-    url.searchParams.set("langpair", `${myMemoryLangMap[sourceLang] || sourceLang}|${myMemoryLangMap[targetLang] || targetLang}`)
-    url.searchParams.set("de", "info@yousafeconsultancy.com")
-
-    const response = await fetch(url.toString())
-    if (!response.ok) return null
-
-    const data = await response.json()
-    const translated = data.responseData?.translatedText
-    if (
-      data.responseStatus === 200 &&
-      translated &&
-      !translated.includes("PLEASE SELECT") &&
-      !translated.includes("MYMEMORY WARNING") &&
-      !translated.includes("INVALID TARGET")
-    ) {
-      return translated
-    }
-  } catch {}
-
-  return null
-}
+import { translateString } from "@/lib/serverTranslate"
 
 export async function POST(request: NextRequest) {
   let normalized = ""
@@ -51,10 +14,15 @@ export async function POST(request: NextRequest) {
 
     if (targetLang === sourceLang) return NextResponse.json({ translatedText: normalized })
 
-    const myMemoryResult = await translateWithMyMemory(normalized, sourceLang, targetLang)
-    if (myMemoryResult) return NextResponse.json({ translatedText: myMemoryResult })
+    const translated = await translateString(normalized, targetLang, { sourceLang })
 
-    return NextResponse.json({ translatedText: normalized, fallback: true })
+    // translateString returns the original on any failure — surface the fallback flag
+    // so existing clients keep their previous behaviour.
+    if (translated === normalized) {
+      return NextResponse.json({ translatedText: normalized, fallback: true })
+    }
+
+    return NextResponse.json({ translatedText: translated })
   } catch {
     return NextResponse.json({ translatedText: normalized, fallback: true })
   }
