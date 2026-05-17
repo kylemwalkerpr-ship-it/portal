@@ -23,18 +23,42 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 const STORAGE_KEY = "preferredLanguage"
+const COOKIE_NAME = "yousafe-lang-default"
 
-function isLanguage(value: string | null): value is Language {
+function isLanguage(value: string | null | undefined): value is Language {
   return !!value && languages.some((language) => language.code === value)
+}
+
+/** Read a cookie value by name (returns null if missing). Edge-safe. */
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie
+    .split(";")
+    .map(c => c.trim())
+    .find(c => c.startsWith(name + "="))
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en")
 
   useEffect(() => {
+    // Priority order:
+    //   1. ?lang=             — explicit per-request choice (hreflang, links, pill)
+    //   2. localStorage       — returning visitor preference
+    //   3. yousafe-lang-default cookie — server's geo/Accept-Language inference
+    //                          (set by middleware on apps that have it)
+    //   4. navigator.language — final client-side fallback (works under static
+    //                          export where middleware can't run)
+    //   5. 'en'               — last resort
     const urlLang = new URLSearchParams(window.location.search).get("lang")
+    if (isLanguage(urlLang)) { setLanguageState(urlLang); return }
     const stored = localStorage.getItem(STORAGE_KEY)
-    setLanguageState(isLanguage(urlLang) ? urlLang : isLanguage(stored) ? stored : "en")
+    if (isLanguage(stored)) { setLanguageState(stored); return }
+    const cookieLang = readCookie(COOKIE_NAME)
+    if (isLanguage(cookieLang)) { setLanguageState(cookieLang); return }
+    const navLang = (navigator.language || "").toLowerCase().slice(0, 2)
+    if (isLanguage(navLang)) { setLanguageState(navLang); return }
   }, [])
 
   const setLanguage = useCallback((newLanguage: Language) => {

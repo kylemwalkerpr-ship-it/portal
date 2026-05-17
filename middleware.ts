@@ -21,11 +21,33 @@ const isPublicRoute = createRouteMatcher([
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
 
+// ISO 3166-1 alpha-2 → preferred supported language. Used as a fallback
+// when Accept-Language is generic (e.g. a Brazilian visitor whose browser
+// is set to en-US should still get Portuguese surfaced as the default).
+const COUNTRY_TO_LANG: Record<string, string> = {
+  // Spanish-speaking
+  ES: 'es', MX: 'es', AR: 'es', CO: 'es', PE: 'es', CL: 'es', VE: 'es',
+  EC: 'es', GT: 'es', CU: 'es', BO: 'es', DO: 'es', HN: 'es', SV: 'es',
+  NI: 'es', CR: 'es', PY: 'es', UY: 'es', PR: 'es',
+  // French
+  FR: 'fr', BE: 'fr', LU: 'fr', MC: 'fr', SN: 'fr', CI: 'fr', CM: 'fr',
+  // Portuguese
+  BR: 'pt', PT: 'pt', AO: 'pt', MZ: 'pt', CV: 'pt',
+  // Arabic
+  SA: 'ar', EG: 'ar', AE: 'ar', MA: 'ar', DZ: 'ar', TN: 'ar', IQ: 'ar',
+  JO: 'ar', LY: 'ar', LB: 'ar', OM: 'ar', QA: 'ar', SY: 'ar', YE: 'ar',
+  KW: 'ar', BH: 'ar', SD: 'ar', MR: 'ar', PS: 'ar',
+  // Chinese
+  CN: 'zh', TW: 'zh', HK: 'zh', SG: 'zh', MO: 'zh',
+  // Hindi
+  IN: 'hi', NP: 'hi',
+}
+
 function resolveLanguage(req: any): string {
-  // 1. ?lang= takes priority — set by hreflang variants
+  // 1. ?lang= takes priority — explicit user choice via hreflang/links/pill.
   const q = req.nextUrl.searchParams.get('lang')
   if (q && SUPPORTED_LANGS.has(q)) return q
-  // 2. Accept-Language header (first supported match)
+  // 2. Accept-Language header — what the browser is configured for.
   const accept = req.headers.get('accept-language')
   if (accept) {
     for (const part of String(accept).split(',')) {
@@ -33,14 +55,34 @@ function resolveLanguage(req: any): string {
       if (SUPPORTED_LANGS.has(code)) return code
     }
   }
+  // 3. Cloudflare geo — IP-based country code. The cf object lives on the
+  // raw request; Next exposes it via req.geo.country in middleware.
+  const country = (req as any)?.geo?.country
+    || (req.headers.get('cf-ipcountry') ?? '').toUpperCase()
+  if (country && COUNTRY_TO_LANG[country] && SUPPORTED_LANGS.has(COUNTRY_TO_LANG[country])) {
+    return COUNTRY_TO_LANG[country]
+  }
   return 'en'
 }
 
 // Helper: attach navigation + language headers so server components can read
-// them via headers() without re-parsing the URL.
+// them via headers() without re-parsing the URL. Also writes a cookie with
+// the inferred default so the client LanguageProvider can honour the
+// server's geo/Accept-Language decision on first paint — without that
+// cookie the provider would only see localStorage on initial mount and
+// every fresh browser would default to English regardless of origin.
 function withPathHeaders(res: NextResponse, pathname: string, search: string, lang: string) {
   res.headers.set('x-pathname', `${pathname}${search}`)
   res.headers.set('x-lang', lang)
+  // Cookie is a *default* — the provider only reads it when neither the
+  // URL nor localStorage has an explicit preference. Refresh on every
+  // request so a visitor moving countries gets an updated suggestion.
+  res.cookies.set('yousafe-lang-default', lang, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,   // 30 days
+    sameSite: 'lax',
+    httpOnly: false,             // client JS needs to read it
+  })
   return res
 }
 
