@@ -45,11 +45,8 @@ export function GlobalLanguageBar() {
       ref={wrapRef}
       data-no-translate
       style={{
-        position: "fixed",
-        top: 74,
-        right: 16,
-        zIndex: 10010,
-        pointerEvents: "auto",
+        position: "relative",
+        display: "inline-flex",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
       }}
     >

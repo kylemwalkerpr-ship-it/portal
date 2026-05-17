@@ -4,6 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
@@ -274,6 +275,9 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
             )
           })}
         </nav>
+        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+          <GlobalLanguageBar />
+        </div>
       </div>
     </header>
   )

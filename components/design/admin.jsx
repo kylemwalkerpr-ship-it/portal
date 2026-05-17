@@ -4,6 +4,7 @@ import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import AdminFinancials from './admin-financials'
 import AdminGigsManager from './admin-gigs'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import AdminAnalyticsPro from './admin-analytics'
 import AdminPayouts from './admin-payouts'
 import AdminOrders from './admin-orders'
@@ -520,7 +521,7 @@ function AdminApp({ onLogout }) {
     <div className="yousafe-topbar" style={{ height: '60px', background: C.surface, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', position: 'sticky', top: 0, zIndex: 10 }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
+        <GlobalLanguageBar />
         <Badge color="orange">{pendingApprovals.length} approvals</Badge>
         <Badge color="orange">{pendingOrders} orders</Badge>
         <div style={{ position: 'relative' }}>

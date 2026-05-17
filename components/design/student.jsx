@@ -10,6 +10,7 @@ import StudentInquiries from './student-inquiries'
 import StudentConversationList from './student-conversation-list'
 import StudentSettings from './student-settings'
 import StudentDashboardHome from './student-dashboard-home'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
@@ -1701,7 +1702,7 @@ function StudentApp({ onLogout, userId, userName }) {
     }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700, color: C.text }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
+        <GlobalLanguageBar />
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
           {notifOpen && (

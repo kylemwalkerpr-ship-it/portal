@@ -4,7 +4,6 @@ import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
-import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { HreflangTags } from '@/components/HreflangTags'
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
@@ -97,8 +96,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           signUpUrl="/sign-up/student"
         >
           <TranslationProvider>
-            {/* Site-wide language switcher — fixed top-right, every page */}
-            <GlobalLanguageBar />
+            {/* Language switcher now docks inside each app's nav bar
+                instead of floating — see dashboard topbars + MarketplaceShell. */}
             {children}
             <ChatWidget />
           </TranslationProvider>

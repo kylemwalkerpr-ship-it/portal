@@ -15,6 +15,7 @@ import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { LanguageSelector } from '../language-selector'
 
 const PAGE_TITLES = {
@@ -330,7 +331,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
     >
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
+        <GlobalLanguageBar />
         <div style={{ position: 'relative' }}>
           <button
             type="button"

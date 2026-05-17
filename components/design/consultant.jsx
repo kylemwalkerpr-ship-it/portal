@@ -5,6 +5,7 @@ import { C, Btn, Badge, Card, Input, Avatar, UserMenu, StatusBadge, PayoutBadge,
 import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { LanguageSelector } from '../language-selector'
+import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import DashboardGuide from './DashboardGuide'
 
 function EarningsChart({ days }) {
@@ -676,7 +677,7 @@ function ConsultantApp({ onLogout }) {
     }}>
       <h1 style={{ fontSize: '16px', fontWeight: 700 }}>{title}</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Language switcher lives in GlobalLanguageBar (top-right of every page). */}
+        <GlobalLanguageBar />
         {newOrders > 0 && <Badge color="orange">{newOrders} new order{newOrders > 1 ? 's' : ''}</Badge>}
         <div style={{ position: 'relative' }}>
           <button onClick={() => setNotifOpen(!notifOpen)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '16px' }}>🔔</button>
