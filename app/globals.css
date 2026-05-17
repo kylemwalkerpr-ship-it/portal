@@ -5,7 +5,10 @@ html, body {
   padding: 0;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  /* overflow-x: clip (not hidden) — `hidden` creates a scroll container
+     on the root, which silently disables position: sticky everywhere.
+     `clip` prevents horizontal overflow without breaking sticky. */
+  overflow-x: clip;
   background: #FBFAF7;
   color: #1F2937;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;

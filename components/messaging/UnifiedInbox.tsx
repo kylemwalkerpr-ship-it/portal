@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
+import OfferComposerInline from './OfferComposerInline'
 
 /**
  * UnifiedInbox
@@ -55,7 +56,7 @@ const CTX_LABEL = {
   gig:     'Gig',
 }
 
-export default function UnifiedInbox({ defaultThreadId, onThreadChange }) {
+export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendOffer = false }) {
   const [tab, setTab] = React.useState('all')
   const [page, setPage] = React.useState(1)
   const [searchInput, setSearchInput] = React.useState('')
@@ -75,6 +76,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange }) {
   const [threadError, setThreadError] = React.useState('')
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
+  const [showOfferComposer, setShowOfferComposer] = React.useState(false)
   const scrollRef = React.useRef(null)
 
   // Notify parent when thread changes (for URL deep links)
@@ -332,7 +334,29 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange }) {
               </div>
 
               {/* Composer */}
-              <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE2, display: 'flex', gap: 8 }}>
+              {canSendOffer && showOfferComposer && (
+                <div style={{ padding: '10px 14px 0', background: SURFACE2 }}>
+                  <OfferComposerInline
+                    conversationId={activeId}
+                    onSent={() => { loadThread(true); loadList(true) }}
+                    onClose={() => setShowOfferComposer(false)}
+                  />
+                </div>
+              )}
+              <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE2, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                {canSendOffer && (
+                  <button
+                    type="button"
+                    onClick={() => setShowOfferComposer(v => !v)}
+                    title="Send a custom offer"
+                    style={{
+                      padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`,
+                      background: showOfferComposer ? `${GOLD}20` : SURFACE,
+                      color: showOfferComposer ? GOLD : MUTED, fontSize: 13, fontWeight: 700,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >💰 Offer</button>
+                )}
                 <textarea
                   value={draft}
                   onChange={e => setDraft(e.target.value)}

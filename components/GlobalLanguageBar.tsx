@@ -46,8 +46,8 @@ export function GlobalLanguageBar() {
       data-no-translate
       style={{
         position: "fixed",
-        top: 10,
-        right: 12,
+        top: 74,
+        right: 16,
         zIndex: 10010,
         pointerEvents: "auto",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",

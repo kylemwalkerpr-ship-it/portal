@@ -288,6 +288,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && (
                 <UnifiedInbox
+                  canSendOffer
                   defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
                   onThreadChange={(id) => {
                     if (typeof window === 'undefined') return

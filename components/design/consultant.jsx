@@ -619,6 +619,7 @@ function ConsultantApp({ onLogout }) {
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <NavItem icon="🏦" label="Payout Setup" active={page === 'connect'} onClick={() => setPage('connect')} />
+        <NavItem icon="🔗" label="Stripe Onboarding" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/consultant/connect'} onClick={() => goToRoute('/dashboard/consultant/connect')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
