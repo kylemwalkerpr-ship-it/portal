@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { OfferCountdown } from '../messaging/OfferCountdown'
 
 type OfferStatus = 'pending' | 'accepted' | 'paid' | 'declined' | 'expired' | 'cancelled'
@@ -20,9 +21,24 @@ type OfferCardProps = {
     attachments?: string[]
   }
   viewerRole: 'buyer' | 'seller'
+  offerBusy?: boolean
   onAccept?: (offerId: string) => void
   onDecline?: (offerId: string) => void
   onWithdraw?: (offerId: string) => void
+}
+
+/**
+ * Re-renders the card once per minute so the live-expiry gate flips at
+ * the deadline boundary without a manual refresh. Returns the current
+ * timestamp in ms; consumers compare it against offer.expires_at.
+ */
+function useMinuteTick(): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  return now
 }
 
 function formatMoney(cents: number): string {
@@ -72,12 +88,19 @@ function StatusMessage({ status }: { status: OfferStatus }) {
   return <p className="text-sm text-gray-500 italic">{msg}</p>
 }
 
-export function MessageOfferCard({ offer, viewerRole, onAccept, onDecline, onWithdraw }: OfferCardProps) {
+export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccept, onDecline, onWithdraw }: OfferCardProps) {
+  const now = useMinuteTick()
   const effectiveCents = offer.discount_cents != null && offer.discount_cents > 0
     ? offer.price_cents - offer.discount_cents
     : offer.price_cents
   const hasDiscount = offer.discount_cents != null && offer.discount_cents > 0
   const revisionsLabel = offer.revisions >= 999 ? 'Unlimited' : `${offer.revisions} revision${offer.revisions === 1 ? '' : 's'}`
+  // Server is authoritative on status, but until it transitions a stale
+  // pending row, we gate the buyer's Accept/Decline locally so they can't
+  // hit a 409. Seller's Withdraw stays available — they may want to
+  // officially close it.
+  const isExpired = !!offer.expires_at && new Date(offer.expires_at).getTime() <= now
+  const buyerActionsDisabled = isExpired || offerBusy
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-w-sm w-full">
@@ -154,29 +177,39 @@ export function MessageOfferCard({ offer, viewerRole, onAccept, onDecline, onWit
       <div className="px-4 pb-4">
         {offer.status === 'pending' ? (
           viewerRole === 'buyer' ? (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => onAccept?.(offer.id)}
-                className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
-              >
-                Accept &amp; Pay
-              </button>
-              <button
-                type="button"
-                onClick={() => onDecline?.(offer.id)}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Decline
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onAccept?.(offer.id)}
+                  disabled={buyerActionsDisabled}
+                  className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:hover:bg-gray-300"
+                >
+                  {offerBusy ? 'Working…' : isExpired ? 'Expired' : 'Accept & Pay'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDecline?.(offer.id)}
+                  disabled={buyerActionsDisabled}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Decline
+                </button>
+              </div>
+              {isExpired && (
+                <p className="text-xs text-gray-500">
+                  This offer has expired. Ask the sender to renew it before accepting.
+                </p>
+              )}
             </div>
           ) : (
             <button
               type="button"
               onClick={() => onWithdraw?.(offer.id)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              disabled={offerBusy}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Withdraw Offer
+              {offerBusy ? 'Working…' : isExpired ? 'Withdraw Expired Offer' : 'Withdraw Offer'}
             </button>
           )
         ) : (
