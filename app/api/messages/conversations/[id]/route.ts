@@ -55,38 +55,61 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const offerMap = new Map<string, any>()
   if (offerIds.length) {
+    // STEP 1 — base offer rows (guaranteed to succeed; no embeds).
+    // Earlier versions embedded `gigs(...)` and `offer_files(...)` which
+    // could throw a 400 on missing FK relationships or missing tables and
+    // wipe out the WHOLE enrichment, leaving every offer bubble blank on
+    // the student side. We fetch the base shape first, then attempt the
+    // gig join in a second best-effort pass.
+    let offerRows: any[] = []
     try {
-      const { data: offerRows } = await db
+      const { data, error } = await db
         .from('offers')
-        .select('id, title, description, price, discounted_price, currency, delivery_days, revisions, expires_at, status, gig_id, gigs(id, title, slug), offer_files(file_url, file_name, file_size, mime_type)')
+        .select('id, title, description, price, discounted_price, currency, delivery_days, revisions, expires_at, status, gig_id')
         .in('id', offerIds)
-      for (const row of (offerRows ?? []) as any[]) {
-        const gig = Array.isArray(row.gigs) ? row.gigs[0] : row.gigs
-        const attachments = Array.isArray(row.offer_files)
-          ? row.offer_files.map((f: any) => ({
-              url: f.file_url,
-              name: f.file_name,
-              size: f.file_size,
-              mime_type: f.mime_type,
-            }))
-          : undefined
-        offerMap.set(row.id, {
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          price_cents: row.price,
-          discount_cents: row.discounted_price ?? undefined,
-          currency: row.currency,
-          delivery_days: row.delivery_days,
-          revisions: row.revisions,
-          expires_at: row.expires_at,
-          status: row.status,
-          linked_gig: gig ? { id: gig.id, title: gig.title, slug: gig.slug } : undefined,
-          attachments: attachments && attachments.length ? attachments : undefined,
-        })
+      if (error) {
+        console.error('[conversations] base offer query failed', error)
       }
-    } catch {
-      // Best-effort enrichment: if it fails, messages still go back without offer payloads.
+      offerRows = data ?? []
+    } catch (e) {
+      console.error('[conversations] base offer query threw', e)
+    }
+
+    for (const row of offerRows) {
+      offerMap.set(row.id, {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        price_cents: row.price,
+        discount_cents: row.discounted_price ?? undefined,
+        currency: row.currency,
+        delivery_days: row.delivery_days,
+        revisions: row.revisions,
+        expires_at: row.expires_at,
+        status: row.status,
+        gig_id: row.gig_id ?? undefined,
+      })
+    }
+
+    // STEP 2 — attach linked gig info (best-effort, doesn't touch offer rows).
+    const gigIds = offerRows
+      .map((r) => r.gig_id)
+      .filter((g): g is string => typeof g === 'string' && g.length > 0)
+    if (gigIds.length) {
+      try {
+        const { data: gigRows } = await db
+          .from('gigs')
+          .select('id, title, slug')
+          .in('id', Array.from(new Set(gigIds)))
+        const gigMap = new Map((gigRows ?? []).map((g: any) => [g.id, g]))
+        for (const [id, offer] of offerMap.entries()) {
+          const g = offer.gig_id ? gigMap.get(offer.gig_id) : null
+          if (g) offerMap.set(id, { ...offer, linked_gig: { id: g.id, title: g.title, slug: g.slug } })
+        }
+      } catch (e) {
+        // Non-fatal — leave linked_gig undefined.
+        console.warn('[conversations] gig enrichment skipped', e)
+      }
     }
   }
 

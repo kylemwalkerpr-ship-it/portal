@@ -10,15 +10,16 @@ type OfferCardProps = {
   offer: {
     id: string
     title: string
-    description: string
+    description?: string | null
     price_cents: number
     discount_cents?: number
+    currency?: string | null
     delivery_days: number
     revisions: number
     expires_at?: string | null
     status: OfferStatus
     linked_gig?: { id: string; title: string; slug: string } | null
-    attachments?: string[]
+    attachments?: { url: string; name: string }[] | string[]
   }
   viewerRole: 'buyer' | 'seller'
   offerBusy?: boolean
@@ -27,10 +28,77 @@ type OfferCardProps = {
   onWithdraw?: (offerId: string) => void
 }
 
+// ── design tokens (match UnifiedInbox + rest of dashboard) ──────────────────
+const NAVY   = '#1B2D4F'
+const GOLD   = '#9A7B3B'
+const GREEN  = '#1A6B45'
+const RED    = '#8B1A1A'
+const AMBER  = '#8B5E0A'
+const CYAN   = '#0E7C8E'
+const SURFACE  = '#FFFFFF'
+const SURFACE2 = '#FAFAF7'
+const BORDER   = '#E5E0D6'
+const BORDER2  = '#F2EFE9'
+const TEXT  = '#1A1F2E'
+const MUTED = '#5C6070'
+const DIM   = '#9097A8'
+const SERIF = `'Cormorant Garamond', Georgia, serif`
+const SANS  = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const MONO  = `'SF Mono', Menlo, Consolas, monospace`
+
+function formatMoney(cents: number, currency = 'USD'): string {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() })
+      .format(cents / 100)
+  } catch {
+    return `$${(cents / 100).toFixed(2)}`
+  }
+}
+
+const STATUS_CONFIG: Record<OfferStatus, { label: string; bg: string; fg: string }> = {
+  pending:   { label: 'Awaiting response', bg: `${AMBER}1A`, fg: AMBER },
+  accepted:  { label: 'Accepted',          bg: `${GREEN}1A`, fg: GREEN },
+  paid:      { label: 'Paid',              bg: `${GREEN}1A`, fg: GREEN },
+  declined:  { label: 'Declined',          bg: `${RED}1A`,   fg: RED },
+  expired:   { label: 'Expired',           bg: `${MUTED}1A`, fg: MUTED },
+  cancelled: { label: 'Withdrawn',         bg: `${MUTED}1A`, fg: MUTED },
+}
+
+function StatusBadge({ status }: { status: OfferStatus }) {
+  const c = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '3px 9px', borderRadius: 999,
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      fontFamily: MONO, background: c.bg, color: c.fg,
+    }}>
+      {c.label}
+    </span>
+  )
+}
+
+function StatusMessage({ status }: { status: OfferStatus }) {
+  const messages: Partial<Record<OfferStatus, string>> = {
+    accepted:  'Payment in progress — your order will be created when the charge clears.',
+    paid:      'Order created. Check your orders for next steps.',
+    declined:  'This offer was declined.',
+    expired:   'This offer has expired and can no longer be accepted.',
+    cancelled: 'This offer was withdrawn by the sender.',
+  }
+  const msg = messages[status]
+  if (!msg) return null
+  return (
+    <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.5, fontStyle: 'italic' }}>
+      {msg}
+    </p>
+  )
+}
+
 /**
- * Re-renders the card once per minute so the live-expiry gate flips at
- * the deadline boundary without a manual refresh. Returns the current
- * timestamp in ms; consumers compare it against offer.expires_at.
+ * Re-render once per minute so the live-expiry gate flips at the deadline
+ * boundary without a manual refresh.
  */
 function useMinuteTick(): number {
   const [now, setNow] = useState(() => Date.now())
@@ -41,164 +109,178 @@ function useMinuteTick(): number {
   return now
 }
 
-function formatMoney(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
-}
-
-function StatusBadge({ status }: { status: OfferStatus }) {
-  const config: Record<OfferStatus, { label: string; className: string }> = {
-    pending:   { label: 'Awaiting Response', className: 'bg-amber-100 text-amber-800' },
-    accepted:  { label: 'Accepted',          className: 'bg-green-100 text-green-800' },
-    paid:      { label: 'Paid',              className: 'bg-green-100 text-green-800' },
-    declined:  { label: 'Declined',          className: 'bg-red-100 text-red-800' },
-    expired:   { label: 'Expired',           className: 'bg-gray-100 text-gray-600' },
-    cancelled: { label: 'Withdrawn',         className: 'bg-gray-100 text-gray-600' },
-  }
-  const { label, className } = config[status]
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}>
-      {label}
-    </span>
-  )
-}
-
-function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
-  const ms = new Date(expiresAt).getTime() - Date.now()
-  if (ms <= 0) {
-    return <span className="text-xs text-red-500 font-medium">Expired</span>
-  }
-  const days = Math.ceil(ms / (1000 * 60 * 60 * 24))
-  return (
-    <span className="text-xs text-amber-600 font-medium">
-      Expires in {days} day{days === 1 ? '' : 's'}
-    </span>
-  )
-}
-
-function StatusMessage({ status }: { status: OfferStatus }) {
-  const messages: Partial<Record<OfferStatus, string>> = {
-    accepted:  'Payment in progress — order will be created shortly.',
-    paid:      'Order created.',
-    declined:  'This offer was declined.',
-    expired:   'This offer has expired.',
-    cancelled: 'This offer was withdrawn.',
-  }
-  const msg = messages[status]
-  if (!msg) return null
-  return <p className="text-sm text-gray-500 italic">{msg}</p>
-}
-
 export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccept, onDecline, onWithdraw }: OfferCardProps) {
   const now = useMinuteTick()
-  const effectiveCents = offer.discount_cents != null && offer.discount_cents > 0
-    ? offer.price_cents - offer.discount_cents
-    : offer.price_cents
+  const currency = (offer.currency || 'USD').toUpperCase()
   const hasDiscount = offer.discount_cents != null && offer.discount_cents > 0
-  const revisionsLabel = offer.revisions >= 999 ? 'Unlimited' : `${offer.revisions} revision${offer.revisions === 1 ? '' : 's'}`
-  // Server is authoritative on status, but until it transitions a stale
-  // pending row, we gate the buyer's Accept/Decline locally so they can't
-  // hit a 409. Seller's Withdraw stays available — they may want to
-  // officially close it.
+  const effectiveCents = hasDiscount ? offer.price_cents - (offer.discount_cents as number) : offer.price_cents
+  const revisionsLabel = offer.revisions >= 999 ? 'Unlimited revisions' : `${offer.revisions} revision${offer.revisions === 1 ? '' : 's'}`
   const isExpired = !!offer.expires_at && new Date(offer.expires_at).getTime() <= now
-  const buyerActionsDisabled = isExpired || offerBusy
+  const buyerDisabled = isExpired || offerBusy
+  const attachmentsCount = Array.isArray(offer.attachments) ? offer.attachments.length : 0
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden max-w-sm w-full">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
-        <h3 className="text-sm font-semibold text-gray-900 leading-snug flex-1">{offer.title}</h3>
+    <div style={{
+      width: 360, maxWidth: '100%',
+      background: SURFACE, border: `1px solid ${BORDER}`,
+      borderRadius: 14, overflow: 'hidden',
+      boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.06)',
+      fontFamily: SANS,
+    }}>
+      {/* Gold accent stripe — same visual signature as marketplace header */}
+      <div style={{
+        height: 3,
+        background: `linear-gradient(90deg, ${GOLD} 0%, #C4A45A 50%, ${GOLD} 100%)`,
+      }} />
+
+      {/* Eyebrow */}
+      <div style={{
+        padding: '12px 16px 8px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase',
+          color: GOLD, fontFamily: MONO,
+        }}>
+          💼 Custom offer
+        </span>
         <StatusBadge status={offer.status} />
       </div>
 
-      <div className="h-px bg-gray-100" />
+      {/* Title */}
+      <div style={{ padding: '0 16px 4px' }}>
+        <h3 style={{
+          margin: 0, fontFamily: SERIF, fontSize: 18, fontWeight: 600,
+          color: TEXT, lineHeight: 1.25, letterSpacing: '-0.005em',
+        }}>
+          {offer.title}
+        </h3>
+      </div>
+
+      {/* Description preview (clamped to 3 lines) */}
+      {offer.description ? (
+        <div style={{
+          padding: '6px 16px 0', fontSize: 13, color: MUTED, lineHeight: 1.55,
+          display: '-webkit-box', WebkitBoxOrient: 'vertical' as const, WebkitLineClamp: 3,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'pre-wrap',
+        }}>
+          {offer.description}
+        </div>
+      ) : null}
 
       {/* Price */}
-      <div className="px-4 py-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-gray-900">{formatMoney(effectiveCents)}</span>
+      <div style={{ padding: '14px 16px 6px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: SERIF, fontSize: 30, fontWeight: 600,
+            color: TEXT, letterSpacing: '-0.012em', lineHeight: 1,
+          }}>
+            {formatMoney(effectiveCents, currency)}
+          </span>
           {hasDiscount && (
             <>
-              <span className="text-sm text-gray-400 line-through">{formatMoney(offer.price_cents)}</span>
-              <span className="text-xs font-semibold text-amber-600 bg-amber-50 rounded-full px-2 py-0.5">
-                -{formatMoney(offer.discount_cents!)} off
+              <span style={{ fontSize: 13, color: DIM, textDecoration: 'line-through', fontFamily: MONO }}>
+                {formatMoney(offer.price_cents, currency)}
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
+                background: `${AMBER}1A`, color: AMBER,
+                padding: '2px 8px', borderRadius: 999, fontFamily: MONO,
+              }}>
+                −{formatMoney(offer.discount_cents as number, currency)} OFF
               </span>
             </>
           )}
         </div>
 
-        {/* Delivery & revisions */}
-        <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600">
-          <span className="flex items-center gap-1">
-            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        {/* Delivery / revisions / attachments line */}
+        <div style={{
+          marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 14,
+          fontSize: 12, color: MUTED,
+        }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Glyph d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             {offer.delivery_days} day{offer.delivery_days === 1 ? '' : 's'} delivery
           </span>
-          <span className="flex items-center gap-1">
-            <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Glyph d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             {revisionsLabel}
           </span>
-          {offer.attachments && offer.attachments.length > 0 && (
-            <span className="flex items-center gap-1">
-              <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-              </svg>
-              {offer.attachments.length} file{offer.attachments.length === 1 ? '' : 's'}
+          {attachmentsCount > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Glyph d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              {attachmentsCount} attachment{attachmentsCount === 1 ? '' : 's'}
             </span>
           )}
         </div>
 
-        {/* Expiry */}
+        {/* Expiry countdown */}
         {offer.expires_at && offer.status === 'pending' && (
-          <div className="mt-2">
+          <div style={{ marginTop: 10 }}>
             <OfferCountdown expiresAt={offer.expires_at} />
           </div>
         )}
 
-        {/* Linked gig */}
+        {/* Linked gig pill */}
         {offer.linked_gig && (
-          <div className="mt-2">
+          <div style={{ marginTop: 10 }}>
             <Link
               href={`/marketplace/gigs/${offer.linked_gig.slug}`}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 10px', borderRadius: 999,
+                background: SURFACE2, border: `1px solid ${BORDER2}`,
+                fontSize: 11, fontWeight: 600, color: NAVY,
+                textDecoration: 'none', fontFamily: MONO,
+              }}
             >
-              <svg className="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-              </svg>
-              {offer.linked_gig.title}
+              🔗 {offer.linked_gig.title}
             </Link>
           </div>
         )}
       </div>
 
-      {/* Actions or status message */}
-      <div className="px-4 pb-4">
+      {/* Divider */}
+      <div style={{ height: 1, background: BORDER2, margin: '4px 16px 12px' }} />
+
+      {/* Actions */}
+      <div style={{ padding: '0 16px 14px' }}>
         {offer.status === 'pending' ? (
           viewerRole === 'buyer' ? (
-            <div className="space-y-2">
-              <div className="flex gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => onAccept?.(offer.id)}
-                  disabled={buyerActionsDisabled}
-                  className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:hover:bg-gray-300"
+                  disabled={buyerDisabled}
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: 10, border: 'none',
+                    background: buyerDisabled ? `${MUTED}40` : NAVY,
+                    color: buyerDisabled ? MUTED : '#fff',
+                    fontWeight: 700, fontSize: 13, cursor: buyerDisabled ? 'not-allowed' : 'pointer',
+                    fontFamily: SANS, transition: 'background 0.12s',
+                  }}
                 >
-                  {offerBusy ? 'Working…' : isExpired ? 'Expired' : 'Accept & Pay'}
+                  {offerBusy ? 'Working…' : isExpired ? 'Offer expired' : 'Accept & Pay'}
                 </button>
                 <button
                   type="button"
                   onClick={() => onDecline?.(offer.id)}
-                  disabled={buyerActionsDisabled}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={buyerDisabled}
+                  style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    border: `1px solid ${BORDER}`, background: SURFACE,
+                    color: buyerDisabled ? DIM : TEXT,
+                    fontWeight: 600, fontSize: 13, cursor: buyerDisabled ? 'not-allowed' : 'pointer',
+                    fontFamily: SANS,
+                  }}
                 >
                   Decline
                 </button>
               </div>
               {isExpired && (
-                <p className="text-xs text-gray-500">
-                  This offer has expired. Ask the sender to renew it before accepting.
+                <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                  Ask the sender to renew this offer before accepting.
                 </p>
               )}
             </div>
@@ -207,9 +289,15 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
               type="button"
               onClick={() => onWithdraw?.(offer.id)}
               disabled={offerBusy}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                border: `1px solid ${BORDER}`, background: SURFACE,
+                color: offerBusy ? DIM : MUTED,
+                fontWeight: 600, fontSize: 13, cursor: offerBusy ? 'not-allowed' : 'pointer',
+                fontFamily: SANS,
+              }}
             >
-              {offerBusy ? 'Working…' : isExpired ? 'Withdraw Expired Offer' : 'Withdraw Offer'}
+              {offerBusy ? 'Working…' : isExpired ? 'Withdraw expired offer' : 'Withdraw offer'}
             </button>
           )
         ) : (
@@ -217,5 +305,14 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         )}
       </div>
     </div>
+  )
+}
+
+/** Tiny inline icon helper to keep the JSX above readable. */
+function Glyph({ d }: { d: string }) {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
   )
 }
