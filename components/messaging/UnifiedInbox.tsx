@@ -3,6 +3,7 @@
 import React from 'react'
 import OfferComposerInline from './OfferComposerInline'
 import { MessageOfferCard } from '../marketplace/MessageOfferCard'
+import { OfferPaymentModal } from './OfferPaymentModal'
 
 /**
  * UnifiedInbox
@@ -79,6 +80,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [sending, setSending] = React.useState(false)
   const [showOfferComposer, setShowOfferComposer] = React.useState(false)
   const [offerBusyId, setOfferBusyId] = React.useState(null)
+  const [payingOfferId, setPayingOfferId] = React.useState(null)
   const scrollRef = React.useRef(null)
 
   // Notify parent when thread changes (for URL deep links)
@@ -170,48 +172,23 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [activeMsgs.length])
 
-  const handleOfferAccept = React.useCallback(async (offerId) => {
+  const handleOfferAccept = React.useCallback((offerId) => {
     if (!offerId || offerBusyId) return
-    setOfferBusyId(offerId); setThreadError('')
-    try {
-      const r = await fetch(`/api/offers/${offerId}/checkout`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
-      const url = d?.data?.url || d?.url
-      if (url) {
-        window.location.href = url
-        return
-      }
-      // Fallback: hit accept route, then redirect to a (not-yet-built) pay page
-      // TODO: build /orders/pay?pi=<payment_intent_id> to mount Stripe Elements
-      const r2 = await fetch(`/api/offers/${offerId}/accept`, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const d2 = await r2.json().catch(() => ({}))
-      if (!r2.ok) throw new Error(d2?.error || `Failed (${r2.status})`)
-      const pi = d2?.data?.payment_intent_id || d2?.payment_intent_id
-      if (pi) {
-        window.location.href = `/orders/pay?pi=${encodeURIComponent(pi)}`
-        return
-      }
-      await loadThread(true); await loadList(true)
-    } catch (e) {
-      setThreadError(e.message || 'Could not accept offer.')
-    } finally {
-      setOfferBusyId(null)
-    }
-  }, [offerBusyId, loadThread, loadList])
+    setThreadError('')
+    // Open the embedded payment modal. It hits /api/offers/:id/accept
+    // itself and mounts Stripe Elements — no full-page redirect.
+    setPayingOfferId(offerId)
+  }, [offerBusyId])
 
   const handleOfferDecline = React.useCallback(async (offerId) => {
     if (!offerId || offerBusyId) return
     setOfferBusyId(offerId); setThreadError('')
     try {
+      // PATCH targets the modern offers table (POST hits the legacy
+      // attorney_offers route, which is a different schema and 404s for
+      // our quick-offer rows — the bug that left declines no-op).
       const r = await fetch(`/api/offers/${offerId}/decline`, {
-        method: 'POST', credentials: 'same-origin',
+        method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
       })
       const d = await r.json().catch(() => ({}))
@@ -455,6 +432,14 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           )}
         </main>
       </div>
+
+      {/* Embedded Stripe Payment Element for Accept & Pay */}
+      <OfferPaymentModal
+        offerId={payingOfferId || ''}
+        open={!!payingOfferId}
+        onClose={() => setPayingOfferId(null)}
+        onPaid={() => { loadThread(true); loadList(true) }}
+      />
     </div>
   )
 }
