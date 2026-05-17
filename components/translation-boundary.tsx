@@ -59,39 +59,22 @@ async function batchTranslateUnique(texts: string[], language: string): Promise<
   const map = new Map<string, string>()
   if (!texts.length) return map
 
-  // The batch endpoint caps at 100 strings per request.
+  // Delegate to translateTexts() which checks: local dictionary → client
+  // cache → /api/translate/batch (with /api/translate per-string fallback).
+  // Going direct to the batch endpoint here skipped the local dictionary
+  // entirely, so every page load hammered MyMemory for strings we already
+  // have translated — and on rate-limit MyMemory returned English, which
+  // looked like "translation isn't working."
+  //
+  // Chunking is still done here to keep the network request under the
+  // server's 100-strings-per-call cap.
   const chunks = chunk(texts, 100)
-
   for (const part of chunks) {
-    let succeeded = false
-    try {
-      const res = await fetch(BATCH_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texts: part, targetLang: language }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const translations: unknown = data?.translations
-        if (Array.isArray(translations) && translations.length === part.length) {
-          for (let i = 0; i < part.length; i++) {
-            const t = typeof translations[i] === "string" ? (translations[i] as string) : part[i]
-            map.set(part[i], t)
-          }
-          succeeded = true
-        }
-      }
-    } catch {
-      /* fall through to per-string */
-    }
-
-    if (!succeeded) {
-      // Per-string fallback via the existing single-string endpoint.
-      const perString = await Promise.all(part.map((s) => translateText(s, language)))
-      for (let i = 0; i < part.length; i++) map.set(part[i], perString[i])
+    const results = await translateTexts(part, language)
+    for (let i = 0; i < part.length; i++) {
+      map.set(part[i], results[i] ?? part[i])
     }
   }
-
   return map
 }
 
