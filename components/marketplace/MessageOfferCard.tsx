@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { OfferCountdown } from '../messaging/OfferCountdown'
 
 type OfferStatus = 'pending' | 'accepted' | 'paid' | 'declined' | 'expired' | 'cancelled'
 
@@ -129,7 +130,7 @@ export function MessageOfferCard({ offer, viewerRole, onAccept, onDecline, onWit
         {/* Expiry */}
         {offer.expires_at && offer.status === 'pending' && (
           <div className="mt-2">
-            <ExpiryBadge expiresAt={offer.expires_at} />
+            <OfferCountdown expiresAt={offer.expires_at} />
           </div>
         )}
 

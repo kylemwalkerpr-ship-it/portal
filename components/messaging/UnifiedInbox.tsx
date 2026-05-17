@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import OfferComposerInline from './OfferComposerInline'
+import { MessageOfferCard } from '../marketplace/MessageOfferCard'
 
 /**
  * UnifiedInbox
@@ -77,6 +78,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [showOfferComposer, setShowOfferComposer] = React.useState(false)
+  const [offerBusyId, setOfferBusyId] = React.useState(null)
   const scrollRef = React.useRef(null)
 
   // Notify parent when thread changes (for URL deep links)
@@ -167,6 +169,78 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [activeMsgs.length])
+
+  const handleOfferAccept = React.useCallback(async (offerId) => {
+    if (!offerId || offerBusyId) return
+    setOfferBusyId(offerId); setThreadError('')
+    try {
+      const r = await fetch(`/api/offers/${offerId}/checkout`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      const url = d?.data?.url || d?.url
+      if (url) {
+        window.location.href = url
+        return
+      }
+      // Fallback: hit accept route, then redirect to a (not-yet-built) pay page
+      // TODO: build /orders/pay?pi=<payment_intent_id> to mount Stripe Elements
+      const r2 = await fetch(`/api/offers/${offerId}/accept`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const d2 = await r2.json().catch(() => ({}))
+      if (!r2.ok) throw new Error(d2?.error || `Failed (${r2.status})`)
+      const pi = d2?.data?.payment_intent_id || d2?.payment_intent_id
+      if (pi) {
+        window.location.href = `/orders/pay?pi=${encodeURIComponent(pi)}`
+        return
+      }
+      await loadThread(true); await loadList(true)
+    } catch (e) {
+      setThreadError(e.message || 'Could not accept offer.')
+    } finally {
+      setOfferBusyId(null)
+    }
+  }, [offerBusyId, loadThread, loadList])
+
+  const handleOfferDecline = React.useCallback(async (offerId) => {
+    if (!offerId || offerBusyId) return
+    setOfferBusyId(offerId); setThreadError('')
+    try {
+      const r = await fetch(`/api/offers/${offerId}/decline`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      await loadThread(true); await loadList(true)
+    } catch (e) {
+      setThreadError(e.message || 'Could not decline offer.')
+    } finally {
+      setOfferBusyId(null)
+    }
+  }, [offerBusyId, loadThread, loadList])
+
+  const handleOfferWithdraw = React.useCallback(async (offerId) => {
+    if (!offerId || offerBusyId) return
+    setOfferBusyId(offerId); setThreadError('')
+    try {
+      const r = await fetch(`/api/offers/${offerId}/withdraw`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      await loadThread(true); await loadList(true)
+    } catch (e) {
+      setThreadError(e.message || 'Could not withdraw offer.')
+    } finally {
+      setOfferBusyId(null)
+    }
+  }, [offerBusyId, loadThread, loadList])
 
   const send = async () => {
     const text = draft.trim()
@@ -327,10 +401,17 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                     <div style={{ fontSize: 12, color: MUTED }}>Type below to start the conversation.</div>
                   </div>
                 )}
-                {activeMsgs.map(m => {
-                  const mine = m.sender_id === (activeConv?.counterpart?.id === activeConv?.counterpart?.id ? null : null) // placeholder
-                  return <ThreadMessage key={m.id} m={m} counterpartId={activeConv?.counterpart?.id} />
-                })}
+                {activeMsgs.map(m => (
+                  <ThreadMessage
+                    key={m.id}
+                    m={m}
+                    counterpartId={activeConv?.counterpart?.id}
+                    offerBusy={offerBusyId === m.offer?.id}
+                    onAccept={handleOfferAccept}
+                    onDecline={handleOfferDecline}
+                    onWithdraw={handleOfferWithdraw}
+                  />
+                ))}
               </div>
 
               {/* Composer */}
@@ -378,8 +459,31 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   )
 }
 
-function ThreadMessage({ m, counterpartId }) {
+function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWithdraw }) {
   const mine = m.sender_id !== counterpartId
+  const isOffer = m.type === 'offer' && m.offer && m.offer.id
+
+  if (isOffer) {
+    // Sender of the offer is the "seller"; the other side is the "buyer".
+    const viewerRole = mine ? 'seller' : 'buyer'
+    return (
+      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row' }}>
+        <div style={{ maxWidth: '70%', opacity: offerBusy ? 0.6 : 1, pointerEvents: offerBusy ? 'none' : 'auto' }}>
+          <MessageOfferCard
+            offer={m.offer}
+            viewerRole={viewerRole}
+            onAccept={onAccept}
+            onDecline={onDecline}
+            onWithdraw={onWithdraw}
+          />
+          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
+            {fmtFullTime(m.created_at)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row' }}>
       <div style={{ maxWidth: '70%' }}>

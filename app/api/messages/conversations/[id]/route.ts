@@ -45,6 +45,58 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     sharedOrders = orders ?? []
   } catch {}
 
+  // Hydrate offer-type messages with their offers (+ linked gig) in one query.
+  const rawMessages: any[] = messagesRes.data || []
+  const offerIds = Array.from(new Set(
+    rawMessages
+      .filter((m) => m?.type === 'offer' && m?.ref_offer_id)
+      .map((m) => m.ref_offer_id as string),
+  ))
+
+  const offerMap = new Map<string, any>()
+  if (offerIds.length) {
+    try {
+      const { data: offerRows } = await db
+        .from('offers')
+        .select('id, title, description, price, discounted_price, currency, delivery_days, revisions, expires_at, status, gig_id, gigs(id, title, slug), offer_files(file_url, file_name, file_size, mime_type)')
+        .in('id', offerIds)
+      for (const row of (offerRows ?? []) as any[]) {
+        const gig = Array.isArray(row.gigs) ? row.gigs[0] : row.gigs
+        const attachments = Array.isArray(row.offer_files)
+          ? row.offer_files.map((f: any) => ({
+              url: f.file_url,
+              name: f.file_name,
+              size: f.file_size,
+              mime_type: f.mime_type,
+            }))
+          : undefined
+        offerMap.set(row.id, {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          price_cents: row.price,
+          discount_cents: row.discounted_price ?? undefined,
+          currency: row.currency,
+          delivery_days: row.delivery_days,
+          revisions: row.revisions,
+          expires_at: row.expires_at,
+          status: row.status,
+          linked_gig: gig ? { id: gig.id, title: gig.title, slug: gig.slug } : undefined,
+          attachments: attachments && attachments.length ? attachments : undefined,
+        })
+      }
+    } catch {
+      // Best-effort enrichment: if it fails, messages still go back without offer payloads.
+    }
+  }
+
+  const messages = rawMessages.map((m) => {
+    if (m?.type === 'offer' && m?.ref_offer_id && offerMap.has(m.ref_offer_id)) {
+      return { ...m, offer: offerMap.get(m.ref_offer_id) }
+    }
+    return m
+  })
+
   return Response.json({
     conversation: {
       id: conv.id,
@@ -55,7 +107,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       created_at:   conv.created_at,
       last_message_at: conv.last_message_at,
     },
-    messages: messagesRes.data || [],
+    messages,
     sidebar: {
       orders: sharedOrders,
       offers: sharedOffers,
