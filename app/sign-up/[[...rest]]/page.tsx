@@ -34,8 +34,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    // Self-canonical per lane — pages remain noindex via robots metadata.
-    alternates: { canonical: `https://portal.yousafeconsultancy.com/sign-up/${lane}` },
+    // No canonical on noindex pages — see /sign-in for rationale.
+    alternates: { canonical: null },
     openGraph: { title, description, type: 'website' },
     twitter:   { title, description, card: 'summary' },
     robots:    { index: false, follow: true },

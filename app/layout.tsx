@@ -5,7 +5,9 @@ import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
 import { TranslationProvider } from '@/components/translation-provider'
 import ChatWidget from '@/components/ChatWidget'
-import { HreflangTags } from '@/components/HreflangTags'
+// HreflangTags removed — portal is noindex sitewide and has no per-locale
+// URLs, so emitting hreflang produced "Multiple Entries" and "Not Using
+// Canonical" flags. Re-introduce once we have real `/es/...` routes.
 
 // Self-host fonts via next/font for better LCP + no render-blocking
 // stylesheet from fonts.googleapis.com. Variables are consumed by the
@@ -26,16 +28,12 @@ const cormorant = Cormorant_Garamond({
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
-// One entry per supported language for Next's native metadata.alternates.languages.
-// HreflangTags below ALSO emits the same set as raw <link> tags — some crawlers
-// pick up only one of the two forms, so we emit both. Keep this list in sync
-// with contexts/language-context.tsx (Language type) and HreflangTags.tsx.
+// SUPPORTED_LANGS kept for html lang attribute resolution only; we no
+// longer emit hreflang alternates because the URLs don't differ by locale
+// (translation is overlaid client-side).
 const SUPPORTED_LANGS = ['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'] as const
 const SUPPORTED_LANG_SET = new Set<string>(SUPPORTED_LANGS)
 const RTL_LANGS = new Set(['ar'])
-const ALTERNATE_LANGUAGES: Record<string, string> = Object.fromEntries(
-  SUPPORTED_LANGS.map(code => [code, `/?lang=${code}`]),
-)
 
 export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
@@ -52,7 +50,6 @@ export const metadata = {
   },
   alternates: {
     canonical: '/',
-    languages: ALTERNATE_LANGUAGES,
   },
   openGraph: {
     title: 'YouSafe Portal — Study & Legal Services',
@@ -91,8 +88,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable}`}>
       <head>
-        {/* hreflang alternates — emitted on every page via root layout */}
-        <HreflangTags />
+        {/* hreflang removed pending per-locale URL routes */}
       </head>
       <body>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>

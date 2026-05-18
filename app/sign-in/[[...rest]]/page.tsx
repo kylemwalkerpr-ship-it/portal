@@ -36,10 +36,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    // Self-canonical per lane so Screaming Frog stops reporting each
-    // /sign-in/{lane} as Canonicalised to the portal root. The pages stay
-    // noindex either way; this is purely cosmetic for the crawl report.
-    alternates: { canonical: `https://portal.yousafeconsultancy.com/sign-in/${lane}` },
+    // No canonical on noindex pages. Google ignores canonical on noindex
+    // pages anyway, and emitting one (whether self or root) makes Screaming
+    // Frog flag the page as either "Canonicalised" or "Non-Indexable
+    // Canonical." Setting null explicitly removes the inherited root-layout
+    // canonical so no <link rel="canonical"> is rendered at all.
+    alternates: { canonical: null },
     openGraph: { title, description, type: 'website' },
     twitter:   { title, description, card: 'summary' },
     robots:    { index: false, follow: true },
