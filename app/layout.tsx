@@ -90,7 +90,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         {/* hreflang removed pending per-locale URL routes */}
       </head>
-      <body>
+      <body style={{ overflowX: 'hidden' }}>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>
         <ClerkProvider
           afterSignOutUrl={PORTAL_URL}
