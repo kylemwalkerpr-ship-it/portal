@@ -119,10 +119,9 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
         {/* Actions */}
         <div style={headerActions}>
           {isOwnProfile ? (
-            // TODO: point at a dedicated profile-edit page once one exists.
-            // /dashboard/profile was never built — /dashboard is the seller
-            // home and a valid landing, not a 404.
-            <Link href="/dashboard">
+            // /dashboard/profile routes each role to its real editor
+            // (attorney → My Profile tab, consultant → Settings).
+            <Link href="/dashboard/profile">
               <Btn variant="primary" size="md">Edit Profile</Btn>
             </Link>
           ) : (
