@@ -14,11 +14,15 @@ export default function SignUpClient() {
   const searchParams = useSearchParams()
   const [referrer, setReferrer] = useState<string | null>(null)
   const laneSegment = pathname.split('/').filter(Boolean)[1]
-  const lane = normalizeAuthLane(laneSegment)
+  const source = searchParams.get('source')
+  let lane = normalizeAuthLane(laneSegment)
+  if (source === 'marketing') {
+    lane = 'client'
+  }
   const shouldRedirect =
     laneSegment === 'admin' ||
-    (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment))
-  const signUpPath = `/sign-up/${laneSegment || 'student'}`
+    (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment) && source !== 'marketing')
+  const signUpPath = source === 'marketing' ? '/sign-up/student' : `/sign-up/${laneSegment || 'student'}`
   const returnTo = useMemo(() => safeReturnTo(searchParams.get('return_to')), [searchParams])
   const previousUrl = returnTo || referrer
   const redirectUrl = returnTo || dashboardForLane(lane)
@@ -70,7 +74,7 @@ export default function SignUpClient() {
         path={signUpPath}
         forceRedirectUrl={redirectUrl}
         signInUrl={signInUrl}
-        unsafeMetadata={{ requestedRole: lane }}
+        unsafeMetadata={{ requestedRole: lane, signupSource: source ?? undefined }}
         appearance={clerkAppearance}
       />
     </AuthShell>
