@@ -1,4 +1,5 @@
 import { getPopularCategories } from '@/lib/categories'
+import { EstateFooter } from '@/components/EstateFooter'
 
 const C = {
   bg: '#FBFAF7',
@@ -654,7 +655,7 @@ export function PublicMarketplaceLanding() {
         </div>
       </section>
 
-      <Footer />
+      <EstateFooter />
     </div>
   )
 }
@@ -790,117 +791,5 @@ function TrustCard({ title, body }: { title: string; body: string }) {
       </h3>
       <p style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.65, margin: 0 }}>{body}</p>
     </div>
-  )
-}
-
-function Footer() {
-  return (
-    <footer
-      style={{
-        padding: '56px 24px 40px',
-        borderTop: `1px solid ${C.border}`,
-        background: C.surface2,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '1080px',
-          margin: '0 auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '28px',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <span
-              style={{
-                width: '26px',
-                height: '26px',
-                borderRadius: '6px',
-                background: C.cyan,
-                color: '#fff',
-                fontFamily: SERIF,
-                fontWeight: 600,
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              Y
-            </span>
-            <span style={{ fontFamily: SERIF, fontSize: '16px', color: C.text }}>YouSafe</span>
-          </div>
-          <p style={{ color: C.textMuted, fontSize: '12px', lineHeight: 1.6, margin: 0 }}>
-            One portal for study-abroad and legal-document services. Operated by YouSafe Consultancy.
-          </p>
-        </div>
-
-        <FooterColumn label="Members">
-          <FooterLink href="/sign-in/student">Student / Client</FooterLink>
-          <FooterLink href="/sign-in/attorney">Attorney</FooterLink>
-          <FooterLink href="/sign-in/consultant">Consultant</FooterLink>
-          <FooterLink href="/sign-in/admin">Admin</FooterLink>
-        </FooterColumn>
-
-        <FooterColumn label="Practices">
-          <FooterLink href="https://yousafeconsultancy.com">Study-abroad consulting</FooterLink>
-          <FooterLink href="https://legal.yousafeconsultancy.com">Legal document prep</FooterLink>
-        </FooterColumn>
-
-        <FooterColumn label="Company">
-          <FooterLink href="https://usa.yousafeconsultancy.com/about">About</FooterLink>
-          <FooterLink href="https://usa.yousafeconsultancy.com/support">Support</FooterLink>
-          <FooterLink href="https://usa.yousafeconsultancy.com/terms-of-service">Terms</FooterLink>
-          <FooterLink href="https://usa.yousafeconsultancy.com/privacy-policy">Privacy</FooterLink>
-        </FooterColumn>
-      </div>
-
-      <div
-        style={{
-          maxWidth: '1080px',
-          margin: '32px auto 0',
-          paddingTop: '20px',
-          borderTop: `1px solid ${C.border}`,
-          color: C.textMuted,
-          fontSize: '11px',
-          textAlign: 'center',
-        }}
-      >
-        © {new Date().getFullYear()} YouSafe Consultancy. All rights reserved.
-      </div>
-    </footer>
-  )
-}
-
-function FooterColumn({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          color: C.textMuted,
-          fontSize: '11px',
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          fontWeight: 700,
-          marginBottom: '12px',
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>{children}</div>
-    </div>
-  )
-}
-
-function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a
-      href={href}
-      style={{ color: C.text, textDecoration: 'none', fontSize: '13px' }}
-    >
-      {children}
-    </a>
   )
 }

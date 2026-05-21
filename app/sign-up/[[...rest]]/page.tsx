@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { EstateFooter } from '@/components/EstateFooter'
 import { headers } from 'next/headers'
 import { translateBatch } from '@/lib/serverTranslate'
 import SignUpClient from './SignUpClient'
@@ -43,5 +44,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function SignUpPage() {
-  return <SignUpClient />
+  return (
+    <>
+      <SignUpClient />
+      <EstateFooter />
+    </>
+  )
 }

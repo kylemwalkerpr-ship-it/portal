@@ -26,6 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Page() {
   const auth = await requirePortalUser()
+  // PublicMarketplaceLanding renders EstateFooter itself — no second footer here.
   if ('error' in auth) return <PublicMarketplaceLanding />
   if (auth.role !== 'client') redirect('/dashboard')
   return <MarketplacePage />

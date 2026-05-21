@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { translateBatch } from '@/lib/serverTranslate'
+import { EstateFooter } from '@/components/EstateFooter'
 import { SeoIntroBlock } from '@/components/SeoIntroBlock'
 import HomeClient from './HomeClient'
 
@@ -81,6 +82,7 @@ export default async function Page() {
         description="Trusted by students, attorneys, and consultants across the US, UK, and Canada. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
       />
       <HomeClient />
+      <EstateFooter />
     </>
   )
 }
