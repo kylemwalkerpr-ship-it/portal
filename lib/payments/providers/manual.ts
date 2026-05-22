@@ -16,6 +16,9 @@ import type {
   ChargeRequest,
   ChargeResult,
   RefundResult,
+  VaultCardRequest,
+  VaultCardResult,
+  ChargeVaultedRequest,
   PublicClientConfig,
 } from '../types'
 
@@ -44,5 +47,31 @@ export const manualProvider: PaymentProvider = {
       transactionId: null,
       message: 'Manual provider: process this refund out-of-band.',
     }
+  },
+
+  // The manual provider has no gateway, so it cannot store or charge cards
+  // on file. Callers must check `supportsVault` before offering card-on-file.
+  supportsVault: false,
+
+  async vaultCard(_req: VaultCardRequest): Promise<VaultCardResult> {
+    return {
+      ok: false,
+      vaultId: null,
+      cardDisplay: null,
+      message: 'Manual provider does not support stored cards.',
+    }
+  },
+
+  async chargeVaulted(_req: ChargeVaultedRequest): Promise<ChargeResult> {
+    return {
+      ok: false,
+      status: 'error',
+      transactionId: null,
+      message: 'Manual provider does not support stored cards.',
+    }
+  },
+
+  async deleteVaultedCard(): Promise<{ ok: boolean; message: string }> {
+    return { ok: false, message: 'Manual provider does not support stored cards.' }
   },
 }

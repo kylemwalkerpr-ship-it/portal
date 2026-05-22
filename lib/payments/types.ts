@@ -65,6 +65,42 @@ export interface RefundResult {
   message: string
 }
 
+/** Display-only card details — last4/brand/expiry. Not sensitive; used purely
+ *  to show a saved card in the UI. */
+export interface CardDisplay {
+  brand: string
+  last4: string
+  expMonth: string
+  expYear: string
+}
+
+export interface VaultCardRequest {
+  /** Single-use token from client-side tokenization. */
+  token: string
+  customer: CustomerInfo
+  /** Display info captured at tokenization time (e.g. NMI Collect.js gives
+   *  brand/last4/expiry in its callback). Stored to render the saved card. */
+  cardDisplay?: CardDisplay
+}
+
+export interface VaultCardResult {
+  ok: boolean
+  /** The provider's reusable reference to the stored card (NMI customer
+   *  vault id, Stripe payment-method id, etc.). */
+  vaultId: string | null
+  cardDisplay: CardDisplay | null
+  message: string
+}
+
+/** Charge a card already stored on file (card-on-file / wallet top-up). */
+export interface ChargeVaultedRequest {
+  vaultId: string
+  amountCents: number
+  currency: string
+  customer: CustomerInfo
+  metadata?: Record<string, string>
+}
+
 /**
  * Client-safe configuration the checkout UI needs to render. This is returned
  * by `GET /api/payments/config` and MUST NEVER contain a secret key.
@@ -96,4 +132,20 @@ export interface PaymentProvider {
 
   /** Refund a settled transaction. Omit `amountCents` for a full refund. */
   refund(transactionId: string, amountCents?: number): Promise<RefundResult>
+
+  // ── Card-on-file (vault) ──────────────────────────────────────────────
+  // Used by the student wallet: store a card once, then charge it for
+  // top-ups without re-collecting card details.
+
+  /** Whether this provider can store cards on file. */
+  readonly supportsVault: boolean
+
+  /** Store a tokenized card on file; returns a reusable vault reference. */
+  vaultCard(req: VaultCardRequest): Promise<VaultCardResult>
+
+  /** Charge a card already stored on file. */
+  chargeVaulted(req: ChargeVaultedRequest): Promise<ChargeResult>
+
+  /** Remove a stored card. */
+  deleteVaultedCard(vaultId: string): Promise<{ ok: boolean; message: string }>
 }

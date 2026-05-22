@@ -17,6 +17,10 @@ import type {
   ChargeRequest,
   ChargeResult,
   RefundResult,
+  VaultCardRequest,
+  VaultCardResult,
+  ChargeVaultedRequest,
+  CardDisplay,
   PublicClientConfig,
 } from '../types'
 
@@ -115,6 +119,85 @@ export const nmiProvider: PaymentProvider = {
         transactionId,
         message: err instanceof Error ? err.message : 'NMI refund request failed',
       }
+    }
+  },
+
+  supportsVault: true,
+
+  async vaultCard(req: VaultCardRequest): Promise<VaultCardResult> {
+    // NMI Customer Vault: add_customer with the Collect.js payment token.
+    // The gateway generates and returns a customer_vault_id.
+    let r: Record<string, string>
+    try {
+      r = await postToNmi({
+        customer_vault: 'add_customer',
+        payment_token: req.token,
+        email: req.customer.email,
+        ...(req.customer.name ? { first_name: req.customer.name.slice(0, 50) } : {}),
+      })
+    } catch (err) {
+      return {
+        ok: false,
+        vaultId: null,
+        cardDisplay: null,
+        message: err instanceof Error ? err.message : 'NMI vault request failed',
+      }
+    }
+    const ok = r.response === '1'
+    // Card display: prefer what NMI echoed back, else the client-supplied hint.
+    const fromNmi: CardDisplay | null = r.cc_number
+      ? {
+          brand: r.cc_type || 'card',
+          last4: r.cc_number.replace(/[^0-9]/g, '').slice(-4),
+          expMonth: (r.cc_exp || '').slice(0, 2),
+          expYear: (r.cc_exp || '').slice(2, 4),
+        }
+      : null
+    return {
+      ok,
+      vaultId: ok ? r.customer_vault_id || null : null,
+      cardDisplay: ok ? fromNmi || req.cardDisplay || null : null,
+      message: r.responsetext || 'No response text from NMI',
+    }
+  },
+
+  async chargeVaulted(req: ChargeVaultedRequest): Promise<ChargeResult> {
+    const amount = (req.amountCents / 100).toFixed(2)
+    const params: Record<string, string> = {
+      type: 'sale',
+      customer_vault_id: req.vaultId,
+      amount,
+      currency: req.currency,
+      email: req.customer.email,
+    }
+    if (req.metadata?.orderId) params.orderid = req.metadata.orderId
+    let r: Record<string, string>
+    try {
+      r = await postToNmi(params)
+    } catch (err) {
+      return {
+        ok: false,
+        status: 'error',
+        transactionId: null,
+        message: err instanceof Error ? err.message : 'NMI request failed',
+      }
+    }
+    const approved = r.response === '1'
+    return {
+      ok: approved,
+      status: approved ? 'paid' : r.response === '2' ? 'declined' : 'error',
+      transactionId: r.transactionid || null,
+      message: r.responsetext || 'No response text from NMI',
+      raw: r,
+    }
+  },
+
+  async deleteVaultedCard(vaultId: string): Promise<{ ok: boolean; message: string }> {
+    try {
+      const r = await postToNmi({ customer_vault: 'delete_customer', customer_vault_id: vaultId })
+      return { ok: r.response === '1', message: r.responsetext || 'No response text from NMI' }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : 'NMI delete request failed' }
     }
   },
 }
