@@ -15,6 +15,10 @@ import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import ChatScreen from '../messaging/ChatScreen'
+import MessageBubble from '../messaging/MessageBubble'
+import AutoGrowInput from '../messaging/AutoGrowInput'
+import { dateLabel, sameDay } from '@/lib/messaging/format'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { LanguageSelector } from '../language-selector'
 
@@ -914,6 +918,7 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
         fileRef={chatFileRef}
         onWithdrawOffer={withdrawOffer}
         withdrawingOfferId={withdrawingId}
+        embedded={embedded}
       />
 
       <div style={{ marginTop: '24px' }}>
@@ -1863,86 +1868,120 @@ function ClientBanner({ inquiry, isChat }) {
   )
 }
 
-function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, sending, onSend, fileRef, onWithdrawOffer, withdrawingOfferId }) {
-  const scrollRef = React.useRef(null)
-  const [autoScroll, setAutoScroll] = React.useState(true)
+function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, sending, onSend, fileRef, onWithdrawOffer, withdrawingOfferId, embedded = false }) {
   const timeline = React.useMemo(() => buildOfferTimeline(messages, offers), [messages, offers])
 
-  React.useEffect(() => {
-    if (!autoScroll || !scrollRef.current) return
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [timeline.length, autoScroll])
+  const header = (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '10px', gap: '8px' }}>
+      <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
+        Conversation
+      </h3>
+      <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700 }}>
+        {timeline.length === 0 ? 'No messages yet' : `${timeline.length} item${timeline.length === 1 ? '' : 's'}`}
+      </span>
+    </div>
+  )
 
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (!el) return
-    const distance = el.scrollHeight - (el.scrollTop + el.clientHeight)
-    setAutoScroll(distance < 80)
+  const messageElements = []
+  for (let i = 0; i < timeline.length; i++) {
+    const item = timeline[i]
+    const prevItem = timeline[i - 1]
+    if (i === 0 || !sameDay(item.created_at, prevItem?.created_at)) {
+      messageElements.push(
+        <div key={`date-${item.created_at}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, margin: '4px 0' }}>
+          <div style={{ flex: 1, height: '1px', background: C.border }} />
+          <span>{dateLabel(item.created_at)}</span>
+          <div style={{ flex: 1, height: '1px', background: C.border }} />
+        </div>
+      )
+    }
+
+    if (item.kind === 'offer') {
+      messageElements.push(
+        <OfferMessageBubble
+          key={item.key}
+          offer={item.offer}
+          onWithdraw={() => onWithdrawOffer?.(item.offer)}
+          withdrawing={withdrawingOfferId === item.offer.id}
+        />
+      )
+    } else {
+      const message = item.message
+      const mine =
+        (viewerRole === 'attorney' && message.sender_role === 'attorney') ||
+        (viewerRole === 'client' && message.sender_role === 'client')
+      const isSystem = message.sender_role === 'system'
+
+      if (isSystem) {
+        const ts = message.created_at ? new Date(message.created_at) : null
+        const timeLabel = ts && !Number.isNaN(ts.getTime())
+          ? ts.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+          : ''
+        messageElements.push(
+          <div key={item.key} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+            <div
+              role="status"
+              style={{
+                maxWidth: '85%',
+                background: C.surface2,
+                border: `1px solid ${C.border}`,
+                borderRadius: '999px',
+                padding: '6px 14px',
+                color: C.textMuted,
+                fontSize: '12px',
+                textAlign: 'center',
+                fontWeight: 600,
+                letterSpacing: '0.01em',
+              }}
+            >
+              <span style={{ marginRight: '6px', color: C.textDim }}>●</span>
+              {message.body}
+              {timeLabel && <span style={{ marginLeft: '8px', color: C.textDim, fontWeight: 500 }}>· {timeLabel}</span>}
+            </div>
+          </div>
+        )
+      } else {
+        const nextItem = timeline[i + 1]
+        const isFirstInGroup = !prevItem || prevItem.kind !== 'message' || prevItem.message.sender_role !== message.sender_role
+        const isLastInGroup = !nextItem || nextItem.kind !== 'message' || nextItem.message.sender_role !== message.sender_role
+
+        messageElements.push(
+          <MessageBubble
+            key={item.key}
+            mine={mine}
+            isFirstInGroup={isFirstInGroup}
+            isLastInGroup={isLastInGroup}
+            timestamp={message.created_at}
+            body={<MessageBody body={message.body} linkColor={C.cyan} />}
+          />
+        )
+      }
+    }
   }
 
-  const groups = React.useMemo(() => groupByDay(timeline), [timeline])
-
   return (
-    <div style={{ marginTop: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '10px', gap: '8px' }}>
-        <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
-          Conversation
-        </h3>
-        <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700 }}>
-          {timeline.length === 0 ? 'No messages yet' : `${timeline.length} item${timeline.length === 1 ? '' : 's'}`}
-        </span>
-      </div>
-      <div
-        className="yousafe-message-scroll"
-        ref={scrollRef}
-        onScroll={onScroll}
-        style={{
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: '14px',
-          padding: '14px 14px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          maxHeight: '460px',
-          overflow: 'auto',
-          scrollBehavior: 'smooth',
-        }}
-      >
-        {groups.length === 0 && (
+    <ChatScreen
+      mode={embedded ? 'panel' : 'fill'}
+      header={header}
+      messages={
+        timeline.length === 0 ? (
           <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '24px 8px' }}>
             No messages yet. Use a quick template below or write your own intro to start.
           </div>
-        )}
-        {groups.map(group => (
-          <React.Fragment key={group.label}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, margin: '4px 0' }}>
-              <div style={{ flex: 1, height: '1px', background: C.border }} />
-              <span>{group.label}</span>
-              <div style={{ flex: 1, height: '1px', background: C.border }} />
-            </div>
-            {group.messages.map(item => item.kind === 'offer' ? (
-              <OfferMessageBubble
-                key={item.key}
-                offer={item.offer}
-                onWithdraw={() => onWithdrawOffer?.(item.offer)}
-                withdrawing={withdrawingOfferId === item.offer.id}
-              />
-            ) : (
-              <MessageBubble key={item.key} message={item.message} viewerRole={viewerRole} />
-            ))}
-          </React.Fragment>
-        ))}
-      </div>
-
-      <ComposerRow
-        draft={draft}
-        setDraft={setDraft}
-        sending={sending}
-        onSend={onSend}
-        fileRef={fileRef}
-      />
-    </div>
+        ) : (
+          messageElements
+        )
+      }
+      composer={
+        <ComposerRow
+          draft={draft}
+          setDraft={setDraft}
+          sending={sending}
+          onSend={onSend}
+          fileRef={fileRef}
+        />
+      }
+    />
   )
 }
 
@@ -1950,12 +1989,6 @@ function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
   const [openMenu, setOpenMenu] = React.useState(false)
   const charLimit = 4000
   const remaining = charLimit - draft.length
-  const onKeyDown = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault()
-      onSend()
-    }
-  }
   const apply = (body) => {
     setDraft(prev => prev ? `${prev.replace(/\n+$/, '')}\n\n${body}` : body)
     setOpenMenu(false)
@@ -2000,24 +2033,22 @@ function ComposerRow({ draft, setDraft, sending, onSend, fileRef }) {
             </Btn>
           </>
         )}
-        <textarea
-          className="yousafe-message-input"
-          rows={3}
+        <AutoGrowInput
           value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, charLimit))}
-          onKeyDown={onKeyDown}
+          onChange={setDraft}
+          onSubmit={onSend}
+          disabled={sending}
           placeholder="Reply to the client. Use Cmd/Ctrl + Enter to send."
           style={{
             flex: 1,
             background: 'transparent',
             border: 'none',
-            outline: 'none',
             padding: '8px 10px',
             color: C.text,
             fontSize: '14px',
             fontFamily: 'inherit',
-            resize: 'vertical',
             lineHeight: 1.5,
+            borderRadius: 0,
           }}
         />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
@@ -2132,81 +2163,6 @@ function OfferMessageBubble({ offer, onWithdraw, withdrawing }) {
               </Btn>
             </div>
           )}
-        </div>
-        {timeLabel && (
-          <div style={{ fontSize: '10.5px', color: C.textDim, fontWeight: 600 }}>
-            {timeLabel}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function MessageBubble({ message, viewerRole }) {
-  const mine =
-    (viewerRole === 'attorney' && message.sender_role === 'attorney') ||
-    (viewerRole === 'client' && message.sender_role === 'client')
-  const fromStudent = message.sender_role === 'client'
-  const isSystem = message.sender_role === 'system'
-  const ts = message.created_at ? new Date(message.created_at) : null
-  const timeLabel = ts && !Number.isNaN(ts.getTime())
-    ? ts.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-    : ''
-
-  if (isSystem) {
-    return (
-      <div
-        role="status"
-        style={{
-          alignSelf: 'center',
-          maxWidth: '85%',
-          background: C.surface2,
-          border: `1px solid ${C.border}`,
-          borderRadius: '999px',
-          padding: '6px 14px',
-          color: C.textMuted,
-          fontSize: '12px',
-          textAlign: 'center',
-          fontWeight: 600,
-          letterSpacing: '0.01em',
-        }}
-      >
-        <span style={{ marginRight: '6px', color: C.textDim }}>●</span>
-        {message.body}
-        {timeLabel && <span style={{ marginLeft: '8px', color: C.textDim, fontWeight: 500 }}>· {timeLabel}</span>}
-      </div>
-    )
-  }
-
-  const senderLabel = mine
-    ? 'You'
-    : message.sender_role === 'attorney'
-      ? 'Attorney'
-      : message.sender_role === 'client'
-        ? 'Client'
-        : message.sender_role || 'Sender'
-
-  return (
-    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: '4px' }}>
-        <div style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {senderLabel}
-        </div>
-        <div
-          style={{
-            background: fromStudent ? C.studentMessageBg : mine ? C.outboundMessageBg : C.surface2,
-            color: fromStudent ? C.studentMessageText : mine ? C.outboundMessageText : C.text,
-            padding: '10px 14px',
-            borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-            fontSize: '14px',
-            whiteSpace: 'pre-wrap',
-            lineHeight: 1.55,
-            border: fromStudent ? `1px solid ${C.studentMessageBorder}` : mine ? `1px solid ${C.outboundMessageBorder}` : `1px solid ${C.border}`,
-            boxShadow: '0 1px 2px rgba(15,18,32,0.04)',
-          }}
-        >
-          <MessageBody body={message.body} linkColor={C.cyan} />
         </div>
         {timeLabel && (
           <div style={{ fontSize: '10.5px', color: C.textDim, fontWeight: 600 }}>

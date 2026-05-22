@@ -20,6 +20,10 @@ import StudentOrders from './student-orders'
 import StudentOrderDetail from './student-order-detail'
 import StudentBilling from './student-billing'
 import StudentDocuments from './student-documents'
+import ChatScreen from '../messaging/ChatScreen'
+import MessageBubble from '../messaging/MessageBubble'
+import AutoGrowInput from '../messaging/AutoGrowInput'
+import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 // ── Premium section primitives ────────────────────────────────────────────
 const sectionEyebrow = {
@@ -1931,37 +1935,65 @@ function StudentApp({ onLogout, userId, userName }) {
               <EscrowApprovalCard order={order} />
             )}
             {/* Messages */}
-            <Card style={{ padding: '20px' }}>
-              <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Messages</div>
-              <div className="yousafe-message-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '260px', overflowY: 'auto', marginBottom: '16px' }}>
-                {orderTimeline.map((item, i) => item.kind === 'offer' ? (
-                  <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
-                    <ConsultantOfferCard offer={item.offer} onAccept={() => acceptConsultantOffer(item.offer)} onDecline={() => declineConsultantOffer(item.offer.id)} />
-                  </OfferBubble>
-                ) : (
-                  <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'student' ? 'row-reverse' : 'row' }}>
-                    {item.message.from === 'consultant' && <Avatar name={item.message.name} size={30} />}
-                    <div style={{ maxWidth: '70%' }}>
-                      <div style={{
-                        padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5,
-                        background: item.message.from === 'student' ? C.studentMessageBg : C.surface2,
-                        color: item.message.from === 'student' ? C.studentMessageText : C.text,
-                        border: item.message.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none',
-                      }}><MessageBody body={item.message.text} linkColor={item.message.from === 'student' ? C.studentMessageText : C.cyan} /></div>
-                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: item.message.from === 'student' ? 'right' : 'left' }}>{item.message.time}</div>
-                    </div>
+            <Card style={{ padding: 0, overflow: 'hidden', height: 420 }}>
+              <ChatScreen
+                mode="panel"
+                header={<div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, fontWeight: 700, fontSize: '15px' }}>Messages</div>}
+                messages={
+                  <>
+                    {orderTimeline.map((item, i) => {
+                      const prev = orderTimeline[i - 1]
+                      const next = orderTimeline[i + 1]
+                      const showDate = !prev || !sameDay(item.created_at, prev.created_at)
+                      const parts = []
+                      if (showDate) {
+                        parts.push(
+                          <div key={`date-${i}`} style={{ textAlign: 'center', margin: '12px 0', fontSize: '12px', color: C.textDim, fontWeight: 600 }}>
+                            {dateLabel(item.created_at)}
+                          </div>
+                        )
+                      }
+                      if (item.kind === 'offer') {
+                        parts.push(
+                          <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
+                            <ConsultantOfferCard offer={item.offer} onAccept={() => acceptConsultantOffer(item.offer)} onDecline={() => declineConsultantOffer(item.offer.id)} />
+                          </OfferBubble>
+                        )
+                      } else {
+                        const mine = item.message.from === 'student'
+                        const prevMine = prev?.kind === 'message' ? prev.message.from === 'student' : null
+                        const nextMine = next?.kind === 'message' ? next.message.from === 'student' : null
+                        const isFirstInGroup = prevMine === null || prevMine !== mine
+                        const isLastInGroup = nextMine === null || nextMine !== mine
+                        parts.push(
+                          <MessageBubble
+                            key={item.key || i}
+                            mine={mine}
+                            isFirstInGroup={isFirstInGroup}
+                            isLastInGroup={isLastInGroup}
+                            timestamp={item.message.created_at}
+                            body={<MessageBody body={item.message.text} linkColor={mine ? C.studentMessageText : C.cyan} />}
+                          />
+                        )
+                      }
+                      return parts
+                    })}
+                  </>
+                }
+                composer={
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${C.border}` }}>
+                    <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+                    <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
+                    <AutoGrowInput
+                      value={msgInput}
+                      onChange={setMsgInput}
+                      onSubmit={sendMessage}
+                      placeholder="Type a message…"
+                    />
+                    <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
                   </div>
-                ))}
-              </div>
-              <div className="yousafe-message-composer" style={{ display: 'flex', gap: '8px' }}>
-                <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
-                <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
-                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                  placeholder="Type a message…"
-                  style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
-                <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
-              </div>
+                }
+              />
             </Card>
           </div>
           {/* Sidebar info */}
@@ -3314,106 +3346,7 @@ function StudentApp({ onLogout, userId, userName }) {
     );
   };
 
-  const StudentMessages = () => {
-    const currentAttorneyChat = attorneyChatData?.chat;
-    const currentMessages = attorneyChatData?.messages || [];
-    const currentOffers = attorneyChatData?.offers || [];
-    const attorneyTimeline = buildOfferTimeline(currentMessages, currentOffers);
-    const orderTimeline = buildOfferTimeline(messages, consultantOffers);
-    return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-        <div className="yousafe-mobile-stack yousafe-message-layout" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', height: 'calc(100vh - 180px)' }}>
-          <StudentConversationList
-            selectedKey={
-              selectedAttorneyChatId
-                ? `attorney:${selectedAttorneyChatId}`
-                : selectedOrder?.id ? `order:${selectedOrder.id}` : null
-            }
-            onSelect={(c) => {
-              if (c.type === 'attorney') {
-                setSelectedAttorneyChatId(c.id)
-                setSelectedOrder(null)
-              } else {
-                // Build a minimum-viable order object for the thread renderer.
-                // It reads selectedOrder.id (for API calls) and selectedOrder.consultant (display).
-                setSelectedOrder({ id: c.id, consultant: c.name, service: c.meta?.serviceTitle || c.sub })
-                setSelectedAttorneyChatId(null)
-              }
-            }}
-          />
 
-          {selectedAttorneyChatId ? (
-            <Card className="yousafe-message-thread" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Avatar name={currentAttorneyChat?.attorney_name || 'Attorney'} src={currentAttorneyChat?.headshot_url} size={38} />
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '14px' }}>{currentAttorneyChat?.attorney_name || 'Attorney'}</div>
-                  <div style={{ fontSize: '12px', color: currentAttorneyChat?.presence === 'online' ? C.green : C.textDim }}>
-                    {currentAttorneyChat?.presence === 'online' ? '● Online' : currentAttorneyChat?.last_seen ? `○ Last seen ${new Date(currentAttorneyChat.last_seen).toLocaleString()}` : '○ Offline'}
-                  </div>
-                </div>
-              </div>
-              <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {attorneyChatLoading && attorneyTimeline.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px' }}>Loading chat...</div>}
-                {attorneyTimeline.map((item) => item.kind === 'offer' ? (
-                  <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
-                    <AttorneyOfferCard offer={item.offer} onAccept={() => acceptAttorneyOffer(item.offer)} onDecline={() => declineAttorneyOffer(item.offer.id)} />
-                  </OfferBubble>
-                ) : (
-                  <ChatBubble key={item.key} message={item.message} mine={item.message.sender_role === 'client'} />
-                ))}
-              </div>
-              <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input ref={attorneyChatFileRef} type="file" style={{ display: 'none' }} onChange={e => sendAttorneyChatMessage(e.target.files?.[0])} />
-                <Btn variant="secondary" size="sm" onClick={() => attorneyChatFileRef.current?.click()}>Attach</Btn>
-                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendAttorneyChatMessage()}
-                  placeholder="Type a message…"
-                  style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
-                <Btn variant="primary" size="sm" onClick={() => sendAttorneyChatMessage()}>Send</Btn>
-              </div>
-            </Card>
-          ) : selectedOrder ? (
-            <Card className="yousafe-message-thread" style={{ display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Avatar name={selectedOrder.consultant} size={36} />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '14px' }}>{selectedOrder.consultant}</div>
-                  <div style={{ fontSize: '12px', color: C.textDim }}>○ Offline</div>
-                </div>
-              </div>
-              <div className="yousafe-message-scroll" style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {orderTimeline.map((item, i) => item.kind === 'offer' ? (
-                <OfferBubble key={item.key} mine={false} createdAt={item.created_at}>
-                  <ConsultantOfferCard offer={item.offer} onAccept={() => acceptConsultantOffer(item.offer)} onDecline={() => declineConsultantOffer(item.offer.id)} />
-                </OfferBubble>
-              ) : (
-                  <div key={item.key || i} style={{ display: 'flex', gap: '10px', flexDirection: item.message.from === 'student' ? 'row-reverse' : 'row' }}>
-                    {item.message.from === 'consultant' && <Avatar name={item.message.name} size={30} />}
-                    <div style={{ maxWidth: '60%' }}>
-                      <div style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: item.message.from === 'student' ? C.studentMessageBg : C.surface2, color: item.message.from === 'student' ? C.studentMessageText : C.text, border: item.message.from === 'student' ? `1px solid ${C.studentMessageBorder}` : 'none' }}><MessageBody body={item.message.text} linkColor={item.message.from === 'student' ? C.studentMessageText : C.cyan} /></div>
-                      <div style={{ fontSize: '11px', color: C.textDim, marginTop: '4px', textAlign: item.message.from === 'student' ? 'right' : 'left' }}>{item.message.time}</div>
-                    </div>
-                </div>
-              ))}
-            </div>
-              <div className="yousafe-message-composer" style={{ padding: '16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '8px' }}>
-                <input ref={orderMessageFileRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
-                <Btn variant="secondary" size="sm" onClick={() => orderMessageFileRef.current?.click()}>Attach</Btn>
-                <input className="yousafe-message-input" value={msgInput} onChange={e => setMsgInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendMessage()} placeholder="Type a message…" style={{ flex: 1, padding: '10px 14px', background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '10px', color: C.text, fontSize: '14px', fontFamily: 'inherit', outline: 'none' }} />
-                <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
-              </div>
-            </Card>
-          ) : (
-            <Card style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '14px' }}>
-              Select a conversation.
-            </Card>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   // ── RENDER ──
   return (
@@ -3534,31 +3467,7 @@ function OfferBubble({ children, mine, createdAt }) {
   )
 }
 
-function ChatBubble({ message, mine }) {
-  const body = String(message.body || '')
-  const lines = body.split('\n')
-  const attachmentLine = lines.find(line => /^https?:\/\//.test(line.trim()))
-  const labelLine = lines.find(line => line.startsWith('Attachment:'))
-  const text = attachmentLine ? lines.filter(line => line !== attachmentLine && line !== labelLine).join('\n').trim() : body
-  return (
-    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={{ maxWidth: '70%', padding: '10px 14px', borderRadius: '12px', fontSize: '14px', lineHeight: 1.5, background: mine ? C.studentMessageBg : C.surface2, color: mine ? C.studentMessageText : C.text, border: mine ? `1px solid ${C.studentMessageBorder}` : 'none', whiteSpace: 'pre-wrap' }}>
-        {text && <div>{text}</div>}
-        {attachmentLine && (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: text ? '8px' : 0 }}>
-            <a href={attachmentLine.trim()} target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, fontWeight: 800, textDecoration: 'none' }}>
-              {labelLine || 'Open attachment'}
-            </a>
-            <a href={attachmentLine.trim()} download target="_blank" rel="noreferrer" style={{ color: mine ? C.studentMessageText : C.cyan, border: `1px solid ${mine ? C.studentMessageText : C.cyan}`, borderRadius: '999px', padding: '2px 8px', fontSize: '12px', fontWeight: 800, textDecoration: 'none' }}>
-              Download
-            </a>
-          </div>
-        )}
-        <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>{new Date(message.created_at).toLocaleString()}</div>
-      </div>
-    </div>
-  )
-}
+
 
 function AttorneyOfferCard({ offer, onAccept, onDecline }) {
   const platformFee = Number(offer.platform_fee || 0)
