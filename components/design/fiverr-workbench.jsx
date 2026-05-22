@@ -407,8 +407,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
   const [cards, setCards] = React.useState([])
   const [settings, setSettings] = React.useState(null)
   const [selectedCardId, setSelectedCardId] = React.useState('')
-  const [acceptedTerms, setAcceptedTerms] = React.useState(false)
-  const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const providerType = String(gig.provider_type || '').toLowerCase() === 'attorney' ? 'attorney' : 'consultant'
@@ -425,8 +423,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
     : Math.max(0, Math.round(subtotalCents * (providerSharePercent / 100)) || (subtotalCents - platformFeeCents))
   const totalCents = providerType === 'attorney' ? subtotalCents + platformFeeCents : subtotalCents
   const priceDollars = totalCents / 100
-  const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card'
-  const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy)
   const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
   const selectedCard = cards.find(card => card.id === selectedCardId)
 
@@ -450,10 +446,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
 
   const pay = async () => {
     if (busy) return
-    if (!ackComplete) {
-      setError('Please confirm the Terms of Service and Refund Policy before paying.')
-      return
-    }
     if (payMethod === 'wallet' && !canUseWallet) {
       setError('Your wallet balance is not enough for this order.')
       return
@@ -473,8 +465,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
           tierId: tier.id,
           paymentMethod: payMethod,
           paymentMethodId: selectedCardId,
-          acceptedTerms,
-          acceptedRefundPolicy,
         }),
       })
       if (payload.url) {
@@ -535,22 +525,16 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
             </select>
           )}
           <CheckoutButton active={payMethod === 'nmi'} onClick={() => setPayMethod('nmi')} title="Pay with saved card" detail="Charge your saved card securely" />
-          {requiresAck && (
-            <Card style={{ padding: '14px' }}>
-              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', marginBottom: '8px' }}>
-                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
-                <span>I agree to the <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Terms of Service</a>.</span>
-              </label>
-              <label style={{ display: 'flex', gap: '10px', fontSize: '13px' }}>
-                <input type="checkbox" checked={acceptedRefundPolicy} onChange={e => setAcceptedRefundPolicy(e.target.checked)} />
-                <span>I accept the <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Refund Policy</a>.</span>
-              </label>
-            </Card>
-          )}
           {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
-          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
-            {busy ? 'Processing...' : payMethod === 'nmi' ? `Pay ${money(totalCents)}` : `Pay ${money(totalCents)}`}
+          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy}>
+            {busy ? 'Processing...' : `Pay ${money(totalCents)}`}
           </Btn>
+          <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
+            By placing this order you agree to the{' '}
+            <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
+            and{' '}
+            <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
+          </p>
         </div>
       </div>
     </div>

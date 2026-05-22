@@ -23,13 +23,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid checkout source.' }, { status: 400 })
   }
 
-  if (body.acceptedTerms !== true || body.acceptedRefundPolicy !== true) {
-    return Response.json(
-      { error: 'You must accept the Terms of Service and Refund Policy before completing payment.' },
-      { status: 400 },
-    )
-  }
-
   const resolved = await resolveCheckoutItem(auth.db, sourceType, sourceId, auth.profileId, tierId)
   if ('error' in resolved) return Response.json({ error: resolved.error }, { status: resolved.status })
 

@@ -1073,12 +1073,8 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
   const [walletBalance, setWalletBalance] = React.useState(null);
   const [cards, setCards] = React.useState([]);
   const [selectedCardId, setSelectedCardId] = React.useState('');
-  const [acceptedTerms, setAcceptedTerms] = React.useState(false);
-  const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
-  const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card';
-  const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
   const total = Number(request?.total || 0);
   const canUseWallet = walletBalance !== null && walletBalance >= total;
   const selectedCard = cards.find(card => card.id === selectedCardId);
@@ -1100,10 +1096,6 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
 
   const pay = async () => {
     if (!request || busy) return;
-    if (!ackComplete) {
-      setError('Please confirm the Terms of Service and Refund Policy before paying.');
-      return;
-    }
     if (payMethod === 'wallet' && !canUseWallet) {
       setError('Your wallet balance is not enough for this order.');
       return;
@@ -1124,8 +1116,6 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
           tierId: request.tierId,
           paymentMethod: payMethod,
           paymentMethodId: selectedCardId,
-          acceptedTerms,
-          acceptedRefundPolicy,
         }),
       });
       const data = await res.json();
@@ -1175,23 +1165,16 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
 
           </div>
 
-          {requiresAck && (
-            <Card style={{ padding: '14px' }}>
-              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', marginBottom: '8px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} />
-                <span>I agree to the <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Terms of Service</a>.</span>
-              </label>
-              <label style={{ display: 'flex', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={acceptedRefundPolicy} onChange={e => setAcceptedRefundPolicy(e.target.checked)} />
-                <span>I accept the <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 800 }}>Refund Policy</a>.</span>
-              </label>
-            </Card>
-          )}
-
           {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
-          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
+          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy}>
             {busy ? 'Processing...' : `Pay ${formatMoney(total, request.currency || 'usd')}`}
           </Btn>
+          <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
+            By placing this order you agree to the{' '}
+            <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
+            and{' '}
+            <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
+          </p>
         </div>
       </div>
     </div>
@@ -2127,13 +2110,9 @@ function StudentApp({ onLogout, userId, userName }) {
     const [walletBalance, setWalletBalance] = React.useState(null);
     const [paying, setPaying] = React.useState(false);
     const [payError, setPayError] = React.useState(null);
-    const [acceptedTerms, setAcceptedTerms] = React.useState(false);
-    const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false);
     const [newCardToken, setNewCardToken] = React.useState(null);
     const [checkoutNmiReady, setCheckoutNmiReady] = React.useState(false);
     const [checkoutNmiErr, setCheckoutNmiErr] = React.useState(null);
-    const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card' || payMethod === 'new_card';
-    const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     // Catalogue search + sort + recently-viewed (added in Section 10 polish)
     const [searchQ, setSearchQ] = React.useState('');
@@ -2199,8 +2178,6 @@ function StudentApp({ onLogout, userId, userName }) {
       setShowCheckout(true);
       setPayMethod('wallet');
       setPayError(null);
-      setAcceptedTerms(false);
-      setAcceptedRefundPolicy(false);
     };
     const openCheckoutForService = service => {
       const details = getServiceDetails(service);
@@ -2210,8 +2187,6 @@ function StudentApp({ onLogout, userId, userName }) {
       setShowCheckout(true);
       setPayMethod('wallet');
       setPayError(null);
-      setAcceptedTerms(false);
-      setAcceptedRefundPolicy(false);
     };
 
     React.useEffect(() => {
@@ -2283,10 +2258,6 @@ function StudentApp({ onLogout, userId, userName }) {
       const canUseSavedCard = Boolean(selectedCardId);
 
       const handleWalletPay = async () => {
-        if (!ackComplete) {
-          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
-          return;
-        }
         setPaying(true); setPayError(null);
         try {
           const item = cartIsTemplate
@@ -2311,10 +2282,6 @@ function StudentApp({ onLogout, userId, userName }) {
       const handleSavedCardPay = async () => {
         if (!selectedCardId) {
           setPayError('Choose a saved card first.');
-          return;
-        }
-        if (!ackComplete) {
-          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
           return;
         }
 
@@ -2346,10 +2313,6 @@ function StudentApp({ onLogout, userId, userName }) {
       const handleNewCardPay = async () => {
         if (!newCardToken) {
           setPayError('Tokenize your card first using the secure form above.');
-          return;
-        }
-        if (!ackComplete) {
-          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
           return;
         }
         setPaying(true); setPayError(null);
@@ -2588,49 +2551,26 @@ function StudentApp({ onLogout, userId, userName }) {
             </div>
           </Card>
           {payError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {payError}</div>}
-          {requiresAck && (
-            <Card style={{ marginBottom: '14px', padding: '16px' }}>
-              <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '10px' }}>Required: review and accept</div>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', color: C.text, marginBottom: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={e => setAcceptedTerms(e.target.checked)}
-                  style={{ marginTop: '3px' }}
-                />
-                <span>
-                  I have read and agree to the{' '}
-                  <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 600 }}>Terms of Service</a>.
-                </span>
-              </label>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', color: C.text, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={acceptedRefundPolicy}
-                  onChange={e => setAcceptedRefundPolicy(e.target.checked)}
-                  style={{ marginTop: '3px' }}
-                />
-                <span>
-                  I have read and accept the{' '}
-                  <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontWeight: 600 }}>Refund Policy</a>.
-                </span>
-              </label>
-            </Card>
-          )}
           {payMethod === 'wallet' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet}>
+              {paying ? 'Processing…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
             </Btn>
           ) : payMethod === 'saved_card' ? (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard}>
+              {paying ? 'Processing…' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying || !newCardToken || !ackComplete}>
-              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : newCardToken ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card` : 'Tokenize your card first'}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying || !newCardToken}>
+              {paying ? 'Processing…' : newCardToken ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card` : 'Tokenize your card first'}
             </Btn>
           )}
-          <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
+          <p style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
+            By placing this order you agree to the{' '}
+            <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Terms of Service</a>{' '}
+            and{' '}
+            <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: C.textMuted, textDecoration: 'underline' }}>Refund Policy</a>.
+          </p>
+          <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '8px' }}>
             {cartIsTemplate
               ? 'Digital templates are preparation aids only. Checkout is processed in USD; CAD is a display estimate.'
               : 'Funds held in escrow until you approve delivery. Full refund if no consultant is assigned.'}
