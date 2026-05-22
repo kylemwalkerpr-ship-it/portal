@@ -47,6 +47,15 @@ There are four roles and three money flows. End-state:
 4. **Price is ALWAYS resolved server-side** from the authoritative DB row /
    catalogue (gig tier, offer, service, template). Never trust client.
 
+**Top-up is a captured NMI Sale, NOT a pre-authorization.** This is
+non-negotiable. A wallet is a prepaid balance — credits sit for weeks or
+months. Card pre-auths are designed for ~5–30 day holds and expire; they
+cannot be captured later. Sale settles immediately to our merchant
+account and the wallet credits in our DB are the receipt. This matches
+every standard prepaid model (Steam, Apple credit, Uber credits, gift
+cards). The NMI transaction id from the Sale lives on the
+`wallet_transactions` topup row and is the handle for any future refund.
+
 **Money flow B — Provider earns:**
 1. When a buyer debits/charges for a provider's service/offer/gig tier, the
    provider gets a `provider_earnings` ledger row (`amount_cents`, fee,
@@ -57,9 +66,15 @@ There are four roles and three money flows. End-state:
    earnings as `paid` with a `method` (ACH/Wise/manual) and a `reference`.
 
 **Money flow C — Refunds:**
-- Wallet-paid order → wallet credit via `wallet_credit` RPC.
-- Guest direct-NMI order → `lib/payments` `refund()` against the NMI
-  transaction id.
+- **Wallet-paid order refund:** the buyer is made whole with wallet
+  credit via `wallet_credit` (their value re-enters the wallet, same as
+  if they’d never spent it).
+- **Guest direct-NMI order refund:** `lib/payments.refund()` against the
+  NMI transaction id captures on the original card.
+- **Top-up refund** (cash back to the student’s card) is its own flow —
+  see §6.5. Cap: `min(original top-up amount, current wallet balance)`.
+  Past NMI’s refund window or declined-by-network → out-of-band
+  (admin records an `adjustment` ledger row with a reason).
 
 That is the only model. Everything below implements it.
 
@@ -104,6 +119,15 @@ app/api/consultant/offers/[id]/checkout/route.ts — consultant offer pay
 app/api/gigs/[id]/tiers/[tierId]/purchase/route.ts — gig tier purchase
 app/api/messages/conversations/[id]/quick-offer/route.ts — chat offer
 lib/checkoutOrders.ts                — Stripe checkout business logic
+```
+
+**A.1. New — top-up refund (admin):**
+```
+app/api/admin/wallet/topup-refund/route.ts   — refund a captured top-up
+                                               back to the card (or
+                                               record an out-of-band
+                                               adjustment past the
+                                               NMI refund window)
 ```
 
 **B. Stripe Connect (delete entirely):**
@@ -361,6 +385,58 @@ For each route in §3.A, replace the Stripe path with this contract:
 
 ---
 
+## 6.5. STEP 3b — TOP-UP REFUNDS
+
+A new admin endpoint refunds a captured wallet top-up back to the card.
+Implements money-flow C for the top-up surface.
+
+**Endpoint:** `app/api/admin/wallet/topup-refund/route.ts`
+**Auth:** admin only (use the existing admin guard).
+**Body:** `{ topupTxId: string, amountCents: number, reason?: string }`.
+
+**Logic:**
+1. Look up the `wallet_transactions` row by `topupTxId`. Require
+   `type='topup'`, `reference` is non-null (it's the NMI transaction id),
+   and `amount_cents > 0`. Reject otherwise.
+2. Resolve the original top-up amount = `amount_cents` of that row.
+3. Resolve `currentBalance` from `student_wallets` (the wallet that owns
+   that row's `profile_id`).
+4. **Refund cap:** `maxRefundCents = min(originalTopupCents, currentBalance)`.
+   If `amountCents > maxRefundCents`, reject 400 with both values in the
+   response so the admin UI can show "you can refund at most $X — the
+   student has already spent the rest."
+5. Call `getPaymentProvider().refund(originalNmiTxId, amountCents)`.
+6. **On NMI ok:** call `wallet.debit(profileId, amountCents, …)` with
+   `type='refund'`, `reference=originalNmiTxId`,
+   `description='Top-up refund: <reason>'`. The CHECK on
+   `balance_cents >= 0` is a belt-and-suspenders guard; the §6.5.4 cap
+   is the primary one. Return `{ ok: true, refundedCents, balanceCents }`.
+7. **On NMI not-ok** (past the refund window / declined / network
+   error): do NOT debit the wallet. Return a 422 with NMI's
+   `message` (e.g. "transaction outside refund window") so the admin
+   can fall back to an out-of-band refund.
+
+**Out-of-band path** (admin issues ACH/Wire/check manually):
+Same endpoint accepts `{ topupTxId, amountCents, reason, outOfBand: { method, reference } }`.
+When `outOfBand` is present, skip the NMI refund call and instead:
+- Validate cap as above.
+- `wallet.debit(profileId, amountCents, …)` with `type='adjustment'`,
+  `reference=<method>:<reference>`, `description='Out-of-band refund: <reason>'`.
+
+**Constraints:**
+- Never partial-refund a top-up beyond the cap.
+- Never allow a non-admin to call this endpoint.
+- Every successful refund (card or out-of-band) writes exactly one
+  ledger row. The row's `reference` field links back to the NMI tx
+  (card refund) or method+reference (out-of-band).
+- Do NOT touch provider earnings here — if the student spent money on a
+  provider, that earning was already credited and may already be paid;
+  the platform absorbs the loss when refunding spent-and-replaced
+  balance (i.e. when the refund exceeds the unspent portion — but the
+  cap forbids that, by design).
+
+---
+
 ## 7. STEP 4 — ADMIN PAYOUT QUEUE (MANUAL)
 
 `app/api/admin/payouts/route.ts` becomes a queue read:
@@ -499,6 +575,7 @@ test ! -f lib/stripeCustomer.ts && echo "lib/stripeCustomer.ts removed ok"
 test ! -f app/api/webhooks/stripe/route.ts && echo "stripe webhook removed ok"
 test -f supabase/stripe_excision.sql && echo "migration ok"
 test -f lib/earnings.ts && echo "earnings service ok"
+test -f app/api/admin/wallet/topup-refund/route.ts && echo "topup-refund ok"
 git status --porcelain | grep -v /.next/
 ```
 
@@ -512,7 +589,12 @@ amount; balance mutated outside `lib/wallet.ts`; earnings mutated outside
 `lib/earnings.ts`; `lib/payments/` modified; cards rendered without
 brand+last4; copy still says “Stripe Connect” or “Pay with Stripe”
 anywhere user-facing; the migration drops Stripe columns
-(it must not — historical data); build not idempotent.
+(it must not — historical data); the top-up refund route refunds
+*beyond* `min(original top-up, current wallet balance)`; the refund
+route writes a wallet debit before NMI confirms the refund (or writes
+none after a successful NMI refund); top-up uses an `auth` /
+pre-authorization NMI call instead of a captured Sale; build not
+idempotent.
 
 ## 16. HANDOFF
 No zip. Report the §14 output. Do not commit or branch — Claude reviews,
