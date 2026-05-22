@@ -1,12 +1,8 @@
--- =============================================================================
 -- stripe_excision.sql
--- Provider earnings + manual payout ledger. No destructive changes.
--- Stripe columns stay in the schema as historical data; this only adds tables.
--- =============================================================================
+-- Provider earnings and manual payout ledger. Adds tables only.
+-- Run this after wallet_nmi.sql.
 
--- ---------------------------------------------------------------------------
--- 1. Provider earnings: one row per delivered/credited order line.
--- ---------------------------------------------------------------------------
+-- 1. Provider earnings: one row per credited order line
 create table if not exists public.provider_earnings (
   id              text primary key,
   provider_id     uuid not null references public.profiles(id),
@@ -32,9 +28,7 @@ create index if not exists provider_earnings_provider_idx
 create index if not exists provider_earnings_order_idx
   on public.provider_earnings(order_id);
 
--- ---------------------------------------------------------------------------
--- 2. Manual payout batches.
--- ---------------------------------------------------------------------------
+-- 2. Manual payout batches
 create table if not exists public.provider_payouts (
   id              text primary key,
   provider_id     uuid not null references public.profiles(id),
@@ -51,9 +45,7 @@ create table if not exists public.provider_payouts (
 create index if not exists provider_payouts_provider_idx
   on public.provider_payouts(provider_id, marked_paid_at desc);
 
--- ---------------------------------------------------------------------------
--- 3. RPC: credit an earning when a buyer pays.
--- ---------------------------------------------------------------------------
+-- 3. RPC: credit an earning when a buyer pays
 create or replace function public.credit_earning(
   p_provider_id uuid,
   p_order_id text,
@@ -77,9 +69,7 @@ begin
   return e;
 end$$;
 
--- ---------------------------------------------------------------------------
--- 4. RPC: release earnings for an order when delivery is approved.
--- ---------------------------------------------------------------------------
+-- 4. RPC: release earnings for an order
 create or replace function public.release_earnings_for_order(
   p_order_id text
 )
@@ -96,9 +86,7 @@ begin
      returning *;
 end$$;
 
--- ---------------------------------------------------------------------------
--- 5. RPC: record a manual payout and mark earnings as paid.
--- ---------------------------------------------------------------------------
+-- 5. RPC: record a manual payout and mark earnings paid
 create or replace function public.record_payout(
   p_provider_id uuid,
   p_amount_cents bigint,
@@ -133,9 +121,7 @@ begin
   return p;
 end$$;
 
--- ---------------------------------------------------------------------------
--- 6. RPC: admin view — providers with releasable earnings, aggregated.
--- ---------------------------------------------------------------------------
+-- 6. RPC: admin view of releasable earnings by provider
 create or replace function public.list_releasable_earnings_by_provider()
 returns table (
   provider_id      uuid,

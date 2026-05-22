@@ -1,12 +1,8 @@
--- =============================================================================
 -- wallet_nmi.sql
--- Wallet + vaulted payment methods + transaction ledger for NMI-backed student
--- accounts. Replaces Stripe Cash Balance / PaymentMethods. Idempotent.
--- =============================================================================
+-- Wallet, vaulted cards, and transaction ledger for NMI student accounts.
+-- Idempotent. Run this before stripe_excision.sql.
 
--- ---------------------------------------------------------------------------
 -- 1. Student wallets (single source of truth for balance)
--- ---------------------------------------------------------------------------
 create table if not exists public.student_wallets (
   profile_id        uuid primary key references public.profiles(id) on delete cascade,
   balance_cents     integer not null default 0 check (balance_cents >= 0),
@@ -14,16 +10,12 @@ create table if not exists public.student_wallets (
   updated_at        timestamptz not null default now()
 );
 
-comment on table public.student_wallets is 'Student wallet balance — system of record because NMI has no hosted customer balance.';
-
--- ---------------------------------------------------------------------------
 -- 2. Saved payment methods (NMI Customer Vault)
--- ---------------------------------------------------------------------------
 create table if not exists public.student_payment_methods (
   id                uuid primary key default gen_random_uuid(),
   profile_id        uuid not null references public.profiles(id) on delete cascade,
-  vault_id          text not null,               -- NMI customer_vault_id
-  brand             text,                        -- visa | mastercard | amex | discover | etc.
+  vault_id          text not null,
+  brand             text,
   last4             text not null,
   exp_month         integer,
   exp_year          integer,
@@ -31,33 +23,26 @@ create table if not exists public.student_payment_methods (
   created_at        timestamptz not null default now()
 );
 
-comment on table public.student_payment_methods is 'Cards vaulted in NMI Customer Vault. vault_id is the NMI customer_vault_id.';
-
 create index if not exists student_payment_methods_profile_idx
   on public.student_payment_methods(profile_id);
 
--- Only one default per profile
 create unique index if not exists student_payment_methods_default_idx
   on public.student_payment_methods(profile_id) where is_default = true;
 
--- ---------------------------------------------------------------------------
--- 3. Wallet transaction ledger (every credit / debit / top-up / purchase)
--- ---------------------------------------------------------------------------
+-- 3. Wallet transaction ledger
 create table if not exists public.wallet_transactions (
   id                uuid primary key default gen_random_uuid(),
   profile_id        uuid not null references public.profiles(id) on delete cascade,
   type              text not null
                     check (type in ('topup','debit','refund','adjustment','purchase')),
   amount_cents      integer not null check (amount_cents >= 0),
-  signed_cents      integer not null,            -- +amount for credit, -amount for debit
+  signed_cents      integer not null,
   balance_after_cents integer not null check (balance_after_cents >= 0),
   description       text not null,
-  reference         text,                        -- NMI transaction_id, order_id, etc.
+  reference         text,
   metadata          jsonb,
   created_at        timestamptz not null default now()
 );
-
-comment on table public.wallet_transactions is 'Immutable ledger of every wallet mutation. Reconstructs balance at any point in time.';
 
 create index if not exists wallet_transactions_profile_idx
   on public.wallet_transactions(profile_id, created_at desc);
@@ -65,9 +50,7 @@ create index if not exists wallet_transactions_profile_idx
 create index if not exists wallet_transactions_type_idx
   on public.wallet_transactions(type, created_at desc);
 
--- ---------------------------------------------------------------------------
--- 4. Helper: ensure wallet row exists (called by application on first touch)
--- ---------------------------------------------------------------------------
+-- 4. Helper: ensure a wallet row exists
 create or replace function public.ensure_wallet(p_profile_id uuid, p_currency text default 'usd')
 returns public.student_wallets as $$
 declare
@@ -81,9 +64,7 @@ begin
 end;
 $$ language plpgsql;
 
--- ---------------------------------------------------------------------------
 -- 5. Helper: atomically credit wallet + write ledger row
--- ---------------------------------------------------------------------------
 create or replace function public.wallet_credit(
   p_profile_id uuid,
   p_amount_cents integer,
@@ -119,10 +100,7 @@ begin
 end;
 $$ language plpgsql;
 
--- ---------------------------------------------------------------------------
 -- 6. Helper: atomically debit wallet + write ledger row
---    Returns the ledger row, or raises if insufficient funds.
--- ---------------------------------------------------------------------------
 create or replace function public.wallet_debit(
   p_profile_id uuid,
   p_amount_cents integer,
