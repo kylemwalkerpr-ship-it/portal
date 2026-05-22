@@ -28,6 +28,13 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BO
 # `wrangler secret put NMI_SECURITY_KEY`.
 PAYMENT_PROVIDER = "nmi"
 NMI_TOKENIZATION_KEY = "H4p48s-f4v55B-8Km4eJ-8yR74U"
+# Reseller-issued white-label gateway host — both Collect.js and the Payment
+# API live here. NMI's default secure.nmi.com would reject our merchant
+# account's tokenization key.
+NMI_GATEWAY_HOST = "paykings.transactiongateway.com"
+# 'lightbox' = a single "Pay" button opens NMI's hosted modal (simplest +
+# no card fields on our page). 'inline' for embedded iframe fields.
+NMI_COLLECT_VARIANT = "lightbox"
 
 # Server-side Stripe credentials required for wallet and webhooks.
 # Set these securely in production using `wrangler secret put STRIPE_SECRET_KEY` and

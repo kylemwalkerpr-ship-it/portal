@@ -1,16 +1,28 @@
 /**
  * NMI payment adapter.
  *
- * Flow: the checkout UI loads NMI Collect.js (key from `getClientConfig`),
- * the card fields tokenize client-side into a single-use `payment_token`, and
- * `charge()` POSTs that token to the NMI Payment API server-side. Card data
- * never touches our server — this keeps the portal in PCI-DSS SAQ A scope.
+ * Flow: the checkout UI loads Collect.js (URL + tokenization key from
+ * `getClientConfig`), the card fields tokenize client-side into a
+ * single-use `payment_token`, and `charge()` POSTs that token to the
+ * Payment API server-side. Card data never touches our server — PCI-DSS
+ * SAQ A scope is preserved.
+ *
+ * Reseller white-label note: most NMI accounts are placed via a reseller
+ * who issues their own gateway URL (e.g. paykings.transactiongateway.com).
+ * Both Collect.js and the Payment API live on that same host. The
+ * defaults below resolve to the reseller host automatically when you set
+ * `NMI_GATEWAY_HOST` — recommended over setting `NMI_API_URL` directly.
  *
  * Secrets/config (set on the Worker, see lib/payments/README.md):
  *   NMI_SECURITY_KEY      private API key — server only, never client-side.
  *   NMI_TOKENIZATION_KEY  public tokenization key — safe for the browser.
- *   NMI_API_URL           optional; defaults to NMI's standard endpoint.
- *                         Set this if your reseller gave a white-label URL.
+ *   NMI_GATEWAY_HOST      e.g. "paykings.transactiongateway.com" — the
+ *                         reseller-issued hostname. Optional; defaults to
+ *                         secure.nmi.com.
+ *   NMI_COLLECT_VARIANT   "lightbox" (default) or "inline" — the Collect.js
+ *                         UI variant the checkout UI should use.
+ *   NMI_API_URL           Optional override for the full Payment API URL.
+ *                         If set, takes precedence over NMI_GATEWAY_HOST.
  */
 import type {
   PaymentProvider,
@@ -24,11 +36,23 @@ import type {
   PublicClientConfig,
 } from '../types'
 
-const DEFAULT_API_URL = 'https://secure.nmi.com/api/transact.php'
-const COLLECT_JS_URL = 'https://secure.nmi.com/token/Collect.js'
+const DEFAULT_HOST = 'secure.nmi.com'
+
+function gatewayHost(): string {
+  return process.env.NMI_GATEWAY_HOST || DEFAULT_HOST
+}
 
 function apiUrl(): string {
-  return process.env.NMI_API_URL || DEFAULT_API_URL
+  return process.env.NMI_API_URL || `https://${gatewayHost()}/api/transact.php`
+}
+
+function collectJsUrl(): string {
+  return `https://${gatewayHost()}/token/Collect.js`
+}
+
+function collectVariant(): 'lightbox' | 'inline' {
+  const v = (process.env.NMI_COLLECT_VARIANT || 'lightbox').toLowerCase()
+  return v === 'inline' ? 'inline' : 'lightbox'
 }
 
 /** NMI returns an application/x-www-form-urlencoded body. */
@@ -59,7 +83,8 @@ export const nmiProvider: PaymentProvider = {
       provider: 'nmi',
       mode: 'inline-token',
       tokenizationKey: process.env.NMI_TOKENIZATION_KEY || '',
-      scriptUrl: COLLECT_JS_URL,
+      scriptUrl: collectJsUrl(),
+      variant: collectVariant(),
     }
   },
 

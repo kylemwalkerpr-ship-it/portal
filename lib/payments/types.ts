@@ -111,6 +111,11 @@ export interface PublicClientConfig {
   /** inline-token: public tokenization key + the script the UI must load. */
   tokenizationKey?: string
   scriptUrl?: string
+  /** inline-token: which Collect.js UI variant the checkout should mount.
+   *  'lightbox' = a single "Pay" button that opens a hosted modal (default,
+   *  simplest, no card fields on our page). 'inline' = iframed card fields
+   *  embedded directly in the page. */
+  variant?: 'lightbox' | 'inline'
   /** hosted-redirect: a publishable/client token. */
   publicKey?: string
 }
