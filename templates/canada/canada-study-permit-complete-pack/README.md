@@ -3,7 +3,6 @@
 **Category:** Canada Study  
 **Suggested price:** $29 USD  
 **Catalogue badge:** Best seller  
-**Stripe placeholder:** `{{stripe_payment_link_canada_study_permit_complete_pack}}`
 
 ## Product Description
 

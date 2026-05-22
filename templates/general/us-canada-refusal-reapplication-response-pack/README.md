@@ -3,7 +3,6 @@
 **Category:** Refusal Recovery  
 **Suggested price:** $29 USD  
 **Catalogue badge:** Premium  
-**Stripe placeholder:** `{{stripe_payment_link_us_canada_refusal_reapplication_response_pack}}`
 
 ## Product Description
 

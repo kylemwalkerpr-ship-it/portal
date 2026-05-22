@@ -3,7 +3,6 @@
 **Category:** Canada Work  
 **Suggested price:** $25 USD  
 **Catalogue badge:** Work permit  
-**Stripe placeholder:** `{{stripe_payment_link_canada_work_permit_outside_canada_pack}}`
 
 ## Product Description
 

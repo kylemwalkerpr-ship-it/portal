@@ -3,7 +3,6 @@
 **Category:** Canada General  
 **Suggested price:** $12 USD  
 **Catalogue badge:** Low-cost add-on  
-**Stripe placeholder:** `{{stripe_payment_link_canada_family_information_travel_history_pack}}`
 
 ## Product Description
 

@@ -3,7 +3,6 @@
 **Category:** General Intake  
 **Suggested price:** $15 USD  
 **Catalogue badge:** For consultations  
-**Stripe placeholder:** `{{stripe_payment_link_universal_client_intake_document_review_kit}}`
 
 ## Product Description
 

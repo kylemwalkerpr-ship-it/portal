@@ -3,7 +3,6 @@
 **Category:** USA Financial Support  
 **Suggested price:** $17 USD  
 **Catalogue badge:** Sponsor support  
-**Stripe placeholder:** `{{stripe_payment_link_us_i134_financial_support_companion_pack}}`
 
 ## Product Description
 

@@ -3,7 +3,6 @@
 **Category:** Canada Work After Study  
 **Suggested price:** $25 USD  
 **Catalogue badge:** PGWP  
-**Stripe placeholder:** `{{stripe_payment_link_canada_pgwp_application_pack}}`
 
 ## Product Description
 

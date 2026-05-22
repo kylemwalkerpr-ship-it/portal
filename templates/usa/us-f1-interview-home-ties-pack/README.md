@@ -3,7 +3,6 @@
 **Category:** USA Study  
 **Suggested price:** $19 USD  
 **Catalogue badge:** Interview-ready  
-**Stripe placeholder:** `{{stripe_payment_link_us_f1_interview_home_ties_pack}}`
 
 ## Product Description
 

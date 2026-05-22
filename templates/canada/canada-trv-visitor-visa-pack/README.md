@@ -3,7 +3,6 @@
 **Category:** Canada Visitor  
 **Suggested price:** $19 USD  
 **Catalogue badge:** TRV  
-**Stripe placeholder:** `{{stripe_payment_link_canada_trv_visitor_visa_pack}}`
 
 ## Product Description
 

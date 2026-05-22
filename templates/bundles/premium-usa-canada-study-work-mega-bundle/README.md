@@ -3,7 +3,6 @@
 **Category:** Bundle  
 **Suggested price:** $79 USD  
 **Catalogue badge:** Highest value  
-**Stripe placeholder:** `{{stripe_payment_link_premium_usa_canada_study_work_mega_bundle}}`
 
 ## Product Description
 

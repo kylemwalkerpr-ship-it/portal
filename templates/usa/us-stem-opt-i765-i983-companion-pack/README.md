@@ -3,7 +3,6 @@
 **Category:** USA Work After Study  
 **Suggested price:** $29 USD  
 **Catalogue badge:** STEM OPT  
-**Stripe placeholder:** `{{stripe_payment_link_us_stem_opt_i765_i983_companion_pack}}`
 
 ## Product Description
 

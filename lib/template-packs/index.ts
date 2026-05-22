@@ -6,7 +6,6 @@ export interface TemplatePack {
   category: string
   badge: string
   price_usd: number
-  placeholder_label: string
   short_description: string
   includes: string[]
   official_sources: string[]

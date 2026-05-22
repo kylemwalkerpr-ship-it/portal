@@ -3,7 +3,6 @@
 **Category:** Canada Study  
 **Suggested price:** $17 USD  
 **Catalogue badge:** SOP / LOE  
-**Stripe placeholder:** `{{stripe_payment_link_canada_study_plan_letter_of_explanation_pack}}`
 
 ## Product Description
 

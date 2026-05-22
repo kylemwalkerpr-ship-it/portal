@@ -3,7 +3,6 @@
 **Category:** USA Study  
 **Suggested price:** $29 USD  
 **Catalogue badge:** Best for F-1 applicants  
-**Stripe placeholder:** `{{stripe_payment_link_us_f1_student_visa_ds160_i20_pack}}`
 
 ## Product Description
 

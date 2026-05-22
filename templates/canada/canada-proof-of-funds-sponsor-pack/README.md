@@ -3,7 +3,6 @@
 **Category:** Canada Study  
 **Suggested price:** $19 USD  
 **Catalogue badge:** Proof of funds  
-**Stripe placeholder:** `{{stripe_payment_link_canada_proof_of_funds_sponsor_pack}}`
 
 ## Product Description
 

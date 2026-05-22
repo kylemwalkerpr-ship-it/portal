@@ -3,7 +3,6 @@
 **Category:** USA Visitor  
 **Suggested price:** $19 USD  
 **Catalogue badge:** Visitor visa  
-**Stripe placeholder:** `{{stripe_payment_link_us_b1b2_visitor_visa_ds160_invitation_pack}}`
 
 ## Product Description
 

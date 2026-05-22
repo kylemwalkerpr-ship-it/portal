@@ -3,7 +3,6 @@
 **Category:** USA Work After Study  
 **Suggested price:** $25 USD  
 **Catalogue badge:** OPT  
-**Stripe placeholder:** `{{stripe_payment_link_us_opt_i765_application_prep_pack}}`
 
 ## Product Description
 
