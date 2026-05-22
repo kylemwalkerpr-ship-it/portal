@@ -17,6 +17,17 @@ const isPublicRoute = createRouteMatcher([
   '/api/wallet/diagnose',
   '/api/translate(.*)',
   '/api/chat(.*)',
+  // Public marketplace (brief 29). Pages and GET reads serve unauthenticated
+  // visitors; mutation handlers under these paths self-enforce auth
+  // (requirePortalUser / requireAttorney / etc.), so a public match here
+  // never exposes a write.
+  '/marketplace(.*)',
+  '/api/marketplace(.*)',
+  '/api/gigs(.*)',
+  '/api/gig-categories(.*)',
+  '/api/gig-reviews(.*)',
+  '/api/attorneys(.*)',
+  '/api/consultants(.*)',
 ])
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
