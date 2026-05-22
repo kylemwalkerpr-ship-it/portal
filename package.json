@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "test": "jest",
-    "build": "next build && opennextjs-cloudflare build --skipNextBuild",
+    "build": "next build --webpack && opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare deploy"
   },

@@ -1,7 +1,12 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { Btn, Avatar } from '../design/shared'
+import { Btn } from '../design/shared'
+import ChatScreen from '../messaging/ChatScreen'
+import MessageBubble from '../messaging/MessageBubble'
+import AutoGrowInput from '../messaging/AutoGrowInput'
+import Avatar from '../messaging/Avatar'
+import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 // Props (loose because this component is JSX-ish via @ts-nocheck):
 //   open, onClose, attorneyName, attorneyAvatar
@@ -25,14 +30,10 @@ import { Btn, Avatar } from '../design/shared'
  *   attorneyAvatar — optional avatar URL
  */
 
-const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#6B7180'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
+const NAVY='#1B2D4F', GREEN='#1A6B45', RED='#8B1A1A', CYAN='#0E7C8E'
+const BG='#F7F5F0', SURFACE='#FFFFFF', BORDER='#DDD8CE', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#6B7180'
 const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
-
-const fmtTime = s => s ? new Date(s).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''
-const fmtDate = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 
 interface ChatSidePaneProps {
   open: boolean
@@ -54,7 +55,6 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
   const [error, setError] = React.useState('')
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
-  const scrollRef = React.useRef(null)
 
   // ESC closes
   React.useEffect(() => {
@@ -126,11 +126,6 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       .catch(() => null)
     return () => { cancelled = true }
   }, [attorneyId, counterpartProfileId, open, contextKind, contextId])
-
-  // Auto-scroll on new messages
-  React.useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages.length])
 
   // Soft poll every 8s while open
   React.useEffect(() => {
@@ -209,6 +204,110 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
 
   if (!open) return null
 
+  const header = (
+    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, lineHeight: 1.1 }}>{attorneyName || 'Attorney'}</div>
+        <div style={{ fontSize: 11, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, marginTop: 2 }}>
+          {presence === 'online' ? '● Online — quick replies likely' : '○ Offline — will respond when available'}
+        </div>
+      </div>
+      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16 }}>×</button>
+    </div>
+  )
+
+  const banner = error ? (
+    <div style={{ padding: '10px 14px', background: `${RED}10`, color: RED, fontSize: 12, fontWeight: 600 }}>
+      {error}
+    </div>
+  ) : null
+
+  const messageNodes = React.useMemo(() => {
+    const result: React.ReactNode[] = []
+    if (loading && messages.length === 0) {
+      result.push(<div key="loading" style={{ color: MUTED, fontSize: 12 }}>Loading…</div>)
+      return result
+    }
+    if (!loading && !chatId && messages.length === 0) {
+      result.push(
+        <div key="empty" style={{ background: SURFACE, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: '20px 16px', textAlign: 'center' }}>
+          <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
+          <div style={{ fontWeight: 600, fontSize: 17, color: TEXT, marginBottom: 4 }}>Start the conversation</div>
+          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+            Ask a short question — {attorneyName || 'the attorney'} will see it in their queue and reply. Quick replies are typical within an hour.
+          </div>
+        </div>
+      )
+      return result
+    }
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i]
+      const prev = messages[i - 1]
+      const next = messages[i + 1]
+      const mine = m.sender_role === 'client'
+      const prevMine = prev ? prev.sender_role === 'client' : null
+      const nextMine = next ? next.sender_role === 'client' : null
+      const isFirstInGroup = prevMine !== mine
+      const isLastInGroup = nextMine !== mine
+      const showDate = !prev || !sameDay(m.created_at, prev.created_at)
+      if (showDate) {
+        result.push(
+          <div key={`date-${m.id}`} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
+              {dateLabel(m.created_at)}
+            </span>
+          </div>
+        )
+      }
+      result.push(
+        <MessageBubble
+          key={m.id}
+          mine={mine}
+          isFirstInGroup={isFirstInGroup}
+          isLastInGroup={isLastInGroup}
+          timestamp={m.created_at}
+          body={m.body}
+        />
+      )
+    }
+    return result
+  }, [messages, loading, chatId, attorneyName])
+
+  const composer = (
+    <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <AutoGrowInput
+          value={draft}
+          onChange={setDraft}
+          onSubmit={send}
+          disabled={sending}
+          placeholder="Type a message…"
+        />
+        <Btn variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()}>
+          {sending ? 'Sending…' : 'Send'}
+        </Btn>
+      </div>
+      <div style={{ marginTop: 8, fontSize: 10, color: DIM, fontFamily: MONO, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span>
+          <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: BG, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
+        </span>
+        {conversationId && (
+          <a
+            href={`https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`}
+            style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none' }}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.href = `https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`
+            }}
+          >
+            Open in Messages →
+          </a>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       <button onClick={onClose} aria-label="Close chat" style={{ flex: 1, background: 'rgba(15,18,32,0.45)', border: 'none', cursor: 'pointer' }} />
@@ -219,89 +318,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
         boxShadow: '-24px 0 60px rgba(15,18,32,0.18)',
         fontFamily: SANS,
       }}>
-        {/* Header */}
-        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: TEXT, lineHeight: 1.1 }}>{attorneyName || 'Attorney'}</div>
-            <div style={{ fontSize: 11, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, marginTop: 2 }}>
-              {presence === 'online' ? '● Online — quick replies likely' : '○ Offline — will respond when available'}
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16 }}>×</button>
-        </div>
-
-        {/* Notice */}
-        {error && (
-          <div style={{ margin: '10px 14px 0', padding: '8px 12px', background: `${RED}10`, color: RED, fontSize: 12, fontWeight: 600, borderRadius: 6 }}>
-            {error}
-          </div>
-        )}
-
-        {/* Thread */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {loading && messages.length === 0 && <div style={{ color: MUTED, fontSize: 12 }}>Loading…</div>}
-          {!loading && !chatId && messages.length === 0 && (
-            <div style={{ background: SURFACE, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: '20px 16px', textAlign: 'center' }}>
-              <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
-              <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: TEXT, marginBottom: 4 }}>Start the conversation</div>
-              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
-                Ask a short question — {attorneyName || 'the attorney'} will see it in their queue and reply. Quick replies are typical within an hour.
-              </div>
-            </div>
-          )}
-          {messages.map(m => {
-            const mine = m.sender_role === 'client'
-            return (
-              <div key={m.id} style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row' }}>
-                <Avatar name={mine ? 'You' : (attorneyName || 'A')} src={!mine ? attorneyAvatar || undefined : undefined} size={26} />
-                <div style={{ maxWidth: '75%' }}>
-                  <div style={{
-                    padding: '10px 14px', borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-                    background: mine ? `${CYAN}15` : SURFACE, color: TEXT,
-                    border: `1px solid ${mine ? `${CYAN}33` : BORDER}`,
-                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  }}>{m.body}</div>
-                  <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
-                    {fmtDate(m.created_at)} · {fmtTime(m.created_at)}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Composer */}
-        <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', gap: 8 }}>
-          <textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="Type a message…"
-            rows={2}
-            disabled={sending}
-            style={{ flex: 1, padding: '8px 12px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, fontSize: 13, fontFamily: SANS, outline: 'none', resize: 'none' }}
-          />
-          <Btn variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()}>{sending ? 'Sending…' : 'Send'}</Btn>
-        </div>
-        <div style={{ padding: '0 14px 12px', fontSize: 10, color: DIM, fontFamily: MONO, textAlign: 'center', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <span>
-            <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Enter</kbd> send · <kbd style={{ padding: '1px 5px', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 3, fontFamily: MONO, fontSize: 9 }}>Esc</kbd> close
-          </span>
-          {conversationId && (
-            <a
-              href={`https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`}
-              style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none' }}
-              onClick={(e) => {
-                // Use window.location so the dashboard handles the page route directly
-                e.preventDefault()
-                window.location.href = `https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`
-              }}
-            >
-              Open in Messages →
-            </a>
-          )}
-        </div>
+        <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} banner={banner} />
       </aside>
     </div>
   )

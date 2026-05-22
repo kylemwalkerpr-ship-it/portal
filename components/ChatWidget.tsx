@@ -2,6 +2,10 @@
 'use client'
 
 import React from 'react'
+import ChatScreen from './messaging/ChatScreen'
+import MessageBubble from './messaging/MessageBubble'
+import AutoGrowInput from './messaging/AutoGrowInput'
+import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 const STORAGE_KEY = 'yousafe.chat.history.v1'
 const OPEN_KEY = 'yousafe.chat.open.v1'
@@ -24,14 +28,6 @@ const styles = {
   surface2: '#F9FAFB',
   border: '#E5E7EB',
   border2: '#D1D5DB',
-  userBubble: '#3C3B6E',
-  userBubbleText: '#FFFFFF',
-  assistantBubble: '#F3F4F6',
-  assistantBubbleText: '#111827',
-  systemBubble: '#FEF3C7',
-  systemBubbleText: '#78350F',
-  agentBubble: '#DCFCE7',
-  agentBubbleText: '#14532D',
   red: '#DC2626',
 }
 
@@ -73,26 +69,6 @@ function statusLabel(supportSession) {
   return 'AI support online'
 }
 
-function bubbleStylesFor(role) {
-  if (role === 'user') {
-    return { background: styles.userBubble, color: styles.userBubbleText, border: 'none' }
-  }
-  if (role === 'system') {
-    return { background: styles.systemBubble, color: styles.systemBubbleText, border: '1px solid #FCD34D' }
-  }
-  if (role === 'agent') {
-    return { background: styles.agentBubble, color: styles.agentBubbleText, border: '1px solid #86EFAC' }
-  }
-  return { background: styles.assistantBubble, color: styles.assistantBubbleText, border: `1px solid ${styles.border}` }
-}
-
-function senderLabel(role, name) {
-  if (role === 'user') return null
-  if (role === 'agent') return name ? `${name} · Support` : 'Support team'
-  if (role === 'system') return 'YouSafe'
-  return 'Yara'
-}
-
 function looksLikeHumanRequest(text) {
   return /\b(human|agent|support|representative|person|real person|live chat|talk to someone)\b/i.test(text)
 }
@@ -109,8 +85,6 @@ export default function ChatWidget() {
   const [contact, setContact] = React.useState(null)
   const [contactDraft, setContactDraft] = React.useState({ name: '', email: '' })
   const [pendingHuman, setPendingHuman] = React.useState(false)
-  const scrollRef = React.useRef(null)
-  const inputRef = React.useRef(null)
 
   React.useEffect(() => {
     setHistory(loadJSON(STORAGE_KEY, []))
@@ -139,14 +113,6 @@ export default function ChatWidget() {
   React.useEffect(() => {
     if (hydrated && contact?.name && contact?.email) saveJSON(CONTACT_KEY, contact)
   }, [contact, hydrated])
-
-  React.useEffect(() => {
-    if (!open) return
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-    if (inputRef.current) inputRef.current.focus()
-  }, [open, history.length, sending])
 
   // Poll support-saas for new agent / system replies once the conversation
   // has been handed off. We merge support-side messages into local history
@@ -326,13 +292,6 @@ export default function ChatWidget() {
     setPendingHuman(false)
   }
 
-  const onKeyDown = e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
-  }
-
   const visibleHistory = history.length > 0
     ? history
     : [{ role: 'assistant', content: GREETING, ts: 0 }]
@@ -341,6 +300,137 @@ export default function ChatWidget() {
     Boolean(supportSession?.conversationId) &&
     supportSession.status !== 'resolved' &&
     supportSession.status !== 'closed'
+
+  const messageNodes = React.useMemo(() => {
+    const result: React.ReactNode[] = []
+    for (let i = 0; i < visibleHistory.length; i++) {
+      const m = visibleHistory[i]
+      const prev = visibleHistory[i - 1]
+      const next = visibleHistory[i + 1]
+      const ts = m.ts || 0
+      const prevTs = prev?.ts || 0
+      const nextTs = next?.ts || 0
+      const showDate = !prev || !sameDay(new Date(ts), new Date(prevTs))
+      if (showDate && ts > 0) {
+        result.push(
+          <div key={`date-${i}`} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
+              {dateLabel(new Date(ts))}
+            </span>
+          </div>
+        )
+      }
+      if (m.role === 'system') {
+        result.push(
+          <div key={`sys-${i}`} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+            <div style={{ maxWidth: '85%', background: '#F3F4F6', border: '1px solid #E5E7EB', borderRadius: 999, padding: '6px 14px', color: '#6B7280', fontSize: 12, textAlign: 'center', fontWeight: 600 }}>
+              {m.content}
+            </div>
+          </div>
+        )
+        continue
+      }
+      const mine = m.role === 'user'
+      const prevMine = prev ? prev.role === 'user' : null
+      const nextMine = next ? next.role === 'user' : null
+      const isFirstInGroup = prevMine !== mine
+      const isLastInGroup = nextMine !== mine
+      const label = m.role === 'agent' ? (m.senderName ? `${m.senderName} · Support` : 'Support team') : m.role === 'assistant' ? 'Yara' : null
+      result.push(
+        <div key={i}>
+          {label && isFirstInGroup && (
+            <div style={{ fontSize: 10, color: '#9CA3AF', marginBottom: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: mine ? 'right' : 'left', paddingRight: mine ? 4 : 0, paddingLeft: mine ? 0 : 4 }}>
+              {label}
+            </div>
+          )}
+          <MessageBubble
+            mine={mine}
+            isFirstInGroup={isFirstInGroup}
+            isLastInGroup={isLastInGroup}
+            timestamp={ts > 0 ? new Date(ts).toISOString() : null}
+            body={m.content}
+          />
+        </div>
+      )
+    }
+    if (sending) {
+      result.push(
+        <div key="typing" style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <div style={{ padding: '10px 14px', borderRadius: 12, background: '#F3F4F6', border: '1px solid #E5E7EB', color: '#6B7280', fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <Dot delay={0} />
+            <Dot delay={150} />
+            <Dot delay={300} />
+          </div>
+        </div>
+      )
+    }
+    if (error) {
+      result.push(
+        <div key="error" style={{ fontSize: 12, color: styles.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)', borderRadius: 10, padding: '8px 12px', alignSelf: 'flex-start', maxWidth: '90%' }}>
+          {error}
+        </div>
+      )
+    }
+    return result
+  }, [visibleHistory, sending, error])
+
+  const header = (
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${styles.border}`, background: styles.bubbleBg, color: styles.bubbleText, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14 }}>
+        {inLiveSession ? '🛟' : 'Y'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{inLiveSession ? 'Live support' : 'Yara · YouSafe assistant'}</div>
+        <div style={{ fontSize: 11, opacity: 0.85 }}>{statusLabel(supportSession)}</div>
+      </div>
+      <button type="button" onClick={reset} title="Start a new conversation" style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: styles.bubbleText, cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '6px 10px', borderRadius: 8 }}>Reset</button>
+      <button type="button" onClick={() => setOpen(false)} title="Minimize chat" style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>−</button>
+      <button type="button" onClick={() => setMaximized(v => !v)} title={maximized ? 'Restore chat' : 'Maximize chat'} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>{maximized ? '▣' : '□'}</button>
+      <button type="button" onClick={() => setOpen(false)} title="Close chat" style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>×</button>
+    </div>
+  )
+
+  const composer = (
+    <div style={{ borderTop: `1px solid ${styles.border}`, padding: '10px 12px', background: styles.panelBg }}>
+      {!inLiveSession && (
+        <div style={{ padding: '0 0 8px', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={requestHumanSupport}
+            disabled={sending}
+            style={{ background: 'transparent', border: `1px dashed ${styles.border2}`, borderRadius: 999, padding: '5px 14px', cursor: sending ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600, color: styles.bubbleBg, fontFamily: 'inherit', opacity: sending ? 0.6 : 1 }}
+          >
+            Talk to a human →
+          </button>
+        </div>
+      )}
+      {pendingHuman && !inLiveSession && (
+        <form onSubmit={saveContactAndContinue} style={{ margin: '0 0 10px', padding: '12px', border: `1px solid ${styles.border}`, borderRadius: 12, background: '#fff', display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 12, color: styles.textMuted, fontWeight: 700 }}>Before live support</div>
+          <input value={contactDraft.name} onChange={e => setContactDraft(d => ({ ...d, name: e.target.value }))} placeholder="Your name" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: 8, font: 'inherit', fontSize: 14 }} />
+          <input value={contactDraft.email} onChange={e => setContactDraft(d => ({ ...d, email: e.target.value }))} placeholder="Email address" type="email" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: 8, font: 'inherit', fontSize: 14 }} />
+          <button type="submit" style={{ height: 34, border: 'none', borderRadius: 8, background: styles.bubbleBg, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start live conversation</button>
+        </form>
+      )}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <AutoGrowInput
+          value={input}
+          onChange={setInput}
+          onSubmit={() => send()}
+          disabled={sending}
+          placeholder={inLiveSession ? 'Message support…' : 'Type a message…'}
+        />
+        <button
+          type="button"
+          onClick={() => send()}
+          disabled={sending || input.trim().length === 0}
+          style={{ height: 38, padding: '0 14px', background: styles.bubbleBg, color: styles.bubbleText, border: 'none', borderRadius: 10, cursor: sending || input.trim().length === 0 ? 'not-allowed' : 'pointer', opacity: sending || input.trim().length === 0 ? 0.5 : 1, fontWeight: 700, fontSize: 13 }}
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <>
@@ -382,7 +472,7 @@ export default function ChatWidget() {
             right: maximized ? '20px' : '20px',
             bottom: maximized ? '20px' : '88px',
             width: maximized ? 'min(760px, calc(100vw - 40px))' : 'min(380px, calc(100vw - 40px))',
-            height: maximized ? 'min(760px, calc(100vh - 40px))' : 'min(580px, calc(100vh - 120px))',
+            height: maximized ? 'min(760px, calc(100vh - 40px))' : 'min(540px, calc(100vh - 120px))',
             background: styles.panelBg,
             border: `1px solid ${styles.panelBorder}`,
             borderRadius: '16px',
@@ -394,224 +484,7 @@ export default function ChatWidget() {
             fontFamily: 'inherit',
           }}
         >
-          <div
-            style={{
-              padding: '14px 16px',
-              borderBottom: `1px solid ${styles.border}`,
-              background: styles.bubbleBg,
-              color: styles.bubbleText,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            <div
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.18)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 800,
-                fontSize: '14px',
-              }}
-            >
-              {inLiveSession ? '🛟' : 'Y'}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>
-                {inLiveSession ? 'Live support' : 'Yara · YouSafe assistant'}
-              </div>
-              <div style={{ fontSize: '11px', opacity: 0.85 }}>{statusLabel(supportSession)}</div>
-            </div>
-            <button
-              type="button"
-              onClick={reset}
-              title="Start a new conversation"
-              style={{
-                background: 'rgba(255,255,255,0.12)',
-                border: 'none',
-                color: styles.bubbleText,
-                cursor: 'pointer',
-                fontSize: '11px',
-                fontWeight: 600,
-                padding: '6px 10px',
-                borderRadius: '8px',
-              }}
-            >
-              Reset
-            </button>
-            <button type="button" onClick={() => setOpen(false)} title="Minimize chat" style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>−</button>
-            <button type="button" onClick={() => setMaximized(v => !v)} title={maximized ? 'Restore chat' : 'Maximize chat'} style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>{maximized ? '▣' : '□'}</button>
-            <button type="button" onClick={() => setOpen(false)} title="Close chat" style={{ width: '28px', height: '28px', borderRadius: '8px', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>×</button>
-          </div>
-
-          <div
-            ref={scrollRef}
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '16px',
-              background: styles.surface2,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px',
-            }}
-          >
-            {visibleHistory.map((m, i) => {
-              const role = m.role
-              const bubble = bubbleStylesFor(role)
-              const align = role === 'user' ? 'flex-end' : 'flex-start'
-              const label = senderLabel(role, m.senderName)
-              return (
-                <div key={m.id || i} style={{ display: 'flex', justifyContent: align, flexDirection: 'column', alignItems: align }}>
-                  {label && (
-                    <div style={{ fontSize: '10px', color: styles.textDim, marginBottom: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-                  )}
-                  <div
-                    style={{
-                      maxWidth: '82%',
-                      padding: '10px 13px',
-                      borderRadius: '12px',
-                      fontSize: '14px',
-                      lineHeight: 1.5,
-                      whiteSpace: 'pre-wrap',
-                      ...bubble,
-                    }}
-                  >
-                    {m.content}
-                  </div>
-                </div>
-              )
-            })}
-            {sending && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: styles.assistantBubble,
-                    border: `1px solid ${styles.border}`,
-                    color: styles.textMuted,
-                    fontSize: '13px',
-                    display: 'inline-flex',
-                    gap: '6px',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Dot delay={0} />
-                  <Dot delay={150} />
-                  <Dot delay={300} />
-                </div>
-              </div>
-            )}
-            {error && (
-              <div
-                style={{
-                  fontSize: '12px',
-                  color: styles.red,
-                  background: 'rgba(220,38,38,0.08)',
-                  border: '1px solid rgba(220,38,38,0.25)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  alignSelf: 'flex-start',
-                  maxWidth: '90%',
-                }}
-              >
-                {error}
-              </div>
-            )}
-          </div>
-
-          {!inLiveSession && (
-            <div style={{ padding: '8px 12px 0', display: 'flex', justifyContent: 'center' }}>
-              <button
-                type="button"
-                onClick={requestHumanSupport}
-                disabled={sending}
-                style={{
-                  background: 'transparent',
-                  border: `1px dashed ${styles.border2}`,
-                  borderRadius: '999px',
-                  padding: '5px 14px',
-                  cursor: sending ? 'not-allowed' : 'pointer',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: styles.bubbleBg,
-                  fontFamily: 'inherit',
-                  opacity: sending ? 0.6 : 1,
-                }}
-              >
-                Talk to a human →
-              </button>
-            </div>
-          )}
-
-          {pendingHuman && !inLiveSession && (
-            <form onSubmit={saveContactAndContinue} style={{ margin: '10px 12px 0', padding: '12px', border: `1px solid ${styles.border}`, borderRadius: '12px', background: '#fff', display: 'grid', gap: '8px' }}>
-              <div style={{ fontSize: '12px', color: styles.textMuted, fontWeight: 700 }}>Before live support</div>
-              <input value={contactDraft.name} onChange={e => setContactDraft(d => ({ ...d, name: e.target.value }))} placeholder="Your name" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: '8px', font: 'inherit', fontSize: '14px' }} />
-              <input value={contactDraft.email} onChange={e => setContactDraft(d => ({ ...d, email: e.target.value }))} placeholder="Email address" type="email" style={{ padding: '9px 10px', border: `1px solid ${styles.border2}`, borderRadius: '8px', font: 'inherit', fontSize: '14px' }} />
-              <button type="submit" style={{ height: '34px', border: 'none', borderRadius: '8px', background: styles.bubbleBg, color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Start live conversation</button>
-            </form>
-          )}
-
-          <div
-            style={{
-              borderTop: `1px solid ${styles.border}`,
-              padding: '10px 12px',
-              background: styles.panelBg,
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'flex-end',
-            }}
-          >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={inLiveSession ? 'Message support…' : 'Type a message…'}
-              rows={1}
-              disabled={sending}
-              style={{
-                flex: 1,
-                resize: 'none',
-                maxHeight: '120px',
-                minHeight: '38px',
-                border: `1px solid ${styles.border2}`,
-                borderRadius: '10px',
-                padding: '9px 12px',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                background: '#fff',
-                color: '#111827',
-                lineHeight: 1.4,
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => send()}
-              disabled={sending || input.trim().length === 0}
-              style={{
-                height: '38px',
-                padding: '0 14px',
-                background: styles.bubbleBg,
-                color: styles.bubbleText,
-                border: 'none',
-                borderRadius: '10px',
-                cursor: sending || input.trim().length === 0 ? 'not-allowed' : 'pointer',
-                opacity: sending || input.trim().length === 0 ? 0.5 : 1,
-                fontWeight: 700,
-                fontSize: '13px',
-              }}
-            >
-              Send
-            </button>
-          </div>
+          <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} />
         </div>
       )}
       <style>{`
