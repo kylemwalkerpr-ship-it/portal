@@ -2,23 +2,30 @@
 /**
  * OfferPaymentModal
  *
- * Wallet-based payment flow for accepting a custom offer.
- * Buyers pay from their wallet balance. If insufficient, they top up first.
+ * 3-method payment flow for accepting a custom offer:
+ *   1. Wallet balance
+ *   2. Saved card (vault charge)
+ *   3. New card (Collect.js inline tokenization)
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 const NAVY = '#1B2D4F'
 const GOLD = '#9A7B3B'
 const RED  = '#8B1A1A'
 const GREEN = '#1A6B45'
+const CYAN = '#3C3B6E'
 const SURFACE  = '#FFFFFF'
 const SURFACE2 = '#FAFAF7'
 const BORDER   = '#E5E0D6'
+const BORDER2  = 'rgba(0,0,0,0.12)'
 const TEXT  = '#1A1F2E'
 const MUTED = '#5C6070'
 const DIM   = '#9097A8'
 const SERIF = `'Cormorant Garamond', Georgia, serif`
 const SANS  = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+
+const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
+const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
 export interface OfferPaymentModalProps {
   offerId: string
@@ -32,6 +39,15 @@ interface Breakdown {
   platform_fee: number
   tax: number
   total: number
+}
+
+interface SavedCard {
+  id: string
+  brand: string | null
+  last4: string
+  exp_month: number | null
+  exp_year: number | null
+  is_default: boolean
 }
 
 function formatMoney(cents: number, currency = 'USD'): string {
@@ -48,6 +64,15 @@ function extractErrorMessage(json: any, status: number): string {
   return typeof msg === 'string' ? msg : 'Something went wrong.'
 }
 
+function cardLabel(card: SavedCard): string {
+  const brand = (card.brand || 'CARD').toUpperCase()
+  const expMonth = String(card.exp_month ?? '').padStart(2, '0')
+  const expYear = String(card.exp_year ?? '').slice(-2)
+  const exp = expMonth && expYear ? ` · exp ${expMonth}/${expYear}` : ''
+  const def = card.is_default ? ' · default' : ''
+  return `${brand} ••••${card.last4}${exp}${def}`
+}
+
 export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPaymentModalProps) {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -56,9 +81,27 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
   const [walletCents, setWalletCents] = useState<number | null>(null)
   const [requiredCents, setRequiredCents] = useState<number | null>(null)
 
+  const [payMethod, setPayMethod] = useState<'wallet' | 'saved_card' | 'new_card'>('wallet')
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([])
+  const [selectedCardId, setSelectedCardId] = useState<string>('')
+  const [newCardToken, setNewCardToken] = useState<string | null>(null)
+  const [nmiReady, setNmiReady] = useState(false)
+  const [nmiError, setNmiError] = useState<string | null>(null)
+
+  // Reset state when modal opens
   useEffect(() => {
     if (!open) return
-    setLoading(true); setError(null); setMeta(null); setWalletCents(null); setRequiredCents(null)
+    setLoading(true)
+    setError(null)
+    setMeta(null)
+    setWalletCents(null)
+    setRequiredCents(null)
+    setPayMethod('wallet')
+    setSavedCards([])
+    setSelectedCardId('')
+    setNewCardToken(null)
+    setNmiReady(false)
+    setNmiError(null)
 
     let cancelled = false
     ;(async () => {
@@ -76,13 +119,32 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
         }
 
         const payload = json?.data ?? json
+        const breakdown = payload?.breakdown
+        const total = Number(breakdown?.total ?? 0)
+        const balance = Number(payload?.balanceCents ?? 0)
+        const cards: SavedCard[] = payload?.savedCards ?? []
+
         setMeta({
           title: payload?.offer?.title || 'Custom offer',
           currency: payload?.offer?.currency || 'USD',
-          breakdown: payload?.breakdown,
+          breakdown,
         })
-        setWalletCents(Number(payload?.balanceCents ?? 0))
-        setRequiredCents(Number(payload?.breakdown?.total ?? 0))
+        setWalletCents(balance)
+        setRequiredCents(total)
+        setSavedCards(cards)
+
+        // Default selected card
+        const defaultCard = cards.find(c => c.is_default)
+        setSelectedCardId(defaultCard?.id || cards[0]?.id || '')
+
+        // Default payMethod
+        if (balance >= total) {
+          setPayMethod('wallet')
+        } else if (cards.length > 0) {
+          setPayMethod('saved_card')
+        } else {
+          setPayMethod('new_card')
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.message || 'Could not load payment details.')
       } finally {
@@ -93,21 +155,77 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
     return () => { cancelled = true }
   }, [open, offerId])
 
+  // Collect.js init for new card branch
+  const initNmi = useCallback(async () => {
+    if (nmiReady) return
+    setNmiError(null)
+    if (typeof window === 'undefined') return
+    try {
+      const cfgRes = await fetch('/api/payments/config')
+      const cfg = await cfgRes.json().catch(() => ({}))
+      if (!cfgRes.ok || !cfg.scriptUrl) {
+        setNmiError('Payment config unavailable')
+        return
+      }
+      const scriptUrl = cfg.scriptUrl
+      const configure = () => {
+        const CollectJS = (window as any).CollectJS
+        if (!CollectJS) { setNmiError('Payment tokenization library not available'); return }
+        CollectJS.configure({
+          variant: 'inline',
+          fields: {
+            ccnumber: { placeholder: 'Card number', selector: '#nmi-offer-card-number' },
+            ccexp:    { placeholder: 'MM / YY',     selector: '#nmi-offer-card-expiry' },
+            cvv:      { placeholder: 'CVV',         selector: '#nmi-offer-card-cvv' },
+          },
+          callback: (response: any) => {
+            if (response.token) {
+              setNewCardToken(response.token)
+              setNmiError(null)
+            } else {
+              setNmiError(response.message || 'Card tokenization failed')
+            }
+          },
+        })
+        setNmiReady(true)
+      }
+      if ((window as any).CollectJS || document.querySelector(`script[src="${scriptUrl}"]`)) {
+        configure()
+        return
+      }
+      const script = document.createElement('script')
+      script.src = scriptUrl
+      script.async = true
+      script.dataset.tokenizationKey = cfg.tokenizationKey || ''
+      script.onload = configure
+      script.onerror = () => setNmiError('Failed to load payment tokenization library')
+      document.body.appendChild(script)
+    } catch (e: any) {
+      setNmiError(e?.message || 'Failed to initialise card fields')
+    }
+  }, [nmiReady])
+
   const handlePay = async () => {
     if (!meta?.breakdown || submitting) return
-    setSubmitting(true); setError(null)
+    setSubmitting(true)
+    setError(null)
     try {
+      const body =
+        payMethod === 'wallet'      ? { paymentMethod: 'wallet' } :
+        payMethod === 'saved_card'  ? { paymentMethod: 'saved_card', paymentMethodId: selectedCardId } :
+                                      { paymentMethod: 'new_card', token: newCardToken }
+
       const res = await fetch(`/api/offers/${offerId}/accept`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        if (res.status === 402) {
-          setWalletCents(Number(json?.error?.balanceCents ?? json?.balanceCents ?? walletCents ?? 0))
-          setRequiredCents(Number(json?.error?.requiredCents ?? json?.requiredCents ?? requiredCents ?? 0))
+        if (res.status === 402 && payMethod === 'wallet') {
+          setWalletCents(Number(json?.error?.balanceCents ?? walletCents ?? 0))
+          setRequiredCents(Number(json?.error?.requiredCents ?? requiredCents ?? 0))
         }
         setError(extractErrorMessage(json, res.status))
         setSubmitting(false)
@@ -116,7 +234,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
       onPaid?.()
       onClose()
     } catch (e: any) {
-      setError(e?.message || 'Payment failed.')
+      setError(e instanceof Error ? e.message : 'Payment failed.')
       setSubmitting(false)
     }
   }
@@ -124,11 +242,43 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
   if (!open) return null
 
   const totalCents = meta?.breakdown?.total ?? 0
-  const canPay = walletCents !== null && walletCents >= totalCents && totalCents > 0
+  const currency = meta?.currency || 'USD'
+  const canPayWallet = walletCents !== null && walletCents >= totalCents && totalCents > 0
+  const selectedCard = savedCards.find(c => c.id === selectedCardId)
+
+  // Pay button label & disabled state
+  let payLabel = 'Processing…'
+  let payDisabled = submitting
+  if (!submitting) {
+    if (payMethod === 'wallet') {
+      payLabel = `Pay ${formatMoney(totalCents, currency)} from wallet`
+      payDisabled = payDisabled || !canPayWallet
+    } else if (payMethod === 'saved_card') {
+      if (savedCards.length === 0) {
+        payLabel = 'No saved cards available'
+        payDisabled = true
+      } else if (!selectedCardId) {
+        payLabel = 'Choose a saved card'
+        payDisabled = true
+      } else {
+        payLabel = `Pay ${formatMoney(totalCents, currency)} with ${(selectedCard?.brand || 'CARD').toUpperCase()} ••••${selectedCard?.last4 || ''}`
+      }
+    } else {
+      if (!newCardToken) {
+        payLabel = 'Tokenize your card first'
+        payDisabled = true
+      } else {
+        payLabel = `Pay ${formatMoney(totalCents, currency)} with new card`
+      }
+    }
+  }
 
   return (
     <div
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Payment modal"
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}
     >
       <div
@@ -140,7 +290,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: MUTED }}>Secure checkout</div>
             <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, marginTop: 4 }}>{meta?.title || 'Custom offer'}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: DIM, lineHeight: 1 }}>×</button>
+          <button onClick={onClose} aria-label="Close payment modal" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: DIM, lineHeight: 1 }}>×</button>
         </div>
 
         {loading ? (
@@ -170,39 +320,154 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '12px 14px', background: SURFACE2, borderRadius: 10, border: `1px solid ${BORDER}` }}>
-              <span style={{ fontSize: 13, color: MUTED }}>Wallet balance</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: walletCents !== null && walletCents >= totalCents ? GREEN : RED }}>
-                {walletCents === null ? '—' : formatMoney(walletCents, meta?.currency || 'USD')}
-              </span>
+            {/* Payment method picker */}
+            <div role="radiogroup" aria-label="Choose payment method" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {/* Wallet option */}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={payMethod === 'wallet'}
+                onClick={() => canPayWallet && setPayMethod('wallet')}
+                disabled={!canPayWallet}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '14px', borderRadius: 12,
+                  border: `2px solid ${payMethod === 'wallet' ? NAVY : BORDER}`,
+                  background: payMethod === 'wallet' ? `${NAVY}10` : SURFACE2,
+                  cursor: canPayWallet ? 'pointer' : 'not-allowed',
+                  opacity: canPayWallet ? 1 : 0.5,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  fontFamily: SANS, fontSize: 14, color: TEXT,
+                }}
+              >
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: 20 }}>💰</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Wallet balance</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>
+                      {walletCents === null ? '—' : formatMoney(walletCents, currency)} available
+                      {!canPayWallet && walletCents !== null && <span style={{ color: RED, marginLeft: 6 }}>· insufficient</span>}
+                    </div>
+                  </div>
+                </div>
+                {payMethod === 'wallet' && <span style={{ color: NAVY, fontWeight: 700 }}>✓</span>}
+              </button>
+
+              {/* Saved card option */}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={payMethod === 'saved_card'}
+                onClick={() => savedCards.length > 0 && setPayMethod('saved_card')}
+                disabled={savedCards.length === 0}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '14px', borderRadius: 12,
+                  border: `2px solid ${payMethod === 'saved_card' ? NAVY : BORDER}`,
+                  background: payMethod === 'saved_card' ? `${NAVY}10` : SURFACE2,
+                  cursor: savedCards.length > 0 ? 'pointer' : 'not-allowed',
+                  opacity: savedCards.length > 0 ? 1 : 0.55,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  fontFamily: SANS, fontSize: 14, color: TEXT,
+                }}
+              >
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: 20 }}>💳</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Saved card</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>
+                      {savedCards.length === 0
+                        ? <span>No saved cards yet — <a href="/student?goto=billing" style={{ color: CYAN, textDecoration: 'underline' }}>add one from billing</a></span>
+                        : selectedCard ? cardLabel(selectedCard) : 'Choose a saved card'
+                      }
+                    </div>
+                  </div>
+                </div>
+                {payMethod === 'saved_card' && <span style={{ color: NAVY, fontWeight: 700 }}>✓</span>}
+              </button>
+
+              {/* Saved card dropdown */}
+              {payMethod === 'saved_card' && savedCards.length > 0 && (
+                <select
+                  aria-label="Choose a saved card"
+                  value={selectedCardId}
+                  onChange={e => setSelectedCardId(e.target.value)}
+                  style={{
+                    width: '100%', padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDER}`,
+                    background: SURFACE, fontFamily: SANS, fontSize: 13, color: TEXT, cursor: 'pointer',
+                  }}
+                >
+                  {savedCards.map(card => (
+                    <option key={card.id} value={card.id}>{cardLabel(card)}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* New card option */}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={payMethod === 'new_card'}
+                onClick={() => { setPayMethod('new_card'); initNmi(); }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '14px', borderRadius: 12,
+                  border: `2px solid ${payMethod === 'new_card' ? NAVY : BORDER}`,
+                  background: payMethod === 'new_card' ? `${NAVY}10` : SURFACE2,
+                  cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  fontFamily: SANS, fontSize: 14, color: TEXT,
+                }}
+              >
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: 20 }}>💳</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>New card</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Enter card details securely with Collect.js</div>
+                  </div>
+                </div>
+                {payMethod === 'new_card' && <span style={{ color: NAVY, fontWeight: 700 }}>✓</span>}
+              </button>
+
+              {/* New card inline fields */}
+              {payMethod === 'new_card' && (
+                <div style={{ margin: '-2px 0 0 0' }}>
+                  {nmiError && (
+                    <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#EF4444', marginBottom: 10 }}>
+                      {nmiError}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
+                    <div id="nmi-offer-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <div id="nmi-offer-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
+                      <div id="nmi-offer-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!nmiReady) { setNmiError('Payment fields are not ready — please wait a moment.'); return }
+                      ;(window as any).CollectJS?.startPaymentRequest()
+                    }}
+                    disabled={!nmiReady}
+                    style={{
+                      padding: '10px 18px', borderRadius: 8, border: 'none',
+                      background: newCardToken ? GREEN : nmiReady ? NAVY : BORDER,
+                      color: '#fff', fontSize: 13, fontWeight: 600, cursor: nmiReady ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {error && (
-              <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: RED, marginBottom: 14 }}>
-                {error}
-                {requiredCents !== null && walletCents !== null && walletCents < requiredCents && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>
-                    Required: {formatMoney(requiredCents, meta?.currency || 'USD')} · Available: {formatMoney(walletCents, meta?.currency || 'USD')}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {canPay ? (
-              <button
-                onClick={handlePay}
-                disabled={submitting}
-                style={{ width: '100%', padding: '14px', borderRadius: 10, background: NAVY, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}
-              >
-                {submitting ? 'Processing…' : `Pay ${formatMoney(totalCents, meta?.currency || 'USD')} from wallet`}
-              </button>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Top-up block (wallet only, insufficient) */}
+            {payMethod === 'wallet' && !canPayWallet && walletCents !== null && totalCents > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
                 <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#92400e' }}>
                   Insufficient wallet balance. Top up your wallet first.
                   {requiredCents !== null && walletCents !== null && (
                     <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>
-                      Required: {formatMoney(requiredCents, meta?.currency || 'USD')} · Available: {formatMoney(walletCents, meta?.currency || 'USD')}
+                      Required: {formatMoney(requiredCents, currency)} · Available: {formatMoney(walletCents, currency)}
                     </div>
                   )}
                 </div>
@@ -214,6 +479,39 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                 </a>
               </div>
             )}
+
+            {error && (
+              <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: RED, marginBottom: 14 }}>
+                {error}
+                {requiredCents !== null && walletCents !== null && walletCents < requiredCents && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>
+                    Required: {formatMoney(requiredCents, currency)} · Available: {formatMoney(walletCents, currency)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pay button */}
+            <button
+              onClick={handlePay}
+              disabled={payDisabled}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 10, background: NAVY, color: '#fff',
+                fontSize: 15, fontWeight: 700, border: 'none',
+                cursor: payDisabled ? 'not-allowed' : 'pointer',
+                opacity: payDisabled ? 0.7 : 1,
+              }}
+            >
+              {payLabel}
+            </button>
+
+            {/* Fine-print disclosure */}
+            <p style={{ fontSize: 11, color: MUTED, textAlign: 'center', marginTop: 10, lineHeight: 1.5 }}>
+              By placing this order you agree to the{' '}
+              <a href={TERMS_URL} target="_blank" rel="noreferrer" style={{ color: MUTED, textDecoration: 'underline' }}>Terms of Service</a>{' '}
+              and{' '}
+              <a href={REFUND_POLICY_URL} target="_blank" rel="noreferrer" style={{ color: MUTED, textDecoration: 'underline' }}>Refund Policy</a>.
+            </p>
 
             <button
               onClick={onClose}

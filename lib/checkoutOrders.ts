@@ -207,7 +207,7 @@ export async function createPaidOrder(
   db: Db,
   item: CheckoutItem,
   opts: {
-    paymentMethod: 'wallet'
+    paymentMethod: 'wallet' | 'saved_card' | 'new_card'
     actorId?: string | null
     acceptedAt?: string
     skipSourceUpdate?: boolean
@@ -256,12 +256,13 @@ export async function createPaidOrder(
     gig_id: item.gigId || null,
     terms_accepted_at: acceptedAt,
     refund_policy_accepted_at: acceptedAt,
+    payment_method: opts.paymentMethod,
     ...(identity || {}),
   }
 
   let { data: order, error } = await db.from('orders').insert(orderInsert).select('id').single()
-  if (error && /order_number|order_sequence|terms_accepted_at|refund_policy_accepted_at|amount_paid|net_payout|delivery_deadline|offer_id|gig_id|source_/i.test(error.message)) {
-    for (const key of ['order_number', 'order_sequence', 'terms_accepted_at', 'refund_policy_accepted_at', 'amount_paid', 'net_payout', 'delivery_deadline', 'offer_id', 'gig_id', 'source_offer_id', 'source_consultant_offer_id', 'source_inquiry_id']) {
+  if (error && /order_number|order_sequence|terms_accepted_at|refund_policy_accepted_at|amount_paid|net_payout|delivery_deadline|offer_id|gig_id|source_|payment_method/i.test(error.message)) {
+    for (const key of ['order_number', 'order_sequence', 'terms_accepted_at', 'refund_policy_accepted_at', 'amount_paid', 'net_payout', 'delivery_deadline', 'offer_id', 'gig_id', 'source_offer_id', 'source_consultant_offer_id', 'source_inquiry_id', 'payment_method']) {
       delete orderInsert[key]
     }
     const retry = await db.from('orders').insert(orderInsert).select('id').single()
@@ -278,14 +279,14 @@ export async function createPaidOrder(
     actor_id: opts.actorId || item.clientProfileId,
     actor_role: 'client',
     to_status: 'created',
-    note: `Order created after wallet payment for ${item.title}. Provider must start the order.`,
+    note: `Order created after ${opts.paymentMethod.replace('_', ' ')} payment for ${item.title}. Provider must start the order.`,
   })
   await db.from('order_status_history').insert({
     order_id: order.id,
     from_status: null,
     to_status: 'created',
     changed_by_id: opts.actorId || item.clientProfileId,
-    note: `Paid by wallet - ${item.title}`,
+    note: `Paid by ${opts.paymentMethod.replace('_', ' ')} - ${item.title}`,
   })
 
   if (item.gigId) {
