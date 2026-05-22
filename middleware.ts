@@ -116,6 +116,20 @@ export default clerkMiddleware(
         // Canonicalise: /marketplace/xyz → /xyz on the market domain
         const cleanPath = pathname.slice('/marketplace'.length) || '/'
         return NextResponse.redirect(new URL(cleanPath + search, req.url), { status: 301 })
+      } else if (
+        // Portal-only surfaces should never live on the market host. A Clerk
+        // redirect, a stale link, or a typed URL otherwise lands on a rewrite
+        // to /marketplace/<path>, which doesn't exist → 404. Bounce them to
+        // the portal host where these routes are real.
+        pathname === '/dashboard' ||
+        pathname.startsWith('/dashboard/') ||
+        pathname.startsWith('/sign-in') ||
+        pathname.startsWith('/sign-up') ||
+        pathname.startsWith('/user') ||
+        pathname.startsWith('/sellers')
+      ) {
+        const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
+        return NextResponse.redirect(portalUrl, { status: 302 })
       } else {
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
         return withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
