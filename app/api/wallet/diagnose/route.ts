@@ -1,112 +1,99 @@
+/**
+ * GET /api/wallet/diagnose
+ * Health check for the NMI wallet stack: env vars, auth, Supabase schema,
+ * payment provider connectivity.
+ */
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getPaymentProvider } from '@/lib/payments'
 
-// Diagnostic endpoint — checks every layer and reports exactly where things break.
-// Visit /api/wallet/diagnose while signed in to see a full health report.
+function prefix(v: string | undefined) {
+  if (!v) return 'MISSING'
+  return `${v.slice(0, 12)}…(len=${v.length})`
+}
+
 export async function GET() {
   const report: Record<string, unknown> = {}
 
-  // 1. Environment variables
+  // 1. Environment
   report.env = {
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: prefix(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
-    STRIPE_SECRET_KEY: prefix(process.env.STRIPE_SECRET_KEY),
-    STRIPE_WEBHOOK_SECRET: prefix(process.env.STRIPE_WEBHOOK_SECRET),
+    PAYMENT_PROVIDER: process.env.PAYMENT_PROVIDER || 'nmi (default)',
+    NMI_SECURITY_KEY: prefix(process.env.NMI_SECURITY_KEY),
+    NMI_TOKENIZATION_KEY: prefix(process.env.NMI_TOKENIZATION_KEY),
     NEXT_PUBLIC_SUPABASE_URL: prefix(process.env.NEXT_PUBLIC_SUPABASE_URL),
     SUPABASE_SERVICE_ROLE_KEY: prefix(process.env.SUPABASE_SERVICE_ROLE_KEY),
     CLERK_SECRET_KEY: prefix(process.env.CLERK_SECRET_KEY),
   }
 
-  // 2. Mode mismatch check (live vs test)
-  const pubMode = (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '').startsWith('pk_live') ? 'live' : 'test'
-  const secMode = (process.env.STRIPE_SECRET_KEY ?? '').startsWith('sk_live') ? 'live' : 'test'
-  report.stripeMode = { publishable: pubMode, secret: secMode, mismatch: pubMode !== secMode }
-
-  // 3. Auth
+  // 2. Auth
   const clerkUserId = await getClerkUserId()
   report.auth = { clerkUserId: clerkUserId ?? null, hasSession: !!clerkUserId }
   if (!clerkUserId) return Response.json(report)
 
-  // 4. Profile lookup with all possible columns
+  // 3. Profile lookup
   const db = createSupabaseAdminClient()
-  const fullSelect = await db
+  const { data: profile, error: profileErr } = await db
     .from('profiles')
-    .select('id, email, full_name, role, status, stripe_customer_id')
+    .select('id, email, full_name, role, status')
     .eq('clerk_user_id', clerkUserId)
     .single()
-  report.profileFullSelect = {
-    ok: !!fullSelect.data,
-    data: fullSelect.data,
-    error: fullSelect.error ? { code: fullSelect.error.code, message: fullSelect.error.message } : null,
+
+  report.profile = {
+    ok: !!profile,
+    data: profile,
+    error: profileErr ? { code: profileErr.code, message: profileErr.message } : null,
   }
 
-  // 5. Profile lookup without optional columns
-  const basicSelect = await db
-    .from('profiles')
-    .select('id, email, full_name, role')
-    .eq('clerk_user_id', clerkUserId)
-    .single()
-  report.profileBasicSelect = {
-    ok: !!basicSelect.data,
-    data: basicSelect.data,
-    error: basicSelect.error ? { code: basicSelect.error.code, message: basicSelect.error.message } : null,
-  }
+  // 4. Schema detection
+  const schemaChecks = await Promise.all([
+    db.from('student_wallets').select('profile_id').limit(1),
+    db.from('student_payment_methods').select('id').limit(1),
+    db.from('wallet_transactions').select('id').limit(1),
+  ])
 
-  // 6. Detect schema columns by looking at the error code 42703 (undefined_column)
-  const missingStatus = fullSelect.error?.message?.includes('"status"')
-  const missingStripeCustId = fullSelect.error?.message?.includes('"stripe_customer_id"')
   report.schema = {
-    statusColumn: missingStatus ? 'MISSING' : 'present',
-    stripeCustomerIdColumn: missingStripeCustId ? 'MISSING' : 'present',
+    student_wallets: schemaChecks[0].error
+      ? { ok: false, error: schemaChecks[0].error.message }
+      : { ok: true },
+    student_payment_methods: schemaChecks[1].error
+      ? { ok: false, error: schemaChecks[1].error.message }
+      : { ok: true },
+    wallet_transactions: schemaChecks[2].error
+      ? { ok: false, error: schemaChecks[2].error.message }
+      : { ok: true },
   }
 
-  // 7. Stripe API check — try creating a Stripe customer
-  if (process.env.STRIPE_SECRET_KEY) {
+  // 5. Payment provider config
+  try {
+    const config = getPaymentProvider().getClientConfig()
+    report.providerConfig = { ok: true, provider: config.provider, mode: config.mode }
+  } catch (e) {
+    report.providerConfig = {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+
+  // 6. NMI API sanity check (lightweight — just validate the key works)
+  if (process.env.NMI_SECURITY_KEY) {
     try {
-      const Stripe = (await import('stripe')).default
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() })
-      // Verify the secret key works by listing one customer (account.retrieve() requires no-arg overload not available)
-      const list = await stripe.customers.list({ limit: 1 })
-      report.stripeAccount = { ok: true, hasObject: list.object === 'list' }
+      const res = await fetch('https://secure.nmi.com/api/query.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          security_key: process.env.NMI_SECURITY_KEY,
+          limit: '1',
+        }),
+      })
+      const text = await res.text()
+      const hasXml = text.includes('<?xml') || text.includes('<nm_response')
+      report.nmiApi = { ok: res.ok && hasXml, status: res.status, hasXml }
     } catch (e) {
-      report.stripeAccount = { ok: false, error: e instanceof Error ? e.message : String(e) }
+      report.nmiApi = { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
   } else {
-    report.stripeAccount = { ok: false, error: 'STRIPE_SECRET_KEY not in process.env' }
-  }
-
-  // 8. Try creating a SetupIntent for the user
-  if (process.env.STRIPE_SECRET_KEY && (basicSelect.data?.email || fullSelect.data?.email)) {
-    try {
-      const Stripe = (await import('stripe')).default
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient() })
-      const profile: { email?: string; full_name?: string | null; stripe_customer_id?: string } | null =
-        (fullSelect.data as Record<string, unknown> as never) || (basicSelect.data as Record<string, unknown> as never)
-      const customerId = profile?.stripe_customer_id
-        ? profile.stripe_customer_id
-        : (await stripe.customers.create({
-            email: profile?.email,
-            name: profile?.full_name ?? undefined,
-            metadata: { clerk_user_id: clerkUserId, source: 'diagnose' },
-          })).id
-      const si = await stripe.setupIntents.create({
-        customer: customerId,
-        payment_method_types: ['card'],
-        usage: 'off_session',
-      })
-      report.setupIntent = { ok: true, customerId, setupIntentId: si.id }
-    } catch (e) {
-      report.setupIntent = {
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-        type: e instanceof Error ? e.constructor.name : typeof e,
-      }
-    }
+    report.nmiApi = { ok: false, error: 'NMI_SECURITY_KEY not set' }
   }
 
   return Response.json(report)
-}
-
-function prefix(v: string | undefined) {
-  if (!v) return 'MISSING'
-  return `${v.slice(0, 12)}…(len=${v.length})`
 }

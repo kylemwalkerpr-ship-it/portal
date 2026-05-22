@@ -1,38 +1,28 @@
-import { getClerkUserId } from '@/lib/auth'
-import { getStripe } from '@/lib/stripe'
-import { getOrCreateStripeCustomer } from '@/lib/stripeCustomer'
-import { isActiveClient } from '@/lib/roleGuards'
+/**
+ * DELETE /api/wallet/payment-methods/{id}
+ * Removes a saved card from NMI vault and the local database.
+ */
+import { getCurrentStudent } from '@/lib/student'
+import { removeCard } from '@/lib/payment-methods'
 
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const clerkUserId = await getClerkUserId()
-  if (!clerkUserId) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await isActiveClient(clerkUserId))) {
-    return Response.json({ error: 'Student wallet requires an active student account' }, { status: 403 })
-  }
+  const auth = await getCurrentStudent()
+  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
-  const { id: paymentMethodId } = await params
-
-  if (!paymentMethodId?.startsWith('pm_')) {
-    return Response.json({ error: 'Invalid payment method ID' }, { status: 400 })
+  const { id } = await params
+  if (!id) {
+    return Response.json({ error: 'Missing card ID' }, { status: 400 })
   }
 
   try {
-    const customerId = await getOrCreateStripeCustomer(clerkUserId)
-
-    // Verify ownership — the PM must belong to this customer
-    const pm = await getStripe().paymentMethods.retrieve(paymentMethodId)
-    if (pm.customer !== customerId) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    await getStripe().paymentMethods.detach(paymentMethodId)
+    await removeCard(auth.profile.id, id)
     return Response.json({ success: true })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('[wallet/payment-methods DELETE]', message)
-    return Response.json({ error: message }, { status: 500 })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Failed to remove card'
+    console.error('[wallet/payment-methods DELETE]', msg)
+    return Response.json({ error: msg }, { status: 500 })
   }
 }

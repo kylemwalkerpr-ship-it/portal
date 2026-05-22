@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { useUser } from '@clerk/nextjs'
 import { useCart } from '@/components/cart/CartProvider'
 import { getTemplatePack } from '@/lib/template-packs'
 
@@ -18,6 +19,7 @@ const C = {
   danger: '#8B1A1A',
   dangerBg: '#FAEAEA',
   success: '#1A6B45',
+  purple: '#3C3B6E',
 }
 
 const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -35,6 +37,8 @@ export default function CartPage() {
   const { items, removeItem, setQuantity, subtotalCents, clear, addItem } = useCart()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const { isSignedIn, user } = useUser()
+
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null)
   const [configLoading, setConfigLoading] = useState(false)
   const [configError, setConfigError] = useState<string | null>(null)
@@ -43,6 +47,11 @@ export default function CartPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const collectJsLoaded = useRef(false)
+
+  // Wallet state (signed-in only)
+  const [walletBalanceCents, setWalletBalanceCents] = useState<number | null>(null)
+  const [walletLoading, setWalletLoading] = useState(false)
+  const [payMethod, setPayMethod] = useState<'wallet' | 'card'>('wallet')
 
   // Handle ?add=slug from product pages
   useEffect(() => {
@@ -59,6 +68,19 @@ export default function CartPage() {
       router.replace('/marketplace/cart')
     }
   }, [searchParams, addItem, router])
+
+  // Load wallet balance when signed in
+  useEffect(() => {
+    if (!isSignedIn) return
+    setWalletLoading(true)
+    fetch('/api/wallet/balance', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => {
+        setWalletBalanceCents(Number(d.balanceCents ?? 0))
+      })
+      .catch(() => setWalletBalanceCents(0))
+      .finally(() => setWalletLoading(false))
+  }, [isSignedIn])
 
   const loadPaymentConfig = useCallback(async () => {
     if (items.length === 0) return
@@ -119,7 +141,7 @@ export default function CartPage() {
         },
         callback: (response: any) => {
           if (response.token) {
-            handleToken(response.token)
+            handleCardToken(response.token)
           } else {
             setCheckoutError(response.message || 'Card tokenization failed')
             setIsSubmitting(false)
@@ -131,7 +153,37 @@ export default function CartPage() {
     }
   }
 
-  async function handleToken(token: string) {
+  async function handleWalletCheckout() {
+    setCheckoutError(null)
+    setIsSubmitting(true)
+    try {
+      const res = await fetch('/api/wallet/debit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          items: items.map((i) => ({ slug: i.slug, quantity: i.quantity })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        if (res.status === 402 && data.balanceCents !== undefined) {
+          setWalletBalanceCents(data.balanceCents)
+          setCheckoutError(`Insufficient balance. You have $${(data.balanceCents / 100).toFixed(2)} but need $${(data.requiredCents / 100).toFixed(2)}.`)
+        } else {
+          setCheckoutError(data.error || 'Payment failed.')
+        }
+        setIsSubmitting(false)
+        return
+      }
+      clear()
+      router.push(`/marketplace/order/success?orderId=${data.orderId}`)
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : 'Payment request failed')
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleCardToken(token: string) {
     setCheckoutError(null)
     try {
       const res = await fetch('/api/payments/charge', {
@@ -159,12 +211,20 @@ export default function CartPage() {
 
   function handleCheckoutSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!customerEmail || !customerName) {
-      setCheckoutError('Please enter your name and email')
-      return
-    }
     if (items.length === 0) {
       setCheckoutError('Your cart is empty')
+      return
+    }
+
+    // Signed-in + wallet selected
+    if (isSignedIn && payMethod === 'wallet') {
+      handleWalletCheckout()
+      return
+    }
+
+    // Guest or card-selected path
+    if (!customerEmail || !customerName) {
+      setCheckoutError('Please enter your name and email')
       return
     }
     setIsSubmitting(true)
@@ -191,6 +251,7 @@ export default function CartPage() {
   }
 
   const subtotalFormatted = (subtotalCents / 100).toFixed(2)
+  const canUseWallet = walletBalanceCents !== null && walletBalanceCents >= subtotalCents
 
   return (
     <main style={{ maxWidth: '800px', margin: '0 auto', padding: '48px 24px 80px', fontFamily: SANS, color: C.text }}>
@@ -355,107 +416,190 @@ export default function CartPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Your full name"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: `1px solid ${C.border}`,
-                        fontSize: '15px',
-                        fontFamily: SANS,
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: `1px solid ${C.border}`,
-                        fontSize: '15px',
-                        fontFamily: SANS,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {paymentConfig.mode === 'inline-token' && (
+                {/* Signed-in wallet section */}
+                {isSignedIn && (
                   <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
-                      Card Details
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div
-                        id="nmi-card-number"
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          border: `1px solid ${C.border}`,
-                          minHeight: '42px',
-                          background: C.surface,
-                        }}
-                      />
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <div
-                          id="nmi-card-expiry"
+                    <div
+                      onClick={() => setPayMethod('wallet')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '10px',
+                        border: `2px solid ${payMethod === 'wallet' ? C.cyan : C.border}`,
+                        background: payMethod === 'wallet' ? `${C.cyan}08` : C.surface2,
+                        cursor: 'pointer',
+                        marginBottom: '10px',
+                      }}
+                    >
+                      <input type="radio" checked={payMethod === 'wallet'} readOnly style={{ accentColor: C.cyan }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px' }}>Pay with wallet</div>
+                        <div style={{ fontSize: '12px', color: C.textMuted }}>
+                          {walletLoading
+                            ? 'Loading balance…'
+                            : walletBalanceCents === null
+                              ? 'Unable to load balance'
+                              : `Balance: $${(walletBalanceCents / 100).toFixed(2)}`}
+                        </div>
+                      </div>
+                      {canUseWallet && payMethod === 'wallet' && (
+                        <span style={{ color: C.success, fontWeight: 700, fontSize: '12px' }}>✓ Sufficient</span>
+                      )}
+                      {!canUseWallet && walletBalanceCents !== null && payMethod === 'wallet' && (
+                        <span style={{ color: C.danger, fontWeight: 700, fontSize: '12px' }}>Insufficient</span>
+                      )}
+                    </div>
+
+                    {!canUseWallet && walletBalanceCents !== null && payMethod === 'wallet' && (
+                      <div style={{ marginBottom: '14px', paddingLeft: '28px' }}>
+                        <Link
+                          href="/student?goto=billing"
                           style={{
-                            flex: 1,
+                            display: 'inline-block',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            background: C.cyan,
+                            color: '#fff',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          + Top up wallet
+                        </Link>
+                      </div>
+                    )}
+
+                    <div
+                      onClick={() => setPayMethod('card')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '10px',
+                        border: `2px solid ${payMethod === 'card' ? C.cyan : C.border}`,
+                        background: payMethod === 'card' ? `${C.cyan}08` : C.surface2,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input type="radio" checked={payMethod === 'card'} readOnly style={{ accentColor: C.cyan }} />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '14px' }}>Pay with card</div>
+                        <div style={{ fontSize: '12px', color: C.textMuted }}>Enter card details below</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Guest or card-selected: name + email + card fields */}
+                {(!isSignedIn || payMethod === 'card') && (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
+                          Full Name
+                        </label>
+                        <input
+                          type="text"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder="Your full name"
+                          required
+                          style={{
+                            width: '100%',
                             padding: '10px 14px',
                             borderRadius: '8px',
                             border: `1px solid ${C.border}`,
-                            minHeight: '42px',
-                            background: C.surface,
+                            fontSize: '15px',
+                            fontFamily: SANS,
                           }}
                         />
-                        <div
-                          id="nmi-card-cvv"
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={customerEmail}
+                          onChange={(e) => setCustomerEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          required
                           style={{
-                            flex: 1,
+                            width: '100%',
                             padding: '10px 14px',
                             borderRadius: '8px',
                             border: `1px solid ${C.border}`,
-                            minHeight: '42px',
-                            background: C.surface,
+                            fontSize: '15px',
+                            fontFamily: SANS,
                           }}
                         />
                       </div>
                     </div>
-                    <p style={{ fontSize: '12px', color: C.textDim, marginTop: '8px' }}>
-                      Card data is tokenized securely. It never reaches our servers.
-                    </p>
-                  </div>
-                )}
 
-                {paymentConfig.mode === 'hosted-redirect' && (
-                  <div style={{ background: C.surface2, padding: '16px', borderRadius: '8px', fontSize: '14px', color: C.textMuted, marginBottom: '20px' }}>
-                    You will be redirected to our payment partner to complete your purchase.
-                  </div>
-                )}
+                    {paymentConfig.mode === 'inline-token' && (
+                      <div style={{ marginBottom: '20px' }}>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: C.textMuted }}>
+                          Card Details
+                        </label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div
+                            id="nmi-card-number"
+                            style={{
+                              width: '100%',
+                              padding: '10px 14px',
+                              borderRadius: '8px',
+                              border: `1px solid ${C.border}`,
+                              minHeight: '42px',
+                              background: C.surface,
+                            }}
+                          />
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <div
+                              id="nmi-card-expiry"
+                              style={{
+                                flex: 1,
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                border: `1px solid ${C.border}`,
+                                minHeight: '42px',
+                                background: C.surface,
+                              }}
+                            />
+                            <div
+                              id="nmi-card-cvv"
+                              style={{
+                                flex: 1,
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                border: `1px solid ${C.border}`,
+                                minHeight: '42px',
+                                background: C.surface,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <p style={{ fontSize: '12px', color: C.textDim, marginTop: '8px' }}>
+                          Card data is tokenized securely. It never reaches our servers.
+                        </p>
+                      </div>
+                    )}
 
-                {paymentConfig.mode === 'manual-invoice' && (
-                  <div style={{ background: C.surface2, padding: '16px', borderRadius: '8px', fontSize: '14px', color: C.textMuted, marginBottom: '20px' }}>
-                    We will email you an invoice to complete your purchase.
-                  </div>
+                    {paymentConfig.mode === 'hosted-redirect' && (
+                      <div style={{ background: C.surface2, padding: '16px', borderRadius: '8px', fontSize: '14px', color: C.textMuted, marginBottom: '20px' }}>
+                        You will be redirected to our payment partner to complete your purchase.
+                      </div>
+                    )}
+
+                    {paymentConfig.mode === 'manual-invoice' && (
+                      <div style={{ background: C.surface2, padding: '16px', borderRadius: '8px', fontSize: '14px', color: C.textMuted, marginBottom: '20px' }}>
+                        We will email you an invoice to complete your purchase.
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {checkoutError && (
@@ -466,7 +610,7 @@ export default function CartPage() {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet)}
                   style={{
                     width: '100%',
                     padding: '14px 24px',
@@ -476,11 +620,15 @@ export default function CartPage() {
                     fontSize: '16px',
                     fontWeight: 600,
                     border: 'none',
-                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: isSubmitting ? 0.7 : 1,
+                    cursor: isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet) ? 'not-allowed' : 'pointer',
+                    opacity: isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet) ? 0.6 : 1,
                   }}
                 >
-                  {isSubmitting ? 'Processing…' : `Pay $${subtotalFormatted}`}
+                  {isSubmitting
+                    ? 'Processing…'
+                    : isSignedIn && payMethod === 'wallet'
+                      ? `Pay $${subtotalFormatted} from wallet`
+                      : `Pay $${subtotalFormatted}`}
                 </button>
               </form>
             )}

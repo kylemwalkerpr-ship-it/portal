@@ -593,21 +593,19 @@ function EscrowApprovalCard({ order }) {
 }
 
 // ─── Stripe Payment Method Component ─────────────────────────────────────────
-function StripePaymentSection() {
+function NmiPaymentSection() {
   const [cards, setCards] = React.useState([]);
   const [selectedCardId, setSelectedCardId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
-  const [cardMounted, setCardMounted] = React.useState(false);
-  const [stripe, setStripe] = React.useState(null);
-  const [stripeStatus, setStripeStatus] = React.useState('idle'); // idle | loading | ready | error
-  const [stripeErr, setStripeErr] = React.useState(null);
+  const [nmiReady, setNmiReady] = React.useState(false);
+  const [nmiErr, setNmiErr] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
+  const [payConfig, setPayConfig] = React.useState(null);
 
-  const cardElemRef = React.useRef(null);
-  const mountNodeRef = React.useRef(null);
+  const collectJsInitRef = React.useRef(false);
 
   const fetchCards = async () => {
     setLoading(true);
@@ -625,85 +623,102 @@ function StripePaymentSection() {
 
   React.useEffect(() => { fetchCards(); }, []);
 
-  // Lazy-load Stripe ON DEMAND when the user clicks "Add new card"
-  const handleAddCard = async () => {
-    setErrorMsg(null);
-    setStripeErr(null);
-
-    // If already loaded, just open the form
-    if (stripe) { setAddingCard(true); return; }
-
-    if (!STRIPE_PUB_KEY) {
-      setStripeErr('Stripe is not configured. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to the environment.');
-      return;
-    }
-
-    setStripeStatus('loading');
-    setAddingCard(true);    // open the form immediately so user sees "Loading…" inside it
-
+  const loadNmiConfig = async () => {
     try {
-      const s = await loadStripe(STRIPE_PUB_KEY);
-      if (!s) throw new Error('loadStripe() returned null — Stripe.js may have been blocked by a browser extension or ad blocker.');
-      setStripe(s);
-      setStripeStatus('ready');
+      const res = await fetch('/api/payments/config', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Could not load payment config');
+      const cfg = await res.json();
+      setPayConfig(cfg);
+      return cfg;
     } catch (err) {
-      console.error('[Stripe] load failed:', err);
-      setStripeErr(err.message || 'Failed to load Stripe');
-      setStripeStatus('error');
+      setNmiErr(err.message || 'Failed to load payment config');
+      return null;
     }
   };
 
-  // Mount card element whenever stripe instance AND addingCard are both ready
-  React.useEffect(() => {
-    if (!stripe || !addingCard) return;
-    const node = mountNodeRef.current;
-    if (!node) return;
-
-    if (cardElemRef.current) { try { cardElemRef.current.destroy(); } catch (_) {} }
-
-    try {
-      const elements = stripe.elements();
-      const card = elements.create('card', {
-        hidePostalCode: true,
-        style: {
-          base: { color: '#111827', fontFamily: 'inherit', fontSize: '15px', '::placeholder': { color: '#9CA3AF' } },
-          invalid: { color: '#EF4444' },
-        },
-      });
-      card.mount(node);
-      cardElemRef.current = card;
-      setCardMounted(true);
-    } catch (err) {
-      console.error('[Stripe] mount failed:', err);
-      setStripeErr(err.message || 'Failed to mount card element');
-    }
-
-    return () => {
-      try { cardElemRef.current?.destroy(); } catch (_) {}
-      cardElemRef.current = null;
-      setCardMounted(false);
-    };
-  }, [stripe, addingCard]);
-
-  const handleSave = async () => {
-    if (!stripe || !cardElemRef.current) {
-      setErrorMsg('Card fields are not ready — please wait a moment.');
+  const initCollectJs = (cfg) => {
+    if (typeof window === 'undefined') return;
+    const CollectJS = window.CollectJS;
+    if (!CollectJS) {
+      setNmiErr('Payment tokenization library not available');
       return;
     }
+    try {
+      CollectJS.configure({
+        variant: 'inline',
+        fields: {
+          ccnumber: { placeholder: 'Card number', selector: '#nmi-add-card-number' },
+          ccexp: { placeholder: 'MM / YY', selector: '#nmi-add-card-expiry' },
+          cvv: { placeholder: 'CVV', selector: '#nmi-add-card-cvv' },
+        },
+        callback: (response) => {
+          if (response.token) {
+            handleToken(response.token);
+          } else {
+            setErrorMsg(response.message || 'Card tokenization failed');
+            setSaving(false);
+          }
+        },
+      });
+      setNmiReady(true);
+    } catch (err) {
+      setNmiErr(err.message || 'Failed to initialise card fields');
+    }
+  };
+
+  const handleAddCard = async () => {
+    setErrorMsg(null);
+    setNmiErr(null);
+    setAddingCard(true);
+
+    if (collectJsInitRef.current) {
+      setNmiReady(true);
+      return;
+    }
+
+    const cfg = payConfig || (await loadNmiConfig());
+    if (!cfg || cfg.mode !== 'inline-token') {
+      setNmiErr('Inline card tokenization is not available.');
+      return;
+    }
+
+    const scriptUrl = cfg.scriptUrl;
+    if (!scriptUrl) {
+      setNmiErr('Payment script URL missing');
+      return;
+    }
+
+    if (document.querySelector(`script[src="${scriptUrl}"]`)) {
+      collectJsInitRef.current = true;
+      initCollectJs(cfg);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = scriptUrl;
+    script.async = true;
+    script.dataset.tokenizationKey = cfg.tokenizationKey || '';
+    script.onload = () => {
+      collectJsInitRef.current = true;
+      initCollectJs(cfg);
+    };
+    script.onerror = () => {
+      setNmiErr('Failed to load payment tokenization library');
+    };
+    document.body.appendChild(script);
+  };
+
+  const handleToken = async (token) => {
     setSaving(true); setErrorMsg(null);
     try {
-      const res = await fetch('/api/wallet/setup-intent', { method: 'POST' });
-      let body;
-      try { body = await res.json(); }
-      catch { body = { error: `Server returned status ${res.status} with a non-JSON response (likely a Worker crash).` }; }
-      const { clientSecret, error: apiErr } = body;
-      if (!res.ok || apiErr || !clientSecret) {
-        throw new Error(`${apiErr || 'SetupIntent failed'} (HTTP ${res.status}). Run /api/wallet/diagnose for details.`);
-      }
-      const { error: confirmErr } = await stripe.confirmCardSetup(clientSecret, {
-        payment_method: { card: cardElemRef.current },
+      const res = await fetch('/api/wallet/payment-methods', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
       });
-      if (confirmErr) throw new Error(confirmErr.message);
+      let body;
+      try { body = await res.json(); } catch { body = { error: `Server returned ${res.status}` }; }
+      if (!res.ok || body.error) throw new Error(body.error || 'Failed to save card');
       setAddingCard(false); setSaved(true);
       await fetchCards();
       setTimeout(() => setSaved(false), 3000);
@@ -712,12 +727,23 @@ function StripePaymentSection() {
     } finally { setSaving(false); }
   };
 
-  const handleRemove = async (pmId) => {
+  const handleRemove = async (cardId) => {
     try {
-      await fetch(`/api/wallet/payment-methods/${pmId}`, { method: 'DELETE' });
-      if (selectedCardId === pmId) setSelectedCardId('');
+      await fetch(`/api/wallet/payment-methods/${cardId}`, { method: 'DELETE' });
+      if (selectedCardId === cardId) setSelectedCardId('');
       await fetchCards();
     } catch (e) { console.error('Remove failed', e); }
+  };
+
+  const handleSetDefault = async (cardId) => {
+    try {
+      await fetch('/api/wallet/set-default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId }),
+      });
+      await fetchCards();
+    } catch (e) { console.error('Set default failed', e); }
   };
 
   const brandColor = b => ({ visa: '#1a1f71', mastercard: '#eb001b', amex: '#007bc1' }[b] ?? C.textMuted);
@@ -726,12 +752,12 @@ function StripePaymentSection() {
     <Card>
       <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Payment Methods</div>
       <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>stripe</span>
-        Secured by Stripe — we never store card details directly.
+        <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>nmi</span>
+        Secured by NMI Collect.js — we never store card details directly.
       </div>
-      {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely via Stripe</div>}
+      {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely</div>}
       {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {errorMsg}</div>}
-      {stripeErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ Stripe error: {stripeErr}</div>}
+      {nmiErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {nmiErr}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         {loading ? (
           <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading saved cards…</div>
@@ -747,44 +773,48 @@ function StripePaymentSection() {
             <span style={{ width: '20px', height: '20px', borderRadius: '999px', border: `2px solid ${selectedCardId === card.id ? C.cyan : C.border2}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {selectedCardId === card.id && <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: C.cyan }} />}
             </span>
-            <div style={{ width: '44px', height: '28px', borderRadius: '6px', background: brandColor(card.brand), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{card.brand.slice(0,4).toUpperCase()}</div>
+            <div style={{ width: '44px', height: '28px', borderRadius: '6px', background: brandColor(card.brand), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{(card.brand || 'card').slice(0,4).toUpperCase()}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>•••• •••• •••• {card.last4}</div>
               <div style={{ fontSize: '12px', color: C.textMuted }}>Expires {card.exp_month}/{card.exp_year}</div>
             </div>
+            {!card.is_default && (
+              <Btn variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSetDefault(card.id); }}>Default</Btn>
+            )}
             <Btn variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRemove(card.id); }}>Remove</Btn>
           </button>
         ))}
       </div>
       {!addingCard ? (
-        <Btn variant="secondary" size="sm" onClick={handleAddCard} disabled={stripeStatus === 'loading'}>
-          {stripeStatus === 'loading' ? 'Loading Stripe…' : '+ Add new card'}
-        </Btn>
+        <Btn variant="secondary" size="sm" onClick={handleAddCard}>+ Add new card</Btn>
       ) : (
         <div style={{ background: '#F9FAFB', borderRadius: '14px', padding: '20px', border: '1px solid #E5E7EB' }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
             <span>Add payment method</span>
-            <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by stripe</span>
+            <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by nmi</span>
           </div>
-          <div style={{ position: 'relative', marginBottom: '16px' }}>
-            <div
-              ref={mountNodeRef}
-              style={{ padding: '12px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '46px' }}
-            />
-            {!cardMounted && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', paddingLeft: '14px', fontSize: '13px', color: '#9CA3AF', pointerEvents: 'none' }}>
-                {stripe ? 'Initialising…' : 'Loading Stripe…'}
-              </div>
-            )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+            <div id="nmi-add-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <div id="nmi-add-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+              <div id="nmi-add-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+            </div>
           </div>
+          {!nmiReady && (
+            <div style={{ fontSize: '13px', color: '#9CA3AF', marginBottom: '16px' }}>Loading payment fields…</div>
+          )}
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '16px' }}>
-            🔒 Your card is encrypted and stored securely via Stripe. YouSafe never sees your full card number.
+            🔒 Your card is encrypted and tokenized by NMI. YouSafe never sees your full card number.
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <Btn variant="primary" size="sm" onClick={handleSave} disabled={saving || !cardMounted}>
-              {saving ? 'Saving…' : !cardMounted ? 'Loading…' : 'Save card securely'}
+            <Btn variant="primary" size="sm" onClick={() => {
+              if (!nmiReady) { setErrorMsg('Payment fields are not ready — please wait a moment.'); return; }
+              setSaving(true); setErrorMsg(null);
+              window.CollectJS.startPaymentRequest();
+            }} disabled={saving || !nmiReady}>
+              {saving ? 'Saving…' : !nmiReady ? 'Loading…' : 'Save card securely'}
             </Btn>
-            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); }}>Cancel</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); setNmiErr(null); }}>Cancel</Btn>
           </div>
         </div>
       )}
@@ -793,7 +823,7 @@ function StripePaymentSection() {
 }
 
 window.EscrowApprovalCard = EscrowApprovalCard;
-window.StripePaymentSection = StripePaymentSection;
+window.NmiPaymentSection = NmiPaymentSection;
 
 // ─── Top-up Dialog ───────────────────────────────────────────────────────────
 function TopUpDialog({ onClose, onSuccess }) {
@@ -830,8 +860,8 @@ function TopUpDialog({ onClose, onSuccess }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          paymentMethodId: selectedCardId,
-          amount: Math.round(amountNum * 100), // cents
+          cardId: selectedCardId,
+          amountCents: Math.round(amountNum * 100),
         }),
       });
       let body;
@@ -929,7 +959,7 @@ function TopUpDialog({ onClose, onSuccess }) {
                         style={{ accentColor: C.cyan }}
                       />
                       <div style={{ width: '36px', height: '24px', borderRadius: '4px', background: brandColor(card.brand), color: '#fff', fontSize: '9px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {card.brand.slice(0, 4).toUpperCase()}
+                        {(card.brand || 'card').slice(0, 4).toUpperCase()}
                       </div>
                       <div style={{ flex: 1, fontSize: '14px' }}>
                         •••• {card.last4} <span style={{ color: C.textMuted, fontSize: '12px' }}>· {card.exp_month}/{card.exp_year}</span>
@@ -951,7 +981,7 @@ function TopUpDialog({ onClose, onSuccess }) {
               <Btn variant="ghost" size="md" onClick={onClose}>Cancel</Btn>
             </div>
             <div style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
-              🔒 Charged securely via Stripe. Funds added to your wallet for future orders.
+              🔒 Charged securely via NMI. Funds added to your wallet for future orders.
             </div>
           </>
         )}
@@ -1000,7 +1030,7 @@ function Billing() {
         />
       )}
 
-      <StripePaymentSection />
+      <NmiPaymentSection />
 
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '16px' }}>Payment History</div>
@@ -1022,7 +1052,7 @@ function BillingWithStripe() {
         key={bumpKey}
         currency={currency}
         onTopUpClick={() => setTopUpOpen(true)}
-        paymentMethodsSlot={<StripePaymentSection />}
+        paymentMethodsSlot={<NmiPaymentSection />}
       />
       {topUpOpen && (
         <TopUpDialog
@@ -3177,7 +3207,7 @@ function StudentApp({ onLogout, userId, userName }) {
   };
 
   // Billing is declared at module top-level so its component identity is stable
-  // across StudentApp re-renders (otherwise StripePaymentSection remounts on
+  // across StudentApp re-renders (otherwise NmiPaymentSection remounts on
   // every poll tick and the saved-cards loader never settles).
 
   // ── SETTINGS ──
