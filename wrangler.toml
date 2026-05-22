@@ -3,17 +3,12 @@ main = ".open-next/worker.js"
 compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 
-# Cold-start CPU budget. The OpenNext-bundled Next.js handler is ~10 MB
-# minified — on a cold start (every new isolate, every new region edge) the
-# Worker must parse and evaluate the whole bundle before serving the first
-# request. The default 30 000 ms wall budget is fine; the issue is the
-# startup-CPU portion of that, which intermittently trips Error 1102 ("Worker
-# exceeded resource limits") on the first hit after a deploy or on a fresh
-# isolate. Setting cpu_ms = 300_000 (5 min, the Workers Paid maximum) gives
-# the cold start headroom; warm requests still finish in tens of ms.
+# [limits] cpu_ms requires the Workers Paid plan. Re-add this block — with
+# something like cpu_ms = 300000 — the moment the account is upgraded.
+# Production users intermittently hit Cloudflare Error 1102 because the
+# OpenNext-bundled Next.js handler is ~10 MB and the Free plan's per-request
+# CPU ceiling (10 ms) is far below what a cold-start parse requires.
 # Reference: opennextjs/opennextjs-cloudflare#598.
-[limits]
-cpu_ms = 300000
 
 [assets]
 directory = ".open-next/assets"
