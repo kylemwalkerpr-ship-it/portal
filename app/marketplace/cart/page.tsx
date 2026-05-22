@@ -33,6 +33,15 @@ interface PaymentConfig {
   publicKey?: string
 }
 
+interface SavedCard {
+  id: string
+  brand: string
+  last4: string
+  exp_month: number
+  exp_year: number
+  is_default: boolean
+}
+
 export default function CartPage() {
   const { items, removeItem, setQuantity, subtotalCents, clear, addItem } = useCart()
   const searchParams = useSearchParams()
@@ -48,10 +57,13 @@ export default function CartPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const collectJsLoaded = useRef(false)
 
-  // Wallet state (signed-in only)
+  // Wallet and Saved Card state (signed-in only)
   const [walletBalanceCents, setWalletBalanceCents] = useState<number | null>(null)
   const [walletLoading, setWalletLoading] = useState(false)
-  const [payMethod, setPayMethod] = useState<'wallet' | 'card'>('wallet')
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([])
+  const [selectedCardId, setSelectedCardId] = useState('')
+  const [payMethod, setPayMethod] = useState<'wallet' | 'card' | 'saved_card'>('wallet')
+  const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = useState(false)
 
   // Handle ?add=slug from product pages
   useEffect(() => {
@@ -69,7 +81,7 @@ export default function CartPage() {
     }
   }, [searchParams, addItem, router])
 
-  // Load wallet balance when signed in
+  // Load wallet balance and saved cards when signed in
   useEffect(() => {
     if (!isSignedIn) return
     setWalletLoading(true)
@@ -80,7 +92,32 @@ export default function CartPage() {
       })
       .catch(() => setWalletBalanceCents(0))
       .finally(() => setWalletLoading(false))
+
+    fetch('/api/wallet/payment-methods', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        const cards = d.cards ?? []
+        setSavedCards(cards)
+        setSelectedCardId(cards.find((c: SavedCard) => c.is_default)?.id || cards[0]?.id || '')
+      })
+      .catch(() => setSavedCards([]))
   }, [isSignedIn])
+
+  // Select default payment method once balance and cards are loaded
+  useEffect(() => {
+    if (!isSignedIn || walletBalanceCents === null || hasSetDefaultPayMethod) return
+    const canUseWallet = walletBalanceCents >= subtotalCents
+    let selected: 'wallet' | 'saved_card' | 'card' = 'wallet'
+    if (canUseWallet) {
+      selected = 'wallet'
+    } else if (savedCards.length > 0) {
+      selected = 'saved_card'
+    } else {
+      selected = 'card'
+    }
+    setPayMethod(selected)
+    setHasSetDefaultPayMethod(true)
+  }, [isSignedIn, walletBalanceCents, savedCards, subtotalCents, hasSetDefaultPayMethod])
 
   const loadPaymentConfig = useCallback(async () => {
     if (items.length === 0) return
@@ -183,6 +220,33 @@ export default function CartPage() {
     }
   }
 
+  async function handleSavedCardPay() {
+    if (!selectedCardId) { setCheckoutError('Choose a saved card first.'); return }
+    setIsSubmitting(true); setCheckoutError(null)
+    try {
+      const res = await fetch('/api/payments/charge', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethodId: selectedCardId,
+          items: items.map(item => ({ slug: item.slug, quantity: item.quantity })),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.ok) {
+        setCheckoutError(typeof data.message === 'string' ? data.message : data.error || 'Payment was declined.')
+        setIsSubmitting(false)
+        return
+      }
+      clear()
+      router.push(data.orderId ? `/marketplace/order/success?orderId=${data.orderId}` : '/marketplace/order/success')
+    } catch (e: any) {
+      setCheckoutError(e?.message || 'Payment failed.')
+      setIsSubmitting(false)
+    }
+  }
+
   async function handleCardToken(token: string) {
     setCheckoutError(null)
     try {
@@ -222,6 +286,12 @@ export default function CartPage() {
       return
     }
 
+    // Signed-in + saved card selected
+    if (isSignedIn && payMethod === 'saved_card') {
+      handleSavedCardPay()
+      return
+    }
+
     // Guest or card-selected path
     if (!customerEmail || !customerName) {
       setCheckoutError('Please enter your name and email')
@@ -252,6 +322,7 @@ export default function CartPage() {
 
   const subtotalFormatted = (subtotalCents / 100).toFixed(2)
   const canUseWallet = walletBalanceCents !== null && walletBalanceCents >= subtotalCents
+  const selectedCard = savedCards.find((c) => c.id === selectedCardId)
 
   return (
     <main style={{ maxWidth: '800px', margin: '0 auto', padding: '48px 24px 80px', fontFamily: SANS, color: C.text }}>
@@ -418,7 +489,8 @@ export default function CartPage() {
 
                 {/* Signed-in wallet section */}
                 {isSignedIn && (
-                  <div style={{ marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Wallet Option */}
                     <div
                       onClick={() => setPayMethod('wallet')}
                       style={{
@@ -430,7 +502,6 @@ export default function CartPage() {
                         border: `2px solid ${payMethod === 'wallet' ? C.cyan : C.border}`,
                         background: payMethod === 'wallet' ? `${C.cyan}08` : C.surface2,
                         cursor: 'pointer',
-                        marginBottom: '10px',
                       }}
                     >
                       <input type="radio" checked={payMethod === 'wallet'} readOnly style={{ accentColor: C.cyan }} />
@@ -453,7 +524,7 @@ export default function CartPage() {
                     </div>
 
                     {!canUseWallet && walletBalanceCents !== null && payMethod === 'wallet' && (
-                      <div style={{ marginBottom: '14px', paddingLeft: '28px' }}>
+                      <div style={{ paddingLeft: '28px' }}>
                         <Link
                           href="/student?goto=billing"
                           style={{
@@ -472,6 +543,69 @@ export default function CartPage() {
                       </div>
                     )}
 
+                    {/* Saved Card Option */}
+                    <div
+                      onClick={() => {
+                        if (savedCards.length > 0) setPayMethod('saved_card')
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderRadius: '10px',
+                        border: `2px solid ${payMethod === 'saved_card' ? C.cyan : C.border}`,
+                        background: payMethod === 'saved_card' ? `${C.cyan}08` : C.surface2,
+                        opacity: savedCards.length === 0 ? 0.6 : 1,
+                        cursor: savedCards.length === 0 ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        checked={payMethod === 'saved_card'}
+                        disabled={savedCards.length === 0}
+                        readOnly
+                        style={{ accentColor: C.cyan }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px' }}>Pay with saved card</div>
+                        <div style={{ fontSize: '12px', color: C.textMuted }}>
+                          {savedCards.length === 0
+                            ? 'No saved cards — add one from billing'
+                            : selectedCard
+                              ? `${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4} · exp ${String(selectedCard.exp_month).padStart(2, '0')}/${String(selectedCard.exp_year).slice(-2)}`
+                              : 'Select a saved card below'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {payMethod === 'saved_card' && savedCards.length > 0 && (
+                      <div style={{ paddingLeft: '28px' }}>
+                        <select
+                          value={selectedCardId}
+                          onChange={(e) => setSelectedCardId(e.target.value)}
+                          aria-label="Choose a saved card"
+                          style={{
+                            width: '100%',
+                            border: `1px solid ${C.border}`,
+                            borderRadius: '8px',
+                            padding: '10px 12px',
+                            background: C.surface,
+                            color: C.text,
+                            fontSize: '14px',
+                            fontFamily: SANS,
+                          }}
+                        >
+                          {savedCards.map((card) => (
+                            <option key={card.id} value={card.id}>
+                              {(card.brand || 'CARD').toUpperCase()} ••••{card.last4} · exp {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}{card.is_default ? ' · default' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* New Card Option */}
                     <div
                       onClick={() => setPayMethod('card')}
                       style={{
@@ -610,7 +744,11 @@ export default function CartPage() {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet)}
+                  disabled={
+                    isSubmitting ||
+                    (isSignedIn && payMethod === 'wallet' && !canUseWallet) ||
+                    (isSignedIn && payMethod === 'saved_card' && !selectedCardId)
+                  }
                   style={{
                     width: '100%',
                     padding: '14px 24px',
@@ -620,15 +758,27 @@ export default function CartPage() {
                     fontSize: '16px',
                     fontWeight: 600,
                     border: 'none',
-                    cursor: isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet) ? 'not-allowed' : 'pointer',
-                    opacity: isSubmitting || (isSignedIn && payMethod === 'wallet' && !canUseWallet) ? 0.6 : 1,
+                    cursor:
+                      isSubmitting ||
+                      (isSignedIn && payMethod === 'wallet' && !canUseWallet) ||
+                      (isSignedIn && payMethod === 'saved_card' && !selectedCardId)
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      isSubmitting ||
+                      (isSignedIn && payMethod === 'wallet' && !canUseWallet) ||
+                      (isSignedIn && payMethod === 'saved_card' && !selectedCardId)
+                        ? 0.6
+                        : 1,
                   }}
                 >
                   {isSubmitting
                     ? 'Processing…'
                     : isSignedIn && payMethod === 'wallet'
                       ? `Pay $${subtotalFormatted} from wallet`
-                      : `Pay $${subtotalFormatted}`}
+                      : isSignedIn && payMethod === 'saved_card' && selectedCard
+                        ? `Pay $${subtotalFormatted} with ${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4}`
+                        : `Pay $${subtotalFormatted}`}
                 </button>
               </form>
             )}

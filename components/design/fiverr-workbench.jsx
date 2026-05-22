@@ -402,13 +402,18 @@ export function GigDetailPage({ slug }) {
 }
 
 function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
-  const [payMethod, setPayMethod] = React.useState('nmi')
+  const [payMethod, setPayMethod] = React.useState('wallet')
   const [walletBalance, setWalletBalance] = React.useState(null)
   const [cards, setCards] = React.useState([])
   const [settings, setSettings] = React.useState(null)
   const [selectedCardId, setSelectedCardId] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
+  const [newCardToken, setNewCardToken] = React.useState(null)
+  const [nmiReady, setNmiReady] = React.useState(false)
+  const [nmiError, setNmiError] = React.useState(null)
+  const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = React.useState(false)
+
   const providerType = String(gig.provider_type || '').toLowerCase() === 'attorney' ? 'attorney' : 'consultant'
   const subtotalCents = Number(tier.price || 0)
   const platformPercent = providerType === 'attorney'
@@ -425,6 +430,44 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
   const priceDollars = totalCents / 100
   const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
   const selectedCard = cards.find(card => card.id === selectedCardId)
+
+  const initNmi = async () => {
+    if (nmiReady) return
+    setNmiError(null)
+    try {
+      const cfg = await requestJson('/api/payments/config')
+      if (!cfg.scriptUrl) { setNmiError('Payment config unavailable'); return }
+      const configure = () => {
+        const CollectJS = window.CollectJS
+        if (!CollectJS) { setNmiError('Payment tokenization library not available'); return }
+        CollectJS.configure({
+          variant: 'inline',
+          fields: {
+            ccnumber: { placeholder: 'Card number', selector: '#nmi-gig-card-number' },
+            ccexp:    { placeholder: 'MM / YY',     selector: '#nmi-gig-card-expiry' },
+            cvv:      { placeholder: 'CVV',         selector: '#nmi-gig-card-cvv' },
+          },
+          callback: (response) => {
+            if (response.token) { setNewCardToken(response.token); setNmiError(null) }
+            else { setNmiError(response.message || 'Card tokenization failed') }
+          },
+        })
+        setNmiReady(true)
+      }
+      if (window.CollectJS || document.querySelector(`script[src="${cfg.scriptUrl}"]`)) {
+        configure(); return
+      }
+      const script = document.createElement('script')
+      script.src = cfg.scriptUrl
+      script.async = true
+      script.dataset.tokenizationKey = cfg.tokenizationKey || ''
+      script.onload = configure
+      script.onerror = () => setNmiError('Failed to load payment tokenization library')
+      document.body.appendChild(script)
+    } catch (e) {
+      setNmiError(e?.message || 'Failed to initialise card fields')
+    }
+  }
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -444,6 +487,25 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
       .catch(() => setSettings(null))
   }, [])
 
+  React.useEffect(() => {
+    if (walletBalance === null || hasSetDefaultPayMethod) return
+    const priceDollars = totalCents / 100
+    const canUseWallet = walletBalance >= priceDollars
+    let selected = 'wallet'
+    if (canUseWallet) {
+      selected = 'wallet'
+    } else if (cards.length > 0) {
+      selected = 'saved_card'
+    } else {
+      selected = 'new_card'
+    }
+    setPayMethod(selected)
+    setHasSetDefaultPayMethod(true)
+    if (selected === 'new_card') {
+      initNmi()
+    }
+  }, [walletBalance, cards, totalCents, hasSetDefaultPayMethod])
+
   const pay = async () => {
     if (busy) return
     if (payMethod === 'wallet' && !canUseWallet) {
@@ -454,18 +516,24 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
       setError('Choose a saved card first.')
       return
     }
+    if (payMethod === 'new_card' && !newCardToken) {
+      setError('Tokenize your card first using the secure form above.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
+      const body = {
+        sourceType: 'gig',
+        sourceId: gig.id,
+        tierId: tier.id,
+        paymentMethod: payMethod,
+        ...(payMethod === 'saved_card' && { paymentMethodId: selectedCardId }),
+        ...(payMethod === 'new_card'   && { token: newCardToken }),
+      }
       const payload = await requestJson('/api/checkout/order', {
         method: 'POST',
-        body: JSON.stringify({
-          sourceType: 'gig',
-          sourceId: gig.id,
-          tierId: tier.id,
-          paymentMethod: payMethod,
-          paymentMethodId: selectedCardId,
-        }),
+        body: JSON.stringify(body),
       })
       if (payload.url) {
         window.location.href = payload.url
@@ -473,7 +541,7 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
       }
       onPaid?.()
     } catch (e) {
-      setError(e.message)
+      setError(typeof e.message === 'string' ? e.message : 'Payment failed.')
     } finally {
       setBusy(false)
     }
@@ -517,17 +585,102 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
               </div>
             </div>
           </Card>
-          <CheckoutButton active={payMethod === 'wallet'} disabled={!canUseWallet} onClick={() => canUseWallet && setPayMethod('wallet')} title="Wallet balance" detail={walletBalance === null ? 'Loading balance...' : `${money((walletBalance || 0) * 100)} available${canUseWallet ? '' : ' - insufficient'}`} />
-          <CheckoutButton active={payMethod === 'saved_card'} disabled={!cards.length} onClick={() => cards.length && setPayMethod('saved_card')} title="Saved card" detail={selectedCard ? `${selectedCard.brand?.toUpperCase?.() || 'CARD'} ending ${selectedCard.last4}` : 'No saved cards yet'} />
+
+          {/* Wallet */}
+          <CheckoutButton
+            active={payMethod === 'wallet'}
+            disabled={!canUseWallet}
+            onClick={() => canUseWallet && setPayMethod('wallet')}
+            title="Wallet balance"
+            detail={walletBalance === null
+              ? 'Loading balance...'
+              : `${money((walletBalance || 0) * 100)} available${canUseWallet ? '' : ' · insufficient'}`}
+          />
+
+          {/* Saved card */}
+          <CheckoutButton
+            active={payMethod === 'saved_card'}
+            disabled={!cards.length}
+            onClick={() => { if (cards.length) setPayMethod('saved_card') }}
+            title="Saved card"
+            detail={cards.length === 0
+              ? 'No saved cards — add one from billing'
+              : selectedCard
+                ? `${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4} · exp ${String(selectedCard.exp_month).padStart(2,'0')}/${String(selectedCard.exp_year).slice(-2)}`
+                : 'Select a card below'}
+          />
           {payMethod === 'saved_card' && cards.length > 0 && (
-            <select value={selectedCardId} onChange={e => setSelectedCardId(e.target.value)} style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}>
-              {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4}</option>)}
+            <select
+              value={selectedCardId}
+              onChange={e => setSelectedCardId(e.target.value)}
+              aria-label="Choose a saved card"
+              style={{ width: '100%', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text }}
+            >
+              {cards.map(card => (
+                <option key={card.id} value={card.id}>
+                  {(card.brand || 'CARD').toUpperCase()} ••••{card.last4} · exp {String(card.exp_month).padStart(2,'0')}/{String(card.exp_year).slice(-2)}{card.is_default ? ' · default' : ''}
+                </option>
+              ))}
             </select>
           )}
-          <CheckoutButton active={payMethod === 'nmi'} onClick={() => setPayMethod('nmi')} title="Pay with saved card" detail="Charge your saved card securely" />
-          {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
-          <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy}>
-            {busy ? 'Processing...' : `Pay ${money(totalCents)}`}
+
+          {/* New card */}
+          <CheckoutButton
+            active={payMethod === 'new_card'}
+            onClick={() => { setPayMethod('new_card'); initNmi() }}
+            title="New card"
+            detail="Enter card details securely"
+          />
+          {payMethod === 'new_card' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {nmiError && (
+                <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '8px' }}>
+                  {nmiError}
+                </div>
+              )}
+              <div id="nmi-gig-card-number" style={{ padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div id="nmi-gig-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
+                <div id="nmi-gig-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!nmiReady) { setNmiError('Payment fields are not ready — please wait a moment.'); return }
+                  window.CollectJS.startPaymentRequest()
+                }}
+                disabled={!nmiReady}
+                style={{ padding: '9px 16px', borderRadius: '8px', background: C.surface2, border: `1px solid ${C.border}`, fontSize: '13px', cursor: nmiReady ? 'pointer' : 'not-allowed', color: C.text }}
+              >
+                {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>
+              {error}
+            </div>
+          )}
+          <Btn
+            variant="primary" fullWidth size="lg"
+            onClick={pay}
+            disabled={
+              busy ||
+              (payMethod === 'wallet'     && !canUseWallet) ||
+              (payMethod === 'saved_card' && !selectedCardId) ||
+              (payMethod === 'new_card'   && !newCardToken)
+            }
+          >
+            {busy ? 'Processing...' : payMethod === 'wallet'
+              ? `Pay ${money(totalCents)} from wallet`
+              : payMethod === 'saved_card' && selectedCard
+              ? `Pay ${money(totalCents)} with ${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4}`
+              : payMethod === 'new_card' && newCardToken
+              ? `Pay ${money(totalCents)} with new card`
+              : payMethod === 'saved_card'
+              ? 'Choose a saved card'
+              : 'Tokenize your card first'}
           </Btn>
           <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
             By placing this order you agree to the{' '}
