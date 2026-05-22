@@ -51,7 +51,7 @@ export function MarketplaceCategoriesIndex() {
       <div style={{ width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '32px 0 64px' }}>
         {/* Breadcrumb */}
         <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: MUTED, fontFamily: MONO }}>
-          <Link href="/marketplace" style={{ color: CYAN, textDecoration: 'none' }}>Marketplace</Link>
+          <Link href="/" style={{ color: CYAN, textDecoration: 'none' }}>Marketplace</Link>
           <span>›</span>
           <span>Categories</span>
         </div>

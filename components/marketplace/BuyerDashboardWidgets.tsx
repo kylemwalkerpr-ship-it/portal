@@ -143,7 +143,7 @@ function SavedGigsWidget() {
             You have no saved services yet.
           </p>
           <Link
-            href="/marketplace"
+            href="https://market.yousafeconsultancy.com/"
             style={{
               display: 'inline-block',
               padding: '8px 16px',
@@ -166,7 +166,7 @@ function SavedGigsWidget() {
             return (
               <Link
                 key={item.id}
-                href="/marketplace"
+                href="https://market.yousafeconsultancy.com/"
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -246,7 +246,7 @@ function RecentOrdersWidget() {
             Order history coming soon.
           </p>
           <Link
-            href="/marketplace"
+            href="https://market.yousafeconsultancy.com/"
             style={{
               display: 'inline-block',
               padding: '8px 16px',
@@ -267,7 +267,7 @@ function RecentOrdersWidget() {
             No orders yet. Find a service and place your first order.
           </p>
           <Link
-            href="/marketplace"
+            href="https://market.yousafeconsultancy.com/"
             style={{
               display: 'inline-block',
               padding: '8px 16px',

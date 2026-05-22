@@ -369,7 +369,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           <EmptyState
             title="Gig not found"
             body="This service may have been removed or is no longer available."
-            action={<Link href="/marketplace"><Btn variant="primary">Browse Marketplace</Btn></Link>}
+            action={<Link href="/"><Btn variant="primary">Browse Marketplace</Btn></Link>}
           />
         </main>
       </div>
@@ -392,7 +392,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       <main style={inner}>
         <div style={toolbar}>
           <div style={breadcrumb}>
-            <Link href="/marketplace" style={breadcrumbLink}>
+            <Link href="/" style={breadcrumbLink}>
               Marketplace
             </Link>
             <span>/</span>

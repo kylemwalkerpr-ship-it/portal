@@ -3,20 +3,21 @@ import { MarketplacePage } from '@/components/marketplace/MarketplacePage'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
-
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
     'Browse vetted US, UK and Canada immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
+  const baseUrl = await getMarketplaceBaseUrl()
+  const canonicalUrl = await getMarketplaceCanonicalUrl('/marketplace/')
   return {
     title,
     description,
-    alternates: { canonical: '/marketplace/' },
+    alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
     openGraph: {
-      url: `${PORTAL_URL}/marketplace/`,
+      url: canonicalUrl,
       title,
       description,
       type: 'website',

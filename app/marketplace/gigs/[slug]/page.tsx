@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 /**
  * Defensive per-page SEO. Gig detail is auth-walled and noindex today, so
@@ -27,11 +28,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const cover = Array.isArray(gig.gallery_images) && gig.gallery_images.length
       ? (gig.gallery_images[0]?.url || gig.gallery_images[0])
       : undefined
+    const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
 
     return {
       title,
       description,
+      alternates: { canonical: canonicalUrl },
       openGraph: {
+        url: canonicalUrl,
         title,
         description,
         type: 'website',

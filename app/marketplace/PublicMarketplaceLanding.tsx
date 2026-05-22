@@ -127,6 +127,8 @@ export function PublicMarketplaceLanding() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }}
       />
 
+      <style>{`.category-card:hover{border-color:rgba(0,0,0,0.18)!important;transform:translateY(-2px)!important;box-shadow:0 12px 28px rgba(0,0,0,0.06)!important}`}</style>
+
       <Nav />
 
       {/* 1. Hero */}
@@ -263,6 +265,7 @@ export function PublicMarketplaceLanding() {
               <a
                 key={cat.id}
                 href={ctaHref(`category-${cat.id}`)}
+                className="category-card"
                 style={{
                   background: C.surface,
                   border: `1px solid ${C.border}`,
@@ -274,18 +277,6 @@ export function PublicMarketplaceLanding() {
                   flexDirection: 'column',
                   gap: '10px',
                   transition: 'border-color 160ms, transform 160ms, box-shadow 160ms',
-                }}
-                onMouseEnter={(e) => {
-                  const t = e.currentTarget as HTMLElement
-                  t.style.borderColor = 'rgba(0,0,0,0.18)'
-                  t.style.transform = 'translateY(-2px)'
-                  t.style.boxShadow = '0 12px 28px rgba(0,0,0,0.06)'
-                }}
-                onMouseLeave={(e) => {
-                  const t = e.currentTarget as HTMLElement
-                  t.style.borderColor = C.border
-                  t.style.transform = 'none'
-                  t.style.boxShadow = 'none'
                 }}
               >
                 <div style={{ fontSize: '28px', lineHeight: 1 }}>{cat.icon}</div>
@@ -560,7 +551,7 @@ export function PublicMarketplaceLanding() {
             Digital worksheets, checklists, and letter templates for US and Canada student visas, work permits, and visitor visas. Buy once, use immediately.
           </p>
           <a
-            href="/marketplace/templates"
+            href="/templates"
             style={{
               background: C.text,
               color: '#fff',

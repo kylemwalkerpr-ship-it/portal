@@ -55,7 +55,7 @@ export default function CartPage() {
 
   // Handle ?add=slug from product pages
   useEffect(() => {
-    const addSlug = searchParams.get('add')
+    const addSlug = searchParams?.get('add')
     if (addSlug) {
       const pack = getTemplatePack(addSlug)
       if (pack) {
@@ -267,7 +267,7 @@ export default function CartPage() {
             Browse our template packs and add the ones you need.
           </p>
           <Link
-            href="/marketplace/templates"
+            href="/templates"
             style={{
               display: 'inline-block',
               padding: '10px 24px',

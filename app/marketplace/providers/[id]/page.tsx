@@ -2,8 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { ProviderProfileView } from './ProviderProfileView'
-
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,12 +39,14 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
     .maybeSingle()
 
   const name = profile?.full_name || 'Provider'
+  const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/providers/${id}/`)
   return {
     title: `${name} | YouSafe Marketplace`,
     description: `Browse services by ${name} on YouSafe Marketplace.`,
+    alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
     openGraph: {
-      url: `${PORTAL_URL}/marketplace/providers/${id}/`,
+      url: canonicalUrl,
       title: `${name} | YouSafe Marketplace`,
       description: `Browse services by ${name} on YouSafe Marketplace.`,
       type: 'profile',

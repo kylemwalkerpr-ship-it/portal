@@ -114,7 +114,7 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
 export function MarketplacePage() {
   const searchParams = useSearchParams()
-  const hasFilters = searchParams.has('q') || searchParams.has('category') || searchParams.has('sort')
+  const hasFilters = searchParams ? (searchParams.has('q') || searchParams.has('category') || searchParams.has('sort')) : false
 
   const [gigs, setGigs] = React.useState([])
   const [featuredGigs, setFeaturedGigs] = React.useState([])
@@ -231,7 +231,7 @@ export function MarketplacePage() {
                   Shortlist providers and come back when you are ready to order.
                 </p>
               </div>
-              <Link href="/marketplace?sort=best_rated" style={{ marginTop: 'auto' }}>
+              <Link href="/?sort=best_rated" style={{ marginTop: 'auto' }}>
                 <Btn variant="secondary">Browse top rated</Btn>
               </Link>
             </Card>
@@ -267,7 +267,7 @@ export function MarketplacePage() {
         <section style={sectionStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h2 style={sectionTitle}>Browse by Category</h2>
-            <Link href="/marketplace/categories" style={sectionLink}>
+            <Link href="/categories" style={sectionLink}>
               View all categories →
             </Link>
           </div>
@@ -277,7 +277,7 @@ export function MarketplacePage() {
         <section style={sectionStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <h2 style={sectionTitle}>Top Providers</h2>
-            <Link href="/marketplace/providers" style={sectionLink}>
+            <Link href="/providers" style={sectionLink}>
               Browse all providers →
             </Link>
           </div>
@@ -285,7 +285,7 @@ export function MarketplacePage() {
             <p style={{ color: C.textMuted, marginBottom: '16px' }}>
               Explore our verified attorneys and consultants
             </p>
-            <Link href="/marketplace/providers">
+            <Link href="/providers">
               <Btn variant="primary">Find a Provider</Btn>
             </Link>
           </Card>

@@ -26,7 +26,7 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
   const [chatOpen, setChatOpen] = React.useState(false)
 
   const searchParams = useSearchParams()
-  const tab = searchParams.get('tab') as 'about' | 'gigs' | 'reviews' | null
+  const tab = searchParams?.get('tab') as 'about' | 'gigs' | 'reviews' | null
 
   React.useEffect(() => {
     if (tab && ['about', 'gigs', 'reviews'].includes(tab)) {
@@ -105,7 +105,7 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
     <div style={pageShell}>
       {/* Breadcrumb */}
       <div style={breadcrumb}>
-        <Link href="/marketplace" style={breadcrumbLink}>Marketplace</Link>
+        <Link href="/" style={breadcrumbLink}>Marketplace</Link>
         <span style={breadcrumbSeparator}>/</span>
         <span style={breadcrumbCurrent}>{seller.full_name}</span>
       </div>

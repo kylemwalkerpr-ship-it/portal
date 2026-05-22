@@ -97,10 +97,34 @@ function withPathHeaders(res: NextResponse, pathname: string, search: string, la
   return res
 }
 
+const MARKET_HOST = 'market.yousafeconsultancy.com'
+const PORTAL_HOST = 'portal.yousafeconsultancy.com'
+
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
+    const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
+
+    // ── Hostname-based routing ───────────────────────────────────────────
+    // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
+    // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
+    if (hostname === MARKET_HOST) {
+      if (pathname.startsWith('/api/') || pathname.startsWith('/_next/')) {
+        // pass through
+      } else if (pathname.startsWith('/marketplace')) {
+        // Canonicalise: /marketplace/xyz → /xyz on the market domain
+        const cleanPath = pathname.slice('/marketplace'.length) || '/'
+        return NextResponse.redirect(new URL(cleanPath + search, req.url), { status: 301 })
+      } else {
+        const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
+        return withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
+      }
+    } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {
+      const redirectPath = pathname.slice('/marketplace'.length) || '/'
+      const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)
+      return NextResponse.redirect(redirectUrl, { status: 301 })
+    }
 
     if (pathname !== '/' && isPublicRoute(req)) return withPathHeaders(NextResponse.next(), pathname, search, lang)
 

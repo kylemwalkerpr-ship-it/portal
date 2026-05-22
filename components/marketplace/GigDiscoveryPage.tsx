@@ -194,8 +194,8 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const [maxPrice, setMaxPrice] = React.useState('')
   const [selectedRating, setSelectedRating] = React.useState('')
   const [selectedDeliveryTimes, setSelectedDeliveryTimes] = React.useState<string[]>([])
-  const [sort, setSort] = React.useState(searchParams.get('sort') || 'relevance')
-  const [searchQuery, setSearchQuery] = React.useState(searchParams.get('q') || '')
+  const [sort, setSort] = React.useState(searchParams?.get('sort') || 'relevance')
+  const [searchQuery, setSearchQuery] = React.useState(searchParams?.get('q') || '')
 
   // Category options
   const categoryOptions = CATEGORIES.map(cat => ({

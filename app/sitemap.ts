@@ -1,40 +1,29 @@
 import type { MetadataRoute } from 'next'
+import { headers } from 'next/headers'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
+const MARKET_HOST = 'market.yousafeconsultancy.com'
+const PORTAL_HOST = 'portal.yousafeconsultancy.com'
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const base = 'https://portal.yousafeconsultancy.com'
+  const h = await headers()
+  const host = h.get('host')?.split(':')[0] || PORTAL_HOST
+  const isMarket = host === MARKET_HOST
+  const base = `https://${isMarket ? MARKET_HOST : PORTAL_HOST}`
+
+  const mp = (path: string) => isMarket ? path.replace(/^\/marketplace/, '') || '/' : path
 
   const entries: MetadataRoute.Sitemap = [
-    {
-      url: `${base}/marketplace/`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${base}/marketplace/templates/`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${base}/marketplace/providers/`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    },
-    {
-      url: `${base}/marketplace/categories/`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    },
+    { url: `${base}${mp('/marketplace/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${base}${mp('/marketplace/templates/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${base}${mp('/marketplace/providers/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${base}${mp('/marketplace/categories/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.6 },
   ]
 
   for (const pack of TEMPLATE_PACKS) {
     entries.push({
-      url: `${base}/marketplace/templates/${pack.slug}/`,
+      url: `${base}${mp(`/marketplace/templates/${pack.slug}/`)}`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.6,
@@ -55,7 +44,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const gig of gigs ?? []) {
       if (!gig.slug) continue
       entries.push({
-        url: `${base}/marketplace/gigs/${gig.slug}/`,
+        url: `${base}${mp(`/marketplace/gigs/${gig.slug}/`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.6,
@@ -69,7 +58,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const a of attorneys ?? []) {
       entries.push({
-        url: `${base}/marketplace/providers/${a.id}/`,
+        url: `${base}${mp(`/marketplace/providers/${a.id}/`)}`,
         lastModified: a.created_at ? new Date(a.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,
@@ -83,7 +72,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const c of consultants ?? []) {
       entries.push({
-        url: `${base}/marketplace/providers/${c.id}/`,
+        url: `${base}${mp(`/marketplace/providers/${c.id}/`)}`,
         lastModified: c.created_at ? new Date(c.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,

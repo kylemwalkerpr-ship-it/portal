@@ -310,7 +310,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
 
   // Sync section from URL ?view= param (so back/forward works and direct links work)
   React.useEffect(() => {
-    const view = searchParams.get('view')
+    const view = searchParams?.get('view')
     if (view) setSection(view as Section)
     else if (pathname !== '/marketplace' && !pathname.includes('?')) setSection('browse')
   }, [searchParams, pathname])

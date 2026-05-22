@@ -51,6 +51,9 @@ export const metadata = {
   alternates: {
     canonical: '/',
   },
+  icons: {
+    icon: '/logo.png',
+  },
   openGraph: {
     title: 'YouSafe Portal — Study & Legal Services',
     description: 'Members portal for YouSafe Consultancy. Student, attorney, consultant, and admin access.',

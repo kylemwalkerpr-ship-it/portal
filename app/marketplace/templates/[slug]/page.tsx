@@ -2,8 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { TEMPLATE_PACKS, getTemplatePack } from '@/lib/template-packs'
-
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
+import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export const dynamic = 'force-static'
 
@@ -17,19 +16,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!pack) return {}
   const title = `${pack.name} — $${pack.price_usd}`.slice(0, 60)
   const description = pack.short_description.slice(0, 160)
+  const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/templates/${slug}/`)
   return {
     title,
     description,
-    alternates: { canonical: `/marketplace/templates/${slug}/` },
+    alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
     openGraph: {
-      url: `${PORTAL_URL}/marketplace/templates/${slug}/`,
+      url: canonicalUrl,
       title,
       description,
       type: 'website',
     },
   }
 }
+
+const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
 const C = {
   bg: '#FBFAF7',

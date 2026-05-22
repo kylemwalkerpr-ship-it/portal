@@ -3,6 +3,7 @@ import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { redirect } from 'next/navigation'
 import { getCategoryById } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
@@ -27,11 +28,13 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
 
   const title = `${category.name}${count ? ` (${count} services)` : ''} | YouSafe Marketplace`
   const description = (category.description || `Browse ${category.name} services on YouSafe Consultancy.`).slice(0, 155)
+  const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
 
   return {
     title,
     description,
-    openGraph: { title, description, type: 'website' },
+    alternates: { canonical: canonicalUrl },
+    openGraph: { url: canonicalUrl, title, description, type: 'website' },
     robots: { index: true, follow: true },
   }
 }
