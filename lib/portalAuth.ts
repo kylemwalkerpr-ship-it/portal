@@ -52,3 +52,25 @@ export async function requireAdminUser() {
   if (ctx.role !== 'admin') return { error: 'Forbidden', status: 403 as const }
   return ctx
 }
+
+/**
+ * Optional auth — returns the user context if signed in, null otherwise.
+ * Never redirects. Use for public pages that want personalization when
+ * the visitor happens to be logged in.
+ */
+export async function getOptionalPortalUser(): Promise<PortalUserContext | null> {
+  const clerkUserId = await getClerkUserId()
+  if (!clerkUserId) return null
+
+  const db = createSupabaseAdminClient()
+  const { data: profile, error } = await db
+    .from('profiles')
+    .select('id, clerk_user_id, role, status, email, full_name')
+    .eq('clerk_user_id', clerkUserId)
+    .single()
+
+  if (error || !profile) return null
+  if (profile.status && profile.status !== 'active') return null
+
+  return { db, profile, profileId: profile.id, role: String(profile.role || '') }
+}

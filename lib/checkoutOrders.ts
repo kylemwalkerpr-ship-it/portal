@@ -1,7 +1,4 @@
-import Stripe from 'stripe'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from './fiverr'
-import { getStripe } from './stripe'
-import { getOrCreateStripeCustomer } from './stripeCustomer'
 
 type Db = ReturnType<typeof import('./supabase').createSupabaseAdminClient>
 
@@ -210,21 +207,13 @@ export async function createPaidOrder(
   db: Db,
   item: CheckoutItem,
   opts: {
-    paymentIntentId?: string | null
-    paymentMethod: 'stripe' | 'wallet' | 'saved_card'
+    paymentMethod: 'wallet'
     actorId?: string | null
     acceptedAt?: string
+    skipSourceUpdate?: boolean
   },
 ) {
-  if (opts.paymentIntentId) {
-    const { data: existing } = await db
-      .from('orders')
-      .select('id')
-      .eq('stripe_payment_intent_id', opts.paymentIntentId)
-      .maybeSingle()
-    if (existing?.id) return existing
-  }
-
+  // Idempotency: don't duplicate by offer ids
   if (item.offerId) {
     const { data: existing } = await db.from('orders').select('id').eq('offer_id', item.offerId).maybeSingle()
     if (existing?.id) return existing
@@ -258,7 +247,6 @@ export async function createPaidOrder(
     net_payout: item.netPayoutCents,
     payout_status: 'pending',
     requirements: item.description || item.title,
-    stripe_payment_intent_id: opts.paymentIntentId || null,
     deadline,
     delivery_deadline: deadline,
     offer_id: item.offerId || null,
@@ -266,16 +254,14 @@ export async function createPaidOrder(
     source_consultant_offer_id: item.sourceConsultantOfferId || null,
     source_inquiry_id: item.sourceInquiryId || null,
     gig_id: item.gigId || null,
+    terms_accepted_at: acceptedAt,
+    refund_policy_accepted_at: acceptedAt,
     ...(identity || {}),
-  }
-  if (opts.paymentMethod !== 'stripe') {
-    orderInsert.terms_accepted_at = acceptedAt
-    orderInsert.refund_policy_accepted_at = acceptedAt
   }
 
   let { data: order, error } = await db.from('orders').insert(orderInsert).select('id').single()
-  if (error && /order_number|order_sequence|terms_accepted_at|refund_policy_accepted_at|stripe_payment_intent_id|amount_paid|net_payout|delivery_deadline|offer_id|gig_id|source_/i.test(error.message)) {
-    for (const key of ['order_number', 'order_sequence', 'terms_accepted_at', 'refund_policy_accepted_at', 'stripe_payment_intent_id', 'amount_paid', 'net_payout', 'delivery_deadline', 'offer_id', 'gig_id', 'source_offer_id', 'source_consultant_offer_id', 'source_inquiry_id']) {
+  if (error && /order_number|order_sequence|terms_accepted_at|refund_policy_accepted_at|amount_paid|net_payout|delivery_deadline|offer_id|gig_id|source_/i.test(error.message)) {
+    for (const key of ['order_number', 'order_sequence', 'terms_accepted_at', 'refund_policy_accepted_at', 'amount_paid', 'net_payout', 'delivery_deadline', 'offer_id', 'gig_id', 'source_offer_id', 'source_consultant_offer_id', 'source_inquiry_id']) {
       delete orderInsert[key]
     }
     const retry = await db.from('orders').insert(orderInsert).select('id').single()
@@ -284,20 +270,22 @@ export async function createPaidOrder(
   }
   if (error || !order) throw new Error(error?.message || 'Order creation failed.')
 
-  await markSourcePaid(db, item, order.id, opts.paymentIntentId || null, acceptedAt)
+  if (!opts.skipSourceUpdate) {
+    await markSourcePaid(db, item, order.id, acceptedAt)
+  }
   await db.from('order_events').insert({
     order_id: order.id,
     actor_id: opts.actorId || item.clientProfileId,
     actor_role: 'client',
     to_status: 'created',
-    note: `Order created after ${opts.paymentMethod} payment for ${item.title}. Provider must start the order.`,
+    note: `Order created after wallet payment for ${item.title}. Provider must start the order.`,
   })
   await db.from('order_status_history').insert({
     order_id: order.id,
     from_status: null,
     to_status: 'created',
     changed_by_id: opts.actorId || item.clientProfileId,
-    note: `Paid by ${opts.paymentMethod} - ${item.title}`,
+    note: `Paid by wallet - ${item.title}`,
   })
 
   if (item.gigId) {
@@ -308,9 +296,9 @@ export async function createPaidOrder(
   return order
 }
 
-async function markSourcePaid(db: Db, item: CheckoutItem, orderId: string, paymentIntentId: string | null, acceptedAt: string) {
+async function markSourcePaid(db: Db, item: CheckoutItem, orderId: string, acceptedAt: string) {
   if (item.offerId) {
-    await db.from('offers').update({ status: 'paid', stripe_payment_intent_id: paymentIntentId, updated_at: acceptedAt }).eq('id', item.offerId)
+    await db.from('offers').update({ status: 'paid', updated_at: acceptedAt }).eq('id', item.offerId)
   }
   if (item.sourceOfferId) {
     await db
@@ -324,95 +312,7 @@ async function markSourcePaid(db: Db, item: CheckoutItem, orderId: string, payme
   if (item.sourceConsultantOfferId) {
     await db
       .from('consultant_offers')
-      .update({ status: 'accepted', decided_at: acceptedAt, accepted_order_id: orderId, stripe_payment_intent_id: paymentIntentId })
+      .update({ status: 'accepted', decided_at: acceptedAt, accepted_order_id: orderId })
       .eq('id', item.sourceConsultantOfferId)
   }
-}
-
-export async function payWithWallet(clerkUserId: string, item: CheckoutItem) {
-  const customerId = await getOrCreateStripeCustomer(clerkUserId)
-  const stripe = getStripe()
-  const balance = await stripe.customers.retrieveCashBalance(customerId)
-  const available = balance.available?.[item.currency] ?? balance.available?.usd ?? 0
-  if (available < item.totalCents) throw new Error('Insufficient wallet balance.')
-  const pi = await stripe.paymentIntents.create({
-    amount: item.totalCents,
-    currency: item.currency,
-    customer: customerId,
-    payment_method_types: ['customer_balance'],
-    payment_method_data: { type: 'customer_balance' },
-    confirm: true,
-    metadata: checkoutMetadata(item, 'wallet'),
-  })
-  if (pi.status !== 'succeeded') throw new Error(`Payment is ${pi.status}. Please retry once it settles.`)
-  return pi.id
-}
-
-export async function payWithSavedCard(clerkUserId: string, item: CheckoutItem, paymentMethodId: string) {
-  const stripe = getStripe()
-  const customerId = await getOrCreateStripeCustomer(clerkUserId)
-  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId)
-  if (paymentMethod.customer !== customerId) throw new Error('Payment method does not belong to this customer.')
-  const pi = await stripe.paymentIntents.create({
-    amount: item.totalCents,
-    currency: item.currency,
-    customer: customerId,
-    payment_method: paymentMethodId,
-    confirm: true,
-    automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
-    metadata: checkoutMetadata(item, 'saved_card'),
-  })
-  return pi
-}
-
-export function checkoutMetadata(item: CheckoutItem, paymentMethod: string) {
-  return {
-    checkout_source_type: item.sourceType,
-    checkout_source_id: item.sourceId,
-    checkout_tier_id: item.tierId || '',
-    payment_method: paymentMethod,
-    client_profile_id: item.clientProfileId,
-    provider_profile_id: item.providerProfileId,
-    provider_type: item.providerType,
-    platform_fee_cents: String(item.platformFeeCents),
-    net_payout_cents: String(item.netPayoutCents),
-  }
-}
-
-export async function createHostedCheckoutSession(req: Request, item: CheckoutItem) {
-  const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://portal.yousafeconsultancy.com'
-  return getStripe().checkout.sessions.create({
-    mode: 'payment',
-    success_url: `${origin}/dashboard?checkout=success&source=${item.sourceType}&id=${item.sourceId}`,
-    cancel_url: `${origin}/dashboard?checkout=cancelled&source=${item.sourceType}&id=${item.sourceId}`,
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: item.currency,
-          unit_amount: item.totalCents,
-          product_data: {
-            name: item.title,
-            description: item.description?.slice(0, 500) || undefined,
-          },
-        },
-      },
-    ],
-    metadata: checkoutMetadata(item, 'stripe'),
-  })
-}
-
-export async function createOrderFromCheckoutSession(db: Db, session: Stripe.Checkout.Session) {
-  const sourceType = session.metadata?.checkout_source_type as CheckoutSourceType | undefined
-  const sourceId = session.metadata?.checkout_source_id
-  if (!sourceType || !sourceId) return null
-  const clientProfileId = session.metadata?.client_profile_id
-  if (!clientProfileId) return null
-  const resolved = await resolveCheckoutItem(db, sourceType, sourceId, clientProfileId, session.metadata?.checkout_tier_id || undefined)
-  if ('error' in resolved) throw new Error(resolved.error)
-  return createPaidOrder(db, resolved, {
-    paymentIntentId: typeof session.payment_intent === 'string' ? session.payment_intent : null,
-    paymentMethod: 'stripe',
-    actorId: clientProfileId,
-  })
 }

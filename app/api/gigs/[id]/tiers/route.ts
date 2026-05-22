@@ -1,10 +1,23 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getPaymentSettingsForApi, normalizeRevision, toCents } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 async function canEdit(auth: any, gigId: string) {
   const { data: gig } = await auth.db.from('gigs').select('provider_id').eq('id', gigId).single()
   return gig && (gig.provider_id === auth.profileId || auth.role === 'admin')
+}
+
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params
+  const db = createSupabaseAdminClient()
+  const { data: tiers, error } = await db
+    .from('gig_tiers')
+    .select('*')
+    .eq('gig_id', id)
+    .order('price', { ascending: true })
+  if (error) return fail(error.message, 500)
+  return ok({ tiers: tiers ?? [] })
 }
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {

@@ -142,7 +142,7 @@ export function inquiryOfferAcceptedEmail(args: {
     html: `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
 <p>${greeting}</p>
 <p>${client} accepted your offer "<strong>${escapeHtml(args.offerTitle)}</strong>".</p>
-<p>The full attorney fee of <strong>$${args.attorneyFee.toFixed(2)}</strong> will be transferred to your Stripe Connect account once Stripe settles the payment (typically 1–2 business days).</p>
+<p>The full attorney fee of <strong>$${args.attorneyFee.toFixed(2)}</strong> will be transferred to your connected account once the payment settles (typically 1–2 business days).</p>
 <p><a href="${inquiryUrl(args.inquiryId)}">Open the engagement →</a></p>
 <p>— YouSafe Consultancy</p>
 </body></html>`,

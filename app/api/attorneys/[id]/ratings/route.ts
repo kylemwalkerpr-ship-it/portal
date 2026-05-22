@@ -1,6 +1,19 @@
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
+// Public list of ratings for an attorney.
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: attorneyId } = await context.params
+  const db = createSupabaseAdminClient()
+  const { data: ratings, error } = await db
+    .from('attorney_ratings')
+    .select('id, stars, comment, created_at')
+    .eq('attorney_id', attorneyId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ratings: ratings ?? [] })
+}
 
 // Submit / update a rating for an attorney. One rating per (rater, attorney);
 // re-rating overwrites the previous value.

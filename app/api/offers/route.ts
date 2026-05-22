@@ -29,7 +29,7 @@ async function resolveProvider(auth: any) {
   if (auth.role === 'attorney') {
     const { data } = await auth.db
       .from('attorneys')
-      .select('id, stripe_account_id, stripe_onboarding_complete, stripe_bypass')
+      .select('id')
       .eq('profile_id', auth.profileId)
       .maybeSingle()
     return data ? { type: 'attorney' as const, record: data } : null
@@ -44,7 +44,7 @@ async function resolveProvider(auth: any) {
     for (const [column, value] of attempts) {
       const { data } = await auth.db
         .from('consultants')
-        .select('id, stripe_account_id, stripe_onboarding_complete, stripe_bypass')
+        .select('id')
         .eq(column, value)
         .maybeSingle()
       if (data) return { type: 'consultant' as const, record: data }
@@ -91,12 +91,6 @@ export async function POST(req: Request) {
   const { body, files } = await bodyFromRequest(req)
   const provider = await resolveProvider(auth)
   if (!provider) return fail('Provider record not found.', 404)
-
-  const connectReady = Boolean(provider.record.stripe_account_id && provider.record.stripe_onboarding_complete)
-  const bypassed = Boolean(provider.record.stripe_bypass)
-  if (!connectReady && !bypassed) {
-    return fail('Connect a payout account before sending an offer.', 412, { requires_connect: true })
-  }
 
   const settings = await getPaymentSettingsForApi()
   const fields: Record<string, string> = {}

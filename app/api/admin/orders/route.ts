@@ -68,7 +68,7 @@ export async function GET(req: Request) {
   const FULL_COLUMNS =
     'id, order_number, status, escrow_status, payout_status, ' +
     'total_amount, platform_fee_amount, consultant_payout_amount, ' +
-    'stripe_payment_intent_id, stripe_transfer_id, ' +
+
     'delivery_deadline, cancelled_at, refunded_at, status_updated_at, ' +
     'created_at, updated_at, consultant_id, client_id, ' +
     'revision_reason, offer_id, attorney_id'
@@ -248,8 +248,7 @@ export async function GET(req: Request) {
       gross: Number(o.total_amount),
       fee:   Number(o.platform_fee_amount),
       payout: Number(o.consultant_payout_amount),
-      stripe_pi: o.stripe_payment_intent_id,
-      stripe_transfer: o.stripe_transfer_id,
+
       deadline: o.delivery_deadline,
       cancelled_at: o.cancelled_at,
       refunded_at: o.refunded_at,

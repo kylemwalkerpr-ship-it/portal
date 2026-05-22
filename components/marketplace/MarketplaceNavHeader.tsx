@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { CartIcon } from '@/components/cart/CartIcon'
 
 interface NavLink {
@@ -72,6 +72,8 @@ const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', ser
 
 export default function MarketplaceNavHeader() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const returnTo = pathname + (searchParams?.toString() ? '?' + searchParams.toString() : '')
   const [role, setRole]     = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [scrolled, setScrolled] = React.useState(false)
@@ -89,6 +91,102 @@ export default function MarketplaceNavHeader() {
     window.addEventListener('scroll', handler, { passive: true })
     return () => window.removeEventListener('scroll', handler)
   }, [])
+
+  // Unauthenticated / public nav
+  if (!loading && (!role || !ROLE_NAV[role])) {
+    return (
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 200,
+        background: '#1B2D4F',
+        boxShadow: scrolled ? '0 2px 12px rgba(0,0,0,0.22)' : '0 1px 0 rgba(255,255,255,0.06)',
+        transition: 'box-shadow 0.2s ease',
+        fontFamily: sans,
+      }}>
+        {/* Gold accent line */}
+        <div style={{ height: '2px', background: 'linear-gradient(90deg, #9A7B3B 0%, #C4A45A 50%, #9A7B3B 100%)' }} />
+
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'stretch', gap: 0, overflowX: 'auto' }}>
+          {/* Brand */}
+          <Link href="/marketplace" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', flexShrink: 0 }}>
+            <div>
+              <div style={{ fontFamily: serif, fontSize: '15px', fontWeight: 600, color: '#F7F5F0', letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.38)', letterSpacing: '0.14em', textTransform: 'uppercase', marginTop: '1px', whiteSpace: 'nowrap' }}>Marketplace</div>
+            </div>
+          </Link>
+
+          {/* Public nav links */}
+          <nav style={{ display: 'flex', alignItems: 'stretch', flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }}>
+            {[
+              { icon: '🏬', label: 'Browse', href: '/marketplace' },
+              { icon: '⚖️', label: 'Find Attorney', href: '/marketplace/attorneys' },
+              { icon: '📋', label: 'Templates', href: '/marketplace/templates' },
+            ].map((link) => {
+              const active = pathname === link.href || (link.href !== '/marketplace' && pathname.startsWith(link.href))
+              return (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '0 14px',
+                    height: '48px',
+                    fontSize: '12.5px',
+                    fontWeight: active ? 600 : 400,
+                    color: active ? '#FFFFFF' : 'rgba(255,255,255,0.52)',
+                    textDecoration: 'none',
+                    borderBottom: active ? `2px solid #C4A45A` : '2px solid transparent',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: active ? '0.01em' : '0',
+                    flexShrink: 0,
+                    transition: 'color 0.12s, border-color 0.12s',
+                  }}
+                >
+                  <span style={{ fontSize: '13px', opacity: active ? 1 : 0.7 }}>{link.icon}</span>
+                  {link.label}
+                </Link>
+              )
+            })}
+          </nav>
+
+          {/* Right side: cart + auth buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+            <CartIcon />
+            <Link
+              href={`/sign-in?return_to=${encodeURIComponent(returnTo)}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '6px 12px', borderRadius: '5px',
+                fontSize: '12px', fontWeight: 500,
+                color: 'rgba(255,255,255,0.70)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                background: 'transparent',
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              Sign In
+            </Link>
+            <Link
+              href={`/sign-up/student?return_to=${encodeURIComponent(returnTo)}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '6px 12px', borderRadius: '5px',
+                fontSize: '12px', fontWeight: 500,
+                color: '#1B2D4F',
+                background: '#C4A45A',
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              Sign Up
+            </Link>
+          </div>
+        </div>
+      </header>
+    )
+  }
 
   // Don't render anything while loading to avoid flash
   if (loading || !role || !ROLE_NAV[role]) return null

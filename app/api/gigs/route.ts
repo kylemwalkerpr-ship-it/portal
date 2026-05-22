@@ -1,18 +1,31 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { buildSlug } from '@/lib/fiverr'
-import { requirePortalUser } from '@/lib/portalAuth'
+import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function GET(req: Request) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
-  if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
-
   const url = new URL(req.url)
+  const auth = await getOptionalPortalUser()
+  const db = auth ? auth.db : createSupabaseAdminClient()
 
+  // Public list endpoint — no auth required for browsing active gigs
+  if (!auth || !['attorney', 'consultant'].includes(auth.role)) {
+    const { data: rows, error, count } = await db
+      .from('gigs')
+      .select('*, tiers:gig_tiers(*)', { count: 'exact' })
+      .eq('status', 'active')
+      .order('published_at', { ascending: false })
+      .range(0, 99)
+
+    if (error) return fail(error.message, 500)
+    return ok({ gigs: rows ?? [], total: count ?? 0 })
+  }
+
+  // Provider-specific endpoint — authed providers managing their own gigs
   // Resolve dynamic gig limit for this provider (level-aware via DB function)
   const resolvedLimit = await (async () => {
     try {
-      const { data } = await auth.db.rpc('get_provider_gig_limit', {
+      const { data } = await db.rpc('get_provider_gig_limit', {
         p_provider_id:   auth.profileId,
         p_provider_type: auth.role,
       })
@@ -21,7 +34,7 @@ export async function GET(req: Request) {
   })()
 
   if (url.searchParams.get('countOnly') === 'true') {
-    const { count, error } = await auth.db
+    const { count, error } = await db
       .from('gigs')
       .select('id', { count: 'exact', head: true })
       .eq('provider_id', auth.profileId)
@@ -34,7 +47,7 @@ export async function GET(req: Request) {
 
   // Fetch gigs with tiers — avoid joining new tables (gig_promotion_campaigns,
   // gig_metrics) via PostgREST until schema cache is confirmed refreshed.
-  const { data: rows, error } = await auth.db
+  const { data: rows, error } = await db
     .from('gigs')
     .select(`
       id, slug, title, pitch, tagline, description, requirements, faq,
@@ -52,7 +65,7 @@ export async function GET(req: Request) {
   // retry with a minimal column list so the page still loads.
   let rowsResolved: any = rows
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const retry = await auth.db
+    const retry = await db
       .from('gigs')
       .select(`
         id, slug, title, pitch, category, subcategory, tags, status,
@@ -73,7 +86,7 @@ export async function GET(req: Request) {
   const gigIds = (rowsResolved ?? []).map((r: any) => r.id)
   let metricsMap: Record<string, any> = {}
   if (gigIds.length > 0) {
-    const { data: metricsRows } = await auth.db
+    const { data: metricsRows } = await db
       .from('gig_metrics')
       .select('gig_id, impressions, clicks, saves')
       .in('gig_id', gigIds)
@@ -131,10 +144,12 @@ export async function POST(req: Request) {
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
 
+  const db = auth.db
+
   // Dynamic limit — respects seller level and custom admin overrides
   const postLimit = await (async () => {
     try {
-      const { data } = await auth.db.rpc('get_provider_gig_limit', {
+      const { data } = await db.rpc('get_provider_gig_limit', {
         p_provider_id:   auth.profileId,
         p_provider_type: auth.role,
       })
@@ -142,7 +157,7 @@ export async function POST(req: Request) {
     } catch { return 5 }
   })()
 
-  const { count } = await auth.db
+  const { count } = await db
     .from('gigs')
     .select('id', { count: 'exact', head: true })
     .eq('provider_id', auth.profileId)
@@ -178,7 +193,7 @@ export async function POST(req: Request) {
     slug,
   }
 
-  let { data: gig, error } = await auth.db
+  let { data: gig, error } = await db
     .from('gigs')
     .insert(insertPayload)
     .select('*')
@@ -191,7 +206,7 @@ export async function POST(req: Request) {
     const badCol = match?.[1]
     if (badCol && badCol in insertPayload) {
       delete insertPayload[badCol]
-      const retry = await auth.db.from('gigs').insert(insertPayload).select('*').single()
+      const retry = await db.from('gigs').insert(insertPayload).select('*').single()
       gig = retry.data as any
       error = retry.error as any
     }
@@ -212,7 +227,7 @@ export async function POST(req: Request) {
       is_active: tier.is_active !== false,
     }))
 
-  const { error: tierError } = await auth.db.from('gig_tiers').insert(tierRows)
+  const { error: tierError } = await db.from('gig_tiers').insert(tierRows)
   if (tierError) return fail(tierError.message, 500)
 
   return ok({ gig }, { status: 201 })

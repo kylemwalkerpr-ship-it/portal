@@ -2,31 +2,15 @@
 /**
  * OfferPaymentModal
  *
- * Embedded Stripe Payment Element flow for accepting a custom offer.
- * Replaces the old Stripe Checkout redirect with an in-app modal so
- * buyers stay in the conversation throughout the payment.
- *
- * Flow:
- *   1. Modal opens with offerId.
- *   2. Hit POST /api/offers/:id/accept → returns { offer, client_secret, breakdown }.
- *      (PATCH path is also supported — we use POST for parity with existing call sites.)
- *   3. Mount Stripe.elements({ clientSecret }) and a PaymentElement.
- *   4. On submit, stripe.confirmPayment({ elements }) — Stripe handles 3DS, etc.
- *   5. On success, call onPaid() so the inbox can refresh.
- *
- * No React wrapper from @stripe/react-stripe-js — we use the imperative
- * @stripe/stripe-js loader directly to avoid adding a dependency, matching
- * the loadStripe usage already present in components/design/student.jsx.
+ * Wallet-based payment flow for accepting a custom offer.
+ * Buyers pay from their wallet balance. If insufficient, they top up first.
  */
-import { useEffect, useRef, useState } from 'react'
-import { loadStripe, type Stripe, type StripeElements } from '@stripe/stripe-js'
+import { useEffect, useState } from 'react'
 
-const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-
-// ── design tokens (match the rest of the inbox) ─────────────────────────────
 const NAVY = '#1B2D4F'
 const GOLD = '#9A7B3B'
 const RED  = '#8B1A1A'
+const GREEN = '#1A6B45'
 const SURFACE  = '#FFFFFF'
 const SURFACE2 = '#FAFAF7'
 const BORDER   = '#E5E0D6'
@@ -35,13 +19,11 @@ const MUTED = '#5C6070'
 const DIM   = '#9097A8'
 const SERIF = `'Cormorant Garamond', Georgia, serif`
 const SANS  = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
-const MONO  = `'SF Mono', Menlo, Consolas, monospace`
 
 export interface OfferPaymentModalProps {
   offerId: string
   open: boolean
   onClose: () => void
-  /** Fired after a successful confirmPayment. Inbox should reload the thread. */
   onPaid?: () => void
 }
 
@@ -50,13 +32,6 @@ interface Breakdown {
   platform_fee: number
   tax: number
   total: number
-}
-
-interface AcceptResponseData {
-  client_secret: string
-  payment_intent_id: string
-  offer?: { title?: string; currency?: string }
-  breakdown?: Breakdown
 }
 
 function formatMoney(cents: number, currency = 'USD'): string {
@@ -69,272 +44,177 @@ function formatMoney(cents: number, currency = 'USD'): string {
 }
 
 export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPaymentModalProps) {
-  const [stripe, setStripe]     = useState<Stripe | null>(null)
-  const [elements, setElements] = useState<StripeElements | null>(null)
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError]       = useState<string | null>(null)
-  const [meta, setMeta]         = useState<{ title: string; currency: string; breakdown?: Breakdown } | null>(null)
-  const elementsRef = useRef<HTMLDivElement | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [meta, setMeta] = useState<{ title: string; currency: string; breakdown?: Breakdown } | null>(null)
+  const [walletCents, setWalletCents] = useState<number | null>(null)
 
-  // ── Open: hit /accept, then mount Elements ────────────────────────────────
   useEffect(() => {
     if (!open) return
-    if (!STRIPE_PUB_KEY) {
-      setError('Stripe is not configured. Contact support to complete payment.')
-      setLoading(false)
-      return
-    }
+    setLoading(true); setError(null); setMeta(null); setWalletCents(null)
 
     let cancelled = false
-    let paymentElementInstance: any = null
-    setLoading(true); setError(null); setMeta(null); setStripe(null); setElements(null)
-
     ;(async () => {
       try {
-        const res = await fetch(`/api/offers/${offerId}/accept`, {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-        })
-        const json = await res.json().catch(() => ({}))
+        const [acceptRes, walletRes] = await Promise.all([
+          fetch(`/api/offers/${offerId}/accept`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          fetch('/api/wallet/balance', { credentials: 'same-origin' }),
+        ])
+        const acceptJson = await acceptRes.json().catch(() => ({}))
+        const walletJson = await walletRes.json().catch(() => ({}))
         if (cancelled) return
-        if (!res.ok) {
-          const msg = json?.error || json?.data?.error || `Could not start payment (HTTP ${res.status}).`
-          setError(String(msg)); setLoading(false)
-          return
-        }
-        // Envelope: ok() returns { data: {...} }; some routes return flat.
-        const payload: AcceptResponseData = (json?.data ?? json) as AcceptResponseData
-        if (!payload?.client_secret) {
-          setError('Server did not return a Stripe client_secret.')
-          setLoading(false)
-          return
-        }
-        const stripeInstance = await loadStripe(STRIPE_PUB_KEY)
-        if (cancelled) return
-        if (!stripeInstance) {
-          setError('Stripe.js failed to load. Disable any blockers and try again.')
-          setLoading(false)
-          return
-        }
-        const els = stripeInstance.elements({
-          clientSecret: payload.client_secret,
-          appearance: {
-            theme: 'flat',
-            variables: {
-              colorPrimary: NAVY,
-              colorBackground: SURFACE,
-              colorText: TEXT,
-              colorDanger: RED,
-              fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-              borderRadius: '8px',
-            },
-          },
-        })
-        const paymentElement = els.create('payment', { layout: 'tabs' })
-        paymentElementInstance = paymentElement
 
-        // Mount once the modal DOM is in place. We wait a tick because the
-        // <div ref={elementsRef}> below is rendered AFTER loading=false.
-        setStripe(stripeInstance); setElements(els)
-        setMeta({
-          title: payload.offer?.title || 'Custom offer',
-          currency: payload.offer?.currency || 'USD',
-          breakdown: payload.breakdown,
-        })
-        setLoading(false)
-        requestAnimationFrame(() => {
-          if (cancelled || !elementsRef.current) return
-          paymentElement.mount(elementsRef.current)
-        })
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(e?.message || 'Could not start payment.')
+        if (!acceptRes.ok) {
+          setError(acceptJson?.error || acceptJson?.data?.error || 'Could not load offer.')
           setLoading(false)
+          return
         }
+
+        const payload = acceptJson?.data ?? acceptJson
+        setMeta({
+          title: payload?.offer?.title || 'Custom offer',
+          currency: payload?.offer?.currency || 'USD',
+          breakdown: payload?.breakdown,
+        })
+        setWalletCents(Number(walletJson?.balanceCents ?? walletJson?.available ?? 0))
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || 'Could not load payment details.')
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     })()
 
-    return () => {
-      cancelled = true
-      try { paymentElementInstance?.unmount() } catch {}
-    }
+    return () => { cancelled = true }
   }, [open, offerId])
 
-  // ── ESC closes ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !submitting) onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open, submitting, onClose])
-
-  // ── Submit ──────────────────────────────────────────────────────────────
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!stripe || !elements || submitting) return
+  const handlePay = async () => {
+    if (!meta?.breakdown || submitting) return
     setSubmitting(true); setError(null)
     try {
-      const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          // Stripe needs SOME return_url; if 3DS hijacks the page it'll
-          // bounce back here, but for cards w/o 3DS the user stays put.
-          return_url: typeof window !== 'undefined' ? window.location.href : 'https://portal.yousafeconsultancy.com/',
-        },
-        redirect: 'if_required',
+      const res = await fetch('/api/checkout/order', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceType: 'unified_offer',
+          sourceId: offerId,
+          paymentMethod: 'wallet',
+          acceptedTerms: true,
+          acceptedRefundPolicy: true,
+        }),
       })
-      if (confirmError) {
-        setError(confirmError.message || 'Payment failed. Try a different card.')
-        return
-      }
-      if (!paymentIntent || (paymentIntent.status !== 'succeeded' && paymentIntent.status !== 'processing')) {
-        setError(`Unexpected payment status: ${paymentIntent?.status ?? 'unknown'}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (res.status === 402 && json?.balanceCents !== undefined) {
+          setWalletCents(json.balanceCents)
+        }
+        setError(json?.error || `Payment failed (${res.status})`)
+        setSubmitting(false)
         return
       }
       onPaid?.()
       onClose()
-    } catch (err: any) {
-      setError(err?.message || 'Payment failed.')
-    } finally {
+    } catch (e: any) {
+      setError(e?.message || 'Payment failed.')
       setSubmitting(false)
     }
   }
 
   if (!open) return null
 
+  const totalCents = meta?.breakdown?.total ?? 0
+  const canPay = walletCents !== null && walletCents >= totalCents && totalCents > 0
+
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose() }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 10020,
-        background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, fontFamily: SANS,
-      }}
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 460, maxWidth: '100%',
-          maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
-          background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 14,
-          boxShadow: '0 24px 48px rgba(15,23,42,0.2)',
-        }}
+        onClick={e => e.stopPropagation()}
+        style={{ background: SURFACE, borderRadius: 16, padding: '28px', maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', fontFamily: SANS, color: TEXT }}
       >
-        {/* Gold accent stripe */}
-        <div style={{ height: 3, background: `linear-gradient(90deg, ${GOLD} 0%, #C4A45A 50%, ${GOLD} 100%)` }} />
-
-        {/* Header */}
-        <div style={{ padding: '16px 20px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase', color: GOLD, fontFamily: MONO }}>
-              💳 Complete payment
-            </div>
-            <h2 style={{ margin: '4px 0 0', fontFamily: SERIF, fontSize: 20, fontWeight: 600, color: TEXT, letterSpacing: '-0.005em' }}>
-              {meta?.title || 'Custom offer'}
-            </h2>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: MUTED }}>Secure checkout</div>
+            <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, marginTop: 4 }}>{meta?.title || 'Custom offer'}</div>
           </div>
-          <button
-            type="button"
-            onClick={() => { if (!submitting) onClose() }}
-            aria-label="Close payment"
-            disabled={submitting}
-            style={{
-              border: 'none', background: 'transparent', cursor: submitting ? 'not-allowed' : 'pointer',
-              fontSize: 22, lineHeight: 1, color: DIM, padding: 4,
-            }}
-          >×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: DIM, lineHeight: 1 }}>×</button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '8px 20px 20px' }}>
-          {loading && (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: MUTED, fontSize: 13 }}>
-              Preparing secure payment…
-            </div>
-          )}
-
-          {!loading && error && !stripe && (
-            <div style={{
-              background: `${RED}10`, color: RED, padding: '12px 14px',
-              borderRadius: 8, fontSize: 13, lineHeight: 1.5,
-            }}>
-              {error}
-            </div>
-          )}
-
-          {!loading && stripe && (
-            <>
-              {/* Breakdown */}
-              {meta?.breakdown && (
-                <div style={{
-                  background: SURFACE2, border: `1px solid ${BORDER}`,
-                  borderRadius: 10, padding: '12px 14px', marginBottom: 14,
-                  fontSize: 13,
-                }}>
-                  <Row label="Subtotal" value={formatMoney(meta.breakdown.subtotal, meta.currency)} />
-                  {meta.breakdown.platform_fee > 0 && (
-                    <Row label="Platform fee" value={formatMoney(meta.breakdown.platform_fee, meta.currency)} muted />
-                  )}
-                  <div style={{ height: 1, background: BORDER, margin: '8px 0' }} />
-                  <Row
-                    label="Total today"
-                    value={formatMoney(meta.breakdown.total, meta.currency)}
-                    bold
-                  />
+        {loading ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED }}>Loading…</div>
+        ) : error && !meta?.breakdown ? (
+          <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '12px 14px', fontSize: 13, color: RED }}>{error}</div>
+        ) : (
+          <>
+            {meta?.breakdown && (
+              <div style={{ background: SURFACE2, borderRadius: 12, padding: '16px', marginBottom: 20, border: `1px solid ${BORDER}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
+                  <span style={{ color: MUTED }}>Subtotal</span>
+                  <span>{formatMoney(meta.breakdown.subtotal, meta.currency)}</span>
                 </div>
-              )}
-
-              {/* Stripe Payment Element mount point */}
-              <div ref={elementsRef} style={{ marginBottom: 14 }} />
-
-              {error && (
-                <div style={{
-                  background: `${RED}10`, color: RED, padding: '8px 12px',
-                  borderRadius: 8, fontSize: 12, marginBottom: 10, lineHeight: 1.5,
-                }}>
-                  {error}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
+                  <span style={{ color: MUTED }}>Platform fee</span>
+                  <span>{formatMoney(meta.breakdown.platform_fee, meta.currency)}</span>
                 </div>
-              )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 8 }}>
+                  <span style={{ color: MUTED }}>Tax</span>
+                  <span>{formatMoney(meta.breakdown.tax, meta.currency)}</span>
+                </div>
+                <div style={{ borderTop: `1px solid ${BORDER}`, margin: '10px 0', paddingTop: 10, display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 18 }}>
+                  <span>Total</span>
+                  <span style={{ color: NAVY }}>{formatMoney(meta.breakdown.total, meta.currency)}</span>
+                </div>
+              </div>
+            )}
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '12px 14px', background: SURFACE2, borderRadius: 10, border: `1px solid ${BORDER}` }}>
+              <span style={{ fontSize: 13, color: MUTED }}>Wallet balance</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 700, fontSize: 16, color: walletCents !== null && walletCents >= totalCents ? GREEN : RED }}>
+                {walletCents === null ? '—' : formatMoney(walletCents, meta?.currency || 'USD')}
+              </span>
+            </div>
+
+            {error && (
+              <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: RED, marginBottom: 14 }}>{error}</div>
+            )}
+
+            {canPay ? (
               <button
-                type="submit"
+                onClick={handlePay}
                 disabled={submitting}
-                style={{
-                  width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none',
-                  background: submitting ? `${MUTED}` : NAVY, color: '#fff',
-                  fontWeight: 700, fontSize: 14, cursor: submitting ? 'wait' : 'pointer',
-                  fontFamily: SANS,
-                }}
+                style={{ width: '100%', padding: '14px', borderRadius: 10, background: NAVY, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}
               >
-                {submitting
-                  ? 'Processing…'
-                  : meta?.breakdown
-                    ? `Pay ${formatMoney(meta.breakdown.total, meta.currency)}`
-                    : 'Pay now'}
+                {submitting ? 'Processing…' : `Pay ${formatMoney(totalCents, meta?.currency || 'USD')} from wallet`}
               </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#92400e' }}>
+                  Insufficient wallet balance. Top up your wallet first.
+                </div>
+                <a
+                  href="/student?goto=billing"
+                  style={{ display: 'block', textAlign: 'center', padding: '12px', borderRadius: 10, background: NAVY, color: '#fff', fontSize: 15, fontWeight: 700, textDecoration: 'none' }}
+                >
+                  + Top up wallet
+                </a>
+              </div>
+            )}
 
-              <p style={{ margin: '10px 0 0', fontSize: 11, color: DIM, textAlign: 'center', lineHeight: 1.5 }}>
-                🔒 Encrypted by Stripe · Funds held in escrow until delivery is approved.
-              </p>
-            </>
-          )}
-        </form>
+            <button
+              onClick={onClose}
+              style={{ width: '100%', marginTop: 10, padding: '10px', borderRadius: 10, background: 'transparent', color: MUTED, fontSize: 14, border: 'none', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
 }
-
-function Row({ label, value, muted, bold }: { label: string; value: string; muted?: boolean; bold?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
-      <span style={{ color: muted ? MUTED : TEXT, fontWeight: bold ? 700 : 500 }}>{label}</span>
-      <span style={{ color: TEXT, fontWeight: bold ? 700 : 500, fontFamily: MONO, fontSize: 13 }}>{value}</span>
-    </div>
-  )
-}
-
-export default OfferPaymentModal

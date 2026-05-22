@@ -176,7 +176,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     if (!offerId || offerBusyId) return
     setThreadError('')
     // Open the embedded payment modal. It hits /api/offers/:id/accept
-    // itself and mounts Stripe Elements — no full-page redirect.
+    // itself (wallet debit) — no full-page redirect.
     setPayingOfferId(offerId)
   }, [offerBusyId])
 
@@ -433,7 +433,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         </main>
       </div>
 
-      {/* Embedded Stripe Payment Element for Accept & Pay */}
+      {/* Embedded NMI Payment for Accept & Pay */}
       <OfferPaymentModal
         offerId={payingOfferId || ''}
         open={!!payingOfferId}

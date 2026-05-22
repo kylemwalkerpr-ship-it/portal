@@ -10,7 +10,7 @@ export async function GET() {
   const [ordersRes, openInquiriesRes, mineInquiriesRes, ratingsRes, attorneyRes] = await Promise.all([
     ctx.db
       .from('orders')
-      .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status, stripe_payment_intent_id')
+      .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status')
       .eq('consultant_id', ctx.profileId)
       .not('source_offer_id', 'is', null)
       .order('created_at', { ascending: false }),
@@ -26,7 +26,7 @@ export async function GET() {
     ctx.db.from('attorney_ratings').select('stars').eq('attorney_id', ctx.attorneyId),
     ctx.db
       .from('attorneys')
-      .select('stripe_account_id, stripe_onboarding_complete, available')
+      .select('available')
       .eq('id', ctx.attorneyId)
       .single(),
   ])
@@ -131,7 +131,7 @@ export async function GET() {
   const rating_count = ratingRows.length
   const rating_avg = rating_count ? Number((ratingRows.reduce((s, r) => s + r.stars, 0) / rating_count).toFixed(2)) : null
 
-  const attorney = (attorneyRes.data ?? {}) as { stripe_account_id?: string | null; stripe_onboarding_complete?: boolean | null; available?: boolean | null }
+  const attorney = (attorneyRes.data ?? {}) as { available?: boolean | null }
 
   return Response.json({
     orders,
@@ -146,10 +146,6 @@ export async function GET() {
       rating_avg,
     },
     trend,
-    connect: {
-      has_account: Boolean(attorney.stripe_account_id),
-      onboarding_complete: Boolean(attorney.stripe_onboarding_complete),
-      available: attorney.available !== false,
-    },
+    available: attorney.available !== false,
   })
 }

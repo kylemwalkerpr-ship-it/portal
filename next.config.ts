@@ -11,7 +11,7 @@ import type { NextConfig } from 'next'
 //
 // CSP: only `frame-ancestors 'self'` for now — strict enough to satisfy
 // scanners + replace X-Frame-Options on modern browsers, loose enough
-// not to break Stripe/Clerk/Plausible. Tighten later with a full
+// not to break NMI/Clerk/Plausible. Tighten later with a full
 // allow-list if needed.
 const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },

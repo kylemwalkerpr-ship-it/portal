@@ -1,9 +1,10 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { buildSlug } from '@/lib/fiverr'
-import { requirePortalUser } from '@/lib/portalAuth'
+import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
-async function loadGig(auth: any, id: string) {
-  return auth.db.from('gigs').select('*, tiers:gig_tiers(*)').eq('id', id).single()
+async function loadGig(db: any, id: string) {
+  return db.from('gigs').select('*, tiers:gig_tiers(*)').eq('id', id).single()
 }
 
 function owns(auth: any, gig: any) {
@@ -11,12 +12,13 @@ function owns(auth: any, gig: any) {
 }
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
+  const auth = await getOptionalPortalUser()
+  const db = auth ? auth.db : createSupabaseAdminClient()
   const { id } = await context.params
-  const { data: gig, error } = await loadGig(auth, id)
+  const { data: gig, error } = await loadGig(db, id)
   if (error || !gig) return fail(error?.message || 'Gig not found.', 404)
-  if (!owns(auth, gig) && gig.status !== 'active') return fail('Forbidden.', 403)
+  if (auth && !owns(auth, gig) && gig.status !== 'active') return fail('Forbidden.', 403)
+  if (!auth && gig.status !== 'active') return fail('Gig not found.', 404)
   return ok({ gig })
 }
 
@@ -24,7 +26,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { id } = await context.params
-  const { data: existing } = await loadGig(auth, id)
+  const { data: existing } = await loadGig(auth.db, id)
   if (!existing) return fail('Gig not found.', 404)
   if (!owns(auth, existing)) return fail('Forbidden.', 403)
 
@@ -68,7 +70,7 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { id } = await context.params
-  const { data: existing } = await loadGig(auth, id)
+  const { data: existing } = await loadGig(auth.db, id)
   if (!existing) return fail('Gig not found.', 404)
   if (!owns(auth, existing)) return fail('Forbidden.', 403)
   const now = new Date().toISOString()

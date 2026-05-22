@@ -201,7 +201,7 @@ export const COUNTRIES: CountryConfig[] = [
             id: 'employer_h1b',
             type: 'short_text',
             label: 'Sponsoring employer (or prospective)',
-            placeholder: 'e.g. Stripe, small consulting firm, etc.',
+            placeholder: 'e.g. Tech company, small consulting firm, etc.',
             required: true,
           },
           {

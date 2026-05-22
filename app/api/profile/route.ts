@@ -9,7 +9,7 @@ function clean(value: unknown, max = 200) {
 
 export async function GET() {
   const userId = await getClerkUserId()
-  if (!userId) return Response.json({ error: 'Unauthenticated.' }, { status: 401 })
+  if (!userId) return Response.json({ profile: null })
 
   const db = createSupabaseAdminClient()
   const { data: profile, error } = await db
@@ -18,7 +18,7 @@ export async function GET() {
     .eq('clerk_user_id', userId)
     .single()
 
-  if (error || !profile) return Response.json({ error: 'Profile not found.' }, { status: 404 })
+  if (error || !profile) return Response.json({ profile: null })
   return Response.json({ profile })
 }
 

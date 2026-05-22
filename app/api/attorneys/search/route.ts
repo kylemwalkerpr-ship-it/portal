@@ -20,7 +20,6 @@
  *
  * Self-heals if any newer column is missing.
  */
-import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const SORT_COLUMN_MAP: Record<string, { col: string; asc: boolean }> = {
@@ -33,12 +32,7 @@ const SORT_COLUMN_MAP: Record<string, { col: string; asc: boolean }> = {
 }
 
 export async function GET(req: Request) {
-  const userId = await getClerkUserId()
-  if (!userId) return Response.json({ error: 'Unauthenticated' }, { status: 401 })
-
   const db = createSupabaseAdminClient()
-  const { data: viewer } = await db.from('profiles').select('role, status').eq('clerk_user_id', userId).single()
-  if (!viewer) return Response.json({ error: 'Profile not found' }, { status: 404 })
 
   const { searchParams } = new URL(req.url)
   const q             = searchParams.get('q')?.trim() || ''

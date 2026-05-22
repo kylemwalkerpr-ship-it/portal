@@ -86,7 +86,7 @@ export interface VaultCardRequest {
 export interface VaultCardResult {
   ok: boolean
   /** The provider's reusable reference to the stored card (NMI customer
-   *  vault id, Stripe payment-method id, etc.). */
+   *  vault id, or the equivalent on another gateway). */
   vaultId: string | null
   cardDisplay: CardDisplay | null
   message: string

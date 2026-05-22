@@ -122,7 +122,6 @@ export async function GET() {
       available: consultant.available !== false,
       autoWithdraw: Boolean(consultant.auto_withdraw),
       notifPrefs: { ...defaultNotifPrefs, ...(consultant.notif_prefs || {}) },
-      stripeOnboardingComplete: Boolean(consultant.stripe_onboarding_complete ?? consultant.stripeOnboardingComplete),
     },
     orders,
     earningsByDay: days,

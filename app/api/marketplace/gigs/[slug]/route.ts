@@ -1,12 +1,13 @@
 import { ok, fail } from '@/lib/apiEnvelope'
-import { requirePortalUser } from '@/lib/portalAuth'
+import { getOptionalPortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function GET(_req: Request, context: { params: Promise<{ slug: string }> }) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
+  const auth = await getOptionalPortalUser()
+  const db = auth ? auth.db : createSupabaseAdminClient()
   const { slug } = await context.params
 
-  const { data: gig, error } = await auth.db
+  const { data: gig, error } = await db
     .from('gigs')
     .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, created_at)')
     .eq('slug', slug)
@@ -17,8 +18,8 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   // Get provider stats
   const [{ data: providerGigs }, { data: providerReviews }] = await Promise.all([
-    auth.db.from('gigs').select('id, avg_rating, review_count, order_count').eq('provider_id', gig.provider_id).eq('status', 'active'),
-    auth.db.from('gig_reviews').select('rating').eq('provider_id', gig.provider_id),
+    db.from('gigs').select('id, avg_rating, review_count, order_count').eq('provider_id', gig.provider_id).eq('status', 'active'),
+    db.from('gig_reviews').select('rating').eq('provider_id', gig.provider_id),
   ])
 
   // Calculate provider stats
@@ -41,7 +42,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
   }
 
   // Get similar gigs (same category, different provider)
-  const { data: similarGigs } = await auth.db
+  const { data: similarGigs } = await db
     .from('gigs')
     .select('id, slug, title, starting_price, avg_rating, gallery_images')
     .eq('category', gig.category)

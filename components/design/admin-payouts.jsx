@@ -121,7 +121,7 @@ const TABS=[
   {id:'overview',  label:'Overview',        icon:'📊'},
   {id:'queue',     label:'Payout Queue',    icon:'⚡'},
   {id:'providers', label:'Provider Ledger', icon:'👤'},
-  {id:'connect',   label:'Stripe Connect',  icon:'🔗'},
+  {id:'connect',   label:'Payout Connect',  icon:'🔗'},
   {id:'refunds',   label:'Refunds',         icon:'↩'},
 ]
 
@@ -145,7 +145,7 @@ export default function AdminPayouts({ formatPrimary }) {
   const releaseOne = async(orderId, providerName) => {
     setConfirm({
       title:'Release Payout',
-      body:`Transfer earnings to ${providerName} for this order. This will create a Stripe transfer immediately.`,
+      body:`Transfer earnings to ${providerName} for this order. This will create a transfer immediately.`,
       onConfirm: async()=>{
         setBusy(true)
         try{
@@ -165,7 +165,7 @@ export default function AdminPayouts({ formatPrimary }) {
     if(!ids.length)return
     setConfirm({
       title:`Release ${ids.length} Payout${ids.length>1?'s':''}`,
-      body:`This will create Stripe transfers for ${ids.length} order${ids.length>1?'s':''} simultaneously. Only providers with completed Stripe Connect will receive funds.`,
+      body:`This will create payout transfers for ${ids.length} order${ids.length>1?'s':''} simultaneously. Only providers with completed payout setup will receive funds.`,
       onConfirm: async()=>{
         setBusy(true)
         try{
@@ -181,10 +181,10 @@ export default function AdminPayouts({ formatPrimary }) {
 
   const toggleBypass = async(provider, currentBypass) => {
     setConfirm({
-      title: currentBypass ? 'Disable Stripe Bypass' : 'Enable Stripe Bypass',
+      title: currentBypass ? 'Disable Payout Bypass' : 'Enable Payout Bypass',
       body:  currentBypass
-        ? `Remove bypass for ${provider.name}. They will need a completed Stripe Connect account to receive payouts.`
-        : `Grant ${provider.name} a Stripe Connect bypass. Payouts will process even before their account is fully verified. Use carefully.`,
+        ? `Remove bypass for ${provider.name}. They will need a completed payout setup to receive payouts.`
+        : `Grant ${provider.name} a payout bypass. Payouts will process even before their account is fully verified. Use carefully.`,
       danger: !currentBypass,
       onConfirm: async()=>{
         setBusy(true)
@@ -216,7 +216,7 @@ export default function AdminPayouts({ formatPrimary }) {
         <div>
           <div style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.14em',color:'#9097A8',marginBottom:'4px'}}>Finance</div>
           <h2 style={{fontFamily:serif,fontWeight:600,fontSize:'34px',color:NAVY,margin:0,letterSpacing:'-.015em',lineHeight:1.1}}>Payout Centre</h2>
-          <p style={{color:'#9097A8',fontSize:'13px',margin:'5px 0 0'}}>Full Stripe Connect payout management — queue, release, monitor, and audit every disbursement.</p>
+          <p style={{color:'#9097A8',fontSize:'13px',margin:'5px 0 0'}}>Full payout management — queue, release, monitor, and audit every disbursement.</p>
         </div>
         <div style={{display:'flex',gap:'8px'}}>
           <button onClick={()=>{queueData.reload();providerData.reload();connectData.reload();refundData.reload()}} style={{padding:'8px 16px',borderRadius:'6px',border:'1px solid #DDD8CE',background:'#fff',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,fontFamily:sans}}>↻ Refresh all</button>
@@ -242,7 +242,7 @@ export default function AdminPayouts({ formatPrimary }) {
             <Kpi label="Total Transferred" value={$c(qSummary.total_transferred_cents)} sub={`${qSummary.transferred||0} completed`} accent={GREEN} icon="✅"/>
             <Kpi label="Failed Payouts" value={$c(qSummary.total_failed_cents)} sub={`${qSummary.failed||0} orders`} accent={qSummary.failed>0?RED:'#9097A8'} icon="⚠" onClick={()=>{setQueueFilter('failed');setTab('queue')}}/>
             <Kpi label="Active Providers" value={connectData.data?.summary?.active||0} sub={`${connectData.data?.summary?.bypassed||0} on bypass`} accent={NAVY} icon="🔗" onClick={()=>setTab('connect')}/>
-            <Kpi label="Pending Connect" value={connectData.data?.summary?.not_started||0} sub="Need Stripe onboarding" accent={connectData.data?.summary?.not_started>0?AMBER:'#9097A8'} icon="🔓" onClick={()=>setTab('connect')}/>
+            <Kpi label="Pending Connect" value={connectData.data?.summary?.not_started||0} sub="Need payout onboarding" accent={connectData.data?.summary?.not_started>0?AMBER:'#9097A8'} icon="🔓" onClick={()=>setTab('connect')}/>
             <Kpi label="Total Refunds" value={$(refundData.data?.summary?.total_amount)} sub={`${refundData.data?.summary?.total_refunds||0} refunds`} accent={PURPLE} icon="↩" onClick={()=>setTab('refunds')}/>
           </div>
 
@@ -269,7 +269,7 @@ export default function AdminPayouts({ formatPrimary }) {
               </Card>
             </Sec>
 
-            <Sec title="Stripe Connect Health">
+            <Sec title="Payout Setup Health">
               <Card style={{padding:'20px'}}>
                 {connectData.loading ? <div style={{color:'#9097A8',fontSize:'13px'}}>Loading…</div> : [
                   {label:'Fully onboarded', value:connectData.data?.summary?.active||0, color:GREEN},
@@ -369,12 +369,12 @@ export default function AdminPayouts({ formatPrimary }) {
                         </td>
                         <td style={{padding:'11px 13px',whiteSpace:'nowrap'}}>
                           {o.payout_status!=='transferred'&&(
-                            <button onClick={()=>releaseOne(o.id,o.provider_name)} disabled={!o.connect_ready} style={{padding:'5px 12px',borderRadius:'5px',border:`1px solid ${o.connect_ready?'rgba(26,107,69,.30)':'#DDD8CE'}`,background:o.connect_ready?'#EAF5EE':'#F7F5F0',color:o.connect_ready?GREEN:'#9097A8',cursor:o.connect_ready?'pointer':'not-allowed',fontSize:'12px',fontWeight:600,fontFamily:sans}} title={!o.connect_ready?'Provider has no active Stripe Connect':''}>
+                            <button onClick={()=>releaseOne(o.id,o.provider_name)} disabled={!o.connect_ready} style={{padding:'5px 12px',borderRadius:'5px',border:`1px solid ${o.connect_ready?'rgba(26,107,69,.30)':'#DDD8CE'}`,background:o.connect_ready?'#EAF5EE':'#F7F5F0',color:o.connect_ready?GREEN:'#9097A8',cursor:o.connect_ready?'pointer':'not-allowed',fontSize:'12px',fontWeight:600,fontFamily:sans}} title={!o.connect_ready?'Provider has no active payout setup':''}>
                               {o.payout_status==='failed'?'↺ Retry':'Release'}
                             </button>
                           )}
-                          {o.payout_status==='transferred'&&o.stripe_transfer_id&&(
-                            <span style={{fontSize:'11px',color:'#9097A8',fontFamily:'monospace'}}>{o.stripe_transfer_id.slice(0,12)}…</span>
+                          {o.payout_status==='transferred'&&o.transfer_id&&(
+                            <span style={{fontSize:'11px',color:'#9097A8',fontFamily:'monospace'}}>{o.transfer_id.slice(0,12)}…</span>
                           )}
                         </td>
                       </tr>
@@ -415,7 +415,7 @@ export default function AdminPayouts({ formatPrimary }) {
         </>
       )}
 
-      {/* ── STRIPE CONNECT ────────────────────────────────────────────────── */}
+      {/* ── PAYOUT CONNECT ────────────────────────────────────────────────── */}
       {tab==='connect'&&(
         <>
           {/* Summary */}
@@ -430,12 +430,12 @@ export default function AdminPayouts({ formatPrimary }) {
           </div>
 
           {/* Connect table */}
-          <Sec title="Provider Connect Status" sub="Manage Stripe Connect onboarding and admin bypass per provider">
+          <Sec title="Provider Connect Status" sub="Manage payout onboarding and admin bypass per provider">
             <div style={{background:'#fff',border:'1px solid #DDD8CE',borderRadius:'8px',overflow:'hidden'}}>
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',minWidth:'700px'}}>
                   <thead><tr>
-                    {[{l:'Provider'},{l:'Role'},{l:'Connect Status'},{l:'Stripe Account'},{l:'Bypass'},{l:'Action'}].map(h=>(
+                    {[{l:'Provider'},{l:'Role'},{l:'Connect Status'},{l:'Payout Account'},{l:'Bypass'},{l:'Action'}].map(h=>(
                       <th key={h.l} style={{padding:'10px 13px',textAlign:'left',fontSize:'11px',fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'rgba(255,255,255,.70)',background:NAVY,whiteSpace:'nowrap',borderBottom:'2px solid rgba(255,255,255,.08)'}}>{h.l}</th>
                     ))}
                   </tr></thead>
@@ -449,7 +449,7 @@ export default function AdminPayouts({ formatPrimary }) {
                         </td>
                         <td style={{padding:'11px 13px'}}><span style={{fontSize:'12px',color:'#5C6070'}}>{p.role==='attorney'?'⚖️ Attorney':'👤 Consultant'}</span></td>
                         <td style={{padding:'11px 13px'}}><ConnPill status={p.status} bypass={p.bypass}/></td>
-                        <td style={{padding:'11px 13px',fontSize:'11px',fontFamily:'monospace',color:'#9097A8'}}>{p.stripe_account||'—'}</td>
+                        <td style={{padding:'11px 13px',fontSize:'11px',fontFamily:'monospace',color:'#9097A8'}}>{p.payout_account||'—'}</td>
                         <td style={{padding:'11px 13px'}}>
                           <label style={{display:'flex',alignItems:'center',gap:'6px',cursor:'pointer'}}>
                             <input type="checkbox" checked={p.bypass} readOnly onClick={()=>toggleBypass(p,p.bypass)} style={{width:'15px',height:'15px',cursor:'pointer',accentColor:GOLD}}/>
@@ -457,8 +457,8 @@ export default function AdminPayouts({ formatPrimary }) {
                           </label>
                         </td>
                         <td style={{padding:'11px 13px'}}>
-                          {p.stripe_account&&(
-                            <span style={{fontSize:'12px',color:'#9097A8'}}>ID: {p.stripe_account.slice(0,14)}…</span>
+                          {p.payout_account&&(
+                            <span style={{fontSize:'12px',color:'#9097A8'}}>ID: {p.payout_account.slice(0,14)}…</span>
                           )}
                         </td>
                       </tr>
@@ -471,9 +471,9 @@ export default function AdminPayouts({ formatPrimary }) {
 
           {/* Bypass explanation */}
           <Card style={{padding:'18px 20px',borderLeft:`4px solid ${GOLD}`}}>
-            <div style={{fontFamily:serif,fontWeight:600,fontSize:'16px',color:NAVY,marginBottom:'6px'}}>About Stripe Connect Bypass</div>
+            <div style={{fontFamily:serif,fontWeight:600,fontSize:'16px',color:NAVY,marginBottom:'6px'}}>About Payout Bypass</div>
             <p style={{fontSize:'13px',color:'#5C6070',lineHeight:1.65,margin:0}}>
-              The bypass flag allows a provider to receive orders and send paid offers <strong>before</strong> their Stripe Connect account is fully verified. This is useful during onboarding or for trusted providers with account issues. <strong style={{color:AMBER}}>Payouts will remain pending</strong> until the Connect account is verified — the bypass only removes the order-blocking restriction, not the transfer requirement. Always audit bypass usage in the audit log.
+              The bypass flag allows a provider to receive orders and send paid offers <strong>before</strong> their payout setup is fully verified. This is useful during onboarding or for trusted providers with account issues. <strong style={{color:AMBER}}>Payouts will remain pending</strong> until the payout setup is verified — the bypass only removes the order-blocking restriction, not the transfer requirement. Always audit bypass usage in the audit log.
             </p>
           </Card>
         </>
@@ -491,8 +491,8 @@ export default function AdminPayouts({ formatPrimary }) {
 
           <Sec title="Refund Ledger" sub="All processed refunds from the refund_ledger table">
             <DT
-              cols={[{k:'date',l:'Date',dim:true},{k:'order_id',l:'Order',dim:true},{k:'amount',l:'Amount',r:true,bold:true},{k:'method',l:'Method'},{k:'status',l:'Status'},{k:'stripe',l:'Stripe ID',dim:true}]}
-              rows={(refundData.data?.refunds||[]).map(r=>({date:ago(r.created_at),order_id:r.order_id?.slice(0,8)+'…',amount:$(r.amount),method:r.method||'—',status:<PayPill status={r.status==='completed'?'transferred':r.status||'pending'}/>,stripe:r.stripe_refund_id?.slice(0,14)||'—'}))}
+              cols={[{k:'date',l:'Date',dim:true},{k:'order_id',l:'Order',dim:true},{k:'amount',l:'Amount',r:true,bold:true},{k:'method',l:'Method'},{k:'status',l:'Status'}]}
+              rows={(refundData.data?.refunds||[]).map(r=>({date:ago(r.created_at),order_id:r.order_id?.slice(0,8)+'…',amount:$(r.amount),method:r.method||'—',status:<PayPill status={r.status==='completed'?'transferred':r.status||'pending'}/>}))}
               empty="No refunds on record"/>
           </Sec>
 

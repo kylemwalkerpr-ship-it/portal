@@ -38,8 +38,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         images: cover ? [cover] : undefined,
       },
       twitter: { card: 'summary_large_image', title, description, images: cover ? [cover] : undefined },
-      // TODO: flip to { index: true } once the marketplace goes public.
-      robots: { index: false, follow: true },
+      robots: { index: true, follow: true },
     }
   } catch {
     return { title: 'Gig | YouSafe', robots: { index: false } }

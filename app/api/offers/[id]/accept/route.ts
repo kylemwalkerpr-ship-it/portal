@@ -1,7 +1,9 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, centsToDollars } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { getStripe } from '@/lib/stripe'
+import { debit, getOrCreateWallet } from '@/lib/wallet'
+import { creditEarning } from '@/lib/earnings'
+import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
 
 async function handler(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -29,53 +31,96 @@ async function handler(_req: Request, context: { params: Promise<{ id: string }>
   const total = offer.sender_type === 'attorney' ? amount + platformFee : amount
   const netPayout = computeNetPayoutCents(amount, offer.sender_type, settings)
 
-  let paymentIntentId: string | null = null
-  let clientSecret: string | null = null
-  try {
-    const stripe = getStripe()
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: total,
-      currency: offer.currency || settings.primary_currency,
-      automatic_payment_methods: { enabled: true },
-      metadata: {
-        source: 'custom_offer',
-        offer_id: offer.id,
-        chat_id: offer.chat_id,
-        sender_id: offer.sender_id,
-        sender_type: offer.sender_type,
-        recipient_id: offer.recipient_id,
-        platform_fee_cents: String(platformFee),
-        net_payout_cents: String(netPayout),
-      },
-    })
-    paymentIntentId = paymentIntent.id
-    clientSecret = paymentIntent.client_secret
-  } catch (err) {
-    if (process.env.NODE_ENV === 'test') {
-      paymentIntentId = `pi_test_${offer.id}`
-      clientSecret = `pi_test_secret_${offer.id}`
-    } else {
-      return fail(err instanceof Error ? err.message : 'Could not create payment intent.', 500)
-    }
+  // Ensure wallet exists and check balance
+  const wallet = await getOrCreateWallet(auth.profileId)
+  if (wallet.balance_cents < total) {
+    return fail('Insufficient wallet balance', 402, { balanceCents: wallet.balance_cents, requiredCents: total })
   }
 
+  // Debit wallet
+  let debitTx
+  try {
+    debitTx = await debit(
+      auth.profileId,
+      total,
+      `Accepted offer: ${offer.title}`,
+      undefined,
+      { offerId: offer.id, senderType: offer.sender_type }
+    )
+  } catch (debitErr) {
+    const msg = debitErr instanceof Error ? debitErr.message : ''
+    if (/insufficient wallet balance/i.test(msg)) {
+      return fail('Insufficient wallet balance', 402, { balanceCents: wallet.balance_cents, requiredCents: total })
+    }
+    console.error('[offers/accept] wallet debit failed:', debitErr)
+    return fail(msg || 'Wallet debit failed.', 500)
+  }
+
+  // Update offer to accepted
+  const acceptedAt = new Date().toISOString()
   const { data: updated, error: updErr } = await auth.db
     .from('offers')
     .update({
       status: 'accepted',
-      stripe_payment_intent_id: paymentIntentId,
-      updated_at: new Date().toISOString(),
+      accepted_at: acceptedAt,
+      updated_at: acceptedAt,
     })
     .eq('id', id)
     .select('*')
     .single()
 
-  if (updErr || !updated) return fail(updErr?.message || 'Could not accept offer.', 500)
+  if (updErr || !updated) {
+    console.error('[offers/accept] Offer update failed after debit:', updErr)
+    return fail(updErr?.message || 'Could not accept offer.', 500)
+  }
+
+  // Create order using the same insert shape as the checkout flow
+  const item: CheckoutItem = {
+    sourceType: 'unified_offer',
+    sourceId: offer.id,
+    title: offer.title,
+    description: offer.description,
+    currency: String(offer.currency || settings.primary_currency || 'usd').toLowerCase(),
+    subtotalCents: amount,
+    platformFeeCents: platformFee,
+    totalCents: total,
+    netPayoutCents: netPayout,
+    providerProfileId: offer.sender_id,
+    providerType: offer.sender_type,
+    clientProfileId: offer.recipient_id,
+    deliveryDays: Number(offer.delivery_days || 1),
+    offerId: offer.id,
+    gigId: offer.gig_id || null,
+  }
+
+  let order
+  try {
+    order = await createPaidOrder(auth.db, item, {
+      paymentMethod: 'wallet',
+      actorId: auth.profileId,
+      acceptedAt,
+      skipSourceUpdate: true, // We already updated the offer to 'accepted'
+    })
+  } catch (orderErr) {
+    console.error('[offers/accept] Order creation failed after debit+accept:', orderErr)
+    // Non-fatal: offer is accepted and paid; order can be backfilled
+  }
+
+  // Credit provider earning
+  try {
+    await creditEarning({
+      providerId: offer.sender_id,
+      orderId: order?.id || updated.id,
+      source: 'offer',
+      amountCents: netPayout,
+      feeCents: platformFee,
+    })
+  } catch (earnErr) {
+    console.error('[offers/accept] creditEarning failed:', earnErr)
+  }
 
   return ok({
     offer: updated,
-    payment_intent_id: paymentIntentId,
-    client_secret: clientSecret,
     breakdown: {
       subtotal: amount,
       platform_fee: platformFee,
@@ -84,6 +129,7 @@ async function handler(_req: Request, context: { params: Promise<{ id: string }>
       display_subtotal: centsToDollars(amount),
       display_total: centsToDollars(total),
     },
+    balanceCents: debitTx.balance_after_cents,
   })
 }
 

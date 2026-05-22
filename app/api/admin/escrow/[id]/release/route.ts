@@ -1,13 +1,11 @@
 /**
  * POST /api/admin/escrow/[id]/release
- * Admin force-release escrow for an order. Triggers the Stripe transfer and
- * zeroes out the held amount.
- *
+ * Admin force-release escrow for an order. Releases provider earnings.
  * Body: { reason?: string }
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { triggerConsultantPayout } from '@/lib/payouts'
+import { releaseEarningsForOrder } from '@/lib/earnings'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser()
@@ -22,7 +20,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const warnings: string[] = []
 
-  // Load order
   let order: any
   try {
     const { data, error } = await db
@@ -42,16 +39,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const previousEscrowAmount = Number(order.escrow_amount || 0)
 
-  // Trigger Stripe transfer (best-effort — log result but proceed with state update)
-  let transferResult: any = null
+  // Release earnings for this order
+  let released: any[] = []
   try {
-    transferResult = await triggerConsultantPayout(orderId)
+    released = await releaseEarningsForOrder(orderId)
   } catch (err: any) {
-    warnings.push(`stripe_transfer_failed: ${err.message || 'unknown'}`)
-    transferResult = { failed: true, error: err.message }
+    warnings.push(`earnings_release_failed: ${err.message || 'unknown'}`)
   }
 
-  // Update order
   try {
     const { error: updErr } = await db
       .from('orders')
@@ -68,7 +63,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     warnings.push(`order_update_failed: ${err.message}`)
   }
 
-  // Insert escrow event
   try {
     await db.from('escrow_events').insert({
       order_id: orderId,
@@ -78,32 +72,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       actor_id: profileId,
       actor_role: 'admin',
       reason,
-      metadata: { transfer_result: transferResult },
+      metadata: { released_earnings: released.length },
     })
   } catch (err: any) {
     warnings.push(`escrow_event_failed: ${err.message}`)
   }
 
-  // Admin audit log
   try {
     await db.from('admin_audit_log').insert({
       admin_id: profileId,
       action_type: 'escrow_force_release',
       target_table: 'orders',
       target_id: orderId,
-      payload_snapshot: { previous_escrow_amount: previousEscrowAmount, transfer_result: transferResult },
+      payload_snapshot: { previous_escrow_amount: previousEscrowAmount, released_earnings: released.length },
       reason,
     })
   } catch (err: any) {
     warnings.push(`audit_log_failed: ${err.message}`)
   }
 
-  // Re-load updated order
   let updated: any = null
   try {
     const { data } = await db.from('orders').select('*').eq('id', orderId).single() as any
     updated = data
   } catch { warnings.push('order_refetch_failed') }
 
-  return ok({ order: updated, transfer_result: transferResult }, {}, warnings.length ? { data_warnings: warnings } : {})
+  return ok({ order: updated, released_earnings: released.length }, {}, warnings.length ? { data_warnings: warnings } : {})
 }

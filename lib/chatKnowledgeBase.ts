@@ -14,8 +14,8 @@
  *   2. Product knowledge — services on each region/vertical.
  *
  *   3. Portal behaviour — orders, escrow, files, notifications,
- *      USD/CAD currency selector, attorney panel routing, payouts
- *      with admin Stripe-Connect bypass behaviour.
+ *      USD/CAD currency selector, attorney panel routing, and
+ *      admin-managed manual payouts.
  *
  *   4. Legal vertical (MyCaseworks at legal.yousafeconsultancy.com) —
  *      attorney panel, ABA Rule 5.4 (fees never split), inquiry queue,
@@ -59,7 +59,7 @@ Family of sites and what Yara can help with:
   permits, PGWP, Express Entry/PNP document organization, spousal/family
   sponsorship packets, settlement, and Canada-specific planning.
 - **checkout.yousafeconsultancy.com** — services, booking, region selector,
-  package selection, payment methods, and Stripe-hosted checkout.
+  package selection, payment methods, and secure card checkout.
 - **portal.yousafeconsultancy.com** — secure role-based workspace for
   students/clients, consultants, attorneys, admins, and account setup.
   Help with sign-in lanes, dashboards, orders, wallet, files, messaging,
@@ -239,7 +239,7 @@ escrow + workflow.
 - Free 15-minute discovery call available.
 - Payment methods: credit card, PayPal, bank transfer at the marketing
   checkout. The portal also supports a USD wallet, saved cards, and
-  Stripe Hosted Checkout. Catalogue prices show in **USD or CAD** based
+  NMI tokenized checkout. Catalogue prices show in **USD or CAD** based
   on the user's currency selector; charging always happens in the
   service's native currency at the storefront.
 
@@ -254,7 +254,7 @@ interchangeable — wrong-role sign-up means a separate account is needed.
   — browse services, place orders, top up the wallet, message
   consultants and attorneys, approve delivery.
 - **Consultants**: portal.yousafeconsultancy.com/sign-in/consultant —
-  apply, get approved, complete Stripe Connect onboarding, run their
+  apply, get approved, complete payout setup onboarding, run their
   roster.
 - **Attorneys**: portal.yousafeconsultancy.com/sign-in/attorney — apply
   to the legal panel, respond to inquiries, send paid offers, receive
@@ -326,25 +326,25 @@ If a user signs up under the wrong lane, the dashboard shows a
 5. **Cancelled** — declined by consultant or refunded.
 
 ### Consultant payouts
-- Stripe Connect (Express) onboarding required before payouts. From the
+- Payout setup (bank account connection) required before payouts. From the
   consultant dashboard: Payout Setup → Connect Bank Account.
-- After completion: View Payout Dashboard opens the Stripe Express
+- After completion: View Payout Dashboard opens the provider payout
   dashboard.
 - **Default split**: 80% consultant / 20% platform — but the admin can
   reconfigure the split (5–95%) via Settings → Consultant Revenue Split.
   The new split applies to **future** payouts only.
 - Auto-transfer on order approval can be toggled on the Earnings page.
 - "Payout Failed — Contact Support" surfaces when a transfer can't
-  settle (e.g. Connect not yet verified).
+  settle (e.g. payout setup not yet verified).
 
-### Admin Stripe-Connect bypass
-- Admins can bypass the Stripe Connect requirement for a specific
-  consultant or attorney while their Connect account is being verified.
+### Admin payout bypass
+- Admins can bypass the payout setup requirement for a specific
+  consultant or attorney while their bank account is being verified.
   The bypass lets the panelist work — be assigned orders or send paid
-  offers — but the actual payout stays **pending** until Connect
+  offers — but the actual payout stays **pending** until setup
   completes.
 - If a user asks why their payout is "pending" rather than "transferred"
-  and Connect is still verifying, this is the most likely reason.
+  and setup is still verifying, this is the most likely reason.
 
 ---
 
@@ -373,17 +373,17 @@ intake; the canonical URL is **legal.yousafeconsultancy.com**.
 2. The inquiry lands in the **attorney inquiry queue** — multiple
    attorneys on the panel can engage and reply.
 3. An attorney sends a **custom offer** with scope, deliverable, and a
-   fixed fee. The client accepts via Stripe Hosted Checkout.
+   fixed fee. The client accepts via secure card checkout.
 4. Funds go into **escrow**. The attorney works on the matter inside
    the portal (messages, file uploads).
 5. When the client approves the deliverable, the attorney's fee is
-   released to the attorney's connected Stripe account.
+   released to the attorney's connected account.
 
 ### Fees on the legal panel (ABA Rule 5.4 compliant)
 - The attorney's fee is **paid in full** to the attorney.
 - The **platform fee** is added on top, disclosed before checkout.
 - The platform fee is **never split** out of the attorney's fee — this
-  is enforced by Stripe destination charges.
+  is enforced by destination charges on the payment gateway.
 - The platform-fee percent is admin-controlled (default **25%**) and
   can be tuned in admin Settings → Attorney Platform Fee. Existing
   offers keep their snapshot percent; new offers use the current value.
@@ -415,7 +415,7 @@ or the portal.
 ---
 
 ## Security & privacy
-- Payments via Stripe — YouSafe never stores card numbers.
+- Payments via NMI — YouSafe never stores card numbers.
 - Files in Supabase private storage; access via short-lived signed URLs.
 - Auth via Clerk; sessions are role-scoped.
 - Funds for any paid attorney engagement sit in escrow until release.

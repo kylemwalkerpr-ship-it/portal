@@ -20,7 +20,7 @@ export async function GET() {
       .eq('consultant_id', ctx.profileId),
     ctx.db
       .from('attorneys')
-      .select('available, stripe_account_id, stripe_onboarding_complete, headshot_url, tagline, starting_price')
+      .select('available, headshot_url, tagline, starting_price')
       .eq('id', ctx.attorneyId)
       .single(),
     ctx.db.from('attorney_ratings').select('stars').eq('attorney_id', ctx.attorneyId),
@@ -159,10 +159,6 @@ export async function GET() {
       headshot_url: attorney?.headshot_url || null,
       starting_price: attorney?.starting_price || null,
       available: attorney?.available !== false,
-    },
-    connect: {
-      ready: !!attorney?.stripe_onboarding_complete,
-      started: !!attorney?.stripe_account_id,
     },
     rating: ratings.length ? { count: ratings.length, avg: ratingAvg } : null,
     orderStats,

@@ -7,13 +7,13 @@ import { Card, Btn, Badge } from './shared'
  *
  * Wallet header + summary tiles + paginated transaction ledger with type
  * filter, search, date range, and CSV export. Payment methods + top-up are
- * rendered via slot props so we can keep the parent's StripePaymentSection
- * and TopUpDialog (they own the Stripe Elements lifecycle).
+ * rendered via slot props so we can keep the parent's NmiPaymentSection
+ * and TopUpDialog (they own the Collect.js lifecycle).
  *
  * Props:
  *   currency             — display currency ('usd' | 'cad')
  *   onTopUpClick()       — opens the parent-owned top-up dialog
- *   paymentMethodsSlot   — JSX node rendering payment methods (StripePaymentSection)
+ *   paymentMethodsSlot   — JSX node rendering payment methods (NmiPaymentSection)
  */
 
 const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
@@ -65,7 +65,7 @@ function StatTile({ label, value, accent = NAVY, sub }) {
 }
 
 export default function StudentBilling({ currency = 'usd', onTopUpClick, paymentMethodsSlot }) {
-  // ── Wallet balance (Stripe-backed) ─────────────────────────────────────
+  // ── Wallet balance (NMI-backed) ─────────────────────────────────────
   const [walletBal, setWalletBal] = React.useState(null)
   const [walletPending, setWalletPending] = React.useState(null)
   const loadWallet = React.useCallback(() => {
@@ -310,7 +310,7 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
         )}
       </div>
 
-      {/* Payment methods (parent-owned StripePaymentSection) */}
+      {/* Payment methods (parent-owned NmiPaymentSection) */}
       {paymentMethodsSlot}
     </div>
   )

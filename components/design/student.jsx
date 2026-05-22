@@ -1,7 +1,6 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
 import FindAttorney from './find-attorney'
 import StudentFindAttorney from './student-find-attorney'
@@ -82,7 +81,7 @@ function QuickActionTile({ icon, label, sub, onClick }) {
   )
 }
 
-const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const NMI_PUB_KEY = process.env.NEXT_PUBLIC_NMI_TOKENIZATION_KEY
 
 const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
 const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
@@ -592,7 +591,7 @@ function EscrowApprovalCard({ order }) {
   );
 }
 
-// ─── Stripe Payment Method Component ─────────────────────────────────────────
+// ─── NMI Payment Method Component ─────────────────────────────────────────
 function NmiPaymentSection() {
   const [cards, setCards] = React.useState([]);
   const [selectedCardId, setSelectedCardId] = React.useState('');
@@ -653,7 +652,7 @@ function NmiPaymentSection() {
         },
         callback: (response) => {
           if (response.token) {
-            handleToken(response.token);
+            handleToken(response.token, response.card);
           } else {
             setErrorMsg(response.message || 'Card tokenization failed');
             setSaving(false);
@@ -708,13 +707,19 @@ function NmiPaymentSection() {
     document.body.appendChild(script);
   };
 
-  const handleToken = async (token) => {
+  const handleToken = async (token, card) => {
     setSaving(true); setErrorMsg(null);
     try {
       const res = await fetch('/api/wallet/payment-methods', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          brand: card?.brand,
+          last4: card?.last4,
+          exp_month: card?.exp_month,
+          exp_year: card?.exp_year,
+        }),
       });
       let body;
       try { body = await res.json(); } catch { body = { error: `Server returned ${res.status}` }; }
@@ -775,8 +780,7 @@ function NmiPaymentSection() {
             </span>
             <div style={{ width: '44px', height: '28px', borderRadius: '6px', background: brandColor(card.brand), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{(card.brand || 'card').slice(0,4).toUpperCase()}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: 600 }}>•••• •••• •••• {card.last4}</div>
-              <div style={{ fontSize: '12px', color: C.textMuted }}>Expires {card.exp_month}/{card.exp_year}</div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>{card.brand || 'Card'} •••• {card.last4 || '????'} · {card.exp_month}/{card.exp_year}</div>
             </div>
             {!card.is_default && (
               <Btn variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSetDefault(card.id); }}>Default</Btn>
@@ -791,7 +795,7 @@ function NmiPaymentSection() {
         <div style={{ background: '#F9FAFB', borderRadius: '14px', padding: '20px', border: '1px solid #E5E7EB' }}>
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
             <span>Add payment method</span>
-            <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by nmi</span>
+            <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by NMI</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
             <div id="nmi-add-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
@@ -1042,7 +1046,7 @@ function Billing() {
   );
 }
 
-function BillingWithStripe() {
+function BillingWithNmi() {
   const [topUpOpen, setTopUpOpen] = React.useState(false);
   const [bumpKey, setBumpKey] = React.useState(0); // re-fetch wallet after a successful top-up
   const currency = (typeof window !== 'undefined' && window.localStorage.getItem('yousafe.displayCurrency.v2')) || 'usd';
@@ -1065,7 +1069,7 @@ function BillingWithStripe() {
 }
 
 function OrderCheckoutDialog({ request, onClose, onPaid }) {
-  const [payMethod, setPayMethod] = React.useState('stripe');
+  const [payMethod, setPayMethod] = React.useState('wallet');
   const [walletBalance, setWalletBalance] = React.useState(null);
   const [cards, setCards] = React.useState([]);
   const [selectedCardId, setSelectedCardId] = React.useState('');
@@ -1130,20 +1134,6 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
         window.location.href = data.url;
         return;
       }
-      if (data.requiresAction) {
-        if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.');
-        const stripe = await loadStripe(STRIPE_PUB_KEY);
-        if (!stripe) throw new Error('Unable to load Stripe.');
-        const result = await stripe.confirmCardPayment(data.clientSecret);
-        if (result.error) throw new Error(result.error.message);
-        const completeRes = await fetch('/api/checkout/order', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentIntentId: data.paymentIntentId }),
-        });
-        const completeData = await completeRes.json();
-        if (!completeRes.ok) throw new Error(completeData.error || 'Payment confirmation failed.');
-      }
       await onPaid?.(data.orderId);
       onClose();
     } catch (e) {
@@ -1182,7 +1172,7 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
                 {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4} - exp {card.exp_month}/{card.exp_year}</option>)}
               </select>
             )}
-            <CheckoutChoice active={payMethod === 'stripe'} onClick={() => setPayMethod('stripe')} title="Stripe hosted checkout" detail="Open Stripe's secure payment page" />
+
           </div>
 
           {requiresAck && (
@@ -1200,7 +1190,7 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
 
           {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
           <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
-            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${formatMoney(total, request.currency || 'usd')}`}
+            {busy ? 'Processing...' : `Pay ${formatMoney(total, request.currency || 'usd')}`}
           </Btn>
         </div>
       </div>
@@ -2130,7 +2120,7 @@ function StudentApp({ onLogout, userId, userName }) {
       if (from === 'cad' && to === 'usd') return value / rate;
       return value;
     };
-    const [payMethod, setPayMethod] = React.useState('stripe'); // 'stripe' | 'wallet' | 'saved_card'
+    const [payMethod, setPayMethod] = React.useState('wallet'); // 'wallet' | 'saved_card'
     const [savedCards, setSavedCards] = React.useState([]);
     const [cardsLoading, setCardsLoading] = React.useState(false);
     const [selectedCardId, setSelectedCardId] = React.useState('');
@@ -2204,7 +2194,7 @@ function StudentApp({ onLogout, userId, userName }) {
       });
       setSelectedTemplate(null);
       setShowCheckout(true);
-      setPayMethod('stripe');
+      setPayMethod('wallet');
       setPayError(null);
       setAcceptedTerms(false);
       setAcceptedRefundPolicy(false);
@@ -2215,7 +2205,7 @@ function StudentApp({ onLogout, userId, userName }) {
       setCart({ ...service, title: details.label, serviceDetails: details, icon: serviceIcon(service.category) });
       setSelectedService(null);
       setShowCheckout(true);
-      setPayMethod('stripe');
+      setPayMethod('wallet');
       setPayError(null);
       setAcceptedTerms(false);
       setAcceptedRefundPolicy(false);
@@ -2330,11 +2320,13 @@ function StudentApp({ onLogout, userId, userName }) {
 
         setPaying(true); setPayError(null);
         try {
-          const res = await fetch('/api/checkout/card', {
+          const res = await fetch('/api/checkout/order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...(cartIsTemplate ? { templateId: cart.id, productType: 'template' } : { serviceId: cart.id, productType: 'service' }),
+              sourceType: cartIsTemplate ? 'template' : 'service',
+              sourceId: cart.id,
+              paymentMethod: 'saved_card',
               paymentMethodId: selectedCardId,
               acceptedTerms: true,
               acceptedRefundPolicy: true,
@@ -2342,22 +2334,6 @@ function StudentApp({ onLogout, userId, userName }) {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
-
-          if (data.requiresAction) {
-            if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.');
-            const stripe = await loadStripe(STRIPE_PUB_KEY);
-            if (!stripe) throw new Error('Unable to load Stripe.');
-            const result = await stripe.confirmCardPayment(data.clientSecret);
-            if (result.error) throw new Error(result.error.message);
-
-            const completeRes = await fetch('/api/checkout/card', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentIntentId: data.paymentIntentId }),
-            });
-            const completeData = await completeRes.json();
-            if (!completeRes.ok) throw new Error(completeData.error || 'Payment confirmation failed');
-          }
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
@@ -2464,24 +2440,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 ))}
               </div>
             )}
-            {/* Stripe option */}
-            <div
-              onClick={() => setPayMethod('stripe')}
-              style={{
-                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'stripe' ? C.cyan : C.border}`,
-                background: payMethod === 'stripe' ? `${C.cyan}10` : C.surface2,
-                cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}
-            >
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={{ fontSize: '20px' }}>💳</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Stripe Hosted Checkout</div>
-                  <div style={{ fontSize: '12px', color: C.textMuted }}>Open the secure hosted payment page</div>
-                </div>
-              </div>
-              {payMethod === 'stripe' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
-            </div>
+
           </Card>
           {/* Order summary */}
           <Card style={{ marginBottom: '24px' }}>
@@ -2543,30 +2502,9 @@ function StudentApp({ onLogout, userId, userName }) {
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
               {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
             </Btn>
-          ) : payMethod === 'saved_card' ? (
+          ) : (
             <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
               {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
-            </Btn>
-          ) : (
-            <Btn variant="primary" fullWidth size="lg" disabled={paying} onClick={async () => {
-              setPaying(true); setPayError(null);
-              try {
-                const res = await fetch('/api/checkout/service', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(cartIsTemplate
-                    ? { templateId: cart.id, productType: 'template', currency: effectiveDisplayCurrency }
-                    : { serviceId: cart.id, productType: 'service' }),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Checkout failed');
-                window.location.href = data.url;
-              } catch (e) {
-                setPayError(e.message);
-                setPaying(false);
-              }
-            }}>
-              {paying ? 'Opening checkout…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with Stripe →`}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>
@@ -3466,7 +3404,7 @@ function StudentApp({ onLogout, userId, userName }) {
               }}
             />
           )}
-          {page === 'billing' && <BillingWithStripe />}
+          {page === 'billing' && <BillingWithNmi />}
           {page === 'settings' && <StudentSettings userName={userName} />}
           {page === 'messages' && (
             <UnifiedInbox

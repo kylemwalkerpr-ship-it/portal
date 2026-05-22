@@ -35,7 +35,6 @@ export async function GET() {
       price_usd: Number(template.usd_price ?? template.price ?? 0),
       currency_base: template.currency_base || 'USD',
       delivery_type: template.delivery_type || 'Digital Template',
-      stripe_payment_link_usd: template.stripe_payment_link_usd || template.stripe_payment_link_url || null,
     })),
     primaryCurrency: settings.primary_currency,
     rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },

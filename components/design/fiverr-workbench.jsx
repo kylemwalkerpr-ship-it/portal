@@ -2,7 +2,6 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
-import { loadStripe } from '@stripe/stripe-js'
 import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
 
 export { C, Btn, Badge, Card, Input, Select, ProgressBar }
@@ -18,7 +17,7 @@ const ORDER_COLUMNS = [
 const STATUS_OPTIONS = ['pending', 'in_progress', 'under_review', 'revision_requested', 'completed', 'released', 'cancelled', 'refunded']
 const CATEGORY_FALLBACK = ['Immigration consultation', 'Document review', 'Study permits', 'University admissions', 'Settlement planning', 'Career mentorship', 'Legal forms review', 'Business immigration']
 const TIERS = ['basic', 'standard', 'premium']
-const STRIPE_PUB_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const NMI_PUB_KEY = process.env.NEXT_PUBLIC_NMI_TOKENIZATION_KEY
 const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
 const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'
 
@@ -403,7 +402,7 @@ export function GigDetailPage({ slug }) {
 }
 
 function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
-  const [payMethod, setPayMethod] = React.useState('stripe')
+  const [payMethod, setPayMethod] = React.useState('nmi')
   const [walletBalance, setWalletBalance] = React.useState(null)
   const [cards, setCards] = React.useState([])
   const [settings, setSettings] = React.useState(null)
@@ -482,17 +481,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
         window.location.href = payload.url
         return
       }
-      if (payload.requiresAction) {
-        if (!STRIPE_PUB_KEY) throw new Error('Stripe is not configured.')
-        const stripe = await loadStripe(STRIPE_PUB_KEY)
-        if (!stripe) throw new Error('Unable to load Stripe.')
-        const result = await stripe.confirmCardPayment(payload.clientSecret)
-        if (result.error) throw new Error(result.error.message)
-        await requestJson('/api/checkout/order', {
-          method: 'PATCH',
-          body: JSON.stringify({ paymentIntentId: payload.paymentIntentId }),
-        })
-      }
       onPaid?.()
     } catch (e) {
       setError(e.message)
@@ -546,7 +534,7 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
               {cards.map(card => <option key={card.id} value={card.id}>{card.brand?.toUpperCase?.() || 'CARD'} ending {card.last4}</option>)}
             </select>
           )}
-          <CheckoutButton active={payMethod === 'stripe'} onClick={() => setPayMethod('stripe')} title="Stripe hosted checkout" detail="Open Stripe's secure payment page" />
+          <CheckoutButton active={payMethod === 'nmi'} onClick={() => setPayMethod('nmi')} title="Pay with saved card" detail="Charge your saved card securely" />
           {requiresAck && (
             <Card style={{ padding: '14px' }}>
               <label style={{ display: 'flex', gap: '10px', fontSize: '13px', marginBottom: '8px' }}>
@@ -561,7 +549,7 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
           )}
           {error && <div style={{ color: C.red, background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', borderRadius: '10px', padding: '10px 12px', fontSize: '13px' }}>{error}</div>}
           <Btn variant="primary" fullWidth size="lg" onClick={pay} disabled={busy || (requiresAck && !ackComplete)}>
-            {busy ? 'Processing...' : payMethod === 'stripe' ? 'Continue to Stripe checkout' : `Pay ${money(totalCents)}`}
+            {busy ? 'Processing...' : payMethod === 'nmi' ? `Pay ${money(totalCents)}` : `Pay ${money(totalCents)}`}
           </Btn>
         </div>
       </div>

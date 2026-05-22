@@ -8,7 +8,7 @@ import { PhoneVerificationCard } from '../PhoneVerificationCard'
  *
  * 6 tabs: Profile / Notifications / Privacy / Compliance / Payouts / Security.
  * Mirrors the student-settings shape but adds Compliance (bar/insurance/
- * approval state) and a dedicated Payouts tab wired to Stripe Connect.
+ * approval state) and a dedicated Payouts tab wired to Payout setup.
  */
 
 const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
@@ -327,7 +327,7 @@ function ComplianceTab({ data, flash, reload }) {
     { label: 'Bar / roll number',   done: !!c.bar_number,                             meta: c.bar_number || 'Add on next application revision' },
     { label: 'Malpractice insurance', done: !!c.malpractice_insurance,                meta: c.malpractice_insurance || 'Not disclosed' },
     { label: 'Jurisdictions',       done: !!c.jurisdictions,                          meta: c.jurisdictions || 'Add in My Profile' },
-    { label: 'Stripe Connect',      done: !!c.stripe_onboarding_complete,             meta: c.stripe_onboarding_complete ? 'Ready for payouts' : c.stripe_started ? 'Onboarding in progress' : 'Not started' },
+    { label: 'Payout setup',      done: true,                                     meta: 'Manual payouts via admin' },
     { label: 'Accepting new clients', done: c.available !== false,                    meta: c.available !== false ? 'Visible in search' : 'Paused — profile hidden from new buyers' },
   ]
   const completed = items.filter(i => i.done).length
@@ -365,66 +365,19 @@ function ComplianceTab({ data, flash, reload }) {
 
 // ── Payouts ─────────────────────────────────────────────────────────────
 function PayoutsTab({ data, flash, reload }) {
-  const c = data.compliance || {}
-  const [busy, setBusy] = React.useState(false)
-
-  const startConnect = async () => {
-    setBusy(true)
-    try {
-      const r = await fetch('/api/attorney/connect/onboard', { method: 'POST', credentials: 'same-origin' })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d?.url) throw new Error(d?.error || 'Could not start onboarding.')
-      window.location.href = d.url
-    } catch (e) { flash('err', e.message); setBusy(false) }
-  }
-  const openDashboard = async () => {
-    setBusy(true)
-    try {
-      const r = await fetch('/api/attorney/connect/dashboard-link', { method: 'POST', credentials: 'same-origin' })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d?.url) throw new Error(d?.error || 'Could not open Stripe dashboard.')
-      window.open(d.url, '_blank', 'noopener')
-    } catch (e) { flash('err', e.message) }
-    finally { setBusy(false) }
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <Section title="Stripe Connect" sub="Stripe handles your payouts directly. You'll receive money the moment a client approves delivery.">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 8, background: c.stripe_onboarding_complete ? `${GREEN}08` : c.stripe_started ? `${AMBER}08` : `${RED}08`, border: `1px solid ${c.stripe_onboarding_complete ? `${GREEN}22` : c.stripe_started ? `${AMBER}33` : `${RED}33`}`, marginBottom: 14 }}>
-          <span style={{ fontSize: 18 }}>
-            {c.stripe_onboarding_complete ? '✓' : c.stripe_started ? '⏳' : '⚠'}
-          </span>
+      <Section title="Payouts" sub="You are eligible for manual payouts administered by the platform.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 8, background: `${GREEN}08`, border: `1px solid ${GREEN}22`, marginBottom: 14 }}>
+          <span style={{ fontSize: 18 }}>✓</span>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: c.stripe_onboarding_complete ? GREEN : c.stripe_started ? AMBER : RED }}>
-              {c.stripe_onboarding_complete ? 'Connected and ready to receive payouts' : c.stripe_started ? 'Onboarding in progress' : 'Stripe Connect required to receive paid offers'}
+            <div style={{ fontWeight: 700, fontSize: 14, color: GREEN }}>
+              Eligible for payouts
             </div>
             <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-              {c.stripe_onboarding_complete
-                ? 'You can change banking info, KYC, and tax forms inside Stripe.'
-                : c.stripe_started
-                  ? 'Finish onboarding to start accepting paid offers.'
-                  : 'Without Stripe Connect, offers you send won\'t be acceptable by clients.'}
+              Admin will process your earnings manually. No additional setup required.
             </div>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {!c.stripe_started && (
-            <Btn variant="primary" size="md" onClick={startConnect} disabled={busy}>
-              {busy ? 'Opening Stripe…' : 'Connect Stripe to get paid'}
-            </Btn>
-          )}
-          {c.stripe_started && !c.stripe_onboarding_complete && (
-            <Btn variant="primary" size="md" onClick={startConnect} disabled={busy}>
-              {busy ? 'Opening Stripe…' : 'Continue Stripe onboarding'}
-            </Btn>
-          )}
-          {c.stripe_onboarding_complete && (
-            <Btn variant="primary" size="md" onClick={openDashboard} disabled={busy}>
-              {busy ? 'Opening Stripe…' : 'Open Stripe dashboard ↗'}
-            </Btn>
-          )}
         </div>
       </Section>
 

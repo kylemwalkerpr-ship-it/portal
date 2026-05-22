@@ -1,5 +1,19 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
+
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const gigId = url.searchParams.get('gig_id')
+  const providerId = url.searchParams.get('provider_id')
+  const db = createSupabaseAdminClient()
+  let q = db.from('gig_reviews').select('*').order('created_at', { ascending: false })
+  if (gigId) q = q.eq('gig_id', gigId)
+  if (providerId) q = q.eq('provider_id', providerId)
+  const { data: reviews, error } = await q.limit(100)
+  if (error) return fail(error.message, 500)
+  return ok({ reviews: reviews ?? [] })
+}
 
 export async function POST(req: Request) {
   const auth = await requirePortalUser()

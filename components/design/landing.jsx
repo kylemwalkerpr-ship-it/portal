@@ -124,7 +124,7 @@ export default function LandingPage({ onLogin, onSignup }) {
             textTransform: 'uppercase',
           }}
         >
-          <span>Stripe-secured payments</span>
+          <span>NMI-secured payments</span>
           <span style={{ opacity: 0.4 }}>·</span>
           <span>Funds held in escrow</span>
           <span style={{ opacity: 0.4 }}>·</span>

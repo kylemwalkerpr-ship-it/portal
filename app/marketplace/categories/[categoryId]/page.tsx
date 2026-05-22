@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
-import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 import { getCategoryById } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -33,16 +32,11 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
     title,
     description,
     openGraph: { title, description, type: 'website' },
-    // TODO: flip to { index: true } when category pages go public.
-    robots: { index: false, follow: true },
+    robots: { index: true, follow: true },
   }
 }
 
-export default async function CategoryPage({ params, searchParams }: CategoryPageProps) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/marketplace')
-  if (auth.role !== 'client') redirect('/dashboard')
-
+export default async function CategoryPage({ params }: CategoryPageProps) {
   const { categoryId } = await params
   const category = getCategoryById(categoryId)
 

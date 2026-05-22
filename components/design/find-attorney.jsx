@@ -372,7 +372,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
       {/* Trust badges */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
         <TrustBadge>✓ Verified credentials</TrustBadge>
-        <TrustBadge>✓ Stripe-secured payments</TrustBadge>
+        <TrustBadge>✓ NMI-secured payments</TrustBadge>
         <TrustBadge>✓ Funds held in escrow</TrustBadge>
         <TrustBadge>✓ ABA Rule 5.4 compliant</TrustBadge>
       </div>

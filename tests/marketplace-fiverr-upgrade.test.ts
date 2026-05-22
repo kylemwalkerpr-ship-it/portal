@@ -30,7 +30,7 @@ jest.mock('@/lib/email', () => ({
 }))
 
 // ────────────────────────────────────────────────────────────
-// Tiny HTTP adapter (mirrors stripe-bypass-offers.test.ts)
+// Tiny HTTP adapter for exercising route handlers in-process
 // ────────────────────────────────────────────────────────────
 
 function jsonServer(

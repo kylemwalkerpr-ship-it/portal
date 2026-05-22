@@ -47,7 +47,7 @@ const GUIDES: Record<Role, GuideConfig> = {
       {
         icon: '💰',
         title: 'Receive payment',
-        body: 'Earnings are released to your Stripe Connect account after the client approves. Set up payouts in Settings.',
+        body: 'Earnings are released to your connected account after the client approves. Set up payouts in Settings.',
       },
     ],
     tip: 'Tip: Respond to inquiries within 24 hours — fast response rates boost your ranking on the marketplace.',
@@ -80,7 +80,7 @@ const GUIDES: Record<Role, GuideConfig> = {
       {
         icon: '💰',
         title: 'Get paid',
-        body: 'Once the client approves your delivery, earnings move to your Stripe Connect account. Set up payouts in Payout Setup.',
+        body: 'Once the client approves your delivery, earnings move to your connected account. Set up payouts in Payout Setup.',
       },
     ],
     tip: 'Tip: Services with 3 complete pricing tiers and at least one gallery image get significantly more clicks.',

@@ -1,8 +1,21 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MAX_BYTES = 5 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { id } = await context.params
+  const db = createSupabaseAdminClient()
+  const { data: gig, error } = await db
+    .from('gigs')
+    .select('gallery_images')
+    .eq('id', id)
+    .single()
+  if (error) return fail(error.message, 500)
+  return ok({ gallery: gig?.gallery_images ?? [] })
+}
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()

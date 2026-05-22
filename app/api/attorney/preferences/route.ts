@@ -2,7 +2,7 @@
  * GET / PATCH /api/attorney/preferences
  *
  * Reads + writes the signed-in attorney's profile + notification + privacy
- * preferences, and surfaces a compliance snapshot (Stripe Connect status,
+ * preferences, and surfaces a compliance snapshot (manual-payout status,
  * bar admission, insurance) so the Settings UI can show progress in one shot.
  *
  * Self-heals when newer columns on profiles/attorneys aren't migrated yet.
@@ -54,7 +54,7 @@ export async function GET() {
   if (pErr || !profile) return Response.json({ error: pErr?.message || 'Profile not found' }, { status: 500 })
 
   const [{ data: attorney }, { data: application }] = await Promise.all([
-    db.from('attorneys').select('available, stripe_account_id, stripe_onboarding_complete, notif_prefs').eq('id', attorneyId).maybeSingle(),
+    db.from('attorneys').select('available, notif_prefs').eq('id', attorneyId).maybeSingle(),
     db.from('attorney_applications')
       .select('credential_type, bar_number, malpractice_insurance, jurisdictions, decided_at, status')
       .eq('profile_id', profileId)
@@ -103,8 +103,6 @@ export async function GET() {
     },
     compliance: {
       available:                  (attorney as any)?.available !== false,
-      stripe_started:             !!(attorney as any)?.stripe_account_id,
-      stripe_onboarding_complete: !!(attorney as any)?.stripe_onboarding_complete,
       credential_type:            (application as any)?.credential_type || null,
       bar_number:                 (application as any)?.bar_number || null,
       malpractice_insurance:      (application as any)?.malpractice_insurance || null,

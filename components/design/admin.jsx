@@ -110,8 +110,6 @@ function AdminApp({ onLogout }) {
   const [primaryCurrency, setPrimaryCurrency] = React.useState(DEFAULT_SETTINGS.primary_currency);
   const [usdToCadRate, setUsdToCadRate] = React.useState(String(DEFAULT_SETTINGS.usd_to_cad_rate));
   const [connectByProfile, setConnectByProfile] = React.useState({});
-  const [stripePublishableKey, setStripePublishableKey] = React.useState('');
-  const [stripeSecretKey, setStripeSecretKey] = React.useState('');
   const [webhookSigningSecret, setWebhookSigningSecret] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
@@ -193,12 +191,9 @@ function AdminApp({ onLogout }) {
       status: s.status || (s.is_active ? 'active' : 'draft'),
       delivery_type: s.delivery_type || (normalizeProductType(s.product_type) === 'template' ? 'Digital Template' : ''),
       file_path: s.file_path || '',
-      stripe_product_id: s.stripe_product_id || '',
-      stripe_price_id_usd: s.stripe_price_id_usd || '',
-      stripe_payment_link_usd: s.stripe_payment_link_usd || s.stripe_payment_link_url || '',
-      stripe_price_id_cad: s.stripe_price_id_cad || '',
-      stripe_payment_link_cad: s.stripe_payment_link_cad || '',
-      stripe_payment_link_url: s.stripe_payment_link_url || s.stripe_payment_link_usd || '',
+      product_id: '',
+      price_id_usd: '',
+      payment_link_usd: '',
       delivery_days: Number(s.delivery_days || 7),
       active: Boolean(s.is_active),
       orders: orderCountByService.get(s.id) || 0,
@@ -386,38 +381,6 @@ function AdminApp({ onLogout }) {
   const approveUser = async user => {
     await updateUser(user, { status: 'active' });
     setActionNotice(`${approvalLabel(user.role)} approved for ${user.name}.`);
-  };
-
-  const setStripeBypass = async (user, enabled) => {
-    if (!['consultant', 'attorney'].includes(user.role)) {
-      setActionNotice('Stripe bypass only applies to consultants and attorneys.');
-      return;
-    }
-    try {
-      const connect = connectByProfile[user.id] || {};
-      const directPath = connect.record_id
-        ? `/api/${user.role === 'attorney' ? 'attorneys' : 'consultants'}/${connect.record_id}`
-        : `/api/admin/users/${user.id}/stripe-bypass`;
-      const body = connect.record_id ? { stripe_bypass: enabled } : { enabled };
-      const res = await fetch(directPath, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error?.message || data?.error || 'Could not update Stripe bypass.');
-      setConnectByProfile(prev => ({
-        ...prev,
-        [user.id]: { ...(prev[user.id] || { role: user.role }), stripe_bypass: enabled },
-      }));
-      setActionNotice(
-        enabled
-          ? `Stripe bypass enabled for ${user.name}.`
-          : `Stripe bypass disabled for ${user.name}.`
-      );
-    } catch (e) {
-      setActionNotice(e.message || 'Could not update Stripe bypass.');
-    }
   };
 
   const deleteUser = async user => {
@@ -1060,11 +1023,7 @@ function AdminApp({ onLogout }) {
                 <div>
                   <h3 style={{ fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {selectedUser.name}
-                    {['consultant', 'attorney'].includes(selectedUser.role) && (
-                      <span style={{ color: connectByProfile[selectedUser.id]?.stripe_bypass ? C.orange : C.textDim, fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Stripe bypass {connectByProfile[selectedUser.id]?.stripe_bypass ? 'on' : 'off'}
-                      </span>
-                    )}
+
                   </h3>
                   <div style={{ color: C.textMuted, fontSize: '13px' }}>{selectedUser.email}</div>
                 </div>
@@ -1086,44 +1045,17 @@ function AdminApp({ onLogout }) {
                 </div>
               ))}
             </div>
-            {['consultant', 'attorney'].includes(selectedUser.role) && (() => {
-              const c = connectByProfile[selectedUser.id] || {};
-              const onboarded = Boolean(c.stripe_onboarding_complete);
-              const bypass = Boolean(c.stripe_bypass);
-              const effective = onboarded || bypass;
-              return (
-                <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                    <div>
-                      <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stripe Connect</div>
-                      <div style={{ color: C.text, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>
-                        {onboarded ? '✓ Onboarded' : c.stripe_account_id ? 'Pending verification' : 'No Connect account yet'}
-                        {bypass && <span style={{ marginLeft: '8px', color: C.orange, fontWeight: 800 }}>· Admin bypass ON</span>}
-                      </div>
-                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px', lineHeight: 1.5 }}>
-                        {effective
-                          ? `${selectedUser.role === 'attorney' ? 'Attorney can send paid offers' : 'Consultant can be assigned paid orders'}.${bypass && !onboarded ? ' Payouts stay pending until Connect completes.' : ''}`
-                          : `${selectedUser.role === 'attorney' ? 'Attorney is blocked from sending paid offers' : 'Consultant is blocked from new paid order assignments'}. Enable bypass to whitelist them while Connect verifies.`}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setStripeBypass(selectedUser, !bypass)}
-                      role="switch"
-                      aria-checked={bypass}
-                      title={bypass ? 'Click to disable bypass' : 'Click to enable bypass'}
-                      style={{
-                        width: '46px', height: '26px', borderRadius: '999px', border: 'none',
-                        cursor: 'pointer', position: 'relative', flexShrink: 0,
-                        background: bypass ? C.orange : C.surface3,
-                      }}
-                    >
-                      <span style={{ position: 'absolute', top: '3px', left: bypass ? '23px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', transition: 'left 160ms', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
-                    </button>
-                  </div>
+            {['consultant', 'attorney'].includes(selectedUser.role) && (
+              <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+                <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Payout setup</div>
+                <div style={{ color: C.text, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>
+                  ✓ Eligible for manual payouts
                 </div>
-              );
-            })()}
+                <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px', lineHeight: 1.5 }}>
+                  {selectedUser.role === 'attorney' ? 'Attorney can send paid offers' : 'Consultant can be assigned paid orders'}. Payouts are processed manually by admin.
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <Btn variant="primary" size="sm" onClick={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}>View orders</Btn>
               {['consultant', 'support'].includes(selectedUser.role) && selectedUser.status === 'pending' && (
@@ -1614,12 +1546,6 @@ function AdminApp({ onLogout }) {
       active: true,
       delivery_type: 'Digital Template',
       file_path: '',
-      stripe_product_id: '',
-      stripe_price_id_usd: '',
-      stripe_payment_link_usd: '',
-      stripe_price_id_cad: '',
-      stripe_payment_link_cad: '',
-      stripe_payment_link_url: '',
       delivery_days: 0,
       vertical: 'study_abroad',
     };
@@ -1650,12 +1576,6 @@ function AdminApp({ onLogout }) {
         status: productType === 'template' ? editing.status : (editing.active ? 'active' : 'draft'),
         delivery_type: productType === 'template' ? (editing.delivery_type || 'Digital Template') : editing.delivery_type,
         file_path: editing.file_path,
-        stripe_product_id: editing.stripe_product_id,
-        stripe_price_id_usd: editing.stripe_price_id_usd,
-        stripe_payment_link_usd: editing.stripe_payment_link_usd || editing.stripe_payment_link_url,
-        stripe_price_id_cad: editing.stripe_price_id_cad,
-        stripe_payment_link_cad: editing.stripe_payment_link_cad,
-        stripe_payment_link_url: editing.stripe_payment_link_usd || editing.stripe_payment_link_url,
         delivery_days: productType === 'template' ? 0 : Number(editing.delivery_days || 7),
         is_active: productType === 'template' ? editing.status === 'active' : Boolean(editing.active),
         vertical: editing.vertical || 'study_abroad',
@@ -1732,7 +1652,7 @@ function AdminApp({ onLogout }) {
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                 {(catalogueTab === 'template'
-                  ? ['Template', 'Type', 'Region', 'USD price', 'CAD estimate', 'Stripe link', 'Status', '']
+                  ? ['Template', 'Type', 'Region', 'USD price', 'CAD estimate', 'Status', '']
                   : ['Service', 'Vertical', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', '']
                 ).map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
@@ -1755,9 +1675,6 @@ function AdminApp({ onLogout }) {
                       <td style={{ padding: '14px 16px', fontWeight: 700 }}>{formatMoney(s.price_usd || s.price, 'usd')}</td>
                       <td style={{ padding: '14px 16px', color: C.textMuted, fontSize: '13px' }}>
                         approx. {formatMoney(cadDisplay(s.price_cad_display) || Number(s.price_usd || s.price || 0) * Number(platformSettings.usd_to_cad_rate || 1.37), 'cad')}
-                      </td>
-                      <td style={{ padding: '14px 16px', fontSize: '12px', color: s.stripe_payment_link_usd ? C.green : C.orange, fontWeight: 700 }}>
-                        {s.stripe_payment_link_usd ? 'Configured' : 'Missing'}
                       </td>
                     </>
                   ) : (
@@ -1796,7 +1713,7 @@ function AdminApp({ onLogout }) {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={catalogueTab === 'template' ? 8 : 9} style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>
+                  <td colSpan={catalogueTab === 'template' ? 7 : 9} style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>
                     No {catalogueTab === 'template' ? 'templates' : 'services'} available yet.
                   </td>
                 </tr>
@@ -1855,17 +1772,8 @@ function AdminApp({ onLogout }) {
                       <Input label="Delivery type" value={editing.delivery_type || 'Digital Template'} onChange={v => setEditing(s => ({ ...s, delivery_type: v }))} />
                     </div>
                     <Input label="Download file path / asset reference" value={editing.file_path} onChange={v => setEditing(s => ({ ...s, file_path: v }))} placeholder="templates/usa/example/README.md" />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Input label="Stripe product ID" value={editing.stripe_product_id} onChange={v => setEditing(s => ({ ...s, stripe_product_id: v }))} />
-                      <Input label="Stripe USD price ID" value={editing.stripe_price_id_usd} onChange={v => setEditing(s => ({ ...s, stripe_price_id_usd: v }))} />
-                    </div>
-                    <Input label="Stripe USD payment link" value={editing.stripe_payment_link_usd || editing.stripe_payment_link_url} onChange={v => setEditing(s => ({ ...s, stripe_payment_link_usd: v, stripe_payment_link_url: v }))} placeholder="https://buy.stripe.com/..." />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Input label="Optional CAD price ID" value={editing.stripe_price_id_cad} onChange={v => setEditing(s => ({ ...s, stripe_price_id_cad: v }))} />
-                      <Input label="Optional CAD payment link" value={editing.stripe_payment_link_cad} onChange={v => setEditing(s => ({ ...s, stripe_payment_link_cad: v }))} />
-                    </div>
                     <div style={{ fontSize: '12px', color: C.textMuted, lineHeight: 1.55, padding: '12px', background: C.surface2, borderRadius: '10px' }}>
-                      Checkout is processed in USD unless a CAD Stripe link is configured. CAD pricing is shown as a display estimate only.
+                      Templates are purchased with student wallet balance, priced in USD. CAD pricing is shown as a display estimate only.
                     </div>
                     <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save template'}</Btn>
                   </>
@@ -2025,7 +1933,6 @@ function AdminApp({ onLogout }) {
       { id: 'financial', label: 'Financial', icon: '💰' },
       { id: 'escrow',    label: 'Escrow & policy', icon: '🔒' },
       { id: 'platform',  label: 'Platform info', icon: '🏛' },
-      { id: 'stripe',    label: 'Stripe integration', icon: '⚡' },
     ];
     const MONO = `'SF Mono', Menlo, Consolas, monospace`;
     return (
@@ -2034,7 +1941,7 @@ function AdminApp({ onLogout }) {
         <div style={adminEyebrow}>Configuration</div>
         <h2 style={adminPageTitle}>Platform settings.</h2>
         <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>
-          Currency, fee splits, escrow rules, and Stripe configuration. Changes apply to new orders only — existing records keep their snapshot values.
+          Currency, fee splits, escrow rules, and payment configuration. Changes apply to new orders only — existing records keep their snapshot values.
         </div>
       </div>
 
@@ -2060,7 +1967,7 @@ function AdminApp({ onLogout }) {
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Primary Currency</div>
         <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.6 }}>
           The default currency used for new services, the wallet, consultant
-          payouts (Stripe transfers), and admin revenue summaries when no
+          payouts, and admin revenue summaries when no
           specific currency is set on the underlying record.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -2074,9 +1981,9 @@ function AdminApp({ onLogout }) {
             ]}
           />
           <div style={{ fontSize: '12px', color: C.textMuted, lineHeight: 1.5 }}>
-            Note: Stripe Connect transfers are denominated in this currency.
-            CAD payouts require your platform Stripe account to support CAD —
-            verify in dashboard.stripe.com before changing.
+            Note: Payout setup transfers are denominated in this currency.
+            CAD payouts require your platform payment account to support CAD —
+            verify in your payment dashboard before changing.
           </div>
           <Input
             label="USD → CAD display rate"
@@ -2224,26 +2131,6 @@ function AdminApp({ onLogout }) {
               setActionNotice(e.message || 'Platform info update failed.');
             }
           }}>Save</Btn>
-        </div>
-      </Card>
-      </>)}
-
-      {/* Stripe tab */}
-      {tab === 'stripe' && (<>
-      <Card>
-        <div style={adminSectionHeading}>Stripe Integration</div>
-        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ background: '#635bff', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>stripe</span>
-          All payments and payouts processed via Stripe Connect.
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <Input label="Stripe publishable key" value={stripePublishableKey} onChange={setStripePublishableKey} placeholder="pk_live_..." />
-          <Input label="Stripe secret key" value={stripeSecretKey} onChange={setStripeSecretKey} type="password" placeholder="sk_live_..." />
-          <Input label="Webhook signing secret" value={webhookSigningSecret} onChange={setWebhookSigningSecret} type="password" placeholder="whsec_..." />
-          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={() => setActionNotice('Stripe config saved for this session. Store secrets server-side before production use.')}>Save Stripe config</Btn>
-          <div style={{ marginTop: 8, padding: 10, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 8, fontSize: 12, color: C.textMuted, lineHeight: 1.55 }}>
-            ⚠ Keys entered here are kept in this browser only. For production, set <span style={{ fontFamily: MONO }}>STRIPE_SECRET_KEY</span>, <span style={{ fontFamily: MONO }}>STRIPE_PUBLISHABLE_KEY</span>, and <span style={{ fontFamily: MONO }}>STRIPE_WEBHOOK_SECRET</span> as Cloudflare environment variables.
-          </div>
         </div>
       </Card>
       </>)}
@@ -2419,7 +2306,7 @@ function InviteModal({ onClose, onSend }) {
   const roleHelp = {
     student: 'Active immediately on first sign-in.',
     consultant: 'Pending until you approve their application.',
-    attorney: 'Pending until you approve their application + they complete Stripe Connect.',
+    attorney: 'Pending until you approve their application + they complete Payout setup.',
     support: 'Pending until you approve.',
     admin: 'Active immediately. Use sparingly.',
   };

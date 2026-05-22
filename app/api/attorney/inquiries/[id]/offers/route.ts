@@ -19,32 +19,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if ('error' in parsed) return Response.json({ error: parsed.error }, { status: 400 })
   const expiresInDays = Number.isFinite(Number(body.expires_in_days)) ? Number(body.expires_in_days) : 7
 
-  // Block sending an offer until Stripe Connect onboarding is complete OR
-  // the admin has flipped the bypass for this attorney. The bypass lets ops
-  // pre-onboard a panelist while their Connect account is still in review;
-  // the actual transfer happens once the account is verified.
-  let { data: attorney, error: attorneyErr } = await ctx.db
-    .from('attorneys')
-    .select('stripe_account_id, stripe_onboarding_complete, stripe_bypass')
-    .eq('id', ctx.attorneyId)
-    .single()
-  if (attorneyErr && /stripe_bypass|schema cache|column/i.test(attorneyErr.message)) {
-    const fallback = await ctx.db
-      .from('attorneys')
-      .select('stripe_account_id, stripe_onboarding_complete')
-      .eq('id', ctx.attorneyId)
-      .single()
-    attorney = fallback.data ? { ...fallback.data, stripe_bypass: false } : null
-  }
-  const onboarded = Boolean(attorney?.stripe_account_id && attorney?.stripe_onboarding_complete)
-  const bypassed = Boolean(attorney?.stripe_bypass)
-  if (!onboarded && !bypassed) {
-    return Response.json(
-      { error: 'Connect a payout account before sending an offer.', requires_connect: true },
-      { status: 412 },
-    )
-  }
-
   const { data: inquiry } = await ctx.db
     .from('inquiries')
     .select('id, email, full_name, client_profile_id, status')
@@ -67,7 +41,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       inquiry_id: inquiryId,
       attorney_id: ctx.attorneyId,
       attorney_profile_id: ctx.profileId,
-      attorney_stripe_account_id: attorney.stripe_account_id,
       client_email: inquiry.email,
       client_profile_id: inquiry.client_profile_id,
       title: parsed.title,

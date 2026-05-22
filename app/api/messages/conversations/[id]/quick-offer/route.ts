@@ -87,12 +87,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const provider = await resolveProviderRow(auth)
   if (!provider) return fail('Provider record not found.', 404)
 
-  const connectReady = Boolean(provider.record.stripe_account_id && provider.record.stripe_onboarding_complete)
-  const bypassed    = Boolean(provider.record.stripe_bypass)
-  if (!connectReady && !bypassed) {
-    return fail('Connect a payout account before sending an offer.', 412, { requires_connect: true })
-  }
-
   const { id: conversationId } = await ctx.params
   const body = await req.json().catch(() => ({}))
 

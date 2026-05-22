@@ -231,7 +231,7 @@ export default function AdminDashboard({onNav}) {
   if(esc.summary?.auto_release_ready>0) alerts.push({color:GOLD2,count:esc.summary.auto_release_ready,label:'auto-releases ready',target:'escrow'})
   if(py.summary?.failed>0)        alerts.push({color:RED,count:py.summary.failed,label:'failed payouts',target:'payouts'})
   if(ord.late_delivery_count>0)   alerts.push({color:'#F59E0B',count:ord.late_delivery_count,label:'late orders',target:'orders'})
-  if(con.summary?.not_started>0)  alerts.push({color:AMBER,count:con.summary.not_started,label:'providers without Stripe',target:'payouts'})
+  if(con.summary?.not_started>0)  alerts.push({color:AMBER,count:con.summary.not_started,label:'providers without payout setup',target:'payouts'})
 
   return <div style={{padding:'24px 28px 60px',display:'flex',flexDirection:'column',gap:'18px',fontFamily:sans,background:'#F7F5F0',minHeight:'100vh'}}>
 
@@ -398,7 +398,7 @@ export default function AdminDashboard({onNav}) {
     </div>
 
     {/* ──────── PROVIDER ECOSYSTEM ──────────────────────────────────────────── */}
-    <Section title="Provider Ecosystem" subtitle="Top earners · Stripe Connect health · seller levels" accent={PURPLE}
+    <Section title="Provider Ecosystem" subtitle="Top earners · payout setup health · seller levels" accent={PURPLE}
       right={<button onClick={()=>onNav?.('users')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>all providers →</button>}>
       <div style={{display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:'18px'}}>
         {/* Leaderboard */}
@@ -421,7 +421,7 @@ export default function AdminDashboard({onNav}) {
 
         {/* Connect health donut + breakdown */}
         <div>
-          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>STRIPE CONNECT HEALTH</div>
+          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>PAYOUT SETUP HEALTH</div>
           <div style={{padding:'14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC',display:'flex',flexDirection:'column',gap:'8px'}}>
             <Bar value={con.summary?.active||0} max={con.summary?.total||1} color={GREEN} label="Active"/>
             <Bar value={con.summary?.pending||0} max={con.summary?.total||1} color={AMBER} label="Pending"/>
@@ -553,7 +553,7 @@ export default function AdminDashboard({onNav}) {
         </span>
         <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}>
           <span style={{width:'5px',height:'5px',borderRadius:'50%',background:con.summary?.active>0?GREEN:AMBER}}/>
-          STRIPE: {con.summary?.active>0?'OK':'CHECK'}
+          PAYOUTS: {con.summary?.active>0?'OK':'CHECK'}
         </span>
       </div>
       <div>

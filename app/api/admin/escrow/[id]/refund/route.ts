@@ -1,12 +1,11 @@
 /**
  * POST /api/admin/escrow/[id]/refund
- * Admin refund of escrow funds. Records the intent — actual Stripe refund
- * is a TODO and would call getStripe().refunds.create with the order's payment intent.
- *
+ * Admin refund of escrow funds. Wallet-paid orders → wallet credit for buyer.
  * Body: { amount?: number (full if omitted), reason: string }
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { credit } from '@/lib/wallet'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser()
@@ -26,7 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { data, error } = await db
       .from('orders')
-      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, stripe_payment_intent_id')
+      .select('id, status, escrow_status, escrow_amount, escrow_refunded_amount, client_id, amount_paid, total_amount')
       .eq('id', orderId)
       .single() as any
     if (error || !data) return fail('Order not found.', 404)
@@ -48,16 +47,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const remaining = currentEscrow - requestedAmount
   const isFullRefund = remaining <= 0
   const newEscrowStatus = isFullRefund ? 'refunded' : 'partial_released'
+  const refundCents = Math.round(requestedAmount * 100)
 
-  // TODO: actual Stripe refund call would go here.
-  // const stripe = getStripe()
-  // const refund = await stripe.refunds.create({
-  //   payment_intent: order.stripe_payment_intent_id,
-  //   amount: Math.round(requestedAmount * 100),
-  //   reason: 'requested_by_customer',
-  //   metadata: { orderId, adminId: profileId },
-  // })
-  const stripeRefundIntent = { todo: 'stripe.refunds.create', amount: requestedAmount }
+  // Credit buyer wallet if we have a client_id
+  if (order.client_id && refundCents > 0) {
+    try {
+      await credit(
+        order.client_id,
+        refundCents,
+        `Refund for order ${orderId}`,
+        orderId,
+        { reason, adminId: profileId }
+      )
+    } catch (err: any) {
+      warnings.push(`wallet_credit_failed: ${err.message}`)
+    }
+  }
 
   try {
     const update: Record<string, any> = {
@@ -83,7 +88,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       actor_id: profileId,
       actor_role: 'admin',
       reason,
-      metadata: { full_refund: isFullRefund, stripe_refund_intent: stripeRefundIntent },
+      metadata: { full_refund: isFullRefund, refunded_cents: refundCents },
     })
   } catch (err: any) {
     warnings.push(`escrow_event_failed: ${err.message}`)
@@ -100,7 +105,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         refund_amount: requestedAmount,
         remaining,
         full_refund: isFullRefund,
-        stripe_refund_intent: stripeRefundIntent,
       },
       reason,
     })

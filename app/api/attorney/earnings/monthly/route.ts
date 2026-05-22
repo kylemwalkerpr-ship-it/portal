@@ -1,7 +1,7 @@
 /**
  * GET /api/attorney/earnings/monthly
  * 12-month rolling breakdown of transferred attorney fees, computed in JS
- * over the attorney's own orders (no per-row Stripe round trip).
+ * over the attorney's own orders (no per-row gateway round trip).
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
 

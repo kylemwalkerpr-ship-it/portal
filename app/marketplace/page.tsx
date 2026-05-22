@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { MarketplacePage } from '@/components/marketplace/MarketplacePage'
-import { requirePortalUser } from '@/lib/portalAuth'
+import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 
@@ -25,9 +25,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Page() {
-  const auth = await requirePortalUser()
+  const auth = await getOptionalPortalUser()
   // PublicMarketplaceLanding renders EstateFooter itself — no second footer here.
-  if ('error' in auth) return <PublicMarketplaceLanding />
+  if (!auth) return <PublicMarketplaceLanding />
   if (auth.role !== 'client') redirect('/dashboard')
   return <MarketplacePage />
 }

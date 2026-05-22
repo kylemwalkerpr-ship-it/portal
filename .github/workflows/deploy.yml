@@ -49,11 +49,10 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
         run: npm run build
 
-      # Worker secrets (RESEND_API_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-      # CLERK_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY) live on the worker itself,
+      # Worker secrets (RESEND_API_KEY, CLERK_SECRET_KEY,
+      # SUPABASE_SERVICE_ROLE_KEY, NMI_SECURITY_KEY) live on the worker itself,
       # set once via `wrangler versions secret put`. CI does not push them.
       - name: Deploy via OpenNext to Cloudflare
         if: github.event_name != 'pull_request'

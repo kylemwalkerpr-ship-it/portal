@@ -51,12 +51,6 @@ function servicePayload(body: Record<string, unknown>) {
     status,
     delivery_type: String(body.delivery_type ?? (productType === TEMPLATE_PRODUCT_TYPE ? 'Digital Template' : '')).trim() || null,
     file_path: String(body.file_path ?? '').trim() || null,
-    stripe_product_id: String(body.stripe_product_id ?? '').trim() || null,
-    stripe_price_id_usd: String(body.stripe_price_id_usd ?? '').trim() || null,
-    stripe_payment_link_usd: String(body.stripe_payment_link_usd ?? body.stripe_payment_link_url ?? '').trim() || null,
-    stripe_price_id_cad: String(body.stripe_price_id_cad ?? '').trim() || null,
-    stripe_payment_link_cad: String(body.stripe_payment_link_cad ?? '').trim() || null,
-    stripe_payment_link_url: String(body.stripe_payment_link_url ?? body.stripe_payment_link_usd ?? '').trim() || null,
   }
 }
 
@@ -76,7 +70,7 @@ export async function POST(req: Request) {
     const { vertical: _v, ...legacy } = payload
     result = await auth.db.from('services').insert(legacy).select('*').single()
   }
-  if (result.error && /column .*product_type|short_description|full_description|template_type|currency_base|price_cad_display|badge|status|delivery_type|file_path|stripe_product_id|stripe_price_id_usd|stripe_payment_link_usd|stripe_price_id_cad|stripe_payment_link_cad|slug/i.test(result.error.message)) {
+  if (result.error && /column .*product_type|short_description|full_description|template_type|currency_base|price_cad_display|badge|status|delivery_type|file_path|slug/i.test(result.error.message)) {
     const {
       product_type: _pt,
       slug: _slug,
@@ -90,11 +84,6 @@ export async function POST(req: Request) {
       status: _status,
       delivery_type: _dt,
       file_path: _fp,
-      stripe_product_id: _spid,
-      stripe_price_id_usd: _spriceusd,
-      stripe_payment_link_usd: _splinkusd,
-      stripe_price_id_cad: _spricecad,
-      stripe_payment_link_cad: _splinkcad,
       ...legacy
     } = payload
     result = await auth.db.from('services').insert(legacy).select('*').single()

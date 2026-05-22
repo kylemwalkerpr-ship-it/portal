@@ -306,7 +306,7 @@ export default function AttorneyProfileEditor() {
         <SectionLabel>Engagement options</SectionLabel>
         <ToggleRow
           label="Offer a free 15-minute consult"
-          help="Strongly improves click-through. Stripe is not charged for the consult itself."
+          help="Strongly improves click-through. No payment processing fee is charged for the consult itself."
           value={Boolean(a.offers_free_consult)}
           onChange={(v) => save('offers_free_consult', v)}
         />

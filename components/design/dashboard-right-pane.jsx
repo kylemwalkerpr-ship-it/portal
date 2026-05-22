@@ -753,7 +753,7 @@ const STUDENT_CARDS = [
     accent: '#5B3A2A',
     eyebrow: 'How payment works',
     title: 'Funds held in escrow until you approve.',
-    body: 'You pay only when you accept a custom offer. Stripe holds the money until you approve the deliverable, with full refund protection if no work happens.',
+    body: 'You pay only when you accept a custom offer. Funds are held in escrow until you approve the deliverable, with full refund protection if no work happens.',
   },
 ]
 
@@ -793,7 +793,7 @@ const ADMIN_CARDS = [
     accent: '#A4243B',
     eyebrow: 'Compliance',
     title: 'Attorney fees never split.',
-    body: 'ABA Rule 5.4 — the platform fee is added on top of the attorney fee, never deducted. Stripe destination charges enforce this.',
+    body: 'ABA Rule 5.4 — the platform fee is added on top of the attorney fee, never deducted. Our payment processor enforces this.',
   },
   {
     accent: '#5B3A2A',

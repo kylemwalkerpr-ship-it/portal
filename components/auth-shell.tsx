@@ -76,7 +76,7 @@ export function AuthShell({
   const detailItems = [
     'Role-based dashboards for students, consultants, attorneys, and support',
     'Escrow-protected orders, private files, and message threads in one place',
-    'Secure Clerk sign-in with Stripe-powered payments and payouts',
+    'Secure Clerk sign-in with NMI-powered payments and payouts',
   ]
 
   return (

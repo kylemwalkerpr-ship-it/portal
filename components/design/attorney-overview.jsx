@@ -145,13 +145,13 @@ export default function AttorneyOverview({ onJump, displayName }) {
         <Card style={{ padding: 14, background: `${RED}10`, border: `1px solid ${RED}33`, color: RED, fontSize: 13 }}>{error}</Card>
       )}
 
-      {/* Stripe Connect banner */}
+      {/* Payout setup banner */}
       {!loading && !connect.ready && (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderLeft: `4px solid ${connect.started ? AMBER : RED}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 700, color: TEXT, fontSize: 14 }}>
-                {connect.started ? 'Finish Stripe onboarding to receive payouts' : 'Connect Stripe to receive payouts'}
+                {connect.started ? 'Finish onboarding to receive payouts' : 'Set up payouts to receive payouts'}
               </div>
               <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
                 {connect.started ? 'Onboarding in progress — clients can\'t accept paid offers until this completes.' : 'You can chat with clients now, but paid offers require a payout account.'}

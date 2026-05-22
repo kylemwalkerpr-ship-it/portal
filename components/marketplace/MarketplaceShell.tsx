@@ -41,10 +41,15 @@ const CONSULTANT_NAV: NavLink[] = [
   { icon: '💬', label: 'Messages',    view: 'messages' },
 ]
 
-function navLinksForRole(role: Role): NavLink[] {
+function navLinksForRole(role: Role | null): NavLink[] {
   if (role === 'attorney')   return ATTORNEY_NAV
   if (role === 'consultant') return CONSULTANT_NAV
-  return CLIENT_NAV
+  if (role === 'client')     return CLIENT_NAV
+  // public / unauthenticated
+  return [
+    { icon: '🏬', label: 'Browse', view: 'browse' },
+    { icon: '⚖️', label: 'Find Attorney', view: 'attorneys' },
+  ]
 }
 
 // ─── design tokens ────────────────────────────────────────────────────────────

@@ -1,117 +1,82 @@
 /**
  * GET /api/admin/payouts
- * Master payout queue — all orders grouped by payout lifecycle stage.
- * Returns enriched rows with provider, Connect status, and amounts.
+ * Manual payout queue — providers with releasable earnings.
+ *
+ * POST /api/admin/payouts
+ * Mark a batch of earnings as paid. Body:
+ *   { providerId, earningIds[], method, reference, notes }
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { listReleasableByProvider, recordPayout } from '@/lib/earnings'
 
-export async function GET(req: Request) {
+export async function GET() {
   const auth = await requireAdminUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
-  const { searchParams } = new URL(req.url)
-  const statusFilter   = searchParams.get('status')   // pending | transferred | failed | all
-  const providerFilter = searchParams.get('provider_id')
-  const limit          = Math.min(200, Number(searchParams.get('limit') || 100))
-
-  let query = auth.db
-    .from('orders')
-    .select(
-      'id, status, escrow_status, payout_status, stripe_transfer_id, ' +
-      'total_amount, platform_fee_amount, consultant_payout_amount, ' +
-      'created_at, updated_at, cancelled_at, ' +
-      'consultant_id, client_id'
-    )
-    .not('consultant_id', 'is', null)
-    .order('updated_at', { ascending: false })
-    .limit(limit)
-
-  // Filter by payout status
-  if (statusFilter && statusFilter !== 'all') {
-    query = query.eq('payout_status', statusFilter)
+  try {
+    const providers = await listReleasableByProvider()
+    return ok({ providers })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Queue load failed'
+    return fail(msg, 500)
   }
-  if (providerFilter) {
-    query = query.eq('consultant_id', providerFilter)
-  }
+}
 
-  const { data: ordersRaw, error } = await query
-  if (error) return fail(error.message, 500)
+export async function POST(req: Request) {
+  const auth = await requireAdminUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
 
-  const orders: any[] = ordersRaw ?? []
-  if (!orders.length) {
-    return ok({ orders: [], summary: { pending: 0, transferred: 0, failed: 0, total_pending_cents: 0, total_transferred_cents: 0 } })
+  const body = await req.json().catch(() => ({}))
+  const providerId = String(body.providerId || '')
+  const earningIds = Array.isArray(body.earningIds) ? body.earningIds : []
+  const method = String(body.method || 'manual')
+  const reference = String(body.reference || '')
+  const notes = String(body.notes || '')
+
+  if (!providerId || !earningIds.length) {
+    return fail('providerId and earningIds are required.', 400)
   }
 
-  // Fetch provider profiles
-  const providerIds = [...new Set(orders.map((o: any) => o.consultant_id).filter(Boolean))]
-  const { data: profiles } = await auth.db
-    .from('profiles')
-    .select('id, full_name, email, role')
-    .in('id', providerIds)
-  const profileMap: Record<string, any> = {}
-  for (const p of profiles ?? []) profileMap[p.id] = p
+  // Validate earning IDs belong to this provider and are releasable
+  const { data: earnings, error: earnErr } = await auth.db
+    .from('provider_earnings')
+    .select('id, amount_cents')
+    .eq('provider_id', providerId)
+    .eq('status', 'releasable')
+    .in('id', earningIds)
 
-  // Fetch Stripe Connect status (consultants table)
-  const { data: consultants } = await auth.db
-    .from('consultants')
-    .select('profile_id, stripe_account_id, stripe_onboarding_complete, stripe_bypass')
-    .in('profile_id', providerIds)
-  const connectMap: Record<string, any> = {}
-  for (const c of consultants ?? []) connectMap[c.profile_id] = c
-
-  // Also check attorneys table
-  const { data: attorneys } = await auth.db
-    .from('attorneys')
-    .select('profile_id, stripe_account_id, stripe_onboarding_complete, stripe_bypass')
-    .in('profile_id', providerIds)
-  for (const a of attorneys ?? []) {
-    if (!connectMap[a.profile_id]) connectMap[a.profile_id] = a
+  if (earnErr) return fail(earnErr.message, 500)
+  const foundIds = (earnings ?? []).map((e: any) => e.id)
+  const missing = earningIds.filter((id: string) => !foundIds.includes(id))
+  if (missing.length) {
+    return fail(`Some earnings are not releasable or do not belong to this provider: ${missing.join(', ')}`, 400)
   }
 
-  const enriched = orders.map(o => {
-    const profile = profileMap[o.consultant_id] || null
-    const connect = connectMap[o.consultant_id] || null
-    const gross   = Number(o.total_amount) || 0
-    const fee     = Number(o.platform_fee_amount) || 0
-    const payout  = Number(o.consultant_payout_amount) || gross - fee
+  const totalCents = (earnings ?? []).reduce((s: number, e: any) => s + Number(e.amount_cents), 0)
 
-    return {
-      id:            o.id,
-      status:        o.status,
-      escrow_status: o.escrow_status,
-      payout_status: o.payout_status || 'pending',
-      stripe_transfer_id: o.stripe_transfer_id,
-      gross_cents:   Math.round(gross * 100),
-      fee_cents:     Math.round(fee * 100),
-      payout_cents:  Math.round(payout * 100),
-      gross:         gross,
-      fee:           fee,
-      payout:        payout,
-      created_at:    o.created_at,
-      updated_at:    o.updated_at,
-      provider_id:   o.consultant_id,
-      provider_name: profile?.full_name || profile?.email || '—',
-      provider_email: profile?.email || '—',
-      provider_role: profile?.role || 'consultant',
-      connect_ready: Boolean(connect?.stripe_onboarding_complete || connect?.stripe_bypass),
-      stripe_account: connect?.stripe_account_id || null,
-      bypass_active:  Boolean(connect?.stripe_bypass),
-      days_waiting:  o.updated_at
-        ? Math.floor((Date.now() - new Date(o.updated_at).getTime()) / 86400000)
-        : 0,
-    }
-  })
+  try {
+    const payout = await recordPayout(providerId, {
+      amountCents: totalCents,
+      method,
+      reference,
+      notes,
+      markedBy: auth.profileId,
+      earningIds: foundIds,
+    })
 
-  // Summary counts
-  const summary = {
-    pending:              enriched.filter(o => o.payout_status === 'pending').length,
-    transferred:          enriched.filter(o => o.payout_status === 'transferred').length,
-    failed:               enriched.filter(o => o.payout_status === 'failed').length,
-    total_pending_cents:  enriched.filter(o => o.payout_status === 'pending').reduce((s, o) => s + o.payout_cents, 0),
-    total_transferred_cents: enriched.filter(o => o.payout_status === 'transferred').reduce((s, o) => s + o.payout_cents, 0),
-    total_failed_cents:   enriched.filter(o => o.payout_status === 'failed').reduce((s, o) => s + o.payout_cents, 0),
+    await auth.db.from('admin_audit_log').insert({
+      admin_id: auth.profileId,
+      action_type: 'manual_payout',
+      target_table: 'provider_payouts',
+      target_id: payout.id,
+      payload_snapshot: { providerId, earningIds: foundIds, amountCents: totalCents, method, reference },
+      reason: notes || 'Admin manual payout',
+    })
+
+    return ok({ payout })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Payout recording failed'
+    return fail(msg, 500)
   }
-
-  return ok({ orders: enriched, summary })
 }

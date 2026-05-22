@@ -797,7 +797,7 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
   const [sending, setSending] = React.useState(false)
   const [showOfferModal, setShowOfferModal] = React.useState(false)
   const [withdrawingId, setWithdrawingId] = React.useState(null)
-  const [connect, setConnect] = React.useState(null)
+
   const chatFileRef = React.useRef(null)
 
   const load = React.useCallback((isInitial) => {
@@ -817,26 +817,11 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
 
   React.useEffect(() => {
     load(true)
-    fetch('/api/attorney/connect/status', { credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then((p) => setConnect(p))
-      .catch(() => setConnect({ has_account: false, onboarding_complete: false, effective_onboarded: false, attorney_platform_fee_percent: 25 }))
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') load(false)
     }, 6000)
     return () => clearInterval(id)
   }, [load])
-
-  async function startConnect() {
-    try {
-      const res = await fetch('/api/attorney/connect/onboard', { method: 'POST', credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start onboarding.')
-      window.location.href = payload.url
-    } catch (e) {
-      setError(e.message)
-    }
-  }
 
   async function sendMessage(e, file) {
     e?.preventDefault?.()
@@ -899,11 +884,9 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
   const messages = data.messages || []
   const offers = data.offers || []
   const hasPendingOffer = offers.some((o) => o.status === 'sent')
-  const effectiveOnboarded = Boolean(connect?.effective_onboarded ?? connect?.onboarding_complete)
-  const bypassed = Boolean(connect?.bypassed)
-  const livePercent = Number.isFinite(Number(connect?.attorney_platform_fee_percent))
-    ? Number(connect.attorney_platform_fee_percent)
-    : DEFAULT_ATTORNEY_FEE_PERCENT
+  const effectiveOnboarded = true
+  const bypassed = false
+  const livePercent = DEFAULT_ATTORNEY_FEE_PERCENT
 
   return (
     <div className="yousafe-thread-page" style={{ padding: embedded ? '18px 20px' : '20px 28px', maxWidth: embedded ? 'none' : '920px' }}>
@@ -939,28 +922,12 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
             My offers
           </h3>
           {!hasPendingOffer && inquiry.status !== 'converted' && (
-            effectiveOnboarded ? (
-              <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
-                + Send custom offer
-              </Btn>
-            ) : (
-              <Btn variant="primary" size="sm" onClick={startConnect}>
-                Connect Stripe to send offers
-              </Btn>
-            )
+            <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
+              + Send custom offer
+            </Btn>
           )}
         </div>
-        {connect && !connect.onboarding_complete && !bypassed && (
-          <div style={{ marginBottom: '10px', padding: '10px 12px', background: 'rgba(245,180,0,0.10)', border: '1px solid rgba(245,180,0,0.25)', borderRadius: '8px', color: '#a36a00', fontSize: '12px' }}>
-            You can chat with the client now, but you must connect Stripe before sending a paid offer. Click the button above to onboard.
-          </div>
-        )}
-        {bypassed && !connect?.onboarding_complete && (
-          <div style={{ marginBottom: '10px', padding: '10px 12px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '8px', color: C.cyan, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '14px' }}>✓</span>
-            <span>Admin Stripe bypass is enabled — you can send paid offers now. Payouts hold until your Connect account verifies.</span>
-          </div>
-        )}
+
         {offers.length === 0 ? (
           <div style={{ color: C.textMuted, fontSize: '13px' }}>You haven&apos;t sent an offer on this inquiry yet.</div>
         ) : (
@@ -1075,7 +1042,7 @@ function OfferModal({ inquiryId, onClose, onCreated, feePercent }) {
       >
         <div style={{ fontWeight: 700, fontSize: '17px' }}>Send custom offer</div>
         <p style={{ color: C.textMuted, fontSize: '13px', margin: 0 }}>
-          The client sees these details and can accept (paying via Stripe), decline, or wait. You
+          The client sees these details and can accept (paying securely), decline, or wait. You
           can withdraw a sent offer until they decide.
         </p>
 
@@ -1224,17 +1191,7 @@ function OverviewPage({ onJump }) {
 
       <DashboardGuide role="attorney" />
 
-      {!data?.connect?.onboarding_complete && (
-        <Card>
-          <div style={{ padding: '16px 18px', borderLeft: `4px solid ${C.orange}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px' }}>Connect Stripe to receive payouts</div>
-              <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>You can chat with clients now, but you need a payout account before sending paid offers.</div>
-            </div>
-            <Btn variant="primary" size="sm" onClick={() => onJump('settings')}>Set up payouts</Btn>
-          </div>
-        </Card>
-      )}
+
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
         <StatCard label="Open inquiries" value={s.open_inquiries ?? 0} sub="In the queue" onClick={() => onJump('queue')} />
@@ -1612,16 +1569,6 @@ function EarningsPage({ data: dataProp, refresh }) {
       .finally(() => setLoading(false))
   }, [dataProp])
 
-  async function openStripe() {
-    setOpening(true)
-    try {
-      const res = await fetch('/api/attorney/connect/dashboard-link', { method: 'POST', credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not open Stripe dashboard.')
-      window.open(payload.url, '_blank', 'noopener')
-    } catch (e) { setError(e.message) } finally { setOpening(false) }
-  }
-
   if (loading) return <Notice>Loading earnings...</Notice>
   if (error) return <Notice tone="error">{error}</Notice>
 
@@ -1664,13 +1611,7 @@ function EarningsPage({ data: dataProp, refresh }) {
           Payouts move to your connected bank automatically when engagements are completed and approved by the client.
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {data?.connect?.onboarding_complete ? (
-            <Btn variant="primary" size="md" onClick={openStripe} disabled={opening}>
-              {opening ? 'Opening Stripe…' : 'Open Stripe payout dashboard'}
-            </Btn>
-          ) : (
-            <Badge color="orange">Stripe not connected — set up payouts in Settings</Badge>
-          )}
+          <Badge color="green">Payouts handled manually by admin</Badge>
         </div>
       </div>
 
@@ -1696,7 +1637,7 @@ function EarningsPage({ data: dataProp, refresh }) {
             </div>
           ) : (
             <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-              No transferred payouts yet. Earnings appear here once Stripe Connect transfers complete.
+              No transferred payouts yet. Earnings appear here once your delivery is approved.
             </div>
           )}
         </div>
@@ -1720,7 +1661,7 @@ function EarningsPage({ data: dataProp, refresh }) {
             </div>
           ) : (
             <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-              Your payout history will populate when Stripe Connect transfers settle.
+              Your payout history will populate once your delivery is approved.
             </div>
           )}
         </div>
@@ -1750,16 +1691,6 @@ function SettingsPage() {
 
   React.useEffect(() => { load() }, [load])
 
-  async function startConnect() {
-    setBusy(true)
-    try {
-      const res = await fetch('/api/attorney/connect/onboard', { method: 'POST', credentials: 'same-origin' })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start onboarding.')
-      window.location.href = payload.url
-    } catch (e) { setError(e.message); setBusy(false) }
-  }
-
   async function toggleAvailable(v) {
     setBusy(true)
     try {
@@ -1779,7 +1710,7 @@ function SettingsPage() {
   if (error) return <Notice tone="error">{error}</Notice>
 
   const a = data?.attorney || {}
-  const stripeOnboarded = Boolean(a.stripe_account_id) && data?.attorney?.stripe_onboarding_complete
+  const payoutReady = true
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: '720px', display: 'grid', gap: '16px' }}>
@@ -1793,15 +1724,9 @@ function SettingsPage() {
         <div style={{ padding: '18px 20px' }}>
           <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '6px' }}>Payouts</div>
           <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 12px' }}>
-            {stripeOnboarded
-              ? 'Stripe Connect is set up. You can receive payments from accepted offers.'
-              : 'Connect a Stripe account to receive payouts. Without this, you can\'t send paid offers.'}
+            {'Payouts are handled manually by the platform. You can send and receive paid offers.'}
           </p>
-          {!stripeOnboarded && (
-            <Btn variant="primary" size="sm" onClick={startConnect} disabled={busy}>
-              {busy ? 'Opening Stripe...' : 'Set up payouts with Stripe'}
-            </Btn>
-          )}
+
         </div>
       </Card>
 

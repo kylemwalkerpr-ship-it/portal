@@ -30,7 +30,7 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   consultant_fee_percent: 80,
   // Attorney offers use additive (not split) pricing for ABA Rule 5.4
   // compliance: client pays attorney_fee + this percent on top, the attorney
-  // gets the full attorney_fee, the platform gets the percent as a Stripe
+  // gets the full attorney_fee, the platform keeps the percent as its
   // application fee. Adjust here or via the admin Settings panel.
   attorney_platform_fee_percent: 25,
   auto_release_days: 14,
@@ -69,7 +69,7 @@ export async function getPlatformSettings() {
     ...DEFAULT_PLATFORM_SETTINGS,
     ...(data.value as Record<string, unknown>),
   }
-  // Always normalise primary_currency so downstream Stripe calls never see a
+  // Always normalise primary_currency so downstream payment calls never see a
   // typo or wrong case.
   merged.primary_currency = normalizePrimaryCurrency(merged.primary_currency)
   const rate = Number(merged.usd_to_cad_rate)

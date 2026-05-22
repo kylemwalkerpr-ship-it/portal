@@ -13,6 +13,7 @@ import {
 } from './GigDetailComponents'
 import { ReviewsSection } from './ReviewComponents'
 import ChatSidePane from './ChatSidePane'
+import { useGatedAction } from './useGatedAction'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
@@ -198,6 +199,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   const [mainImage, setMainImage] = React.useState('')
   const [msgOpen, setMsgOpen] = React.useState(false)
 
+  const { execute: gatedOrder, modal: orderModal } = useGatedAction('order', { gigId: gig?.id, tierId: selectedTierId })
+  const { execute: gatedChat, modal: chatModal } = useGatedAction('chat', { gigId: gig?.id, providerId: gig?.provider_id })
+  const { execute: gatedSave, modal: saveModal } = useGatedAction('save', { gigId: gig?.id })
+
   const load = React.useCallback(async () => {
     setLoading(true)
     setError('')
@@ -265,7 +270,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           sourceType: 'gig',
           sourceId: gig.id,
           tierId: selectedTierId,
-          paymentMethod: 'stripe',
+          paymentMethod: 'wallet',
         }),
       })
       requestJson('/api/gig-metrics/event', {
@@ -490,9 +495,9 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 is_online: gig.provider_is_online,
               }}
               onViewProfile={() => {
-                window.location.href = `/sellers/${gig.provider_id}`
+                window.location.href = `/marketplace/providers/${gig.provider_id}`
               }}
-              onMessage={() => setMsgOpen(true)}
+              onMessage={() => gatedChat(() => setMsgOpen(true))}
             />
 
             <PricingTiers
@@ -504,8 +509,8 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             {selectedTier && (
               <OrderCTA
                 selectedTier={selectedTier}
-                onOrder={handleOrder}
-                onSave={handleSave}
+                onOrder={() => gatedOrder(handleOrder)}
+                onSave={() => gatedSave(handleSave)}
                 onShare={handleShare}
                 isSaved={isSaved}
               />
@@ -537,6 +542,9 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
         contextKind="gig"
         contextId={gig.id}
       />
+      {orderModal}
+      {chatModal}
+      {saveModal}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 /**
  * POST /api/admin/payouts/release
- * Release payout for a single order — wraps triggerConsultantPayout.
+ * Release payout for a single order — releases earnings for the order.
  * Body: { order_id: string }
  *
  * POST /api/admin/payouts/release?batch=true
@@ -8,7 +8,7 @@
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { triggerConsultantPayout } from '@/lib/payouts'
+import { releaseEarningsForOrder } from '@/lib/earnings'
 
 export async function POST(req: Request) {
   const auth = await requireAdminUser()
@@ -18,60 +18,45 @@ export async function POST(req: Request) {
   const batch = new URL(req.url).searchParams.get('batch') === 'true'
 
   if (batch) {
-    // Batch release
     const ids: string[] = Array.isArray(body.order_ids) ? body.order_ids.slice(0, 50) : []
     if (!ids.length) return fail('order_ids array is required.', 400)
 
-    const results = await Promise.allSettled(ids.map(id => triggerConsultantPayout(id)))
+    const results = await Promise.allSettled(ids.map(id => releaseEarningsForOrder(id)))
     const summary = results.map((r, i) => ({
       order_id: ids[i],
-      status:   r.status === 'fulfilled' ? (r.value.skipped ? 'skipped' : r.value.failed ? 'failed' : 'transferred') : 'error',
-      detail:   r.status === 'fulfilled' ? (r.value.reason || r.value.transferId || r.value.error || 'ok') : (r.reason?.message || 'error'),
+      status: r.status === 'fulfilled' ? (r.value.length ? 'released' : 'none') : 'error',
+      detail: r.status === 'fulfilled' ? `${r.value.length} earning(s) released` : (r.reason?.message || 'error'),
     }))
 
-    // Log batch action
     await auth.db.from('admin_audit_log').insert({
       admin_id: auth.profileId,
-      action_type: 'batch_payout_release',
-      target_table: 'orders',
+      action_type: 'batch_earnings_release',
+      target_table: 'provider_earnings',
       target_id: ids[0],
       payload_snapshot: { order_ids: ids, summary },
-      reason: body.reason || 'Admin batch payout release',
+      reason: body.reason || 'Admin batch earnings release',
     })
 
-    return ok({ results: summary, transferred: summary.filter(r => r.status === 'transferred').length, failed: summary.filter(r => r.status === 'failed').length })
+    return ok({ results: summary, released: summary.filter(r => r.status === 'released').length })
   }
 
-  // Single release
   const orderId: string = body.order_id
   if (!orderId) return fail('order_id is required.', 400)
 
-  // Validate order exists and is releasable
-  const { data: order, error: loadErr } = await auth.db
-    .from('orders')
-    .select('id, status, escrow_status, payout_status, consultant_id, total_amount')
-    .eq('id', orderId)
-    .single()
-
-  if (loadErr || !order) return fail('Order not found.', 404)
-  if (order.payout_status === 'transferred') return fail('Payout already transferred for this order.', 409)
-
   try {
-    const result = await triggerConsultantPayout(orderId)
+    const released = await releaseEarningsForOrder(orderId)
 
     await auth.db.from('admin_audit_log').insert({
       admin_id: auth.profileId,
-      action_type: 'payout_release',
-      target_table: 'orders',
+      action_type: 'earnings_release',
+      target_table: 'provider_earnings',
       target_id: orderId,
-      payload_snapshot: { result, order_amount: order.total_amount },
-      reason: body.reason || 'Admin manual payout release',
+      payload_snapshot: { released_count: released.length },
+      reason: body.reason || 'Admin manual earnings release',
     })
 
-    if (result.skipped) return ok({ skipped: true, reason: result.reason })
-    if (result.failed)  return ok({ failed: true, error: result.error })
-    return ok({ transferred: true, transfer_id: result.transferId })
+    return ok({ released: true, count: released.length })
   } catch (err: any) {
-    return fail(err.message || 'Payout failed.', 500)
+    return fail(err.message || 'Release failed.', 500)
   }
 }

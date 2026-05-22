@@ -11,7 +11,7 @@
  *   • messages   — unread conversation count
  *   • documents  — total + last-7-days uploads
  *   • deadlines  — next 3 upcoming order deadlines
- *   • wallet     — Stripe balance (best-effort)
+ *   • wallet     — DB balance (best-effort)
  */
 import { getCurrentStudent } from '@/lib/student'
 
@@ -155,9 +155,8 @@ export async function GET() {
   }
 
   // ── Wallet (best-effort, never blocks) ─────────────────────────────────
-  // We avoid the Stripe API round-trip here; the home tile fetches
-  // /api/wallet/balance separately. Just expose the numeric scaffolding so
-  // the UI can show a placeholder if Stripe is slow.
+  // The home tile fetches /api/wallet/balance separately. Just expose the
+  // numeric scaffolding so the UI can show a placeholder until it loads.
 
   return Response.json({
     profile: {

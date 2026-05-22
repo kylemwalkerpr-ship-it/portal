@@ -1,6 +1,8 @@
 import { ok, fail } from '@/lib/apiEnvelope'
-import { createHostedCheckoutSession, resolveCheckoutItem } from '@/lib/checkoutOrders'
+import { createPaidOrder, resolveCheckoutItem } from '@/lib/checkoutOrders'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { debit, getOrCreateWallet } from '@/lib/wallet'
+import { creditEarning } from '@/lib/earnings'
 
 export async function POST(req: Request, context: { params: Promise<{ id: string; tierId: string }> }) {
   const auth = await requirePortalUser()
@@ -11,10 +13,31 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   try {
     const resolved = await resolveCheckoutItem(auth.db, 'gig', id, auth.profileId, tierId)
     if ('error' in resolved) return fail(resolved.error, resolved.status)
-    const session = await createHostedCheckoutSession(req, resolved)
+
+    const wallet = await getOrCreateWallet(auth.profileId)
+    if (wallet.balance_cents < resolved.totalCents) {
+      return fail('Insufficient wallet balance', 402, {
+        balanceCents: wallet.balance_cents,
+        requiredCents: resolved.totalCents,
+      })
+    }
+
+    const tx = await debit(auth.profileId, resolved.totalCents, `Purchase: ${resolved.title}`)
+    const order = await createPaidOrder(auth.db, resolved, { paymentMethod: 'wallet', actorId: auth.profileId })
+    try {
+      await creditEarning({
+        providerId: resolved.providerProfileId,
+        orderId: order.id,
+        source: 'gig',
+        amountCents: resolved.netPayoutCents,
+        feeCents: resolved.platformFeeCents,
+      })
+    } catch (e) { console.error('[gigs/purchase] creditEarning failed:', e) }
+
     return ok({
-      url: session.url,
-      session_id: session.id,
+      success: true,
+      orderId: order.id,
+      ledgerId: tx.id,
       breakdown: {
         subtotal: resolved.subtotalCents,
         platform_fee: resolved.platformFeeCents,
@@ -23,6 +46,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       },
     })
   } catch (err) {
-    return fail(err instanceof Error ? err.message : 'Could not create checkout.', 500)
+    return fail(err instanceof Error ? err.message : 'Could not complete purchase.', 500)
   }
 }

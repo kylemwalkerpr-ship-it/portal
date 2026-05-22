@@ -283,14 +283,6 @@ function OrderDrawer({order,onClose,onAction}) {
                   <span style={{fontSize:'13px',fontWeight:600,color:PAYOUT_CFG[order.payout_status||'pending']?.text||'#9097A8'}}>{PAYOUT_CFG[order.payout_status||'pending']?.label||'—'}</span>
                 </div>
               </div>
-              {order.stripe_pi&&<div style={{background:'#F7F5F0',border:'1px solid #DDD8CE',borderRadius:'8px',padding:'12px 14px'}}>
-                <div style={{fontSize:'10px',fontWeight:700,color:'#9097A8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Stripe Payment Intent</div>
-                <div style={{fontSize:'12px',fontFamily:'monospace',color:NAVY}}>{order.stripe_pi}</div>
-              </div>}
-              {order.stripe_transfer&&<div style={{background:'#F7F5F0',border:'1px solid #DDD8CE',borderRadius:'8px',padding:'12px 14px'}}>
-                <div style={{fontSize:'10px',fontWeight:700,color:'#9097A8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'4px'}}>Stripe Transfer</div>
-                <div style={{fontSize:'12px',fontFamily:'monospace',color:GREEN}}>{order.stripe_transfer}</div>
-              </div>}
             </div>
           )}
 
@@ -326,7 +318,7 @@ function OrderDrawer({order,onClose,onAction}) {
                 <div style={{display:'flex',flexDirection:'column',gap:'7px'}}>
                   {order.escrow_status==='held'&&order.status==='completed'&&<button onClick={()=>onAction('release',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(26,107,69,.30)',background:'#EAF5EE',color:GREEN,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>✓ Release Escrow — transfer funds to provider</button>}
                   {!['cancelled','refunded'].includes(order.status)&&<button onClick={()=>onAction('cancel',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(139,26,26,.25)',background:'#FAEAEA',color:RED,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>✗ Cancel Order</button>}
-                  {!['cancelled','refunded'].includes(order.status)&&order.stripe_pi&&<button onClick={()=>onAction('refund',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(139,26,26,.22)',background:'#FAEAEA',color:RED,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>↩ Refund via Stripe</button>}
+                  {!['cancelled','refunded'].includes(order.status)&&<button onClick={()=>onAction('refund',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(139,26,26,.22)',background:'#FAEAEA',color:RED,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>↩ Refund</button>}
                   <button onClick={()=>onAction('assign',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(27,45,79,.25)',background:'#EAF0F7',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>{order.provider_id?'⇄ Reassign Provider':'+ Assign Provider'}</button>
                   <button onClick={()=>onAction('deadline',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid rgba(154,123,59,.30)',background:'#F5EDD6',color:GOLD,cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>📅 Extend Delivery Deadline</button>
                   <button onClick={()=>onAction('note',order)} style={{padding:'9px 14px',borderRadius:'6px',border:'1px solid #DDD8CE',background:'#F7F5F0',color:'#5C6070',cursor:'pointer',fontSize:'13px',fontWeight:600,textAlign:'left',fontFamily:sans}}>📝 Add Admin Note</button>
@@ -497,7 +489,7 @@ export default function AdminOrders({ consultants=[], formatPrimary, refreshAdmi
     if(action==='note')     {setNoteTarget(order);return}
     if(action==='release')  {await adminPatch(order.id,{escrow_status:'released',force:true},'Escrow released.');return}
     if(action==='cancel')   {if(!confirm('Cancel this order?')) return;await adminPatch(order.id,{status:'cancelled',note:'Cancelled by admin'},'Order cancelled.');setSelectedOrder(null);return}
-    if(action==='refund')   {if(!confirm('Issue full Stripe refund?')) return;await adminPatch(order.id,{refund:true,status:'refunded'},'Refund initiated.');setSelectedOrder(null);return}
+    if(action==='refund')   {if(!confirm('Issue full refund?')) return;await adminPatch(order.id,{refund:true,status:'refunded'},'Refund initiated.');setSelectedOrder(null);return}
     if(action==='payout'){
       try{
         const res=await fetch('/api/admin/payouts/release',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({order_id:order.id,reason:'Admin manual trigger'})})

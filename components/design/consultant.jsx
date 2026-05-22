@@ -426,7 +426,7 @@ function ConsultantApp({ onLogout }) {
         : data.payout?.skipped
           ? ` Payout skipped: ${data.payout.reason || 'see payout setup'}.`
           : data.payout?.failed
-            ? ` Payout transfer failed: ${data.payout.error || 'see Stripe dashboard'}.`
+            ? ` Payout transfer failed: ${data.payout.error || 'see payout dashboard'}.`
             : '';
       setActionNotice(`Order ${order.id} marked complete.${payoutMsg}`);
     } catch (e) {
@@ -620,7 +620,7 @@ function ConsultantApp({ onLogout }) {
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <NavItem icon="🏦" label="Payout Setup" active={page === 'connect'} onClick={() => setPage('connect')} />
-        <NavItem icon="🔗" label="Stripe Onboarding" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/consultant/connect'} onClick={() => goToRoute('/dashboard/consultant/connect')} />
+        <NavItem icon="🔗" label="Payout Onboarding" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/consultant/connect'} onClick={() => goToRoute('/dashboard/consultant/connect')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
@@ -760,7 +760,7 @@ function ConsultantApp({ onLogout }) {
         <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '14px', padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: '240px' }}>
             <div style={{ fontWeight: 700, color: C.orange, fontSize: '15px' }}>Connect your bank account to receive payouts</div>
-            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>Stripe Connect is required before completed services can be paid out automatically.</div>
+            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>Payout setup is required before completed services can be paid out automatically.</div>
           </div>
           <Btn variant="primary" size="sm" onClick={() => setPage('connect')}>Set up payouts</Btn>
         </div>
@@ -1195,7 +1195,7 @@ function ConsultantApp({ onLogout }) {
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             {connectStatus?.onboarded ? (
               <Btn variant="primary" size="md" onClick={openConnectDashboard} disabled={connectBusy}>
-                {connectBusy ? 'Opening Stripe…' : 'Open Stripe payout dashboard'}
+                {connectBusy ? 'Opening…' : 'Open payout dashboard'}
               </Btn>
             ) : (
               <Btn variant="primary" size="md" onClick={() => setPage('connect')}>Set up payouts</Btn>
@@ -1233,7 +1233,7 @@ function ConsultantApp({ onLogout }) {
             </div>
           ) : (
             <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-              No transferred payouts yet. Earnings appear here once Stripe Connect transfers complete.
+              No transferred payouts yet. Earnings appear here once your delivery is approved.
             </div>
           )}
         </Card>
@@ -1255,7 +1255,7 @@ function ConsultantApp({ onLogout }) {
             </div>
           ) : (
             <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.8 }}>
-              Your payout history will populate when Stripe Connect transfers settle.
+              Your payout history will populate once your delivery is approved.
             </div>
           )}
         </Card>
@@ -1267,7 +1267,7 @@ function ConsultantApp({ onLogout }) {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
       <div>
         <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Payout Setup</h2>
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>Connect your bank account with Stripe Express to receive automatic payouts when services are completed.</p>
+        <p style={{ color: C.textMuted, fontSize: '14px' }}>Connect your bank account with our payment processor to receive automatic payouts when services are completed.</p>
       </div>
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
@@ -1278,7 +1278,7 @@ function ConsultantApp({ onLogout }) {
             <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.7 }}>
               {connectStatus?.onboarded
                 ? 'You will receive payouts automatically when orders are completed and approved.'
-                : 'Stripe securely collects and verifies your bank details. YouSafe never stores your bank account information.'}
+                : 'Our processor securely collects and verifies your bank details. YouSafe never stores your bank account information.'}
             </div>
           </div>
           <Badge color={connectStatus?.onboarded ? 'green' : 'orange'}>
@@ -1289,11 +1289,11 @@ function ConsultantApp({ onLogout }) {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {connectStatus?.onboarded ? (
             <Btn variant="primary" onClick={openConnectDashboard} disabled={connectBusy}>
-              {connectBusy ? 'Opening Stripe…' : 'View Payout Dashboard'}
+              {connectBusy ? 'Opening…' : 'View Payout Dashboard'}
             </Btn>
           ) : (
             <Btn variant="primary" onClick={startConnectOnboarding} disabled={connectBusy}>
-              {connectBusy ? 'Redirecting to Stripe…' : 'Connect Bank Account'}
+              {connectBusy ? 'Redirecting…' : 'Connect Bank Account'}
             </Btn>
           )}
           <Btn variant="secondary" onClick={refreshConsultantData} disabled={connectBusy}>Refresh Status</Btn>

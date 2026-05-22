@@ -9,16 +9,14 @@ export async function GET() {
   const auth = await requireAdminUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
-  // Refund ledger
   const { data: refunds, error: refundErr } = await auth.db
     .from('refund_ledger')
-    .select('id, order_id, amount, method, status, stripe_refund_id, initiated_by, created_at')
+    .select('id, order_id, amount, method, status, initiated_by, created_at')
     .order('created_at', { ascending: false })
     .limit(200)
 
   if (refundErr) return fail(refundErr.message, 500)
 
-  // Also get cancelled/refunded orders for completeness
   const { data: cancelledOrders } = await auth.db
     .from('orders')
     .select('id, total_amount, status, cancelled_at, consultant_id, client_id, created_at')
@@ -26,7 +24,6 @@ export async function GET() {
     .order('cancelled_at', { ascending: false })
     .limit(100)
 
-  // Provider names for refund ledger
   const orderIds = (refunds ?? []).map(r => r.order_id).filter(Boolean)
   let orderProviderMap: Record<string, string> = {}
   if (orderIds.length) {

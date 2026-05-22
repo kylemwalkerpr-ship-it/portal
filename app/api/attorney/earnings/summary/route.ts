@@ -2,7 +2,7 @@
  * GET /api/attorney/earnings/summary
  * Aggregate earnings + payout health for the attorney dashboard tiles.
  * Pulls everything from the orders table (DB-first) so the page renders
- * instantly without hitting Stripe. Also returns Stripe Connect status
+ * instantly without an external gateway round trip. Also returns payout setup status
  * (already on attorneys row).
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
@@ -18,7 +18,7 @@ export async function GET() {
       .eq('consultant_id', ctx.profileId),
     ctx.db
       .from('attorneys')
-      .select('stripe_account_id, stripe_onboarding_complete, available, starting_price')
+      .select('available, starting_price')
       .eq('id', ctx.attorneyId)
       .single(),
   ])
@@ -43,10 +43,6 @@ export async function GET() {
 
   const inWindow = (o: any, days: number) => dateOf(o) >= now - days * day
 
-  // Stripe Connect status surface
-  const connectReady = !!attorney?.stripe_onboarding_complete
-  const connectStarted = !!attorney?.stripe_account_id
-
   return Response.json({
     summary: {
       transferredLifetime: sum(transferred),
@@ -62,11 +58,6 @@ export async function GET() {
       pendingPayoutOrders:  pendingPayout.length,
       failedPayoutOrders:   failed.length,
       totalOrders:          orders.length,
-    },
-    connect: {
-      ready:    connectReady,
-      started:  connectStarted,
-      stripeAccountId: attorney?.stripe_account_id || null,
     },
   })
 }

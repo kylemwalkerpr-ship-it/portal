@@ -1,4 +1,3 @@
-import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 type AttorneyRow = {
@@ -37,17 +36,7 @@ type ApplicationRow = {
 }
 
 export async function GET() {
-  const userId = await getClerkUserId()
-  if (!userId) return Response.json({ error: 'Unauthenticated.' }, { status: 401 })
-
   const db = createSupabaseAdminClient()
-
-  const { data: viewer } = await db
-    .from('profiles')
-    .select('role, status')
-    .eq('clerk_user_id', userId)
-    .single()
-  if (!viewer) return Response.json({ error: 'Profile not found.' }, { status: 404 })
 
   const { data: attorneys, error: attorneyErr } = await db
     .from('attorneys')

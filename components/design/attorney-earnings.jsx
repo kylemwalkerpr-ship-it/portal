@@ -89,12 +89,11 @@ function MonthlyBar({ rows }) {
   )
 }
 
-export default function AttorneyEarnings({ onOpenStripe }) {
+export default function AttorneyEarnings({ onOpenPayouts }) {
   const [summary, setSummary] = React.useState(null)
   const [monthly, setMonthly] = React.useState([])
   const [summaryLoading, setSummaryLoading] = React.useState(true)
   const [error, setError] = React.useState('')
-  const [opening, setOpening] = React.useState(false)
 
   const [tab, setTab] = React.useState('all')
   const [page, setPage] = React.useState(1)
@@ -170,21 +169,6 @@ export default function AttorneyEarnings({ onOpenStripe }) {
     window.location.href = `/api/attorney/earnings?${params}`
   }
 
-  const openStripe = async () => {
-    setOpening(true)
-    try {
-      if (onOpenStripe) return await onOpenStripe()
-      const r = await fetch('/api/attorney/connect/dashboard-link', { method: 'POST', credentials: 'same-origin' })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d?.url) throw new Error(d?.error || 'Could not open Stripe dashboard.')
-      window.open(d.url, '_blank', 'noopener')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setOpening(false)
-    }
-  }
-
   return (
     <div style={{ padding: '24px 28px 60px', display: 'flex', flexDirection: 'column', gap: 18, fontFamily: SANS, background: BG, minHeight: '100vh' }}>
       <div>
@@ -234,7 +218,6 @@ export default function AttorneyEarnings({ onOpenStripe }) {
           {summary && (
             summary._noConnect ? null : null
           )}
-          <ConnectStatusInline summary={summary} onOpenStripe={openStripe} opening={opening} />
         </div>
       </Card>
 
@@ -256,7 +239,7 @@ export default function AttorneyEarnings({ onOpenStripe }) {
         </div>
         <div style={{ padding: '8px 22px 16px' }}>
           {monthly.length === 0 ? (
-            <div style={{ color: MUTED, fontSize: 13, padding: '20px 0' }}>No transferred payouts yet. Earnings appear here once Stripe Connect transfers complete.</div>
+            <div style={{ color: MUTED, fontSize: 13, padding: '20px 0' }}>No transferred payouts yet. Earnings appear here once your delivery is approved.</div>
           ) : (
             <>
               <MonthlyBar rows={monthly} />
@@ -379,46 +362,6 @@ export default function AttorneyEarnings({ onOpenStripe }) {
         )}
       </div>
     </div>
-  )
-}
-
-function ConnectStatusInline({ summary, onOpenStripe, opening }) {
-  // Summary endpoint also returns `connect` block; we pass the whole envelope
-  // but the component reads `connect` straight through fetch above for now.
-  const [connect, setConnect] = React.useState(null)
-  React.useEffect(() => {
-    let cancelled = false
-    fetch('/api/attorney/earnings/summary', { credentials: 'same-origin' })
-      .then(r => r.json().catch(() => ({})))
-      .then(d => { if (!cancelled) setConnect(d?.connect || null) })
-    return () => { cancelled = true }
-  }, [])
-
-  if (!connect) {
-    return <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Checking Stripe Connect…</span>
-  }
-
-  if (connect.ready) {
-    return (
-      <>
-        <Badge color="green" style={{ fontSize: 10 }}>● Stripe Connect ready</Badge>
-        <Btn variant="primary" size="sm" onClick={onOpenStripe} disabled={opening}>{opening ? 'Opening…' : 'Open Stripe dashboard ↗'}</Btn>
-      </>
-    )
-  }
-  if (connect.started) {
-    return (
-      <>
-        <Badge color="orange" style={{ fontSize: 10 }}>Stripe onboarding in progress</Badge>
-        <Btn variant="secondary" size="sm" onClick={onOpenStripe} disabled={opening}>{opening ? 'Opening…' : 'Continue onboarding'}</Btn>
-      </>
-    )
-  }
-  return (
-    <>
-      <Badge color="red" style={{ fontSize: 10 }}>Stripe Connect required</Badge>
-      <Btn variant="primary" size="sm" onClick={onOpenStripe} disabled={opening}>{opening ? 'Opening…' : 'Connect Stripe to get paid'}</Btn>
-    </>
   )
 }
 

@@ -1,11 +1,11 @@
 /**
  * POST /api/admin/escrow/run-auto-releases
  * Manually trigger the auto-release sweep. Wraps process_escrow_auto_releases()
- * RPC and then triggers Stripe transfers for each freshly-released order.
+ * RPC and then releases earnings for each freshly-released order.
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { triggerConsultantPayout } from '@/lib/payouts'
+import { releaseEarningsForOrder } from '@/lib/earnings'
 
 export async function POST(_req: Request) {
   const auth = await requireAdminUser()
@@ -15,7 +15,6 @@ export async function POST(_req: Request) {
   const warnings: string[] = []
   const sweepStart = new Date()
 
-  // 1. Run the RPC
   let rpcResult: any
   try {
     const { data, error } = await db.rpc('process_escrow_auto_releases') as any
@@ -28,8 +27,6 @@ export async function POST(_req: Request) {
   const releasedCount = Number(rpcResult.released_count || 0)
   const releasedTotal = Number(rpcResult.released_total || 0)
 
-  // 2. Find orders that were just released — look at escrow_events from the last 90 seconds
-  // for system full_release events.
   const sinceIso = new Date(sweepStart.getTime() - 90 * 1000).toISOString()
   let releasedOrderIds: string[] = []
   try {
@@ -50,15 +47,14 @@ export async function POST(_req: Request) {
     warnings.push(`event_lookup_failed: ${err.message}`)
   }
 
-  // 3. Trigger Stripe payouts for each, in parallel with per-order error capture
-  const transferResults = await Promise.all(
+  const releaseResults = await Promise.all(
     releasedOrderIds.map(async orderId => {
       try {
-        const result = await triggerConsultantPayout(orderId)
+        const result = await releaseEarningsForOrder(orderId)
         return {
           order_id: orderId,
-          status: result.skipped ? 'skipped' : result.failed ? 'failed' : 'transferred',
-          detail: result.reason || result.transferId || result.error || 'ok',
+          status: result.length ? 'released' : 'none',
+          detail: `${result.length} earning(s) released`,
         }
       } catch (err: any) {
         return { order_id: orderId, status: 'error', detail: err.message || 'unknown error' }
@@ -66,14 +62,13 @@ export async function POST(_req: Request) {
     })
   )
 
-  // 4. Audit log
   try {
     await db.from('admin_audit_log').insert({
       admin_id: profileId,
       action_type: 'escrow_run_auto_releases',
       target_table: 'orders',
       target_id: releasedOrderIds[0] || null,
-      payload_snapshot: { rpc_result: rpcResult, transfer_results: transferResults },
+      payload_snapshot: { rpc_result: rpcResult, release_results: releaseResults },
       reason: 'Manual auto-release sweep',
     })
   } catch (err: any) {
@@ -83,7 +78,7 @@ export async function POST(_req: Request) {
   return ok({
     released_count: releasedCount,
     released_total: releasedTotal,
-    transfer_results: transferResults,
+    release_results: releaseResults,
     rpc_result: rpcResult,
   }, {}, warnings.length ? { data_warnings: warnings } : {})
 }

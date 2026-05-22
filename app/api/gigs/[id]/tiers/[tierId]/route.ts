@@ -1,10 +1,24 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getPaymentSettingsForApi, normalizeRevision, toCents } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
 async function canEdit(auth: any, gigId: string) {
   const { data: gig } = await auth.db.from('gigs').select('provider_id').eq('id', gigId).single()
   return gig && (gig.provider_id === auth.profileId || auth.role === 'admin')
+}
+
+export async function GET(_req: Request, context: { params: Promise<{ id: string; tierId: string }> }) {
+  const { id, tierId } = await context.params
+  const db = createSupabaseAdminClient()
+  const { data: tier, error } = await db
+    .from('gig_tiers')
+    .select('*')
+    .eq('id', tierId)
+    .eq('gig_id', id)
+    .single()
+  if (error || !tier) return fail(error?.message || 'Tier not found.', 404)
+  return ok({ tier })
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string; tierId: string }> }) {

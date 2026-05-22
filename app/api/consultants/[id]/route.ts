@@ -1,26 +1,64 @@
-import { ok, fail } from '@/lib/apiEnvelope'
-import { requireAdminUser } from '@/lib/portalAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 
-export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
-
+// Public profile detail for one consultant.
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
-  const body = await req.json().catch(() => ({}))
-  if (typeof body?.stripe_bypass !== 'boolean') {
-    return fail('stripe_bypass must be a boolean.', 422, { fields: { stripe_bypass: 'Required boolean.' } })
-  }
+  const db = createSupabaseAdminClient()
 
-  const { data: consultant, error } = await auth.db
+  const { data: consultant, error: consultantErr } = await db
     .from('consultants')
-    .update({ stripe_bypass: body.stripe_bypass })
+    .select('id, profile_id, headshot_url, tagline, bio, intro, specialties, languages, years_experience, starting_price, offers_free_consult, timezone, available, created_at')
     .eq('id', id)
-    .select('id, profile_id, user_id, stripe_bypass')
     .single()
 
-  if (error || !consultant) {
-    return fail(error?.message || 'Consultant not found.', error?.code === 'PGRST116' ? 404 : 500)
+  if (consultantErr || !consultant) {
+    return Response.json({ error: 'Consultant not found.' }, { status: 404 })
   }
 
-  return ok({ consultant })
+  const [{ data: profile }, { data: ratingsRows }, { data: gigs }] = await Promise.all([
+    db.from('profiles').select('id, full_name, email, status').eq('id', consultant.profile_id).single(),
+    db
+      .from('consultant_ratings')
+      .select('id, stars, comment, created_at')
+      .eq('consultant_id', id)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    db
+      .from('gigs')
+      .select('id, slug, title, starting_price, avg_rating, gallery_images')
+      .eq('provider_id', consultant.profile_id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (!profile || profile.status !== 'active') {
+    return Response.json({ error: 'Consultant is not currently available.' }, { status: 404 })
+  }
+
+  const ratingCount = ratingsRows?.length ?? 0
+  const ratingSum = (ratingsRows ?? []).reduce((s: number, r: any) => s + (r.stars || 0), 0)
+  const ratingAvg = ratingCount > 0 ? Number((ratingSum / ratingCount).toFixed(2)) : null
+
+  return Response.json({
+    consultant: {
+      id: consultant.id,
+      profile_id: consultant.profile_id,
+      full_name: profile?.full_name || profile?.email?.split('@')[0] || 'Consultant',
+      headshot_url: consultant.headshot_url,
+      tagline: consultant.tagline,
+      bio: consultant.bio,
+      intro: consultant.intro,
+      specialties: consultant.specialties,
+      languages: consultant.languages,
+      years_experience: consultant.years_experience,
+      starting_price: consultant.starting_price,
+      offers_free_consult: consultant.offers_free_consult,
+      timezone: consultant.timezone,
+      available: consultant.available !== false,
+      member_since: consultant.created_at,
+      rating_count: ratingCount,
+      rating_avg: ratingAvg,
+      gigs: gigs ?? [],
+    },
+  })
 }

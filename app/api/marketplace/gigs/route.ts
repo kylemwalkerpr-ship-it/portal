@@ -1,12 +1,11 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getCategoryFilterTerms } from '@/lib/categories'
-import { requirePortalUser } from '@/lib/portalAuth'
+import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   // Auth is optional for this public endpoint — do not require it
-  const authResult = await requirePortalUser()
-  const auth = 'error' in authResult ? null : authResult
+  const auth = await getOptionalPortalUser()
 
   // Use authenticated db when available, otherwise create a shared admin client
   const db = auth ? auth.db : createSupabaseAdminClient()

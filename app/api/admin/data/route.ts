@@ -28,20 +28,14 @@ export async function GET() {
     db.from('order_items').select('order_id, service_id, subtotal'),
     db
       .from('services')
-      .select('id, product_type, slug, title, category, short_description, full_description, region, template_type, price, usd_price, currency, currency_base, price_cad_display, badge, status, is_active, delivery_type, file_path, stripe_product_id, stripe_price_id_usd, stripe_payment_link_usd, stripe_price_id_cad, stripe_payment_link_cad, stripe_payment_link_url, delivery_days, vertical')
+      .select('id, product_type, slug, title, category, short_description, full_description, region, template_type, price, usd_price, currency, currency_base, price_cad_display, badge, status, is_active, delivery_type, file_path, delivery_days, vertical')
       .order('category', { ascending: true })
       .order('title', { ascending: true }),
     db.from('platform_settings').select('value').eq('key', 'default').single(),
-    db.from('consultants').select('id, profile_id, user_id, email, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
-    db.from('attorneys').select('id, profile_id, stripe_account_id, stripe_onboarding_complete, stripe_bypass'),
+    db.from('consultants').select('id, profile_id, user_id, email'),
+    db.from('attorneys').select('id, profile_id'),
   ])
 
-  if (consultantsRes.error && /stripe_bypass|schema cache|column/i.test(consultantsRes.error.message)) {
-    consultantsRes = await db.from('consultants').select('id, profile_id, user_id, email, stripe_account_id, stripe_onboarding_complete')
-  }
-  if (attorneysRes.error && /stripe_bypass|schema cache|column/i.test(attorneysRes.error.message)) {
-    attorneysRes = await db.from('attorneys').select('id, profile_id, stripe_account_id, stripe_onboarding_complete')
-  }
   if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
     profilesRes = await db.from('profiles').select('id, full_name, email, role, status, created_at').order('created_at', { ascending: false })
   }
@@ -51,14 +45,14 @@ export async function GET() {
   if (servicesRes.error && /column .*vertical/i.test(servicesRes.error.message)) {
     servicesRes = await db
       .from('services')
-      .select('id, product_type, slug, title, category, short_description, full_description, region, template_type, price, usd_price, currency, currency_base, price_cad_display, badge, status, is_active, delivery_type, file_path, stripe_product_id, stripe_price_id_usd, stripe_payment_link_usd, stripe_price_id_cad, stripe_payment_link_cad, stripe_payment_link_url, delivery_days')
+      .select('id, product_type, slug, title, category, short_description, full_description, region, template_type, price, usd_price, currency, currency_base, price_cad_display, badge, status, is_active, delivery_type, file_path, delivery_days')
       .order('category', { ascending: true })
       .order('title', { ascending: true })
   }
   if (servicesRes.error && /column|schema cache/i.test(servicesRes.error.message)) {
     servicesRes = await db
       .from('services')
-      .select('id, title, category, price, currency, delivery_days, is_active, stripe_payment_link_url')
+      .select('id, title, category, price, currency, delivery_days, is_active')
       .order('category', { ascending: true })
       .order('title', { ascending: true })
   }
@@ -66,54 +60,7 @@ export async function GET() {
   const error = profilesRes.error || ordersRes.error || itemsRes.error || servicesRes.error
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  // Map each profile to a flat connect summary so the admin UI can render the
-  // bypass toggle without joining tables itself. Consultants have legacy rows
-  // keyed by user_id or email, so we fall back through those when profile_id
-  // isn't populated yet.
-  const consultantByProfile = new Map<string, Record<string, unknown>>()
-  const consultantByEmail = new Map<string, Record<string, unknown>>()
-  for (const row of (consultantsRes.data ?? []) as Array<Record<string, unknown>>) {
-    const pid = (row.profile_id || row.user_id) as string | undefined
-    if (pid) consultantByProfile.set(pid, row)
-    const em = String(row.email || '').toLowerCase()
-    if (em) consultantByEmail.set(em, row)
-  }
-  const attorneyByProfile = new Map<string, Record<string, unknown>>()
-  for (const row of (attorneysRes.data ?? []) as Array<Record<string, unknown>>) {
-    const pid = (row.profile_id) as string | undefined
-    if (pid) attorneyByProfile.set(pid, row)
-  }
-
-  const connectSummary = ((profilesRes.data ?? []) as Array<Record<string, any>>).reduce<Record<string, {
-    role: string
-    record_id: string | null
-    stripe_account_id: string | null
-    stripe_onboarding_complete: boolean
-    stripe_bypass: boolean
-  }>>((acc, p) => {
-    if (p.role === 'consultant') {
-      const row =
-        consultantByProfile.get(p.id) ||
-        (p.email ? consultantByEmail.get(String(p.email).toLowerCase()) : null)
-      acc[p.id] = {
-        role: 'consultant',
-        record_id: (row?.id as string) || null,
-        stripe_account_id: (row?.stripe_account_id as string) || null,
-        stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
-        stripe_bypass: Boolean(row?.stripe_bypass),
-      }
-    } else if (p.role === 'attorney') {
-      const row = attorneyByProfile.get(p.id)
-      acc[p.id] = {
-        role: 'attorney',
-        record_id: (row?.id as string) || null,
-        stripe_account_id: (row?.stripe_account_id as string) || null,
-        stripe_onboarding_complete: Boolean(row?.stripe_onboarding_complete),
-        stripe_bypass: Boolean(row?.stripe_bypass),
-      }
-    }
-    return acc
-  }, {})
+  const connectSummary = {}
 
   return Response.json({
     users: profilesRes.data ?? [],

@@ -19,8 +19,6 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsucG9ydGFsLnlvdXNhZmVjb25zdWx
 CLERK_AUTHORIZED_PARTIES = "https://portal.yousafeconsultancy.com"
 NEXT_PUBLIC_SUPABASE_URL = "https://krggzrxxnqfsbbklatxl.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyZ2d6cnh4bnFmc2Jia2xhdHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NDQyMzAsImV4cCI6MjA5MzEyMDIzMH0.AUNTc5D6aMnVC0orz-XA1W4ABkok_LWCWBjCaoAK4LE"
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_51TBuNsFy6WULRNincFW9e7CGRPG5jO8BOvHpQa9WupSj8lYeBg4ORI3AhSLflB7fsvvHgQHEqvczFAVf5CnjSWg400nEjPlTuq"
-
 # Payment provider abstraction (lib/payments). PAYMENT_PROVIDER selects the
 # active gateway adapter; NMI_TOKENIZATION_KEY is the NMI public Collect.js
 # key (client-safe by design — used in the browser). The private
@@ -36,11 +34,8 @@ NMI_GATEWAY_HOST = "paykings.transactiongateway.com"
 # no card fields on our page). 'inline' for embedded iframe fields.
 NMI_COLLECT_VARIANT = "lightbox"
 
-# Server-side Stripe credentials required for wallet and webhooks.
-# Set these securely in production using `wrangler secret put STRIPE_SECRET_KEY` and
-# `wrangler secret put STRIPE_WEBHOOK_SECRET`, or add them to your deployment environment.
-# STRIPE_SECRET_KEY = ""
-# STRIPE_WEBHOOK_SECRET = ""
+# Stripe secrets have been removed from the platform.
+# Claude will run: wrangler secret delete STRIPE_SECRET_KEY && wrangler secret delete STRIPE_WEBHOOK_SECRET
 
 # Resend transactional email key. Used for attorney application decision emails.
 # Set with: npx wrangler secret put RESEND_API_KEY

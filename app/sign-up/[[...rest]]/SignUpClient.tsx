@@ -24,8 +24,21 @@ export default function SignUpClient() {
     (Boolean(laneSegment) && !VALID_SIGN_UP_LANES.has(laneSegment) && source !== 'marketing')
   const signUpPath = source === 'marketing' ? '/sign-up/student' : `/sign-up/${laneSegment || 'student'}`
   const returnTo = useMemo(() => safeReturnTo(searchParams.get('return_to')), [searchParams])
+  const action = searchParams.get('action')
+  const meta = searchParams.get('meta')
   const previousUrl = returnTo || referrer
-  const redirectUrl = returnTo || dashboardForLane(lane)
+
+  // If action/meta are present (marketplace gate), redirect back to the
+  // originating page with ?resume so the page can re-trigger the action.
+  const redirectUrl = useMemo(() => {
+    const base = returnTo || dashboardForLane(lane)
+    if (action) {
+      const sep = base.includes('?') ? '&' : '?'
+      return `${base}${sep}resume=${action}${meta ? `&meta=${meta}` : ''}`
+    }
+    return base
+  }, [returnTo, lane, action, meta])
+
   const signInUrl = `${signInForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
   const laneLabel = lane === 'client' ? 'student / client' : lane
 

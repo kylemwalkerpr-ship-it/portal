@@ -21,15 +21,6 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return Response.json({ error: `Order is ${order.status}.` }, { status: 409 })
   }
 
-  const onboarded = Boolean(auth.consultant.stripe_account_id && auth.consultant.stripe_onboarding_complete)
-  const bypassed = Boolean(auth.consultant.stripe_bypass)
-  if (!onboarded && !bypassed) {
-    return Response.json(
-      { error: 'Connect a payout account before sending an offer.', requires_connect: true },
-      { status: 412 },
-    )
-  }
-
   const pricing = await calculateOfferPricing('consultant', parsed.price, body.discount_percent)
   const expiresInDays = Number.isFinite(Number(body.expires_in_days)) ? Number(body.expires_in_days) : 7
   const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()

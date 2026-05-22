@@ -1,5 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
-import { triggerConsultantPayout } from '@/lib/payouts'
+import { releaseEarningsForOrder } from '@/lib/earnings'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentConsultant()
@@ -24,7 +24,6 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     .single()
 
   if (error && /completed_at/i.test(error.message)) {
-    // Older schemas may not have completed_at — retry without it
     const retry = await auth.db
       .from('orders')
       .update({ status: 'completed', escrow_status: 'released' })
@@ -38,6 +37,10 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  const payout = await triggerConsultantPayout(id)
-  return Response.json({ order: data, payout })
+  let earningsReleased: any[] = []
+  try {
+    earningsReleased = await releaseEarningsForOrder(id)
+  } catch (e) { console.error('[consultant/orders/complete] releaseEarningsForOrder failed:', e) }
+
+  return Response.json({ order: data, earningsReleased })
 }

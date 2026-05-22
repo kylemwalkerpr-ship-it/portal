@@ -12,12 +12,6 @@ export interface TemplatePack {
   official_sources: string[]
   delivery_file: string
   product_type: string
-  stripe_product_id: string
-  stripe_price_id_usd: string
-  stripe_payment_link_id: string
-  stripe_payment_link_usd: string
-  stripe_price_id_cad: string
-  stripe_payment_link_cad: string
 }
 
 export const TEMPLATE_PACKS: TemplatePack[] = catalogue as TemplatePack[]
