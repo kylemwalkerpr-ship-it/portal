@@ -2120,7 +2120,7 @@ function StudentApp({ onLogout, userId, userName }) {
       if (from === 'cad' && to === 'usd') return value / rate;
       return value;
     };
-    const [payMethod, setPayMethod] = React.useState('wallet'); // 'wallet' | 'saved_card'
+    const [payMethod, setPayMethod] = React.useState('wallet'); // 'wallet' | 'saved_card' | 'new_card'
     const [savedCards, setSavedCards] = React.useState([]);
     const [cardsLoading, setCardsLoading] = React.useState(false);
     const [selectedCardId, setSelectedCardId] = React.useState('');
@@ -2129,7 +2129,10 @@ function StudentApp({ onLogout, userId, userName }) {
     const [payError, setPayError] = React.useState(null);
     const [acceptedTerms, setAcceptedTerms] = React.useState(false);
     const [acceptedRefundPolicy, setAcceptedRefundPolicy] = React.useState(false);
-    const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card';
+    const [newCardToken, setNewCardToken] = React.useState(null);
+    const [checkoutNmiReady, setCheckoutNmiReady] = React.useState(false);
+    const [checkoutNmiErr, setCheckoutNmiErr] = React.useState(null);
+    const requiresAck = payMethod === 'wallet' || payMethod === 'saved_card' || payMethod === 'new_card';
     const ackComplete = !requiresAck || (acceptedTerms && acceptedRefundPolicy);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     // Catalogue search + sort + recently-viewed (added in Section 10 polish)
@@ -2286,16 +2289,13 @@ function StudentApp({ onLogout, userId, userName }) {
         }
         setPaying(true); setPayError(null);
         try {
-          const res = await fetch('/api/checkout/wallet', {
+          const item = cartIsTemplate
+            ? { slug: cart.slug || cart.id, quantity: 1 }
+            : { serviceId: cart.id, quantity: 1 };
+          const res = await fetch('/api/wallet/debit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              title: cart.title,
-              amountCents,
-              ...(cartIsTemplate ? { templateId: cart.id, productType: 'template' } : { serviceId: cart.id, productType: 'service' }),
-              acceptedTerms: true,
-              acceptedRefundPolicy: true,
-            }),
+            body: JSON.stringify({ items: [item] }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
@@ -2320,20 +2320,19 @@ function StudentApp({ onLogout, userId, userName }) {
 
         setPaying(true); setPayError(null);
         try {
-          const res = await fetch('/api/checkout/order', {
+          const item = cartIsTemplate
+            ? { slug: cart.slug || cart.id, quantity: 1 }
+            : { serviceId: cart.id, quantity: 1 };
+          const res = await fetch('/api/payments/charge', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sourceType: cartIsTemplate ? 'template' : 'service',
-              sourceId: cart.id,
-              paymentMethod: 'saved_card',
               paymentMethodId: selectedCardId,
-              acceptedTerms: true,
-              acceptedRefundPolicy: true,
+              items: [item],
             }),
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Payment failed');
+          if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
@@ -2342,6 +2341,92 @@ function StudentApp({ onLogout, userId, userName }) {
         } catch (e) {
           setPayError(e.message);
         } finally { setPaying(false); }
+      };
+
+      const handleNewCardPay = async () => {
+        if (!newCardToken) {
+          setPayError('Tokenize your card first using the secure form above.');
+          return;
+        }
+        if (!ackComplete) {
+          setPayError('Please confirm the Terms of Service and Refund Policy before paying.');
+          return;
+        }
+        setPaying(true); setPayError(null);
+        try {
+          const item = cartIsTemplate
+            ? { slug: cart.slug || cart.id, quantity: 1 }
+            : { serviceId: cart.id, quantity: 1 };
+          const res = await fetch('/api/payments/charge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: newCardToken,
+              items: [item],
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
+
+          setShowCheckout(false); setCart(null); setOrderPlaced(true);
+          setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
+          refreshStudentData();
+          setTimeout(() => setOrderPlaced(false), 6000);
+        } catch (e) {
+          setPayError(e.message);
+        } finally { setPaying(false); }
+      };
+
+      const initCheckoutCollectJs = async () => {
+        if (checkoutNmiReady) return;
+        setCheckoutNmiErr(null);
+        if (typeof window === 'undefined') return;
+        const CollectJS = window.CollectJS;
+        if (!CollectJS) {
+          setCheckoutNmiErr('Payment tokenization library not available');
+          return;
+        }
+        try {
+          const cfgRes = await fetch('/api/payments/config');
+          const cfg = await cfgRes.json().catch(() => ({}));
+          if (!cfgRes.ok || !cfg.scriptUrl) {
+            setCheckoutNmiErr('Payment config unavailable');
+            return;
+          }
+          const scriptUrl = cfg.scriptUrl;
+          const loadScript = () => {
+            CollectJS.configure({
+              variant: 'inline',
+              fields: {
+                ccnumber: { placeholder: 'Card number', selector: '#nmi-checkout-card-number' },
+                ccexp: { placeholder: 'MM / YY', selector: '#nmi-checkout-card-expiry' },
+                cvv: { placeholder: 'CVV', selector: '#nmi-checkout-card-cvv' },
+              },
+              callback: (response) => {
+                if (response.token) {
+                  setNewCardToken(response.token);
+                  setCheckoutNmiErr(null);
+                } else {
+                  setCheckoutNmiErr(response.message || 'Card tokenization failed');
+                }
+              },
+            });
+            setCheckoutNmiReady(true);
+          };
+          if (document.querySelector(`script[src="${scriptUrl}"]`)) {
+            loadScript();
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = scriptUrl;
+          script.async = true;
+          script.dataset.tokenizationKey = cfg.tokenizationKey || '';
+          script.onload = loadScript;
+          script.onerror = () => setCheckoutNmiErr('Failed to load payment tokenization library');
+          document.body.appendChild(script);
+        } catch (err) {
+          setCheckoutNmiErr(err.message || 'Failed to initialise card fields');
+        }
       };
 
       return (
@@ -2440,6 +2525,40 @@ function StudentApp({ onLogout, userId, userName }) {
                 ))}
               </div>
             )}
+            {/* New card option */}
+            <div
+              onClick={() => { setPayMethod('new_card'); initCheckoutCollectJs(); }}
+              style={{
+                padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'new_card' ? C.cyan : C.border}`,
+                background: payMethod === 'new_card' ? `${C.cyan}10` : C.surface2,
+                cursor: 'pointer',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <span style={{ fontSize: '20px' }}>💳</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>Pay with New Card</div>
+                  <div style={{ fontSize: '12px', color: C.textMuted }}>Enter card details securely</div>
+                </div>
+              </div>
+              {payMethod === 'new_card' && <span style={{ color: C.cyan, fontWeight: 700 }}>✓</span>}
+            </div>
+            {payMethod === 'new_card' && (
+              <div style={{ margin: '-2px 0 10px 0' }}>
+                {checkoutNmiErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '10px' }}>⚠ {checkoutNmiErr}</div>}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px' }}>
+                  <div id="nmi-checkout-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <div id="nmi-checkout-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+                    <div id="nmi-checkout-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
+                  </div>
+                </div>
+                <Btn variant="secondary" size="sm" onClick={() => { if (!checkoutNmiReady) { setCheckoutNmiErr('Payment fields are not ready — please wait a moment.'); return; } window.CollectJS.startPaymentRequest(); }} disabled={!checkoutNmiReady}>
+                  {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
+                </Btn>
+              </div>
+            )}
 
           </Card>
           {/* Order summary */}
@@ -2502,9 +2621,13 @@ function StudentApp({ onLogout, userId, userName }) {
             <Btn variant="primary" fullWidth size="lg" onClick={handleWalletPay} disabled={paying || !canUseWallet || !ackComplete}>
               {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} from Wallet`}
             </Btn>
-          ) : (
+          ) : payMethod === 'saved_card' ? (
             <Btn variant="primary" fullWidth size="lg" onClick={handleSavedCardPay} disabled={paying || !canUseSavedCard || !ackComplete}>
               {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
+            </Btn>
+          ) : (
+            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying || !newCardToken || !ackComplete}>
+              {paying ? 'Processing…' : !ackComplete ? 'Accept Terms & Refund Policy to continue' : newCardToken ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card` : 'Tokenize your card first'}
             </Btn>
           )}
           <p style={{ fontSize: '12px', color: C.textDim, textAlign: 'center', marginTop: '12px' }}>

@@ -24,6 +24,9 @@ import { OfferPaymentModal } from './OfferPaymentModal'
 
 const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
 const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
+const CHAT_BG = '#ECE7DF'
+const BUBBLE_MINE = '#1B2D4F'
+const BUBBLE_THEIRS = '#FFFFFF'
 const SERIF=`'Cormorant Garamond', Georgia, serif`
 const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
@@ -44,6 +47,21 @@ const fmtRelative = s => {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 const fmtFullTime = s => s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+const sameDay = (a, b) => {
+  if (!a || !b) return false
+  const da = new Date(a), db = new Date(b)
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+}
+const dateLabel = s => {
+  if (!s) return ''
+  const d = new Date(s)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (sameDay(d, now)) return 'Today'
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
+  if (sameDay(d, yesterday)) return 'Yesterday'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 const FILTER_TABS = [
   { id: 'all',      label: 'All' },
@@ -103,7 +121,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       p.set('page_size', String(PAGE_SIZE))
       const r = await fetch(`/api/messages/conversations?${p}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       setConversations(d.conversations || [])
       setCounts(d.counts || {})
       setHasMore(!!d.has_more)
@@ -139,7 +157,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     try {
       const r = await fetch(`/api/messages/conversations/${activeId}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       setActiveConv(d.conversation || null)
       setActiveMsgs(d.messages || [])
       setActiveSidebar(d.sidebar || { orders: [], offers: [] })
@@ -192,7 +210,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         headers: { 'Content-Type': 'application/json' },
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       await loadThread(true); await loadList(true)
     } catch (e) {
       setThreadError(e.message || 'Could not decline offer.')
@@ -210,7 +228,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         headers: { 'Content-Type': 'application/json' },
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+      if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       await loadThread(true); await loadList(true)
     } catch (e) {
       setThreadError(e.message || 'Could not withdraw offer.')
@@ -230,7 +248,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         body: JSON.stringify({ body: text }),
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || 'Send failed')
+      if (!r.ok) throw new Error(d?.error?.message || 'Send failed')
       setDraft('')
       await loadThread(true)
       await loadList(true)
@@ -369,26 +387,46 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
               {threadError && <div style={{ padding: '8px 18px', background: `${RED}10`, color: RED, fontSize: 12 }}>{threadError}</div>}
 
               {/* Thread */}
-              <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
+              <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0, background: CHAT_BG }}>
                 {threadLoading && activeMsgs.length === 0 && <div style={{ color: MUTED, fontSize: 12 }}>Loading thread…</div>}
                 {!threadLoading && activeMsgs.length === 0 && (
-                  <div style={{ background: SURFACE2, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: 24, textAlign: 'center' }}>
+                  <div style={{ background: SURFACE2, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: 24, textAlign: 'center', margin: 'auto' }}>
                     <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
                     <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: TEXT, marginBottom: 4 }}>No messages yet</div>
                     <div style={{ fontSize: 12, color: MUTED }}>Type below to start the conversation.</div>
                   </div>
                 )}
-                {activeMsgs.map(m => (
-                  <ThreadMessage
-                    key={m.id}
-                    m={m}
-                    counterpartId={activeConv?.counterpart?.id}
-                    offerBusy={offerBusyId === m.offer?.id}
-                    onAccept={handleOfferAccept}
-                    onDecline={handleOfferDecline}
-                    onWithdraw={handleOfferWithdraw}
-                  />
-                ))}
+                {activeMsgs.map((m, i) => {
+                  const prev = activeMsgs[i - 1]
+                  const next = activeMsgs[i + 1]
+                  const mine = m.sender_id !== activeConv?.counterpart?.id
+                  const prevMine = prev ? prev.sender_id !== activeConv?.counterpart?.id : null
+                  const nextMine = next ? next.sender_id !== activeConv?.counterpart?.id : null
+                  const isFirstInGroup = prevMine !== mine
+                  const isLastInGroup = nextMine !== mine
+                  const showDate = !prev || !sameDay(m.created_at, prev.created_at)
+                  return (
+                    <React.Fragment key={m.id}>
+                      {showDate && (
+                        <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
+                            {dateLabel(m.created_at)}
+                          </span>
+                        </div>
+                      )}
+                      <ThreadMessage
+                        m={m}
+                        counterpartId={activeConv?.counterpart?.id}
+                        offerBusy={offerBusyId === m.offer?.id}
+                        onAccept={handleOfferAccept}
+                        onDecline={handleOfferDecline}
+                        onWithdraw={handleOfferWithdraw}
+                        isFirstInGroup={isFirstInGroup}
+                        isLastInGroup={isLastInGroup}
+                      />
+                    </React.Fragment>
+                  )
+                })}
               </div>
 
               {/* Composer */}
@@ -401,7 +439,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                   />
                 </div>
               )}
-              <div style={{ padding: '12px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE2, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ padding: '10px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 {canSendOffer && (
                   <button
                     type="button"
@@ -415,17 +453,27 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                     }}
                   >💰 Offer</button>
                 )}
-                <textarea
+                <AutoGrowInput
                   value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                  placeholder="Type a message…"
-                  rows={2}
+                  onChange={setDraft}
+                  onSubmit={send}
                   disabled={sending}
-                  style={{ flex: 1, padding: '8px 12px', background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8, color: TEXT, fontSize: 13, fontFamily: SANS, outline: 'none', resize: 'none' }}
+                  placeholder="Type a message…"
                 />
-                <button onClick={send} disabled={sending || !draft.trim()} style={{ padding: '8px 16px', background: CYAN, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: sending || !draft.trim() ? 'not-allowed' : 'pointer', opacity: sending || !draft.trim() ? 0.6 : 1 }}>
-                  {sending ? 'Sending…' : 'Send'}
+                <button
+                  onClick={send}
+                  disabled={sending || !draft.trim()}
+                  title="Send"
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', background: CYAN, color: '#fff',
+                    border: 'none', fontSize: 16, fontWeight: 700,
+                    cursor: sending || !draft.trim() ? 'not-allowed' : 'pointer',
+                    opacity: sending || !draft.trim() ? 0.5 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  →
                 </button>
               </div>
             </>
@@ -444,16 +492,15 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   )
 }
 
-function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWithdraw }) {
+function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWithdraw, isFirstInGroup, isLastInGroup }) {
   const mine = m.sender_id !== counterpartId
   const isOffer = m.type === 'offer' && m.offer && m.offer.id
 
   if (isOffer) {
-    // Sender of the offer is the "seller"; the other side is the "buyer".
     const viewerRole = mine ? 'seller' : 'buyer'
     return (
-      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row' }}>
-        <div style={{ maxWidth: '70%', opacity: offerBusy ? 0.6 : 1, pointerEvents: offerBusy ? 'none' : 'auto' }}>
+      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
+        <div style={{ maxWidth: '75%', opacity: offerBusy ? 0.6 : 1, pointerEvents: offerBusy ? 'none' : 'auto' }}>
           <MessageOfferCard
             offer={m.offer}
             viewerRole={viewerRole}
@@ -469,20 +516,59 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
     )
   }
 
+  const bubbleRadius = mine
+    ? `${isFirstInGroup ? 14 : 4}px ${isFirstInGroup ? 4 : 14}px 14px ${isLastInGroup ? 14 : 4}px`
+    : `${isFirstInGroup ? 4 : 14}px ${isFirstInGroup ? 14 : 4}px ${isLastInGroup ? 4 : 14}px 14px`
+
   return (
-    <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row' }}>
-      <div style={{ maxWidth: '70%' }}>
+    <div style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
+      <div style={{ maxWidth: '75%', position: 'relative' }}>
         <div style={{
-          padding: '10px 14px', borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-          background: mine ? `${CYAN}15` : SURFACE2, color: TEXT,
-          border: `1px solid ${mine ? `${CYAN}33` : BORDER}`,
+          padding: '8px 12px', borderRadius: bubbleRadius, fontSize: 14, lineHeight: 1.45,
+          background: mine ? BUBBLE_MINE : BUBBLE_THEIRS,
+          color: mine ? '#fff' : TEXT,
+          border: mine ? 'none' : `1px solid ${BORDER}`,
           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        }}>{m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}</div>
-        <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
-          {fmtFullTime(m.created_at)}
+          boxShadow: mine ? '0 1px 2px rgba(0,0,0,0.12)' : '0 1px 2px rgba(0,0,0,0.06)',
+        }}>
+          {m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
+          {isLastInGroup && (
+            <span style={{
+              fontSize: 10, opacity: mine ? 0.65 : 0.55, marginLeft: 8,
+              fontFamily: MONO, whiteSpace: 'nowrap', verticalAlign: 'bottom',
+            }}>
+              {fmtFullTime(m.created_at)}
+            </span>
+          )}
         </div>
       </div>
     </div>
+  )
+}
+
+function AutoGrowInput({ value, onChange, onSubmit, disabled, placeholder }) {
+  const ref = React.useRef(null)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() } }}
+      placeholder={placeholder}
+      rows={1}
+      disabled={disabled}
+      style={{
+        flex: 1, padding: '10px 14px', background: SURFACE2, border: `1px solid ${BORDER}`,
+        borderRadius: 18, color: TEXT, fontSize: 14, fontFamily: SANS, outline: 'none',
+        resize: 'none', overflowY: 'auto', lineHeight: 1.4, minHeight: 40, maxHeight: 120,
+      }}
+    />
   )
 }
 

@@ -43,44 +43,46 @@ function formatMoney(cents: number, currency = 'USD'): string {
   }
 }
 
+function extractErrorMessage(json: any, status: number): string {
+  const msg = json?.error?.message || json?.error || `Request failed (${status})`
+  return typeof msg === 'string' ? msg : 'Something went wrong.'
+}
+
 export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPaymentModalProps) {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [meta, setMeta] = useState<{ title: string; currency: string; breakdown?: Breakdown } | null>(null)
   const [walletCents, setWalletCents] = useState<number | null>(null)
+  const [requiredCents, setRequiredCents] = useState<number | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setLoading(true); setError(null); setMeta(null); setWalletCents(null)
+    setLoading(true); setError(null); setMeta(null); setWalletCents(null); setRequiredCents(null)
 
     let cancelled = false
     ;(async () => {
       try {
-        const [acceptRes, walletRes] = await Promise.all([
-          fetch(`/api/offers/${offerId}/accept`, {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-          }),
-          fetch('/api/wallet/balance', { credentials: 'same-origin' }),
-        ])
-        const acceptJson = await acceptRes.json().catch(() => ({}))
-        const walletJson = await walletRes.json().catch(() => ({}))
+        const res = await fetch(`/api/offers/${offerId}/accept`, {
+          method: 'GET', credentials: 'same-origin',
+        })
+        const json = await res.json().catch(() => ({}))
         if (cancelled) return
 
-        if (!acceptRes.ok) {
-          setError(acceptJson?.error || acceptJson?.data?.error || 'Could not load offer.')
+        if (!res.ok) {
+          setError(extractErrorMessage(json, res.status))
           setLoading(false)
           return
         }
 
-        const payload = acceptJson?.data ?? acceptJson
+        const payload = json?.data ?? json
         setMeta({
           title: payload?.offer?.title || 'Custom offer',
           currency: payload?.offer?.currency || 'USD',
           breakdown: payload?.breakdown,
         })
-        setWalletCents(Number(walletJson?.balanceCents ?? walletJson?.available ?? 0))
+        setWalletCents(Number(payload?.balanceCents ?? 0))
+        setRequiredCents(Number(payload?.breakdown?.total ?? 0))
       } catch (e: any) {
         if (!cancelled) setError(e?.message || 'Could not load payment details.')
       } finally {
@@ -95,24 +97,19 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
     if (!meta?.breakdown || submitting) return
     setSubmitting(true); setError(null)
     try {
-      const res = await fetch('/api/checkout/order', {
+      const res = await fetch(`/api/offers/${offerId}/accept`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceType: 'unified_offer',
-          sourceId: offerId,
-          paymentMethod: 'wallet',
-          acceptedTerms: true,
-          acceptedRefundPolicy: true,
-        }),
+        body: JSON.stringify({}),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        if (res.status === 402 && json?.balanceCents !== undefined) {
-          setWalletCents(json.balanceCents)
+        if (res.status === 402) {
+          setWalletCents(Number(json?.error?.balanceCents ?? json?.balanceCents ?? walletCents ?? 0))
+          setRequiredCents(Number(json?.error?.requiredCents ?? json?.requiredCents ?? requiredCents ?? 0))
         }
-        setError(json?.error || `Payment failed (${res.status})`)
+        setError(extractErrorMessage(json, res.status))
         setSubmitting(false)
         return
       }
@@ -181,7 +178,14 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
             </div>
 
             {error && (
-              <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: RED, marginBottom: 14 }}>{error}</div>
+              <div style={{ background: 'rgba(139,26,26,0.08)', border: `1px solid ${RED}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: RED, marginBottom: 14 }}>
+                {error}
+                {requiredCents !== null && walletCents !== null && walletCents < requiredCents && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>
+                    Required: {formatMoney(requiredCents, meta?.currency || 'USD')} · Available: {formatMoney(walletCents, meta?.currency || 'USD')}
+                  </div>
+                )}
+              </div>
             )}
 
             {canPay ? (
@@ -196,6 +200,11 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#92400e' }}>
                   Insufficient wallet balance. Top up your wallet first.
+                  {requiredCents !== null && walletCents !== null && (
+                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>
+                      Required: {formatMoney(requiredCents, meta?.currency || 'USD')} · Available: {formatMoney(walletCents, meta?.currency || 'USD')}
+                    </div>
+                  )}
                 </div>
                 <a
                   href="/student?goto=billing"

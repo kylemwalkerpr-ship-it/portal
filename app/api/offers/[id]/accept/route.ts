@@ -133,6 +133,47 @@ async function handler(_req: Request, context: { params: Promise<{ id: string }>
   })
 }
 
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+  if (auth.role !== 'client') return fail('Only students can view offer details.', 403)
+
+  const { id } = await context.params
+  const { data: offer, error } = await auth.db
+    .from('offers')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !offer) return fail(error?.message || 'Offer not found.', 404)
+  if (offer.recipient_id !== auth.profileId) return fail('Forbidden.', 403)
+  if (offer.status !== 'pending') return fail('Only pending offers can be accepted.', 409)
+  if (new Date(offer.expires_at).getTime() <= Date.now()) {
+    await auth.db.from('offers').update({ status: 'expired' }).eq('id', id)
+    return fail('Offer has expired.', 409)
+  }
+
+  const settings = await getPaymentSettingsForApi()
+  const amount = Number(offer.discounted_price || offer.price)
+  const platformFee = computePlatformFeeCents(amount, offer.sender_type, settings)
+  const total = offer.sender_type === 'attorney' ? amount + platformFee : amount
+
+  const wallet = await getOrCreateWallet(auth.profileId)
+
+  return ok({
+    offer,
+    breakdown: {
+      subtotal: amount,
+      platform_fee: platformFee,
+      tax: 0,
+      total,
+      display_subtotal: centsToDollars(amount),
+      display_total: centsToDollars(total),
+    },
+    balanceCents: wallet.balance_cents,
+  })
+}
+
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
   return handler(req, context)
 }
