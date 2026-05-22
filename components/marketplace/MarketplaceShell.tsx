@@ -162,7 +162,7 @@ function MessagesPanel({ role }: { role: Role }) {
       {!loading && !error && chats.length > 0 && (
         <p style={{ fontSize: '12px', color: '#9097A8', textAlign: 'center', margin: '8px 0 0' }}>
           For full messaging, go to your{' '}
-          <Link href="/dashboard?goto=messages" style={{ color: '#1B2D4F', fontWeight: 600, textDecoration: 'none' }}>Dashboard Messages →</Link>
+          <Link href="https://portal.yousafeconsultancy.com/dashboard?goto=messages" style={{ color: '#1B2D4F', fontWeight: 600, textDecoration: 'none' }}>Dashboard Messages →</Link>
         </p>
       )}
     </PanelShell>
@@ -240,7 +240,7 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
 
         {/* Brand — clicking takes the user back to their dashboard */}
         <Link
-          href="/dashboard"
+          href="https://portal.yousafeconsultancy.com/dashboard"
           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', borderRight: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', flexShrink: 0, height: '48px' }}
         >
           <div style={{ textAlign: 'left' as const }}>

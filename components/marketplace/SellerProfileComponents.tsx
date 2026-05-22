@@ -121,7 +121,7 @@ export function SellerProfileHeader({ seller, isOwnProfile = false, onContact }:
           {isOwnProfile ? (
             // /dashboard/profile routes each role to its real editor
             // (attorney → My Profile tab, consultant → Settings).
-            <Link href="/dashboard/profile">
+            <Link href="https://portal.yousafeconsultancy.com/dashboard/profile">
               <Btn variant="primary" size="md">Edit Profile</Btn>
             </Link>
           ) : (

@@ -290,12 +290,12 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
           </span>
           {conversationId && (
             <a
-              href={`/dashboard?page=messages&thread=${conversationId}`}
+              href={`https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`}
               style={{ color: CYAN, fontWeight: 700, fontFamily: SANS, fontSize: 11, textDecoration: 'none' }}
               onClick={(e) => {
                 // Use window.location so the dashboard handles the page route directly
                 e.preventDefault()
-                window.location.href = `/dashboard?page=messages&thread=${conversationId}`
+                window.location.href = `https://portal.yousafeconsultancy.com/dashboard?page=messages&thread=${conversationId}`
               }}
             >
               Open in Messages →

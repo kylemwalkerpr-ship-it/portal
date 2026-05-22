@@ -2344,11 +2344,6 @@ function StudentApp({ onLogout, userId, userName }) {
         if (checkoutNmiReady) return;
         setCheckoutNmiErr(null);
         if (typeof window === 'undefined') return;
-        const CollectJS = window.CollectJS;
-        if (!CollectJS) {
-          setCheckoutNmiErr('Payment tokenization library not available');
-          return;
-        }
         try {
           const cfgRes = await fetch('/api/payments/config');
           const cfg = await cfgRes.json().catch(() => ({}));
@@ -2357,7 +2352,12 @@ function StudentApp({ onLogout, userId, userName }) {
             return;
           }
           const scriptUrl = cfg.scriptUrl;
-          const loadScript = () => {
+          const configure = () => {
+            const CollectJS = window.CollectJS;
+            if (!CollectJS) {
+              setCheckoutNmiErr('Payment tokenization library not available');
+              return;
+            }
             CollectJS.configure({
               variant: 'inline',
               fields: {
@@ -2376,15 +2376,15 @@ function StudentApp({ onLogout, userId, userName }) {
             });
             setCheckoutNmiReady(true);
           };
-          if (document.querySelector(`script[src="${scriptUrl}"]`)) {
-            loadScript();
+          if (window.CollectJS || document.querySelector(`script[src="${scriptUrl}"]`)) {
+            configure();
             return;
           }
           const script = document.createElement('script');
           script.src = scriptUrl;
           script.async = true;
           script.dataset.tokenizationKey = cfg.tokenizationKey || '';
-          script.onload = loadScript;
+          script.onload = configure;
           script.onerror = () => setCheckoutNmiErr('Failed to load payment tokenization library');
           document.body.appendChild(script);
         } catch (err) {

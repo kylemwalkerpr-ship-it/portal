@@ -51,7 +51,7 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
 
   const meta = encodeMeta(metadata)
   const returnUrl = encodeURIComponent(returnTo)
-  const signUpUrl = `/sign-up/student?return_to=${returnUrl}&action=${intent}${meta ? `&meta=${meta}` : ''}`
+  const signUpUrl = `https://portal.yousafeconsultancy.com/sign-up/student?return_to=${returnUrl}&action=${intent}${meta ? `&meta=${meta}` : ''}`
 
   return (
     <div
@@ -121,7 +121,7 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
 
         <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '13px', color: C.textMuted }}>
           Already have an account?{' '}
-          <a href={`/sign-in/student?return_to=${returnUrl}`} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'none' }}>
+          <a href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${returnUrl}`} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'none' }}>
             Sign in
           </a>
         </div>

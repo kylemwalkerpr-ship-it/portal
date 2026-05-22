@@ -213,7 +213,7 @@ export function MarketplacePage() {
               Find verified attorneys, consultants, and professionals for your journey
             </p>
           </div>
-          <Link href="/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>
+          <Link href="https://portal.yousafeconsultancy.com/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>
             Dashboard
           </Link>
         </div>
@@ -244,7 +244,7 @@ export function MarketplacePage() {
                   Start from dashboard context and match with attorneys or consultants.
                 </p>
               </div>
-              <Link href="/dashboard" style={{ marginTop: 'auto' }}>
+              <Link href="https://portal.yousafeconsultancy.com/dashboard" style={{ marginTop: 'auto' }}>
                 <Btn variant="primary">Open dashboard</Btn>
               </Link>
             </Card>
@@ -257,7 +257,7 @@ export function MarketplacePage() {
                   Attorneys and consultants can package services into clear tiers.
                 </p>
               </div>
-              <Link href="/dashboard/gigs" style={{ marginTop: 'auto' }}>
+              <Link href="https://portal.yousafeconsultancy.com/dashboard/gigs" style={{ marginTop: 'auto' }}>
                 <Btn variant="secondary">Manage gigs</Btn>
               </Link>
             </Card>

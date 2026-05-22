@@ -98,14 +98,14 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
     try {
       const res = await fetch('/api/profile', { credentials: 'same-origin' })
       if (!res.ok) {
-        window.location.href = '/sign-in'
+        window.location.href = 'https://portal.yousafeconsultancy.com/sign-in'
         return
       }
       const profile = await res.json()
       const currentUserId = profile?.clerk_user_id || profile?.id
 
       if (!currentUserId) {
-        window.location.href = '/sign-in'
+        window.location.href = 'https://portal.yousafeconsultancy.com/sign-in'
         return
       }
 

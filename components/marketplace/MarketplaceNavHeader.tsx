@@ -24,44 +24,44 @@ const ROLE_NAV: Record<string, RoleConfig> = {
   client: {
     color: '#1B2D4F',
     links: [
-      { icon: '⬛', label: 'Dashboard',        href: '/dashboard' },
+      { icon: '⬛', label: 'Dashboard',        href: 'https://portal.yousafeconsultancy.com/dashboard' },
       { icon: '🏬', label: 'Marketplace',      href: '/marketplace' },
-      { icon: '📦', label: 'My Orders',        href: '/dashboard?goto=orders' },
-      { icon: '⚖️', label: 'Find Attorney',    href: '/dashboard?goto=attorneys' },
-      { icon: '📥', label: 'Inquiries',        href: '/dashboard?goto=inquiries' },
-      { icon: '💬', label: 'Messages',         href: '/dashboard?goto=messages' },
-      { icon: '📋', label: 'Documents',        href: '/dashboard?goto=documents' },
-      { icon: '💳', label: 'Billing',          href: '/dashboard?goto=billing' },
+      { icon: '📦', label: 'My Orders',        href: 'https://portal.yousafeconsultancy.com/dashboard?goto=orders' },
+      { icon: '⚖️', label: 'Find Attorney',    href: 'https://portal.yousafeconsultancy.com/dashboard?goto=attorneys' },
+      { icon: '📥', label: 'Inquiries',        href: 'https://portal.yousafeconsultancy.com/dashboard?goto=inquiries' },
+      { icon: '💬', label: 'Messages',         href: 'https://portal.yousafeconsultancy.com/dashboard?goto=messages' },
+      { icon: '📋', label: 'Documents',        href: 'https://portal.yousafeconsultancy.com/dashboard?goto=documents' },
+      { icon: '💳', label: 'Billing',          href: 'https://portal.yousafeconsultancy.com/dashboard?goto=billing' },
     ],
   },
   attorney: {
     color: '#1B2D4F',
     links: [
-      { icon: '⬛', label: 'Overview',         href: '/dashboard' },
-      { icon: '📥', label: 'Inquiry Queue',    href: '/dashboard?goto=queue' },
-      { icon: '📂', label: 'My Inquiries',     href: '/dashboard?goto=mine' },
-      { icon: '📦', label: 'Active Orders',    href: '/dashboard?goto=orders' },
-      { icon: '💬', label: 'Messages',         href: '/dashboard?goto=messages' },
-      { icon: '💼', label: 'Gigs',             href: '/dashboard/gigs' },
-      { icon: '💰', label: 'Earnings',         href: '/dashboard?goto=earnings' },
+      { icon: '⬛', label: 'Overview',         href: 'https://portal.yousafeconsultancy.com/dashboard' },
+      { icon: '📥', label: 'Inquiry Queue',    href: 'https://portal.yousafeconsultancy.com/dashboard?goto=queue' },
+      { icon: '📂', label: 'My Inquiries',     href: 'https://portal.yousafeconsultancy.com/dashboard?goto=mine' },
+      { icon: '📦', label: 'Active Orders',    href: 'https://portal.yousafeconsultancy.com/dashboard?goto=orders' },
+      { icon: '💬', label: 'Messages',         href: 'https://portal.yousafeconsultancy.com/dashboard?goto=messages' },
+      { icon: '💼', label: 'Gigs',             href: 'https://portal.yousafeconsultancy.com/dashboard/gigs' },
+      { icon: '💰', label: 'Earnings',         href: 'https://portal.yousafeconsultancy.com/dashboard?goto=earnings' },
       { icon: '🏬', label: 'Marketplace',      href: '/marketplace' },
     ],
   },
   consultant: {
     color: '#1B2D4F',
     links: [
-      { icon: '⬛', label: 'Dashboard',        href: '/dashboard' },
-      { icon: '📦', label: 'Orders',           href: '/dashboard?goto=orders' },
-      { icon: '💬', label: 'Messages',         href: '/dashboard?goto=messages' },
-      { icon: '💼', label: 'Gigs',             href: '/dashboard/gigs' },
-      { icon: '💰', label: 'Earnings',         href: '/dashboard?goto=earnings' },
+      { icon: '⬛', label: 'Dashboard',        href: 'https://portal.yousafeconsultancy.com/dashboard' },
+      { icon: '📦', label: 'Orders',           href: 'https://portal.yousafeconsultancy.com/dashboard?goto=orders' },
+      { icon: '💬', label: 'Messages',         href: 'https://portal.yousafeconsultancy.com/dashboard?goto=messages' },
+      { icon: '💼', label: 'Gigs',             href: 'https://portal.yousafeconsultancy.com/dashboard/gigs' },
+      { icon: '💰', label: 'Earnings',         href: 'https://portal.yousafeconsultancy.com/dashboard?goto=earnings' },
       { icon: '🏬', label: 'Marketplace',      href: '/marketplace' },
     ],
   },
   admin: {
     color: '#1B2D4F',
     links: [
-      { icon: '⬛', label: 'Admin Dashboard',  href: '/dashboard' },
+      { icon: '⬛', label: 'Admin Dashboard',  href: 'https://portal.yousafeconsultancy.com/dashboard' },
       { icon: '🏬', label: 'Marketplace',      href: '/marketplace' },
     ],
   },
@@ -156,7 +156,7 @@ export default function MarketplaceNavHeader() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
             <CartIcon />
             <Link
-              href={`/sign-in?return_to=${encodeURIComponent(returnTo)}`}
+              href={`https://portal.yousafeconsultancy.com/sign-in?return_to=${encodeURIComponent(returnTo)}`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 padding: '6px 12px', borderRadius: '5px',
@@ -170,7 +170,7 @@ export default function MarketplaceNavHeader() {
               Sign In
             </Link>
             <Link
-              href={`/sign-up/student?return_to=${encodeURIComponent(returnTo)}`}
+              href={`https://portal.yousafeconsultancy.com/sign-up/student?return_to=${encodeURIComponent(returnTo)}`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
                 padding: '6px 12px', borderRadius: '5px',
@@ -215,7 +215,7 @@ export default function MarketplaceNavHeader() {
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'stretch', gap: 0, overflowX: 'auto' }}>
 
         {/* Brand */}
-        <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', flexShrink: 0 }}>
+        <Link href="https://portal.yousafeconsultancy.com/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: serif, fontSize: '15px', fontWeight: 600, color: '#F7F5F0', letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
             <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.38)', letterSpacing: '0.14em', textTransform: 'uppercase', marginTop: '1px', whiteSpace: 'nowrap' }}>
@@ -260,7 +260,7 @@ export default function MarketplaceNavHeader() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
           <CartIcon />
           <Link
-            href="/dashboard"
+            href="https://portal.yousafeconsultancy.com/dashboard"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '6px 12px', borderRadius: '5px',
