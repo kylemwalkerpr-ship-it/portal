@@ -3,6 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { CartIcon } from '@/components/cart/CartIcon'
 
 interface NavLink {
   icon: string
@@ -157,8 +158,9 @@ export default function MarketplaceNavHeader() {
           })}
         </nav>
 
-        {/* Right side: back to dashboard pill */}
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+        {/* Right side: cart + back to dashboard pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '12px', borderLeft: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <CartIcon />
           <Link
             href="/dashboard"
             style={{

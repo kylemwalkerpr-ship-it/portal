@@ -514,7 +514,72 @@ export function PublicMarketplaceLanding() {
         </div>
       </section>
 
-      {/* 6. FAQ */}
+      {/* 6. Self-serve Templates */}
+      <section
+        style={{
+          padding: '72px 24px',
+          borderTop: `1px solid ${C.border}`,
+        }}
+      >
+        <div style={{ maxWidth: '1080px', margin: '0 auto' }}>
+          <div
+            style={{
+              color: C.textMuted,
+              fontSize: '12px',
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+              marginBottom: '14px',
+            }}
+          >
+            Self-serve document template packs
+          </div>
+          <h2
+            style={{
+              fontFamily: SERIF,
+              fontSize: 'clamp(28px, 3.2vw, 40px)',
+              lineHeight: 1.15,
+              letterSpacing: '-0.012em',
+              color: C.text,
+              margin: '0 0 16px',
+              fontWeight: 500,
+              maxWidth: '720px',
+            }}
+          >
+            Prepare your documents at your own pace
+          </h2>
+          <p
+            style={{
+              color: C.textMuted,
+              fontSize: '16px',
+              lineHeight: 1.6,
+              maxWidth: '640px',
+              margin: '0 0 32px',
+            }}
+          >
+            Digital worksheets, checklists, and letter templates for US and Canada student visas, work permits, and visitor visas. Buy once, use immediately.
+          </p>
+          <a
+            href="/marketplace/templates"
+            style={{
+              background: C.text,
+              color: '#fff',
+              borderRadius: '999px',
+              padding: '14px 28px',
+              fontSize: '15px',
+              fontWeight: 600,
+              textDecoration: 'none',
+              fontFamily: SANS,
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            Browse template packs -&gt;
+          </a>
+        </div>
+      </section>
+
+      {/* 7. FAQ */}
       <section
         style={{
           padding: '72px 24px',
