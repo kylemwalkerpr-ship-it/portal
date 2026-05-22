@@ -34,9 +34,6 @@ NMI_GATEWAY_HOST = "paykings.transactiongateway.com"
 # no card fields on our page). 'inline' for embedded iframe fields.
 NMI_COLLECT_VARIANT = "lightbox"
 
-# Stripe secrets have been removed from the platform.
-# Claude will run: wrangler secret delete STRIPE_SECRET_KEY && wrangler secret delete STRIPE_WEBHOOK_SECRET
-
 # Resend transactional email key. Used for attorney application decision emails.
 # Set with: npx wrangler secret put RESEND_API_KEY
 # Sender domain (yousafeconsultancy.com) is already verified in Resend.
