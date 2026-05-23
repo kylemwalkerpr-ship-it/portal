@@ -171,6 +171,8 @@ export async function POST(req: Request) {
   const status = 'draft' // new gigs always start as draft; use /publish to activate
   const category = String(body.category || body.subcategory || '').trim() || null
   const subcategory = String(body.subcategory || '').trim() || null
+  const rawJurisdiction = String(body.jurisdiction || '').trim().toLowerCase()
+  const jurisdiction = ['us', 'uk', 'ca'].includes(rawJurisdiction) ? rawJurisdiction : null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
 
   const insertPayload: Record<string, any> = {
@@ -179,6 +181,7 @@ export async function POST(req: Request) {
     title,
     category,
     subcategory,
+    jurisdiction,
     tags: Array.isArray(body.tags) ? body.tags.slice(0, 5) : [],
     pitch: body.pitch || body.tagline || '',
     tagline: body.tagline || body.pitch || '',

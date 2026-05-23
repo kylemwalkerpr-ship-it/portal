@@ -51,6 +51,11 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   // subcategory: required
   if (!gig.subcategory) errors.subcategory = 'Subcategory is required.'
 
+  // jurisdiction: required (must be one of us/uk/ca)
+  if (!['us', 'uk', 'ca'].includes(String(gig.jurisdiction || '').toLowerCase())) {
+    errors.jurisdiction = 'Pick the jurisdiction this brief is licensed to serve (US, UK, or CA).'
+  }
+
   // tags: 3–5 items
   const tags = Array.isArray(gig.tags) ? gig.tags : []
   if (tags.length < 3 || tags.length > 5) {

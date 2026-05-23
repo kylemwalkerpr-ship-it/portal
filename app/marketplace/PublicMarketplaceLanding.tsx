@@ -6,9 +6,10 @@ import {
   normalizeCategory,
 } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { EstateFooter } from '@/components/EstateFooter'
+import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { CountryTabs, CountryPicker } from '@/components/marketplace/CountryTabs'
 import { CategoriesMenu } from '@/components/marketplace/CategoriesMenu'
+import { HelpDropdown } from '@/components/marketplace/HelpDropdown'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -225,7 +226,7 @@ async function loadLandingData(): Promise<LandingData> {
   const inventoryP = db
     .from('gigs')
     .select(
-      'id, slug, title, category, provider_type, avg_rating, review_count, rank_score, order_count, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
+      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
@@ -250,6 +251,12 @@ async function loadLandingData(): Promise<LandingData> {
       .map((t: any) => ({ price: Number(t.price), delivery_days: t.delivery_days != null ? Number(t.delivery_days) : null }))
     const cheapest = activeTiers.sort((a: any, b: any) => a.price - b.price)[0]
     const country = row.provider?.country ?? null
+    // Gig-level jurisdiction wins over provider.country — the column is the
+    // contract going forward, profile country is only the legacy fallback
+    // until the backfill catches every row.
+    const gigJx: JxCode | null = ['us', 'uk', 'ca'].includes(String(row.jurisdiction || '').toLowerCase())
+      ? (String(row.jurisdiction).toLowerCase() as JxCode)
+      : null
     return {
       id: row.id,
       slug: row.slug,
@@ -264,7 +271,7 @@ async function loadLandingData(): Promise<LandingData> {
       delivery_days: cheapest ? cheapest.delivery_days : null,
       providerName: row.provider?.full_name ?? 'YouSafe provider',
       providerCountry: country,
-      jx: resolveJurisdiction(country),
+      jx: gigJx ?? resolveJurisdiction(country),
       tiers: activeTiers,
     }
   })
@@ -683,13 +690,20 @@ const CSS = `
 .cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: #fff; letter-spacing: -0.01em; }
 .cw-market .seller-card .stat span { display: block; margin-top: 4px; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.72); }
 
-.cw-market .faq-section { padding: 28px 0 32px; border-top: 1px solid ${T.rule}; }
-.cw-market .faq-grid { display: grid; gap: 8px; max-width: 820px; }
-.cw-market .faq-item { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 10px; padding: 12px 16px; }
-.cw-market .faq-item summary { font-family: ${F.display}; font-size: 15px; font-weight: 500; color: ${T.ink}; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-.cw-market .faq-item summary::-webkit-details-marker { display: none; }
-.cw-market .faq-item summary .sym { font-family: ${F.ui}; font-size: 18px; color: ${T.inkSoft}; font-weight: 300; line-height: 1; flex-shrink: 0; }
-.cw-market .faq-item p { color: ${T.inkMid}; font-size: 13px; line-height: 1.55; margin: 8px 0 0; }
+.cw-help-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border: 1px solid transparent; border-radius: 999px; font-family: ${F.ui}; font-size: 12px; font-weight: 500; color: ${T.inkMid}; cursor: pointer; transition: all .12s; }
+.cw-help-trigger:hover, .cw-help[aria-expanded="true"] .cw-help-trigger { color: ${T.ink}; background: ${T.paper2}; border-color: ${T.rule}; }
+.cw-help-icon { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: ${T.indigo}; color: #fff; font-family: ${F.display}; font-style: italic; font-size: 11px; font-weight: 600; line-height: 1; }
+.cw-help-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 80; width: min(360px, calc(100vw - 32px)); background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 12px; box-shadow: 0 24px 48px -16px rgba(29,36,51,0.28); overflow: hidden; font-family: ${F.ui}; }
+.cw-help-panel-head { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 16px 10px; border-bottom: 1px solid ${T.ruleSoft}; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-help-panel-head > span:first-child { color: ${T.ink}; font-weight: 600; }
+.cw-help-panel-hint { font-size: 9.5px; }
+.cw-help-list { list-style: none; margin: 0; padding: 4px 0; }
+.cw-help-list li { border-bottom: 1px solid ${T.ruleSoft}; }
+.cw-help-list li:last-child { border-bottom: 0; }
+.cw-help-q { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 16px; background: none; border: 0; cursor: pointer; text-align: left; font-family: ${F.display}; font-size: 14px; font-weight: 500; color: ${T.ink}; line-height: 1.3; }
+.cw-help-q:hover { background: ${T.paper2}; }
+.cw-help-q-sym { font-family: ${F.ui}; font-size: 16px; color: ${T.inkSoft}; flex: 0 0 auto; line-height: 1; }
+.cw-help-a { margin: 0; padding: 0 16px 12px; font-size: 12.5px; line-height: 1.55; color: ${T.inkMid}; }
 `
 
 /* ───────────────────────── Component ─────────────────────────── */
@@ -757,8 +771,8 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             )}
           </div>
           <div className="topbar-right">
-            <a href={`${PORTAL_URL}/sign-up/seller`}>For attorneys &amp; consultants</a>
-            <a href="#faq">Help</a>
+            <a href={`${PORTAL_URL}/sign-up/attorney`}>For attorneys &amp; consultants</a>
+            <HelpDropdown items={FAQS} />
           </div>
         </div>
       </div>
@@ -1073,30 +1087,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="faq-section" id="faq">
-        <div className="wrap">
-          <div className="section-head">
-            <h2>Before you <em>start.</em></h2>
-            <div className="meta">
-              <span>Frequently asked questions</span>
-            </div>
-          </div>
-          <div className="faq-grid">
-            {FAQS.map(({ q, a }) => (
-              <details key={q} className="faq-item">
-                <summary>
-                  <span>{q}</span>
-                  <span className="sym">+</span>
-                </summary>
-                <p>{a}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <EstateFooter />
+      <MarketplaceFooter />
     </div>
   )
 }

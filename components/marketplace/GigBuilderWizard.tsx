@@ -163,6 +163,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const [gigData, setGigData] = React.useState({
     category: existingGig?.category || persistedDraft?.category || '',
     subcategory: existingGig?.subcategory || persistedDraft?.subcategory || '',
+    jurisdiction: existingGig?.jurisdiction || persistedDraft?.jurisdiction || '',
     title: existingGig?.title || persistedDraft?.title || '',
     tagline: existingGig?.tagline || persistedDraft?.tagline || '',
     pitch: existingGig?.pitch || persistedDraft?.pitch || '',
@@ -191,6 +192,9 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     if (step === 0) {
       if (!gigData.category) newErrors.category = 'Please select a category'
       if (!gigData.subcategory) newErrors.subcategory = 'Please select a subcategory'
+      if (!['us', 'uk', 'ca'].includes(gigData.jurisdiction)) {
+        newErrors.jurisdiction = 'Pick the jurisdiction this brief serves'
+      }
     }
 
     if (step === 1) {
@@ -538,6 +542,24 @@ function CategoryStep({ gigData, errors, onChange }: any) {
           {errors.subcategory && <div style={formError}>{errors.subcategory}</div>}
         </div>
       )}
+
+      <div style={formSection}>
+        <label style={formLabel}>Jurisdiction *</label>
+        <select
+          value={gigData.jurisdiction}
+          onChange={e => onChange('jurisdiction', e.target.value)}
+          style={selectStyle}
+        >
+          <option value="">Select where this brief is licensed to serve</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+          <option value="ca">Canada</option>
+        </select>
+        <p style={{ fontSize: '12px', color: C.textMuted, margin: '6px 0 0' }}>
+          Required. Clients filter the marketplace by jurisdiction — gigs without one are hidden from the country browse.
+        </p>
+        {errors.jurisdiction && <div style={formError}>{errors.jurisdiction}</div>}
+      </div>
 
       {sourceLabels.length > 0 && (
         <div style={{ padding: '16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', marginTop: '16px' }}>
