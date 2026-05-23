@@ -26,7 +26,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const [messagesRes, counterpartRes, participantRes] = await Promise.all([
     db.from('conversation_messages')
-      .select('id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, metadata, created_at')
+      .select('id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, reply_to_id, metadata, created_at')
       .eq('conversation_id', id)
       .order('created_at', { ascending: true })
       .limit(500),
@@ -119,11 +119,69 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   }
 
-  const messages = rawMessages.map((m) => {
-    if (m?.type === 'offer' && m?.ref_offer_id && offerMap.has(m.ref_offer_id)) {
-      return { ...m, offer: offerMap.get(m.ref_offer_id) }
+  // Hydrate reply previews
+  const replyIds = Array.from(new Set(
+    rawMessages.map((m) => m?.reply_to_id).filter(Boolean),
+  ))
+  const replyMap = new Map<string, any>()
+  if (replyIds.length) {
+    try {
+      const { data: replyRows } = await db
+        .from('conversation_messages')
+        .select('id, sender_id, body')
+        .in('id', replyIds as string[])
+      for (const r of (replyRows || [])) replyMap.set(r.id, r)
+    } catch (e) {
+      console.warn('[conversations] reply preview enrichment skipped', e)
     }
-    return m
+  }
+
+  // Hydrate reactions for all messages in one query
+  const messageIds = rawMessages.map((m) => m.id).filter(Boolean)
+  const reactionMap = new Map<string, Array<{ emoji: string; count: number; mine: boolean }>>()
+  if (messageIds.length) {
+    try {
+      const { data: reactionRows } = await db
+        .from('conversation_message_reactions')
+        .select('message_id, emoji, profile_id')
+        .in('message_id', messageIds as string[])
+      for (const r of (reactionRows || [])) {
+        const list = reactionMap.get(r.message_id) || []
+        const existing = list.find((x) => x.emoji === r.emoji)
+        if (existing) {
+          existing.count++
+          if (r.profile_id === profileId) existing.mine = true
+        } else {
+          list.push({ emoji: r.emoji, count: 1, mine: r.profile_id === profileId })
+        }
+        reactionMap.set(r.message_id, list)
+      }
+    } catch (e) {
+      console.warn('[conversations] reactions enrichment skipped', e)
+    }
+  }
+
+  const messages = rawMessages.map((m) => {
+    let enriched: any = m
+    if (m?.type === 'offer' && m?.ref_offer_id && offerMap.has(m.ref_offer_id)) {
+      enriched = { ...enriched, offer: offerMap.get(m.ref_offer_id) }
+    }
+    if (m?.reply_to_id && replyMap.has(m.reply_to_id)) {
+      const ref = replyMap.get(m.reply_to_id)
+      enriched = {
+        ...enriched,
+        reply_preview: {
+          id: ref.id,
+          sender_id: ref.sender_id,
+          snippet: String(ref.body || '').slice(0, 120),
+        },
+      }
+    }
+    const reactions = reactionMap.get(m.id)
+    if (reactions) {
+      enriched = { ...enriched, reactions }
+    }
+    return enriched
   })
 
   return Response.json({
@@ -155,6 +213,17 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const text = String(body.body || '').trim().slice(0, 8000)
   if (!text) return Response.json({ error: 'body is required' }, { status: 400 })
 
+  let reply_to_id: string | null = body.reply_to_id || null
+  if (reply_to_id) {
+    const { data: refMsg } = await db
+      .from('conversation_messages')
+      .select('id')
+      .eq('id', reply_to_id)
+      .eq('conversation_id', id)
+      .maybeSingle()
+    if (!refMsg) reply_to_id = null
+  }
+
   // Server-side safety gate — mirror of the client check in safety.ts. Hard
   // violations (emails, phones, off-platform links, payment apps, obfuscations)
   // block the send so policy is enforced even if the client check is bypassed.
@@ -179,6 +248,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       sender_id:       profileId,
       type:            'text',
       body:            text,
+      reply_to_id:     reply_to_id,
     })
     .select('id, sender_id, type, body, created_at')
     .single()

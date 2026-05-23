@@ -821,6 +821,219 @@
   font-size: 13px; color: var(--text-soft);
 }
 
+/* ── REPLY SNIPPET (inside bubble) ─────────────────────────────────── */
+.yousafe-messenger .bub-reply-snippet {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.yousafe-messenger[data-theme="dark"] .bub-reply-snippet {
+  background: rgba(255,255,255,0.05);
+}
+.yousafe-messenger .bub-reply-snippet:hover {
+  background: rgba(0,0,0,0.07);
+}
+.yousafe-messenger[data-theme="dark"] .bub-reply-snippet:hover {
+  background: rgba(255,255,255,0.08);
+}
+.yousafe-messenger .bub-reply-bar {
+  width: 3px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.7;
+}
+.yousafe-messenger .bub-reply-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-d);
+  display: block;
+  line-height: 1.3;
+}
+.yousafe-messenger .bub-reply-text {
+  font-size: 12px;
+  color: var(--text-soft);
+  display: block;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── REACTION CHIPS ────────────────────────────────────────────────── */
+.yousafe-messenger .bub-reactions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px -2px -2px;
+  justify-content: flex-start;
+}
+.yousafe-messenger .bub-reactions.mine {
+  justify-content: flex-end;
+}
+.yousafe-messenger .bub-reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--bub-shadow);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .06s;
+}
+.yousafe-messenger .bub-reaction-chip:hover {
+  transform: scale(1.08);
+}
+.yousafe-messenger .bub-reaction-chip.mine {
+  background: color-mix(in oklab, var(--accent) 12%, var(--panel));
+  border-color: color-mix(in oklab, var(--accent) 35%, var(--border));
+}
+.yousafe-messenger .bub-reaction-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-mid);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+/* ── EMOJI PICKER ──────────────────────────────────────────────────── */
+.yousafe-messenger .bub-emoji-picker {
+  position: fixed;
+  z-index: 110;
+  min-width: 180px;
+  background: var(--panel);
+  border-radius: 10px;
+  box-shadow: var(--shadow-menu);
+  padding: 8px;
+  border: 1px solid var(--border);
+  animation: fadein .1s ease;
+}
+.yousafe-messenger .bub-emoji-picker-quick {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.yousafe-messenger .bub-emoji-picker-quick button,
+.yousafe-messenger .bub-emoji-picker-grid button {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  font-size: 18px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: background .08s, transform .06s;
+}
+.yousafe-messenger .bub-emoji-picker-quick button:hover,
+.yousafe-messenger .bub-emoji-picker-grid button:hover {
+  background: var(--hover);
+  transform: scale(1.15);
+}
+.yousafe-messenger .bub-emoji-picker-more {
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.yousafe-messenger .bub-emoji-picker-sep {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 6px 0;
+}
+.yousafe-messenger .bub-emoji-picker-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.yousafe-messenger .bub-emoji-picker-action:hover {
+  background: var(--hover);
+}
+.yousafe-messenger .bub-emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+/* ── COMPOSER REPLY BANNER ─────────────────────────────────────────── */
+.yousafe-messenger .comp-reply-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px 4px;
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+  animation: fadein .12s ease;
+}
+.yousafe-messenger .comp-reply-banner-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.yousafe-messenger .comp-reply-banner-bar {
+  width: 3px;
+  align-self: stretch;
+  background: var(--accent);
+  border-radius: 2px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.yousafe-messenger .comp-reply-banner-body {
+  min-width: 0;
+}
+.yousafe-messenger .comp-reply-banner-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-d);
+}
+.yousafe-messenger .comp-reply-banner-snippet {
+  font-size: 12px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yousafe-messenger .comp-reply-banner-close {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-soft);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.yousafe-messenger .comp-reply-banner-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
 /* Starred view */
 .yousafe-messenger .starred-row {
   flex-direction: column; align-items: flex-start; gap: 4px;

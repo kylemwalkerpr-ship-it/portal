@@ -64,6 +64,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [menuFor, setMenuFor] = React.useState(null)
   const [menuPos, setMenuPos] = React.useState({ x: 0, y: 0 })
 
+  // Reply quoting state
+  const [replyingTo, setReplyingTo] = React.useState<{ id: string; senderName: string; snippet: string } | null>(null)
+
   // Status broadcasts (24h ring)
   const [statuses, setStatuses] = React.useState([])
   const [statusViewerOpen, setStatusViewerOpen] = React.useState(false)
@@ -230,18 +233,68 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     if (!text || sending || !activeId) return
     setSending(true); setThreadError('')
     try {
+      const payload: any = { body: text }
+      if (replyingTo) payload.reply_to_id = replyingTo.id
       const r = await fetch(`/api/messages/conversations/${activeId}`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: text }),
+        body: JSON.stringify(payload),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error?.message || 'Send failed')
       setDraft('')
+      setReplyingTo(null)
       await loadThread(true)
       await loadList(true)
-    } catch (e) { setThreadError(e.message) }
+    } catch (e: any) { setThreadError(e.message) }
     finally { setSending(false) }
+  }
+
+  const handleReact = async (msgId: string, emoji: string) => {
+    if (!activeId) return
+    // Optimistic
+    setActiveMsgs((prev: any[]) => prev.map((m: any) => {
+      if (m.id !== msgId) return m
+      const existing: any[] = m.reactions || []
+      const idx = existing.findIndex((r: any) => r.emoji === emoji)
+      let next: any[]
+      if (idx >= 0) {
+        const r = existing[idx]
+        if (r.mine) {
+          next = r.count <= 1
+            ? existing.filter((_, i) => i !== idx)
+            : existing.map((x, i) => i === idx ? { ...x, count: x.count - 1, mine: false } : x)
+        } else {
+          next = existing.map((x, i) => i === idx ? { ...x, count: x.count + 1, mine: true } : x)
+        }
+      } else {
+        next = [...existing, { emoji, count: 1, mine: true }]
+      }
+      return { ...m, reactions: next }
+    }))
+    try {
+      const r = await fetch(`/api/messages/conversations/${activeId}/messages/${msgId}/react`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error || 'React failed')
+      setActiveMsgs((prev: any[]) => prev.map((m: any) =>
+        m.id === msgId ? { ...m, reactions: d.reactions || m.reactions } : m
+      ))
+    } catch {
+      loadThread(true)
+    }
+  }
+
+  const handleReplyStart = (msgId: string, snippet: string, senderName: string) => {
+    setReplyingTo({ id: msgId, snippet, senderName })
+  }
+
+  const handleReplyClick = (msgId: string) => {
+    const el = document.querySelector(`[data-msgid="${msgId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   const handleSelectConversation = (id) => {
@@ -644,12 +697,19 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
               <ThreadMessage
                 m={m}
                 counterpartId={activeConv?.counterpart?.id}
+                counterpartName={activeConv?.counterpart?.full_name || 'Them'}
                 offerBusy={offerBusyId === m.offer?.id}
                 onAccept={handleOfferAccept}
                 onDecline={handleOfferDecline}
                 onWithdraw={handleOfferWithdraw}
                 isFirstInGroup={isFirstInGroup}
                 isLastInGroup={isLastInGroup}
+                starred={(activeParticipant?.starred_message_ids || []).includes(m.id)}
+                onStar={handleStarMessage}
+                reactions={m.reactions}
+                onReact={handleReact}
+                onReplyStart={handleReplyStart}
+                onReplyClick={handleReplyClick}
               />
             </div>
           </React.Fragment>
@@ -676,6 +736,8 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         onSubmit={send}
         disabled={sending}
         placeholder="Type a message…"
+        replyTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
       />
     </div>
   )
@@ -740,7 +802,23 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   )
 }
 
-function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWithdraw, isFirstInGroup, isLastInGroup }) {
+function ThreadMessage({
+  m,
+  counterpartId,
+  counterpartName,
+  offerBusy,
+  onAccept,
+  onDecline,
+  onWithdraw,
+  isFirstInGroup,
+  isLastInGroup,
+  starred,
+  onStar,
+  reactions,
+  onReact,
+  onReplyStart,
+  onReplyClick,
+}) {
   const mine = m.sender_id !== counterpartId
   const isOffer = m.type === 'offer' && m.offer && m.offer.id
 
@@ -792,8 +870,13 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
     )
   }
 
-  const starredIds = activeParticipant?.starred_message_ids || []
-  const isStarred = starredIds.includes(m.id)
+  const replyTo = m.reply_preview
+    ? {
+        id: m.reply_preview.id,
+        senderName: m.reply_preview.sender_id !== counterpartId ? 'You' : (counterpartName || 'Them'),
+        snippet: m.reply_preview.snippet,
+      }
+    : null
 
   return (
     <MessageBubble
@@ -804,8 +887,14 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
       timestamp={m.created_at}
       readAt={m.read_at}
       deliveredAt={m.delivered_at}
-      starred={isStarred}
-      onStar={handleStarMessage}
+      reactions={reactions}
+      onReact={onReact}
+      replyTo={replyTo}
+      onReplyClick={onReplyClick}
+      onReplyStart={(msgId, snippet, senderName) => {
+        const name = senderName === 'Them' ? (counterpartName || 'Them') : senderName
+        onReplyStart?.(msgId, snippet, name)
+      }}
       body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
     />
   )
