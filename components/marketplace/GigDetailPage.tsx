@@ -3,7 +3,7 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { C, Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
+import { Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
 import {
   SellerProfileCard,
   PricingTiers,
@@ -14,12 +14,13 @@ import {
 import { ReviewsSection } from './ReviewComponents'
 import ChatSidePane from './ChatSidePane'
 import { useGatedAction } from './useGatedAction'
+import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
-  background: C.bg,
-  color: C.text,
-  fontFamily: C.sans,
+  background: T.paper,
+  color: T.ink,
+  fontFamily: F.ui,
 }
 
 const inner: CSSProperties = {
@@ -40,12 +41,15 @@ const breadcrumb: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
-  fontSize: '13px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '11px',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: T.inkSoft,
 }
 
 const breadcrumbLink: CSSProperties = {
-  color: C.cyan,
+  color: T.indigo,
   textDecoration: 'none',
   fontWeight: 600,
 }
@@ -74,8 +78,9 @@ const gigImage: CSSProperties = {
   width: '100%',
   height: '400px',
   objectFit: 'cover',
-  borderRadius: '16px',
-  background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
+  borderRadius: '14px',
+  border: `1px solid ${T.rule}`,
+  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
 }
 
 const galleryGrid: CSSProperties = {
@@ -89,26 +94,28 @@ const galleryThumbnail: CSSProperties = {
   width: '100%',
   aspectRatio: '1',
   objectFit: 'cover',
-  borderRadius: '12px',
+  borderRadius: '10px',
   cursor: 'pointer',
-  border: `2px solid transparent`,
+  border: `2px solid ${T.ruleSoft}`,
   transition: 'border-color 200ms',
 }
 
 const sectionTitle: CSSProperties = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '24px',
   fontWeight: 500,
+  letterSpacing: '-0.01em',
   margin: '0 0 16px',
-  color: C.text,
+  color: T.ink,
 }
 
 const gigTitle: CSSProperties = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '32px',
   fontWeight: 500,
+  letterSpacing: '-0.01em',
   margin: '0 0 12px',
-  color: C.text,
+  color: T.ink,
   lineHeight: 1.2,
 }
 
@@ -116,16 +123,20 @@ const gigMeta: CSSProperties = {
   display: 'flex',
   gap: '16px',
   alignItems: 'center',
-  fontSize: '14px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '11px',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: T.inkSoft,
   marginBottom: '16px',
 }
 
 const gigDescription: CSSProperties = {
   fontSize: '15px',
   lineHeight: 1.75,
-  color: C.text,
+  color: T.ink,
   whiteSpace: 'pre-wrap',
+  fontFamily: F.ui,
 }
 
 const tagsContainer: CSSProperties = {
@@ -136,13 +147,14 @@ const tagsContainer: CSSProperties = {
 }
 
 const tagBadge: CSSProperties = {
-  padding: '6px 12px',
-  background: `${C.cyan}10`,
-  border: `1px solid ${C.cyan}33`,
-  borderRadius: '20px',
-  fontSize: '13px',
-  color: C.cyan,
-  fontWeight: 600,
+  padding: '5px 11px',
+  background: T.paper2,
+  border: `1px solid ${T.rule}`,
+  borderRadius: '999px',
+  fontSize: '12.5px',
+  color: T.inkMid,
+  fontWeight: 500,
+  fontFamily: F.ui,
 }
 
 const SAVED_GIGS_KEY = 'ys_marketplace_saved_gigs'
@@ -395,10 +407,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             <Link href="/" style={breadcrumbLink}>
               Marketplace
             </Link>
-            <span>/</span>
+            <span style={{ color: T.rule }}>/</span>
             <span>{gig.category || 'Service'}</span>
-            <span>/</span>
-            <span style={{ color: C.text }}>{gig.title}</span>
+            <span style={{ color: T.rule }}>/</span>
+            <span style={{ color: T.ink }}>{gig.title}</span>
           </div>
         </div>
 
@@ -414,8 +426,9 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    fontFamily: F.display,
                     fontSize: '64px',
-                    color: C.textDim,
+                    color: T.inkSoft,
                   }}
                 >
                   {gig.title.slice(0, 2).toUpperCase()}
@@ -430,7 +443,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                       alt={`${gig.title} ${index + 1}`}
                       style={{
                         ...galleryThumbnail,
-                        borderColor: mainImage === img.url ? C.cyan : 'transparent',
+                        borderColor: mainImage === img.url ? T.indigo : T.ruleSoft,
                       }}
                       onClick={() => setMainImage(img.url)}
                     />
@@ -442,14 +455,14 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
             <div>
               <h1 style={gigTitle}>{gig.title}</h1>
               <div style={gigMeta}>
-                <span>★ {gig.avg_rating?.toFixed(1) || '0'}</span>
-                <span>•</span>
+                <span style={{ color: T.star }}>★ {gig.avg_rating?.toFixed(1) || '0'}</span>
+                <span style={{ color: T.rule }}>·</span>
                 <span>{gig.review_count || 0} reviews</span>
-                <span>•</span>
+                <span style={{ color: T.rule }}>·</span>
                 <span>{gig.order_count || 0} orders</span>
               </div>
               {gig.pitch && (
-                <p style={{ fontSize: '16px', color: C.textMuted, marginBottom: '16px', lineHeight: 1.5 }}>
+                <p style={{ fontFamily: F.ui, fontSize: '16px', color: T.inkMid, marginBottom: '16px', lineHeight: 1.55 }}>
                   {gig.pitch}
                 </p>
               )}

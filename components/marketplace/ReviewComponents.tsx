@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import { C, Badge, Card, Input, Textarea, Btn, LoadingState } from '../design/shared'
+import { T, F } from './tokens'
 
 const containerStyle = {
   display: 'flex',
@@ -20,9 +21,9 @@ const mainStyle = {
 }
 
 const ratingSummary = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
-  borderRadius: '16px',
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
+  borderRadius: '14px',
   padding: '24px',
   marginBottom: '24px',
 }
@@ -35,10 +36,12 @@ const ratingHeader = {
 }
 
 const ratingBig = {
-  fontSize: '64px',
-  fontWeight: 900,
+  fontFamily: F.display,
+  fontSize: '56px',
+  fontWeight: 500,
+  letterSpacing: '-0.02em',
   lineHeight: 1,
-  color: C.text,
+  color: T.ink,
 }
 
 const ratingMeta = {
@@ -48,18 +51,22 @@ const ratingMeta = {
 }
 
 const ratingStars = {
-  fontSize: '24px',
-  color: '#FFD700',
+  fontSize: '22px',
+  color: T.star,
+  letterSpacing: '0.05em',
 }
 
 const ratingCount = {
-  fontSize: '14px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
+  color: T.inkSoft,
 }
 
 const ratingBarContainer = {
   display: 'flex',
-  flexDirection: 'column',
+  flexDirection: 'column' as const,
   gap: '8px',
 }
 
@@ -70,70 +77,79 @@ const ratingBarRow = {
 }
 
 const ratingBarLabel = {
-  fontSize: '13px',
+  fontFamily: F.mono,
+  fontSize: '12px',
   fontWeight: 600,
   width: '20px',
-  textAlign: 'right',
-  color: C.text,
+  textAlign: 'right' as const,
+  color: T.inkMid,
 }
 
 const ratingBarTrack = {
   flex: 1,
   height: '8px',
-  background: `${C.border}`,
+  background: T.paper3,
   borderRadius: '4px',
   overflow: 'hidden',
 }
 
 const ratingBarFill = (percent: number) => ({
   height: '100%',
-  background: '#FFD700',
+  background: T.star,
   borderRadius: '4px',
   transition: 'width 300ms ease',
   width: `${percent}%`,
 })
 
 const ratingBarCount = {
-  fontSize: '13px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '12px',
+  color: T.inkSoft,
   width: '40px',
-  textAlign: 'right',
+  textAlign: 'right' as const,
 }
 
 const filterSection = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
-  borderRadius: '16px',
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
+  borderRadius: '14px',
   padding: '20px',
 }
 
 const filterTitle = {
-  fontSize: '14px',
-  fontWeight: 700,
+  fontFamily: F.mono,
+  fontSize: '11px',
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase' as const,
+  fontWeight: 600,
   margin: '0 0 16px',
-  color: C.text,
+  color: T.inkSoft,
 }
 
 const filterGroup = {
   display: 'flex',
-  flexDirection: 'column',
+  flexDirection: 'column' as const,
   gap: '8px',
   marginBottom: '20px',
 }
 
 const filterLabel = {
-  fontSize: '13px',
+  fontFamily: F.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
   fontWeight: 600,
   margin: '0 0 8px',
-  color: C.text,
+  color: T.inkSoft,
 }
 
 const filterOption = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
-  fontSize: '13px',
-  color: C.text,
+  fontFamily: F.ui,
+  fontSize: '13.5px',
+  color: T.ink,
   cursor: 'pointer',
 }
 
@@ -141,6 +157,7 @@ const filterCheckbox = {
   width: '16px',
   height: '16px',
   cursor: 'pointer',
+  accentColor: T.indigo,
 }
 
 const reviewsHeader = {
@@ -151,31 +168,38 @@ const reviewsHeader = {
 }
 
 const reviewsTitle = {
-  fontSize: '20px',
-  fontWeight: 700,
+  fontFamily: F.display,
+  fontSize: '24px',
+  fontWeight: 500,
+  letterSpacing: '-0.01em',
   margin: 0,
-  color: C.text,
+  color: T.ink,
 }
 
 const reviewsCount = {
-  fontSize: '14px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase' as const,
+  color: T.inkSoft,
+  marginTop: '4px',
 }
 
 const sortSelect = {
   padding: '8px 12px',
-  borderRadius: '8px',
-  border: `1px solid ${C.border}`,
-  background: C.surface,
-  color: C.text,
+  borderRadius: '999px',
+  border: `1px solid ${T.rule}`,
+  background: T.paper,
+  color: T.ink,
+  fontFamily: F.ui,
   fontSize: '13px',
   cursor: 'pointer',
 }
 
 const reviewCard = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
-  borderRadius: '16px',
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
+  borderRadius: '14px',
   padding: '24px',
   marginBottom: '16px',
 }
@@ -194,54 +218,63 @@ const reviewAuthor = {
 }
 
 const reviewAvatar = {
-  width: '48px',
-  height: '48px',
+  width: '44px',
+  height: '44px',
   borderRadius: '50%',
-  background: `${C.cyan}22`,
+  background: T.indigoSoft,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '16px',
-  fontWeight: 700,
-  color: C.cyan,
+  fontFamily: F.display,
+  fontSize: '15px',
+  fontWeight: 600,
+  color: T.indigo,
 }
 
 const reviewAuthorInfo = {
   display: 'flex',
-  flexDirection: 'column',
+  flexDirection: 'column' as const,
   gap: '4px',
 }
 
 const reviewAuthorName = {
-  fontSize: '15px',
-  fontWeight: 700,
-  color: C.text,
+  fontFamily: F.display,
+  fontSize: '16px',
+  fontWeight: 500,
+  letterSpacing: '-0.005em',
+  color: T.ink,
 }
 
 const reviewDate = {
-  fontSize: '12px',
-  color: C.textMuted,
+  fontFamily: F.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase' as const,
+  color: T.inkSoft,
 }
 
 const reviewRating = {
   display: 'flex',
   alignItems: 'center',
-  gap: '4px',
-  fontSize: '18px',
-  color: '#FFD700',
+  gap: '2px',
+  fontSize: '17px',
+  color: T.star,
 }
 
 const reviewTitle = {
-  fontSize: '16px',
-  fontWeight: 700,
+  fontFamily: F.display,
+  fontSize: '17px',
+  fontWeight: 500,
+  letterSpacing: '-0.005em',
   margin: '0 0 8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const reviewComment = {
-  fontSize: '14px',
-  lineHeight: 1.6,
-  color: C.text,
+  fontFamily: F.ui,
+  fontSize: '14.5px',
+  lineHeight: 1.65,
+  color: T.ink,
   margin: '0 0 16px',
 }
 
@@ -252,8 +285,8 @@ const reviewBadges = {
 }
 
 const reviewReply = {
-  background: `${C.cyan}08`,
-  border: `1px solid ${C.cyan}22`,
+  background: T.indigoSoft,
+  border: `1px solid ${T.rule}`,
   borderRadius: '12px',
   padding: '16px',
   marginTop: '16px',
@@ -267,15 +300,19 @@ const replyHeader = {
 }
 
 const replyLabel = {
-  fontSize: '13px',
-  fontWeight: 700,
-  color: C.cyan,
+  fontFamily: F.mono,
+  fontSize: '10.5px',
+  letterSpacing: '0.14em',
+  textTransform: 'uppercase' as const,
+  fontWeight: 600,
+  color: T.indigo,
 }
 
 const replyText = {
+  fontFamily: F.ui,
   fontSize: '14px',
-  lineHeight: 1.5,
-  color: C.text,
+  lineHeight: 1.55,
+  color: T.ink,
   margin: 0,
 }
 
@@ -286,13 +323,13 @@ const replyForm = {
 const replyTextarea = {
   width: '100%',
   padding: '12px',
-  borderRadius: '8px',
-  border: `1px solid ${C.border}`,
-  background: C.surface,
-  color: C.text,
+  borderRadius: '10px',
+  border: `1px solid ${T.rule}`,
+  background: T.vellum,
+  color: T.ink,
   fontSize: '14px',
-  fontFamily: C.sans,
-  resize: 'vertical',
+  fontFamily: F.ui,
+  resize: 'vertical' as const,
   minHeight: '80px',
 }
 
@@ -303,26 +340,32 @@ const replyButtons = {
 }
 
 const emptyState = {
-  textAlign: 'center',
+  textAlign: 'center' as const,
   padding: '48px 24px',
-  color: C.textMuted,
+  color: T.inkSoft,
+  fontFamily: F.ui,
 }
 
 const emptyIcon = {
-  fontSize: '48px',
-  marginBottom: '16px',
+  fontSize: '40px',
+  marginBottom: '12px',
+  color: T.inkSoft,
 }
 
 const emptyTitle = {
-  fontSize: '18px',
-  fontWeight: 700,
+  fontFamily: F.display,
+  fontSize: '20px',
+  fontWeight: 500,
+  letterSpacing: '-0.01em',
   margin: '0 0 8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const emptyText = {
+  fontFamily: F.ui,
   fontSize: '14px',
   margin: 0,
+  color: T.inkMid,
 }
 
 interface RatingBreakdownProps {
@@ -510,7 +553,7 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
         </div>
         <div style={reviewRating}>
           {'★'.repeat(review.rating)}
-          <span style={{ color: C.border }}>{'★'.repeat(5 - review.rating)}</span>
+          <span style={{ color: T.ruleSoft }}>{'★'.repeat(5 - review.rating)}</span>
         </div>
       </div>
 
@@ -529,7 +572,7 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
           <div style={replyHeader}>
             <span style={replyLabel}>Seller Response</span>
             {review.seller_reply_at && (
-              <span style={{ fontSize: '12px', color: C.textMuted }}>
+              <span style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft }}>
                 {new Date(review.seller_reply_at).toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'short',
@@ -545,8 +588,9 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
               style={{
                 marginTop: '12px',
                 padding: '4px 8px',
+                fontFamily: F.ui,
                 fontSize: '12px',
-                color: C.textMuted,
+                color: T.inkSoft,
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
@@ -592,13 +636,14 @@ export function ReviewCard({ review, canReply = false, onReply, onDeleteReply }:
               onClick={() => setShowReplyForm(true)}
               style={{
                 marginTop: '12px',
-                padding: '8px 16px',
+                padding: '8px 18px',
+                fontFamily: F.ui,
                 fontSize: '13px',
                 fontWeight: 600,
-                color: C.cyan,
-                background: 'none',
-                border: `1px solid ${C.cyan}`,
-                borderRadius: '8px',
+                color: T.indigo,
+                background: T.paper,
+                border: `1px solid ${T.indigo}`,
+                borderRadius: '999px',
                 cursor: 'pointer',
               }}
             >

@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { C, Card, Btn, Avatar, Badge } from '../design/shared'
 import { SaveGigButton } from './SaveGigButton'
+import { T, F } from './tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -139,18 +140,21 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
   }
 
   const nameStyle: CSSProperties = {
-    fontFamily: C.serif,
-    fontSize: '18px',
-    fontWeight: 600,
-    color: C.text,
+    fontFamily: F.display,
+    fontSize: '20px',
+    fontWeight: 500,
+    letterSpacing: '-0.01em',
+    color: T.ink,
     margin: 0,
   }
 
   const roleStyle: CSSProperties = {
-    fontSize: '13px',
-    color: C.textMuted,
-    margin: '2px 0 0',
-    textTransform: 'capitalize',
+    fontFamily: F.mono,
+    fontSize: '10.5px',
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase',
+    color: T.inkSoft,
+    margin: '4px 0 0',
   }
 
   const statsRow: CSSProperties = {
@@ -161,33 +165,38 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
   }
 
   const statBox: CSSProperties = {
-    background: C.surface2,
-    borderRadius: '8px',
+    background: T.paper2,
+    border: `1px solid ${T.ruleSoft}`,
+    borderRadius: '10px',
     padding: '10px',
     textAlign: 'center',
   }
 
   const statValue: CSSProperties = {
-    fontSize: '16px',
-    fontWeight: 700,
-    color: C.text,
+    fontFamily: F.display,
+    fontSize: '17px',
+    fontWeight: 600,
+    color: T.ink,
     display: 'block',
   }
 
   const statLabel: CSSProperties = {
-    fontSize: '11px',
-    color: C.textMuted,
+    fontFamily: F.mono,
+    fontSize: '10px',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: T.inkSoft,
     display: 'block',
-    marginTop: '2px',
+    marginTop: '4px',
   }
 
   const onlineDot: CSSProperties = {
     width: '8px',
     height: '8px',
     borderRadius: '50%',
-    background: seller.is_online ? C.green : C.textDim,
+    background: seller.is_online ? T.moss : T.inkSoft,
     display: 'inline-block',
-    marginRight: '4px',
+    marginRight: '6px',
   }
 
   return (
@@ -205,7 +214,7 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
 
       <div style={statsRow}>
         <div style={statBox}>
-          <span style={statValue}>★ {seller.avg_rating?.toFixed(1) || '—'}</span>
+          <span style={statValue}><span style={{ color: T.star }}>★</span> {seller.avg_rating?.toFixed(1) || '—'}</span>
           <span style={statLabel}>{seller.review_count || 0} reviews</span>
         </div>
         <div style={statBox}>
@@ -242,21 +251,16 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
   const tabBar: CSSProperties = {
     display: 'flex',
     gap: '4px',
-    marginBottom: '12px',
-    background: C.surface2,
-    borderRadius: '10px',
+    marginBottom: '14px',
+    background: T.paper2,
+    border: `1px solid ${T.ruleSoft}`,
+    borderRadius: '999px',
     padding: '4px',
-  }
-
-  const tierColors: Record<string, string> = {
-    basic: C.textMuted,
-    standard: C.cyan,
-    premium: C.orange,
   }
 
   return (
     <Card style={{ padding: '20px' }}>
-      <h3 style={{ fontFamily: C.serif, fontSize: '18px', fontWeight: 600, margin: '0 0 12px', color: C.text }}>
+      <h3 style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 600, margin: '0 0 14px', color: T.inkSoft }}>
         Pricing
       </h3>
 
@@ -268,16 +272,16 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
               onClick={() => onSelectTier(t.id)}
               style={{
                 flex: 1,
-                padding: '6px 4px',
+                padding: '7px 6px',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '999px',
                 cursor: 'pointer',
-                fontSize: '12px',
+                fontFamily: F.ui,
+                fontSize: '12.5px',
                 fontWeight: 600,
                 textTransform: 'capitalize',
-                background: selectedTierId === t.id ? C.surface : 'transparent',
-                color: selectedTierId === t.id ? tierColors[t.tier] || C.cyan : C.textMuted,
-                boxShadow: selectedTierId === t.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                background: selectedTierId === t.id ? T.ink : 'transparent',
+                color: selectedTierId === t.id ? '#fff' : T.inkMid,
                 transition: 'all 150ms',
               }}
             >
@@ -292,26 +296,26 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
         .slice(0, 1)
         .map((tier) => (
           <div key={tier.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-              <span style={{ fontSize: '28px', fontWeight: 700, color: C.text }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+              <span style={{ fontFamily: F.display, fontSize: '30px', fontWeight: 600, letterSpacing: '-0.01em', color: T.ink }}>
                 {money(tier.price, tier.currency)}
               </span>
               {tier.delivery_days && (
-                <span style={{ fontSize: '13px', color: C.textMuted }}>
+                <span style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft }}>
                   {tier.delivery_days}d delivery
                 </span>
               )}
             </div>
 
             {tier.description && (
-              <p style={{ fontSize: '14px', color: C.textMuted, lineHeight: 1.5, margin: '0 0 12px' }}>
+              <p style={{ fontFamily: F.ui, fontSize: '14px', color: T.inkMid, lineHeight: 1.55, margin: '0 0 12px' }}>
                 {tier.description}
               </p>
             )}
 
             {tier.revisions != null && (
-              <div style={{ fontSize: '13px', color: C.textMuted, display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span>✓</span>
+              <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: T.indigo }}>✓</span>
                 <span>{tier.revisions === -1 ? 'Unlimited revisions' : `${tier.revisions} revision${tier.revisions !== 1 ? 's' : ''}`}</span>
               </div>
             )}
@@ -330,12 +334,12 @@ export function FAQSection({ faq }: FAQSectionProps) {
 
   return (
     <Card style={{ padding: '24px' }}>
-      <h3 style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, margin: '0 0 16px', color: C.text }}>
+      <h3 style={{ fontFamily: F.display, fontSize: '24px', fontWeight: 500, letterSpacing: '-0.01em', margin: '0 0 16px', color: T.ink }}>
         FAQ
       </h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {faq.map((item, i) => (
-          <div key={i} style={{ borderBottom: i < faq.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+          <div key={i} style={{ borderBottom: i < faq.length - 1 ? `1px solid ${T.ruleSoft}` : 'none' }}>
             <button
               onClick={() => setOpenIndex(openIndex === i ? null : i)}
               style={{
@@ -349,15 +353,16 @@ export function FAQSection({ faq }: FAQSectionProps) {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '12px',
+                fontFamily: F.ui,
               }}
             >
-              <span style={{ fontSize: '15px', fontWeight: 600, color: C.text }}>{item.question}</span>
-              <span style={{ fontSize: '18px', color: C.textMuted, flexShrink: 0, transform: openIndex === i ? 'rotate(45deg)' : 'none', transition: 'transform 150ms' }}>
+              <span style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 600, color: T.ink }}>{item.question}</span>
+              <span style={{ fontSize: '18px', color: T.indigo, flexShrink: 0, transform: openIndex === i ? 'rotate(45deg)' : 'none', transition: 'transform 150ms' }}>
                 +
               </span>
             </button>
             {openIndex === i && (
-              <p style={{ fontSize: '14px', color: C.textMuted, lineHeight: 1.65, margin: '0 0 14px', paddingRight: '24px' }}>
+              <p style={{ fontFamily: F.ui, fontSize: '14px', color: T.inkMid, lineHeight: 1.65, margin: '0 0 14px', paddingRight: '24px' }}>
                 {item.answer}
               </p>
             )}
@@ -388,12 +393,12 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
   }
 
   const gigCard: CSSProperties = {
-    background: C.surface,
-    border: `1px solid ${C.border}`,
+    background: T.vellum,
+    border: `1px solid ${T.rule}`,
     borderRadius: '12px',
     overflow: 'hidden',
     cursor: 'pointer',
-    transition: 'box-shadow 200ms',
+    transition: 'box-shadow 200ms, border-color 200ms',
     textDecoration: 'none',
     display: 'block',
     color: 'inherit',
@@ -402,17 +407,18 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
   const imgPlaceholder: CSSProperties = {
     width: '100%',
     height: '140px',
-    background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
+    background: `linear-gradient(135deg, ${T.paper2}, ${T.paper3})`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    fontFamily: F.display,
     fontSize: '32px',
-    color: C.textDim,
+    color: T.inkSoft,
   }
 
   return (
     <div>
-      <h3 style={{ fontFamily: C.serif, fontSize: '24px', fontWeight: 500, margin: '0 0 16px', color: C.text }}>
+      <h3 style={{ fontFamily: F.display, fontSize: '24px', fontWeight: 500, letterSpacing: '-0.01em', margin: '0 0 16px', color: T.ink }}>
         Similar Services
       </h3>
       <div style={grid}>
@@ -425,19 +431,19 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
               ) : (
                 <div style={imgPlaceholder}>{g.title.slice(0, 2).toUpperCase()}</div>
               )}
-              <div style={{ padding: '12px' }}>
-                <p style={{ fontSize: '14px', fontWeight: 600, color: C.text, margin: '0 0 4px', lineHeight: 1.3 }}>
+              <div style={{ padding: '14px' }}>
+                <p style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 500, letterSpacing: '-0.005em', color: T.ink, margin: '0 0 4px', lineHeight: 1.3 }}>
                   {g.title}
                 </p>
                 {g.provider?.full_name && (
-                  <p style={{ fontSize: '12px', color: C.textMuted, margin: '0 0 8px' }}>{g.provider.full_name}</p>
+                  <p style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft, margin: '0 0 10px' }}>{g.provider.full_name}</p>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   {g.avg_rating != null && (
-                    <span style={{ fontSize: '12px', color: C.textMuted }}>★ {g.avg_rating.toFixed(1)}</span>
+                    <span style={{ fontFamily: F.ui, fontSize: '12.5px', color: T.inkMid }}><span style={{ color: T.star }}>★</span> {g.avg_rating.toFixed(1)}</span>
                   )}
                   {g.starting_price != null && (
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: C.cyan }}>
+                    <span style={{ fontFamily: F.display, fontSize: '14px', fontWeight: 600, color: T.indigo }}>
                       From {money(g.starting_price)}
                     </span>
                   )}
@@ -457,17 +463,30 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
   return (
     <Card style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
-        <span style={{ fontSize: '22px', fontWeight: 700, color: C.text }}>
+        <span style={{ fontFamily: F.display, fontSize: '24px', fontWeight: 600, letterSpacing: '-0.01em', color: T.ink }}>
           {money(selectedTier.price, selectedTier.currency)}
         </span>
         {selectedTier.delivery_days && (
-          <span style={{ fontSize: '13px', color: C.textMuted }}>
+          <span style={{ fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.1em', textTransform: 'uppercase', color: T.inkSoft }}>
             {selectedTier.delivery_days}d delivery
           </span>
         )}
       </div>
 
-      <Btn variant="primary" fullWidth onClick={onOrder} style={{ marginBottom: '8px' }}>
+      <Btn
+        variant="primary"
+        fullWidth
+        onClick={onOrder}
+        style={{
+          marginBottom: '10px',
+          background: T.indigo,
+          color: '#fff',
+          borderRadius: 999,
+          padding: '10px 18px',
+          boxShadow: '0 10px 22px -10px rgba(60,59,110,0.55)',
+          fontFamily: F.ui,
+        }}
+      >
         Continue ({selectedTier.name || selectedTier.tier})
       </Btn>
 
@@ -483,7 +502,13 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
             variant="secondary"
             fullWidth
             onClick={onSave}
-            style={{ fontSize: '13px' }}
+            style={{
+              fontSize: '13px',
+              fontFamily: F.ui,
+              background: T.paper,
+              color: T.ink,
+              border: `1px solid ${T.rule}`,
+            }}
           >
             {isSaved ? '♥ Saved' : '♡ Save'}
           </Btn>
@@ -492,7 +517,13 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
           variant="secondary"
           fullWidth
           onClick={onShare}
-          style={{ fontSize: '13px' }}
+          style={{
+            fontSize: '13px',
+            fontFamily: F.ui,
+            background: T.paper,
+            color: T.ink,
+            border: `1px solid ${T.rule}`,
+          }}
         >
           Share
         </Btn>

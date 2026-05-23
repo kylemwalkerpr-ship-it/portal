@@ -7,6 +7,7 @@ import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import Avatar from '../messaging/Avatar'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
+import { T, F } from './tokens'
 
 // Props (loose because this component is JSX-ish via @ts-nocheck):
 //   open, onClose, attorneyName, attorneyAvatar
@@ -30,10 +31,10 @@ import { dateLabel, sameDay } from '@/lib/messaging/format'
  *   attorneyAvatar — optional avatar URL
  */
 
-const NAVY='#1B2D4F', GREEN='#1A6B45', RED='#8B1A1A', CYAN='#0E7C8E'
-const BG='#F7F5F0', SURFACE='#FFFFFF', BORDER='#DDD8CE', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#6B7180'
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
-const MONO=`'SF Mono', Menlo, Consolas, monospace`
+const NAVY=T.indigoDeep, GREEN=T.moss, RED=T.brick, CYAN=T.indigo
+const BG=T.paper, SURFACE=T.vellum, BORDER=T.rule, TEXT=T.ink, MUTED=T.inkMid, DIM=T.inkSoft
+const SANS=F.ui
+const MONO=F.mono
 
 interface ChatSidePaneProps {
   open: boolean
@@ -205,15 +206,15 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
   if (!open) return null
 
   const header = (
-    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
       <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: TEXT, lineHeight: 1.1 }}>{attorneyName || 'Attorney'}</div>
-        <div style={{ fontSize: 11, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, marginTop: 2 }}>
-          {presence === 'online' ? '● Online — quick replies likely' : '○ Offline — will respond when available'}
+        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>{attorneyName || 'Attorney'}</div>
+        <div style={{ fontSize: 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 3 }}>
+          {presence === 'online' ? '● Online · quick replies likely' : '○ Offline · will respond when available'}
         </div>
       </div>
-      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16 }}>×</button>
+      <button onClick={onClose} aria-label="Close" style={{ border: `1px solid ${BORDER}`, background: T.paper, color: MUTED, borderRadius: 999, width: 32, height: 32, cursor: 'pointer', fontSize: 16, fontFamily: F.ui }}>×</button>
     </div>
   )
 
@@ -284,7 +285,19 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
           disabled={sending}
           placeholder="Type a message…"
         />
-        <Btn variant="primary" size="sm" onClick={send} disabled={sending || !draft.trim()}>
+        <Btn
+          variant="primary"
+          size="sm"
+          onClick={send}
+          disabled={sending || !draft.trim()}
+          style={{
+            background: T.indigo,
+            color: '#fff',
+            borderRadius: 999,
+            boxShadow: '0 10px 22px -10px rgba(60,59,110,0.55)',
+            fontFamily: F.ui,
+          }}
+        >
           {sending ? 'Sending…' : 'Send'}
         </Btn>
       </div>
@@ -315,8 +328,9 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
         width: 'min(440px, 100vw)', height: '100vh',
         background: BG, display: 'flex', flexDirection: 'column',
         borderLeft: `1px solid ${BORDER}`,
-        boxShadow: '-24px 0 60px rgba(15,18,32,0.18)',
+        boxShadow: '-24px 0 60px rgba(29,36,51,0.18)',
         fontFamily: SANS,
+        color: TEXT,
       }}>
         <ChatScreen mode="panel" header={header} messages={messageNodes} composer={composer} banner={banner} />
       </aside>
