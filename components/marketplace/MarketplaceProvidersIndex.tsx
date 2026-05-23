@@ -494,12 +494,18 @@ function ProviderSidePane({ a, onClose }) {
           </div>
         </div>
 
-        {/* Footer CTAs */}
+        {/* Footer CTAs — prefer the SEO-friendly username slug when present */}
         <div style={{ padding: '14px 22px 18px', borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 10, background: BG }}>
-          <Link href={`/sellers/${a.id}`} style={{ flex: 1, textDecoration: 'none' }}>
+          <Link
+            href={`/marketplace/providers/${a.username || a.profile_id || a.id}`}
+            style={{ flex: 1, textDecoration: 'none' }}
+          >
             <Btn variant="primary" size="md" style={{ width: '100%' }}>View full profile →</Btn>
           </Link>
-          <Link href={`/marketplace/providers/${a.id}`} style={{ textDecoration: 'none' }}>
+          <Link
+            href={`/marketplace/providers/${a.username || a.profile_id || a.id}`}
+            style={{ textDecoration: 'none' }}
+          >
             <Btn variant="secondary" size="md">All gigs</Btn>
           </Link>
         </div>

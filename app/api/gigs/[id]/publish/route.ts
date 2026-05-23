@@ -1,5 +1,6 @@
 import { ok, fail, fieldFail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -78,6 +79,22 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   const gallery = Array.isArray(gig.gallery_images) ? gig.gallery_images : []
   if (gallery.length < 1) {
     errors.gallery_images = 'At least one gallery image is required.'
+  }
+
+  // Profile completeness gate (attorneys only — consultants stay on the
+  // existing baseline checks). A gig cannot move to `active` until the
+  // attorney's profile is at least PROFILE_PUBLISH_THRESHOLD% complete AND
+  // has an SEO-friendly username set (used as the public-profile URL slug).
+  if (auth.role === 'attorney') {
+    const strength = await computeAttorneyStrength(auth.db, auth.profileId)
+    if (!strength.username) {
+      errors.profile_username =
+        'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
+    }
+    if (strength.score < PROFILE_PUBLISH_THRESHOLD) {
+      errors.profile_strength =
+        `Your profile is ${strength.score}% complete. Reach ${PROFILE_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
+    }
   }
 
   if (Object.keys(errors).length > 0) return fieldFail(errors, 422)

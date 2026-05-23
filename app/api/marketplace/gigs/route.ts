@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 
   let query = db
     .from('gigs')
-    .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email)', { count: 'exact' })
+    .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)', { count: 'exact' })
     .eq('status', 'active')
 
   if (q.length >= 2) query = query.or(`title.ilike.%${q}%,pitch.ilike.%${q}%,description.ilike.%${q}%`)

@@ -495,7 +495,11 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 is_online: gig.provider_is_online,
               }}
               onViewProfile={() => {
-                window.location.href = `/marketplace/providers/${gig.provider_id}`
+                // Prefer the SEO-friendly username when the provider has set
+                // one; otherwise fall back to the profile UUID (the page
+                // resolves either token, see app/marketplace/providers/[id]).
+                const token = gig.provider?.username || gig.provider_id
+                window.location.href = `/marketplace/providers/${token}`
               }}
               onMessage={() => gatedChat(() => setMsgOpen(true))}
             />

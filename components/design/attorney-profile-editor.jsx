@@ -46,7 +46,14 @@ export default function AttorneyProfileEditor() {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not save change.')
-      setData((d) => ({ ...d, attorney: { ...(d.attorney || {}), ...(payload.attorney || {}) } }))
+      setData((d) => ({
+        ...d,
+        attorney: { ...(d.attorney || {}), ...(payload?.attorney || {}) },
+        // Username lives on profile, not attorneys — update local profile too.
+        profile: field === 'username'
+          ? { ...(d.profile || {}), username: payload?.username ?? value }
+          : d.profile,
+      }))
       setSavedFlash('Saved')
       window.setTimeout(() => setSavedFlash(''), 1400)
     } catch (e) {
@@ -189,6 +196,19 @@ export default function AttorneyProfileEditor() {
             )}
           </div>
         </div>
+      </Card>
+
+      {/* Public profile handle (SEO) */}
+      <Card>
+        <SectionLabel>Public profile handle</SectionLabel>
+        <EditableField
+          label="Username (SEO slug)"
+          help="REQUIRED before publishing gigs. Becomes your public profile URL (market.yousafeconsultancy.com/providers/<handle>). Keep it short, lowercase, and keyword-rich — e.g. immigration-attorney-ny, or jane-doe-immigration. Lowercase letters, numbers, dashes, underscores only; 3–32 chars; cannot start or end with - or _."
+          value={profile.username || ''}
+          maxLength={32}
+          placeholder="immigration-attorney-ny"
+          onSave={(v) => save('username', String(v || '').toLowerCase().trim())}
+        />
       </Card>
 
       {/* Tagline + intro */}

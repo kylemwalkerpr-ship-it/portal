@@ -64,11 +64,45 @@ export function normalizeRevision(value: unknown) {
   return Number.isInteger(n) && n >= 0 ? n : NaN
 }
 
-export function buildSlug(input: string) {
-  return input
+/**
+ * Slugify a gig title for use as the URL path. SEO-tuned:
+ *  - normalises unicode (é → e, ñ → n) so multilingual titles produce ASCII slugs
+ *  - strips ' " ’ apostrophes and quotes WITHOUT inserting a dash
+ *  - drops English stop-words (a, the, an, of, for, to, in, on, &) that dilute
+ *    keyword density without changing meaning — long-form titles still keep
+ *    the meaningful words
+ *  - collapses to single dashes, trims edge dashes
+ *  - caps at 70 chars (under the 75-char practical URL limit Google still
+ *    indexes cleanly), trimmed to the previous word boundary so we don't
+ *    cut a word in half
+ *  - falls back to a UUID only if the resulting slug is empty
+ *
+ * Uniqueness is handled by the caller — gig creation appends a short hash
+ * suffix, profile usernames are checked unique at write time.
+ */
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'to', 'in', 'on', 'at',
+  'by', 'with', 'is', 'are', 'be', 'was', 'were',
+])
+
+export function buildSlug(input: string): string {
+  const normalised = input
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/['"]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || crypto.randomUUID()
+    .replace(/['’"]/g, '')
+
+  const tokens = normalised
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 0 && !STOP_WORDS.has(t))
+
+  let slug = tokens.join('-')
+  if (slug.length > 70) {
+    // Trim to a word boundary instead of mid-word.
+    const trimmed = slug.slice(0, 70)
+    const cut = trimmed.lastIndexOf('-')
+    slug = cut > 30 ? trimmed.slice(0, cut) : trimmed
+  }
+  slug = slug.replace(/^-+|-+$/g, '')
+  return slug || crypto.randomUUID()
 }

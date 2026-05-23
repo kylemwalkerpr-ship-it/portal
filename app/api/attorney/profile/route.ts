@@ -46,7 +46,7 @@ export async function GET() {
 
   const { data: profile, error: profileErr } = await db
     .from('profiles')
-    .select('id, email, full_name, role, status')
+    .select('id, email, full_name, role, status, username')
     .eq('clerk_user_id', userId)
     .single()
 
@@ -70,7 +70,13 @@ export async function GET() {
   ])
 
   return Response.json({
-    profile: { id: profile.id, email: profile.email, full_name: profile.full_name, status: profile.status },
+    profile: {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      status: profile.status,
+      username: (profile as any).username ?? null,
+    },
     attorney: attorneyRes.data ?? null,
     application: applicationRes.data ?? null,
     rating,
@@ -121,17 +127,61 @@ export async function PATCH(req: Request) {
     update.starting_price = Number.isFinite(n) && n > 0 ? n : null
   }
 
-  if (Object.keys(update).length === 0) {
+  // Username lives on profiles, not attorneys — handle it separately.
+  // Slug rules: 3–32 chars, [a-z0-9_-], must start+end with [a-z0-9].
+  let usernameWrite: string | null | undefined = undefined
+  if ('username' in body) {
+    const raw = typeof (body as any).username === 'string' ? (body as any).username.trim().toLowerCase() : ''
+    if (raw === '') {
+      usernameWrite = null
+    } else if (!/^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/.test(raw)) {
+      return Response.json(
+        {
+          error:
+            'Username must be 3–32 chars, lowercase letters, numbers, dashes or underscores; cannot start or end with - or _.',
+        },
+        { status: 400 },
+      )
+    } else {
+      usernameWrite = raw
+    }
+  }
+
+  if (Object.keys(update).length === 0 && usernameWrite === undefined) {
     return Response.json({ error: 'Nothing to update.' }, { status: 400 })
   }
 
-  const { data, error: updErr } = await ctx.db
-    .from('attorneys')
-    .update(update)
-    .eq('id', ctx.attorneyId)
-    .select('id, jurisdictions, practice_areas, bio, available, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone')
-    .single()
+  if (usernameWrite !== undefined) {
+    // Uniqueness check first so we can return a 409 with a clear message.
+    if (usernameWrite !== null) {
+      const { data: clash } = await ctx.db
+        .from('profiles')
+        .select('id')
+        .eq('username', usernameWrite)
+        .neq('id', ctx.profileId)
+        .maybeSingle()
+      if (clash) {
+        return Response.json({ error: 'That handle is taken — try another.' }, { status: 409 })
+      }
+    }
+    const { error: profErr } = await ctx.db
+      .from('profiles')
+      .update({ username: usernameWrite })
+      .eq('id', ctx.profileId)
+    if (profErr) return Response.json({ error: profErr.message }, { status: 500 })
+  }
 
-  if (updErr) return Response.json({ error: updErr.message }, { status: 500 })
-  return Response.json({ attorney: data })
+  let attorney: any = null
+  if (Object.keys(update).length > 0) {
+    const { data, error: updErr } = await ctx.db
+      .from('attorneys')
+      .update(update)
+      .eq('id', ctx.attorneyId)
+      .select('id, jurisdictions, practice_areas, bio, available, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone')
+      .single()
+    if (updErr) return Response.json({ error: updErr.message }, { status: 500 })
+    attorney = data
+  }
+
+  return Response.json({ attorney, username: usernameWrite ?? undefined })
 }

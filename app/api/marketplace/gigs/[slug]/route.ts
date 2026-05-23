@@ -9,7 +9,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
 
   const { data: gig, error } = await db
     .from('gigs')
-    .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, created_at)')
+    .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username, created_at)')
     .eq('slug', slug)
     .eq('status', 'active')
     .single()

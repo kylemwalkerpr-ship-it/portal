@@ -4,6 +4,7 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import { C, Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
 import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
+import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
 
 const wizardContainer: CSSProperties = {
   maxWidth: '800px',
@@ -185,6 +186,8 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = React.useState('')
+  const [profileReady, setProfileReady] = React.useState(true)
+  const handleReadyChange = React.useCallback((ready: boolean) => setProfileReady(ready), [])
 
   const validateStep = (step: number): boolean => {
     const newErrors: Record<string, string> = {}
@@ -383,6 +386,8 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         </p>
       </div>
 
+      <ProfileCompletenessBanner onReadyChange={handleReadyChange} />
+
       <div style={progressContainer}>
         <ProgressBar value={progress} />
         <div style={stepIndicator}>
@@ -473,8 +478,13 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
                 <Btn variant="secondary" onClick={handleSaveDraft} disabled={saving}>
                   {saving ? 'Saving...' : 'Save Draft'}
                 </Btn>
-                <Btn variant="primary" onClick={handlePublish} disabled={saving}>
-                  {saving ? 'Publishing...' : 'Publish Gig'}
+                <Btn
+                  variant="primary"
+                  onClick={handlePublish}
+                  disabled={saving || !profileReady}
+                  title={!profileReady ? 'Complete your profile to ≥75% (and set your handle) before publishing.' : undefined}
+                >
+                  {saving ? 'Publishing...' : profileReady ? 'Publish Gig' : 'Profile incomplete'}
                 </Btn>
               </>
             )}
