@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
-import { MarketplacePage } from '@/components/marketplace/MarketplacePage'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
+import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -36,13 +36,29 @@ function parseCountry(raw: string | string[] | undefined): Country {
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: Promise<{ country?: string | string[] }>
+  searchParams?: Promise<{
+    country?: string | string[]
+    q?: string | string[]
+    category?: string | string[]
+    sort?: string | string[]
+  }>
 }) {
   const sp = (await searchParams) ?? {}
   const country = parseCountry(sp.country)
+
+  // When search filters are present, render the discovery results page.
+  // GigDiscoveryPage reads useSearchParams() client-side.
+  const hasFilters = Boolean(sp.q || sp.category || sp.sort)
+  if (hasFilters) {
+    return <GigDiscoveryPage />
+  }
+
   const auth = await getOptionalPortalUser()
+  if (auth && auth.role !== 'client') {
+    redirect('/dashboard')
+  }
+
+  // Unified landing page for guests and clients alike.
   // PublicMarketplaceLanding renders EstateFooter itself — no second footer here.
-  if (!auth) return <PublicMarketplaceLanding country={country} />
-  if (auth.role !== 'client') redirect('/dashboard')
-  return <MarketplacePage />
+  return <PublicMarketplaceLanding country={country} />
 }
