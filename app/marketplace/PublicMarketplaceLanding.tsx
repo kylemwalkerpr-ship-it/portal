@@ -8,6 +8,7 @@ import {
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { EstateFooter } from '@/components/EstateFooter'
 import { CountryTabs, CountryPicker } from '@/components/marketplace/CountryTabs'
+import { CategoriesMenu } from '@/components/marketplace/CategoriesMenu'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -59,6 +60,7 @@ interface LandingGig {
   avg_rating: number
   review_count: number
   rank_score: number
+  order_count: number
   starting_price: number | null
   delivery_days: number | null
   providerName: string
@@ -160,7 +162,14 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
     .sort((a, b) => b.rank_score - a.rank_score)
     .slice(0, 6)
 
-  const top = featured[0]
+  // "Case file" hero card = highest-impressions gig in the slice. We use
+  // order_count as the closest proxy we have (no impressions column on gigs);
+  // tie-break on rank_score so a brand-new but heavily promoted gig still wins
+  // over an old idle one with zero orders.
+  const top = [...gigs].sort((a, b) => {
+    if (b.order_count !== a.order_count) return b.order_count - a.order_count
+    return b.rank_score - a.rank_score
+  })[0]
   let caseFile: Slice['caseFile'] = null
   if (top) {
     const labels = ['Brief', 'Standard', 'Filed']
@@ -216,7 +225,7 @@ async function loadLandingData(): Promise<LandingData> {
   const inventoryP = db
     .from('gigs')
     .select(
-      'id, slug, title, category, provider_type, avg_rating, review_count, rank_score, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
+      'id, slug, title, category, provider_type, avg_rating, review_count, rank_score, order_count, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
@@ -250,6 +259,7 @@ async function loadLandingData(): Promise<LandingData> {
       avg_rating: Number(row.avg_rating ?? 0),
       review_count: Number(row.review_count ?? 0),
       rank_score: Number(row.rank_score ?? 0),
+      order_count: Number(row.order_count ?? 0),
       starting_price: cheapest ? cheapest.price : null,
       delivery_days: cheapest ? cheapest.delivery_days : null,
       providerName: row.provider?.full_name ?? 'YouSafe provider',
@@ -356,12 +366,6 @@ function deliveryLabel(days: number | null): string {
   if (days === 1) return 'Same-day'
   if (days === 2) return '48-hour delivery'
   return `${days}-day delivery`
-}
-
-function jxStripe(code: JxCode): string {
-  if (code === 'us') return `linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%)`
-  if (code === 'uk') return 'linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%)'
-  return 'linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%)'
 }
 
 function avatarBgFor(provider_type: LandingGig['provider_type']): string {
@@ -514,23 +518,35 @@ const CSS = `
 .cw-market nav.nav-links a.cta:hover { background: ${T.indigoDeep}; }
 
 .cw-market .country-bar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; }
-.cw-market .country-bar-inner { display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: wrap; }
+.cw-market .country-bar-inner { display: flex; align-items: center; gap: 10px; padding: 10px 0; flex-wrap: wrap; }
 .cw-market .country-bar .label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-right: 4px; }
 .cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.inkMid}; transition: all .12s; cursor: pointer; }
 .cw-market .country-bar a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
 .cw-market .country-bar a.active { background: ${T.ink}; color: #fff; border-color: ${T.ink}; font-weight: 600; }
+.cw-market .country-bar .divider { height: 18px; width: 1px; background: ${T.rule}; margin: 0 6px; }
 
-.cw-market .cat-strip { border-bottom: 1px solid ${T.rule}; background: ${T.paper}; }
-.cw-market .cat-strip-inner { display: flex; align-items: center; gap: 28px; height: 48px; overflow-x: auto; scrollbar-width: none; }
-.cw-market .cat-strip-inner::-webkit-scrollbar { display: none; }
-.cw-market .cat-strip a { font-size: 13.5px; color: ${T.inkMid}; white-space: nowrap; position: relative; padding: 4px 0; }
-.cw-market .cat-strip a:hover { color: ${T.ink}; }
-.cw-market .cat-strip a.active { color: ${T.ink}; font-weight: 600; }
-.cw-market .cat-strip a.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -16px; height: 2px; background: ${T.ink}; }
-.cw-market .cat-strip .mono { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-cat-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 600; color: ${T.ink}; font-family: ${F.ui}; transition: all .12s; }
+.cw-cat-trigger:hover { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
+.cw-cat-panel { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; display: grid; grid-template-columns: 240px 380px; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; box-shadow: 0 30px 60px -20px rgba(29,36,51,0.25); overflow: hidden; min-width: 620px; max-width: calc(100vw - 32px); }
+@media (max-width: 720px) { .cw-cat-panel { grid-template-columns: 1fr; min-width: min(360px, calc(100vw - 32px)); } .cw-cat-detail { display: none; } }
+.cw-cat-list { list-style: none; margin: 0; padding: 10px 0; border-right: 1px solid ${T.ruleSoft}; background: ${T.paper}; max-height: 440px; overflow-y: auto; }
+.cw-cat-list li a { display: grid; grid-template-columns: 22px 1fr auto auto; gap: 10px; align-items: center; padding: 9px 16px; font-size: 13.5px; color: ${T.ink}; }
+.cw-cat-list li a:hover, .cw-cat-list li a.is-focus { background: ${T.paper2}; }
+.cw-cat-icon { font-size: 14px; line-height: 1; }
+.cw-cat-name { font-weight: 500; }
+.cw-cat-count { font-family: ${F.mono}; font-size: 10.5px; color: ${T.inkSoft}; letter-spacing: 0.04em; }
+.cw-cat-arrow { color: ${T.inkSoft}; }
+.cw-cat-detail { padding: 22px 24px; background: ${T.vellum}; display: flex; flex-direction: column; gap: 12px; max-height: 440px; overflow-y: auto; }
+.cw-cat-detail-eyebrow { font-family: ${F.display}; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; color: ${T.ink}; }
+.cw-cat-detail-desc { margin: 0; font-size: 13px; line-height: 1.5; color: ${T.inkMid}; }
+.cw-cat-sublist { list-style: none; margin: 0; padding: 8px 0 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+.cw-cat-sublist a { font-size: 13px; color: ${T.inkMid}; padding: 4px 0; display: block; border-bottom: 1px dashed transparent; }
+.cw-cat-sublist a:hover { color: ${T.ink}; border-bottom-color: ${T.rule}; }
+.cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
+.cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
 
-.cw-market .hero { padding: 64px 0 56px; border-bottom: 1px solid ${T.rule}; }
-.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 72px; align-items: center; }
+.cw-market .hero { padding: 52px 0 44px; border-bottom: 1px solid ${T.rule}; }
+.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 56px; align-items: center; }
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: ${T.inkMid}; }
 .cw-market .flagbar { width: 28px; height: 8px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border: 1px solid ${T.rule}; }
 .cw-market .flagbar.uk { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
@@ -581,7 +597,6 @@ const CSS = `
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
 .cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: ${T.inkMid}; }
 
-.cw-market .jx { padding: 56px 0 24px; }
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; gap: 32px; }
 .cw-market .section-head h2 { font-family: ${F.display}; font-weight: 500; font-size: clamp(28px, 3.2vw, 40px); line-height: 1.1; letter-spacing: -0.018em; margin: 0; color: ${T.ink}; max-width: 22ch; }
 .cw-market .section-head h2 em { font-style: italic; color: ${T.indigo}; }
@@ -589,45 +604,15 @@ const CSS = `
 .cw-market .section-head .meta a { color: ${T.ink}; border-bottom: 1px solid ${T.ink}; padding-bottom: 1px; }
 .cw-market .section-head .meta a:hover { color: ${T.indigo}; border-color: ${T.indigo}; }
 
-.cw-market .jx-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.cw-market .jx-card { position: relative; overflow: hidden; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; padding: 28px 26px 24px; transition: transform .25s ease, box-shadow .25s ease, border-color .25s; display: block; }
-.cw-market .jx-card:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(29,36,51,0.04), 0 18px 38px -28px rgba(29,36,51,0.22); border-color: ${T.ink}; }
-.cw-market .jx-card.active { border-color: ${T.ink}; box-shadow: 0 0 0 2px ${T.ink}; }
-.cw-market .jx-card .stripe { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
-.cw-market .jx-card .code { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.18em; color: ${T.inkSoft}; }
-.cw-market .jx-card h3 { font-family: ${F.display}; font-weight: 500; font-size: 32px; letter-spacing: -0.012em; margin: 6px 0 18px; color: ${T.ink}; }
-.cw-market .jx-card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid ${T.ruleSoft}; padding-top: 14px; }
-.cw-market .jx-card li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13.5px; color: ${T.inkMid}; padding: 6px 0; border-bottom: 1px dotted ${T.ruleSoft}; }
-.cw-market .jx-card li:last-child { border-bottom: 0; }
-.cw-market .jx-card li b { color: ${T.ink}; font-weight: 600; }
-.cw-market .jx-card li .tally { font-family: ${F.mono}; font-size: 11px; color: ${T.inkSoft}; }
-.cw-market .jx-card .footer-row { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; font-family: ${F.mono}; font-size: 11px; color: ${T.inkSoft}; letter-spacing: 0.1em; text-transform: uppercase; }
-.cw-market .jx-card .footer-row .from { color: ${T.ink}; font-weight: 600; }
-.cw-market .jx-card .arr { width: 30px; height: 30px; border: 1px solid ${T.rule}; border-radius: 50%; display: grid; place-items: center; color: ${T.ink}; transition: background .15s, color .15s, border-color .15s; }
-.cw-market .jx-card:hover .arr { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
-
-.cw-market .cat-index { padding: 56px 0; }
-.cw-market .index-table { border-top: 1.5px solid ${T.ink}; border-bottom: 1.5px solid ${T.ink}; }
-.cw-market .index-row { display: grid; grid-template-columns: 70px minmax(0, 1.2fr) minmax(0, 2.3fr) 90px 110px; gap: 24px; align-items: baseline; padding: 22px 4px; border-bottom: 1px solid ${T.rule}; transition: background .15s; }
-.cw-market .index-row:last-child { border-bottom: 0; }
-.cw-market .index-row:hover { background: rgba(60,59,110,0.035); }
-.cw-market .index-row .num { font-family: ${F.mono}; font-size: 12px; color: ${T.inkSoft}; letter-spacing: 0.08em; }
-.cw-market .index-row .name { font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1.2; color: ${T.ink}; letter-spacing: -0.005em; }
-.cw-market .index-row .name em { color: ${T.indigo}; font-style: italic; }
-.cw-market .index-row .subs { font-size: 13px; color: ${T.inkMid}; line-height: 1.55; }
-.cw-market .index-row .count { font-family: ${F.mono}; font-size: 12px; color: ${T.inkMid}; letter-spacing: 0.06em; white-space: nowrap; }
-.cw-market .index-row .from-price { font-family: ${F.mono}; font-size: 12px; color: ${T.ink}; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; text-align: right; }
-.cw-market .index-row .from-price b { font-family: ${F.display}; font-size: 16px; font-weight: 600; margin-left: 4px; }
-
-.cw-market .featured { padding: 24px 0 56px; }
+.cw-market .featured { padding: 44px 0 44px; border-top: 1px solid ${T.rule}; }
 .cw-market .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 24px; }
 .cw-market .filters a { padding: 8px 16px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.inkMid}; transition: all .15s; }
 .cw-market .filters a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
 .cw-market .filters a.on { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
 .cw-market .filters a .ct { font-family: ${F.mono}; font-size: 10.5px; margin-left: 6px; color: currentColor; opacity: 0.7; }
 .cw-market .gig-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
-@media (max-width: 1080px) { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } .cw-market .jx-grid { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .cw-market .gig-grid { grid-template-columns: 1fr; } .cw-market .index-row { grid-template-columns: 40px 1fr; gap: 12px; } .cw-market .index-row .subs, .cw-market .index-row .count, .cw-market .index-row .from-price { display: none; } .cw-market .nav-search { display: none; } }
+@media (max-width: 1080px) { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .cw-market .gig-grid { grid-template-columns: 1fr; } .cw-market .nav-search { display: none; } }
 
 .cw-market .gig { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform .25s, box-shadow .25s, border-color .25s; }
 .cw-market .gig:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(29,36,51,0.04), 0 18px 38px -28px rgba(29,36,51,0.22); border-color: ${T.ink}; }
@@ -653,7 +638,7 @@ const CSS = `
 .cw-market .gig .price b { display: block; font-family: ${F.display}; font-weight: 600; font-size: 22px; color: ${T.ink}; line-height: 1; margin-top: 2px; }
 .cw-market .gig .delivery { font-family: ${F.mono}; font-size: 11px; color: ${T.inkSoft}; letter-spacing: .1em; text-transform: uppercase; }
 
-.cw-market .how { padding: 64px 0; border-top: 1px solid ${T.rule}; background: linear-gradient(180deg, ${T.paper} 0%, ${T.paper2} 100%); }
+.cw-market .how { padding: 52px 0; border-top: 1px solid ${T.rule}; background: linear-gradient(180deg, ${T.paper} 0%, ${T.paper2} 100%); }
 .cw-market .how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid ${T.rule}; border-radius: 14px; background: ${T.vellum}; overflow: hidden; }
 @media (max-width: 800px) { .cw-market .how-grid { grid-template-columns: 1fr; } }
 .cw-market .how-step { padding: 36px 32px; border-right: 1px solid ${T.rule}; position: relative; }
@@ -666,7 +651,7 @@ const CSS = `
 .cw-market .how-step p { margin: 0; font-size: 14.5px; line-height: 1.6; color: ${T.inkMid}; }
 .cw-market .how-step .icon { position: absolute; top: 32px; right: 28px; font-family: ${F.display}; font-style: italic; font-size: 56px; color: ${T.paper3}; line-height: 1; }
 
-.cw-market .quotes { padding: 72px 0 64px; border-top: 1px solid ${T.rule}; }
+.cw-market .quotes { padding: 52px 0; border-top: 1px solid ${T.rule}; }
 .cw-market .quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
 @media (max-width: 900px) { .cw-market .quotes-grid { grid-template-columns: 1fr; gap: 28px; } }
 .cw-market .quote { border-top: 2px solid ${T.ink}; padding-top: 22px; }
@@ -677,7 +662,7 @@ const CSS = `
 .cw-market .quote cite b { color: ${T.ink}; font-weight: 600; }
 .cw-market .quote cite .av { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #c3b69a, #826f4a); color: #fff; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; }
 
-.cw-market .seller-cta { padding: 64px 0 80px; }
+.cw-market .seller-cta { padding: 52px 0 64px; border-top: 1px solid ${T.rule}; }
 .cw-market .seller-card { position: relative; overflow: hidden; border-radius: 18px; background: ${T.indigo}; color: #fff; padding: 56px 64px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: center; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 30px 60px -30px rgba(29,36,51,0.28); }
 @media (max-width: 800px) { .cw-market .seller-card { grid-template-columns: 1fr; padding: 40px 28px; } }
 .cw-market .seller-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%); }
@@ -697,7 +682,7 @@ const CSS = `
 .cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 36px; line-height: 1; color: #fff; letter-spacing: -0.01em; }
 .cw-market .seller-card .stat span { display: block; margin-top: 6px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.72); }
 
-.cw-market .faq-section { padding: 72px 0; border-top: 1px solid ${T.rule}; }
+.cw-market .faq-section { padding: 52px 0; border-top: 1px solid ${T.rule}; }
 .cw-market .faq-grid { display: grid; gap: 14px; max-width: 820px; }
 .cw-market .faq-item { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; padding: 18px 22px; }
 .cw-market .faq-item summary { font-family: ${F.display}; font-size: 18px; font-weight: 500; color: ${T.ink}; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
@@ -743,7 +728,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
   const data = await loadLandingData()
   const active: Country = (['all', 'us', 'uk', 'ca'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
-  const { jurisdictions, reviews } = data
+  const { reviews } = data
   const headline = HERO_HEADLINES[active]
   const chips = POPULAR_CHIPS[active]
   const totalActive = slice.totalActive
@@ -773,7 +758,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           </div>
           <div className="topbar-right">
             <a href={`${PORTAL_URL}/sign-up/seller`}>For attorneys &amp; consultants</a>
-            <a href="https://yousafeconsultancy.com/contact-us">Help centre</a>
+            <a href="#faq">Help</a>
           </div>
         </div>
       </div>
@@ -806,27 +791,19 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </header>
 
-      {/* Country selector bar — primary jurisdiction filter */}
+      {/* Browse bar — categories dropdown + jurisdiction tabs in one row */}
       <div className="country-bar" id="jurisdictions">
         <div className="wrap country-bar-inner">
+          <CategoriesMenu
+            country={active}
+            counts={Object.fromEntries(slice.categories.map((c) => [c.cat.id, c.count]))}
+          />
+          <span className="divider" aria-hidden="true" />
           <span className="label">Jurisdiction —</span>
           <CountryTabs active={active} />
           <span style={{ marginLeft: 'auto', fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: T.inkSoft }}>
-            Showing: {slice.label} · {totalActive.toLocaleString('en-US')} briefs · currency {currency}
+            {totalActive.toLocaleString('en-US')} briefs · {currency}
           </span>
-        </div>
-      </div>
-
-      {/* Category strip */}
-      <div className="cat-strip">
-        <div className="wrap cat-strip-inner">
-          <span className="mono">Browse —</span>
-          <a className="active" href={withCountry('/marketplace', active)}>All services</a>
-          {CATEGORIES.slice(0, 8).map((cat) => (
-            <a key={cat.id} href={withCountry(`/marketplace?category=${cat.id}`, active)}>
-              {cat.name.replace(' Services', '')}
-            </a>
-          ))}
         </div>
       </div>
 
@@ -864,7 +841,13 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           </div>
 
           {slice.caseFile ? (
-            <aside className="hero-card" data-c={slice.caseFile.jx ?? 'us'} aria-label="Sample service listing">
+            <a
+              className="hero-card-link"
+              href={slice.caseFile.slug ? `/marketplace/gigs/${slice.caseFile.slug}` : withCountry('/marketplace?sort=most_orders', active)}
+              aria-label={`Open ${slice.caseFile.title}`}
+              style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
+            >
+            <aside className="hero-card" data-c={slice.caseFile.jx ?? 'us'} aria-label="Most-popular service listing">
               <div className="file-meta">
                 <span>FILE · MC-{slice.caseFile.id.slice(0, 4).toUpperCase()}-{(slice.caseFile.providerCountry || (active !== 'all' ? active : 'XXX')).toUpperCase().slice(0, 3)}</span>
                 <span>VOL · III · {new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()}</span>
@@ -899,6 +882,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
               {slice.caseFile.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
               {slice.caseFile.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
             </aside>
+            </a>
           ) : (
             <aside className="hero-empty">
               No active briefs in <b>{slice.label}</b> yet —<br />
@@ -917,85 +901,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           ))}
         </div>
       </div>
-
-      {/* Jurisdiction rail */}
-      <section className="jx">
-        <div className="wrap">
-          <div className="section-head">
-            <h2>Choose <em>where</em> your case sits.</h2>
-            <div className="meta">
-              <span>Vol. III · Jurisdiction Index</span>
-              <span><a href="/?country=all">See all jurisdictions →</a></span>
-            </div>
-          </div>
-
-          <div className="jx-grid">
-            {jurisdictions.map((j) => {
-              const codeNum = j.code === 'us' ? '01' : j.code === 'uk' ? '02' : '03'
-              const isActive = active === j.code
-              return (
-                <a
-                  key={j.code}
-                  className={`jx-card${isActive ? ' active' : ''}`}
-                  href={`/?country=${j.code}#jurisdictions`}
-                >
-                  <span className="stripe" style={{ background: jxStripe(j.code) }} />
-                  <span className="code">JX-{codeNum} · {j.name}</span>
-                  <h3>{j.name}</h3>
-                  {j.topCategories.length > 0 ? (
-                    <ul>
-                      {j.topCategories.map((tc) => (
-                        <li key={tc.name}><b>{tc.name}</b> <span className="tally">{tc.count} service{tc.count === 1 ? '' : 's'}</span></li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <ul>
-                      <li><b>Licensed providers</b> <span className="tally">accepting briefs</span></li>
-                      <li><b>Fixed-fee deliverables</b> <span className="tally">posted upfront</span></li>
-                      <li><b>Escrow-backed payment</b> <span className="tally">no upfront risk</span></li>
-                      <li><b>Refund on failure</b> <span className="tally">no questions</span></li>
-                    </ul>
-                  )}
-                  <div className="footer-row">
-                    <span>{j.fromCents != null ? <>from <span className="from">{formatPrice(j.fromCents, j.currency)}</span></> : <>Browse {j.name}</>}</span>
-                    <span className="arr">{isActive ? '✓' : '→'}</span>
-                  </div>
-                </a>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Category index */}
-      <section className="cat-index">
-        <div className="wrap">
-          <div className="section-head">
-            <h2>The full <em>index of services.</em></h2>
-            <div className="meta">
-              <span>{slice.categories.length} categories · {totalActive.toLocaleString('en-US')} briefs · {slice.label}</span>
-              <span><a href={withCountry('/marketplace/categories', active)}>Browse all categories →</a></span>
-            </div>
-          </div>
-
-          <div className="index-table">
-            {slice.categories.map((cs, i) => {
-              const num = String(i + 1).padStart(2, '0')
-              const name = cs.cat.name.replace(/^([A-Za-z]+)/, '<em>$1</em>')
-              const subs = cs.cat.subcategories.slice(0, 5).map((s) => s.name).join(' · ')
-              return (
-                <a key={cs.cat.id} className="index-row" href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}>
-                  <span className="num">{num} ·</span>
-                  <span className="name" dangerouslySetInnerHTML={{ __html: name }} />
-                  <span className="subs">{subs}</span>
-                  <span className="count">{cs.count} {cs.count === 1 ? 'brief' : 'briefs'}</span>
-                  <span className="from-price">{cs.fromCents != null ? <>from<b>{formatPrice(cs.fromCents, currency)}</b></> : <>—</>}</span>
-                </a>
-              )
-            })}
-          </div>
-        </div>
-      </section>
 
       {/* Featured gigs */}
       {slice.featured.length > 0 ? (
@@ -1025,8 +930,12 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                 const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
                 const cardCountry = g.jx ?? (active !== 'all' ? active : 'us')
                 const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
+                const href = g.slug
+                  ? `/marketplace/gigs/${g.slug}`
+                  : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, active)
                 return (
-                  <article key={g.id} className="gig" data-c={cardCountry}>
+                  <a key={g.id} href={href} className="gig-link" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                  <article className="gig" data-c={cardCountry}>
                     <div className="plate">
                       <span className="plate-glyph">{glyphFor(g)}</span>
                       <span className="plate-tag">{tag}</span>
@@ -1040,9 +949,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                         </span>
                         <span className="pro">{proLabel}</span>
                       </div>
-                      <h4>
-                        <a href={g.slug ? `/marketplace/gigs/${g.slug}` : '/marketplace'}>{g.title}</a>
-                      </h4>
+                      <h4>{g.title}</h4>
                       {g.review_count > 0 && (
                         <div className="stars">
                           <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
@@ -1058,6 +965,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                       </div>
                     </div>
                   </article>
+                  </a>
                 )
               })}
             </div>
@@ -1153,7 +1061,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
               <p>List fixed-fee briefs in your wheelhouse, choose your jurisdictions, and let our clients arrive vetted, scoped, and pre-paid. Funds are escrowed before you begin work; payouts release on client approval.</p>
               <div className="actions">
                 <a className="btn primary" href={`${PORTAL_URL}/sign-up/seller`}>Apply to sell →</a>
-                <a className="btn ghost" href="https://yousafeconsultancy.com/sellers/handbook">Read the seller handbook</a>
+                <a className="btn ghost" href="#how-it-works">How it works</a>
               </div>
             </div>
             <div className="stats">
@@ -1166,7 +1074,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       </section>
 
       {/* FAQ */}
-      <section className="faq-section">
+      <section className="faq-section" id="faq">
         <div className="wrap">
           <div className="section-head">
             <h2>Before you <em>start.</em></h2>
