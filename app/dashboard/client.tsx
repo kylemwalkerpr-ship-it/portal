@@ -188,12 +188,12 @@ export default function DashboardClient({ role, status, userName, userId, expect
     : role === 'attorney' ? <AttorneyApp onLogout={handleLogout} userName={userName} />
     : <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
 
-  // Attorneys get a sticky intake to-do banner above their dashboard until
-  // their profile clears the 75% publish gate.
-  if (role === 'attorney') {
+  // Attorneys and consultants get a sticky intake to-do banner above their
+  // dashboard until their profile clears the 75% publish gate.
+  if (role === 'attorney' || role === 'consultant') {
     return (
       <>
-        <IntakeTodoBanner />
+        <IntakeTodoBanner role={role} />
         {app}
       </>
     )

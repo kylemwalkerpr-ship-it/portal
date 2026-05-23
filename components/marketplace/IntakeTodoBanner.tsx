@@ -9,30 +9,37 @@ type Strength = {
   username: string | null
 }
 
+interface Props {
+  role: 'attorney' | 'consultant'
+}
+
 /**
  * IntakeTodoBanner — sticky, dismissable "complete your intake" banner that
- * docks above the attorney dashboard while the profile is below the 75%
- * publish gate. Click "Continue intake" to land on the dedicated wizard at
- * /dashboard/attorney/intake.
- *
- * Dismissal lives in sessionStorage so a single tab can hide the banner for
- * a quick edit session, but the next visit re-surfaces the to-do.
+ * docks above the dashboard while the profile is below the 75% publish gate.
+ * Works for both attorneys and consultants — endpoint + link change per role.
  */
-export function IntakeTodoBanner() {
+export function IntakeTodoBanner({ role }: Props) {
   const [data, setData] = useState<Strength | null>(null)
   const [hidden, setHidden] = useState(false)
 
+  const strengthEndpoint = role === 'attorney'
+    ? '/api/attorney/profile/strength'
+    : '/api/consultant/profile/strength'
+  const intakeHref = role === 'attorney'
+    ? '/dashboard/attorney/intake'
+    : '/dashboard/consultant/intake'
+
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && window.sessionStorage.getItem('ys-intake-banner-hidden') === '1') {
+      if (typeof window !== 'undefined' && window.sessionStorage.getItem(`ys-intake-banner-hidden-${role}`) === '1') {
         setHidden(true)
       }
     } catch { /* non-fatal */ }
-    fetch('/api/attorney/profile/strength', { credentials: 'same-origin' })
+    fetch(strengthEndpoint, { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => d && setData(d))
       .catch(() => { /* swallow */ })
-  }, [])
+  }, [strengthEndpoint, role])
 
   if (hidden || !data || data.publish_ready) return null
 
@@ -55,11 +62,11 @@ export function IntakeTodoBanner() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link href="/dashboard/attorney/intake" style={primaryCta}>Continue intake →</Link>
+          <Link href={intakeHref} style={primaryCta}>Continue intake →</Link>
           <button
             type="button"
             onClick={() => {
-              try { window.sessionStorage.setItem('ys-intake-banner-hidden', '1') } catch { /* noop */ }
+              try { window.sessionStorage.setItem(`ys-intake-banner-hidden-${role}`, '1') } catch { /* noop */ }
               setHidden(true)
             }}
             aria-label="Hide for this session"

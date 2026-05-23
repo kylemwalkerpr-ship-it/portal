@@ -46,7 +46,7 @@ export async function GET() {
 
   const { data: profile, error: profileErr } = await db
     .from('profiles')
-    .select('id, email, full_name, role, status, username')
+    .select('id, email, full_name, role, status, username, intake_last_step')
     .eq('clerk_user_id', userId)
     .single()
 
@@ -76,6 +76,7 @@ export async function GET() {
       full_name: profile.full_name,
       status: profile.status,
       username: (profile as any).username ?? null,
+      intake_last_step: (profile as any).intake_last_step ?? 0,
     },
     attorney: attorneyRes.data ?? null,
     application: applicationRes.data ?? null,
@@ -155,13 +156,25 @@ export async function PATCH(req: Request) {
   if ('credential_type' in body) applicationWrite.credential_type = clean((body as any).credential_type, 120)
   const wantsAppWrite = Object.keys(applicationWrite).length > 0
 
-  if (Object.keys(update).length === 0 && usernameWrite === undefined && !wantsAppWrite) {
+  // intake_last_step lives on profiles — saved after every wizard step so
+  // re-opening the wizard resumes on the correct step.
+  let lastStepWrite: number | undefined
+  if ('intake_last_step' in body) {
+    const n = Number((body as any).intake_last_step)
+    if (Number.isFinite(n) && n >= 0 && n <= 50) lastStepWrite = Math.floor(n)
+  }
+
+  if (
+    Object.keys(update).length === 0 &&
+    usernameWrite === undefined &&
+    !wantsAppWrite &&
+    lastStepWrite === undefined
+  ) {
     return Response.json({ error: 'Nothing to update.' }, { status: 400 })
   }
 
-  if (usernameWrite !== undefined) {
-    // Uniqueness check first so we can return a 409 with a clear message.
-    if (usernameWrite !== null) {
+  if (usernameWrite !== undefined || lastStepWrite !== undefined) {
+    if (usernameWrite !== undefined && usernameWrite !== null) {
       const { data: clash } = await ctx.db
         .from('profiles')
         .select('id')
@@ -172,9 +185,12 @@ export async function PATCH(req: Request) {
         return Response.json({ error: 'That handle is taken — try another.' }, { status: 409 })
       }
     }
+    const profUpdate: Record<string, unknown> = {}
+    if (usernameWrite !== undefined) profUpdate.username = usernameWrite
+    if (lastStepWrite !== undefined) profUpdate.intake_last_step = lastStepWrite
     const { error: profErr } = await ctx.db
       .from('profiles')
-      .update({ username: usernameWrite })
+      .update(profUpdate)
       .eq('id', ctx.profileId)
     if (profErr) return Response.json({ error: profErr.message }, { status: 500 })
   }

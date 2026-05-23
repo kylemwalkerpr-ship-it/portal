@@ -1,6 +1,7 @@
 import { ok, fail, fieldFail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
+import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -81,10 +82,9 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     errors.gallery_images = 'At least one gallery image is required.'
   }
 
-  // Profile completeness gate (attorneys only — consultants stay on the
-  // existing baseline checks). A gig cannot move to `active` until the
-  // attorney's profile is at least PROFILE_PUBLISH_THRESHOLD% complete AND
-  // has an SEO-friendly username set (used as the public-profile URL slug).
+  // Profile completeness gate. A gig cannot move to `active` until the
+  // attorney's/consultant's profile is at least 75% complete AND has an
+  // SEO-friendly username set (used as the public-profile URL slug).
   if (auth.role === 'attorney') {
     const strength = await computeAttorneyStrength(auth.db, auth.profileId)
     if (!strength.username) {
@@ -94,6 +94,16 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     if (strength.score < PROFILE_PUBLISH_THRESHOLD) {
       errors.profile_strength =
         `Your profile is ${strength.score}% complete. Reach ${PROFILE_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
+    }
+  } else if (auth.role === 'consultant') {
+    const strength = await computeConsultantStrength(auth.db, auth.profileId)
+    if (!strength.username) {
+      errors.profile_username =
+        'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
+    }
+    if (strength.score < CONSULTANT_PUBLISH_THRESHOLD) {
+      errors.profile_strength =
+        `Your profile is ${strength.score}% complete. Reach ${CONSULTANT_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
     }
   }
 

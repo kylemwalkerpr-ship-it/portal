@@ -145,6 +145,9 @@ export function AttorneyIntakeWizard() {
           video_intro_url: a.video_intro_url || '',
         })
         setStrength(str)
+        // Resume on the saved step (capped to the last index).
+        const last = Math.min(Math.max(0, Number(p.intake_last_step || 0)), STEPS.length - 1)
+        setStep(last)
         setLoaded(true)
       })
       .catch(() => !cancelled && setError('Could not load your profile.'))
@@ -212,10 +215,11 @@ export function AttorneyIntakeWizard() {
 
   async function saveStep(nextStep: number): Promise<void> {
     const payload: Record<string, unknown> = stepPayload(step, form)
-    if (Object.keys(payload).length > 0) {
-      const ok = await persist(payload)
-      if (!ok) return
-    }
+    // Always persist resume state so re-opening the wizard lands on the
+    // correct step — even when the user just clicks Skip.
+    payload.intake_last_step = nextStep
+    const ok = await persist(payload)
+    if (!ok) return
     setStep(nextStep)
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -298,7 +302,7 @@ export function AttorneyIntakeWizard() {
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             {!isLast && (
-              <button type="button" style={ghostBtn} onClick={() => setStep(step + 1)} disabled={saving}>
+              <button type="button" style={ghostBtn} onClick={() => saveStep(step + 1)} disabled={saving}>
                 Skip
               </button>
             )}
