@@ -2,7 +2,8 @@
 'use client'
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { C, Card, Input, Select, Badge, Btn } from '../design/shared'
+import { Card, Input, Select, Badge, Btn } from '../design/shared'
+import { T, F } from './tokens'
 
 const sidebarStyle: CSSProperties = {
   width: '280px',
@@ -13,17 +14,18 @@ const sidebarStyle: CSSProperties = {
 }
 
 const sectionStyle: CSSProperties = {
-  borderBottom: `1px solid ${C.border}`,
+  borderBottom: `1px solid ${T.rule}`,
   paddingBottom: '20px',
 }
 
 const sectionTitle: CSSProperties = {
-  fontSize: '14px',
+  fontSize: '11px',
   fontWeight: 700,
-  color: C.text,
+  color: T.ink,
   margin: '0 0 12px',
   textTransform: 'uppercase',
-  letterSpacing: '0.05em',
+  letterSpacing: '0.12em',
+  fontFamily: F.mono,
 }
 
 const checkboxStyle: CSSProperties = {
@@ -33,14 +35,14 @@ const checkboxStyle: CSSProperties = {
   padding: '8px 0',
   cursor: 'pointer',
   fontSize: '14px',
-  color: C.text,
+  color: T.ink,
 }
 
 const checkboxInput: CSSProperties = {
   width: '18px',
   height: '18px',
   cursor: 'pointer',
-  accentColor: C.cyan,
+  accentColor: T.indigo,
 }
 
 const rangeStyle: CSSProperties = {
@@ -52,17 +54,17 @@ const rangeStyle: CSSProperties = {
 const rangeInput: CSSProperties = {
   flex: 1,
   padding: '8px 12px',
-  border: `1px solid ${C.border2}`,
+  border: `1px solid ${T.ruleSoft}`,
   borderRadius: '8px',
-  background: C.surface2,
-  color: C.text,
+  background: T.paper2,
+  color: T.ink,
   fontSize: '14px',
   fontFamily: 'inherit',
 }
 
 const clearButton: CSSProperties = {
   fontSize: '13px',
-  color: C.cyan,
+  color: T.indigo,
   background: 'none',
   border: 'none',
   cursor: 'pointer',
@@ -261,7 +263,7 @@ export function FilterSidebar({
   return (
     <aside style={sidebarStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: C.text }}>Filters</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: T.ink }}>Filters</h2>
         {hasActiveFilters && (
           <button onClick={onClear} style={clearButton}>
             Clear all

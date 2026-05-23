@@ -2,7 +2,8 @@
 'use client'
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { C, Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
+import { Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
+import { T, F } from './tokens'
 import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
 import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
 
@@ -16,16 +17,16 @@ const headerStyle: CSSProperties = {
 }
 
 const titleStyle: CSSProperties = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '32px',
   fontWeight: 500,
   margin: '0 0 8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const subtitleStyle: CSSProperties = {
   fontSize: '15px',
-  color: C.textMuted,
+  color: T.inkMid,
   margin: 0,
 }
 
@@ -48,32 +49,35 @@ const stepDot: CSSProperties = {
   justifyContent: 'center',
   fontSize: '14px',
   fontWeight: 700,
-  background: C.surface2,
-  color: C.textMuted,
-  border: `2px solid ${C.border}`,
+  background: T.paper2,
+  color: T.inkMid,
+  border: `2px solid ${T.rule}`,
 }
 
 const stepDotActive: CSSProperties = {
-  background: C.cyan,
+  background: T.indigo,
   color: '#fff',
-  borderColor: C.cyan,
+  borderColor: T.indigo,
 }
 
 const stepDotCompleted: CSSProperties = {
-  background: C.green,
+  background: T.moss,
   color: '#fff',
-  borderColor: C.green,
+  borderColor: T.moss,
 }
 
 const stepLabel: CSSProperties = {
-  fontSize: '12px',
-  color: C.textMuted,
+  fontSize: '11px',
+  color: T.inkMid,
   textAlign: 'center',
   marginTop: '8px',
+  fontFamily: F.mono,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
 }
 
 const stepLabelActive: CSSProperties = {
-  color: C.text,
+  color: T.ink,
   fontWeight: 600,
 }
 
@@ -85,29 +89,29 @@ const formLabel: CSSProperties = {
   display: 'block',
   fontSize: '14px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   marginBottom: '8px',
 }
 
 const formHint: CSSProperties = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
   marginTop: '4px',
 }
 
 const formError: CSSProperties = {
   fontSize: '12px',
-  color: C.red,
+  color: T.brick,
   marginTop: '4px',
 }
 
 const inputStyle: CSSProperties = {
   width: '100%',
   padding: '12px 16px',
-  border: `1px solid ${C.border2}`,
+  border: `1px solid ${T.ruleSoft}`,
   borderRadius: '10px',
-  background: C.surface2,
-  color: C.text,
+  background: T.paper2,
+  color: T.ink,
   fontSize: '14px',
   fontFamily: 'inherit',
   boxSizing: 'border-box',
@@ -129,7 +133,7 @@ const buttonContainer: CSSProperties = {
   justifyContent: 'space-between',
   marginTop: '32px',
   paddingTop: '24px',
-  borderTop: `1px solid ${C.border}`,
+  borderTop: `1px solid ${T.rule}`,
 }
 
 const STEPS = [
@@ -492,7 +496,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         </div>
 
         {autoSaveStatus && (
-          <div style={{ marginTop: '16px', fontSize: '13px', color: autoSaveStatus.includes('Error') ? C.red : C.green }}>
+          <div style={{ marginTop: '16px', fontSize: '13px', color: autoSaveStatus.includes('Error') ? T.brick : T.moss }}>
             {autoSaveStatus}
           </div>
         )}
@@ -510,7 +514,7 @@ function CategoryStep({ gigData, errors, onChange }: any) {
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
         Choose Your Category
       </h2>
 
@@ -565,15 +569,15 @@ function CategoryStep({ gigData, errors, onChange }: any) {
           <option value="uk">United Kingdom</option>
           <option value="ca">Canada</option>
         </select>
-        <p style={{ fontSize: '12px', color: C.textMuted, margin: '6px 0 0' }}>
+        <p style={{ fontSize: '12px', color: T.inkMuted, margin: '6px 0 0' }}>
           Required. Clients filter the marketplace by jurisdiction — gigs without one are hidden from the country browse.
         </p>
         {errors.jurisdiction && <div style={formError}>{errors.jurisdiction}</div>}
       </div>
 
       {sourceLabels.length > 0 && (
-        <div style={{ padding: '16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', marginTop: '16px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: C.text, marginBottom: '10px' }}>
+        <div style={{ padding: '16px', background: T.vellum2, border: `1px solid ${T.rule}`, borderRadius: '12px', marginTop: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: T.ink, marginBottom: '10px' }}>
             Matched to existing YouSafe offerings
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -583,25 +587,25 @@ function CategoryStep({ gigData, errors, onChange }: any) {
               </Badge>
             ))}
           </div>
-          <p style={{ fontSize: '12px', color: C.textMuted, margin: '10px 0 0' }}>
+          <p style={{ fontSize: '12px', color: T.inkMuted, margin: '10px 0 0' }}>
             This keeps marketplace gigs aligned with services already sold across the portal.
           </p>
         </div>
       )}
 
       {selectedSubcategory && (
-        <div style={{ padding: '16px', background: `${C.green}10`, border: `1px solid ${C.green}33`, borderRadius: '12px', marginTop: '16px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: C.text, marginBottom: '4px' }}>
+        <div style={{ padding: '16px', background: `${T.moss}10`, border: `1px solid ${T.moss}33`, borderRadius: '12px', marginTop: '16px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: T.ink, marginBottom: '4px' }}>
             Recommended positioning
           </div>
-          <p style={{ fontSize: '13px', color: C.textMuted, margin: 0 }}>
+          <p style={{ fontSize: '13px', color: T.inkMuted, margin: 0 }}>
             Lead with a concrete outcome for {selectedSubcategory.name.toLowerCase()}, then separate document prep, advisory time, and attorney review into tiers.
           </p>
         </div>
       )}
 
-      <div style={{ padding: '16px', background: `${C.cyan}08`, borderRadius: '12px', marginTop: '16px' }}>
-        <p style={{ fontSize: '13px', color: C.text, margin: 0 }}>
+      <div style={{ padding: '16px', background: `${T.indigo}08`, borderRadius: '12px', marginTop: '16px' }}>
+        <p style={{ fontSize: '13px', color: T.ink, margin: 0 }}>
           <strong>Tip:</strong> Choose the category that best describes your service. This helps
           clients find you when they're searching for specific services.
         </p>
@@ -628,16 +632,16 @@ function BasicsStep({ gigData, errors, onChange }: any) {
   }
 
   const descLen = gigData.description.length
-  const descColor = descLen < 300 ? C.red : descLen > 2500 ? C.red : C.textMuted
+  const descColor = descLen < 300 ? T.brick : descLen > 2500 ? T.brick : T.inkMuted
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
         Service Basics
       </h2>
 
       <div style={formSection}>
-        <label style={formLabel}>Gig Title * <span style={{ fontWeight: 400, color: C.textMuted }}>(20–80 chars)</span></label>
+        <label style={formLabel}>Gig Title * <span style={{ fontWeight: 400, color: T.inkMuted }}>(20–80 chars)</span></label>
         <input
           type="text"
           value={gigData.title}
@@ -653,7 +657,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: C.textMuted }}>(40–160 chars)</span></label>
+        <label style={formLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: T.inkMuted }}>(40–160 chars)</span></label>
         <textarea
           value={gigData.tagline}
           onChange={e => onChange('tagline', e.target.value)}
@@ -661,14 +665,14 @@ function BasicsStep({ gigData, errors, onChange }: any) {
           style={{ ...textareaStyle, minHeight: '80px' }}
           maxLength={160}
         />
-        <div style={{ ...formHint, color: gigData.tagline.length < 40 || gigData.tagline.length > 160 ? C.red : C.textMuted }}>
+        <div style={{ ...formHint, color: gigData.tagline.length < 40 || gigData.tagline.length > 160 ? T.brick : T.inkMuted }}>
           {gigData.tagline.length}/160 characters (min 40)
         </div>
         {errors.tagline && <div style={formError}>{errors.tagline}</div>}
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Detailed Description * <span style={{ fontWeight: 400, color: C.textMuted }}>(300–2500 chars)</span></label>
+        <label style={formLabel}>Detailed Description * <span style={{ fontWeight: 400, color: T.inkMuted }}>(300–2500 chars)</span></label>
         <textarea
           value={gigData.description}
           onChange={e => onChange('description', e.target.value)}
@@ -684,21 +688,21 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Tags * <span style={{ fontWeight: 400, color: C.textMuted }}>(3–5 tags)</span></label>
+        <label style={formLabel}>Tags * <span style={{ fontWeight: 400, color: T.inkMuted }}>(3–5 tags)</span></label>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
           {gigData.tags.map((tag: string) => (
             <span
               key={tag}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '4px',
-                padding: '4px 10px', background: `${C.cyan}20`, borderRadius: '20px',
-                fontSize: '13px', color: C.text, border: `1px solid ${C.cyan}40`,
+                padding: '4px 10px', background: `${T.indigo}20`, borderRadius: '20px',
+                fontSize: '13px', color: T.ink, border: `1px solid ${T.indigo}40`,
               }}
             >
               {tag}
               <button
                 onClick={() => removeTag(tag)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: '14px', lineHeight: 1, padding: '0 2px' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.inkMuted, fontSize: '14px', lineHeight: 1, padding: '0 2px' }}
               >
                 ×
               </button>
@@ -723,7 +727,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
             <button
               onClick={() => addTag(tagInput)}
               style={{
-                padding: '10px 16px', background: C.cyan, color: '#fff',
+                padding: '10px 16px', background: T.indigo, color: '#fff',
                 border: 'none', borderRadius: '10px', fontSize: '13px',
                 fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
               }}
@@ -750,11 +754,11 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
         Pricing Tiers
       </h2>
 
-      <p style={{ fontSize: '14px', color: C.textMuted, marginBottom: '24px' }}>
+      <p style={{ fontSize: '14px', color: T.inkMuted, marginBottom: '24px' }}>
         Create up to 3 pricing tiers with different scopes and delivery times. At least one tier must be active.
       </p>
 
@@ -764,15 +768,15 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
           style={{
             padding: '20px',
             marginBottom: '16px',
-            border: `1px solid ${tier.is_active ? C.cyan : C.border}`,
-            background: tier.is_active ? `${C.cyan}08` : C.surface,
+            border: `1px solid ${tier.is_active ? T.indigo : T.rule}`,
+            background: tier.is_active ? `${T.indigo}08` : T.vellum,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: C.text }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: T.ink }}>
               {TIER_NAMES[tier.tier as keyof typeof TIER_NAMES] || tier.tier}
             </h3>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: C.textMuted }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: T.inkMuted }}>
               <input
                 type="checkbox"
                 checked={tier.is_active}
@@ -882,7 +886,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
         Additional Details
       </h2>
 
@@ -901,7 +905,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: C.textMuted }}>(at least 1 required)</span></label>
+        <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: T.inkMuted }}>(at least 1 required)</span></label>
         {errors.gallery_images && <div style={{ ...formError, marginBottom: '8px' }}>{errors.gallery_images}</div>}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input
@@ -915,7 +919,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
           <button
             onClick={addImageUrl}
             style={{
-              padding: '10px 16px', background: C.cyan, color: '#fff',
+              padding: '10px 16px', background: T.indigo, color: '#fff',
               border: 'none', borderRadius: '10px', fontSize: '13px',
               fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
@@ -931,7 +935,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
                 style={{
                   position: 'relative', width: '120px', height: '80px',
                   borderRadius: '8px', overflow: 'hidden',
-                  border: `1px solid ${C.border}`, background: C.surface2,
+                  border: `1px solid ${T.rule}`, background: T.vellum2,
                 }}
               >
                 <img
@@ -956,7 +960,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
             ))}
           </div>
         ) : (
-          <div style={{ padding: '16px', textAlign: 'center', color: C.textMuted, background: C.surface2, borderRadius: '12px', fontSize: '13px' }}>
+          <div style={{ padding: '16px', textAlign: 'center', color: T.inkMuted, background: T.vellum2, borderRadius: '12px', fontSize: '13px' }}>
             No images added yet. Paste an image URL above to add gallery images.
           </div>
         )}
@@ -1011,7 +1015,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
         </div>
 
         {gigData.faq.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: C.textMuted, background: C.surface2, borderRadius: '12px' }}>
+          <div style={{ padding: '24px', textAlign: 'center', color: T.inkMuted, background: T.vellum2, borderRadius: '12px' }}>
             No FAQ items yet. Add common questions clients might have.
           </div>
         ) : (
@@ -1019,7 +1023,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
             <Card key={index} style={{ padding: '16px', marginBottom: '12px' }}>
               <div style={{ display: 'grid', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                     Question
                   </label>
                   <input
@@ -1031,7 +1035,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                     Answer
                   </label>
                   <textarea
@@ -1079,12 +1083,12 @@ function ReviewStep({ gigData, onEdit }: any) {
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: C.text }}>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
         Review Your Gig
       </h2>
 
-      <Card style={{ padding: '24px', marginBottom: '24px', border: `1px solid ${allPassed ? C.green : C.border}` }}>
-        <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', color: C.text }}>
+      <Card style={{ padding: '24px', marginBottom: '24px', border: `1px solid ${allPassed ? T.moss : T.rule}` }}>
+        <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', color: T.ink }}>
           Publish Checklist
         </h3>
         <div style={{ display: 'grid', gap: '8px' }}>
@@ -1095,19 +1099,19 @@ function ReviewStep({ gigData, onEdit }: any) {
             >
               <span style={{
                 width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
-                background: check.ok ? C.green : C.red,
+                background: check.ok ? T.moss : T.brick,
                 color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '11px', fontWeight: 700,
               }}>
                 {check.ok ? '✓' : '✗'}
               </span>
-              <span style={{ color: check.ok ? C.text : C.red, flex: 1 }}>{check.label}</span>
+              <span style={{ color: check.ok ? T.ink : T.brick, flex: 1 }}>{check.label}</span>
               {!check.ok && (
                 <button
                   onClick={() => onEdit(check.step)}
                   style={{
-                    background: 'none', border: `1px solid ${C.border}`, borderRadius: '6px',
-                    padding: '2px 8px', fontSize: '11px', cursor: 'pointer', color: C.textMuted,
+                    background: 'none', border: `1px solid ${T.rule}`, borderRadius: '6px',
+                    padding: '2px 8px', fontSize: '11px', cursor: 'pointer', color: T.inkMuted,
                   }}
                 >
                   Fix
@@ -1117,7 +1121,7 @@ function ReviewStep({ gigData, onEdit }: any) {
           ))}
         </div>
         {allPassed && (
-          <div style={{ marginTop: '12px', padding: '10px 14px', background: `${C.green}15`, borderRadius: '8px', fontSize: '13px', color: C.green, fontWeight: 600 }}>
+          <div style={{ marginTop: '12px', padding: '10px 14px', background: `${T.moss}15`, borderRadius: '8px', fontSize: '13px', color: T.moss, fontWeight: 600 }}>
             All checks passed — ready to publish!
           </div>
         )}
@@ -1126,44 +1130,44 @@ function ReviewStep({ gigData, onEdit }: any) {
       <Card style={{ padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'grid', gap: '16px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
               Category
             </label>
-            <div style={{ fontSize: '15px', color: C.text }}>
+            <div style={{ fontSize: '15px', color: T.ink }}>
               {category?.icon} {category?.name || gigData.category}
             </div>
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
               Title
             </label>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: C.text }}>
+            <div style={{ fontSize: '18px', fontWeight: 700, color: T.ink }}>
               {gigData.title}
             </div>
           </div>
 
           {gigData.tagline && (
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                 Tagline / Pitch
               </label>
-              <div style={{ fontSize: '14px', color: C.text }}>{gigData.tagline}</div>
+              <div style={{ fontSize: '14px', color: T.ink }}>{gigData.tagline}</div>
             </div>
           )}
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
               Description
             </label>
-            <div style={{ fontSize: '14px', color: C.text, lineHeight: 1.6, maxHeight: '200px', overflow: 'auto' }}>
+            <div style={{ fontSize: '14px', color: T.ink, lineHeight: 1.6, maxHeight: '200px', overflow: 'auto' }}>
               {gigData.description}
             </div>
           </div>
 
           {gigData.tags.length > 0 && (
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                 Tags
               </label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1179,7 +1183,7 @@ function ReviewStep({ gigData, onEdit }: any) {
       </Card>
 
       <Card style={{ padding: '24px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: C.text }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: T.ink }}>
           Pricing Tiers
         </h3>
         {gigData.tiers
@@ -1189,27 +1193,27 @@ function ReviewStep({ gigData, onEdit }: any) {
               key={index}
               style={{
                 padding: '16px',
-                background: C.surface2,
+                background: T.vellum2,
                 borderRadius: '12px',
                 marginBottom: '12px',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontWeight: 700, color: C.text }}>{tier.title}</span>
-                <span style={{ fontWeight: 900, color: C.text }}>
+                <span style={{ fontWeight: 700, color: T.ink }}>{tier.title}</span>
+                <span style={{ fontWeight: 900, color: T.ink }}>
                   ${(tier.price / 100).toFixed(2)}
                 </span>
               </div>
-              <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '8px' }}>
+              <div style={{ fontSize: '13px', color: T.inkMuted, marginBottom: '8px' }}>
                 {tier.delivery_days} day delivery · {tier.revisions >= 999 ? 'Unlimited' : `${tier.revisions} revision${tier.revisions !== 1 ? 's' : ''}`}
               </div>
               {tier.features.length > 0 && (
-                <div style={{ fontSize: '13px', color: C.text }}>
+                <div style={{ fontSize: '13px', color: T.ink }}>
                   {tier.features.slice(0, 3).map((f: string, i: number) => (
                     <div key={i}>✓ {f}</div>
                   ))}
                   {tier.features.length > 3 && (
-                    <div style={{ color: C.textMuted }}>+{tier.features.length - 3} more</div>
+                    <div style={{ color: T.inkMuted }}>+{tier.features.length - 3} more</div>
                   )}
                 </div>
               )}
@@ -1218,31 +1222,31 @@ function ReviewStep({ gigData, onEdit }: any) {
       </Card>
 
       <Card style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: C.text }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: T.ink }}>
           Additional Details
         </h3>
         <div style={{ display: 'grid', gap: '12px' }}>
           {gigData.requirements && (
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                 Requirements
               </label>
-              <div style={{ fontSize: '14px', color: C.text }}>{gigData.requirements}</div>
+              <div style={{ fontSize: '14px', color: T.ink }}>{gigData.requirements}</div>
             </div>
           )}
           {gigData.video_url && (
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                 Video
               </label>
-              <a href={gigData.video_url} target="_blank" rel="noreferrer" style={{ color: C.cyan, fontSize: '14px' }}>
+              <a href={gigData.video_url} target="_blank" rel="noreferrer" style={{ color: T.indigo, fontSize: '14px' }}>
                 {gigData.video_url}
               </a>
             </div>
           )}
           {gigData.faq.length > 0 && (
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: C.textMuted, marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '4px' }}>
                 FAQ ({gigData.faq.length} questions)
               </label>
             </div>

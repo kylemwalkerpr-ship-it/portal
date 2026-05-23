@@ -3,7 +3,8 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { GigBuilderWizard } from './GigBuilderWizard'
-import { C, LoadingState, ErrorState } from '../design/fiverr-workbench'
+import { LoadingState, ErrorState } from '../design/fiverr-workbench'
+import { T } from './tokens'
 
 async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
@@ -61,7 +62,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, padding: '32px' }}>
+      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px' }}>
         <LoadingState label="Loading gig details..." />
       </div>
     )
@@ -69,7 +70,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, padding: '32px' }}>
+      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px' }}>
         <ErrorState message={error} onRetry={() => window.location.reload()} />
       </div>
     )
@@ -77,22 +78,22 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (!gig) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: C.text }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: T.ink }}>
             Gig not found
           </h2>
-          <p style={{ color: C.textMuted, marginBottom: '24px' }}>
+          <p style={{ color: T.inkMid, marginBottom: '24px' }}>
             This gig may have been deleted or you don't have access to it.
           </p>
           <button
             onClick={() => router.push('/dashboard/gigs')}
             style={{
               padding: '12px 24px',
-              background: C.cyan,
+              background: T.indigo,
               color: '#fff',
               border: 'none',
-              borderRadius: '10px',
+              borderRadius: '999px',
               fontSize: '14px',
               fontWeight: 600,
               cursor: 'pointer',

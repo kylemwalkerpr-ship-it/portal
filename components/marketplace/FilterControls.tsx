@@ -2,7 +2,8 @@
 'use client'
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { C, Card, Btn, Badge } from '../design/shared'
+import { Card, Btn, Badge } from '../design/shared'
+import { T } from './tokens'
 
 const drawerOverlay: CSSProperties = {
   position: 'fixed',
@@ -17,7 +18,7 @@ const drawerContent: CSSProperties = {
   width: '100%',
   maxWidth: '480px',
   margin: '0 auto',
-  background: C.surface,
+  background: T.vellum,
   borderTopLeftRadius: '20px',
   borderTopRightRadius: '20px',
   maxHeight: '90vh',
@@ -31,14 +32,14 @@ const drawerHeader: CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '20px',
-  borderBottom: `1px solid ${C.border}`,
+  borderBottom: `1px solid ${T.rule}`,
 }
 
 const drawerTitle: CSSProperties = {
   fontSize: '18px',
   fontWeight: 700,
   margin: 0,
-  color: C.text,
+  color: T.ink,
 }
 
 const drawerBody: CSSProperties = {
@@ -49,7 +50,7 @@ const drawerBody: CSSProperties = {
 
 const drawerFooter: CSSProperties = {
   padding: '20px',
-  borderTop: `1px solid ${C.border}`,
+  borderTop: `1px solid ${T.rule}`,
   display: 'flex',
   gap: '12px',
 }
@@ -58,13 +59,13 @@ const closeButton: CSSProperties = {
   width: '32px',
   height: '32px',
   borderRadius: '50%',
-  border: `1px solid ${C.border}`,
-  background: C.surface2,
+  border: `1px solid ${T.rule}`,
+  background: T.paper2,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   cursor: 'pointer',
-  color: C.text,
+  color: T.ink,
   fontSize: '18px',
 }
 
@@ -143,10 +144,10 @@ export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
           alignItems: 'center',
           gap: '8px',
           padding: '10px 16px',
-          background: C.surface,
-          border: `1px solid ${C.border}`,
+          background: T.vellum,
+          border: `1px solid ${T.rule}`,
           borderRadius: '10px',
-          color: C.text,
+          color: T.ink,
           fontSize: '14px',
           fontWeight: 600,
           cursor: 'pointer',
@@ -165,8 +166,8 @@ export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
             top: '100%',
             right: 0,
             marginTop: '8px',
-            background: C.surface,
-            border: `1px solid ${C.border}`,
+            background: T.vellum,
+            border: `1px solid ${T.rule}`,
             borderRadius: '12px',
             boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
             zIndex: 100,
@@ -185,9 +186,9 @@ export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                background: value === option.value ? `${C.cyan}10` : 'transparent',
+                background: value === option.value ? `${T.indigo}10` : 'transparent',
                 border: 'none',
-                color: C.text,
+                color: T.ink,
                 fontSize: '14px',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
@@ -199,7 +200,7 @@ export function SortDropdown({ value, onChange, options }: SortDropdownProps) {
             >
               <span>{option.label}</span>
               {value === option.value && (
-                <span style={{ color: C.cyan, fontSize: '12px' }}>✓</span>
+                <span style={{ color: T.indigo, fontSize: '12px' }}>✓</span>
               )}
             </button>
           ))}
@@ -219,10 +220,10 @@ export function ViewToggle({ view, onChange }: ViewToggleProps) {
     <div
       style={{
         display: 'flex',
-        background: C.surface2,
+        background: T.paper2,
         borderRadius: '10px',
         padding: '4px',
-        border: `1px solid ${C.border}`,
+        border: `1px solid ${T.rule}`,
       }}
     >
       <button
@@ -230,10 +231,10 @@ export function ViewToggle({ view, onChange }: ViewToggleProps) {
         onClick={() => onChange('grid')}
         style={{
           padding: '8px 12px',
-          background: view === 'grid' ? C.surface : 'transparent',
+          background: view === 'grid' ? T.vellum : 'transparent',
           border: 'none',
           borderRadius: '8px',
-          color: C.text,
+          color: T.ink,
           fontSize: '16px',
           cursor: 'pointer',
           fontFamily: 'inherit',
@@ -247,10 +248,10 @@ export function ViewToggle({ view, onChange }: ViewToggleProps) {
         onClick={() => onChange('list')}
         style={{
           padding: '8px 12px',
-          background: view === 'list' ? C.surface : 'transparent',
+          background: view === 'list' ? T.vellum : 'transparent',
           border: 'none',
           borderRadius: '8px',
-          color: C.text,
+          color: T.ink,
           fontSize: '16px',
           cursor: 'pointer',
           fontFamily: 'inherit',
@@ -280,16 +281,16 @@ export function ActiveFilters({ filters, onRemove, onClearAll }: ActiveFiltersPr
         gap: '8px',
         alignItems: 'center',
         padding: '12px 16px',
-        background: `${C.cyan}08`,
+        background: `${T.indigo}08`,
         borderRadius: '12px',
         marginBottom: '20px',
       }}
     >
-      <span style={{ fontSize: '13px', color: C.textMuted, fontWeight: 600 }}>Active filters:</span>
+      <span style={{ fontSize: '13px', color: T.inkMid, fontWeight: 600 }}>Active filters:</span>
       {filters.map(filter => (
         <Badge
           key={filter.id}
-          color="cyan"
+          color="indigo"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -307,7 +308,7 @@ export function ActiveFilters({ filters, onRemove, onClearAll }: ActiveFiltersPr
         onClick={onClearAll}
         style={{
           fontSize: '13px',
-          color: C.cyan,
+          color: T.indigo,
           background: 'none',
           border: 'none',
           cursor: 'pointer',
@@ -328,8 +329,8 @@ interface ResultsCountProps {
 
 export function ResultsCount({ total, showing }: ResultsCountProps) {
   return (
-    <div style={{ fontSize: '14px', color: C.textMuted }}>
-      <span style={{ fontWeight: 700, color: C.text }}>{total}</span> services found
+    <div style={{ fontSize: '14px', color: T.inkMid }}>
+      <span style={{ fontWeight: 700, color: T.ink }}>{total}</span> services found
       {showing < total && ` (showing ${showing})`}
     </div>
   )
