@@ -58,6 +58,16 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [offerBusyId, setOfferBusyId] = React.useState(null)
   const [payingOfferId, setPayingOfferId] = React.useState(null)
   const [mobileShowChat, setMobileShowChat] = React.useState(false)
+  const [menuFor, setMenuFor] = React.useState(null)
+  const [menuPos, setMenuPos] = React.useState({ x: 0, y: 0 })
+
+  // Close menu on outside click
+  React.useEffect(() => {
+    if (!menuFor) return
+    const onDoc = (e) => { if (!e.target.closest?.('[data-rowmenu]')) setMenuFor(null) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [menuFor])
 
   // Notify parent when thread changes
   React.useEffect(() => { onThreadChange?.(activeId) }, [activeId, onThreadChange])
@@ -209,6 +219,76 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   const archivedCount = counts.archived || 0
 
+  const togglePin = async (convId) => {
+    const conv = conversations.find(c => c.id === convId)
+    const next = !conv?.pinned_at
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, pinned_at: next ? new Date().toISOString() : null } : c))
+    try {
+      await fetch(`/api/messages/conversations/${convId}/pin`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: next }),
+      })
+      await loadList(true)
+    } catch {
+      /* rollback on error */
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, pinned_at: conv?.pinned_at ?? null } : c))
+    }
+  }
+
+  const toggleArchive = async (convId) => {
+    const conv = conversations.find(c => c.id === convId)
+    const next = !conv?.archived_at
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, archived_at: next ? new Date().toISOString() : null } : c))
+    try {
+      await fetch(`/api/messages/conversations/${convId}/archive`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: next }),
+      })
+      await loadList(true)
+    } catch {
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, archived_at: conv?.archived_at ?? null } : c))
+    }
+  }
+
+  const setMute = async (convId, until) => {
+    const conv = conversations.find(c => c.id === convId)
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, muted_until: until } : c))
+    try {
+      await fetch(`/api/messages/conversations/${convId}/mute`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ muted_until: until }),
+      })
+      await loadList(true)
+    } catch {
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, muted_until: conv?.muted_until ?? null } : c))
+    }
+  }
+
+  const deleteConversation = async (convId) => {
+    setConversations(prev => prev.filter(c => c.id !== convId))
+    if (activeId === convId) setActiveId(null)
+    try {
+      await fetch(`/api/messages/conversations/${convId}`, {
+        method: 'DELETE', credentials: 'same-origin',
+      })
+      await loadList(true)
+    } catch {
+      await loadList(false)
+    }
+  }
+
+  const openMenu = (convId, e) => {
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = Math.min(window.innerWidth - 240, rect.right - 16)
+    const y = rect.bottom + 6
+    setMenuPos({ x, y })
+    setMenuFor(convId)
+  }
+
   // ── Left rail (ChatList chrome) ─────────────────────────────────────
   const sidebar = (
     <div className="cl">
@@ -255,17 +335,15 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
         <div className="cl-filters">
           {[
-            { id: 'all',        label: 'All' },
-            { id: 'unread',     label: 'Unread',     count: counts.totalUnread },
-            { id: 'favourites', label: 'Favourites', count: 0 },
-            { id: 'groups',     label: 'Groups',     count: 0 },
+            { id: 'all',        label: 'All',        count: counts.all },
+            { id: 'unread',     label: 'Unread',     count: counts.unread },
+            { id: 'favourites', label: 'Favourites', count: counts.favourites },
+            { id: 'groups',     label: 'Groups',     count: counts.groups },
           ].map(f => (
             <button
               key={f.id}
               className={`cl-pill ${tab === f.id ? 'on' : ''}`}
               onClick={() => { setTab(f.id); setPage(1) }}
-              disabled={f.id === 'favourites' || f.id === 'groups'}
-              title={(f.id === 'favourites' || f.id === 'groups') ? 'Coming in Phase 2' : undefined}
             >
               {f.label}{typeof f.count === 'number' && f.count > 0 && <span className="cl-pill-count">{f.count.toLocaleString()}</span>}
             </button>
@@ -335,11 +413,10 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                     {c.last_message || 'New conversation'}
                   </span>
                   <span className="row-icons">
-                    {/* Pin / mute glyphs — Phase 1 inert chrome */}
-                    <span style={{ opacity: 0.55, fontSize: 11 }}>📌</span>
-                    <span style={{ opacity: 0.55, fontSize: 11 }}>🔕</span>
+                    {c.pinned_at && <span style={{ opacity: 0.55, fontSize: 11 }}>📌</span>}
+                    {c.muted_until && new Date(c.muted_until) > new Date() && <span style={{ opacity: 0.55, fontSize: 11 }}>🔕</span>}
                     {unread && <span className="row-unread">{c.unread > 99 ? '99+' : c.unread}</span>}
-                    <span className="row-chev" onClick={e => { e.stopPropagation(); /* Phase 2 inert */ }}>
+                    <span className="row-chev" onClick={e => { e.stopPropagation(); openMenu(c.id, e) }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="6 9 12 15 18 9" />
                       </svg>
@@ -361,6 +438,19 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           <span style={{ fontFamily: 'var(--font-plex-mono), monospace', fontSize: 11, color: 'var(--text-soft)' }}>Page {page}</span>
           <button disabled={!hasMore} onClick={() => setPage(p => p + 1)} style={pagerBtn(!hasMore)}>Next →</button>
         </div>
+      )}
+
+      {menuFor && (
+        <RowMenu
+          conv={conversations.find(c => c.id === menuFor)}
+          x={menuPos.x}
+          y={menuPos.y}
+          onPin={() => { togglePin(menuFor); setMenuFor(null) }}
+          onArchive={() => { toggleArchive(menuFor); setMenuFor(null) }}
+          onMute={(mins) => { setMute(menuFor, mins ? new Date(Date.now() + mins * 60_000).toISOString() : null); setMenuFor(null) }}
+          onDelete={() => { deleteConversation(menuFor); setMenuFor(null) }}
+          onClose={() => setMenuFor(null)}
+        />
       )}
     </div>
   )
@@ -590,6 +680,53 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
       deliveredAt={m.delivered_at}
       body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
     />
+  )
+}
+
+function RowMenu({ conv, x, y, onPin, onArchive, onMute, onDelete, onClose }) {
+  const [muteSubmenu, setMuteSubmenu] = React.useState(false)
+  if (!conv) return null
+  const pinned = !!conv.pinned_at
+  const archived = !!conv.archived_at
+  const muted = conv.muted_until && new Date(conv.muted_until) > new Date()
+
+  if (muteSubmenu) {
+    return (
+      <div data-rowmenu className="ctxmenu" style={{ left: x, top: y }}>
+        <div className="ctxmenu-head">Mute notifications</div>
+        <button className="ctxmenu-item" onClick={() => { onMute(8 * 60); setMuteSubmenu(false) }}>
+          <span>🕐</span> 8 hours
+        </button>
+        <button className="ctxmenu-item" onClick={() => { onMute(7 * 24 * 60); setMuteSubmenu(false) }}>
+          <span>📅</span> 1 week
+        </button>
+        <button className="ctxmenu-item" onClick={() => { onMute(0); setMuteSubmenu(false) }}>
+          <span>🔕</span> Always
+        </button>
+        <div className="ctxmenu-sep" />
+        <button className="ctxmenu-item" onClick={() => setMuteSubmenu(false)}>
+          <span>←</span> Back
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div data-rowmenu className="ctxmenu" style={{ left: x, top: y }}>
+      <button className="ctxmenu-item" onClick={onPin}>
+        <span>📌</span> {pinned ? 'Unpin chat' : 'Pin chat'}
+      </button>
+      {muted
+        ? <button className="ctxmenu-item" onClick={() => onMute(null)}><span>🔔</span> Unmute notifications</button>
+        : <button className="ctxmenu-item" onClick={() => setMuteSubmenu(true)}><span>🔕</span> Mute notifications <span className="ctxmenu-chev">›</span></button>}
+      <button className="ctxmenu-item" onClick={onArchive}>
+        <span>📦</span> {archived ? 'Unarchive' : 'Archive chat'}
+      </button>
+      <div className="ctxmenu-sep" />
+      <button className="ctxmenu-item danger" onClick={onDelete}>
+        <span>🗑</span> Delete chat
+      </button>
+    </div>
   )
 }
 

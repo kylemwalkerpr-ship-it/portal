@@ -217,3 +217,31 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
   return Response.json({ ok: true })
 }
+
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  const { db, profileId } = auth
+  const { id } = await context.params
+
+  const { data: conv } = await db
+    .from('conversations')
+    .select('participant_a, participant_b')
+    .eq('id', id)
+    .single()
+  if (!conv) return Response.json({ error: 'Conversation not found' }, { status: 404 })
+  if (conv.participant_a !== profileId && conv.participant_b !== profileId) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { error } = await db
+    .from('conversation_participants')
+    .upsert({
+      conversation_id: id,
+      profile_id:      profileId,
+      deleted_at:      new Date().toISOString(),
+    }, { onConflict: 'conversation_id,profile_id' })
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ok: true })
+}
