@@ -1,9 +1,10 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
-import { C, Card, LoadingState, ErrorState, EmptyState, Btn, Input } from '../design/shared'
+import { Card, LoadingState, ErrorState, EmptyState, Btn, Input } from '../design/shared'
 import { Avatar } from '../design/shared'
 import type { SellerProfile } from './SellerProfileComponents'
+import { T, F } from './tokens'
 
 export function SellerDirectoryPage() {
   const [sellers, setSellers] = React.useState<SellerProfile[]>([])
@@ -269,8 +270,8 @@ function SellerLevelBadge({ level }: { level: string }) {
 
 const pageShell = {
   minHeight: '100vh',
-  background: C.bg,
-  color: C.text,
+  background: T.paper,
+  color: T.ink,
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',
@@ -281,16 +282,16 @@ const headerSection = {
 }
 
 const pageTitle = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '32px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: '0 0 8px',
   letterSpacing: '-0.02em',
 }
 
 const pageSub = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '15px',
   lineHeight: 1.5,
   margin: 0,
@@ -315,7 +316,7 @@ const filterGroup = {
 const filterLabel = {
   fontSize: '12px',
   fontWeight: 600,
-  color: C.textMuted,
+  color: T.inkMid,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
 }
@@ -323,19 +324,19 @@ const filterLabel = {
 const searchInput = {
   padding: '10px 12px',
   borderRadius: '8px',
-  border: `1px solid ${C.border}`,
+  border: `1px solid ${T.rule}`,
   fontSize: '14px',
-  background: C.surface,
-  color: C.text,
+  background: T.vellum,
+  color: T.ink,
 }
 
 const selectInput = {
   padding: '10px 12px',
   borderRadius: '8px',
-  border: `1px solid ${C.border}`,
+  border: `1px solid ${T.rule}`,
   fontSize: '14px',
-  background: C.surface,
-  color: C.text,
+  background: T.vellum,
+  color: T.ink,
   cursor: 'pointer',
 }
 
@@ -348,7 +349,7 @@ const resultsHeader = {
 
 const resultsCount = {
   fontSize: '14px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const sellersGrid = {
@@ -392,11 +393,11 @@ const cardAvatarPlaceholder = {
   width: '56px',
   height: '56px',
   borderRadius: '50%',
-  background: `linear-gradient(135deg, ${C.cyan} 0%, ${C.cyanDark} 100%)`,
+  background: `linear-gradient(135deg, ${T.indigo} 0%, ${T.indigoDeep} 100%)`,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '24px',
   color: '#fff',
   fontWeight: 600,
@@ -409,7 +410,7 @@ const cardOnlineIndicator = {
   width: '12px',
   height: '12px',
   borderRadius: '50%',
-  background: '#22c55e',
+  background: T.moss,
   border: '2px solid #fff',
 }
 
@@ -428,7 +429,7 @@ const cardNameRow = {
 const cardName = {
   fontSize: '15px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -437,7 +438,7 @@ const cardName = {
 
 const cardTagline = {
   fontSize: '13px',
-  color: C.textMuted,
+  color: T.inkMid,
   margin: '0 0 8px',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -452,7 +453,7 @@ const cardMeta = {
 
 const cardRating = {
   fontSize: '13px',
-  color: C.text,
+  color: T.ink,
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
@@ -460,11 +461,11 @@ const cardRating = {
 
 const cardOrders = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const starIcon = {
-  color: '#f5b400',
+  color: T.star,
   fontSize: '14px',
 }
 
@@ -476,12 +477,12 @@ const cardSpecialties = {
 }
 
 const specialtyTag = {
-  background: C.surface2,
-  border: `1px solid ${C.border}`,
+  background: T.paper2,
+  border: `1px solid ${T.rule}`,
   borderRadius: '999px',
   padding: '4px 10px',
   fontSize: '11px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const cardFooter = {
@@ -489,19 +490,19 @@ const cardFooter = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '12px 16px',
-  borderTop: `1px solid ${C.border}`,
-  background: C.surface2,
+  borderTop: `1px solid ${T.rule}`,
+  background: T.paper2,
 }
 
 const cardRole = {
   fontSize: '12px',
   fontWeight: 600,
-  color: C.textMuted,
+  color: T.inkMid,
   textTransform: 'uppercase',
 }
 
 const cardPrice = {
   fontSize: '14px',
   fontWeight: 700,
-  color: C.text,
+  color: T.ink,
 }

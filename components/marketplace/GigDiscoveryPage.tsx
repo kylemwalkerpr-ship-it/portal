@@ -4,18 +4,19 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { C, Card, Btn, Badge, SearchInput } from '../design/shared'
+import { Card, Btn, Badge, SearchInput } from '../design/shared'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
 import { GigCard } from './MarketplaceHero'
 import { CATEGORIES, getCategoryById, getCategorySourceLabels } from '@/lib/categories'
+import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
   minHeight: '100vh',
-  background: C.bg,
-  color: C.text,
-  fontFamily: C.sans,
+  background: T.paper,
+  color: T.ink,
+  fontFamily: F.ui,
 }
 
 const inner: CSSProperties = {
@@ -42,12 +43,12 @@ const searchBar: CSSProperties = {
 }
 
 const titleStyle: CSSProperties = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '36px',
   fontWeight: 500,
   letterSpacing: '-0.012em',
   margin: 0,
-  color: C.text,
+  color: T.ink,
 }
 
 const contentLayout: CSSProperties = {
@@ -72,8 +73,8 @@ const gigListItem: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '200px 1fr',
   gap: '20px',
-  background: C.surface,
-  border: `1px solid ${C.border}`,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
   borderRadius: '16px',
   overflow: 'hidden',
   padding: '16px',
@@ -86,7 +87,7 @@ const gigListImage: CSSProperties = {
   height: '140px',
   objectFit: 'cover',
   borderRadius: '12px',
-  background: `linear-gradient(135deg, ${C.surface2}, #E8EEF6)`,
+  background: `linear-gradient(135deg, ${T.paper2}, ${T.paper2})`,
 }
 
 const pagination: CSSProperties = {
@@ -101,9 +102,9 @@ const pageButton: CSSProperties = {
   minWidth: '40px',
   height: '40px',
   borderRadius: '10px',
-  border: `1px solid ${C.border}`,
-  background: C.surface,
-  color: C.text,
+  border: `1px solid ${T.rule}`,
+  background: T.vellum,
+  color: T.ink,
   fontSize: '14px',
   fontWeight: 600,
   cursor: 'pointer',
@@ -115,18 +116,18 @@ const pageButton: CSSProperties = {
 
 const activePageButton: CSSProperties = {
   ...pageButton,
-  background: C.cyan,
+  background: T.indigo,
   color: '#fff',
-  borderColor: C.cyan,
+  borderColor: T.indigo,
 }
 
 const mobileFilterButton: CSSProperties = {
   display: 'none',
   padding: '12px 20px',
-  background: C.surface,
-  border: `1px solid ${C.border}`,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
   borderRadius: '10px',
-  color: C.text,
+  color: T.ink,
   fontSize: '14px',
   fontWeight: 600,
   cursor: 'pointer',
@@ -440,7 +441,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                               alignItems: 'center',
                               justifyContent: 'center',
                               fontSize: '32px',
-                              color: C.textDim,
+                              color: T.inkSoft,
                             }}
                           >
                             {gig.title.slice(0, 2).toUpperCase()}
@@ -452,7 +453,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                               fontSize: '18px',
                               fontWeight: 700,
                               margin: '0 0 8px',
-                              color: C.text,
+                              color: T.ink,
                             }}
                           >
                             {gig.title}
@@ -461,7 +462,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                             <p
                               style={{
                                 fontSize: '14px',
-                                color: C.textMuted,
+                                color: T.inkMid,
                                 margin: '0 0 12px',
                                 lineHeight: 1.5,
                               }}
@@ -476,10 +477,10 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                               alignItems: 'center',
                             }}
                           >
-                            <div style={{ fontSize: '20px', fontWeight: 900, color: C.text }}>
+                            <div style={{ fontSize: '20px', fontWeight: 900, color: T.ink }}>
                               {gig.starting_price ? money(gig.starting_price) : '—'}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: C.textMuted }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: T.inkMid }}>
                               <span>★</span>
                               <span>{gig.avg_rating?.toFixed(1) || '0'}</span>
                               <span>({gig.review_count || 0})</span>

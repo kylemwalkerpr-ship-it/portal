@@ -5,13 +5,6 @@ import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { T, F } from './tokens'
 
-// ── Gig card tokens (cleaned up — tighter, less clutter) ───────────────────
-const gigGrid: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-  gap: '14px',
-}
-
 const gigCard: CSSProperties = {
   background: T.vellum,
   border: `1px solid ${T.rule}`,
@@ -188,7 +181,7 @@ export function GigCard({ gig }: GigCardProps) {
           </div>
           {showRating && (
             <div style={gigRating}>
-              <span style={{ color: T.gold }}>★</span>
+              <span style={{ color: T.star }}>★</span>
               <span style={{ fontWeight: 700, color: T.ink }}>{rating}</span>
               <span style={{ color: T.inkSoft, fontSize: 11 }}>({reviewCount})</span>
             </div>
@@ -196,35 +189,5 @@ export function GigCard({ gig }: GigCardProps) {
         </div>
       </div>
     </Link>
-  )
-}
-
-interface GigGridProps {
-  gigs: GigCardProps['gig'][]
-  title?: string
-  viewAllLink?: string
-}
-
-export function GigGrid({ gigs, title, viewAllLink }: GigGridProps) {
-  if (gigs.length === 0) return null
-
-  return (
-    <div>
-      {title && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px', paddingBottom: '8px', borderBottom: `1px solid ${T.rule}` }}>
-          <h2 style={{ fontFamily: F.display, fontSize: '22px', fontWeight: 600, margin: 0, color: T.ink, letterSpacing: '-.012em' }}>{title}</h2>
-          {viewAllLink && (
-            <Link href={viewAllLink} style={{ color: T.indigo, fontSize: '12px', fontWeight: 700, textDecoration: 'none', letterSpacing: '.02em' }}>
-              View all →
-            </Link>
-          )}
-        </div>
-      )}
-      <div style={gigGrid}>
-        {gigs.map(gig => (
-          <GigCard key={gig.id} gig={gig} />
-        ))}
-      </div>
-    </div>
   )
 }
