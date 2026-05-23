@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { OfferCountdown } from '../messaging/OfferCountdown'
+import { T, F } from './tokens'
 
 type OfferStatus = 'pending' | 'accepted' | 'paid' | 'declined' | 'expired' | 'cancelled'
 
@@ -28,23 +29,7 @@ type OfferCardProps = {
   onWithdraw?: (offerId: string) => void
 }
 
-// ── design tokens (match UnifiedInbox + rest of dashboard) ──────────────────
-const NAVY   = '#1B2D4F'
-const GOLD   = '#9A7B3B'
-const GREEN  = '#1A6B45'
-const RED    = '#8B1A1A'
-const AMBER  = '#8B5E0A'
-const CYAN   = '#0E7C8E'
-const SURFACE  = '#FFFFFF'
-const SURFACE2 = '#FAFAF7'
-const BORDER   = '#E5E0D6'
-const BORDER2  = '#F2EFE9'
-const TEXT  = '#1A1F2E'
-const MUTED = '#5C6070'
-const DIM   = '#6B7180'
-const SERIF = `'Cormorant Garamond', Georgia, serif`
-const SANS  = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
-const MONO  = `'SF Mono', Menlo, Consolas, monospace`
+// ── design tokens (editorial T/F from tokens.ts) ────────────────────────────
 
 function formatMoney(cents: number, currency = 'USD'): string {
   try {
@@ -56,12 +41,12 @@ function formatMoney(cents: number, currency = 'USD'): string {
 }
 
 const STATUS_CONFIG: Record<OfferStatus, { label: string; bg: string; fg: string }> = {
-  pending:   { label: 'Awaiting response', bg: `${AMBER}1A`, fg: AMBER },
-  accepted:  { label: 'Accepted',          bg: `${GREEN}1A`, fg: GREEN },
-  paid:      { label: 'Paid',              bg: `${GREEN}1A`, fg: GREEN },
-  declined:  { label: 'Declined',          bg: `${RED}1A`,   fg: RED },
-  expired:   { label: 'Expired',           bg: `${MUTED}1A`, fg: MUTED },
-  cancelled: { label: 'Withdrawn',         bg: `${MUTED}1A`, fg: MUTED },
+  pending:   { label: 'Awaiting response', bg: `${T.gold}1A`, fg: T.gold },
+  accepted:  { label: 'Accepted',          bg: `${T.moss}1A`, fg: T.moss },
+  paid:      { label: 'Paid',              bg: `${T.moss}1A`, fg: T.moss },
+  declined:  { label: 'Declined',          bg: `${T.brick}1A`,   fg: T.brick },
+  expired:   { label: 'Expired',           bg: `${T.inkMid}1A`, fg: T.inkMid },
+  cancelled: { label: 'Withdrawn',         bg: `${T.inkMid}1A`, fg: T.inkMid },
 }
 
 function StatusBadge({ status }: { status: OfferStatus }) {
@@ -72,7 +57,7 @@ function StatusBadge({ status }: { status: OfferStatus }) {
       padding: '3px 9px', borderRadius: 999,
       fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
       textTransform: 'uppercase',
-      fontFamily: MONO, background: c.bg, color: c.fg,
+      fontFamily: F.mono, background: c.bg, color: c.fg,
     }}>
       {c.label}
     </span>
@@ -90,7 +75,7 @@ function StatusMessage({ status }: { status: OfferStatus }) {
   const msg = messages[status]
   if (!msg) return null
   return (
-    <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.5, fontStyle: 'italic' }}>
+    <p style={{ margin: 0, fontSize: 12, color: T.inkMid, lineHeight: 1.5, fontStyle: 'italic' }}>
       {msg}
     </p>
   )
@@ -122,15 +107,15 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
   return (
     <div style={{
       width: 360, maxWidth: '100%',
-      background: SURFACE, border: `1px solid ${BORDER}`,
+      background: T.vellum, border: `1px solid ${T.rule}`,
       borderRadius: 14, overflow: 'hidden',
       boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.06)',
-      fontFamily: SANS,
+      fontFamily: F.ui,
     }}>
       {/* Gold accent stripe — same visual signature as marketplace header */}
       <div style={{
         height: 3,
-        background: `linear-gradient(90deg, ${GOLD} 0%, #C4A45A 50%, ${GOLD} 100%)`,
+        background: `linear-gradient(90deg, ${T.gold} 0%, #C4A45A 50%, ${T.gold} 100%)`,
       }} />
 
       {/* Eyebrow */}
@@ -140,7 +125,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       }}>
         <span style={{
           fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase',
-          color: GOLD, fontFamily: MONO,
+          color: T.gold, fontFamily: F.mono,
         }}>
           💼 Custom offer
         </span>
@@ -150,8 +135,8 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       {/* Title */}
       <div style={{ padding: '0 16px 4px' }}>
         <h3 style={{
-          margin: 0, fontFamily: SERIF, fontSize: 18, fontWeight: 600,
-          color: TEXT, lineHeight: 1.25, letterSpacing: '-0.005em',
+          margin: 0, fontFamily: F.display, fontSize: 18, fontWeight: 600,
+          color: T.ink, lineHeight: 1.25, letterSpacing: '-0.005em',
         }}>
           {offer.title}
         </h3>
@@ -160,7 +145,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       {/* Description preview (clamped to 3 lines) */}
       {offer.description ? (
         <div style={{
-          padding: '6px 16px 0', fontSize: 13, color: MUTED, lineHeight: 1.55,
+          padding: '6px 16px 0', fontSize: 13, color: T.inkMid, lineHeight: 1.55,
           display: '-webkit-box', WebkitBoxOrient: 'vertical' as const, WebkitLineClamp: 3,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'pre-wrap',
         }}>
@@ -172,20 +157,20 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       <div style={{ padding: '14px 16px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
-            fontFamily: SERIF, fontSize: 30, fontWeight: 600,
-            color: TEXT, letterSpacing: '-0.012em', lineHeight: 1,
+            fontFamily: F.display, fontSize: 30, fontWeight: 600,
+            color: T.ink, letterSpacing: '-0.012em', lineHeight: 1,
           }}>
             {formatMoney(effectiveCents, currency)}
           </span>
           {hasDiscount && (
             <>
-              <span style={{ fontSize: 13, color: DIM, textDecoration: 'line-through', fontFamily: MONO }}>
+              <span style={{ fontSize: 13, color: T.inkSoft, textDecoration: 'line-through', fontFamily: F.mono }}>
                 {formatMoney(offer.price_cents, currency)}
               </span>
               <span style={{
                 fontSize: 10, fontWeight: 800, letterSpacing: '0.04em',
-                background: `${AMBER}1A`, color: AMBER,
-                padding: '2px 8px', borderRadius: 999, fontFamily: MONO,
+                background: `${T.gold}1A`, color: T.gold,
+                padding: '2px 8px', borderRadius: 999, fontFamily: F.mono,
               }}>
                 −{formatMoney(offer.discount_cents as number, currency)} OFF
               </span>
@@ -196,7 +181,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
         {/* Delivery / revisions / attachments line */}
         <div style={{
           marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 14,
-          fontSize: 12, color: MUTED,
+          fontSize: 12, color: T.inkMid,
         }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Glyph d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -229,9 +214,9 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '4px 10px', borderRadius: 999,
-                background: SURFACE2, border: `1px solid ${BORDER2}`,
-                fontSize: 11, fontWeight: 600, color: NAVY,
-                textDecoration: 'none', fontFamily: MONO,
+                background: T.paper2, border: `1px solid ${T.ruleSoft}`,
+                fontSize: 11, fontWeight: 600, color: T.indigo,
+                textDecoration: 'none', fontFamily: F.mono,
               }}
             >
               🔗 {offer.linked_gig.title}
@@ -241,7 +226,7 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
       </div>
 
       {/* Divider */}
-      <div style={{ height: 1, background: BORDER2, margin: '4px 16px 12px' }} />
+      <div style={{ height: 1, background: T.ruleSoft, margin: '4px 16px 12px' }} />
 
       {/* Actions */}
       <div style={{ padding: '0 16px 14px' }}>
@@ -255,10 +240,10 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
                   disabled={buyerDisabled}
                   style={{
                     flex: 1, padding: '10px 14px', borderRadius: 10, border: 'none',
-                    background: buyerDisabled ? `${MUTED}40` : NAVY,
-                    color: buyerDisabled ? MUTED : '#fff',
+                    background: buyerDisabled ? `${T.inkMid}40` : T.indigo,
+                    color: buyerDisabled ? T.inkMid : '#fff',
                     fontWeight: 700, fontSize: 13, cursor: buyerDisabled ? 'not-allowed' : 'pointer',
-                    fontFamily: SANS, transition: 'background 0.12s',
+                    fontFamily: F.ui, transition: 'background 0.12s',
                   }}
                 >
                   {offerBusy ? 'Working…' : isExpired ? 'Offer expired' : 'Accept & Pay'}
@@ -269,17 +254,17 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
                   disabled={buyerDisabled}
                   style={{
                     padding: '10px 14px', borderRadius: 10,
-                    border: `1px solid ${BORDER}`, background: SURFACE,
-                    color: buyerDisabled ? DIM : TEXT,
+                    border: `1px solid ${T.rule}`, background: T.vellum,
+                    color: buyerDisabled ? T.inkSoft : T.ink,
                     fontWeight: 600, fontSize: 13, cursor: buyerDisabled ? 'not-allowed' : 'pointer',
-                    fontFamily: SANS,
+                    fontFamily: F.ui,
                   }}
                 >
                   Decline
                 </button>
               </div>
               {isExpired && (
-                <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                <p style={{ margin: 0, fontSize: 11, color: T.inkMid, lineHeight: 1.5 }}>
                   Ask the sender to renew this offer before accepting.
                 </p>
               )}
@@ -291,10 +276,10 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
               disabled={offerBusy}
               style={{
                 width: '100%', padding: '10px 14px', borderRadius: 10,
-                border: `1px solid ${BORDER}`, background: SURFACE,
-                color: offerBusy ? DIM : MUTED,
+                border: `1px solid ${T.rule}`, background: T.vellum,
+                color: offerBusy ? T.inkSoft : T.inkMid,
                 fontWeight: 600, fontSize: 13, cursor: offerBusy ? 'not-allowed' : 'pointer',
-                fontFamily: SANS,
+                fontFamily: F.ui,
               }}
             >
               {offerBusy ? 'Working…' : isExpired ? 'Withdraw expired offer' : 'Withdraw offer'}

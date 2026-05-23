@@ -1,19 +1,7 @@
 'use client'
 
 import React from 'react'
-
-const C = {
-  surface: '#FFFFFF',
-  surface2: '#F4F2EE',
-  border: 'rgba(0,0,0,0.08)',
-  cyan: '#3C3B6E',
-  text: '#1F2937',
-  textMuted: '#6B7280',
-  textDim: '#9CA3AF',
-}
-
-const SANS = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+import { T, F } from './tokens'
 
 interface SignUpGateModalProps {
   open: boolean
@@ -70,34 +58,34 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: C.surface,
+          background: T.vellum,
           borderRadius: '16px',
           padding: '32px',
           maxWidth: '420px',
           width: '100%',
           boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-          fontFamily: SANS,
-          color: C.text,
+          fontFamily: F.ui,
+          color: T.ink,
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div>
-            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: C.textMuted }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkMid }}>
               Free account
             </div>
-            <h2 style={{ fontFamily: SERIF, fontSize: '22px', fontWeight: 500, margin: '6px 0 0' }}>
+            <h2 style={{ fontFamily: F.display, fontSize: '22px', fontWeight: 500, margin: '6px 0 0' }}>
               {INTENT_HEADINGS[intent] || 'Sign up to continue'}
             </h2>
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: C.textDim, lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: T.inkSoft, lineHeight: 1 }}
           >
             ×
           </button>
         </div>
 
-        <p style={{ fontSize: '14px', color: C.textMuted, lineHeight: 1.6, margin: '0 0 24px' }}>
+        <p style={{ fontSize: '14px', color: T.inkMid, lineHeight: 1.6, margin: '0 0 24px' }}>
           {INTENT_BODY[intent] || 'Create a free account to continue. It takes about 30 seconds.'}
         </p>
 
@@ -107,21 +95,21 @@ export default function SignUpGateModal({ open, onClose, intent, returnTo, metad
             display: 'block',
             width: '100%',
             padding: '14px',
-            borderRadius: '10px',
-            background: C.cyan,
+            background: T.indigo,
             color: '#fff',
             fontSize: '15px',
             fontWeight: 700,
             textDecoration: 'none',
             textAlign: 'center',
+            borderRadius: '999px',
           }}
         >
           Create free account →
         </a>
 
-        <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '13px', color: C.textMuted }}>
+        <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '13px', color: T.inkMid }}>
           Already have an account?{' '}
-          <a href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${returnUrl}`} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'none' }}>
+          <a href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${returnUrl}`} style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
             Sign in
           </a>
         </div>
