@@ -4,6 +4,7 @@
  * PATCH /api/messages/conversations/[id]   — mark as read (body: { read: true }) or archive (body: { archived: true|false })
  */
 import { requirePortalUser } from '@/lib/portalAuth'
+import { safetyGuard } from '@/lib/safety'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -147,6 +148,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const body = await req.json().catch(() => ({}))
   const text = String(body.body || '').trim().slice(0, 8000)
   if (!text) return Response.json({ error: 'body is required' }, { status: 400 })
+
+  // Server-side safety gate — mirror of the client check in safety.ts. Hard
+  // violations (emails, phones, off-platform links, payment apps, obfuscations)
+  // block the send so policy is enforced even if the client check is bypassed.
+  const safety = safetyGuard(text)
+  if (!safety.ok) return Response.json({ error: safety.error, violations: safety.violations }, { status: 422 })
 
   // Ownership check
   const { data: conv } = await db

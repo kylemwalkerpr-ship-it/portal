@@ -1,6 +1,9 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { handleOptions, jsonWithCors } from '@/lib/cors'
 import { sendEmail } from '@/lib/email'
+import { safetyGuard } from '@/lib/safety'
+
+const ACTIVE_STATUS_CAP = 10
 
 
 type InquiryBody = {
@@ -48,6 +51,21 @@ export async function POST(req: Request) {
   if (!isEmail(email)) return jsonWithCors(req, { error: 'A valid email is required.' }, 400)
   if (!fullName) return jsonWithCors(req, { error: 'Full name is required.' }, 400)
 
+  // Safety filter on the user-visible parts of the intake — block off-platform
+  // contact attempts before they hit the marketplace feed. Notes field gets
+  // the same treatment as a chat message would.
+  {
+    const blob = [body.case_type_label, body.urgency, body.contact?.notes, (body.meta as any)?.headline, (body.meta as any)?.summary]
+      .filter((v) => typeof v === 'string')
+      .join(' \n ')
+    if (blob.trim()) {
+      const s = safetyGuard(blob)
+      if (!s.ok) {
+        return jsonWithCors(req, { error: s.error, violations: s.violations }, 422)
+      }
+    }
+  }
+
   const country = clean(body.country, 4).toUpperCase() || null
   const caseType = clean(body.case_type, 80) || null
   const caseLabel = clean(body.case_type_label, 200) || null
@@ -77,6 +95,22 @@ export async function POST(req: Request) {
     .select('id')
     .eq('email', email)
     .maybeSingle()
+
+  // 10-active-statuses cap per buyer (HANDOFF.md §4b). When the buyer is a
+  // known profile, count current non-expired statuses and 429 if at the cap.
+  // Unknown emails skip this — they can't have statuses anyway.
+  if (existingProfile?.id) {
+    const { count: activeCount } = await db
+      .from('inquiry_statuses')
+      .select('id', { count: 'exact', head: true })
+      .eq('person_id', existingProfile.id)
+      .gt('expires_at', new Date().toISOString())
+    if ((activeCount ?? 0) >= ACTIVE_STATUS_CAP) {
+      return jsonWithCors(req, {
+        error: `You already have ${ACTIVE_STATUS_CAP} active inquiry broadcasts. Wait for some to expire (24h) or close an existing one before posting another.`,
+      }, 429)
+    }
+  }
 
   // Resolve target attorney (when student is posting from a specific attorney's profile).
   let targetAttorneyProfileId: string | null = null
@@ -112,6 +146,27 @@ export async function POST(req: Request) {
   if (error || !inquiry) {
     console.error('[inquiries] insert failed', error?.message)
     return jsonWithCors(req, { error: 'Could not save your inquiry. Please try again.' }, 500)
+  }
+
+  // Drop a 24h status broadcast row for any buyer who has a profile so the
+  // marketplace status ring lights up. Best-effort — if the table isn't
+  // applied yet (migration pending) we swallow the error and keep going.
+  if (existingProfile?.id) {
+    try {
+      await db.from('inquiry_statuses').insert({
+        person_id:  existingProfile.id,
+        kind:       'inquiry',
+        inquiry_id: inquiry.id,
+        payload: {
+          country_flag:    country,
+          case_type_label: caseLabel,
+          urgency,
+          headline:        (metaIn as any)?.headline ?? null,
+        },
+      })
+    } catch (e) {
+      console.warn('[inquiries] status broadcast skipped', (e as Error)?.message)
+    }
   }
 
   // Targeted-attorney path: log a system message and send a direct email so the
