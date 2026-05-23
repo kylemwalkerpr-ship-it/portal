@@ -1,5 +1,6 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { messageBodyFromRequest } from '@/lib/messageAttachments'
+import { safetyGuard } from '@/lib/safety'
 
 async function ensureOwnsChat(ctx: any, id: string) {
   const { data: chat } = await ctx.db
@@ -28,6 +29,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   if (!body) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
+
+  {
+    const s = safetyGuard(body)
+    if (!s.ok) return Response.json({ error: s.error, violations: s.violations }, { status: 422 })
+  }
 
   const { data: msg, error: insErr } = await ctx.db
     .from('inquiry_messages')

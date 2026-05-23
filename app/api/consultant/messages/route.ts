@@ -1,6 +1,7 @@
 import { getCurrentConsultant } from '@/lib/consultant'
 import { messageBodyFromFormData } from '@/lib/messageAttachments'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from '@/lib/fiverr'
+import { safetyGuard } from '@/lib/safety'
 
 export async function GET(req: Request) {
   const auth = await getCurrentConsultant()
@@ -108,6 +109,11 @@ export async function POST(req: Request) {
       return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
     }
     if (!text) return Response.json({ error: 'body or file is required' }, { status: 400 })
+  }
+
+  {
+    const s = safetyGuard(text)
+    if (!s.ok) return Response.json({ error: s.error, violations: s.violations }, { status: 422 })
   }
 
   const { data, error } = await auth.db

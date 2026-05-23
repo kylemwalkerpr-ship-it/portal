@@ -1,6 +1,7 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { sendEmail, inquiryAttorneyEngagedEmail } from '@/lib/email'
 import { messageBodyFromFormData } from '@/lib/messageAttachments'
+import { safetyGuard } from '@/lib/safety'
 
 // Multi-attorney model: any approved attorney can message any open inquiry.
 // Their messages are tagged with sender_profile_id so the student UI can
@@ -44,6 +45,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       return Response.json({ error: err instanceof Error ? err.message : 'Upload failed.' }, { status })
     }
     if (!text) return Response.json({ error: 'Message body or file required.' }, { status: 400 })
+  }
+
+  {
+    const s = safetyGuard(text)
+    if (!s.ok) return Response.json({ error: s.error, violations: s.violations }, { status: 422 })
   }
 
   // First-message detection BEFORE inserting (so we know whether to email).

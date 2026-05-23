@@ -1,5 +1,6 @@
 import { requireClient } from '@/lib/clientAuth'
 import { sendEmail, inquiryClientMessageEmail } from '@/lib/email'
+import { safetyGuard } from '@/lib/safety'
 
 
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -16,6 +17,9 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
   const text = typeof body.body === 'string' ? body.body.trim().slice(0, 4000) : ''
   if (!text) return Response.json({ error: 'Message body required.' }, { status: 400 })
+
+  const safety = safetyGuard(text)
+  if (!safety.ok) return Response.json({ error: safety.error, violations: safety.violations }, { status: 422 })
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
