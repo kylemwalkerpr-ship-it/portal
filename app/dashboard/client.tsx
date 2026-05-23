@@ -14,6 +14,7 @@ const ConsultantApp = dynamic(() => import('@/components/design/consultant'), { 
 const AdminApp = dynamic(() => import('@/components/design/admin'), { ssr: false })
 const AttorneyApp = dynamic(() => import('@/components/design/attorney'), { ssr: false })
 const AttorneyApplyForm = dynamic(() => import('@/components/design/attorney-apply-form'), { ssr: false })
+import { IntakeTodoBanner } from '@/components/marketplace/IntakeTodoBanner'
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 const SUPPORT_URL = 'https://support.yousafeconsultancy.com'
 
@@ -187,6 +188,16 @@ export default function DashboardClient({ role, status, userName, userId, expect
     : role === 'attorney' ? <AttorneyApp onLogout={handleLogout} userName={userName} />
     : <StudentApp onLogout={handleLogout} userId={userId} userName={userName} />
 
+  // Attorneys get a sticky intake to-do banner above their dashboard until
+  // their profile clears the 75% publish gate.
+  if (role === 'attorney') {
+    return (
+      <>
+        <IntakeTodoBanner />
+        {app}
+      </>
+    )
+  }
   return app
 }
 

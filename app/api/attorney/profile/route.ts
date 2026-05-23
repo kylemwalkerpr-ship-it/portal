@@ -147,7 +147,15 @@ export async function PATCH(req: Request) {
     }
   }
 
-  if (Object.keys(update).length === 0 && usernameWrite === undefined) {
+  // bar_number + credential_type live on attorney_applications (the source of
+  // truth for credential vetting). Attorneys edit these from the intake
+  // wizard. Write to the most recent approved application.
+  let applicationWrite: { bar_number?: string | null; credential_type?: string | null } = {}
+  if ('bar_number' in body) applicationWrite.bar_number = clean((body as any).bar_number, 120)
+  if ('credential_type' in body) applicationWrite.credential_type = clean((body as any).credential_type, 120)
+  const wantsAppWrite = Object.keys(applicationWrite).length > 0
+
+  if (Object.keys(update).length === 0 && usernameWrite === undefined && !wantsAppWrite) {
     return Response.json({ error: 'Nothing to update.' }, { status: 400 })
   }
 
@@ -169,6 +177,23 @@ export async function PATCH(req: Request) {
       .update({ username: usernameWrite })
       .eq('id', ctx.profileId)
     if (profErr) return Response.json({ error: profErr.message }, { status: 500 })
+  }
+
+  if (wantsAppWrite) {
+    const { data: app } = await ctx.db
+      .from('attorney_applications')
+      .select('id')
+      .eq('profile_id', ctx.profileId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (app?.id) {
+      const { error: appErr } = await ctx.db
+        .from('attorney_applications')
+        .update(applicationWrite)
+        .eq('id', app.id)
+      if (appErr) return Response.json({ error: appErr.message }, { status: 500 })
+    }
   }
 
   let attorney: any = null
