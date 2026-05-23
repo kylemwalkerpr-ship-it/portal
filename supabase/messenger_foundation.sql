@@ -1,20 +1,40 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Yousafe Messenger — Phase-1 foundation
+-- Yousafe Messenger — Phase-1 foundation (schema-corrected)
 --
--- Combines §4b (inquiry_statuses), §4c (support_tickets + trigger), and §4d
--- (message type widening) from HANDOFF.md, with the following safety patches
--- the prototype's SQL didn't include:
+-- The prototype's HANDOFF.md assumed `order_conversations` exists with
+-- `client_profile_id` / `attorney_profile_id` / `consultant_profile_id`
+-- columns, and that `order_messages` carries `conversation_id`, `type`,
+-- `attachment_*`, and `ref_*` columns. Neither is true in this database.
+-- The real shape (verified live via information_schema):
 --
---   • Two-person rule on support_tickets — decided_by != raised_by enforced
---     at the table level so RLS can't be the only line of defence.
---   • Trigger atomicity — on_support_ticket_decided() wraps the escrow RPC
---     in BEGIN/EXCEPTION that re-raises, so a failed refund rolls the
---     ticket UPDATE back instead of silently advancing.
---   • RLS uses the real existing tables (order_conversations,
---     chat_conversations) — the handoff's reference to `public.conversations`
---     wouldn't compile against this schema.
---   • inquiry_statuses_active_idx uses a plain DESC index (the partial WHERE
---     now() form in the handoff is invalid because now() is not immutable).
+--   conversations          (id, participant_a, participant_b, context_kind,
+--                           context_id, status, …)
+--   conversation_messages  (id, conversation_id, sender_id, type, body,
+--                           attachment_url, attachment_name, ref_offer_id,
+--                           ref_order_id, ref_inquiry_id, ref_message_id,
+--                           metadata, created_at)  — sender_id IS NOT NULL
+--   order_messages         (id, order_id, sender_id, sender_role, body, …)
+--                          — no type column, no conversation_id
+--
+-- This migration is the corrected rewrite:
+--
+--   • support_tickets.conversation_id → references conversations(id)
+--   • inquiry_statuses RLS uses conversations.participant_a/_b with the
+--     correct context_kind filter, not the handoff's invented columns
+--   • on_support_ticket_decided() inserts into conversation_messages (which
+--     has the carrier columns the prototype expects) and tolerates a NULL
+--     conversation_id by skipping the system-message insert
+--   • conversation_messages.sender_id is made nullable so system rows can
+--     be authored by the platform itself
+--   • conversation_messages.type CHECK is widened to include 'inquiry' and
+--     'offer_request' alongside the existing types
+--   • escrow RPCs (refund_order_full, refund_order_partial,
+--     release_escrow_now) are NOT yet implemented in this schema — added
+--     as RAISE-NOTICE stubs so the trigger fires safely. Replace the stub
+--     bodies with the real escrow logic when escrow_system_v2.sql lands.
+--   • Two-person rule (decided_by != raised_by) enforced via table CHECK
+--   • Trigger atomicity: escrow RPC call wrapped in BEGIN/EXCEPTION that
+--     re-raises so a failed refund rolls the ticket UPDATE back
 -- ─────────────────────────────────────────────────────────────────────────────
 
 /* ── §4b. Status broadcasts ─────────────────────────────────────────── */
@@ -50,15 +70,9 @@ create policy inquiry_statuses_select on public.inquiry_statuses
     person_id = auth.uid()
     or (select role from public.profiles where id = auth.uid()) in ('attorney','consultant','admin','support')
     or exists (
-      select 1 from public.order_conversations c
-      where c.client_profile_id = person_id
-        and (c.attorney_profile_id = auth.uid() or c.consultant_profile_id = auth.uid())
-    )
-    or exists (
-      select 1 from public.chat_conversations cc
-      where (cc.client_profile_id = person_id and (cc.attorney_profile_id = auth.uid() or cc.consultant_profile_id = auth.uid()))
-         or (cc.attorney_profile_id = person_id and cc.client_profile_id = auth.uid())
-         or (cc.consultant_profile_id = person_id and cc.client_profile_id = auth.uid())
+      select 1 from public.conversations c
+      where (c.participant_a = person_id and c.participant_b = auth.uid())
+         or (c.participant_b = person_id and c.participant_a = auth.uid())
     )
   );
 
@@ -69,6 +83,41 @@ create policy inquiry_statuses_insert_self on public.inquiry_statuses
 drop policy if exists inquiry_status_views_self on public.inquiry_status_views;
 create policy inquiry_status_views_self on public.inquiry_status_views
   for all using (viewer_id = auth.uid()) with check (viewer_id = auth.uid());
+
+/* ── §4d. Widen conversation_messages.type + make sender nullable ───── */
+
+-- Make sender_id nullable so the platform itself can author system messages
+-- (e.g. the support-ticket trigger). RLS already gates inserts; nullability
+-- is the right shape for system-authored rows.
+alter table public.conversation_messages
+  alter column sender_id drop not null;
+
+-- Drop the existing CHECK constraint and re-add it with the new message
+-- types from §4d ('inquiry', 'offer_request') alongside the existing ones.
+do $$
+declare
+  conname text;
+begin
+  select tc.constraint_name into conname
+  from information_schema.table_constraints tc
+  where tc.table_schema = 'public'
+    and tc.table_name = 'conversation_messages'
+    and tc.constraint_type = 'CHECK'
+    and exists (
+      select 1 from information_schema.check_constraints cc
+      where cc.constraint_name = tc.constraint_name
+        and cc.check_clause ilike '%type%'
+    )
+  limit 1;
+
+  if conname is not null then
+    execute format('alter table public.conversation_messages drop constraint %I', conname);
+  end if;
+
+  alter table public.conversation_messages
+    add constraint conversation_messages_type_check
+    check (type in ('text','attachment','offer','offer_request','inquiry','order_event','inquiry_event','system'));
+end $$;
 
 /* ── §4c. Support tickets ───────────────────────────────────────────── */
 
@@ -84,7 +133,7 @@ end $$;
 create table if not exists public.support_tickets (
   id              uuid primary key default gen_random_uuid(),
   order_id        uuid not null references public.orders(id) on delete cascade,
-  conversation_id uuid references public.order_conversations(id) on delete set null,
+  conversation_id uuid references public.conversations(id) on delete set null,
   raised_by       uuid not null references public.profiles(id) on delete restrict,
   kind            public.support_ticket_kind   not null,
   amount_cents    bigint,
@@ -96,9 +145,7 @@ create table if not exists public.support_tickets (
   decision_notes  text,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
-  -- Two-person rule: a support agent can never approve / deny their own ticket.
   constraint support_tickets_two_person check (decided_by is null or decided_by <> raised_by),
-  -- refund_partial must carry an amount; other kinds shouldn't.
   constraint support_tickets_partial_amount check (
     (kind = 'refund_partial' and amount_cents is not null and amount_cents > 0)
     or (kind <> 'refund_partial')
@@ -111,9 +158,7 @@ create index if not exists support_tickets_raised_idx  on public.support_tickets
 
 do $$ begin
   if exists (select 1 from pg_proc where proname = 'handle_updated_at') then
-    if not exists (
-      select 1 from pg_trigger where tgname = 'support_tickets_updated_trg'
-    ) then
+    if not exists (select 1 from pg_trigger where tgname = 'support_tickets_updated_trg') then
       create trigger support_tickets_updated_trg
         before update on public.support_tickets
         for each row execute function public.handle_updated_at();
@@ -123,9 +168,9 @@ end $$;
 
 alter table public.support_tickets enable row level security;
 
-drop policy if exists support_tickets_read     on public.support_tickets;
-drop policy if exists support_tickets_create   on public.support_tickets;
-drop policy if exists support_tickets_decide   on public.support_tickets;
+drop policy if exists support_tickets_read   on public.support_tickets;
+drop policy if exists support_tickets_create on public.support_tickets;
+drop policy if exists support_tickets_decide on public.support_tickets;
 
 create policy support_tickets_read on public.support_tickets
   for select using (
@@ -142,15 +187,38 @@ create policy support_tickets_decide on public.support_tickets
   for update using (
     (select role from public.profiles where id = auth.uid()) = 'admin'
   ) with check (
-    -- Admin can only mutate to a decided state; can't reassign raised_by, etc.
     decided_by = auth.uid()
   );
 
-/* Trigger: pending → approved/denied fires the escrow RPC and drops a
-   system message into the order's conversation. Wrapped in a sub-block so
-   that an RPC failure (e.g. order not eligible for refund) rolls back the
-   whole UPDATE instead of silently leaving the ticket "approved" while
-   the escrow stays untouched. */
+/* ── Escrow RPC stubs ───────────────────────────────────────────────────
+   The real refund/release functions belong in escrow_system_v2.sql. Until
+   that ships, install RAISE-NOTICE stubs so the trigger fires safely
+   instead of erroring with "function does not exist". Replace these
+   bodies with the production implementation when ready — signature must
+   stay (uuid) / (uuid, bigint). */
+
+create or replace function public.refund_order_full(p_order_id uuid)
+returns void language plpgsql security definer as $$
+begin
+  raise notice 'refund_order_full(%) — stub, awaiting escrow_system_v2.sql', p_order_id;
+end $$;
+
+create or replace function public.refund_order_partial(p_order_id uuid, p_amount_cents bigint)
+returns void language plpgsql security definer as $$
+begin
+  raise notice 'refund_order_partial(%, %) — stub, awaiting escrow_system_v2.sql', p_order_id, p_amount_cents;
+end $$;
+
+create or replace function public.release_escrow_now(p_order_id uuid)
+returns void language plpgsql security definer as $$
+begin
+  raise notice 'release_escrow_now(%) — stub, awaiting escrow_system_v2.sql', p_order_id;
+end $$;
+
+/* Trigger: pending → approved/denied fires the escrow RPC (stubbed for
+   now) and drops a system message into the conversation_messages table.
+   Wrapped in a sub-block so RPC failure rolls back the UPDATE. */
+
 create or replace function public.on_support_ticket_decided() returns trigger as $$
 declare
   sys_body text;
@@ -181,8 +249,10 @@ begin
     end if;
 
     if new.conversation_id is not null then
-      insert into public.order_messages (conversation_id, sender_id, type, body, created_at)
-      values (new.conversation_id, null, 'system', sys_body, now());
+      insert into public.conversation_messages
+        (conversation_id, sender_id, type, body, ref_order_id, created_at)
+      values
+        (new.conversation_id, null, 'system', sys_body, new.order_id, now());
     end if;
   end if;
   return new;
@@ -192,32 +262,3 @@ drop trigger if exists support_tickets_decide_trigger on public.support_tickets;
 create trigger support_tickets_decide_trigger
   after update on public.support_tickets
   for each row execute function public.on_support_ticket_decided();
-
-/* ── §4d. Message-type expansion ────────────────────────────────────── */
-
--- order_messages.type is a text column with a CHECK on the existing prototype
--- repo. Widen the check to include 'inquiry' and 'offer_request' so the new
--- bubble renderers can drop into the existing pipeline.
-do $$
-declare
-  conname text;
-begin
-  select tc.constraint_name into conname
-  from information_schema.table_constraints tc
-  where tc.table_schema = 'public' and tc.table_name = 'order_messages'
-    and tc.constraint_type = 'CHECK'
-    and exists (
-      select 1 from information_schema.check_constraints cc
-      where cc.constraint_name = tc.constraint_name
-        and cc.check_clause ilike '%type%'
-    )
-  limit 1;
-
-  if conname is not null then
-    execute format('alter table public.order_messages drop constraint %I', conname);
-  end if;
-
-  alter table public.order_messages
-    add constraint order_messages_type_check
-    check (type in ('text','attachment','offer','offer_request','inquiry','system','event'));
-end $$;
