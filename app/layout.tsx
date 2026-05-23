@@ -109,6 +109,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body style={{ overflowX: 'hidden' }}>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>
         <ClerkProvider
+          domain="yousafeconsultancy.com"
           afterSignOutUrl={PORTAL_URL}
           signInUrl="/sign-in/student"
           signUpUrl="/sign-up/student"
