@@ -6,7 +6,7 @@ export default function MarketplaceLayout({ children }: { children: React.ReactN
   return (
     <CartProvider>
       {/* Suspense is required because MarketplaceShell uses useSearchParams() */}
-      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#F7F5F0' }} />}>
+      <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF7' }} />}>
         <MarketplaceShell>{children}</MarketplaceShell>
       </Suspense>
     </CartProvider>
