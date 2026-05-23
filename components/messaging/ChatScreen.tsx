@@ -2,8 +2,6 @@
 
 import React from 'react'
 
-const CHAT_BG = '#ECE7DF'
-
 export type ChatScreenMode = 'fill' | 'panel' | 'split'
 
 export interface ChatScreenProps {
@@ -96,7 +94,7 @@ export default function ChatScreen({
         minWidth: 0,
         minHeight: 0,
         overflow: 'hidden',
-        background: CHAT_BG,
+        background: 'var(--chat-bg)',
       }}
     >
       {/* Header */}
@@ -109,6 +107,7 @@ export default function ChatScreen({
       <div
         ref={messagesRef}
         onScroll={handleScroll}
+        className="cv-body-bg"
         style={{
           flex: '1 1 auto',
           minHeight: 0,
@@ -117,7 +116,7 @@ export default function ChatScreen({
           position: 'relative',
         }}
       >
-        <div style={{ maxWidth: 760, margin: '0 auto', padding: '14px 18px' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', padding: '14px 18px', position: 'relative', zIndex: 2 }}>
           {messages}
         </div>
         {showNewMessagePill && (

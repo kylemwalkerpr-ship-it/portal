@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
+import './messenger-tokens.css'
 import OfferComposerInline from './OfferComposerInline'
 import { MessageOfferCard } from '../marketplace/MessageOfferCard'
 import { OfferPaymentModal } from './OfferPaymentModal'
@@ -17,29 +18,13 @@ import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/me
  * Single inbox component used by student + attorney + consultant
  * dashboards. Backed by the unified conversation_messages table via
  * /api/messages/conversations.
- *
- * Supports deep linking: pass `defaultThreadId` (typically pulled from
- * the page's ?thread=<id> param) and the matching conversation will be
- * auto-selected on mount.
- *
- * Props:
- *   defaultThreadId?  — conversation id to auto-select
- *   onThreadChange?   — fired when the active thread changes (writes
- *                       back to URL for shareable links)
  */
-
-const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
-const MONO=`'SF Mono', Menlo, Consolas, monospace`
 
 const PAGE_SIZE = 50
 
 const FILTER_TABS = [
   { id: 'all',      label: 'All' },
   { id: 'unread',   label: 'Unread' },
-  { id: 'archived', label: 'Archived' },
 ]
 
 const CTX_LABEL = {
@@ -74,7 +59,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [payingOfferId, setPayingOfferId] = React.useState(null)
   const [mobileShowChat, setMobileShowChat] = React.useState(false)
 
-  // Notify parent when thread changes (for URL deep links)
+  // Notify parent when thread changes
   React.useEffect(() => { onThreadChange?.(activeId) }, [activeId, onThreadChange])
 
   // Debounce search
@@ -98,7 +83,6 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setConversations(d.conversations || [])
       setCounts(d.counts || {})
       setHasMore(!!d.has_more)
-      // Auto-select first conversation on first load
       if (!activeId && (d.conversations || []).length > 0) {
         setActiveId(d.conversations[0].id)
       }
@@ -111,7 +95,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   React.useEffect(() => { loadList(false) }, [loadList])
 
-  // Soft poll every 12s for live updates
+  // Soft poll every 12s
   React.useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') loadList(true)
@@ -119,7 +103,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     return () => clearInterval(id)
   }, [loadList])
 
-  // Load active thread when activeId changes
+  // Load active thread
   const loadThread = React.useCallback(async (silent = false) => {
     if (!activeId) {
       setActiveMsgs([]); setActiveConv(null); setActiveSidebar({ orders: [], offers: [] })
@@ -134,7 +118,6 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setActiveConv(d.conversation || null)
       setActiveMsgs(d.messages || [])
       setActiveSidebar(d.sidebar || { orders: [], offers: [] })
-      // Mark as read on open
       fetch(`/api/messages/conversations/${activeId}`, {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -149,7 +132,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   React.useEffect(() => { loadThread(false) }, [loadThread])
 
-  // Soft poll the active thread every 8s
+  // Soft poll active thread every 8s
   React.useEffect(() => {
     if (!activeId) return
     const id = setInterval(() => {
@@ -224,141 +207,250 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     setMobileShowChat(true)
   }
 
+  const archivedCount = counts.archived || 0
+
+  // ── Left rail (ChatList chrome) ─────────────────────────────────────
   const sidebar = (
-    <>
-      <div style={{ padding: '12px 14px 8px', borderBottom: `1px solid ${BORDER2}` }}>
-        <div style={{ position: 'relative', marginBottom: 8 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: DIM, fontSize: 13 }}>🔍</span>
+    <div className="cl">
+      <div className="cl-head">
+        <div className="cl-title">
+          <div className="cl-title-l">
+            <div className="cl-avatar" style={{ background: '#3C3B6E' }}>
+              {activeConv?.counterpart?.name ? initials(activeConv.counterpart.name) : 'Y'}
+            </div>
+            <div>
+              <div className="cl-title-name">Chats</div>
+              <div className="cl-title-sub">{counts.totalUnread ? `${counts.totalUnread} unread` : 'All caught up'}</div>
+            </div>
+          </div>
+          <div className="cl-title-r">
+            <button className="iconbtn" title="Settings" onClick={() => { /* Phase 1 inert */ }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div className="cl-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
           <input
+            placeholder="Search or start new chat"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search conversations…"
-            style={{ width: '100%', padding: '7px 10px 7px 30px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, background: SURFACE2, color: TEXT, fontFamily: SANS, boxSizing: 'border-box' }}
           />
+          {searchInput && (
+            <button className="cl-search-x" onClick={() => setSearchInput('')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {FILTER_TABS.map(t => {
-            const c = counts[t.id]
-            const active = tab === t.id
-            return (
-              <button key={t.id} onClick={() => { setTab(t.id); setPage(1) }} style={{
-                padding: '4px 9px', fontSize: 11, fontFamily: SANS, fontWeight: active ? 700 : 500,
-                border: `1px solid ${active ? CYAN : BORDER}`, background: active ? `${CYAN}15` : 'transparent',
-                color: active ? CYAN : MUTED, borderRadius: 999, cursor: 'pointer',
-              }}>{t.label}{typeof c === 'number' && c > 0 && <span style={{ fontFamily: MONO, fontSize: 10, opacity: .75, marginLeft: 4 }}>({Number(c).toLocaleString('en-US')})</span>}</button>
-            )
-          })}
+
+        <div className="cl-filters">
+          {[
+            { id: 'all',        label: 'All' },
+            { id: 'unread',     label: 'Unread',     count: counts.totalUnread },
+            { id: 'favourites', label: 'Favourites', count: 0 },
+            { id: 'groups',     label: 'Groups',     count: 0 },
+          ].map(f => (
+            <button
+              key={f.id}
+              className={`cl-pill ${tab === f.id ? 'on' : ''}`}
+              onClick={() => { setTab(f.id); setPage(1) }}
+              disabled={f.id === 'favourites' || f.id === 'groups'}
+              title={(f.id === 'favourites' || f.id === 'groups') ? 'Coming in Phase 2' : undefined}
+            >
+              {f.label}{typeof f.count === 'number' && f.count > 0 && <span className="cl-pill-count">{f.count.toLocaleString()}</span>}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {listLoading && conversations.length === 0 && <div style={{ padding: 18, color: MUTED, fontSize: 12 }}>Loading…</div>}
-        {listError && <div style={{ padding: 16, color: RED, fontSize: 12 }}>{listError} · <button onClick={() => loadList(false)} style={{ background: 'none', border: 'none', color: RED, textDecoration: 'underline', cursor: 'pointer', fontFamily: SANS }}>retry</button></div>}
-        {!listLoading && !listError && conversations.length === 0 && (
-          <div style={{ padding: 24, color: MUTED, fontSize: 12, lineHeight: 1.6 }}>
-            {tab === 'unread' ? 'No unread conversations.' : tab === 'archived' ? 'No archived conversations.' : 'No conversations yet. Open a seller profile or place an order to start one.'}
+      <div className="cl-scroll">
+        {/* Archived row — always render if count > 0, stub click */}
+        {archivedCount > 0 && (
+          <button className="cl-archived" onClick={() => { /* Phase 2 stub */ }}>
+            <div className="cl-archived-l">
+              <div className="cl-archived-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="21 8 21 21 3 21 3 8" />
+                  <rect x="1" y="3" width="22" height="5" />
+                  <line x1="10" y1="12" x2="14" y2="12" />
+                </svg>
+              </div>
+              <span>Archived</span>
+            </div>
+            <div className="cl-archived-r">
+              <span className="cl-archived-count">{archivedCount}</span>
+            </div>
+          </button>
+        )}
+
+        {listLoading && conversations.length === 0 && (
+          <div className="cl-empty">Loading…</div>
+        )}
+        {listError && (
+          <div className="cl-empty">
+            {listError} · <button onClick={() => loadList(false)} style={{ background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer' }}>retry</button>
           </div>
         )}
+        {!listLoading && !listError && conversations.length === 0 && (
+          <div className="cl-empty">
+            {tab === 'unread' ? 'No unread conversations.' : 'No conversations yet. Open a seller profile or place an order to start one.'}
+          </div>
+        )}
+
         {conversations.map(c => {
           const isActive = activeId === c.id
+          const unread = c.unread > 0
           return (
             <button
               key={c.id}
               type="button"
+              className={`row ${isActive ? 'on' : ''} ${unread ? 'unread' : ''}`}
               onClick={() => handleSelectConversation(c.id)}
-              style={{
-                width: '100%', padding: '12px 14px', display: 'flex', gap: 10,
-                cursor: 'pointer',
-                background: isActive ? `${CYAN}10` : 'transparent',
-                border: 'none',
-                borderLeft: `3px solid ${isActive ? CYAN : 'transparent'}`,
-                borderBottom: `1px solid ${BORDER2}`,
-                textAlign: 'left', fontFamily: SANS, color: TEXT, position: 'relative',
-              }}
             >
-              {c.counterpart?.avatar_url
-                ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                : <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, fontFamily: SERIF, flexShrink: 0 }}>{initials(c.counterpart?.name || '?')}</div>}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: c.unread > 0 ? 800 : 700, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.counterpart?.name || 'Conversation'}</span>
-                  {c.last_message_at && <span style={{ fontSize: 10, color: c.unread > 0 ? CYAN : DIM, fontFamily: MONO, flexShrink: 0 }}>{fmtRelative(c.last_message_at)}</span>}
+              <div className="row-avatar" style={{ background: c.counterpart?.avatar_color || '#3C3B6E' }}>
+                {c.counterpart?.avatar_url
+                  ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                  : initials(c.counterpart?.name || '?')}
+              </div>
+              <div className="row-body">
+                <div className="row-line1">
+                  <span className="row-name">{c.counterpart?.name || 'Conversation'}</span>
+                  {c.last_message_at && (
+                    <span className={`row-time ${unread ? 'on' : ''}`}>{fmtRelative(c.last_message_at)}</span>
+                  )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
-                  {c.last_from_me && <span style={{ fontSize: 10, color: DIM, fontFamily: MONO }}>You:</span>}
-                  <span style={{ fontSize: 12, color: c.unread > 0 ? TEXT : MUTED, fontWeight: c.unread > 0 ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                <div className="row-line2">
+                  <span className="row-snippet">
+                    {c.last_from_me && <span className="you">You: </span>}
                     {c.last_message || 'New conversation'}
                   </span>
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: `${MUTED}15`, color: MUTED, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' }}>
-                    {CTX_LABEL[c.context_kind] || c.context_kind}
+                  <span className="row-icons">
+                    {/* Pin / mute glyphs — Phase 1 inert chrome */}
+                    <span style={{ opacity: 0.55, fontSize: 11 }}>📌</span>
+                    <span style={{ opacity: 0.55, fontSize: 11 }}>🔕</span>
+                    {unread && <span className="row-unread">{c.unread > 99 ? '99+' : c.unread}</span>}
+                    <span className="row-chev" onClick={e => { e.stopPropagation(); /* Phase 2 inert */ }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </span>
                   </span>
                 </div>
+                {c.context_kind && (
+                  <div className="row-ctx">{CTX_LABEL[c.context_kind] || c.context_kind}</div>
+                )}
               </div>
-              {c.unread > 0 && (
-                <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: CYAN, color: '#fff', fontFamily: MONO }}>{c.unread}</span>
-              )}
             </button>
           )
         })}
       </div>
 
       {(page > 1 || hasMore) && (
-        <div style={{ padding: '10px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={pagerBtn(page <= 1)}>← Prev</button>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: MUTED }}>Page {page}</span>
+          <span style={{ fontFamily: 'var(--font-plex-mono), monospace', fontSize: 11, color: 'var(--text-soft)' }}>Page {page}</span>
           <button disabled={!hasMore} onClick={() => setPage(p => p + 1)} style={pagerBtn(!hasMore)}>Next →</button>
         </div>
       )}
-    </>
+    </div>
   )
 
+  // ── Right-pane header (ChatView header chrome) ──────────────────────
   const header = activeId ? (
-    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${BORDER2}`, display: 'flex', alignItems: 'center', gap: 12, background: SURFACE }}>
+    <div className="cv-head">
       {mobileShowChat && (
         <button
+          className="iconbtn"
           onClick={() => setMobileShowChat(false)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: MUTED, padding: '0 4px' }}
         >
-          ←
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
         </button>
       )}
-      {activeConv?.counterpart?.avatar_url
-        ? <img src={activeConv.counterpart.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-        : <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, fontFamily: SERIF }}>{initials(activeConv?.counterpart?.full_name || '?')}</div>}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 600, color: TEXT, lineHeight: 1.1 }}>{activeConv?.counterpart?.full_name || 'Conversation'}</div>
-        <div style={{ fontSize: 11, color: DIM, fontFamily: MONO, marginTop: 2 }}>
-          {activeConv?.counterpart?.email || ''}
-          {activeConv?.context_kind && activeConv.context_kind !== 'general' && <> · {CTX_LABEL[activeConv.context_kind]}</>}
+      <div className="cv-head-info">
+        <div className="cv-head-avatar" style={{ background: activeConv?.counterpart?.avatar_color || '#3C3B6E' }}>
+          {activeConv?.counterpart?.avatar_url
+            ? <img src={activeConv.counterpart.avatar_url} alt="" style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
+            : initials(activeConv?.counterpart?.full_name || '?')}
+        </div>
+        <div className="cv-head-text">
+          <div className="cv-head-name">{activeConv?.counterpart?.full_name || 'Conversation'}</div>
+          <div className="cv-head-status">
+            {activeConv?.counterpart?.email || ''}
+          </div>
         </div>
       </div>
-      {activeSidebar.orders?.length > 0 && (
-        <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 8px', borderRadius: 4, background: `${CYAN}15`, color: CYAN, letterSpacing: '.04em', textTransform: 'uppercase' }}>
-          {activeSidebar.orders.length} shared order{activeSidebar.orders.length === 1 ? '' : 's'}
-        </span>
+
+      {activeConv?.context_kind && activeConv.context_kind !== 'general' && (
+        <span className="cv-head-ctx">{CTX_LABEL[activeConv.context_kind]}</span>
       )}
+
+      {canSendOffer && (
+        <button
+          className="cv-head-offer-cta"
+          onClick={() => setShowOfferComposer(v => !v)}
+        >
+          + Send offer
+        </button>
+      )}
+
+      <div className="cv-head-actions">
+        <button className="iconbtn" title="Search in chat" onClick={() => { /* Phase 1 inert */ }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </button>
+        <button className="iconbtn" title="Video call" onClick={() => { /* Phase 1 inert */ }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+        </button>
+        <button className="iconbtn" title="Voice call" onClick={() => { /* Phase 1 inert */ }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+        </button>
+      </div>
     </div>
   ) : (
-    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${BORDER2}`, display: 'flex', alignItems: 'center', gap: 12, background: SURFACE }}>
-      <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 600, color: TEXT }}>Messages</div>
+    <div className="cv-head">
+      <div className="cv-head-name">Messages</div>
     </div>
   )
 
+  // ── Messages area ───────────────────────────────────────────────────
   const messages = !activeId ? (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 13, padding: 40 }}>
-      Select a conversation to view the thread.
+    <div className="cv-empty-full" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+      <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.25 }}>💬</div>
+      <h2 style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontWeight: 500, fontSize: 24, color: 'var(--text)', margin: '0 0 8px' }}>Yousafe Messaging</h2>
+      <p style={{ maxWidth: '36ch', color: 'var(--text-soft)', lineHeight: 1.6, fontSize: 13, margin: 0 }}>
+        Pick a conversation from the left, or start a new one.
+      </p>
     </div>
   ) : (
     <>
-      {threadError && <div style={{ padding: '8px 18px', background: `${RED}10`, color: RED, fontSize: 12 }}>{threadError}</div>}
-      {threadLoading && activeMsgs.length === 0 && <div style={{ color: MUTED, fontSize: 12 }}>Loading thread…</div>}
+      {threadError && <div style={{ padding: '8px 18px', background: 'color-mix(in oklab, var(--brick) 10%, transparent)', color: 'var(--brick)', fontSize: 12 }}>{threadError}</div>}
+      {threadLoading && activeMsgs.length === 0 && <div className="cv-empty">Loading thread…</div>}
       {!threadLoading && activeMsgs.length === 0 && (
-        <div style={{ background: SURFACE2, border: `1px dashed ${BORDER}`, borderRadius: 10, padding: 24, textAlign: 'center', margin: 'auto' }}>
-          <div style={{ fontSize: 26, marginBottom: 6 }}>💬</div>
-          <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: TEXT, marginBottom: 4 }}>No messages yet</div>
-          <div style={{ fontSize: 12, color: MUTED }}>Type below to start the conversation.</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
+            <div style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontSize: 17, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>No messages yet</div>
+            <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>Type below to start the conversation.</div>
+          </div>
         </div>
       )}
       {activeMsgs.map((m, i) => {
@@ -373,10 +465,8 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         return (
           <React.Fragment key={m.id}>
             {showDate && (
-              <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
-                  {dateLabel(m.created_at)}
-                </span>
+              <div className="cv-divider">
+                <span>{dateLabel(m.created_at)}</span>
               </div>
             )}
             <ThreadMessage
@@ -395,10 +485,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     </>
   )
 
+  // ── Composer ────────────────────────────────────────────────────────
   const composer = activeId && (
-    <>
+    <div className="comp">
       {canSendOffer && showOfferComposer && (
-        <div style={{ padding: '10px 14px 0', background: SURFACE2 }}>
+        <div style={{ padding: '10px 14px 0', background: 'var(--panel-2)' }}>
           <OfferComposerInline
             conversationId={activeId}
             onSent={() => { loadThread(true); loadList(true) }}
@@ -406,55 +497,18 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           />
         </div>
       )}
-      <div style={{ padding: '10px 14px', borderTop: `1px solid ${BORDER2}`, background: SURFACE, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        {canSendOffer && (
-          <button
-            type="button"
-            onClick={() => setShowOfferComposer(v => !v)}
-            title="Send a custom offer"
-            style={{
-              padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`,
-              background: showOfferComposer ? `${GOLD}20` : SURFACE,
-              color: showOfferComposer ? GOLD : MUTED, fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >💰 Offer</button>
-        )}
-        <AutoGrowInput
-          value={draft}
-          onChange={setDraft}
-          onSubmit={send}
-          disabled={sending}
-          placeholder="Type a message…"
-        />
-        <button
-          onClick={send}
-          disabled={sending || !draft.trim()}
-          title="Send"
-          style={{
-            width: 36, height: 36, borderRadius: '50%', background: CYAN, color: '#fff',
-            border: 'none', fontSize: 16, fontWeight: 700,
-            cursor: sending || !draft.trim() ? 'not-allowed' : 'pointer',
-            opacity: sending || !draft.trim() ? 0.5 : 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          →
-        </button>
-      </div>
-    </>
+      <AutoGrowInput
+        value={draft}
+        onChange={setDraft}
+        onSubmit={send}
+        disabled={sending}
+        placeholder="Type a message…"
+      />
+    </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: SANS }}>
-      <div style={{ flexShrink: 0, padding: '16px 20px 0' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>Inbox</div>
-        <h1 style={{ fontFamily: SERIF, fontSize: 28, fontWeight: 500, color: TEXT, margin: 0, letterSpacing: '-.012em' }}>Messages.</h1>
-        <div style={{ fontSize: 13, color: MUTED, marginTop: 4, marginBottom: 12 }}>
-          Every conversation in one place — order channels, attorney chats, and inquiry threads. {counts.totalUnread > 0 && <strong style={{ color: CYAN }}>{counts.totalUnread} unread</strong>}.
-        </div>
-      </div>
+    <div className="yousafe-messenger" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <ChatScreen
           mode="split"
@@ -481,17 +535,19 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
   if (isOffer) {
     const viewerRole = mine ? 'seller' : 'buyer'
     return (
-      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
-        <div style={{ maxWidth: '75%', opacity: offerBusy ? 0.6 : 1, pointerEvents: offerBusy ? 'none' : 'auto' }}>
-          <MessageOfferCard
-            offer={m.offer}
-            viewerRole={viewerRole}
-            onAccept={onAccept}
-            onDecline={onDecline}
-            onWithdraw={onWithdraw}
-          />
-          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
-            {fmtFullTime(m.created_at)}
+      <div className={`bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`}>
+        <div className="bub" style={{ maxWidth: '75%', padding: 0, background: 'var(--panel)' }}>
+          <div style={{ opacity: offerBusy ? 0.6 : 1, pointerEvents: offerBusy ? 'none' : 'auto' }}>
+            <MessageOfferCard
+              offer={m.offer}
+              viewerRole={viewerRole}
+              onAccept={onAccept}
+              onDecline={onDecline}
+              onWithdraw={onWithdraw}
+            />
+          </div>
+          <div className="bub-foot" style={{ padding: '4px 8px' }}>
+            <span>{fmtFullTime(m.created_at)}</span>
           </div>
         </div>
       </div>
@@ -500,11 +556,11 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
 
   if (m.type === 'inquiry') {
     return (
-      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
-        <div style={{ maxWidth: '75%' }}>
+      <div className={`bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`}>
+        <div className="bub" style={{ maxWidth: '75%', padding: 0, background: 'var(--panel)' }}>
           <InquiryBubble message={m} />
-          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
-            {fmtFullTime(m.created_at)}
+          <div className="bub-foot" style={{ padding: '4px 8px' }}>
+            <span>{fmtFullTime(m.created_at)}</span>
           </div>
         </div>
       </div>
@@ -513,11 +569,11 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
 
   if (m.type === 'offer_request') {
     return (
-      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
-        <div style={{ maxWidth: '75%' }}>
+      <div className={`bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`}>
+        <div className="bub" style={{ maxWidth: '75%', padding: 0, background: 'var(--panel)' }}>
           <OfferRequestCard message={m} canRespond={!mine} />
-          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
-            {fmtFullTime(m.created_at)}
+          <div className="bub-foot" style={{ padding: '4px 8px' }}>
+            <span>{fmtFullTime(m.created_at)}</span>
           </div>
         </div>
       </div>
@@ -530,14 +586,16 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
       isFirstInGroup={isFirstInGroup}
       isLastInGroup={isLastInGroup}
       timestamp={m.created_at}
+      readAt={m.read_at}
+      deliveredAt={m.delivered_at}
       body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
     />
   )
 }
 
 const pagerBtn = (disabled) => ({
-  padding: '4px 10px', fontSize: 11, fontWeight: 700, fontFamily: SANS,
-  background: 'transparent', color: disabled ? DIM : TEXT,
-  border: `1px solid ${BORDER}`, borderRadius: 5,
+  padding: '4px 10px', fontSize: 11, fontWeight: 700,
+  background: 'transparent', color: disabled ? 'var(--dim)' : 'var(--text)',
+  border: '1px solid var(--border)', borderRadius: 5,
   cursor: disabled ? 'not-allowed' : 'pointer',
 })
