@@ -40,8 +40,6 @@ const plexMono = IBM_Plex_Mono({
 })
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
-const PORTAL_HOST = 'portal.yousafeconsultancy.com'
-const MARKET_HOST = 'market.yousafeconsultancy.com'
 
 // SUPPORTED_LANGS kept for html lang attribute resolution only; we no
 // longer emit hreflang alternates because the URLs don't differ by locale
@@ -94,35 +92,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 'en' if the header is missing (e.g. on edge cases that bypass middleware).
   let lang = 'en'
   let dir: 'ltr' | 'rtl' = 'ltr'
-  let host = PORTAL_HOST
   try {
     const h = await headers()
     const fromHeader = h.get('x-lang')
     if (fromHeader && SUPPORTED_LANG_SET.has(fromHeader)) lang = fromHeader
     if (RTL_LANGS.has(lang)) dir = 'rtl'
-    host = (h.get('host') || '').split(':')[0] || PORTAL_HOST
   } catch {
-    /* fall through with defaults */
+    /* fall through with default 'en' */
   }
-
-  // Market is a Clerk satellite app sharing portal's session. On portal
-  // (primary) we mount ClerkProvider normally; on market we flip on
-  // satellite mode and point sign-in at the primary so auth always
-  // happens on portal.yousafeconsultancy.com.
-  const isSatellite = host === MARKET_HOST
-  const clerkProps = isSatellite
-    ? {
-        isSatellite: true as const,
-        domain: PORTAL_HOST,
-        signInUrl: `${PORTAL_URL}/sign-in/student`,
-        signUpUrl: `${PORTAL_URL}/sign-up/student`,
-        afterSignOutUrl: PORTAL_URL,
-      }
-    : {
-        signInUrl: '/sign-in/student',
-        signUpUrl: '/sign-up/student',
-        afterSignOutUrl: PORTAL_URL,
-      }
 
   return (
     <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable} ${lora.variable} ${plexMono.variable}`}>
@@ -131,7 +108,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body style={{ overflowX: 'hidden' }}>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>
-        <ClerkProvider {...clerkProps}>
+        <ClerkProvider
+          afterSignOutUrl={PORTAL_URL}
+          signInUrl="/sign-in/student"
+          signUpUrl="/sign-up/student"
+        >
           <TranslationProvider>
             {/* Language switcher now docks inside each app's nav bar
                 instead of floating — see dashboard topbars + MarketplaceShell. */}
