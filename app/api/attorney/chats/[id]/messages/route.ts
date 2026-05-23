@@ -5,7 +5,7 @@ import { safetyGuard } from '@/lib/safety'
 async function ensureOwnsChat(ctx: any, id: string) {
   const { data: chat } = await ctx.db
     .from('inquiries')
-    .select('id, target_attorney_profile_id, source')
+    .select('id, target_attorney_profile_id, client_profile_id, source')
     .eq('id', id)
     .single()
   if (!chat || chat.source !== 'portal_attorney_chat') return { error: 'Chat not found.', status: 404 }
@@ -43,5 +43,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (insErr || !msg) return Response.json({ error: insErr?.message || 'Could not send message.' }, { status: 500 })
 
   await ctx.db.from('inquiries').update({ updated_at: new Date().toISOString() }).eq('id', id)
+
+  const counterpart = (own.chat as any).client_profile_id
+  if (counterpart) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(ctx.db, {
+      participantA: ctx.profileId,
+      participantB: counterpart,
+      senderId:     ctx.profileId,
+      body,
+      contextKind:  'inquiry',
+      contextId:    id,
+      refInquiryId: id,
+      refMessageId: (msg as any).id,
+    })
+  }
+
   return Response.json({ message: msg })
 }

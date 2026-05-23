@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 
   const { data: order } = await auth.db
     .from('orders')
-    .select('id, consultant_id')
+    .select('id, consultant_id, client_id')
     .eq('id', orderId)
     .eq('consultant_id', auth.profile.id)
     .single()
@@ -127,6 +127,21 @@ export async function POST(req: Request) {
     .select('id, sender_id, sender_role, body, created_at')
     .single()
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  const counterpart = (order as any).client_id
+  if (counterpart) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(auth.db, {
+      participantA: auth.profile.id,
+      participantB: counterpart,
+      senderId:     auth.profile.id,
+      body:         text,
+      contextKind:  'order',
+      contextId:    orderId,
+      refOrderId:   orderId,
+      refMessageId: (data as any).id,
+    })
+  }
 
   return Response.json({ message: data })
 }

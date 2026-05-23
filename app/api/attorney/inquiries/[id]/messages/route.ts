@@ -29,7 +29,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: inquiry } = await ctx.db
     .from('inquiries')
-    .select('id, email, full_name, case_type_label, status')
+    .select('id, email, full_name, case_type_label, status, client_profile_id')
     .eq('id', id)
     .single()
   if (!inquiry) return Response.json({ error: 'Inquiry not found.' }, { status: 404 })
@@ -72,6 +72,21 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .single()
 
   if (insErr || !msg) return Response.json({ error: insErr?.message || 'Could not send message.' }, { status: 500 })
+
+  const counterpart = (inquiry as any).client_profile_id
+  if (counterpart) {
+    const { mirrorMessage } = await import('@/lib/conversations')
+    await mirrorMessage(ctx.db, {
+      participantA: ctx.profileId,
+      participantB: counterpart,
+      senderId:     ctx.profileId,
+      body:         text,
+      contextKind:  'inquiry',
+      contextId:    id,
+      refInquiryId: id,
+      refMessageId: (msg as any).id,
+    })
+  }
 
   // Mark the inquiry as engaged the first time any attorney replies.
   if (inquiry.status === 'open') {
