@@ -10,6 +10,8 @@ import MessageBubble from './MessageBubble'
 import InquiryBubble from './InquiryBubble'
 import OfferRequestCard from './OfferRequestCard'
 import AutoGrowInput from './AutoGrowInput'
+import StatusRing from './StatusRing'
+import StatusViewer from './StatusViewer'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
 /**
@@ -62,6 +64,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [menuFor, setMenuFor] = React.useState(null)
   const [menuPos, setMenuPos] = React.useState({ x: 0, y: 0 })
 
+  // Status broadcasts (24h ring)
+  const [statuses, setStatuses] = React.useState([])
+  const [statusViewerOpen, setStatusViewerOpen] = React.useState(false)
+  const [statusViewerPersonId, setStatusViewerPersonId] = React.useState(null)
+
   // Close menu on outside click
   React.useEffect(() => {
     if (!menuFor) return
@@ -72,6 +79,19 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Notify parent when thread changes
   React.useEffect(() => { onThreadChange?.(activeId) }, [activeId, onThreadChange])
+
+  // Fetch status broadcasts for 24h ring
+  React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/statuses', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => {
+        if (cancelled) return
+        setStatuses(Array.isArray(d?.statuses) ? d.statuses : [])
+      })
+      .catch(() => { if (!cancelled) setStatuses([]) })
+    return () => { cancelled = true }
+  }, [])
 
   // Debounce search
   React.useEffect(() => {
@@ -417,21 +437,45 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           </div>
         )}
 
-        {conversations.map(c => {
-          const isActive = activeId === c.id
-          const unread = c.unread > 0
-          return (
-            <button
-              key={c.id}
-              type="button"
-              className={`row ${isActive ? 'on' : ''} ${unread ? 'unread' : ''}`}
-              onClick={() => handleSelectConversation(c.id)}
-            >
-              <div className="row-avatar" style={{ background: c.counterpart?.avatar_color || '#3C3B6E' }}>
-                {c.counterpart?.avatar_url
-                  ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
-                  : initials(c.counterpart?.name || '?')}
-              </div>
+        {/* Build status lookup map once per render */}
+        {(() => {
+          const statusMap = new Map()
+          for (const s of statuses) {
+            const existing = statusMap.get(s.person_id)
+            if (!existing || s.created_at > existing.created_at) {
+              statusMap.set(s.person_id, s)
+            }
+          }
+
+          return conversations.map(c => {
+            const isActive = activeId === c.id
+            const unread = c.unread > 0
+            const counterStatus = statusMap.get(c.counterpart?.id)
+
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`row ${isActive ? 'on' : ''} ${unread ? 'unread' : ''}`}
+                onClick={() => handleSelectConversation(c.id)}
+              >
+                <div
+                  onClick={e => {
+                    if (!counterStatus) return
+                    e.stopPropagation()
+                    setStatusViewerPersonId(c.counterpart?.id)
+                    setStatusViewerOpen(true)
+                  }}
+                  style={{ cursor: counterStatus ? 'pointer' : 'default' }}
+                >
+                  <StatusRing hasStatus={!!counterStatus} viewed={!!counterStatus?.viewed} size={48}>
+                    <div className="row-avatar" style={{ background: c.counterpart?.avatar_color || '#3C3B6E' }}>
+                      {c.counterpart?.avatar_url
+                        ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                        : initials(c.counterpart?.name || '?')}
+                    </div>
+                  </StatusRing>
+                </div>
               <div className="row-body">
                 <div className="row-line1">
                   <span className="row-name">{c.counterpart?.name || 'Conversation'}</span>
@@ -461,7 +505,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
               </div>
             </button>
           )
-        })}
+        })})()}
       </div>
 
       {(page > 1 || hasMore) && (
@@ -685,6 +729,13 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           }, 600)
         }}
       />
+      {statusViewerOpen && statusViewerPersonId && (
+        <StatusViewer
+          statuses={statuses.filter(s => s.person_id === statusViewerPersonId)}
+          onClose={() => { setStatusViewerOpen(false); setStatusViewerPersonId(null) }}
+          viewerId={activeConv?.counterpart?.id}
+        />
+      )}
     </div>
   )
 }

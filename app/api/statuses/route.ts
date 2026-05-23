@@ -14,11 +14,13 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
   const nowIso = new Date().toISOString()
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const { data: rows, error } = await auth.db
     .from('inquiry_statuses')
     .select('id, person_id, inquiry_id, payload, created_at, expires_at')
     .gt('expires_at', nowIso)
+    .gt('created_at', twentyFourHoursAgo)
     .order('created_at', { ascending: false })
     .limit(100)
 
