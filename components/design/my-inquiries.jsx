@@ -3,6 +3,9 @@
 import React from 'react'
 import { C, Btn, Badge, Card } from './shared'
 import IntakeForm from './inquiry-intake-form'
+import ChatScreen from '../messaging/ChatScreen'
+import MessageBubble from '../messaging/MessageBubble'
+import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 export default function MyInquiries() {
   const [inquiries, setInquiries] = React.useState([])
@@ -304,34 +307,112 @@ function ThreadCard({ thread, clientMessages, decidingId, onAccept, onDecline })
 
   const pendingOffer = thread.offers.find((o) => o.status === 'sent')
 
+  const chatHeader = (
+    <div
+      style={{
+        padding: '10px 14px',
+        background: '#F5F1E9',
+        borderBottom: `1px solid ${C.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: C.surface2,
+          color: C.text,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '13px',
+          fontWeight: 700,
+          flexShrink: 0,
+        }}
+      >
+        {String(thread.attorney_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase() || '').join('')}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: '14px', color: C.text, lineHeight: 1.2 }}>
+          {thread.attorney_name}
+        </div>
+        <div style={{ fontSize: '11px', color: C.textMuted }}>Attorney</div>
+      </div>
+    </div>
+  )
+
+  const messageElements = []
+  for (let i = 0; i < interleaved.length; i++) {
+    const m = interleaved[i]
+    const prev = interleaved[i - 1]
+    const next = interleaved[i + 1]
+    const showDate = !prev || !sameDay(m.created_at, prev.created_at)
+    if (showDate) {
+      messageElements.push(
+        <div key={`date-${m.id || i}-${m.created_at}`} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, background: 'rgba(0,0,0,0.06)', padding: '4px 12px', borderRadius: 999, letterSpacing: '.02em' }}>
+            {dateLabel(m.created_at)}
+          </span>
+        </div>
+      )
+    }
+
+    if (m.sender_role === 'system') {
+      messageElements.push(
+        <div key={`sys-${m.id || i}`} style={{ display: 'flex', justifyContent: 'center', margin: '6px 0' }}>
+          <div style={{ color: C.textDim, fontSize: '11px', fontStyle: 'italic', textAlign: 'center', maxWidth: '85%' }}>
+            {m.body}
+          </div>
+        </div>
+      )
+      continue
+    }
+
+    const mine = m._kind === 'client'
+    const isFirstInGroup = !prev || prev.sender_role === 'system' || prev._kind !== m._kind
+    const isLastInGroup = !next || next.sender_role === 'system' || next._kind !== m._kind
+
+    messageElements.push(
+      <MessageBubble
+        key={`${m._kind}-${m.id || i}`}
+        mine={mine}
+        isFirstInGroup={isFirstInGroup}
+        isLastInGroup={isLastInGroup}
+        timestamp={m.created_at}
+        body={m.body}
+      />
+    )
+  }
+
   return (
     <Card>
       <div style={{ padding: '16px 18px' }}>
-        <div style={{ fontWeight: 700, fontSize: '15px', color: C.text, marginBottom: '8px' }}>
-          {thread.attorney_name}
-        </div>
-
         <div
           style={{
-            background: C.bg,
+            height: 380,
             border: `1px solid ${C.border}`,
-            borderRadius: '8px',
-            padding: '10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            maxHeight: '280px',
-            overflow: 'auto',
-            marginBottom: '12px',
+            borderRadius: 12,
+            overflow: 'hidden',
+            marginBottom: 12,
           }}
         >
-          {interleaved.length === 0 ? (
-            <div style={{ color: C.textMuted, fontSize: '12px', textAlign: 'center' }}>
-              No messages with this attorney yet.
-            </div>
-          ) : (
-            interleaved.map((m, i) => <Bubble key={`${m._kind}-${m.id || i}`} message={m} />)
-          )}
+          <ChatScreen
+            mode="panel"
+            header={chatHeader}
+            messages={
+              interleaved.length === 0 ? (
+                <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '24px 8px' }}>
+                  No messages with this attorney yet.
+                </div>
+              ) : (
+                messageElements
+              )
+            }
+            composer={null}
+          />
         </div>
 
         {thread.offers.length > 0 && (
@@ -409,38 +490,6 @@ function OfferCard({ offer, isPending, disabled, onAccept, onDecline }) {
           </Btn>
         </div>
       )}
-    </div>
-  )
-}
-
-function Bubble({ message }) {
-  if (message.sender_role === 'system') {
-    return (
-      <div style={{ textAlign: 'center', color: C.textDim, fontSize: '11px', fontStyle: 'italic' }}>
-        {message.body}
-      </div>
-    )
-  }
-  const mine = message.sender_role === 'client'
-  return (
-    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div
-        style={{
-          maxWidth: '78%',
-          background: mine ? C.studentMessageBg : C.surface2,
-          color: mine ? C.studentMessageText : C.text,
-          border: mine ? `1px solid ${C.studentMessageBorder}` : 'none',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          fontSize: '13px',
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {message.body}
-        <div style={{ fontSize: '10px', opacity: 0.7, marginTop: '2px' }}>
-          {new Date(message.created_at).toLocaleString()}
-        </div>
-      </div>
     </div>
   )
 }
