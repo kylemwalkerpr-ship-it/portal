@@ -78,7 +78,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   if (full) {
     profile = full
     if (profile.role === 'support' && profile.status === 'active') {
-      redirect(SUPPORT_DASHBOARD_URL)
+      redirect('/dashboard/support')
     }
   } else {
     // status column may not exist — try without it
@@ -206,7 +206,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   }
 
   if (profile?.role === 'support' && profile.status === 'active') {
-    redirect(SUPPORT_DASHBOARD_URL)
+    redirect('/dashboard/support')
   }
 
   const role = profile?.role ?? 'client'

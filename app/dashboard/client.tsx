@@ -156,6 +156,11 @@ export default function DashboardClient({ role, status, userName, userId, expect
     )
   }
 
+  if (role === 'support' && status === 'active') {
+    window.location.replace('/dashboard/support')
+    return null
+  }
+
   if (status === 'suspended') {
     return (
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

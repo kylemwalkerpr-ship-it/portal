@@ -6,6 +6,8 @@ import { MessageOfferCard } from '../marketplace/MessageOfferCard'
 import { OfferPaymentModal } from './OfferPaymentModal'
 import ChatScreen from './ChatScreen'
 import MessageBubble from './MessageBubble'
+import InquiryBubble from './InquiryBubble'
+import OfferRequestCard from './OfferRequestCard'
 import AutoGrowInput from './AutoGrowInput'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
@@ -488,6 +490,32 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
             onDecline={onDecline}
             onWithdraw={onWithdraw}
           />
+          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
+            {fmtFullTime(m.created_at)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (m.type === 'inquiry') {
+    return (
+      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
+        <div style={{ maxWidth: '75%' }}>
+          <InquiryBubble message={m} />
+          <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
+            {fmtFullTime(m.created_at)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (m.type === 'offer_request') {
+    return (
+      <div style={{ display: 'flex', gap: 8, flexDirection: mine ? 'row-reverse' : 'row', marginBottom: isLastInGroup ? 10 : 2 }}>
+        <div style={{ maxWidth: '75%' }}>
+          <OfferRequestCard message={m} canRespond={!mine} />
           <div style={{ fontSize: 10, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
             {fmtFullTime(m.created_at)}
           </div>

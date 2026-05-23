@@ -12,6 +12,7 @@ import { CategoriesMenu } from '@/components/marketplace/CategoriesMenu'
 import { HelpDropdown } from '@/components/marketplace/HelpDropdown'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
+import MarketplaceFeed from '@/components/marketplace/MarketplaceFeed'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -1089,6 +1090,13 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           </div>
         </section>
       ) : null}
+
+      {/* Live marketplace pulse */}
+      <section style={{ padding: '48px 24px', background: '#F7F5F0', borderTop: '1px solid #E7E0CD' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <MarketplaceFeed />
+        </div>
+      </section>
 
       {/* How it works */}
       <section className="how" id="how-it-works">

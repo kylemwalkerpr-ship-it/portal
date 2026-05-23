@@ -433,6 +433,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🗂️" label="Order Kanban" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/orders'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/orders' }} />
+        <NavItem icon="🎫" label="Support Tickets" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/tickets'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/tickets' }} />
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
