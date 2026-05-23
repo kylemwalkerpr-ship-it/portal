@@ -10,7 +10,6 @@ import DashboardGuide from './DashboardGuide'
 import AttorneyEarnings from './attorney-earnings'
 import AttorneyOrders from './attorney-orders'
 import AttorneyInquiries from './attorney-inquiries'
-import AttorneyMessages from './attorney-messages'
 import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
@@ -292,16 +291,18 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage />}
               {page === 'messages' && (
-                <UnifiedInbox
-                  canSendOffer
-                  defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-                  onThreadChange={(id) => {
-                    if (typeof window === 'undefined') return
-                    const url = new URL(window.location.href)
-                    if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
-                    window.history.replaceState({}, '', url.toString())
-                  }}
-                />
+                <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <UnifiedInbox
+                    canSendOffer
+                    defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+                    onThreadChange={(id) => {
+                      if (typeof window === 'undefined') return
+                      const url = new URL(window.location.href)
+                      if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
+                      window.history.replaceState({}, '', url.toString())
+                    }}
+                  />
+                </div>
               )}
               {page === 'earnings' && <AttorneyEarnings />}
               {page === 'profile' && <AttorneyProfile />}
@@ -692,105 +693,6 @@ function MyInquiriesPage() {
   )
 }
 
-function AttorneyMessagesPage() {
-  const [chats, setChats] = React.useState([])
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState('')
-  const [activeId, setActiveId] = React.useState(null)
-
-  const load = React.useCallback((isInitial) => {
-    if (isInitial) setLoading(true)
-    fetch('/api/attorney/chats', { credentials: 'same-origin' })
-      .then(async r => {
-        const payload = await r.json().catch(() => null)
-        if (!r.ok) throw new Error(payload?.error || 'Could not load chats.')
-        const rows = payload.chats || []
-        setChats(rows)
-        setActiveId(prev => {
-          if (rows.some(chat => chat.id === prev)) return prev
-          return rows[0]?.id || null
-        })
-        setError('')
-      })
-      .catch(e => setError(e.message))
-      .finally(() => { if (isInitial) setLoading(false) })
-  }, [])
-
-  React.useEffect(() => {
-    load(true)
-    const id = setInterval(() => { if (document.visibilityState === 'visible') load(false) }, 6000)
-    return () => clearInterval(id)
-  }, [load])
-
-  if (loading) return <Notice>Loading chats...</Notice>
-  if (error) return <Notice tone="error">{error}</Notice>
-
-  const activeChat = chats.find(chat => chat.id === activeId)
-
-  return (
-    <div style={{ padding: '24px 28px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <div style={eyebrowStyle}>Pre-intake</div>
-        <h2 style={pageTitleStyle}>Attorney chats.</h2>
-      </div>
-      {chats.length === 0 ? (
-        <Notice>No pre-intake chats yet. Students can start one from your public profile.</Notice>
-      ) : (
-        <div className="yousafe-message-layout" style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: '20px', minHeight: 'calc(100vh - 210px)' }}>
-          <div className="yousafe-conversation-list" style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', overflow: 'hidden', alignSelf: 'start' }}>
-            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 800 }}>Conversations</div>
-            </div>
-            {chats.map(chat => {
-              const active = chat.id === activeId
-              return (
-                <button
-                  key={chat.id}
-                  type="button"
-                  onClick={() => setActiveId(chat.id)}
-                  style={{
-                    width: '100%',
-                    padding: '14px 16px',
-                    border: 'none',
-                    borderBottom: `1px solid ${C.border}`,
-                    background: active ? C.surface2 : 'transparent',
-                    cursor: 'pointer',
-                    color: C.text,
-                    textAlign: 'left',
-                    fontFamily: 'inherit',
-                    display: 'flex',
-                    gap: '12px',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <Avatar name={chat.client_name || chat.client_email || 'Client'} size={36} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-                      <div style={{ fontWeight: 800, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.client_name || 'Client'}</div>
-                      {chat.pending_offers > 0 && <span style={{ color: C.orange, fontSize: '11px', fontWeight: 800, flexShrink: 0 }}>{chat.pending_offers}</span>}
-                    </div>
-                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.client_email}</div>
-                    <div style={{ color: active ? C.textMuted : C.textDim, fontSize: '12px', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.last_message || 'No messages yet'}</div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="yousafe-message-thread" style={{ minWidth: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '14px', overflow: 'hidden' }}>
-            {activeChat ? (
-              <InquiryThread inquiryId={activeChat.id} isChat embedded onBack={() => load(false)} />
-            ) : (
-              <div style={{ height: '100%', minHeight: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '13px' }}>
-                Select a conversation.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Inquiry thread ──────────────────────────────────────────────────────────
 export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = false }) {

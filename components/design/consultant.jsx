@@ -10,6 +10,7 @@ import DashboardGuide from './DashboardGuide'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
+import UnifiedInbox from '../messaging/UnifiedInbox'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 function EarningsChart({ days }) {
@@ -1393,118 +1394,6 @@ function ConsultantApp({ onLogout }) {
     </div>
   );
 
-  // ── MESSAGES ──
-  const Messages = () => {
-    const orderTimeline = buildOfferTimeline(messages, consultantOffers);
-    return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Messages</h2>
-        <div style={{ height: 'calc(100vh - 180px)', borderRadius: '16px', border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-          <ChatScreen
-            mode="split"
-            sidebar={
-              <div style={{ background: C.surface, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '14px', borderBottom: `1px solid ${C.border}`, fontSize: '13px', fontWeight: 700, color: C.textMuted }}>STUDENTS</div>
-                {orders.length > 0 ? orders.map(o => (
-                  <div key={o.id} onClick={() => setSelectedOrder(o)} style={{
-                    padding: '14px', display: 'flex', gap: '10px', cursor: 'pointer',
-                    background: selectedOrder?.id === o.id ? C.surface2 : 'transparent',
-                    borderBottom: `1px solid ${C.border}`,
-                  }}>
-                    <Avatar name={o.student} size={36} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.student}</div>
-                      <div style={{ fontSize: '12px', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.service}</div>
-                    </div>
-                  </div>
-                )) : (
-                  <div style={{ padding: '20px', color: C.textMuted, textAlign: 'center' }}>No conversations available.</div>
-                )}
-              </div>
-            }
-            header={
-              selectedOrder ? (
-                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: '12px', alignItems: 'center', background: '#fff' }}>
-                  <Avatar name={selectedOrder.student} size={36} />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px' }}>{selectedOrder.student}</div>
-                    <div style={{ fontSize: '12px', color: C.textMuted }}>{selectedOrder.service}</div>
-                  </div>
-                </div>
-              ) : null
-            }
-            messages={
-              selectedOrder ? (
-                <>
-                  {messagesLoading && orderTimeline.length === 0 && (
-                    <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', marginTop: 20 }}>Loading messages…</div>
-                  )}
-                  {!messagesLoading && orderTimeline.length === 0 && (
-                    <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', marginTop: 20 }}>No messages yet.</div>
-                  )}
-                  {orderTimeline.map((item, i) => {
-                    if (item.kind === 'offer') {
-                      return (
-                        <OfferBubble key={item.key} mine createdAt={item.created_at}>
-                          <ConsultantOfferCard offer={item.offer} onWithdraw={() => withdrawConsultantOffer(item.offer)} />
-                        </OfferBubble>
-                      )
-                    }
-                    const prev = orderTimeline[i - 1]
-                    const next = orderTimeline[i + 1]
-                    const mine = item.message.from === 'consultant'
-                    const isFirstInGroup = !prev || prev.kind !== 'message' || (prev.message.from === 'consultant') !== mine
-                    const isLastInGroup = !next || next.kind !== 'message' || (next.message.from === 'consultant') !== mine
-                    const prevDate = prev && (prev.kind === 'message' ? prev.message.created_at : prev.created_at)
-                    const showDate = !prev || !sameDay(item.message.created_at, prevDate)
-                    return (
-                      <React.Fragment key={item.key || i}>
-                        {showDate && (
-                          <div style={{ textAlign: 'center', margin: '12px 0', fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>
-                            {dateLabel(item.message.created_at)}
-                          </div>
-                        )}
-                        <MessageBubble
-                          mine={mine}
-                          isFirstInGroup={isFirstInGroup}
-                          isLastInGroup={isLastInGroup}
-                          timestamp={item.message.created_at}
-                          body={<MessageBody body={item.message.text} linkColor={C.cyan} />}
-                        />
-                      </React.Fragment>
-                    )
-                  })}
-                </>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                  <div style={{ textAlign: 'center', color: C.textMuted }}>
-                    <div style={{ fontSize: '32px', marginBottom: '12px' }}>💬</div>
-                    <div>Select a conversation</div>
-                  </div>
-                </div>
-              )
-            }
-            composer={
-              selectedOrder ? (
-                <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
-                  <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
-                  <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Offer</Btn>
-                  <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
-                  <AutoGrowInput
-                    value={msgInput}
-                    onChange={setMsgInput}
-                    onSubmit={sendMessage}
-                    placeholder="Message student…"
-                  />
-                  <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
-                </div>
-              ) : null
-            }
-          />
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -1525,7 +1414,11 @@ function ConsultantApp({ onLogout }) {
             {page === 'orders' && Orders()}
             {page === 'order-detail' && selectedOrder && OrderDetail({ order: selectedOrder })}
             {page === 'clients' && Clients()}
-            {page === 'messages' && Messages()}
+            {page === 'messages' && (
+              <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <UnifiedInbox />
+              </div>
+            )}
             {page === 'earnings' && Earnings()}
             {page === 'connect' && Connect()}
             {page === 'settings' && Settings()}

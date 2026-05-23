@@ -6,7 +6,6 @@ import FindAttorney from './find-attorney'
 import StudentFindAttorney from './student-find-attorney'
 import MyInquiries from './my-inquiries'
 import StudentInquiries from './student-inquiries'
-import StudentConversationList from './student-conversation-list'
 import StudentSettings from './student-settings'
 import StudentDashboardHome from './student-dashboard-home'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
@@ -3403,15 +3402,17 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'billing' && <BillingWithNmi />}
           {page === 'settings' && <StudentSettings userName={userName} />}
           {page === 'messages' && (
-            <UnifiedInbox
-              defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
-              onThreadChange={(id) => {
-                if (typeof window === 'undefined') return;
-                const url = new URL(window.location.href);
-                if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread');
-                window.history.replaceState({}, '', url.toString());
-              }}
-            />
+            <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <UnifiedInbox
+                defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+                onThreadChange={(id) => {
+                  if (typeof window === 'undefined') return;
+                  const url = new URL(window.location.href);
+                  if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread');
+                  window.history.replaceState({}, '', url.toString());
+                }}
+              />
+            </div>
           )}
           </div>
           <DashboardRightPane role="student" />
