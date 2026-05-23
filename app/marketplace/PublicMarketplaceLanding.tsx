@@ -7,6 +7,7 @@ import {
 } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { EstateFooter } from '@/components/EstateFooter'
+import { CountryTabs, CountryPicker } from '@/components/marketplace/CountryTabs'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -37,6 +38,9 @@ const F = {
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
+type Country = 'all' | 'us' | 'uk' | 'ca'
+type JxCode = Exclude<Country, 'all'>
+
 function signUpHref(utm: string): string {
   return (
     `${PORTAL_URL}/sign-up/student` +
@@ -45,12 +49,6 @@ function signUpHref(utm: string): string {
 }
 
 /* ───────────────────────── Server data ─────────────────────────── */
-
-interface LandingGigTier {
-  price: number | null
-  delivery_days: number | null
-  is_active: boolean
-}
 
 interface LandingGig {
   id: string
@@ -65,6 +63,8 @@ interface LandingGig {
   delivery_days: number | null
   providerName: string
   providerCountry: string | null
+  jx: JxCode | null
+  tiers: Array<{ price: number; delivery_days: number | null }>
 }
 
 interface CategoryStat {
@@ -74,7 +74,7 @@ interface CategoryStat {
 }
 
 interface JurisdictionStat {
-  code: 'us' | 'uk' | 'ca'
+  code: JxCode
   name: string
   currency: string
   count: number
@@ -90,40 +90,117 @@ interface LandingReview {
   reviewerName: string
 }
 
-interface LandingData {
+interface Slice {
   featured: LandingGig[]
-  caseFile: (LandingGig & { tiers: Array<{ tier: string; title: string; price: number }> }) | null
+  caseFile: (LandingGig & { caseTiers: Array<{ tier: string; price: number }> }) | null
   categories: CategoryStat[]
-  jurisdictions: JurisdictionStat[]
   totalActive: number
-  reviews: LandingReview[]
-  globalFromCents: number | null
+  fromCents: number | null
+  currency: string
+  label: string
 }
 
-const COUNTRY_CODE_MAP: Record<string, JurisdictionStat['code']> = {
+interface LandingData {
+  slices: Record<Country, Slice>
+  jurisdictions: JurisdictionStat[]
+  reviews: LandingReview[]
+}
+
+const COUNTRY_CODE_MAP: Record<string, JxCode> = {
   US: 'us', USA: 'us', 'UNITED STATES': 'us',
   UK: 'uk', GB: 'uk', GBR: 'uk', 'UNITED KINGDOM': 'uk',
   CA: 'ca', CAN: 'ca', CANADA: 'ca',
 }
 
-function resolveJurisdiction(country?: string | null): JurisdictionStat['code'] | null {
+const COUNTRY_META: Record<JxCode, { name: string; currency: string }> = {
+  us: { name: 'United States', currency: 'USD' },
+  uk: { name: 'United Kingdom', currency: 'GBP' },
+  ca: { name: 'Canada', currency: 'CAD' },
+}
+
+function resolveJurisdiction(country?: string | null): JxCode | null {
   if (!country) return null
   return COUNTRY_CODE_MAP[country.toUpperCase().trim()] || null
 }
 
-async function loadLandingData(): Promise<LandingData> {
-  const fallback: LandingData = {
+function emptySlice(label: string, currency: string): Slice {
+  return {
     featured: [],
     caseFile: null,
     categories: CATEGORIES.slice(0, 8).map((cat) => ({ cat, count: 0, fromCents: null })),
+    totalActive: 0,
+    fromCents: null,
+    currency,
+    label,
+  }
+}
+
+function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice {
+  const catCount = new Map<CategoryId, number>()
+  const catMin = new Map<CategoryId, number>()
+  let fromCents: number | null = null
+
+  for (const g of gigs) {
+    const catId = g.category
+      ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category))
+      : null
+    if (catId && CATEGORIES.some((c) => c.id === catId)) {
+      catCount.set(catId, (catCount.get(catId) ?? 0) + 1)
+      if (g.starting_price != null) {
+        const cur = catMin.get(catId)
+        if (cur == null || g.starting_price < cur) catMin.set(catId, g.starting_price)
+      }
+    }
+    if (g.starting_price != null && (fromCents == null || g.starting_price < fromCents)) {
+      fromCents = g.starting_price
+    }
+  }
+
+  const featured = [...gigs]
+    .sort((a, b) => b.rank_score - a.rank_score)
+    .slice(0, 6)
+
+  const top = featured[0]
+  let caseFile: Slice['caseFile'] = null
+  if (top) {
+    const labels = ['Brief', 'Standard', 'Filed']
+    const tiers = [...top.tiers]
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 3)
+      .map((t, i) => ({ tier: labels[i] ?? `Tier ${i + 1}`, price: t.price }))
+    caseFile = { ...top, caseTiers: tiers }
+  }
+
+  return {
+    featured,
+    caseFile,
+    categories: CATEGORIES.slice(0, 8).map((cat) => ({
+      cat,
+      count: catCount.get(cat.id) ?? 0,
+      fromCents: catMin.get(cat.id) ?? null,
+    })),
+    totalActive: gigs.length,
+    fromCents,
+    currency,
+    label,
+  }
+}
+
+async function loadLandingData(): Promise<LandingData> {
+  const fallbackSlices: Record<Country, Slice> = {
+    all: emptySlice('All jurisdictions', 'USD'),
+    us: emptySlice('United States', 'USD'),
+    uk: emptySlice('United Kingdom', 'GBP'),
+    ca: emptySlice('Canada', 'CAD'),
+  }
+  const fallback: LandingData = {
+    slices: fallbackSlices,
     jurisdictions: [
       { code: 'us', name: 'United States', currency: 'USD', count: 0, fromCents: null, topCategories: [] },
       { code: 'uk', name: 'United Kingdom', currency: 'GBP', count: 0, fromCents: null, topCategories: [] },
       { code: 'ca', name: 'Canada', currency: 'CAD', count: 0, fromCents: null, topCategories: [] },
     ],
-    totalActive: 0,
     reviews: [],
-    globalFromCents: null,
   }
 
   let db
@@ -133,21 +210,17 @@ async function loadLandingData(): Promise<LandingData> {
     return fallback
   }
 
-  const featuredP = db
+  // One fat query: every active gig with provider country + tiers. The
+  // marketplace inventory is small enough that pulling it whole on a public
+  // landing is cheap, and partitioning happens in memory afterwards.
+  const inventoryP = db
     .from('gigs')
     .select(
       'id, slug, title, category, provider_type, avg_rating, review_count, rank_score, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
-    .limit(6)
-
-  const inventoryP = db
-    .from('gigs')
-    .select(
-      'category, tiers:gig_tiers(price, is_active), provider:profiles!gigs_provider_id_fkey(country)',
-    )
-    .eq('status', 'active')
+    .limit(400)
 
   const reviewsP = db
     .from('gig_reviews')
@@ -160,19 +233,15 @@ async function loadLandingData(): Promise<LandingData> {
     .order('created_at', { ascending: false })
     .limit(3)
 
-  const [featuredRes, inventoryRes, reviewsRes] = await Promise.all([
-    featuredP,
-    inventoryP,
-    reviewsP,
-  ])
+  const [inventoryRes, reviewsRes] = await Promise.all([inventoryP, reviewsP])
 
-  /* ── Featured + case-file ───────────────────────────────────── */
-  const featured: LandingGig[] = []
-  let caseFile: LandingData['caseFile'] = null
-  for (const row of (featuredRes.data ?? []) as any[]) {
-    const activeTiers = (row.tiers ?? []).filter((t: any) => t.is_active && Number(t.price) > 0)
-    const cheapest = [...activeTiers].sort((a, b) => Number(a.price) - Number(b.price))[0]
-    const g: LandingGig = {
+  const allGigs: LandingGig[] = ((inventoryRes.data ?? []) as any[]).map((row) => {
+    const activeTiers = (row.tiers ?? [])
+      .filter((t: any) => t.is_active && Number(t.price) > 0)
+      .map((t: any) => ({ price: Number(t.price), delivery_days: t.delivery_days != null ? Number(t.delivery_days) : null }))
+    const cheapest = activeTiers.sort((a: any, b: any) => a.price - b.price)[0]
+    const country = row.provider?.country ?? null
+    return {
       id: row.id,
       slug: row.slug,
       title: row.title,
@@ -181,98 +250,42 @@ async function loadLandingData(): Promise<LandingData> {
       avg_rating: Number(row.avg_rating ?? 0),
       review_count: Number(row.review_count ?? 0),
       rank_score: Number(row.rank_score ?? 0),
-      starting_price: cheapest ? Number(cheapest.price) : null,
-      delivery_days: cheapest ? Number(cheapest.delivery_days) : null,
+      starting_price: cheapest ? cheapest.price : null,
+      delivery_days: cheapest ? cheapest.delivery_days : null,
       providerName: row.provider?.full_name ?? 'YouSafe provider',
-      providerCountry: row.provider?.country ?? null,
+      providerCountry: country,
+      jx: resolveJurisdiction(country),
+      tiers: activeTiers,
     }
-    featured.push(g)
-    if (!caseFile) {
-      const sorted = [...activeTiers].sort((a, b) => Number(a.price) - Number(b.price)).slice(0, 3)
-      const labels = ['Brief', 'Standard', 'Filed']
-      caseFile = {
-        ...g,
-        tiers: sorted.map((t, i) => ({
-          tier: labels[i] ?? `Tier ${i + 1}`,
-          title: '',
-          price: Number(t.price),
-        })),
-      }
-    }
+  })
+
+  const gigsByCountry: Record<JxCode, LandingGig[]> = { us: [], uk: [], ca: [] }
+  for (const g of allGigs) {
+    if (g.jx) gigsByCountry[g.jx].push(g)
   }
 
-  /* ── Category and jurisdiction stats from inventory ─────────── */
-  const inventory = (inventoryRes.data ?? []) as any[]
-  const catCount = new Map<CategoryId, number>()
-  const catMin = new Map<CategoryId, number>()
-  const jxCount: Record<JurisdictionStat['code'], number> = { us: 0, uk: 0, ca: 0 }
-  const jxMin: Record<JurisdictionStat['code'], number | null> = { us: null, uk: null, ca: null }
-  const jxCatCount: Record<JurisdictionStat['code'], Map<CategoryId, number>> = {
-    us: new Map(),
-    uk: new Map(),
-    ca: new Map(),
-  }
-  let globalMin: number | null = null
-
-  for (const row of inventory) {
-    const catId = row.category
-      ? (LEGACY_CATEGORY_MAP[row.category] || normalizeCategory(row.category))
-      : null
-    const minTier = ((row.tiers ?? []) as any[])
-      .filter((t) => t.is_active && Number(t.price) > 0)
-      .reduce<number | null>((acc, t) => {
-        const p = Number(t.price)
-        return acc == null || p < acc ? p : acc
-      }, null)
-
-    if (catId && CATEGORIES.some((c) => c.id === catId)) {
-      catCount.set(catId, (catCount.get(catId) ?? 0) + 1)
-      if (minTier != null) {
-        const cur = catMin.get(catId)
-        if (cur == null || minTier < cur) catMin.set(catId, minTier)
-      }
-    }
-    if (minTier != null && (globalMin == null || minTier < globalMin)) globalMin = minTier
-
-    const jx = resolveJurisdiction(row.provider?.country)
-    if (jx) {
-      jxCount[jx] += 1
-      if (minTier != null && (jxMin[jx] == null || minTier < (jxMin[jx] as number))) {
-        jxMin[jx] = minTier
-      }
-      if (catId) {
-        jxCatCount[jx].set(catId, (jxCatCount[jx].get(catId) ?? 0) + 1)
-      }
-    }
+  const slices: Record<Country, Slice> = {
+    all: buildSlice('All jurisdictions', 'USD', allGigs),
+    us: buildSlice(COUNTRY_META.us.name, COUNTRY_META.us.currency, gigsByCountry.us),
+    uk: buildSlice(COUNTRY_META.uk.name, COUNTRY_META.uk.currency, gigsByCountry.uk),
+    ca: buildSlice(COUNTRY_META.ca.name, COUNTRY_META.ca.currency, gigsByCountry.ca),
   }
 
-  const categories: CategoryStat[] = CATEGORIES.slice(0, 8).map((cat) => ({
-    cat,
-    count: catCount.get(cat.id) ?? 0,
-    fromCents: catMin.get(cat.id) ?? null,
-  }))
-
-  const jurisdictionMeta: Array<{ code: JurisdictionStat['code']; name: string; currency: string }> = [
-    { code: 'us', name: 'United States', currency: 'USD' },
-    { code: 'uk', name: 'United Kingdom', currency: 'GBP' },
-    { code: 'ca', name: 'Canada', currency: 'CAD' },
-  ]
-  const jurisdictions: JurisdictionStat[] = jurisdictionMeta.map(({ code, name, currency }) => {
-    const topCategories = Array.from(jxCatCount[code].entries())
-      .map(([id, count]) => ({ id, count }))
+  /* ── Jurisdiction rail cards (always all 3, regardless of active slice) ── */
+  const jurisdictions: JurisdictionStat[] = (Object.keys(COUNTRY_META) as JxCode[]).map((code) => {
+    const slice = slices[code]
+    const top = [...slice.categories]
+      .filter((c) => c.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 4)
-      .map(({ id, count }) => ({
-        name: CATEGORIES.find((c) => c.id === id)?.name ?? id,
-        count,
-      }))
+      .map((c) => ({ name: c.cat.name, count: c.count }))
     return {
       code,
-      name,
-      currency,
-      count: jxCount[code],
-      fromCents: jxMin[code],
-      topCategories,
+      name: COUNTRY_META[code].name,
+      currency: COUNTRY_META[code].currency,
+      count: slice.totalActive,
+      fromCents: slice.fromCents,
+      topCategories: top,
     }
   })
 
@@ -293,15 +306,7 @@ async function loadLandingData(): Promise<LandingData> {
       }
     })
 
-  return {
-    featured,
-    caseFile,
-    categories,
-    jurisdictions,
-    totalActive: inventory.length,
-    reviews,
-    globalFromCents: globalMin,
-  }
+  return { slices, jurisdictions, reviews }
 }
 
 /* ───────────────────────── Helpers ─────────────────────────── */
@@ -350,26 +355,58 @@ function deliveryLabel(days: number | null): string {
   if (!days || days < 1) return 'Flexible delivery'
   if (days === 1) return 'Same-day'
   if (days === 2) return '48-hour delivery'
-  if (days <= 7) return `${days}-day delivery`
   return `${days}-day delivery`
 }
 
-const JX_LINK: Record<JurisdictionStat['code'], string> = {
-  us: '/marketplace?country=us',
-  uk: '/marketplace?country=uk',
-  ca: '/marketplace?country=uk',
-}
-// (UK route exists for browsing only — `ca` link below corrects.)
-JX_LINK.ca = '/marketplace?country=ca'
-
-function jxCardColors(code: JurisdictionStat['code']): { avBg: string; stripe: string } {
-  if (code === 'us') return { avBg: '#3C3B6E', stripe: `linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%)` }
-  if (code === 'uk') return { avBg: '#012169', stripe: 'linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%)' }
-  return { avBg: '#C8102E', stripe: 'linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%)' }
+function jxStripe(code: JxCode): string {
+  if (code === 'us') return `linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%)`
+  if (code === 'uk') return 'linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%)'
+  return 'linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%)'
 }
 
 function avatarBgFor(provider_type: LandingGig['provider_type']): string {
   return provider_type === 'attorney' ? T.indigo : T.moss
+}
+
+function withCountry(href: string, country: Country): string {
+  if (country === 'all') return href
+  const sep = href.includes('?') ? '&' : '?'
+  return `${href}${sep}country=${country}`
+}
+
+const POPULAR_CHIPS: Record<Country, Array<{ label: string; q: string }>> = {
+  all: [
+    { label: 'F-1 visa denial recovery', q: 'F-1 denial' },
+    { label: 'I-485 evidence package', q: 'I-485' },
+    { label: 'OPT & STEM OPT review', q: 'OPT' },
+    { label: 'Spouse visa financial req.', q: 'Spouse' },
+    { label: 'Section 21 defence letter', q: 'Section 21' },
+    { label: 'PGWP eligibility opinion', q: 'PGWP' },
+  ],
+  us: [
+    { label: 'F-1 visa denial recovery', q: 'F-1 denial' },
+    { label: 'I-485 evidence package', q: 'I-485' },
+    { label: 'OPT & STEM OPT review', q: 'OPT' },
+    { label: 'I-130 spouse petition', q: 'I-130' },
+    { label: 'H-1B cap-gap memo', q: 'H-1B' },
+    { label: '1040-NR + treaty review', q: '1040-NR' },
+  ],
+  uk: [
+    { label: 'Spouse visa financial req.', q: 'Spouse visa' },
+    { label: 'ILR from Spouse Visa', q: 'ILR' },
+    { label: 'Skilled Worker COS review', q: 'Skilled Worker' },
+    { label: 'Section 21 defence letter', q: 'Section 21' },
+    { label: 'Renters Rights Act 2025', q: 'Renters Rights' },
+    { label: 'Student & Graduate Route', q: 'Graduate Route' },
+  ],
+  ca: [
+    { label: 'Express Entry CRS audit', q: 'Express Entry' },
+    { label: 'PGWP eligibility opinion', q: 'PGWP' },
+    { label: 'Study Permit pack', q: 'Study Permit' },
+    { label: 'PNP strategy review', q: 'PNP' },
+    { label: 'Spousal sponsorship', q: 'Spousal sponsorship' },
+    { label: 'LMIA support letter', q: 'LMIA' },
+  ],
 }
 
 /* ───────────────────────── JSON-LD ─────────────────────────── */
@@ -476,6 +513,13 @@ const CSS = `
 .cw-market nav.nav-links a.cta { margin-left: 4px; padding: 10px 18px; background: ${T.indigo}; color: #fff; border-radius: 999px; font-weight: 600; }
 .cw-market nav.nav-links a.cta:hover { background: ${T.indigoDeep}; }
 
+.cw-market .country-bar { border-bottom: 1px solid ${T.rule}; background: ${T.vellum}; }
+.cw-market .country-bar-inner { display: flex; align-items: center; gap: 8px; padding: 10px 0; flex-wrap: wrap; }
+.cw-market .country-bar .label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-right: 4px; }
+.cw-market .country-bar a { padding: 6px 14px; border: 1px solid ${T.rule}; background: ${T.paper}; border-radius: 999px; font-size: 13px; font-weight: 500; color: ${T.inkMid}; transition: all .12s; cursor: pointer; }
+.cw-market .country-bar a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
+.cw-market .country-bar a.active { background: ${T.ink}; color: #fff; border-color: ${T.ink}; font-weight: 600; }
+
 .cw-market .cat-strip { border-bottom: 1px solid ${T.rule}; background: ${T.paper}; }
 .cw-market .cat-strip-inner { display: flex; align-items: center; gap: 28px; height: 48px; overflow-x: auto; scrollbar-width: none; }
 .cw-market .cat-strip-inner::-webkit-scrollbar { display: none; }
@@ -489,12 +533,14 @@ const CSS = `
 .cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 72px; align-items: center; }
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: ${T.inkMid}; }
 .cw-market .flagbar { width: 28px; height: 8px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border: 1px solid ${T.rule}; }
+.cw-market .flagbar.uk { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
+.cw-market .flagbar.ca { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
 .cw-market .hero h1 { font-family: ${F.display}; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.02; letter-spacing: -0.022em; font-weight: 500; margin: 18px 0 18px; color: ${T.ink}; text-wrap: balance; }
 .cw-market .hero h1 em { font-style: italic; font-weight: 500; color: ${T.indigo}; }
 .cw-market .hero p.lede { max-width: 52ch; font-size: 17px; line-height: 1.6; color: ${T.inkMid}; margin: 0 0 32px; }
 .cw-market .hero-search { display: flex; align-items: center; background: ${T.vellum}; border: 1px solid ${T.ink}; border-radius: 14px; padding: 8px 8px 8px 22px; gap: 14px; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 30px 60px -30px rgba(29,36,51,0.28); }
 .cw-market .hero-search svg { color: ${T.ink}; flex: 0 0 20px; }
-.cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 16px; height: 52px; color: ${T.ink}; }
+.cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 16px; height: 52px; color: ${T.ink}; min-width: 0; }
 .cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
 .cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 52px; border-left: 1px dashed ${T.rule}; color: ${T.inkMid}; font-size: 13px; }
 .cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
@@ -507,6 +553,8 @@ const CSS = `
 
 .cw-market .hero-card { position: relative; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 18px; padding: 28px 28px 24px; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 30px 60px -30px rgba(29,36,51,0.28); transform: rotate(0.6deg); }
 .cw-market .hero-card::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 5px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border-radius: 0 0 3px 3px; }
+.cw-market .hero-card[data-c="uk"]::before { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
+.cw-market .hero-card[data-c="ca"]::before { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
 .cw-market .hero-card .file-meta { display: flex; justify-content: space-between; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-top: 6px; }
 .cw-market .hero-card h3 { font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1.25; letter-spacing: -0.01em; margin: 16px 0 18px; color: ${T.ink}; }
 .cw-market .hero-card h3 em { color: ${T.indigo}; font-style: italic; }
@@ -525,6 +573,7 @@ const CSS = `
 .cw-market .hero-card .tier-row .name { color: ${T.inkMid}; }
 .cw-market .hero-card .tier-row .price { font-family: ${F.display}; font-weight: 600; font-size: 16px; color: ${T.ink}; }
 .cw-market .hero-card .stamp { position: absolute; right: -14px; top: 32px; transform: rotate(8deg); padding: 6px 12px; border: 2px solid ${T.brick}; color: ${T.brick}; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; background: rgba(178,34,52,0.05); border-radius: 3px; }
+.cw-market .hero-empty { background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 18px; padding: 48px 32px; text-align: center; color: ${T.inkSoft}; font-family: ${F.display}; font-style: italic; font-size: 18px; line-height: 1.5; }
 
 .cw-market .trust { padding: 18px 0; border-bottom: 1px solid ${T.rule}; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; }
 .cw-market .trust-inner { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; justify-content: space-between; }
@@ -543,6 +592,7 @@ const CSS = `
 .cw-market .jx-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .cw-market .jx-card { position: relative; overflow: hidden; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; padding: 28px 26px 24px; transition: transform .25s ease, box-shadow .25s ease, border-color .25s; display: block; }
 .cw-market .jx-card:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(29,36,51,0.04), 0 18px 38px -28px rgba(29,36,51,0.22); border-color: ${T.ink}; }
+.cw-market .jx-card.active { border-color: ${T.ink}; box-shadow: 0 0 0 2px ${T.ink}; }
 .cw-market .jx-card .stripe { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
 .cw-market .jx-card .code { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.18em; color: ${T.inkSoft}; }
 .cw-market .jx-card h3 { font-family: ${F.display}; font-weight: 500; font-size: 32px; letter-spacing: -0.012em; margin: 6px 0 18px; color: ${T.ink}; }
@@ -658,12 +708,50 @@ const CSS = `
 
 /* ───────────────────────── Component ─────────────────────────── */
 
-export async function PublicMarketplaceLanding() {
+const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; lede: string }> = {
+  all: {
+    eyebrow: 'US · UK · CA — fixed-fee, no consultation traps',
+    h1: <>Talk to an attorney about your case — <em>by the brief, not the hour.</em></>,
+    lede:
+      'A vetted marketplace of licensed immigration attorneys, regulated consultants and tenancy specialists. ' +
+      'Pick a fixed-fee brief, review samples and timelines, and pay only when the work clears review.',
+  },
+  us: {
+    eyebrow: 'United States · F-1 · OPT · I-130 · I-485',
+    h1: <>U.S. immigration help — <em>by the brief, not the billable hour.</em></>,
+    lede:
+      'Licensed U.S. attorneys handling F-1 reinstatement, OPT and STEM OPT, marriage green cards, and family petitions. ' +
+      'Fixed-fee briefs, evidence packs reviewed before filing, payment held in escrow until you approve.',
+  },
+  uk: {
+    eyebrow: 'United Kingdom · ILR · Spouse · Skilled Worker · § Tenancy',
+    h1: <>U.K. immigration & tenancy briefs — <em>fixed fee, no surprises.</em></>,
+    lede:
+      'OISC-regulated consultants and U.K. solicitors handling Spouse visas, ILR, Skilled Worker COS, Graduate Route, ' +
+      'and Renters Rights Act 2025 disputes. Each brief is scoped and priced upfront.',
+  },
+  ca: {
+    eyebrow: 'Canada · Study Permit · PGWP · Express Entry · Provincial tenancy',
+    h1: <>Canadian immigration help — <em>by the brief, not the meter.</em></>,
+    lede:
+      'ICCRC-registered consultants and Canadian attorneys covering Study Permit packs, PGWP, Express Entry CRS, ' +
+      'PNP strategy, spousal sponsorship, and provincial tenancy law. Fixed-fee, escrowed, refundable.',
+  },
+}
+
+export async function PublicMarketplaceLanding({ country = 'all' as Country }: { country?: Country }) {
   const data = await loadLandingData()
-  const { featured, caseFile, categories, jurisdictions, totalActive, reviews, globalFromCents } = data
+  const active: Country = (['all', 'us', 'uk', 'ca'] as Country[]).includes(country) ? country : 'all'
+  const slice = data.slices[active]
+  const { jurisdictions, reviews } = data
+  const headline = HERO_HEADLINES[active]
+  const chips = POPULAR_CHIPS[active]
+  const totalActive = slice.totalActive
+  const currency = slice.currency
+  const baseCountryParam = active === 'all' ? '' : `&country=${active}`
 
   const trustItems: Array<{ label: string }> = []
-  if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs across US · UK · CA` })
+  if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs · ${slice.label.toLowerCase()}` })
   trustItems.push({ label: 'Escrowed payments — released on your approval' })
   trustItems.push({ label: 'Licensed attorneys & regulated consultants only' })
   trustItems.push({ label: 'Vol. III · Marketplace edition' })
@@ -678,7 +766,7 @@ export async function PublicMarketplaceLanding() {
       <div className="topbar">
         <div className="wrap topbar-inner">
           <div className="topbar-left">
-            <span className="mono">YouSafe · Marketplace</span>
+            <span className="mono">YouSafe · Marketplace · {slice.label}</span>
             {totalActive > 0 && (
               <span className="pill-mini">{totalActive.toLocaleString('en-US')} briefs available now</span>
             )}
@@ -693,7 +781,7 @@ export async function PublicMarketplaceLanding() {
       {/* Main header */}
       <header className="nav">
         <div className="wrap nav-inner">
-          <a className="brand" href="/marketplace" aria-label="YouSafe marketplace home">
+          <a className="brand" href={withCountry('/marketplace', active)} aria-label="YouSafe marketplace home">
             <span className="brand-mark">Y</span>
             <span className="brand-name">
               <b>YouSafe</b>
@@ -706,7 +794,8 @@ export async function PublicMarketplaceLanding() {
               <circle cx="11" cy="11" r="7" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-            <input name="q" placeholder="Search services — I-130, OPT denial, Section 21 defence…" />
+            <input name="q" placeholder={`Search ${slice.label === 'All jurisdictions' ? 'services' : slice.label + ' services'} — I-130, OPT, Section 21…`} />
+            {active !== 'all' && <input type="hidden" name="country" value={active} />}
             <button type="submit" className="go">Search</button>
           </form>
 
@@ -717,13 +806,26 @@ export async function PublicMarketplaceLanding() {
         </div>
       </header>
 
+      {/* Country selector bar — primary jurisdiction filter */}
+      <div className="country-bar" id="jurisdictions">
+        <div className="wrap country-bar-inner">
+          <span className="label">Jurisdiction —</span>
+          <CountryTabs active={active} />
+          <span style={{ marginLeft: 'auto', fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: T.inkSoft }}>
+            Showing: {slice.label} · {totalActive.toLocaleString('en-US')} briefs · currency {currency}
+          </span>
+        </div>
+      </div>
+
       {/* Category strip */}
       <div className="cat-strip">
         <div className="wrap cat-strip-inner">
           <span className="mono">Browse —</span>
-          <a className="active" href="/marketplace">All services</a>
+          <a className="active" href={withCountry('/marketplace', active)}>All services</a>
           {CATEGORIES.slice(0, 8).map((cat) => (
-            <a key={cat.id} href={`/marketplace?category=${cat.id}`}>{cat.name.replace(' Services', '')}</a>
+            <a key={cat.id} href={withCountry(`/marketplace?category=${cat.id}`, active)}>
+              {cat.name.replace(' Services', '')}
+            </a>
           ))}
         </div>
       </div>
@@ -733,17 +835,12 @@ export async function PublicMarketplaceLanding() {
         <div className="wrap hero-grid">
           <div>
             <span className="hero-eyebrow">
-              <span className="flagbar" aria-hidden="true" />
-              US · UK · CA — fixed-fee, no consultation traps
+              <span className={`flagbar ${active !== 'all' ? active : ''}`} aria-hidden="true" />
+              {headline.eyebrow}
             </span>
 
-            <h1>
-              Talk to an attorney about your case — <em>by the brief, not the hour.</em>
-            </h1>
-            <p className="lede">
-              A vetted marketplace of licensed immigration attorneys, regulated consultants and tenancy specialists.
-              Pick a fixed-fee brief, review samples and timelines, and pay only when the work clears review.
-            </p>
+            <h1>{headline.h1}</h1>
+            <p className="lede">{headline.lede}</p>
 
             <form className="hero-search" action="/marketplace" method="get">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -751,58 +848,61 @@ export async function PublicMarketplaceLanding() {
                 <path d="m21 21-4.3-4.3" />
               </svg>
               <input name="q" placeholder="What do you need help with?" />
+              {active !== 'all' && <input type="hidden" name="country" value={active} />}
               <span className="pick">
-                Jurisdiction: <b>United States</b>
+                Jurisdiction:&nbsp;<CountryPicker active={active} />
               </span>
               <button type="submit" className="search-go">Find help</button>
             </form>
 
             <div className="suggest">
               <span className="lbl">Popular:</span>
-              <a href="/marketplace?q=F-1+denial">F-1 visa denial recovery</a>
-              <a href="/marketplace?q=I-485">I-485 evidence package</a>
-              <a href="/marketplace?q=OPT">OPT &amp; STEM OPT review</a>
-              <a href="/marketplace?q=Spouse">Spouse visa financial req.</a>
-              <a href="/marketplace?q=Section+21">Section 21 defence letter</a>
-              <a href="/marketplace?q=PGWP">PGWP eligibility opinion</a>
+              {chips.map((c) => (
+                <a key={c.q} href={withCountry(`/marketplace?q=${encodeURIComponent(c.q)}`, active)}>{c.label}</a>
+              ))}
             </div>
           </div>
 
-          {caseFile && (
-            <aside className="hero-card" aria-label="Sample service listing">
+          {slice.caseFile ? (
+            <aside className="hero-card" data-c={slice.caseFile.jx ?? 'us'} aria-label="Sample service listing">
               <div className="file-meta">
-                <span>FILE · MC-{caseFile.id.slice(0, 4).toUpperCase()}-{(caseFile.providerCountry || 'XXX').toUpperCase().slice(0,3)}</span>
+                <span>FILE · MC-{slice.caseFile.id.slice(0, 4).toUpperCase()}-{(slice.caseFile.providerCountry || (active !== 'all' ? active : 'XXX')).toUpperCase().slice(0, 3)}</span>
                 <span>VOL · III · {new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()}</span>
               </div>
-              <h3>{caseFile.title}</h3>
+              <h3>{slice.caseFile.title}</h3>
               <div className="attorney">
                 <div className="avatar" style={{ background: `linear-gradient(135deg, ${T.indigo}, ${T.indigoDeep})` }}>
-                  {initialsOf(caseFile.providerName)}
+                  {initialsOf(slice.caseFile.providerName)}
                 </div>
                 <div className="attorney-name">
-                  <b>{caseFile.providerName}</b>
-                  <span>{caseFile.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
+                  <b>{slice.caseFile.providerName}</b>
+                  <span>{slice.caseFile.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
                 </div>
-                {caseFile.review_count > 0 ? (
+                {slice.caseFile.review_count > 0 ? (
                   <div className="stars">
                     <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
-                    {caseFile.avg_rating.toFixed(2)} <span className="rev">· {caseFile.review_count}</span>
+                    {slice.caseFile.avg_rating.toFixed(2)} <span className="rev">· {slice.caseFile.review_count}</span>
                   </div>
                 ) : null}
               </div>
-              {caseFile.tiers.length > 0 && (
+              {slice.caseFile.caseTiers.length > 0 && (
                 <div className="tiers">
-                  {caseFile.tiers.map((t, i) => (
+                  {slice.caseFile.caseTiers.map((t, i) => (
                     <div key={i} className="tier-row">
                       <span className="lbl">{t.tier}</span>
-                      <span className="name">{['Cover memo + checklist review','Full evidence pack & declarations','Pack + attorney signature'][i] ?? ''}</span>
-                      <span className="price">{formatPrice(t.price, 'USD')}</span>
+                      <span className="name">{['Cover memo + checklist review', 'Full evidence pack & declarations', 'Pack + attorney signature'][i] ?? ''}</span>
+                      <span className="price">{formatPrice(t.price, currency)}</span>
                     </div>
                   ))}
                 </div>
               )}
-              {caseFile.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
-              {caseFile.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
+              {slice.caseFile.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
+              {slice.caseFile.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
+            </aside>
+          ) : (
+            <aside className="hero-empty">
+              No active briefs in <b>{slice.label}</b> yet —<br />
+              <a href="/?country=all" style={{ color: T.indigo, borderBottom: `1px solid ${T.indigo}` }}>see all jurisdictions →</a>
             </aside>
           )}
         </div>
@@ -825,17 +925,21 @@ export async function PublicMarketplaceLanding() {
             <h2>Choose <em>where</em> your case sits.</h2>
             <div className="meta">
               <span>Vol. III · Jurisdiction Index</span>
-              <span><a href="/marketplace">See all jurisdictions →</a></span>
+              <span><a href="/?country=all">See all jurisdictions →</a></span>
             </div>
           </div>
 
           <div className="jx-grid">
             {jurisdictions.map((j) => {
-              const colors = jxCardColors(j.code)
               const codeNum = j.code === 'us' ? '01' : j.code === 'uk' ? '02' : '03'
+              const isActive = active === j.code
               return (
-                <a key={j.code} className="jx-card" href={JX_LINK[j.code]}>
-                  <span className="stripe" style={{ background: colors.stripe }} />
+                <a
+                  key={j.code}
+                  className={`jx-card${isActive ? ' active' : ''}`}
+                  href={`/?country=${j.code}#jurisdictions`}
+                >
+                  <span className="stripe" style={{ background: jxStripe(j.code) }} />
                   <span className="code">JX-{codeNum} · {j.name}</span>
                   <h3>{j.name}</h3>
                   {j.topCategories.length > 0 ? (
@@ -854,7 +958,7 @@ export async function PublicMarketplaceLanding() {
                   )}
                   <div className="footer-row">
                     <span>{j.fromCents != null ? <>from <span className="from">{formatPrice(j.fromCents, j.currency)}</span></> : <>Browse {j.name}</>}</span>
-                    <span className="arr">→</span>
+                    <span className="arr">{isActive ? '✓' : '→'}</span>
                   </div>
                 </a>
               )
@@ -869,23 +973,23 @@ export async function PublicMarketplaceLanding() {
           <div className="section-head">
             <h2>The full <em>index of services.</em></h2>
             <div className="meta">
-              <span>{categories.length} categories · {totalActive.toLocaleString('en-US')} active briefs</span>
-              <span><a href="/marketplace/categories">Browse all categories →</a></span>
+              <span>{slice.categories.length} categories · {totalActive.toLocaleString('en-US')} briefs · {slice.label}</span>
+              <span><a href={withCountry('/marketplace/categories', active)}>Browse all categories →</a></span>
             </div>
           </div>
 
           <div className="index-table">
-            {categories.map((cs, i) => {
+            {slice.categories.map((cs, i) => {
               const num = String(i + 1).padStart(2, '0')
               const name = cs.cat.name.replace(/^([A-Za-z]+)/, '<em>$1</em>')
               const subs = cs.cat.subcategories.slice(0, 5).map((s) => s.name).join(' · ')
               return (
-                <a key={cs.cat.id} className="index-row" href={`/marketplace?category=${cs.cat.id}`}>
+                <a key={cs.cat.id} className="index-row" href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}>
                   <span className="num">{num} ·</span>
                   <span className="name" dangerouslySetInnerHTML={{ __html: name }} />
                   <span className="subs">{subs}</span>
                   <span className="count">{cs.count} {cs.count === 1 ? 'brief' : 'briefs'}</span>
-                  <span className="from-price">{cs.fromCents != null ? <>from<b>{formatPrice(cs.fromCents, 'USD')}</b></> : <>—</>}</span>
+                  <span className="from-price">{cs.fromCents != null ? <>from<b>{formatPrice(cs.fromCents, currency)}</b></> : <>—</>}</span>
                 </a>
               )
             })}
@@ -894,38 +998,35 @@ export async function PublicMarketplaceLanding() {
       </section>
 
       {/* Featured gigs */}
-      {featured.length > 0 && (
+      {slice.featured.length > 0 ? (
         <section className="featured">
           <div className="wrap">
             <div className="section-head">
-              <h2>This week's <em>recommended briefs.</em></h2>
+              <h2>This week's <em>recommended {active !== 'all' ? slice.label.split(' ')[0] : ''} briefs.</em></h2>
               <div className="meta">
                 <span>Ranked by demand &amp; review score</span>
-                <span><a href="/marketplace?sort=trending">See all featured →</a></span>
+                <span><a href={withCountry('/marketplace?sort=trending', active)}>See all featured →</a></span>
               </div>
             </div>
 
             <div className="filters">
-              <a className="on" href="/marketplace">All <span className="ct">({totalActive})</span></a>
-              {categories.slice(0, 5).map((cs) => (
-                <a key={cs.cat.id} href={`/marketplace?category=${cs.cat.id}`}>
+              <a className="on" href={withCountry('/marketplace', active)}>All <span className="ct">({totalActive})</span></a>
+              {slice.categories.filter((c) => c.count > 0).slice(0, 5).map((cs) => (
+                <a key={cs.cat.id} href={withCountry(`/marketplace?category=${cs.cat.id}`, active)}>
                   {cs.cat.name.replace(' Services', '')} <span className="ct">({cs.count})</span>
                 </a>
               ))}
-              {globalFromCents != null && (
-                <a href="/marketplace?max_price=100">· Under {formatPrice(globalFromCents < 10000 ? 10000 : globalFromCents, 'USD')}</a>
-              )}
-              <a href="/marketplace?delivery_days=3">· Delivery ≤ 3d</a>
+              <a href={withCountry('/marketplace?delivery_days=3', active)}>· Delivery ≤ 3d</a>
             </div>
 
             <div className="gig-grid">
-              {featured.map((g) => {
-                const jx = resolveJurisdiction(g.providerCountry) ?? 'us'
-                const tag = `${jx.toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
+              {slice.featured.map((g) => {
+                const tag = `${(g.jx ?? active === 'all' ? (g.jx ?? 'us') : active).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
                 const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
-                const currency = jx === 'uk' ? 'GBP' : jx === 'ca' ? 'CAD' : 'USD'
+                const cardCountry = g.jx ?? (active !== 'all' ? active : 'us')
+                const localCurrency = COUNTRY_META[cardCountry as JxCode]?.currency ?? currency
                 return (
-                  <article key={g.id} className="gig" data-c={jx}>
+                  <article key={g.id} className="gig" data-c={cardCountry}>
                     <div className="plate">
                       <span className="plate-glyph">{glyphFor(g)}</span>
                       <span className="plate-tag">{tag}</span>
@@ -952,7 +1053,7 @@ export async function PublicMarketplaceLanding() {
                         <span className="delivery">{deliveryLabel(g.delivery_days)}</span>
                         <span className="price">
                           <span className="from">From</span>
-                          <b>{formatPrice(g.starting_price, currency)}</b>
+                          <b>{formatPrice(g.starting_price, localCurrency)}</b>
                         </span>
                       </div>
                     </div>
@@ -962,7 +1063,18 @@ export async function PublicMarketplaceLanding() {
             </div>
           </div>
         </section>
-      )}
+      ) : active !== 'all' ? (
+        <section className="featured">
+          <div className="wrap">
+            <div className="section-head">
+              <h2>No <em>{slice.label}</em> briefs yet.</h2>
+              <div className="meta">
+                <span><a href="/?country=all">See all jurisdictions →</a></span>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* How it works */}
       <section className="how" id="how-it-works">

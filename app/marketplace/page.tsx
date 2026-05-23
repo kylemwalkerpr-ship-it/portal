@@ -25,10 +25,24 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function Page() {
+type Country = 'all' | 'us' | 'uk' | 'ca'
+
+function parseCountry(raw: string | string[] | undefined): Country {
+  const v = Array.isArray(raw) ? raw[0] : raw
+  if (v === 'us' || v === 'uk' || v === 'ca') return v
+  return 'all'
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Promise<{ country?: string | string[] }>
+}) {
+  const sp = (await searchParams) ?? {}
+  const country = parseCountry(sp.country)
   const auth = await getOptionalPortalUser()
   // PublicMarketplaceLanding renders EstateFooter itself — no second footer here.
-  if (!auth) return <PublicMarketplaceLanding />
+  if (!auth) return <PublicMarketplaceLanding country={country} />
   if (auth.role !== 'client') redirect('/dashboard')
   return <MarketplacePage />
 }
