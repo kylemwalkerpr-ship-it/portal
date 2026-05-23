@@ -66,7 +66,7 @@ SELECT
     LEAST(r.client_profile_id, r.attorney_profile_id),
     GREATEST(r.client_profile_id, r.attorney_profile_id),
     'inquiry'::text,
-    r.inquiry_id::text
+    r.inquiry_id
   ),
   r.sender_profile_id,
   'text',
@@ -114,7 +114,7 @@ SELECT
     LEAST(r.client_id, r.provider_id),
     GREATEST(r.client_id, r.provider_id),
     'order'::text,
-    r.order_id::text
+    r.order_id
   ),
   r.sender_id,
   'text',
