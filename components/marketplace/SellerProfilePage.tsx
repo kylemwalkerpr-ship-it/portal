@@ -4,7 +4,8 @@
 import React from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { C, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { T, F } from './tokens'
 import ChatSidePane from './ChatSidePane'
 import {
   SellerProfileHeader,
@@ -164,8 +165,8 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
 
 const pageShell = {
   minHeight: '100vh',
-  background: C.bg,
-  color: C.text,
+  background: T.paper,
+  color: T.ink,
   padding: '24px 32px',
   maxWidth: '1200px',
   margin: '0 auto',
@@ -180,17 +181,17 @@ const breadcrumb = {
 }
 
 const breadcrumbLink = {
-  color: C.textMuted,
+  color: T.inkMid,
   textDecoration: 'none',
   transition: 'color 150ms',
 }
 
 const breadcrumbSeparator = {
-  color: C.textDim,
+  color: T.inkSoft,
 }
 
 const breadcrumbCurrent = {
-  color: C.text,
+  color: T.ink,
   fontWeight: 500,
 }
 
@@ -198,7 +199,7 @@ const tabsContainer = {
   display: 'flex',
   gap: '4px',
   marginBottom: '24px',
-  borderBottom: `1px solid ${C.border}`,
+  borderBottom: `1px solid ${T.rule}`,
 }
 
 const tabStyle = {
@@ -207,7 +208,7 @@ const tabStyle = {
   padding: '12px 20px',
   fontSize: '14px',
   fontWeight: 500,
-  color: C.textMuted,
+  color: T.inkMid,
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
   transition: 'color 150ms, border-color 150ms',
@@ -215,8 +216,8 @@ const tabStyle = {
 
 const activeTabStyle = {
   ...tabStyle,
-  color: C.text,
-  borderBottomColor: C.cyan,
+  color: T.ink,
+  borderBottomColor: T.indigo,
 }
 
 const tabContent = {

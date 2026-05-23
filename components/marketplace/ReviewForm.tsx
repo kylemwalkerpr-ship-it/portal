@@ -1,7 +1,8 @@
 // @ts-nocheck
 'use client'
 import React from 'react'
-import { C, Card, Btn as Button, Input, Textarea } from '../design/shared'
+import { Card, Btn as Button, Input, Textarea } from '../design/shared'
+import { T, F } from './tokens'
 
 const containerStyle = {
   maxWidth: '600px',
@@ -9,8 +10,8 @@ const containerStyle = {
 }
 
 const formStyle = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
   borderRadius: '16px',
   padding: '32px',
 }
@@ -19,12 +20,12 @@ const titleStyle = {
   fontSize: '24px',
   fontWeight: 700,
   margin: '0 0 8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const subtitleStyle = {
   fontSize: '14px',
-  color: C.textMuted,
+  color: T.inkMid,
   margin: '0 0 32px',
 }
 
@@ -37,7 +38,7 @@ const labelStyle = {
   fontWeight: 600,
   display: 'block',
   marginBottom: '8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const requiredStyle = {
@@ -56,16 +57,16 @@ const starButton = {
   border: 'none',
   cursor: 'pointer',
   padding: '0',
-  color: C.border,
+  color: T.rule,
   transition: 'color 200ms ease',
 }
 
 const starButtonActive = {
-  color: '#FFD700',
+  color: T.star,
 }
 
 const starButtonHover = {
-  color: '#FFA500',
+  color: T.gold,
 }
 
 const ratingLabels = {
@@ -73,18 +74,18 @@ const ratingLabels = {
   justifyContent: 'space-between',
   marginTop: '8px',
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const inputStyle = {
   width: '100%',
   padding: '12px 16px',
   borderRadius: '8px',
-  border: `1px solid ${C.border}`,
-  background: C.surface,
-  color: C.text,
+  border: `1px solid ${T.rule}`,
+  background: T.vellum,
+  color: T.ink,
   fontSize: '14px',
-  fontFamily: C.sans,
+  fontFamily: F.ui,
 }
 
 const textareaStyle = {
@@ -95,7 +96,7 @@ const textareaStyle = {
 
 const hintStyle = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
   marginTop: '4px',
 }
 
@@ -110,12 +111,12 @@ const verifiedBadge = {
   alignItems: 'center',
   gap: '6px',
   padding: '6px 12px',
-  background: `${C.green}15`,
-  border: `1px solid ${C.green}30`,
+  background: `${T.moss}15`,
+  border: `1px solid ${T.moss}30`,
   borderRadius: '8px',
   fontSize: '13px',
   fontWeight: 600,
-  color: C.green,
+  color: T.moss,
   marginBottom: '24px',
 }
 
@@ -126,8 +127,8 @@ const buttonGroup = {
 }
 
 const guidelinesStyle = {
-  background: `${C.cyan}08`,
-  border: `1px solid ${C.cyan}22`,
+  background: `${T.indigo}08`,
+  border: `1px solid ${T.indigo}22`,
   borderRadius: '12px',
   padding: '16px',
   marginBottom: '24px',
@@ -137,12 +138,12 @@ const guidelinesTitle = {
   fontSize: '14px',
   fontWeight: 700,
   margin: '0 0 8px',
-  color: C.text,
+  color: T.ink,
 }
 
 const guidelinesList = {
   fontSize: '13px',
-  color: C.textMuted,
+  color: T.inkMid,
   margin: 0,
   paddingLeft: '20px',
   lineHeight: 1.6,
@@ -236,10 +237,10 @@ export function ReviewForm({
       <div style={containerStyle}>
         <Card style={{ padding: '48px', textAlign: 'center' }}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>✓</div>
-          <h2 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: C.text }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: T.ink }}>
             Review Submitted!
           </h2>
-          <p style={{ fontSize: '14px', color: C.textMuted, margin: '0 0 24px' }}>
+          <p style={{ fontSize: '14px', color: T.inkMid, margin: '0 0 24px' }}>
             Thank you for your feedback. Your review will be visible to other users.
           </p>
           <Button onClick={onCancel} variant="primary">
@@ -391,7 +392,7 @@ export function ReviewModal({ isOpen, onClose, ...props }: ReviewModalProps) {
     >
       <div
         style={{
-          background: C.bg,
+          background: T.paper,
           borderRadius: '16px',
           maxWidth: '600px',
           width: '100%',

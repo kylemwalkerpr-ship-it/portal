@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React from 'react'
 import Link from 'next/link'
-import { C, Card, Btn, Badge, Avatar, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { Card, Btn, Badge, Avatar, LoadingState, ErrorState, EmptyState } from '../design/shared'
+import { T, F } from './tokens'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -357,8 +358,8 @@ function VerifiedBadge() {
 // ── Styles ─────────────────────────────────────────────────────────────────────
 
 const headerContainer = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
   borderRadius: '16px',
   padding: '28px 32px',
   marginBottom: '24px',
@@ -381,7 +382,7 @@ const avatarImage = {
   height: '120px',
   borderRadius: '50%',
   objectFit: 'cover',
-  border: `4px solid ${C.surface}`,
+  border: `4px solid ${T.vellum}`,
   boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
 }
 
@@ -389,11 +390,11 @@ const avatarPlaceholder = {
   width: '120px',
   height: '120px',
   borderRadius: '50%',
-  background: `linear-gradient(135deg, ${C.cyan} 0%, ${C.cyanDark} 100%)`,
+  background: `linear-gradient(135deg, ${T.indigo} 0%, ${T.indigoDeep} 100%)`,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '48px',
   color: '#fff',
   fontWeight: 600,
@@ -424,16 +425,16 @@ const headerTopRow = {
 }
 
 const sellerName = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '28px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: 0,
   letterSpacing: '-0.02em',
 }
 
 const tagline = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '15px',
   lineHeight: 1.5,
   margin: '0 0 12px',
@@ -454,28 +455,28 @@ const ratingDisplay = {
 }
 
 const starIcon = {
-  color: '#f5b400',
+  color: T.star,
   fontSize: '16px',
 }
 
 const ratingValue = {
-  color: C.text,
+  color: T.ink,
   fontSize: '14px',
   fontWeight: 600,
 }
 
 const ratingCount = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '13px',
 }
 
 const noReviews = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '13px',
 }
 
 const metaItem = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '13px',
 }
 
@@ -498,7 +499,7 @@ const unavailableBadge = {
 }
 
 const memberSince = {
-  color: C.textDim,
+  color: T.inkSoft,
   fontSize: '12px',
   margin: '4px 0 0',
 }
@@ -517,8 +518,8 @@ const statsContainer = {
 }
 
 const statItem = {
-  background: C.surface,
-  border: `1px solid ${C.border}`,
+  background: T.vellum,
+  border: `1px solid ${T.rule}`,
   borderRadius: '12px',
   padding: '16px',
   textAlign: 'center',
@@ -527,14 +528,14 @@ const statItem = {
 const statValue = {
   fontSize: '24px',
   fontWeight: 700,
-  color: C.text,
+  color: T.ink,
   marginBottom: '4px',
 }
 
 const statLabel = {
   fontSize: '12px',
   fontWeight: 600,
-  color: C.textMuted,
+  color: T.inkMid,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
   marginBottom: '2px',
@@ -542,33 +543,33 @@ const statLabel = {
 
 const statSub = {
   fontSize: '11px',
-  color: C.textDim,
+  color: T.inkSoft,
 }
 
 const sectionTitle = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '20px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: '0 0 16px',
   letterSpacing: '-0.01em',
 }
 
 const introText = {
-  color: C.text,
+  color: T.ink,
   fontSize: '15px',
   lineHeight: 1.6,
   margin: '0 0 20px',
 }
 
 const bioSection = {
-  borderTop: `1px solid ${C.border}`,
+  borderTop: `1px solid ${T.rule}`,
   paddingTop: '20px',
   marginBottom: '20px',
 }
 
 const bioText = {
-  color: C.textMuted,
+  color: T.inkMid,
   fontSize: '14px',
   lineHeight: 1.7,
   margin: 0,
@@ -590,25 +591,25 @@ const aboutItem = {
 const aboutLabel = {
   fontSize: '12px',
   fontWeight: 600,
-  color: C.textMuted,
+  color: T.inkMid,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
 }
 
 const aboutValue = {
   fontSize: '14px',
-  color: C.text,
+  color: T.ink,
 }
 
 const tagsSection = {
-  borderTop: `1px solid ${C.border}`,
+  borderTop: `1px solid ${T.rule}`,
   paddingTop: '16px',
 }
 
 const tagsTitle = {
   fontSize: '13px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: '0 0 10px',
 }
 
@@ -619,12 +620,12 @@ const tagsContainer = {
 }
 
 const tagBadge = {
-  background: C.surface2,
-  border: `1px solid ${C.border}`,
+  background: T.paper2,
+  border: `1px solid ${T.rule}`,
   borderRadius: '999px',
   padding: '6px 12px',
   fontSize: '12px',
-  color: C.text,
+  color: T.ink,
 }
 
 const gigsGrid = {
@@ -654,14 +655,14 @@ const gigImage = {
 const gigImagePlaceholder = {
   width: '100%',
   height: '180px',
-  background: `linear-gradient(135deg, ${C.cyan} 0%, ${C.cyanDark} 100%)`,
+  background: `linear-gradient(135deg, ${T.indigo} 0%, ${T.indigoDeep} 100%)`,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
 }
 
 const gigImagePlaceholderText = {
-  fontFamily: C.serif,
+  fontFamily: F.display,
   fontSize: '48px',
   color: '#fff',
   fontWeight: 600,
@@ -674,14 +675,14 @@ const gigContent = {
 const gigTitle = {
   fontSize: '15px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
   margin: '0 0 8px',
   lineHeight: 1.4,
 }
 
 const gigSummary = {
   fontSize: '13px',
-  color: C.textMuted,
+  color: T.inkMid,
   margin: '0 0 12px',
   lineHeight: 1.5,
   display: '-webkit-box',
@@ -699,7 +700,7 @@ const gigMeta = {
 
 const gigRating = {
   fontSize: '13px',
-  color: C.text,
+  color: T.ink,
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
@@ -707,7 +708,7 @@ const gigRating = {
 
 const gigOrders = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const gigPriceRow = {
@@ -718,13 +719,13 @@ const gigPriceRow = {
 
 const gigPriceLabel = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const gigPrice = {
   fontSize: '18px',
   fontWeight: 700,
-  color: C.text,
+  color: T.ink,
 }
 
 const reviewsList = {
@@ -753,12 +754,12 @@ const reviewAuthor = {
 const reviewAuthorName = {
   fontSize: '14px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
 }
 
 const reviewDate = {
   fontSize: '12px',
-  color: C.textMuted,
+  color: T.inkMid,
 }
 
 const reviewRating = {
@@ -767,12 +768,12 @@ const reviewRating = {
   gap: '4px',
   fontSize: '14px',
   fontWeight: 600,
-  color: C.text,
+  color: T.ink,
 }
 
 const reviewText = {
   fontSize: '14px',
-  color: C.textMuted,
+  color: T.inkMid,
   lineHeight: 1.6,
   margin: 0,
 }
