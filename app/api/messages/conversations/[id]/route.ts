@@ -24,13 +24,18 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const counterpartId = conv.participant_a === profileId ? conv.participant_b : conv.participant_a
 
-  const [messagesRes, counterpartRes] = await Promise.all([
+  const [messagesRes, counterpartRes, participantRes] = await Promise.all([
     db.from('conversation_messages')
       .select('id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, metadata, created_at')
       .eq('conversation_id', id)
       .order('created_at', { ascending: true })
       .limit(500),
     db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', counterpartId).maybeSingle(),
+    db.from('conversation_participants')
+      .select('starred_message_ids, pinned_at, archived_at, muted_until')
+      .eq('conversation_id', id)
+      .eq('profile_id', profileId)
+      .maybeSingle(),
   ])
 
   // Sidebar context: orders, offers, inquiries this pair has in common
@@ -136,6 +141,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       orders: sharedOrders,
       offers: sharedOffers,
     },
+    participant: participantRes.data || null,
   })
 }
 

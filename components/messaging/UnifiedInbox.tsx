@@ -50,6 +50,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [activeMsgs, setActiveMsgs] = React.useState([])
   const [activeConv, setActiveConv] = React.useState(null)
   const [activeSidebar, setActiveSidebar] = React.useState({ orders: [], offers: [] })
+  const [activeParticipant, setActiveParticipant] = React.useState(null)
   const [threadLoading, setThreadLoading] = React.useState(false)
   const [threadError, setThreadError] = React.useState('')
   const [draft, setDraft] = React.useState('')
@@ -128,6 +129,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setActiveConv(d.conversation || null)
       setActiveMsgs(d.messages || [])
       setActiveSidebar(d.sidebar || { orders: [], offers: [] })
+      setActiveParticipant(d.participant || null)
       fetch(`/api/messages/conversations/${activeId}`, {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -150,6 +152,16 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }, 8_000)
     return () => clearInterval(id)
   }, [activeId, loadThread])
+
+  const loadStarred = React.useCallback(async () => {
+    try {
+      const r = await fetch('/api/messages/starred', { credentials: 'same-origin' })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok) setStarredMsgs(d.messages || [])
+    } catch {
+      // silent
+    }
+  }, [])
 
   const handleOfferAccept = React.useCallback((offerId) => {
     if (!offerId || offerBusyId) return
@@ -280,6 +292,26 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }
   }
 
+  const handleStarMessage = async (msgId: string, starred: boolean) => {
+    if (!activeId) return
+    // Optimistic
+    const prev = activeParticipant?.starred_message_ids || []
+    const next = starred
+      ? [...prev, msgId]
+      : prev.filter((x: string) => x !== msgId)
+    setActiveParticipant((p: any) => p ? { ...p, starred_message_ids: next } : p)
+    try {
+      await fetch(`/api/messages/conversations/${activeId}/messages/${msgId}`, {
+        method: 'POST', credentials: 'same-origin',
+      })
+      // Refresh starred list cache
+      loadStarred()
+    } catch {
+      // Revert
+      setActiveParticipant((p: any) => p ? { ...p, starred_message_ids: prev } : p)
+    }
+  }
+
   const openMenu = (convId, e) => {
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
@@ -354,7 +386,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       <div className="cl-scroll">
         {/* Archived row — always render if count > 0, stub click */}
         {archivedCount > 0 && (
-          <button className="cl-archived" onClick={() => { /* Phase 2 stub */ }}>
+          <button className="cl-archived" onClick={() => setShowArchived(true)}>
             <div className="cl-archived-l">
               <div className="cl-archived-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -513,6 +545,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
           </svg>
         </button>
+        <button className="iconbtn" title="Starred messages" onClick={() => { setShowStarred(true); loadStarred() }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </button>
       </div>
     </div>
   ) : (
@@ -559,16 +596,18 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 <span>{dateLabel(m.created_at)}</span>
               </div>
             )}
-            <ThreadMessage
-              m={m}
-              counterpartId={activeConv?.counterpart?.id}
-              offerBusy={offerBusyId === m.offer?.id}
-              onAccept={handleOfferAccept}
-              onDecline={handleOfferDecline}
-              onWithdraw={handleOfferWithdraw}
-              isFirstInGroup={isFirstInGroup}
-              isLastInGroup={isLastInGroup}
-            />
+            <div data-msgid={m.id}>
+              <ThreadMessage
+                m={m}
+                counterpartId={activeConv?.counterpart?.id}
+                offerBusy={offerBusyId === m.offer?.id}
+                onAccept={handleOfferAccept}
+                onDecline={handleOfferDecline}
+                onWithdraw={handleOfferWithdraw}
+                isFirstInGroup={isFirstInGroup}
+                isLastInGroup={isLastInGroup}
+              />
+            </div>
           </React.Fragment>
         )
       })}
@@ -613,6 +652,38 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         open={!!payingOfferId}
         onClose={() => setPayingOfferId(null)}
         onPaid={() => { loadThread(true); loadList(true) }}
+      />
+      <ArchivedView
+        open={showArchived}
+        onClose={() => setShowArchived(false)}
+        conversations={conversations.filter((c) => !!c.archived_at)}
+        onUnarchive={async (convId) => {
+          setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, archived_at: null } : c))
+          try {
+            await fetch(`/api/messages/conversations/${convId}/archive`, {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ archived: false }),
+            })
+            await loadList(true)
+          } catch {
+            await loadList(false)
+          }
+        }}
+      />
+      <StarredView
+        open={showStarred}
+        onClose={() => setShowStarred(false)}
+        messages={starredMsgs}
+        onJump={(msgId, convId) => {
+          setShowStarred(false)
+          setActiveId(convId)
+          // Scroll to message after thread loads — deferred to keep simple
+          setTimeout(() => {
+            const el = document.querySelector(`[data-msgid="${msgId}"]`)
+            el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }, 600)
+        }}
       />
     </div>
   )
@@ -670,14 +741,20 @@ function ThreadMessage({ m, counterpartId, offerBusy, onAccept, onDecline, onWit
     )
   }
 
+  const starredIds = activeParticipant?.starred_message_ids || []
+  const isStarred = starredIds.includes(m.id)
+
   return (
     <MessageBubble
+      id={m.id}
       mine={mine}
       isFirstInGroup={isFirstInGroup}
       isLastInGroup={isLastInGroup}
       timestamp={m.created_at}
       readAt={m.read_at}
       deliveredAt={m.delivered_at}
+      starred={isStarred}
+      onStar={handleStarMessage}
       body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
     />
   )
