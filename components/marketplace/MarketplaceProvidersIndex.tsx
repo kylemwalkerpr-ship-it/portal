@@ -71,6 +71,22 @@ export function MarketplaceProvidersIndex() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
 
+  // Right-side preview pane state
+  const [selected, setSelected] = React.useState(null)
+
+  // Lock body scroll while pane is open + close on Escape
+  React.useEffect(() => {
+    if (!selected) return
+    const onEsc = (e) => e.key === 'Escape' && setSelected(null)
+    document.addEventListener('keydown', onEsc)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onEsc)
+      document.body.style.overflow = prev
+    }
+  }, [selected])
+
   React.useEffect(() => {
     const t = setTimeout(() => { setDebouncedQ(searchInput); setPage(1) }, 300)
     return () => clearTimeout(t)
@@ -264,7 +280,7 @@ export function MarketplaceProvidersIndex() {
             {!loading && !error && attorneys.length > 0 && (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-                  {attorneys.map(a => <ProviderCard key={a.id} a={a} />)}
+                  {attorneys.map(a => <ProviderCard key={a.id} a={a} onSelect={() => setSelected(a)} />)}
                 </div>
                 {totalPages > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${BORDER}` }}>
@@ -283,6 +299,7 @@ export function MarketplaceProvidersIndex() {
           </main>
         </div>
       </div>
+      <ProviderSidePane a={selected} onClose={() => setSelected(null)} />
     </div>
   )
 }
@@ -301,10 +318,15 @@ function FacetChips({ label, options, value, onChange }) {
   )
 }
 
-function ProviderCard({ a }) {
+function ProviderCard({ a, onSelect }) {
   const [hover, setHover] = React.useState(false)
   return (
-    <Link href={`/sellers/${a.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{ all: 'unset', display: 'block', cursor: 'pointer', width: '100%' }}
+      aria-label={`Open ${a.full_name} preview`}
+    >
       <Card
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
@@ -363,6 +385,125 @@ function ProviderCard({ a }) {
           <Btn variant="primary" size="sm">View profile →</Btn>
         </div>
       </Card>
-    </Link>
+    </button>
+  )
+}
+
+function ProviderSidePane({ a, onClose }) {
+  if (!a) return null
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(15, 19, 30, 0.45)', backdropFilter: 'blur(2px)',
+        }}
+      />
+      <aside
+        role="dialog"
+        aria-label={`${a.full_name} profile`}
+        style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
+          width: 'min(520px, 100vw)', background: SURFACE,
+          boxShadow: '-24px 0 60px -20px rgba(29,36,51,0.35)',
+          display: 'flex', flexDirection: 'column',
+          animation: 'cw-pane-in .2s ease-out',
+          fontFamily: SANS,
+        }}
+      >
+        <style>{`@keyframes cw-pane-in { from { transform: translateX(40px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }`}</style>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, padding: '18px 22px 14px', borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            {a.headshot_url
+              ? <img src={a.headshot_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
+              : <div style={{ width: 64, height: 64, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 22, fontFamily: SERIF }}>{initials(a.full_name)}</div>}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 22, color: TEXT, lineHeight: 1.15 }}>{a.full_name}</div>
+              <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: DIM, marginTop: 4 }}>
+                {a.credential_type || 'Licensed provider'}{a.jurisdictions ? ` · ${a.jurisdictions}` : ''}
+              </div>
+              {a.bar_number && (
+                <div style={{ fontFamily: MONO, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                  Bar / Reg #: <b style={{ color: TEXT }}>{a.bar_number}</b>
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${BORDER}`, background: BG, color: TEXT, fontSize: 20, cursor: 'pointer', flexShrink: 0 }}
+          >×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {a.rating_avg !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: BG, border: `1px solid ${BORDER2}`, borderRadius: 10 }}>
+              <Stars value={a.rating_avg} size={16} />
+              <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 14, color: TEXT }}>{a.rating_avg}</span>
+              <span style={{ fontFamily: MONO, fontSize: 12, color: DIM }}>({a.rating_count} {a.rating_count === 1 ? 'review' : 'reviews'})</span>
+            </div>
+          )}
+
+          {a.tagline && (
+            <p style={{ margin: 0, fontFamily: SERIF, fontStyle: 'italic', fontSize: 17, lineHeight: 1.5, color: TEXT }}>
+              "{a.tagline}"
+            </p>
+          )}
+
+          {(a.practice_areas?.length > 0 || a.specialties?.length > 0) && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: DIM, marginBottom: 8 }}>Specialties</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {(a.practice_areas || []).map(p => <Badge key={`p-${p}`} color="purple" style={{ fontSize: 11 }}>{p}</Badge>)}
+                {(a.specialties || []).slice(0, 8).map(s => <Badge key={`s-${s}`} color="gray" style={{ fontSize: 11 }}>{s}</Badge>)}
+              </div>
+            </div>
+          )}
+
+          {a.languages?.length > 0 && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: DIM, marginBottom: 8 }}>Languages</div>
+              <div style={{ fontSize: 13.5, color: TEXT }}>{a.languages.join(' · ')}</div>
+            </div>
+          )}
+
+          {a.bio && (
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: DIM, marginBottom: 8 }}>About</div>
+              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: TEXT, whiteSpace: 'pre-line' }}>{a.bio}</p>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 0', borderTop: `1px solid ${BORDER2}`, borderBottom: `1px solid ${BORDER2}` }}>
+            {a.starting_price > 0 && (
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: DIM, marginBottom: 4 }}>From</div>
+                <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 600, color: TEXT, lineHeight: 1 }}>{fmtPrice(a.starting_price)}</div>
+              </div>
+            )}
+            {a.years_experience > 0 && (
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: DIM, marginBottom: 4 }}>Experience</div>
+                <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 600, color: TEXT, lineHeight: 1 }}>{a.years_experience} yrs</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer CTAs */}
+        <div style={{ padding: '14px 22px 18px', borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 10, background: BG }}>
+          <Link href={`/sellers/${a.id}`} style={{ flex: 1, textDecoration: 'none' }}>
+            <Btn variant="primary" size="md" style={{ width: '100%' }}>View full profile →</Btn>
+          </Link>
+          <Link href={`/marketplace/providers/${a.id}`} style={{ textDecoration: 'none' }}>
+            <Btn variant="secondary" size="md">All gigs</Btn>
+          </Link>
+        </div>
+      </aside>
+    </>
   )
 }

@@ -10,6 +10,8 @@ import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { CountryTabs, CountryPicker } from '@/components/marketplace/CountryTabs'
 import { CategoriesMenu } from '@/components/marketplace/CategoriesMenu'
 import { HelpDropdown } from '@/components/marketplace/HelpDropdown'
+import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
+import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -163,14 +165,15 @@ function buildSlice(label: string, currency: string, gigs: LandingGig[]): Slice 
     .sort((a, b) => b.rank_score - a.rank_score)
     .slice(0, 6)
 
-  // "Case file" hero card = highest-impressions gig in the slice. We use
-  // order_count as the closest proxy we have (no impressions column on gigs);
-  // tie-break on rank_score so a brand-new but heavily promoted gig still wins
-  // over an old idle one with zero orders.
-  const top = [...gigs].sort((a, b) => {
-    if (b.order_count !== a.order_count) return b.order_count - a.order_count
-    return b.rank_score - a.rank_score
-  })[0]
+  // "Case file" hero card = highest-impressions-or-most-reviews gig in the
+  // slice. We use a composite signal (max(order_count, review_count)) since
+  // there's no impressions column; both are valid signals of "the gig
+  // everyone gravitates to" and we want either to qualify. Tie-break on
+  // rank_score.
+  const score = (g: LandingGig) =>
+    Math.max(Number(g.order_count || 0), Number(g.review_count || 0)) * 1000 +
+    Number(g.rank_score || 0)
+  const top = [...gigs].sort((a, b) => score(b) - score(a))[0]
   let caseFile: Slice['caseFile'] = null
   if (top) {
     const labels = ['Brief', 'Standard', 'Filed']
@@ -690,6 +693,87 @@ const CSS = `
 .cw-market .seller-card .stat b { display: block; font-family: ${F.display}; font-weight: 500; font-size: 22px; line-height: 1; color: #fff; letter-spacing: -0.01em; }
 .cw-market .seller-card .stat span { display: block; margin-top: 4px; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.72); }
 
+.cw-market .hero-card-link { display: block; transition: transform .25s ease; }
+.cw-market .hero-fallback-hint { margin-top: 10px; padding: 8px 10px; background: ${T.paper2}; border: 1px dashed ${T.rule}; border-radius: 8px; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.06em; color: ${T.inkMid}; text-transform: none; }
+.cw-market .hero-fallback-hint b { color: ${T.ink}; }
+
+.cw-market .quotes-empty { margin: 0; padding: 18px 22px; background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 12px; font-family: ${F.display}; font-style: italic; font-size: 15px; line-height: 1.5; color: ${T.inkMid}; }
+.cw-market .quotes-empty a { color: ${T.indigo}; text-decoration: none; }
+
+.cw-market .payments { padding: 24px 0; background: ${T.paper}; border-top: 1px solid ${T.rule}; border-bottom: 1px solid ${T.rule}; }
+.cw-market .payments-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+@media (max-width: 760px) { .cw-market .payments-inner { grid-template-columns: 1fr; gap: 16px; } }
+.cw-market .payments-label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; margin-bottom: 10px; }
+.cw-market .payments-rail { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cw-market .paymark { display: inline-flex; align-items: center; justify-content: center; height: 28px; min-width: 50px; padding: 0 10px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 6px; font-family: ${F.ui}; font-weight: 700; font-size: 11px; letter-spacing: 0.06em; color: ${T.ink}; }
+.cw-market .paymark.visa { color: #1A1F71; letter-spacing: 0.14em; }
+.cw-market .paymark.mc { gap: 0; position: relative; padding: 0 18px; }
+.cw-market .paymark.mc .mc-c1, .cw-market .paymark.mc .mc-c2 { width: 16px; height: 16px; border-radius: 50%; }
+.cw-market .paymark.mc .mc-c1 { background: #EB001B; }
+.cw-market .paymark.mc .mc-c2 { background: #F79E1B; margin-left: -6px; mix-blend-mode: multiply; }
+.cw-market .paymark.amex { color: #2E77BC; letter-spacing: 0.14em; }
+.cw-market .paymark.disc { color: #FF6000; letter-spacing: 0.1em; font-size: 9.5px; }
+.cw-market .paymark.apple { color: ${T.ink}; gap: 4px; }
+.cw-market .paymark.google { color: ${T.ink}; gap: 4px; font-weight: 500; }
+.cw-market .payments-trust { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: ${T.inkMid}; }
+.cw-market .payments-trust li { display: flex; align-items: center; gap: 8px; }
+
+.cw-market .faq-section { padding: 28px 0 32px; border-top: 1px solid ${T.rule}; }
+.cw-market .faq-grid { display: grid; gap: 8px; max-width: 820px; }
+.cw-market .faq-item { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 10px; padding: 10px 16px; transition: border-color .12s, box-shadow .12s; }
+.cw-market .faq-item:hover, .cw-market .faq-item.is-open { border-color: ${T.ink}; box-shadow: 0 4px 14px -8px rgba(29,36,51,0.18); }
+.cw-market .faq-summary { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0; background: none; border: 0; cursor: pointer; text-align: left; font-family: ${F.display}; font-size: 15px; font-weight: 500; color: ${T.ink}; }
+.cw-market .faq-sym { font-family: ${F.ui}; font-size: 18px; color: ${T.inkSoft}; font-weight: 300; line-height: 1; flex-shrink: 0; }
+.cw-market .faq-body { color: ${T.inkMid}; font-size: 13px; line-height: 1.55; margin: 8px 0 0; }
+
+.cw-all-trigger { background: none; border: 0; padding: 0; cursor: pointer; color: ${T.ink}; border-bottom: 1px solid ${T.ink}; font: inherit; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.cw-all-trigger:hover { color: ${T.indigo}; border-bottom-color: ${T.indigo}; }
+.cw-all-overlay { position: fixed; inset: 0; z-index: 200; font-family: ${F.ui}; }
+.cw-all-backdrop { position: absolute; inset: 0; background: rgba(15, 19, 30, 0.45); backdrop-filter: blur(2px); }
+.cw-all-drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(1100px, 100vw); background: ${T.paper}; box-shadow: -24px 0 60px -20px rgba(29,36,51,0.35); display: flex; flex-direction: column; animation: cw-drawer-in .2s ease-out; }
+@keyframes cw-drawer-in { from { transform: translateX(40px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
+.cw-all-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 22px 14px; border-bottom: 1px solid ${T.rule}; gap: 16px; }
+.cw-all-eyebrow { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-all-title { margin: 4px 0 0; font-family: ${F.display}; font-size: 22px; font-weight: 500; color: ${T.ink}; letter-spacing: -0.012em; }
+.cw-all-close { width: 36px; height: 36px; border-radius: 999px; border: 1px solid ${T.rule}; background: ${T.vellum}; color: ${T.ink}; font-size: 20px; cursor: pointer; display: grid; place-items: center; }
+.cw-all-close:hover { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
+.cw-all-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr; }
+@media (max-width: 760px) { .cw-all-body { grid-template-columns: 1fr; } .cw-all-side { border-right: 0 !important; border-bottom: 1px solid ${T.rule}; } }
+.cw-all-side { border-right: 1px solid ${T.rule}; background: ${T.paper2}; padding: 16px 18px; overflow-y: auto; }
+.cw-all-filterblock { margin-bottom: 18px; }
+.cw-all-filter-label { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.inkSoft}; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.cw-all-bulk { display: inline-flex; gap: 6px; align-items: center; font-family: ${F.ui}; font-size: 11px; letter-spacing: 0; text-transform: none; }
+.cw-all-bulk button { background: none; border: 0; padding: 0; cursor: pointer; color: ${T.indigo}; font-size: 11px; }
+.cw-all-bulk button:disabled { color: ${T.inkSoft}; cursor: default; }
+.cw-all-jx { display: flex; gap: 6px; flex-wrap: wrap; }
+.cw-all-jx button { padding: 5px 12px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 999px; font-size: 12px; color: ${T.inkMid}; cursor: pointer; }
+.cw-all-jx button.on { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
+.cw-all-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cw-all-cats label { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 13px; color: ${T.ink}; cursor: pointer; }
+.cw-all-cats label:hover { background: ${T.vellum}; }
+.cw-all-cats input { width: 14px; height: 14px; accent-color: ${T.ink}; }
+.cw-all-cat-icon { font-size: 12px; line-height: 1; }
+.cw-all-sort { width: 100%; height: 34px; padding: 0 10px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 8px; font-family: ${F.ui}; font-size: 13px; color: ${T.ink}; }
+.cw-all-results { padding: 16px 22px 22px; overflow-y: auto; }
+.cw-all-count { font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: ${T.inkSoft}; margin-bottom: 12px; }
+.cw-all-empty { padding: 28px; background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 12px; font-family: ${F.display}; font-style: italic; color: ${T.inkMid}; text-align: center; }
+.cw-all-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.cw-all-card { display: block; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 12px; overflow: hidden; text-decoration: none; color: inherit; transition: transform .15s, border-color .15s, box-shadow .15s; }
+.cw-all-card:hover { transform: translateY(-2px); border-color: ${T.ink}; box-shadow: 0 12px 24px -16px rgba(29,36,51,0.2); }
+.cw-all-card-plate { position: relative; aspect-ratio: 16/6; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; }
+.cw-all-card-plate::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(29,36,51,0.04) 0 14px, transparent 14px 32px), linear-gradient(180deg, ${T.paper2}, ${T.paper3}); }
+.cw-all-card-plate::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%); }
+.cw-all-card-plate[data-c="uk"]::after { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
+.cw-all-card-plate[data-c="ca"]::after { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
+.cw-all-card-tag { position: absolute; left: 10px; bottom: 8px; padding: 3px 7px; background: rgba(29,36,51,0.85); color: #fff; font-family: ${F.mono}; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; border-radius: 3px; }
+.cw-all-card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cw-all-card-body h4 { margin: 0; font-family: ${F.display}; font-size: 14px; font-weight: 500; line-height: 1.3; color: ${T.ink}; }
+.cw-all-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: ${T.inkSoft}; }
+.cw-all-card-rating { color: ${T.inkMid}; }
+.cw-all-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding-top: 8px; border-top: 1px solid ${T.ruleSoft}; }
+.cw-all-card-delivery { font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-all-card-price { font-family: ${F.display}; font-weight: 600; font-size: 16px; color: ${T.ink}; }
+
 .cw-help-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 6px; border: 1px solid transparent; border-radius: 999px; font-family: ${F.ui}; font-size: 12px; font-weight: 500; color: ${T.inkMid}; cursor: pointer; transition: all .12s; }
 .cw-help-trigger:hover, .cw-help[aria-expanded="true"] .cw-help-trigger { color: ${T.ink}; background: ${T.paper2}; border-color: ${T.rule}; }
 .cw-help-icon { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: ${T.indigo}; color: #fff; font-family: ${F.display}; font-style: italic; font-size: 11px; font-weight: 600; line-height: 1; }
@@ -749,6 +833,17 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
   const totalActive = slice.totalActive
   const currency = slice.currency
   const baseCountryParam = active === 'all' ? '' : `&country=${active}`
+
+  // Featured fallback: if the active jurisdiction has no gigs at all, borrow
+  // the global most-popular gig (max(impressions, reviews)) so the hero is
+  // never empty. The badge marks it as a cross-jurisdiction example.
+  const caseFileToShow = slice.caseFile ?? data.slices.all.caseFile
+  const caseFileIsFallback = !slice.caseFile && !!data.slices.all.caseFile
+
+  // Featured grid fallback: same idea — fill with global top 6 if the slice
+  // has nothing.
+  const featuredToShow = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
+  const featuredIsFallback = slice.featured.length === 0 && data.slices.all.featured.length > 0
 
   const trustItems: Array<{ label: string }> = []
   if (totalActive > 0) trustItems.push({ label: `${totalActive.toLocaleString('en-US')} active briefs` })
@@ -854,37 +949,37 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             </div>
           </div>
 
-          {slice.caseFile ? (
+          {caseFileToShow ? (
             <a
               className="hero-card-link"
-              href={slice.caseFile.slug ? `/marketplace/gigs/${slice.caseFile.slug}` : withCountry('/marketplace?sort=most_orders', active)}
-              aria-label={`Open ${slice.caseFile.title}`}
+              href={caseFileToShow.slug ? `/marketplace/gigs/${caseFileToShow.slug}` : withCountry('/marketplace?sort=most_orders', active)}
+              aria-label={`Open ${caseFileToShow.title}`}
               style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
             >
-            <aside className="hero-card" data-c={slice.caseFile.jx ?? 'us'} aria-label="Most-popular service listing">
+            <aside className="hero-card" data-c={caseFileToShow.jx ?? 'us'} aria-label="Most-popular service listing">
               <div className="file-meta">
-                <span>FILE · MC-{slice.caseFile.id.slice(0, 4).toUpperCase()}-{(slice.caseFile.providerCountry || (active !== 'all' ? active : 'XXX')).toUpperCase().slice(0, 3)}</span>
-                <span>VOL · III · {new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()}</span>
+                <span>FILE · MC-{caseFileToShow.id.slice(0, 4).toUpperCase()}-{(caseFileToShow.providerCountry || (caseFileToShow.jx ? caseFileToShow.jx : 'XXX')).toUpperCase().slice(0, 3)}</span>
+                <span>{caseFileIsFallback ? 'GLOBAL · TOP BRIEF' : 'MOST POPULAR'}</span>
               </div>
-              <h3>{slice.caseFile.title}</h3>
+              <h3>{caseFileToShow.title}</h3>
               <div className="attorney">
                 <div className="avatar" style={{ background: `linear-gradient(135deg, ${T.indigo}, ${T.indigoDeep})` }}>
-                  {initialsOf(slice.caseFile.providerName)}
+                  {initialsOf(caseFileToShow.providerName)}
                 </div>
                 <div className="attorney-name">
-                  <b>{slice.caseFile.providerName}</b>
-                  <span>{slice.caseFile.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
+                  <b>{caseFileToShow.providerName}</b>
+                  <span>{caseFileToShow.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
                 </div>
-                {slice.caseFile.review_count > 0 ? (
+                {caseFileToShow.review_count > 0 ? (
                   <div className="stars">
                     <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
-                    {slice.caseFile.avg_rating.toFixed(2)} <span className="rev">· {slice.caseFile.review_count}</span>
+                    {caseFileToShow.avg_rating.toFixed(2)} <span className="rev">· {caseFileToShow.review_count}</span>
                   </div>
                 ) : null}
               </div>
-              {slice.caseFile.caseTiers.length > 0 && (
+              {caseFileToShow.caseTiers.length > 0 && (
                 <div className="tiers">
-                  {slice.caseFile.caseTiers.map((t, i) => (
+                  {caseFileToShow.caseTiers.map((t, i) => (
                     <div key={i} className="tier-row">
                       <span className="lbl">{t.tier}</span>
                       <span className="name">{['Cover memo + checklist review', 'Full evidence pack & declarations', 'Pack + attorney signature'][i] ?? ''}</span>
@@ -893,14 +988,18 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                   ))}
                 </div>
               )}
-              {slice.caseFile.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
-              {slice.caseFile.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
+              {caseFileToShow.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
+              {caseFileToShow.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
+              {caseFileIsFallback && (
+                <div className="hero-fallback-hint">
+                  No <b>{slice.label}</b> briefs yet — showing the platform's top brief.
+                </div>
+              )}
             </aside>
             </a>
           ) : (
             <aside className="hero-empty">
-              No active briefs in <b>{slice.label}</b> yet —<br />
-              <a href="/?country=all" style={{ color: T.indigo, borderBottom: `1px solid ${T.indigo}` }}>see all jurisdictions →</a>
+              No active briefs yet — be the first to <a href={`${PORTAL_URL}/sign-up/attorney`} style={{ color: T.indigo, borderBottom: `1px solid ${T.indigo}` }}>list one</a>.
             </aside>
           )}
         </div>
@@ -917,14 +1016,18 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       </div>
 
       {/* Featured gigs */}
-      {slice.featured.length > 0 ? (
+      {featuredToShow.length > 0 ? (
         <section className="featured">
           <div className="wrap">
             <div className="section-head">
-              <h2>This week's <em>recommended {active !== 'all' ? slice.label.split(' ')[0] : ''} briefs.</em></h2>
+              <h2>{featuredIsFallback ? (
+                <>Global <em>top briefs.</em></>
+              ) : (
+                <>This week's <em>recommended {active !== 'all' ? slice.label.split(' ')[0] : ''} briefs.</em></>
+              )}</h2>
               <div className="meta">
-                <span>Ranked by demand &amp; review score</span>
-                <span><a href={withCountry('/marketplace?sort=trending', active)}>See all featured →</a></span>
+                <span>{featuredIsFallback ? `No ${slice.label} listings yet · showing global top` : 'Ranked by demand & review score'}</span>
+                <span><AllGigsDrawer initialCountry={active} /></span>
               </div>
             </div>
 
@@ -939,7 +1042,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             </div>
 
             <div className="gig-grid">
-              {slice.featured.map((g) => {
+              {featuredToShow.map((g) => {
                 const tag = `${(g.jx ?? active === 'all' ? (g.jx ?? 'us') : active).toUpperCase()} · ${(g.category ?? 'Brief').replace(/Services?$/i, '').trim()}`
                 const proLabel = g.provider_type === 'attorney' ? 'J.D.' : 'Reg.'
                 const cardCountry = g.jx ?? (active !== 'all' ? active : 'us')
@@ -985,17 +1088,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             </div>
           </div>
         </section>
-      ) : active !== 'all' ? (
-        <section className="featured">
-          <div className="wrap">
-            <div className="section-head">
-              <h2>No <em>{slice.label}</em> briefs yet.</h2>
-              <div className="meta">
-                <span><a href="/?country=all">See all jurisdictions →</a></span>
-              </div>
-            </div>
-          </div>
-        </section>
       ) : null}
 
       {/* How it works */}
@@ -1031,40 +1123,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </section>
 
-      {/* Reviews (only when real reviews exist) */}
-      {reviews.length > 0 && (
-        <section className="quotes">
-          <div className="wrap">
-            <div className="section-head">
-              <h2>What members <em>say.</em></h2>
-              <div className="meta">
-                <span>From buyers on completed briefs</span>
-              </div>
-            </div>
-
-            <div className="quotes-grid">
-              {reviews.map((r, i) => (
-                <div key={i} className="quote">
-                  <span className="stars">
-                    {Array.from({ length: 5 }).map((_, k) => (
-                      <svg key={k} viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style={{ opacity: k < r.rating ? 1 : 0.3 }}>
-                        <polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" />
-                      </svg>
-                    ))}
-                    {r.rating.toFixed(1)}
-                  </span>
-                  <blockquote>{r.body}</blockquote>
-                  <cite>
-                    <span className="av">{r.reviewerInitial}</span>
-                    <b>{r.reviewerName}</b> · on "{r.gigTitle}"
-                  </cite>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
       {/* Become a seller */}
       <section className="seller-cta">
         <div className="wrap">
@@ -1084,6 +1142,84 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
               <div className="stat"><b>Escrowed</b><span>Paid out on client approval</span></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Testimonials — always shown near bottom; uses real reviews if any */}
+      <section className="quotes">
+        <div className="wrap">
+          <div className="section-head">
+            <h2>Testimonials <em>from buyers.</em></h2>
+            <div className="meta">
+              <span>From completed briefs across the platform</span>
+            </div>
+          </div>
+
+          {reviews.length > 0 ? (
+            <div className="quotes-grid">
+              {reviews.map((r, i) => (
+                <div key={i} className="quote">
+                  <span className="stars">
+                    {Array.from({ length: 5 }).map((_, k) => (
+                      <svg key={k} viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style={{ opacity: k < r.rating ? 1 : 0.3 }}>
+                        <polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" />
+                      </svg>
+                    ))}
+                    {r.rating.toFixed(1)}
+                  </span>
+                  <blockquote>{r.body}</blockquote>
+                  <cite>
+                    <span className="av">{r.reviewerInitial}</span>
+                    <b>{r.reviewerName}</b> · on "{r.gigTitle}"
+                  </cite>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="quotes-empty">
+              No published reviews yet — every brief on YouSafe is escrowed and refundable, and reviewer names appear here once a buyer publishes one. Be the first to <a href={withCountry('/marketplace', active)} style={{ borderBottom: `1px solid ${T.indigo}`, color: T.indigo }}>commission a brief</a>.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Payments & trust strip */}
+      <section className="payments">
+        <div className="wrap payments-inner">
+          <div className="payments-block">
+            <div className="payments-label">Payments accepted</div>
+            <div className="payments-rail" aria-label="Cards and methods accepted">
+              <span className="paymark visa" aria-label="Visa">VISA</span>
+              <span className="paymark mc" aria-label="Mastercard">
+                <span className="mc-c1" /><span className="mc-c2" />
+              </span>
+              <span className="paymark amex" aria-label="American Express">AMEX</span>
+              <span className="paymark disc" aria-label="Discover">DISCOVER</span>
+              <span className="paymark apple" aria-label="Apple Pay">  Pay</span>
+              <span className="paymark google" aria-label="Google Pay">G Pay</span>
+            </div>
+          </div>
+          <div className="payments-block">
+            <div className="payments-label">Buyer protection</div>
+            <ul className="payments-trust">
+              <li><span aria-hidden="true">🔒</span> PCI-compliant card processing</li>
+              <li><span aria-hidden="true">⚖️</span> Funds held in escrow until you approve</li>
+              <li><span aria-hidden="true">↩️</span> Refundable when work doesn't clear review</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ — restored near bottom with dynamic hover-to-expand */}
+      <section className="faq-section" id="faq">
+        <div className="wrap">
+          <div className="section-head">
+            <h2>Before you <em>start.</em></h2>
+            <div className="meta">
+              <span>Hover any question to reveal the answer</span>
+            </div>
+          </div>
+          <FaqAccordion items={FAQS} />
         </div>
       </section>
 
