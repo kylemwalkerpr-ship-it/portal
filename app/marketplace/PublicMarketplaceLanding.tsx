@@ -13,6 +13,7 @@ import { HelpDropdown } from '@/components/marketplace/HelpDropdown'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import MarketplaceFeed from '@/components/marketplace/MarketplaceFeed'
+import MarketplaceAuthNav from '@/components/marketplace/MarketplaceAuthNav'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -894,10 +895,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             <button type="submit" className="go">Search</button>
           </form>
 
-          <nav className="nav-links">
-            <a href={`${PORTAL_URL}/sign-in/student`}>Sign in</a>
-            <a className="cta" href={signUpHref('nav')}>Open portal</a>
-          </nav>
+          <MarketplaceAuthNav signUpHref={signUpHref('nav')} />
         </div>
       </header>
 

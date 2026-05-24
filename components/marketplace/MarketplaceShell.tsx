@@ -6,10 +6,12 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { T, F } from './tokens'
+import MarketplaceAuthNav from './MarketplaceAuthNav'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
 const MyInquiries   = dynamic(() => import('@/components/design/my-inquiries'),   { ssr: false })
+const UnifiedInbox  = dynamic(() => import('@/components/messaging/UnifiedInbox'), { ssr: false })
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -111,57 +113,32 @@ function OrdersPanel({ role }: { role: Role }) {
 }
 
 function MessagesPanel({ role }: { role: Role }) {
-  const [chats, setChats]     = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError]     = React.useState('')
-
-  React.useEffect(() => {
-    const endpoint = role === 'attorney'   ? '/api/attorney/chats'
-                   : role === 'client'     ? '/api/client/attorney-chats'
-                   : null
-    if (!endpoint) { setLoading(false); return }
-    fetch(endpoint, { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => setChats(data?.chats ?? []))
-      .catch(() => setError('Could not load messages.'))
-      .finally(() => setLoading(false))
-  }, [role])
-
-  return (
-    <PanelShell title="Messages" icon="💬">
-      {loading && <LoadingRows />}
-      {error   && <ErrorCard msg={error} />}
-      {!loading && !error && chats.length === 0 && (
+  if (!role) {
+    return (
+      <PanelShell title="Messages" icon="💬">
         <EmptyCard
           icon="💬"
-          title="No conversations yet"
-          body="Open an attorney profile or gig listing and click 'Message' to start a conversation."
-          cta={{ label: 'Browse Marketplace', view: 'browse' }}
+          title="Log in to message attorneys + consultants"
+          body="Create a YouSafe account to start a conversation, view your inbox, and track every chat in one place."
+          cta={{ label: 'Create your account', view: 'open-portal' }}
         />
-      )}
-      {!loading && !error && chats.map((c: any) => (
-        <div key={c.id} style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '8px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 1px 3px rgba(29,36,51,0.05)' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: T.paper2, border: `1px solid ${T.rule}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
-            {(c.attorney_name || c.client_name || c.name || '?')[0]?.toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: '14px', color: T.ink, marginBottom: '2px' }}>{c.attorney_name || c.client_name || c.name || 'Conversation'}</div>
-            <div style={{ fontSize: '12px', color: T.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.last_message || 'No messages yet'}</div>
-          </div>
-          {c.pending_offers > 0 && (
-            <span style={{ flexShrink: 0, background: 'rgba(196,164,90,0.15)', color: '#6c5314', border: '1px solid rgba(196,164,90,0.35)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
-              {c.pending_offers} offer{c.pending_offers > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      ))}
-      {!loading && !error && chats.length > 0 && (
-        <p style={{ fontSize: '12px', color: T.inkSoft, textAlign: 'center', margin: '8px 0 0' }}>
-          For full messaging, go to your{' '}
-          <Link href="https://portal.yousafeconsultancy.com/dashboard?goto=messages" style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>Dashboard Messages →</Link>
-        </p>
-      )}
-    </PanelShell>
+      </PanelShell>
+    )
+  }
+
+  return (
+    <div className="yousafe-messenger" style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <UnifiedInbox
+        canSendOffer={role === 'attorney' || role === 'consultant'}
+        defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+        onThreadChange={(id: string | null) => {
+          if (typeof window === 'undefined') return
+          const url = new URL(window.location.href)
+          if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
+          window.history.replaceState({}, '', url.toString())
+        }}
+      />
+    </div>
   )
 }
 
@@ -200,13 +177,25 @@ function ErrorCard({ msg }: { msg: string }) {
 
 function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; body: string; cta?: { label: string; view: string } }) {
   const router = useRouter()
+  const handleCta = () => {
+    if (!cta) return
+    if (cta.view === 'open-portal') {
+      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_messages_empty'
+      return
+    }
+    if (cta.view === 'browse') {
+      router.push('/marketplace')
+      return
+    }
+    router.push(`/marketplace?view=${cta.view}`)
+  }
   return (
     <div style={{ background: T.vellum, border: `1px dashed ${T.rule}`, borderRadius: '8px', padding: '40px 24px', textAlign: 'center' as const }}>
       <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.4 }}>{icon}</div>
       <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: '18px', color: T.ink, marginBottom: '8px' }}>{title}</div>
       <div style={{ fontSize: '13px', color: T.inkSoft, lineHeight: 1.6, marginBottom: cta ? '20px' : 0 }}>{body}</div>
       {cta && (
-        <button onClick={() => router.push(`/marketplace`)} style={{ display: 'inline-flex', alignItems: 'center', padding: '9px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: T.indigo, color: '#fff', border: 'none', cursor: 'pointer', fontFamily: F.ui }}>
+        <button onClick={handleCta} style={{ display: 'inline-flex', alignItems: 'center', padding: '9px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: T.indigo, color: '#fff', border: 'none', cursor: 'pointer', fontFamily: F.ui }}>
           {cta.label}
         </button>
       )}
@@ -287,6 +276,9 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
           })}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: `1px solid ${T.ruleSoft}`, flexShrink: 0 }}>
+          <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: `1px solid ${T.ruleSoft}`, flexShrink: 0 }}>
           <GlobalLanguageBar />
         </div>
       </div>
@@ -323,6 +315,10 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
 
   // When a nav button is clicked, update state AND URL so browser history works
   const handleNav = React.useCallback((view: Section) => {
+    if (view === 'open-portal') {
+      window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_messages_empty'
+      return
+    }
     setSection(view)
     if (view === 'browse') {
       router.push('/marketplace')
