@@ -54,7 +54,10 @@ export default async function Page({
   }
 
   const auth = await getOptionalPortalUser()
-  if (auth && auth.role !== 'client') {
+  // Students may be stored as either 'client' or legacy 'student' in profiles.role
+  // (see app/api/sellers/[id]/route.ts:140 + lib/roleLanes.ts). Accept both so a
+  // student doesn't get bounced market → /dashboard → portal/dashboard.
+  if (auth && auth.role !== 'client' && auth.role !== 'student') {
     redirect('/dashboard')
   }
 
