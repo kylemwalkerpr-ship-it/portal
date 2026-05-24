@@ -299,10 +299,10 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-          <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
+          <GlobalLanguageBar />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
-          <GlobalLanguageBar />
+          <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
       </div>
     </header>
