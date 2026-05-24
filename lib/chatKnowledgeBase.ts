@@ -204,6 +204,70 @@ escrow + workflow.
 
 ---
 
+## United Kingdom — common topics
+
+### Student Route (formerly Tier 4)
+- For full-time international students at a UK institution that holds a
+  Student sponsor licence.
+- Typical end-to-end timeline: **3–8 weeks** from CAS issuance to
+  decision; apply no earlier than **6 months before course start**.
+- Documents at submission: valid passport, CAS reference number from
+  the sponsoring institution, evidence of funds held for the
+  **28-day rule** (tuition + maintenance for first 9 months — currently
+  £1,334/month inside London, £1,023/month outside), English-language
+  proof, ATAS certificate if applicable, TB test result for some
+  nationalities, parental consent for under-18s.
+- **Refusals** can sometimes be addressed via administrative review
+  (28-day window from refusal); appeal rights are limited. Route refusal
+  cases to the legal panel for a UK solicitor.
+
+### Graduate Route
+- 2-year post-study work visa (3 years for PhD graduates), no sponsor
+  required. Apply **before Student visa expires** and while still in the
+  UK; cannot apply from overseas.
+- Documents: completion confirmation from the institution, BRP / eVisa,
+  Immigration Health Surcharge payment.
+
+### Skilled Worker visa
+- Sponsor-coordinated route after a job offer from a UKVI-licensed
+  employer. Salary thresholds reviewed annually — currently **£38,700
+  general threshold** with going-rate exceptions for shortage and
+  health/care roles.
+- Switching from Student Route to Skilled Worker is allowed in-country
+  without leaving the UK. We organise the supporting evidence; the
+  certificate of sponsorship and any legal challenge go via the panel.
+
+### Spouse / partner visa
+- For partners of British citizens, settled persons, or those with
+  refugee status. Minimum income requirement of **£29,000** (or
+  combination with savings), genuine-relationship evidence,
+  accommodation proof.
+- Initial 33-month grant, then extension, then **5-year route to ILR**.
+
+### ILR (Indefinite Leave to Remain) & naturalisation
+- ILR after 5 years on most qualifying routes (10 years long-residence
+  route also available). Then **12 months on ILR** before naturalising
+  as a British citizen (3 years if married to a British citizen).
+- ILR / naturalisation requires the **Life in the UK Test** and English
+  proof (CEFR B1+).
+
+### Tenancy & Renters' Rights Act 2025
+- Section 21 evictions abolished; every assured shorthold tenancy now
+  operates as a monthly periodic tenancy. Rent rises only via Section
+  13 notice once per year. Deposit must be in TDS / MyDeposits / DPS
+  within 30 days.
+- Tenancy reviews go through the legal panel — solicitor admitted in
+  England and Wales.
+
+### Costs (rough)
+- Tuition: **~£12,000–£40,000+/year** depending on institution and
+  course level.
+- Living (Student Route maintenance): **£1,334/month London,
+  £1,023/month elsewhere** — used as the official threshold and as
+  a reasonable budget floor.
+
+---
+
 ## Services (what YouSafe does for you)
 
 ### USA
@@ -236,18 +300,41 @@ escrow + workflow.
 - **Attorney Review (Legal Panel)** — routes to a licensed Canadian
   attorney or RCIC when the matter needs legal advice.
 
+### United Kingdom
+- **Student Route & CAS Document Prep** — Student Route application,
+  CAS verification, financial requirement evidence (28-day rule),
+  English-language proof, document checklist for UKVI.
+- **University Admissions** — UCAS, personal statement, CAS issuance
+  timeline, deferral and clearing support.
+- **Graduate Route & Skilled Worker Document Prep** — Graduate Route
+  switch after course completion, Skilled Worker certificate-of-
+  sponsorship organisation, salary-threshold evidence, switching jobs.
+- **Spouse, Partner & Family Visa Documents** — financial requirement
+  (£29,000 minimum), genuine-relationship evidence, accommodation
+  proof, child-best-interests packets for parent route.
+- **Settlement (ILR) & Naturalisation** — five-year continuous-
+  residence tracking, Life in the UK Test prep, English-language
+  evidence, BRP / eVisa handling.
+- **Tenancy Document Review** — Renters' Rights Act 2025, deposit
+  protection, Section 8 grounds, student-HMO clauses.
+- **Mentorship & Ongoing Support** — monthly check-ins through the
+  course and post-graduation visa switch.
+- **Solicitor Review (Legal Panel)** — routes to a UK solicitor
+  admitted in England and Wales when the matter needs legal advice
+  (refusals, administrative review, ILR borderline cases).
+
 ### Pricing
 - Canada packages start at **$299**.
-- USA packages and detail pricing live on the regional pages and on the
-  marketplace at portal.yousafeconsultancy.com/marketplace — quote the
-  marketplace listing rather than a fixed number unless the user is on
-  the marketplace already.
+- USA and UK packages and detail pricing live on the regional pages and
+  on the marketplace at portal.yousafeconsultancy.com/marketplace —
+  quote the marketplace listing rather than a fixed number unless the
+  user is on the marketplace already.
 - Free 15-minute discovery call available.
 - Payment methods: credit card, PayPal, bank transfer at the marketing
   checkout. The portal also supports a USD wallet, saved cards, and
-  NMI tokenized checkout. Catalogue prices show in **USD or CAD** based
-  on the user's currency selector; charging always happens in the
-  service's native currency at the storefront.
+  NMI tokenized checkout. Catalogue prices show in **USD, GBP, or CAD**
+  based on the user's currency selector; charging always happens in
+  the service's native currency at the marketplace.
 
 ---
 
