@@ -52,7 +52,7 @@ function navLinksForRole(role: Role | null): NavLink[] {
   if (role === 'client')     return CLIENT_NAV
   // public / unauthenticated
   return [
-    { icon: '🏬', label: 'Browse', view: 'browse' },
+    { icon: '', label: 'Categories', view: 'categories' },
     { icon: '⚖️', label: 'Find Attorney', view: 'attorneys' },
   ]
 }
@@ -207,7 +207,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
 
 // ─── top nav bar ─────────────────────────────────────────────────────────────
 
-function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; onNav: (v: Section) => void }) {
+function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' }) {
   const [scrolled, setScrolled] = React.useState(false)
 
   React.useEffect(() => {
@@ -233,32 +233,54 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
         fontFamily: F.ui,
       }}
     >
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'stretch' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56 }}>
 
-        {/* Brand — clicking takes the user back to their dashboard */}
+        {/* Brand */}
         <Link
-          href="https://portal.yousafeconsultancy.com/dashboard"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', borderRight: `1px solid ${T.ruleSoft}`, textDecoration: 'none', flexShrink: 0, height: '48px' }}
+          href={role === null ? '/marketplace' : 'https://portal.yousafeconsultancy.com/dashboard'}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', textDecoration: 'none', flexShrink: 0 }}
         >
-          <div style={{ textAlign: 'left' as const }}>
-            <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-            <div style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
-              {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
+          {role === null ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                width: 22, height: 22, borderRadius: 4,
+                background: T.indigo, color: '#fff',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: F.display, fontWeight: 600, fontSize: 13,
+              }}>Y</span>
+              <span style={{
+                fontFamily: F.display, fontSize: 17, fontWeight: 600,
+                color: T.ink, letterSpacing: '0.005em',
+              }}>YouSafe</span>
             </div>
-          </div>
+          ) : (
+            <div style={{ textAlign: 'left' as const }}>
+              <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+              <div style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
+              </div>
+            </div>
+          )}
         </Link>
 
-        {/* Nav tabs — all navigation stays inside the marketplace shell */}
-        <nav style={{ display: 'flex', alignItems: 'stretch', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
+        {/* Nav tabs */}
+        <nav style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
           {links.map(link => {
             const active = link.view === activeView
+            if (link.view === 'categories') {
+              return (
+                <div key="categories" style={{ display: 'flex', alignItems: 'center' }}>
+                  <CategoriesMenu country={country} />
+                </div>
+              )
+            }
             return (
               <button
                 key={link.view}
                 onClick={() => onNav(link.view as Section)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '0 16px', height: '48px',
+                  padding: '0 16px',
                   fontSize: '12.5px', fontWeight: active ? 600 : 500,
                   color: active ? T.ink : T.inkSoft,
                   background: active ? T.indigoSoft : 'none',
@@ -285,7 +307,7 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
             role="search"
             action="/marketplace"
             method="get"
-            style={{ display: 'flex', alignItems: 'center', background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '999px', height: '40px', padding: '0 6px 0 16px', gap: '10px', transition: 'border-color .15s, box-shadow .15s', marginRight: '12px' }}
+            style={{ display: 'flex', alignItems: 'center', background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '999px', padding: '0 6px 0 16px', gap: '10px', transition: 'border-color .15s, box-shadow .15s', marginRight: '12px' }}
             onFocus={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.ink; (e.currentTarget as HTMLFormElement).style.boxShadow = '0 0 0 4px rgba(29,36,51,0.06)' }}
             onBlur={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.rule; (e.currentTarget as HTMLFormElement).style.boxShadow = 'none' }}
           >
@@ -296,16 +318,16 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
             <input
               name="q"
               placeholder="Search services — I-130, OPT, Section 21…"
-              style={{ flex: 1, height: '100%', border: 0, background: 'transparent', font: 'inherit', fontSize: '14px', color: T.ink, outline: 'none' }}
+              style={{ flex: 1, border: 0, background: 'transparent', font: 'inherit', fontSize: '14px', color: T.ink, outline: 'none' }}
             />
             <button type="submit" style={{ height: '32px', padding: '0 14px', borderRadius: '999px', background: T.ink, color: '#fff', fontSize: '12.5px', fontWeight: 600, letterSpacing: '0.01em', border: 'none', cursor: 'pointer' }}>Search</button>
           </form>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: `1px solid ${T.ruleSoft}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: `1px solid ${T.ruleSoft}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <GlobalLanguageBar />
         </div>
       </div>
@@ -372,11 +394,11 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     <div className="cw-market" style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui }}>
       {/* Top nav — always visible once role is known */}
       {roleLoaded && (
-        <TopNav role={role} activeView={section} onNav={handleNav} />
+        <TopNav role={role} activeView={section} onNav={handleNav} country={country} />
       )}
 
-      {/* Sub-nav — categories + jurisdiction tabs, only on browse */}
-      {roleLoaded && section === 'browse' && (
+      {/* Sub-nav — categories + jurisdiction tabs, only on browse for signed-in users */}
+      {roleLoaded && role !== null && section === 'browse' && (
         <div className="country-bar" id="jurisdictions" style={{ borderBottom: `1px solid ${T.rule}`, background: T.vellum }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px' }}>
             <div className="country-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', flexWrap: 'wrap' }}>

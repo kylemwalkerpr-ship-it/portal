@@ -39,8 +39,22 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
   if (!isSignedIn) {
     return (
       <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 8 }} suppressHydrationWarning>
-        <a href={`${PORTAL_URL}/sign-in/student`}>Sign in</a>
-        <a className="cta" href={signUpHref}>Open portal</a>
+        <a
+          href={`${PORTAL_URL}/sign-in/student`}
+          style={{
+            fontFamily: F.ui, fontSize: 13, fontWeight: 500,
+            color: T.ink, textDecoration: 'none',
+            padding: '8px 14px', borderRadius: 999,
+          }}
+        >Sign in</a>
+        <a
+          href={signUpHref}
+          style={{
+            fontFamily: F.ui, fontSize: 13, fontWeight: 600,
+            color: '#fff', textDecoration: 'none',
+            background: T.indigo, padding: '8px 16px', borderRadius: 999,
+          }}
+        >Open portal</a>
       </nav>
     )
   }
