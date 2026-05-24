@@ -203,8 +203,6 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     }
   }
 
-  if (!open) return null
-
   const header = (
     <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
       <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
@@ -320,6 +318,8 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       </div>
     </div>
   )
+
+  if (!open) return null
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
