@@ -661,6 +661,14 @@ export function InquiryDetail({ inquiryId, onBack }) {
     }
   }
 
+  const scalarAnswers = React.useMemo(() => {
+    const answers = data?.inquiry?.answers
+    if (!answers || typeof answers !== 'object') return []
+    return Object.entries(answers)
+      .filter(([k]) => !k.startsWith('_'))
+      .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
+  }, [data?.inquiry?.answers])
+
   if (loading) return <div style={notice}>Loading inquiry...</div>
   if (error) return <div style={errorNotice}>{error}</div>
   if (!data) return null
@@ -669,13 +677,6 @@ export function InquiryDetail({ inquiryId, onBack }) {
   const threads = data.threads || []
   const clientMessages = data.client_messages || []
   const systemMessages = data.system_messages || []
-
-  const scalarAnswers = React.useMemo(() => {
-    if (!inquiry.answers || typeof inquiry.answers !== 'object') return []
-    return Object.entries(inquiry.answers)
-      .filter(([k]) => !k.startsWith('_'))
-      .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
-  }, [inquiry.answers])
 
   function toggleExpand(key) {
     setExpandedAnswers((prev) => {
