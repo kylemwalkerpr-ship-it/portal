@@ -17,8 +17,12 @@ function accentFor(role: string): string {
   return T.indigo
 }
 
-function formatPrice(cents: number): string {
-  return `$${(cents / 100).toLocaleString()}`
+function formatPrice(cents: number | null): string | null {
+  if (cents == null || !Number.isFinite(cents)) return null
+  const dollars = cents / 100
+  return dollars % 1 === 0
+    ? `$${dollars.toLocaleString()}`
+    : `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function initials(name: string): string {
@@ -158,15 +162,66 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                         objectFit: 'cover',
                       }}
                     />
-                  ) : (
+                  ) : gig.providerAvatarUrl ? (
+                    // No gig cover → centred provider avatar on a clean tile.
+                    // Never invent imagery; show who the seller actually is.
                     <div
                       style={{
                         position: 'absolute',
                         inset: 0,
-                        background: `${accent}12`,
-                        backgroundImage: `repeating-linear-gradient(135deg, ${accent}22 0px, ${accent}22 10px, ${accent}38 10px, ${accent}38 20px)`,
+                        background: T.surface2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
-                    />
+                    >
+                      <img
+                        src={gig.providerAvatarUrl}
+                        alt=""
+                        loading="lazy"
+                        style={{
+                          width: 96,
+                          height: 96,
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
+                          border: `3px solid ${T.surface}`,
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    // Neither a gig cover nor a provider headshot. Fall back to
+                    // a centred initials avatar — still real provider data.
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: T.surface2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 96,
+                          height: 96,
+                          borderRadius: '50%',
+                          background: accent,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontFamily: T.serif,
+                          fontSize: 32,
+                          fontWeight: 600,
+                          boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
+                          border: `3px solid ${T.surface}`,
+                        }}
+                      >
+                        {initials(gig.providerName)}
+                      </div>
+                    </div>
                   )}
 
                   {/* Top-left tag */}
@@ -254,24 +309,39 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                       gap: 10,
                     }}
                   >
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        background: accent,
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontFamily: T.sans,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {initials(gig.providerName)}
-                    </div>
+                    {gig.providerAvatarUrl ? (
+                      <img
+                        src={gig.providerAvatarUrl}
+                        alt=""
+                        loading="lazy"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: accent,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontFamily: T.sans,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {initials(gig.providerName)}
+                      </div>
+                    )}
                     <div style={{ minWidth: 0 }}>
                       <div
                         style={{
@@ -319,57 +389,70 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                     {gig.title}
                   </h3>
 
-                  {/* Rating row */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      fontFamily: T.sans,
-                      fontSize: 13,
-                      color: T.inkSoft,
-                    }}
-                  >
-                    <span
+                  {/* Rating + delivery row — only render facts we actually have.
+                      Never invent a rating or a delivery window. */}
+                  {(gig.reviewCount > 0 || gig.deliveryDays != null) && (
+                    <div
                       style={{
-                        display: 'inline-flex',
+                        display: 'flex',
                         alignItems: 'center',
-                        gap: 4,
-                        color: T.gold,
-                        fontWeight: 600,
+                        gap: 8,
+                        fontFamily: T.sans,
+                        fontSize: 13,
+                        color: T.inkSoft,
                       }}
                     >
-                      <Star size={14} stroke={2} />
-                      {gig.avgRating.toFixed(1)}
-                    </span>
-                    <span>({gig.reviewCount.toLocaleString()})</span>
-                    <span style={{ color: T.inkDim }}>·</span>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <Clock size={14} stroke={1.5} />
-                      {gig.deliveryDays} day{gig.deliveryDays !== 1 ? 's' : ''}
-                    </span>
-                  </div>
+                      {gig.reviewCount > 0 && (
+                        <>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              color: T.gold,
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Star size={14} stroke={2} />
+                            {gig.avgRating.toFixed(1)}
+                          </span>
+                          <span>({gig.reviewCount.toLocaleString()})</span>
+                        </>
+                      )}
+                      {gig.reviewCount > 0 && gig.deliveryDays != null && (
+                        <span style={{ color: T.inkDim }}>·</span>
+                      )}
+                      {gig.deliveryDays != null && (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <Clock size={14} stroke={1.5} />
+                          {gig.deliveryDays} day{gig.deliveryDays !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Footer */}
-                  <div
-                    style={{
-                      marginTop: 'auto',
-                      borderTop: `1px solid ${T.rule}`,
-                      paddingTop: 12,
-                      fontFamily: T.sans,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      color: T.ink,
-                    }}
-                  >
-                    From {formatPrice(gig.startingPrice)}
-                  </div>
+                  {/* Footer — only when we have a real price from gig_tiers */}
+                  {formatPrice(gig.startingPrice) && (
+                    <div
+                      style={{
+                        marginTop: 'auto',
+                        borderTop: `1px solid ${T.rule}`,
+                        paddingTop: 12,
+                        fontFamily: T.sans,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: T.ink,
+                      }}
+                    >
+                      From {formatPrice(gig.startingPrice)}
+                    </div>
+                  )}
                 </div>
               </a>
             )
