@@ -36,11 +36,30 @@ export interface HeroSlide {
 interface Props {
   slides: HeroSlide[]
   currency: string
-  formatPrice: (cents: number | null, currency?: string) => string
-  initialsOf: (name: string) => string
-  withCountry: (href: string, country: string) => string
   T: Record<string, string>
   F: Record<string, string>
+}
+
+// Helpers inlined — functions cannot cross the RSC → client boundary.
+function formatPrice(cents: number | null, currency = 'USD'): string {
+  if (cents == null) return '—'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(cents / 100))
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).slice(0, 2)
+  return parts.map((p) => p.charAt(0).toUpperCase()).join('') || 'YS'
+}
+
+function withCountry(href: string, country: string): string {
+  if (country === 'all') return href
+  const sep = href.includes('?') ? '&' : '?'
+  return `${href}${sep}country=${country}`
 }
 
 const INDIGO = '#3C3B6E'
@@ -59,9 +78,6 @@ const UI = "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 export default function HeroCaseFileSlideshow({
   slides,
   currency,
-  formatPrice,
-  initialsOf,
-  withCountry,
   T,
 }: Props) {
   const [index, setIndex] = React.useState(0)

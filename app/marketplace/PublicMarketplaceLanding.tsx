@@ -936,9 +936,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           <HeroCaseFileSlideshow
             slides={deduped}
             currency={currency}
-            formatPrice={formatPrice}
-            initialsOf={initialsOf}
-            withCountry={withCountry}
             T={T}
             F={F}
           />
