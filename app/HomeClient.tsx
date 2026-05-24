@@ -30,14 +30,21 @@ export default function HomeClient({ gigs, providers }: HomeClientProps) {
           backgrounds, so each one occludes the previous one cleanly.
           Section list deliberately lean — the original 13-section deck
           read as filler and density. Order: intro → product → pillars →
-          process → proof → FAQ → CTA. */}
-      <div className="stack-section"><Hero onSignup={() => { window.location.href = '/sign-up/student' }} /></div>
-      <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
-      <div className="stack-section"><TwoPractices /></div>
-      <div className="stack-section"><HowItWorks /></div>
-      <div className="stack-section"><FeaturedProviders providers={providers} /></div>
-      <div className="stack-section"><FAQ /></div>
-      <div className="stack-section"><FinalCTA /></div>
+          process → proof → FAQ → CTA.
+          The .stack-wrapper bounds the cascade: position: sticky pins
+          only while its containing block is in view, so when the wrapper
+          scrolls past, the last section releases and the footer (a
+          sibling of HomeClient in page.tsx) flows in normally instead
+          of being covered by a perpetually-pinned FinalCTA. */}
+      <div className="stack-wrapper">
+        <div className="stack-section"><Hero onSignup={() => { window.location.href = '/sign-up/student' }} /></div>
+        <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
+        <div className="stack-section"><TwoPractices /></div>
+        <div className="stack-section"><HowItWorks /></div>
+        <div className="stack-section"><FeaturedProviders providers={providers} /></div>
+        <div className="stack-section"><FAQ /></div>
+        <div className="stack-section"><FinalCTA /></div>
+      </div>
       <MemberSignInModal open={signInOpen} onClose={() => setSignInOpen(false)} />
     </>
   )
