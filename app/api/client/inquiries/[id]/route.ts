@@ -1,4 +1,7 @@
 import { requireClient } from '@/lib/clientAuth'
+import { ok, fail } from '@/lib/apiEnvelope'
+import { safetyGuard } from '@/lib/safety'
+import { recommendTier } from '@/lib/intake-questions'
 
 // Returns the inquiry + a per-attorney thread structure:
 //   threads: [{ attorney_id, attorney_profile_id, attorney_name, messages, offers }]
@@ -93,4 +96,186 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     client_messages: clientMessages,
     system_messages: systemMessages,
   })
+}
+
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const { ctx, error, status } = await requireClient()
+  if (!ctx) return Response.json({ error }, { status })
+
+  const { id } = await context.params
+
+  const { data: inquiry } = await ctx.db
+    .from('inquiries')
+    .select('id, email, client_profile_id, country, case_type, case_type_label, urgency, recommended_tier, answers, status, archived_at, target_attorney_profile_id, created_at, updated_at')
+    .eq('id', id)
+    .single()
+
+  if (!inquiry) return fail('Inquiry not found.', 404)
+
+  const owns = inquiry.client_profile_id === ctx.profileId || inquiry.email === ctx.email
+  if (!owns) return fail('Forbidden.', 403)
+
+  if (inquiry.archived_at) return fail('Inquiry is archived.', 409, { reason: 'archived' })
+  if (inquiry.status === 'converted') return fail('Inquiry has been converted to an order.', 409, { reason: 'converted' })
+
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return fail('Invalid JSON.', 400)
+  }
+
+  const updates: Record<string, unknown> = {}
+  const answers: Record<string, unknown> = { ...(inquiry.answers as Record<string, unknown> || {}) }
+
+  if ('country' in body) {
+    const v = typeof body.country === 'string' ? body.country.trim().toUpperCase().slice(0, 4) : ''
+    if (v) updates.country = v
+  }
+
+  if ('case_type' in body) {
+    const v = typeof body.case_type === 'string' ? body.case_type.trim().slice(0, 80) : ''
+    if (v) updates.case_type = v
+  }
+
+  if ('case_type_label' in body) {
+    const v = typeof body.case_type_label === 'string' ? body.case_type_label.trim().slice(0, 200) : ''
+    updates.case_type_label = v || null
+  }
+
+  if ('urgency' in body) {
+    const v = typeof body.urgency === 'string' ? body.urgency.trim().slice(0, 60) : ''
+    updates.urgency = v || null
+  }
+
+  if ('target_attorney_profile_id' in body) {
+    updates.target_attorney_profile_id = typeof body.target_attorney_profile_id === 'string' ? body.target_attorney_profile_id : null
+  }
+
+  if ('headline' in body) {
+    const v = typeof body.headline === 'string' ? body.headline.trim().slice(0, 120) : ''
+    if (v.length > 0 && v.length < 5) return fail('Headline must be at least 5 characters.', 422)
+    if (v) answers._headline = v
+    else delete answers._headline
+  }
+
+  if ('summary' in body) {
+    const v = typeof body.summary === 'string' ? body.summary.trim().slice(0, 400) : ''
+    answers._summary = v || undefined
+  }
+
+  if ('answers' in body && body.answers && typeof body.answers === 'object') {
+    const newAnswers = body.answers as Record<string, unknown>
+    for (const [k, v] of Object.entries(newAnswers)) {
+      if (!k.startsWith('_')) {
+        answers[k] = v
+      }
+    }
+  }
+
+  const headline = typeof answers._headline === 'string' ? answers._headline : ''
+  const summary = typeof answers._summary === 'string' ? answers._summary : ''
+  const scanText = `${headline} ${summary}`.trim()
+  if (scanText) {
+    const s = safetyGuard(scanText)
+    if (!s.ok) {
+      return fail(s.error || 'Message blocked by safety filter.', 422, { violations: s.violations })
+    }
+  }
+
+  updates.answers = answers
+
+  const countryChanged = 'country' in updates
+  const caseTypeChanged = 'case_type' in updates
+  const answersChanged = 'answers' in updates
+
+  if (countryChanged || caseTypeChanged || answersChanged) {
+    const newCountry = (updates.country || inquiry.country) as string
+    const newCaseType = (updates.case_type || inquiry.case_type) as string
+    const tier = recommendTier(newCountry as any, newCaseType, answers as any)
+    updates.recommended_tier = tier.tier
+  }
+
+  updates.updated_at = new Date().toISOString()
+
+  const { data: updated, error: updErr } = await ctx.db
+    .from('inquiries')
+    .update(updates)
+    .eq('id', id)
+    .select('id, case_type_label, case_type, country, urgency, recommended_tier, status, claimed_by_attorney_id, claimed_at, source, archived_at, archived_by_role, archived_reason, answers, created_at, updated_at')
+    .single()
+
+  if (updErr || !updated) {
+    return fail(updErr?.message || 'Update failed.', 500)
+  }
+
+  const { data: statusRow } = await ctx.db
+    .from('inquiry_statuses')
+    .select('id')
+    .eq('inquiry_id', id)
+    .maybeSingle()
+
+  if (statusRow) {
+    await ctx.db
+      .from('inquiry_statuses')
+      .update({
+        payload: {
+          country_flag: updated.country,
+          case_type_label: updated.case_type_label,
+          urgency: (updated.answers as any)?.urgency,
+          tier: updated.recommended_tier,
+          headline: (updated.answers as any)?._headline,
+        },
+      })
+      .eq('inquiry_id', id)
+  }
+
+  return ok({ inquiry: updated })
+}
+
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const { ctx, error, status } = await requireClient()
+  if (!ctx) return Response.json({ error }, { status })
+
+  const { id } = await context.params
+
+  const { data: inquiry } = await ctx.db
+    .from('inquiries')
+    .select('id, email, client_profile_id')
+    .eq('id', id)
+    .single()
+
+  if (!inquiry) return fail('Inquiry not found.', 404)
+
+  const owns = inquiry.client_profile_id === ctx.profileId || inquiry.email === ctx.email
+  if (!owns) return fail('Forbidden.', 403)
+
+  const { count: orderCount, error: orderErr } = await ctx.db
+    .from('orders')
+    .select('*', { count: 'exact', head: true })
+    .eq('source_inquiry_id', id)
+
+  if (orderErr) {
+    console.error('[client/inquiries] order pre-flight error', orderErr.message)
+    return fail('Could not verify order link.', 500)
+  }
+
+  if ((orderCount ?? 0) > 0) {
+    return fail('This inquiry produced an order; archive it instead.', 409, { reason: 'order_exists' })
+  }
+
+  const { error: delErr } = await ctx.db
+    .from('inquiries')
+    .delete()
+    .eq('id', id)
+
+  if (delErr) {
+    const code = (delErr as any).code
+    if (code === '23503' || code === 'P0001') {
+      return fail('This inquiry produced an order; archive it instead.', 409, { reason: 'order_exists' })
+    }
+    return fail(delErr.message, 500)
+  }
+
+  return ok({ deleted: true })
 }

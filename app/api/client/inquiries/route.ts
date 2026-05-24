@@ -1,10 +1,9 @@
 import { requireClient } from '@/lib/clientAuth'
 
-
 // Returns inquiries the signed-in client either owns by profile_id, or that
 // match their email (covers anonymous submissions made before the user signed
 // up, which we backfill on the fly).
-export async function GET() {
+export async function GET(req: Request) {
   const { ctx, error, status } = await requireClient()
   if (!ctx) return Response.json({ error }, { status })
 
@@ -22,11 +21,24 @@ export async function GET() {
     console.error('[client/inquiries] backfill error', backfill.error.message)
   }
 
-  const { data, error: qErr } = await ctx.db
+  const url = new URL(req.url)
+  const includeArchived = url.searchParams.get('include') === 'archived'
+  const statusFilter = url.searchParams.get('status') || undefined
+
+  let query = ctx.db
     .from('inquiries')
-    .select('id, case_type_label, country, urgency, status, claimed_by_attorney_id, claimed_at, source, created_at')
+    .select('id, case_type_label, case_type, country, urgency, recommended_tier, status, claimed_by_attorney_id, claimed_at, source, archived_at, archived_by_role, archived_reason, answers, created_at, updated_at')
     .eq('client_profile_id', ctx.profileId)
     .order('created_at', { ascending: false })
+
+  if (!includeArchived) {
+    query = query.is('archived_at', null)
+  }
+  if (statusFilter) {
+    query = query.eq('status', statusFilter)
+  }
+
+  const { data, error: qErr } = await query
 
   if (qErr) {
     if (isMissingTable(qErr.message)) {
@@ -36,7 +48,24 @@ export async function GET() {
     return Response.json({ error: qErr.message }, { status: 500 })
   }
 
-  return Response.json({ inquiries: (data ?? []).filter((q) => q.source !== 'portal_attorney_chat') })
+  const inquiries = (data ?? []).filter((q) => q.source !== 'portal_attorney_chat')
+
+  // Join order_id from orders table via source_inquiry_id
+  let enriched = inquiries
+  if (inquiries.length > 0) {
+    const ids = inquiries.map((q) => q.id)
+    const { data: orders } = await ctx.db
+      .from('orders')
+      .select('id, source_inquiry_id')
+      .in('source_inquiry_id', ids)
+    const orderByInquiry = new Map((orders ?? []).map((o) => [o.source_inquiry_id, o.id]))
+    enriched = inquiries.map((q) => ({
+      ...q,
+      order_id: orderByInquiry.get(q.id) || null,
+    }))
+  }
+
+  return Response.json({ inquiries: enriched })
 }
 
 function isMissingTable(message: string | undefined | null): boolean {

@@ -24,6 +24,21 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const counterpartId = conv.participant_a === profileId ? conv.participant_b : conv.participant_a
 
+  // Brief 47 §6.1: fetch source inquiry archived_at for messenger banner
+  let sourceInquiryArchivedAt: string | null = null
+  if (conv.context_kind === 'inquiry' && conv.context_id) {
+    try {
+      const { data: inq } = await db
+        .from('inquiries')
+        .select('archived_at')
+        .eq('id', conv.context_id)
+        .maybeSingle()
+      sourceInquiryArchivedAt = inq?.archived_at || null
+    } catch {
+      // non-fatal
+    }
+  }
+
   const [messagesRes, counterpartRes, participantRes] = await Promise.all([
     db.from('conversation_messages')
       .select('id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, reply_to_id, metadata, created_at')
@@ -193,6 +208,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       status:       conv.status,
       created_at:   conv.created_at,
       last_message_at: conv.last_message_at,
+      source_inquiry_archived_at: sourceInquiryArchivedAt,
     },
     messages,
     sidebar: {

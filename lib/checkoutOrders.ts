@@ -307,6 +307,7 @@ async function markSourcePaid(db: Db, item: CheckoutItem, orderId: string, accep
       .update({ status: 'accepted', decided_at: acceptedAt, order_id: orderId, client_profile_id: item.clientProfileId })
       .eq('id', item.sourceOfferId)
     if (item.sourceInquiryId) {
+      // Brief 47: status='converted' is what triggers the attorney-queue auto-removal in /api/attorney/inquiries
       await db.from('inquiries').update({ status: 'converted', updated_at: acceptedAt }).eq('id', item.sourceInquiryId)
     }
   }

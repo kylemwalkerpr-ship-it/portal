@@ -38,16 +38,28 @@ export async function GET(req: Request) {
     return Response.json({ inquiries: (data ?? []).filter((q) => q.source !== 'portal_attorney_chat') })
   }
 
-  // Default: open queue (anything not finalised). Attorneys see all such
-  // inquiries even after another attorney has engaged — competing offers are
-  // expected. Surfaces targeted_to_me first so a directly addressed inquiry
-  // jumps to the top of this attorney's queue.
-  const { data, error: qErr } = await ctx.db
+  // Brief 47 §B.7: queue must not surface inquiries that already produced an accepted offer or that the client archived.
+  // 1. Find inquiry_ids with accepted offers
+  const { data: acceptedOffers } = await ctx.db
+    .from('attorney_offers')
+    .select('inquiry_id')
+    .eq('status', 'accepted')
+
+  const acceptedInquiryIds = (acceptedOffers ?? []).map((o) => o.inquiry_id).filter(Boolean)
+
+  let query = ctx.db
     .from('inquiries')
     .select('id, email, full_name, phone, country, case_type, case_type_label, urgency, recommended_tier, answers, status, source, target_attorney_profile_id, created_at')
-    .in('status', ['open', 'engaged', 'claimed'])
+    .is('archived_at', null)
+    .not('status', 'in', '("converted","archived")')
     .order('created_at', { ascending: false })
     .limit(200)
+
+  if (acceptedInquiryIds.length > 0) {
+    query = query.not('id', 'in', acceptedInquiryIds)
+  }
+
+  const { data, error: qErr } = await query
 
   if (qErr) return Response.json({ error: qErr.message }, { status: 500 })
 
