@@ -4,11 +4,8 @@ import { translateBatch } from '@/lib/serverTranslate'
 import { EstateFooter } from '@/components/EstateFooter'
 import { SeoIntroBlock } from '@/components/SeoIntroBlock'
 import HomeClient from './HomeClient'
-import { getLandingStats } from '@/components/design/landing/data/stats'
-import { getCategoryCounts } from '@/components/design/landing/data/categories'
 import { getFeaturedGigs } from '@/components/design/landing/data/featured-services'
 import { getFeaturedProviders } from '@/components/design/landing/data/featured-providers'
-import { getTestimonials } from '@/components/design/landing/data/testimonials'
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
 
@@ -75,12 +72,9 @@ const HOMEPAGE_JSONLD = [
 ]
 
 export default async function Page() {
-  const [stats, categoryCounts, gigs, providers, testimonials] = await Promise.all([
-    getLandingStats(),
-    getCategoryCounts(),
+  const [gigs, providers] = await Promise.all([
     getFeaturedGigs(),
     getFeaturedProviders(),
-    getTestimonials(),
   ])
 
   return (
@@ -100,13 +94,7 @@ export default async function Page() {
         title="Study abroad consulting and legal document review in one secure portal."
         description="Trusted by students, attorneys, and consultants across the US, UK, and Canada. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
       />
-      <HomeClient
-        stats={stats}
-        categoryCounts={categoryCounts}
-        gigs={gigs}
-        providers={providers}
-        testimonials={testimonials}
-      />
+      <HomeClient gigs={gigs} providers={providers} />
       <EstateFooter />
     </>
   )
