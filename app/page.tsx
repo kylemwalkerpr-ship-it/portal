@@ -72,6 +72,12 @@ const HOMEPAGE_JSONLD = [
 export default async function Page() {
   return (
     <>
+      <link
+        rel="preload"
+        as="image"
+        href="https://media.yousafeconsultancy.com/hero/student-working.poster.jpg?v=20260524"
+        fetchPriority="high"
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(HOMEPAGE_JSONLD) }}
