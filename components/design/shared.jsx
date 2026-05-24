@@ -62,6 +62,7 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick = unde
     success: { background: 'rgba(95,107,58,0.10)', color: C.green, border: `1px solid rgba(95,107,58,0.25)` },
     outline: { background: 'transparent', color: C.text, border: `1px solid ${hovered && !disabled ? C.text : 'rgba(0,0,0,0.18)'}` },
     navy: { background: C.navy, color: '#fff', boxShadow: hovered && !disabled ? `0 6px 18px ${C.navyGlow}` : `0 1px 2px ${C.navyGlow}` },
+    brand: { background: '#3C3B6E', color: '#fff', boxShadow: hovered && !disabled ? '0 6px 18px rgba(60,59,110,0.30)' : '0 1px 2px rgba(60,59,110,0.18)' },
   }
   return (
     <button
