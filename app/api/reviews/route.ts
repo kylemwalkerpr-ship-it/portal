@@ -15,9 +15,14 @@ export async function GET(request: Request) {
 
   const db = createSupabaseAdminClient()
 
+  // NB: the real column is `reviewer_id` (FK constraint
+  // gig_reviews_reviewer_id_fkey). We keep the JSON key as `client` and
+  // alias the DB column `body` → `comment` so the existing ReviewsSection
+  // consumer continues to read review.client / review.comment unchanged.
   let query = db.from('gig_reviews').select(`
     *,
-    client:profiles!gig_reviews_client_id_fkey(
+    comment:body,
+    client:profiles!gig_reviews_reviewer_id_fkey(
       id,
       full_name,
       email,
@@ -55,12 +60,10 @@ export async function GET(request: Request) {
     query = query.gte('rating', parseInt(minRating))
   }
 
-  // Filter by reply status
-  if (hasReply === 'true') {
-    query = query.not('seller_reply', 'is', null)
-  } else if (hasReply === 'false') {
-    query = query.is('seller_reply', null)
-  }
+  // Reply-status filter intentionally no-op: the gig_reviews table does
+  // not have a `seller_reply` column today (replies live in a sibling
+  // table). The query param is accepted for forward-compat but ignored.
+  void hasReply
 
   // Sort
   switch (sort) {
@@ -193,7 +196,7 @@ export async function POST(request: Request) {
     .from('gig_reviews')
     .select('id')
     .eq('gig_id', gig_id)
-    .eq('client_id', profile.id)
+    .eq('reviewer_id', profile.id)
     .single()
 
   if (existingReview) {
@@ -225,17 +228,18 @@ export async function POST(request: Request) {
     }
   }
 
-  // Create review
+  // Create review. The real schema has reviewer_id + body; title and
+  // is_verified_purchase don't exist on the table and are accepted on the
+  // input for forward-compat but dropped here.
+  void title
   const { data: review, error } = await db
     .from('gig_reviews')
     .insert({
       gig_id,
       order_id: order_id || null,
-      client_id: profile.id,
+      reviewer_id: profile.id,
       rating,
-      title: title || null,
-      comment,
-      is_verified_purchase: !!order_id,
+      body: comment,
       status: 'published',
     })
     .select()
