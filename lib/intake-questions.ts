@@ -50,7 +50,7 @@ const URGENCY_OPTIONS: QuestionOption[] = [
   { id: 'explore', label: 'Just exploring',   help: 'No timeline yet' },
 ]
 
-const URGENCY_QUESTION: Question = {
+export const URGENCY_QUESTION: Question = {
   id: 'urgency',
   type: 'select',
   label: 'When does this need to happen?',
@@ -59,7 +59,7 @@ const URGENCY_QUESTION: Question = {
   required: true,
 }
 
-const PRIOR_DENIAL_QUESTION: Question = {
+export const PRIOR_DENIAL_QUESTION: Question = {
   id: 'prior_denial',
   type: 'select',
   label: 'Have you ever been denied a visa, refused entry, or had immigration trouble?',

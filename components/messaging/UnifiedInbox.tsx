@@ -14,6 +14,7 @@ import StatusViewer from './StatusViewer'
 import MessengerSettings from './MessengerSettings'
 import ArchivedView from './ArchivedView'
 import StarredView from './StarredView'
+import InquiryComposer from './InquiryComposer'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
 /**
@@ -86,6 +87,10 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [statusViewerOpen, setStatusViewerOpen] = React.useState(false)
   const [statusViewerPersonId, setStatusViewerPersonId] = React.useState(null)
 
+  // Role + profile detection
+  const [role, setRole] = React.useState<string | null>(null)
+  const [myProfileId, setMyProfileId] = React.useState<string | null>(null)
+
   // Settings panel
   const [showSettings, setShowSettings] = React.useState(false)
   const [theme, setTheme] = React.useState('light')
@@ -94,8 +99,20 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [wallpaperUrl, setWallpaperUrl] = React.useState('')
   const [globalMute, setGlobalMute] = React.useState(false)
 
-  // Mount: read persisted settings from localStorage and apply to DOM
+  // Inquiry composer modal
+  const [showInquiryComposer, setShowInquiryComposer] = React.useState(false)
+
+  // Mount: read role, persisted settings from localStorage and apply to DOM
   React.useLayoutEffect(() => {
+    // Fetch role
+    fetch('/api/profile', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => {
+        setRole(d?.profile?.role || null)
+        setMyProfileId(d?.profile?.id || null)
+      })
+      .catch(() => { setRole(null) })
+
     const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
     if (!root) return
 
@@ -565,6 +582,30 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           </div>
         </div>
 
+        {role === 'client' && (
+          <button
+            type="button"
+            className="cl-pill on"
+            onClick={() => setShowInquiryComposer(true)}
+            style={{
+              marginBottom: 10,
+              background: 'var(--indigo)',
+              color: '#fff',
+              borderColor: 'var(--indigo)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontWeight: 600,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Inquiry
+          </button>
+        )}
+
         <div className="cl-search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
@@ -948,7 +989,31 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         <StatusViewer
           statuses={statuses.filter(s => s.person_id === statusViewerPersonId)}
           onClose={() => { setStatusViewerOpen(false); setStatusViewerPersonId(null) }}
-          viewerId={activeConv?.counterpart?.id}
+          viewerId={myProfileId}
+          viewerRole={role}
+          onRespond={async (statusId) => {
+            try {
+              const r = await fetch(`/api/statuses/${statusId}/respond`, {
+                method: 'POST',
+                credentials: 'same-origin',
+              })
+              const d = await r.json().catch(() => ({}))
+              if (!r.ok) {
+                setThreadError(d?.error?.message || 'Could not respond.')
+                return
+              }
+              const convId = d?.data?.conversation_id
+              if (convId) {
+                setStatusViewerOpen(false)
+                setStatusViewerPersonId(null)
+                setActiveId(convId)
+                await loadThread(true)
+                await loadList(true)
+              }
+            } catch {
+              setThreadError('Network error. Please try again.')
+            }
+          }}
         />
       )}
       <MessengerSettings
@@ -965,6 +1030,19 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         onChangeWallpaperUrl={handleChangeWallpaperUrl}
         onToggleGlobalMute={handleToggleGlobalMute}
       />
+      {showInquiryComposer && (
+        <InquiryComposer
+          onClose={() => setShowInquiryComposer(false)}
+          onSubmit={() => {
+            setShowInquiryComposer(false)
+            // Refresh statuses so the new one appears in the ring
+            fetch('/api/statuses', { credentials: 'same-origin' })
+              .then(r => r.json().catch(() => ({})))
+              .then(d => { setStatuses(Array.isArray(d?.statuses) ? d.statuses : []) })
+              .catch(() => {})
+          }}
+        />
+      )}
     </div>
   )
 }

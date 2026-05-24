@@ -16,13 +16,19 @@ interface StatusViewerProps {
   initialIndex?: number
   onClose: () => void
   viewerId?: string | null
+  viewerRole?: string | null
+  onRespond?: (statusId: string) => void
 }
 
-export default function StatusViewer({ statuses, initialIndex = 0, onClose, viewerId }: StatusViewerProps) {
+export default function StatusViewer({ statuses, initialIndex = 0, onClose, viewerId, viewerRole, onRespond }: StatusViewerProps) {
   const [idx, setIdx] = React.useState(initialIndex)
   const [progress, setProgress] = React.useState(0)
   const status = statuses[idx]
   const isMine = status?.person_id === viewerId
+  const canRespond =
+    !isMine &&
+    ['attorney', 'consultant'].includes(viewerRole || '') &&
+    !!onRespond
 
   /* progress bar / auto-advance */
   React.useEffect(() => {
@@ -155,9 +161,39 @@ export default function StatusViewer({ statuses, initialIndex = 0, onClose, view
               }}>
                 {urgencyLabel}
               </span>
+              {payload.tier && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                  padding: '4px 10px', borderRadius: 999,
+                  background: 'rgba(60,59,110,0.10)', color: '#3C3B6E',
+                }}>
+                  {payload.tier}
+                </span>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Footer / Respond CTA */}
+        {canRespond && (
+          <div style={{ padding: '0 16px 16px', display: 'flex', justifyContent: 'center' }}>
+            <button
+              onClick={() => onRespond?.(status.id)}
+              style={{
+                padding: '10px 24px', borderRadius: 999,
+                background: '#3C3B6E', color: '#fff',
+                border: 'none', fontSize: 14, fontWeight: 600,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              Respond
+            </button>
+          </div>
+        )}
 
         {/* Nav buttons */}
         {statuses.length > 1 && (
