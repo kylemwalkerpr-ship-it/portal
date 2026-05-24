@@ -107,7 +107,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         {/* hreflang removed pending per-locale URL routes */}
       </head>
-      <body style={{ overflowX: 'hidden' }}>
+      {/* overflowX: 'clip' — `hidden` here turns body into a scroll container,
+          which silently breaks position: sticky on the landing nav and every
+          other sticky header. `clip` suppresses horizontal overflow without
+          establishing a scroll context. */}
+      <body style={{ overflowX: 'clip' }}>
         <a href="#main" className="yousafe-skip-link">Skip to main content</a>
         <ClerkProvider
           afterSignOutUrl={PORTAL_URL}
