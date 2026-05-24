@@ -17,6 +17,7 @@ import StarredView from './StarredView'
 import InquiryComposer from './InquiryComposer'
 import ProfilePreviewDrawer from './ProfilePreviewDrawer'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
 
 /**
  * UnifiedInbox
@@ -105,6 +106,14 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Profile preview drawer
   const [previewSellerId, setPreviewSellerId] = React.useState<string | null>(null)
+
+  // Brief 47 §6.2: realtime delete tracking
+  const [deletedInquiryId, setDeletedInquiryId] = React.useState<string | null>(null)
+  const [deletedConvId, setDeletedConvId] = React.useState<string | null>(null)
+
+  // Brief 47 §6.3: status delete menu
+  const [statusMenuFor, setStatusMenuFor] = React.useState<string | null>(null)
+  const [statusMenuPos, setStatusMenuPos] = React.useState({ x: 0, y: 0 })
 
   // Mount: read role, persisted settings from localStorage and apply to DOM
   React.useLayoutEffect(() => {
@@ -239,6 +248,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       setActiveMsgs([]); setActiveConv(null); setActiveSidebar({ orders: [], offers: [] })
       return
     }
+    // Brief 47 §6.2: if this conversation's inquiry was deleted, preserve placeholder
+    if (deletedConvId === activeId) {
+      if (!silent) setThreadLoading(false)
+      return
+    }
     if (!silent) setThreadLoading(true)
     setThreadError('')
     try {
@@ -259,7 +273,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     } finally {
       if (!silent) setThreadLoading(false)
     }
-  }, [activeId])
+  }, [activeId, deletedConvId])
 
   React.useEffect(() => { loadThread(false) }, [loadThread])
 
@@ -271,6 +285,39 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }, 8_000)
     return () => clearInterval(id)
   }, [activeId, loadThread])
+
+  // Brief 47 §6.2: realtime subscribe to inquiries DELETE
+  React.useEffect(() => {
+    const off = subscribeToTable('inquiries', 'public', (payload) => {
+      if (payload.eventType !== 'DELETE' || !payload.old?.id) return
+      const inqId = payload.old.id as string
+      // Find conversation(s) tied to this inquiry
+      setConversations(prev => {
+        const toRemove = prev.filter(c => c.context_kind === 'inquiry' && c.context_id === inqId)
+        if (toRemove.length > 0) {
+          const removedConvId = toRemove[0].id
+          setDeletedInquiryId(inqId)
+          setDeletedConvId(removedConvId)
+          // If the deleted inquiry's chat is open, show placeholder and keep for 30s
+          if (activeId === removedConvId) {
+            setActiveConv((prevConv: any) => prevConv ? { ...prevConv, _deleted: true } : null)
+          }
+          // Unmount after ~30 seconds
+          setTimeout(() => {
+            setDeletedInquiryId(prev => prev === inqId ? null : prev)
+            setDeletedConvId(prev => prev === removedConvId ? null : prev)
+            if (activeId === removedConvId) {
+              setActiveId(null)
+              setActiveMsgs([])
+              setActiveConv(null)
+            }
+          }, 30_000)
+        }
+        return prev.filter(c => !(c.context_kind === 'inquiry' && c.context_id === inqId))
+      })
+    })
+    return () => off()
+  }, [activeId])
 
   const loadStarred = React.useCallback(async () => {
     try {
@@ -667,6 +714,51 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       </div>
 
       <div className="cl-scroll">
+        {/* Brief 47 §6.3: Student's own status tile with delete broadcast control */}
+        {role === 'client' && statuses.filter(s => s.person_id === myProfileId).length > 0 && (
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-soft)', marginBottom: 8 }}>My status</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {statuses.filter(s => s.person_id === myProfileId).map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+                  <div
+                    style={{ cursor: 'pointer', flexShrink: 0 }}
+                    onClick={() => {
+                      setStatusViewerPersonId(s.person_id)
+                      setStatusViewerOpen(true)
+                    }}
+                  >
+                    <StatusRing hasStatus={true} viewed={!!s.viewed} size={40}>
+                      <div className="row-avatar" style={{ background: '#3C3B6E', width: 40, height: 40, fontSize: 14 }}>
+                        {initials(s.person_name || 'You')}
+                      </div>
+                    </StatusRing>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{s.payload?.case_type_label || 'Inquiry'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>{fmtRelative(s.created_at)} · {s.payload?.country_flag || '🌍'}</div>
+                  </div>
+                  <button
+                    className="iconbtn"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      setStatusMenuPos({ x: rect.left - 140, y: rect.bottom + 4 })
+                      setStatusMenuFor(s.id)
+                    }}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="5" r="1" />
+                      <circle cx="12" cy="12" r="1" />
+                      <circle cx="12" cy="19" r="1" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Archived row — always render if count > 0, stub click */}
         {archivedCount > 0 && (
           <button className="cl-archived" onClick={() => setShowArchived(true)}>
@@ -791,6 +883,41 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           onClose={() => setMenuFor(null)}
         />
       )}
+
+      {statusMenuFor && (
+        <div
+          data-rowmenu
+          className="ctxmenu"
+          style={{ left: statusMenuPos.x, top: statusMenuPos.y }}
+        >
+          <button
+            className="ctxmenu-item danger"
+            onClick={async () => {
+              const status = statuses.find(s => s.id === statusMenuFor)
+              if (status?.inquiry_id) {
+                try {
+                  const r = await fetch(`/api/client/inquiries/${status.inquiry_id}/status`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                  })
+                  if (r.ok) {
+                    setStatuses(prev => prev.filter(s => s.id !== statusMenuFor))
+                  }
+                } catch {
+                  // silent
+                }
+              }
+              setStatusMenuFor(null)
+            }}
+          >
+            <span>🗑</span> Delete broadcast
+          </button>
+          <div className="ctxmenu-sep" />
+          <button className="ctxmenu-item" onClick={() => setStatusMenuFor(null)}>
+            <span>✕</span> Cancel
+          </button>
+        </div>
+      )}
     </div>
   )
 
@@ -876,6 +1003,51 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     </div>
   )
 
+  // ── Archive / delete flags ──────────────────────────────────────────
+  const isArchived = !!activeConv?.source_inquiry_archived_at
+  const isDeleted = deletedConvId === activeId
+
+  // ── Banner (archived inquiry) ───────────────────────────────────────
+  const banner = (isArchived && !isDeleted) ? (
+    <div style={{
+      padding: '8px 14px',
+      background: 'var(--panel-2)',
+      color: 'var(--text-soft)',
+      fontSize: 12,
+      borderBottom: '1px solid var(--border)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+    }}>
+      <span>⏸</span>
+      <span>This inquiry was archived {fmtRelative(activeConv.source_inquiry_archived_at)}. Existing messages are read-only.</span>
+    </div>
+  ) : null
+
+  // ── Composer ────────────────────────────────────────────────────────
+  const composer = activeId && (
+    <div className="comp">
+      {canSendOffer && showOfferComposer && !isArchived && !isDeleted && (
+        <div style={{ padding: '10px 14px 0', background: 'var(--panel-2)' }}>
+          <OfferComposerInline
+            conversationId={activeId}
+            onSent={() => { loadThread(true); loadList(true) }}
+            onClose={() => setShowOfferComposer(false)}
+          />
+        </div>
+      )}
+      <AutoGrowInput
+        value={draft}
+        onChange={setDraft}
+        onSubmit={send}
+        disabled={sending || isArchived || isDeleted}
+        placeholder={isDeleted ? 'This inquiry was deleted by the client. No further actions are possible.' : isArchived ? 'Inquiry archived — cannot send new messages.' : 'Type a message…'}
+        replyTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
+      />
+    </div>
+  )
+
   // ── Messages area ───────────────────────────────────────────────────
   const messages = !activeId ? (
     <div className="cv-empty-full" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -884,6 +1056,14 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       <p style={{ maxWidth: '36ch', color: 'var(--text-soft)', lineHeight: 1.6, fontSize: 13, margin: 0 }}>
         Pick a conversation from the left, or start a new one.
       </p>
+    </div>
+  ) : isDeleted ? (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+      <div style={{ textAlign: 'center', maxWidth: '40ch', padding: '0 24px' }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>🗑</div>
+        <div style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontSize: 17, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>This inquiry was deleted by the client.</div>
+        <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>No further actions are possible.</div>
+      </div>
     </div>
   ) : (
     <>
@@ -943,30 +1123,6 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     </>
   )
 
-  // ── Composer ────────────────────────────────────────────────────────
-  const composer = activeId && (
-    <div className="comp">
-      {canSendOffer && showOfferComposer && (
-        <div style={{ padding: '10px 14px 0', background: 'var(--panel-2)' }}>
-          <OfferComposerInline
-            conversationId={activeId}
-            onSent={() => { loadThread(true); loadList(true) }}
-            onClose={() => setShowOfferComposer(false)}
-          />
-        </div>
-      )}
-      <AutoGrowInput
-        value={draft}
-        onChange={setDraft}
-        onSubmit={send}
-        disabled={sending}
-        placeholder="Type a message…"
-        replyTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-      />
-    </div>
-  )
-
   return (
     <div className="yousafe-messenger" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -974,6 +1130,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           mode="split"
           sidebar={sidebar}
           header={header}
+          banner={banner}
           messages={messages}
           composer={composer}
         />
@@ -1046,6 +1203,21 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
             }
           }}
           onOpenProfile={(id) => setPreviewSellerId(id)}
+          onDeleteBroadcast={async (statusId, inquiryId) => {
+            try {
+              const r = await fetch(`/api/client/inquiries/${inquiryId}/status`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+              })
+              if (r.ok) {
+                setStatuses(prev => prev.filter(s => s.id !== statusId))
+                setStatusViewerOpen(false)
+                setStatusViewerPersonId(null)
+              }
+            } catch {
+              // silent
+            }
+          }}
         />
       )}
       <MessengerSettings
