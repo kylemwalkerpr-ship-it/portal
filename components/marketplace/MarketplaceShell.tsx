@@ -7,8 +7,8 @@ import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
-import { CategoriesMenu } from './CategoriesMenu'
-import { CountryTabs } from './CountryTabs'
+import { JurisdictionDropdown } from './JurisdictionDropdown'
+import { CategoryBar } from './CategoryBar'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
@@ -52,7 +52,6 @@ function navLinksForRole(role: Role | null): NavLink[] {
   if (role === 'client')     return CLIENT_NAV
   // public / unauthenticated
   return [
-    { icon: '', label: 'Categories', view: 'categories' },
     { icon: '⚖️', label: 'Find Attorney', view: 'attorneys' },
   ]
 }
@@ -267,13 +266,6 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         <nav style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
           {links.map(link => {
             const active = link.view === activeView
-            if (link.view === 'categories') {
-              return (
-                <div key="categories" style={{ display: 'flex', alignItems: 'center' }}>
-                  <CategoriesMenu country={country} />
-                </div>
-              )
-            }
             return (
               <button
                 key={link.view}
@@ -299,6 +291,12 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
             )
           })}
         </nav>
+
+        {role !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+            <JurisdictionDropdown active={country} />
+          </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
@@ -373,17 +371,9 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
         <TopNav role={role} activeView={section} onNav={handleNav} country={country} />
       )}
 
-      {/* Sub-nav — categories + jurisdiction tabs, only on browse for signed-in users */}
-      {roleLoaded && role !== null && section === 'browse' && (
-        <div className="country-bar" id="jurisdictions" style={{ borderBottom: `1px solid ${T.rule}`, background: T.vellum }}>
-          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px' }}>
-            <div className="country-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', flexWrap: 'wrap' }}>
-              <CategoriesMenu country={country} />
-              <div className="divider" style={{ height: '18px', width: '1px', background: T.rule, margin: '0 6px' }} />
-              <CountryTabs active={country} />
-            </div>
-          </div>
-        </div>
+      {/* Sub-nav — category bar, visible on browse for all users */}
+      {roleLoaded && section === 'browse' && (
+        <CategoryBar country={country} />
       )}
 
       {/* Section content OR marketplace pages */}
