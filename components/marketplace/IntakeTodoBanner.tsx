@@ -56,8 +56,8 @@ export function IntakeTodoBanner({ role }: Props) {
               {needsHandle ? 'Set your SEO handle to publish' : `${remaining}% to your publish-ready profile`}
             </div>
             <div style={sub}>
-              You're at <b style={{ color: '#1D2433' }}>{data.score}%</b>. Reach{' '}
-              <b style={{ color: '#1D2433' }}>{data.publish_threshold}%</b> and set a username to start posting gigs.
+              You're at <b style={{ color: '#0F172A' }}>{data.score}%</b>. Reach{' '}
+              <b style={{ color: '#0F172A' }}>{data.publish_threshold}%</b> and set a username to start posting gigs.
             </div>
           </div>
         </div>
@@ -80,10 +80,10 @@ export function IntakeTodoBanner({ role }: Props) {
 
 const wrap: React.CSSProperties = {
   position: 'sticky', top: 0, zIndex: 60,
-  background: 'linear-gradient(180deg, #FFFEF9 0%, #F4F0E6 100%)',
-  borderBottom: '1px solid #D9D1BD',
+  background: 'linear-gradient(180deg, #FFFFFF 0%, #EEF1F6 100%)',
+  borderBottom: '1px solid #E2E8F0',
   fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
-  color: '#1D2433',
+  color: '#0F172A',
 }
 const inner: React.CSSProperties = {
   width: 'min(1280px, calc(100vw - 32px))', margin: '0 auto', padding: '10px 0',
@@ -99,10 +99,10 @@ const dot: React.CSSProperties = {
 }
 const head: React.CSSProperties = {
   fontFamily: "var(--font-lora), Lora, Georgia, serif",
-  fontSize: 15, fontWeight: 600, color: '#1D2433', lineHeight: 1.2,
+  fontSize: 15, fontWeight: 600, color: '#0F172A', lineHeight: 1.2,
 }
 const sub: React.CSSProperties = {
-  fontSize: 12.5, color: '#4A4F5B', marginTop: 2, lineHeight: 1.4,
+  fontSize: 12.5, color: '#334155', marginTop: 2, lineHeight: 1.4,
 }
 const primaryCta: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', height: 32,
@@ -110,6 +110,6 @@ const primaryCta: React.CSSProperties = {
   borderRadius: 999, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
 }
 const dismissBtn: React.CSSProperties = {
-  width: 28, height: 28, border: '1px solid #D9D1BD', background: '#FFFEF9',
-  color: '#4A4F5B', borderRadius: '50%', fontSize: 18, lineHeight: 1, cursor: 'pointer',
+  width: 28, height: 28, border: '1px solid #E2E8F0', background: '#FFFFFF',
+  color: '#334155', borderRadius: '50%', fontSize: 18, lineHeight: 1, cursor: 'pointer',
 }

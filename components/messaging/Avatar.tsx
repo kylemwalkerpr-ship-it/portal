@@ -3,7 +3,7 @@
 import React from 'react'
 
 const AVATAR_BG = [
-  '#1B2D4F', '#3D2B6B', '#0E7C8E', '#1A6B45', '#8B5E0A', '#8B1A1A', '#5C6070',
+  '#0F172A', '#3D2B6B', '#0E7C8E', '#1A6B45', '#8B5E0A', '#8B1A1A', '#5C6070',
 ]
 
 function bgForId(id: string | null | undefined): string {

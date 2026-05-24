@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 import React from 'react'
 
@@ -12,7 +11,7 @@ const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 const mono  = "'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace"
 
-const NAVY = '#1B2D4F', NAVY2 = '#2C3F66'
+const NAVY = '#0F172A', NAVY2 = '#2C3F66'
 const GOLD = '#9A7B3B', GOLD2 = '#C4A45A'
 const GREEN = '#1A6B45', AMBER = '#8B5E0A', RED = '#8B1A1A', PURPLE = '#3D2B6B', CYAN = '#0E7C8E'
 const INK = '#0F1729'         // deep navy for the command-center background panel

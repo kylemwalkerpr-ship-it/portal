@@ -27,13 +27,13 @@ type Status = {
 
 const INDIGO = '#3C3B6E'
 const BRICK = '#B22234'
-const INK = '#1D2433'
-const INK_MID = '#4A4F5B'
-const INK_SOFT = '#7B7B72'
-const BORDER = '#D9D1BD'
-const PAPER = '#FBFAF7'
-const VELLUM = '#FFFEF9'
-const SOFT_BORDER = '#E7E0CD'
+const INK = '#0F172A'
+const INK_MID = '#334155'
+const INK_SOFT = '#64748B'
+const BORDER = '#E2E8F0'
+const PAPER = '#F7F8FA'
+const VELLUM = '#FFFFFF'
+const SOFT_BORDER = '#F1F5F9'
 const SERIF = "var(--font-lora), Lora, Georgia, serif"
 const SANS = "var(--font-inter), Inter, system-ui, sans-serif"
 

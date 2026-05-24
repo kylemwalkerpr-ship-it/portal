@@ -18,15 +18,15 @@ import MarketplaceAuthNav from '@/components/marketplace/MarketplaceAuthNav'
 /* ───────────────────────── Design tokens ────────────────────────── */
 
 const T = {
-  paper: '#FBFAF7',
-  paper2: '#F4F0E6',
-  paper3: '#ECE6D5',
-  vellum: '#FFFEF9',
-  ink: '#1D2433',
-  inkMid: '#4A4F5B',
-  inkSoft: '#7B7B72',
-  rule: '#D9D1BD',
-  ruleSoft: '#E7E0CD',
+  paper: '#F7F8FA',
+  paper2: '#EEF1F6',
+  paper3: '#DDE3EA',
+  vellum: '#FFFFFF',
+  ink: '#0F172A',
+  inkMid: '#334155',
+  inkSoft: '#64748B',
+  rule: '#E2E8F0',
+  ruleSoft: '#F1F5F9',
   indigo: '#3C3B6E',
   indigoDeep: '#2A2A55',
   indigoSoft: 'rgba(60,59,110,0.10)',
@@ -1090,7 +1090,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       ) : null}
 
       {/* Live marketplace pulse */}
-      <section style={{ padding: '48px 24px', background: '#F7F5F0', borderTop: '1px solid #E7E0CD' }}>
+      <section style={{ padding: '48px 24px', background: '#F7F5F0', borderTop: '1px solid #F1F5F9' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <MarketplaceFeed />
         </div>

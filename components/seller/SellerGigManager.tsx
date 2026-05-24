@@ -82,11 +82,11 @@ function EmptyState({ tab, onCreateClick }: { tab: Tab; onCreateClick?: () => vo
       padding: '48px 32px', textAlign: 'center', fontFamily: sans,
     }}>
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.3 }}>
-        <rect x="6" y="4" width="24" height="32" rx="2" stroke="#1B2D4F" strokeWidth="2" fill="none" />
-        <path d="M12 14h16M12 20h16M12 26h10" stroke="#1B2D4F" strokeWidth="2" strokeLinecap="round" />
-        <path d="M26 1v8h8" stroke="#1B2D4F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <rect x="6" y="4" width="24" height="32" rx="2" stroke="#0F172A" strokeWidth="2" fill="none" />
+        <path d="M12 14h16M12 20h16M12 26h10" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" />
+        <path d="M26 1v8h8" stroke="#0F172A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </svg>
-      <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#1B2D4F', margin: '0 0 8px', letterSpacing: '-0.01em' }}>
+      <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#0F172A', margin: '0 0 8px', letterSpacing: '-0.01em' }}>
         {isFiltered ? `No ${tab.toLowerCase()} services` : 'No services yet'}
       </h3>
       <p style={{ color: '#9097A8', fontSize: '14px', lineHeight: 1.65, margin: '0 auto 24px', maxWidth: '340px' }}>
@@ -98,7 +98,7 @@ function EmptyState({ tab, onCreateClick }: { tab: Tab; onCreateClick?: () => vo
         <Link href="/dashboard/gigs/new" style={{
           display: 'inline-flex', alignItems: 'center', gap: '6px',
           padding: '10px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
-          background: '#1B2D4F', color: '#FFFFFF', textDecoration: 'none', letterSpacing: '0.01em',
+          background: '#0F172A', color: '#FFFFFF', textDecoration: 'none', letterSpacing: '0.01em',
         }}>
           + Create First Service
         </Link>
@@ -172,7 +172,7 @@ export default function SellerGigManager() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' as const }}>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' as const }}>
           {[
-            { label: 'Total', value: gigs.length, color: '#1B2D4F' },
+            { label: 'Total', value: gigs.length, color: '#0F172A' },
             { label: 'Live', value: activeCount, color: '#1A6B45' },
             { label: 'Drafts', value: gigs.filter(g => g.status === 'draft').length, color: '#9A7B3B' },
           ].map(({ label, value, color }) => (
@@ -190,7 +190,7 @@ export default function SellerGigManager() {
             <div style={{
               height: '100%', borderRadius: '2px', transition: 'width 0.4s ease',
               width: `${Math.min(100, (count / gigLimit) * 100)}%`,
-              background: atLimit ? '#8B1A1A' : nearLimit ? '#8B5E0A' : '#1B2D4F',
+              background: atLimit ? '#8B1A1A' : nearLimit ? '#8B5E0A' : '#0F172A',
             }} />
           </div>
         </div>
@@ -216,8 +216,8 @@ export default function SellerGigManager() {
                 <button key={tab} type="button" onClick={() => setActiveTab(tab)} style={{
                   padding: '12px 18px', fontSize: '13px', fontWeight: isActive ? 600 : 400,
                   cursor: 'pointer', border: 'none', background: 'transparent',
-                  borderBottom: isActive ? '2px solid #1B2D4F' : '2px solid transparent',
-                  color: isActive ? '#1B2D4F' : '#9097A8',
+                  borderBottom: isActive ? '2px solid #0F172A' : '2px solid transparent',
+                  color: isActive ? '#0F172A' : '#9097A8',
                   whiteSpace: 'nowrap' as const, fontFamily: sans,
                   transition: 'color 0.12s, border-color 0.12s',
                 }}>
@@ -231,7 +231,7 @@ export default function SellerGigManager() {
             <Link href="/dashboard/gigs/new" style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '7px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
-              background: atLimit ? '#F2EFE9' : '#1B2D4F',
+              background: atLimit ? '#F2EFE9' : '#0F172A',
               color: atLimit ? '#9097A8' : '#FFFFFF',
               textDecoration: 'none', letterSpacing: '0.01em',
               pointerEvents: atLimit ? 'none' : 'auto',
@@ -258,7 +258,7 @@ export default function SellerGigManager() {
         {error && (
           <div style={{ padding: '24px 20px', textAlign: 'center' as const }}>
             <p style={{ color: '#8B1A1A', fontSize: '14px', margin: '0 0 12px' }}>{error}</p>
-            <button onClick={load} style={{ padding: '7px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#1B2D4F', color: '#FFF', border: 'none', cursor: 'pointer' }}>
+            <button onClick={load} style={{ padding: '7px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#0F172A', color: '#FFF', border: 'none', cursor: 'pointer' }}>
               Retry
             </button>
           </div>

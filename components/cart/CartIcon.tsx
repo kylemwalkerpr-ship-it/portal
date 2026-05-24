@@ -36,7 +36,7 @@ export function CartIcon() {
             padding: '0 5px',
             borderRadius: '9px',
             background: '#C4A45A',
-            color: '#1B2D4F',
+            color: '#0F172A',
             fontSize: '10px',
             fontWeight: 700,
             display: 'flex',

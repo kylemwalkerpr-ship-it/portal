@@ -37,9 +37,9 @@ export default function OfferRequestCard({ message, canRespond }: { message: any
         }}>
           Custom offer requested
         </div>
-        <h4 style={{ margin: '6px 0 0', fontFamily: 'var(--font-lora), Georgia, serif', fontSize: 18, color: '#1D2433', fontWeight: 600 }}>{title}</h4>
+        <h4 style={{ margin: '6px 0 0', fontFamily: 'var(--font-lora), Georgia, serif', fontSize: 18, color: '#0F172A', fontWeight: 600 }}>{title}</h4>
         {description ? (
-          <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4A4F5B', whiteSpace: 'pre-wrap' }}>{description}</p>
+          <p style={{ margin: '8px 0 0', fontSize: 13, color: '#334155', whiteSpace: 'pre-wrap' }}>{description}</p>
         ) : null}
       </div>
 

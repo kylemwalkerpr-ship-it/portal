@@ -10,16 +10,16 @@
   --msg-font-size: 14px;
 
   /* Marketplace neutrals (carry over from marketplace-home.html) */
-  --paper:        #FBFAF7;
-  --paper-2:      #F4F0E6;
-  --paper-3:      #ECE6D5;
-  --vellum:       #FFFEF9;
-  --ink:          #1D2433;
-  --ink-mid:      #4A4F5B;
-  --ink-soft:     #7B7B72;
-  --rule:         #D9D1BD;
-  --rule-soft:    #E7E0CD;
-  --rule-hair:    rgba(29,36,51,0.10);
+  --paper:        #F7F8FA;
+  --paper-2:      #EEF1F6;
+  --paper-3:      #DDE3EA;
+  --vellum:       #FFFFFF;
+  --ink:          #0F172A;
+  --ink-mid:      #334155;
+  --ink-soft:     #64748B;
+  --rule:         #E2E8F0;
+  --rule-soft:    #F1F5F9;
+  --rule-hair:    rgba(15,23,42,0.10);
 
   --indigo:       #3C3B6E;
   --brick:        #B22234;
@@ -33,16 +33,16 @@
   --wa-tick-blue: #53BDEB;
 
   /* Resolved theme variables — overridden by [data-theme] */
-  --bg:           #F0F2F5;
+  --bg:           #F7F8FA;
   --panel:        #FFFFFF;
-  --panel-2:      #F7F5F0;
-  --hover:        rgba(29,36,51,0.045);
-  --border:       #E5E0D2;
-  --border-soft:  #EFEAD9;
-  --text:         #1D2433;
-  --text-mid:     #4A4F5B;
-  --text-soft:    #7B7B72;
-  --dim:          #9097A8;
+  --panel-2:      #EEF1F6;
+  --hover:        rgba(15,23,42,0.045);
+  --border:       #E2E8F0;
+  --border-soft:  #F1F5F9;
+  --text:         #0F172A;
+  --text-mid:     #334155;
+  --text-soft:    #64748B;
+  --dim:          #98A2B3;
 
   --chat-bg:      #ECE5DD;
   --bub-out:      #D9FDD3;
@@ -92,18 +92,18 @@
 }
 
 .yousafe-messenger[data-theme="paper"] {
-  --bg:          #FBFAF7;
-  --panel:       #FFFEF9;
-  --panel-2:     #F4F0E6;
-  --border:      #D9D1BD;
-  --border-soft: #E7E0CD;
-  --text:        #1D2433;
-  --text-mid:    #4A4F5B;
-  --text-soft:   #7B7B72;
-  --dim:         #9097A8;
-  --chat-bg:     #F4F0E6;
-  --bub-out:     #ECE6D5;
-  --bub-in:      #FFFEF9;
+  --bg:          #F7F8FA;
+  --panel:       #FFFFFF;
+  --panel-2:     #EEF1F6;
+  --border:      #E2E8F0;
+  --border-soft: #F1F5F9;
+  --text:        #0F172A;
+  --text-mid:    #334155;
+  --text-soft:   #64748B;
+  --dim:         #98A2B3;
+  --chat-bg:     #EEF1F6;
+  --bub-out:     #DDE3EA;
+  --bub-in:      #FFFFFF;
   --bub-link:    #3C3B6E;
 }
 

@@ -21,7 +21,7 @@ const STATUS_TONE: Record<Ticket['status'], { bg: string; fg: string }> = {
   pending:   { bg: 'rgba(60,59,110,0.08)', fg: '#3C3B6E' },
   approved:  { bg: 'rgba(26,107,58,0.08)', fg: '#1A6B3A' },
   denied:    { bg: 'rgba(178,34,52,0.08)', fg: '#B22234' },
-  cancelled: { bg: '#F4F0E6',              fg: '#7B7B72' },
+  cancelled: { bg: '#EEF1F6',              fg: '#64748B' },
 }
 
 const KIND_LABEL: Record<Ticket['kind'], string> = {
@@ -183,7 +183,7 @@ export function AdminTicketsShell() {
 
               {selected.status === 'pending' ? (
                 <section>
-                  <h3 style={sectionLabel}>Decision notes <span style={{ fontWeight: 400, color: '#7B7B72' }}>· optional</span></h3>
+                  <h3 style={sectionLabel}>Decision notes <span style={{ fontWeight: 400, color: '#64748B' }}>· optional</span></h3>
                   <p style={fieldHelp}>Recorded on the ticket. The summary line shown to buyer/seller comes from the approve/deny action — your notes here are admin-private context.</p>
                   <textarea
                     rows={3} value={decisionNotes} maxLength={4000}
@@ -223,63 +223,63 @@ export function AdminTicketsShell() {
 /* styles — mirrors SupportShell */
 const wrap: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: '380px 1fr',
-  minHeight: '100vh', background: '#FBFAF7',
-  fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: '#1D2433',
+  minHeight: '100vh', background: '#F7F8FA',
+  fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: '#0F172A',
 }
-const leftRail: React.CSSProperties = { borderRight: '1px solid #D9D1BD', background: '#FFFEF9', overflowY: 'auto', minHeight: 0 }
+const leftRail: React.CSSProperties = { borderRight: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto', minHeight: 0 }
 const railHead: React.CSSProperties = {
   display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-  padding: '18px 18px 12px', borderBottom: '1px solid #E7E0CD', gap: 12,
+  padding: '18px 18px 12px', borderBottom: '1px solid #F1F5F9', gap: 12,
 }
 const eyebrow: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, letterSpacing: '0.14em',
-  textTransform: 'uppercase', color: '#7B7B72',
+  textTransform: 'uppercase', color: '#64748B',
 }
 const railTitle: React.CSSProperties = {
   margin: '2px 0 0', fontFamily: "var(--font-lora), Lora, Georgia, serif",
-  fontSize: 22, fontWeight: 500, color: '#1D2433',
+  fontSize: 22, fontWeight: 500, color: '#0F172A',
 }
 const ghostBtn: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: '50%', border: '1px solid #D9D1BD',
-  background: '#FBFAF7', color: '#1D2433', fontSize: 14,
+  width: 32, height: 32, borderRadius: '50%', border: '1px solid #E2E8F0',
+  background: '#F7F8FA', color: '#0F172A', fontSize: 14,
 }
 const filterRow: React.CSSProperties = {
-  display: 'flex', gap: 6, padding: '10px 18px', borderBottom: '1px solid #E7E0CD', flexWrap: 'wrap',
+  display: 'flex', gap: 6, padding: '10px 18px', borderBottom: '1px solid #F1F5F9', flexWrap: 'wrap',
 }
 const filterChip = (on: boolean): React.CSSProperties => ({
   padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, textTransform: 'capitalize',
-  border: `1px solid ${on ? '#1D2433' : '#D9D1BD'}`,
-  background: on ? '#1D2433' : '#FFFEF9', color: on ? '#fff' : '#4A4F5B',
+  border: `1px solid ${on ? '#0F172A' : '#E2E8F0'}`,
+  background: on ? '#0F172A' : '#FFFFFF', color: on ? '#fff' : '#334155',
 })
 const chipBadge = (f: string): React.CSSProperties => ({
   marginLeft: 6, padding: '0 6px',
-  background: f === 'pending' ? '#B22234' : f === 'approved' ? '#1A6B3A' : '#7B7B72',
+  background: f === 'pending' ? '#B22234' : f === 'approved' ? '#1A6B3A' : '#64748B',
   color: '#fff', borderRadius: 999, fontSize: 10,
 })
 const list: React.CSSProperties = { listStyle: 'none', margin: 0, padding: 8 }
 const ticketCard = (on: boolean): React.CSSProperties => ({
   width: '100%', textAlign: 'left',
-  background: on ? '#F4F0E6' : 'transparent',
+  background: on ? '#EEF1F6' : 'transparent',
   border: '1px solid transparent', borderRadius: 10, padding: '10px 12px',
   display: 'flex', flexDirection: 'column', gap: 2,
-  borderLeft: on ? '3px solid #1D2433' : '3px solid transparent',
+  borderLeft: on ? '3px solid #0F172A' : '3px solid transparent',
 })
-const kindLabel: React.CSSProperties = { fontWeight: 700, fontSize: 13, color: '#1D2433' }
+const kindLabel: React.CSSProperties = { fontWeight: 700, fontSize: 13, color: '#0F172A' }
 const orderRef: React.CSSProperties = {
-  fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, color: '#7B7B72', letterSpacing: '0.04em',
+  fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, color: '#64748B', letterSpacing: '0.04em',
 }
 const statusPill: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10, letterSpacing: '0.08em',
   textTransform: 'uppercase', padding: '1px 7px', borderRadius: 999,
 }
 const ticketPreview: React.CSSProperties = {
-  fontSize: 12.5, color: '#4A4F5B', lineHeight: 1.4,
+  fontSize: 12.5, color: '#334155', lineHeight: 1.4,
   overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
 }
 const ticketDate: React.CSSProperties = {
-  fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, color: '#7B7B72', marginTop: 4,
+  fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, color: '#64748B', marginTop: 4,
 }
-const emptyRail: React.CSSProperties = { padding: 20, color: '#7B7B72', fontSize: 13, textAlign: 'center' }
+const emptyRail: React.CSSProperties = { padding: 20, color: '#64748B', fontSize: 13, textAlign: 'center' }
 const errBox: React.CSSProperties = {
   margin: '8px 18px', padding: 8, background: 'rgba(178,34,52,0.08)',
   border: '1px solid rgba(178,34,52,0.3)', borderRadius: 8, fontSize: 12, color: '#8B1A1A',
@@ -288,21 +288,21 @@ const errBox: React.CSSProperties = {
 const centerPane: React.CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 0 }
 const emptyCenter: React.CSSProperties = {
   flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-  padding: 40, textAlign: 'center', color: '#7B7B72',
+  padding: 40, textAlign: 'center', color: '#64748B',
 }
 const emptyTitle: React.CSSProperties = {
-  margin: 0, fontFamily: "var(--font-lora), serif", fontSize: 22, fontWeight: 500, color: '#1D2433',
+  margin: 0, fontFamily: "var(--font-lora), serif", fontSize: 22, fontWeight: 500, color: '#0F172A',
 }
 const emptySub: React.CSSProperties = { margin: '6px 0 0', fontSize: 13.5, maxWidth: '46ch', lineHeight: 1.5 }
 
 const detailHead: React.CSSProperties = {
   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16,
-  padding: '20px 26px', borderBottom: '1px solid #E7E0CD', background: '#FFFEF9',
+  padding: '20px 26px', borderBottom: '1px solid #F1F5F9', background: '#FFFFFF',
 }
 const detailTitle: React.CSSProperties = {
-  margin: '4px 0', fontFamily: "var(--font-lora), serif", fontSize: 24, fontWeight: 500, color: '#1D2433',
+  margin: '4px 0', fontFamily: "var(--font-lora), serif", fontSize: 24, fontWeight: 500, color: '#0F172A',
 }
-const detailMeta: React.CSSProperties = { color: '#1D2433' }
+const detailMeta: React.CSSProperties = { color: '#0F172A' }
 const statusPillLarge: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, letterSpacing: '0.14em',
   textTransform: 'uppercase', padding: '4px 12px', borderRadius: 999, fontWeight: 600, flexShrink: 0,
@@ -313,17 +313,17 @@ const detailBody: React.CSSProperties = {
 }
 const sectionLabel: React.CSSProperties = {
   margin: '0 0 8px', fontFamily: "var(--font-plex-mono), monospace",
-  fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#7B7B72', fontWeight: 600,
+  fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B', fontWeight: 600,
 }
 const readonlyBlock: React.CSSProperties = {
   margin: 0, padding: '12px 14px',
-  background: '#FFFEF9', border: '1px solid #E7E0CD', borderRadius: 10,
-  fontSize: 14, lineHeight: 1.55, color: '#1D2433', whiteSpace: 'pre-wrap',
+  background: '#FFFFFF', border: '1px solid #F1F5F9', borderRadius: 10,
+  fontSize: 14, lineHeight: 1.55, color: '#0F172A', whiteSpace: 'pre-wrap',
 }
-const fieldHelp: React.CSSProperties = { margin: '0 0 8px', fontSize: 12, color: '#7B7B72', lineHeight: 1.5 }
+const fieldHelp: React.CSSProperties = { margin: '0 0 8px', fontSize: 12, color: '#64748B', lineHeight: 1.5 }
 const input: React.CSSProperties = {
-  width: '100%', padding: '10px 12px', border: '1px solid #D9D1BD', borderRadius: 8,
-  background: '#FFFEF9', fontSize: 14, color: '#1D2433',
+  width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8,
+  background: '#FFFFFF', fontSize: 14, color: '#0F172A',
   fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical',
 }
 const actionsRow: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' }
@@ -332,10 +332,10 @@ const approveBtn: React.CSSProperties = {
   padding: '10px 22px', borderRadius: 999, fontSize: 13.5, fontWeight: 600,
 }
 const denyBtn: React.CSSProperties = {
-  background: '#FFFEF9', color: '#B22234', border: '1px solid #B22234',
+  background: '#FFFFFF', color: '#B22234', border: '1px solid #B22234',
   padding: '9px 18px', borderRadius: 999, fontSize: 13, fontWeight: 600,
 }
 const tinyHint: React.CSSProperties = {
   margin: '12px 0 0', fontFamily: "var(--font-plex-mono), monospace",
-  fontSize: 10.5, letterSpacing: '0.04em', color: '#7B7B72', lineHeight: 1.55,
+  fontSize: 10.5, letterSpacing: '0.04em', color: '#64748B', lineHeight: 1.55,
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
@@ -6,7 +5,7 @@ import { C, Card, Badge, Btn } from './shared'
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = C.sans
-const NAVY  = '#1B2D4F'
+const NAVY  = '#0F172A'
 const GOLD  = '#9A7B3B'
 const GREEN = '#1A6B45'
 const AMBER = '#8B5E0A'

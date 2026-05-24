@@ -22,7 +22,7 @@ const GUIDES: Record<Role, GuideConfig> = {
   attorney: {
     heading: 'How your dashboard works',
     subheading: 'Everything you need to find clients, manage cases, and get paid — in one place.',
-    accent: '#1B2D4F',
+    accent: '#0F172A',
     steps: [
       {
         icon: '📥',
@@ -55,7 +55,7 @@ const GUIDES: Record<Role, GuideConfig> = {
   consultant: {
     heading: 'How your dashboard works',
     subheading: 'Build your service catalogue, serve clients, and grow your practice with YouSafe.',
-    accent: '#1B2D4F',
+    accent: '#0F172A',
     steps: [
       {
         icon: '🏗',
@@ -88,7 +88,7 @@ const GUIDES: Record<Role, GuideConfig> = {
   client: {
     heading: 'Welcome — here\'s how to get started',
     subheading: 'Find qualified attorneys and consultants, place orders, and track everything in one place.',
-    accent: '#1B2D4F',
+    accent: '#0F172A',
     steps: [
       {
         icon: '🔍',
@@ -222,7 +222,7 @@ export default function DashboardGuide({ role }: { role: Role }) {
             </svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#1B2D4F', letterSpacing: '-0.01em', lineHeight: 1.2 }}>{cfg.heading}</div>
+            <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', letterSpacing: '-0.01em', lineHeight: 1.2 }}>{cfg.heading}</div>
             {!collapsed && <div style={{ fontSize: '12px', color: '#9097A8', marginTop: '2px', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cfg.subheading}</div>}
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function DashboardGuide({ role }: { role: Role }) {
 
                 {/* Step text */}
                 <div style={{ textAlign: 'center', maxWidth: '160px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '13px', color: '#1B2D4F', marginBottom: '4px', lineHeight: 1.3 }}>{step.title}</div>
+                  <div style={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', marginBottom: '4px', lineHeight: 1.3 }}>{step.title}</div>
                   <div style={{ fontSize: '12px', color: '#5C6070', lineHeight: 1.55 }}>{step.body}</div>
                 </div>
               </div>
@@ -276,7 +276,7 @@ export default function DashboardGuide({ role }: { role: Role }) {
             <span style={{ fontSize: '12px', color: '#5C6070', lineHeight: 1.55, flex: 1 }}>{cfg.tip}</span>
             <button
               onClick={dismiss}
-              style={{ flexShrink: 0, background: 'none', border: '1px solid #DDD8CE', borderRadius: '5px', padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: '#1B2D4F', cursor: 'pointer', fontFamily: sans, whiteSpace: 'nowrap' }}
+              style={{ flexShrink: 0, background: 'none', border: '1px solid #DDD8CE', borderRadius: '5px', padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: '#0F172A', cursor: 'pointer', fontFamily: sans, whiteSpace: 'nowrap' }}
             >
               Got it ✓
             </button>

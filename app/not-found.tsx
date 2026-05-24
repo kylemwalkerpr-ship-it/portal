@@ -25,7 +25,7 @@ export default function NotFound() {
       </p>
       <Link
         href="/"
-        style={{ padding: '10px 18px', background: '#1B2D4F', color: '#fff', borderRadius: 6, fontWeight: 700, textDecoration: 'none', fontSize: 14, display: 'inline-block' }}
+        style={{ padding: '10px 18px', background: '#0F172A', color: '#fff', borderRadius: 6, fontWeight: 700, textDecoration: 'none', fontSize: 14, display: 'inline-block' }}
       >
         Back to portal home
       </Link>

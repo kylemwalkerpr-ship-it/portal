@@ -117,7 +117,7 @@ export function RaiseTicketModal({
           </label>
 
           <label style={field}>
-            <div style={fieldLabel}>Internal notes <span style={{ color: '#7B7B72', fontWeight: 400 }}>· optional, admin-only</span></div>
+            <div style={fieldLabel}>Internal notes <span style={{ color: '#64748B', fontWeight: 400 }}>· optional, admin-only</span></div>
             <p style={fieldHelp}>Context for the admin reviewing this. Never shown to buyer or seller.</p>
             <textarea
               rows={3} value={detail} maxLength={4000}
@@ -145,33 +145,33 @@ const backdrop: React.CSSProperties = { position: 'absolute', inset: 0, backgrou
 const panel: React.CSSProperties = {
   position: 'absolute', top: '6vh', left: '50%', transform: 'translateX(-50%)',
   width: 'min(640px, calc(100vw - 32px))', maxHeight: '88vh',
-  background: '#FBFAF7', border: '1px solid #D9D1BD', borderRadius: 16,
+  background: '#F7F8FA', border: '1px solid #E2E8F0', borderRadius: 16,
   boxShadow: '0 30px 80px -30px rgba(29,36,51,0.5)',
   display: 'flex', flexDirection: 'column', minHeight: 0,
 }
 const head: React.CSSProperties = {
   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-  padding: '18px 22px 12px', borderBottom: '1px solid #E7E0CD', gap: 12,
+  padding: '18px 22px 12px', borderBottom: '1px solid #F1F5F9', gap: 12,
 }
 const eyebrow: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, letterSpacing: '0.14em',
-  textTransform: 'uppercase', color: '#7B7B72',
+  textTransform: 'uppercase', color: '#64748B',
 }
 const title: React.CSSProperties = {
-  margin: '2px 0 0', fontFamily: "var(--font-lora), Lora, serif", fontSize: 22, fontWeight: 500, color: '#1D2433',
+  margin: '2px 0 0', fontFamily: "var(--font-lora), Lora, serif", fontSize: 22, fontWeight: 500, color: '#0F172A',
 }
 const closeBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: '50%', border: '1px solid #D9D1BD',
-  background: '#FFFEF9', color: '#1D2433', fontSize: 20,
+  width: 36, height: 36, borderRadius: '50%', border: '1px solid #E2E8F0',
+  background: '#FFFFFF', color: '#0F172A', fontSize: 20,
 }
 const body: React.CSSProperties = { padding: 22, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18, minHeight: 0 }
 const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6 }
-const fieldLabel: React.CSSProperties = { fontWeight: 600, fontSize: 13.5, color: '#1D2433' }
-const fieldHelp: React.CSSProperties = { margin: 0, fontSize: 12, color: '#7B7B72', lineHeight: 1.5 }
+const fieldLabel: React.CSSProperties = { fontWeight: 600, fontSize: 13.5, color: '#0F172A' }
+const fieldHelp: React.CSSProperties = { margin: 0, fontSize: 12, color: '#64748B', lineHeight: 1.5 }
 const req: React.CSSProperties = { color: '#B22234' }
 const input: React.CSSProperties = {
-  width: '100%', padding: '10px 12px', border: '1px solid #D9D1BD', borderRadius: 8,
-  background: '#FFFEF9', fontSize: 14, color: '#1D2433',
+  width: '100%', padding: '10px 12px', border: '1px solid #E2E8F0', borderRadius: 8,
+  background: '#FFFFFF', fontSize: 14, color: '#0F172A',
   fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical',
 }
 const charCount = (ok: boolean): React.CSSProperties => ({
@@ -180,22 +180,22 @@ const charCount = (ok: boolean): React.CSSProperties => ({
 const kindList: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }
 const kindCard = (on: boolean): React.CSSProperties => ({
   display: 'block', textAlign: 'left', padding: 12, borderRadius: 10,
-  border: `1px solid ${on ? '#1D2433' : '#D9D1BD'}`,
-  background: on ? '#1D2433' : '#FFFEF9',
-  color: on ? '#fff' : '#1D2433', cursor: 'pointer',
+  border: `1px solid ${on ? '#0F172A' : '#E2E8F0'}`,
+  background: on ? '#0F172A' : '#FFFFFF',
+  color: on ? '#fff' : '#0F172A', cursor: 'pointer',
 })
 const kindCardTitle: React.CSSProperties = { fontWeight: 700, fontSize: 13, marginBottom: 2 }
 const kindCardDesc: React.CSSProperties = { fontSize: 11.5, lineHeight: 1.4, opacity: 0.85 }
 const foot: React.CSSProperties = {
   display: 'flex', justifyContent: 'flex-end', gap: 10,
-  padding: '14px 22px', borderTop: '1px solid #E7E0CD', background: '#FFFEF9',
+  padding: '14px 22px', borderTop: '1px solid #F1F5F9', background: '#FFFFFF',
 }
 const ghostBtn: React.CSSProperties = {
-  background: '#FFFEF9', color: '#1D2433', border: '1px solid #D9D1BD',
+  background: '#FFFFFF', color: '#0F172A', border: '1px solid #E2E8F0',
   padding: '9px 16px', borderRadius: 999, fontSize: 13, fontWeight: 600,
 }
 const primaryBtn: React.CSSProperties = {
-  background: '#1D2433', color: '#fff', border: 'none',
+  background: '#0F172A', color: '#fff', border: 'none',
   padding: '10px 20px', borderRadius: 999, fontSize: 13.5, fontWeight: 600,
 }
 const errBox: React.CSSProperties = {

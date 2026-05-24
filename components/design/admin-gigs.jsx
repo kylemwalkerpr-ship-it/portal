@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 import React from 'react'
 import { C, Card, Btn, Avatar } from './shared'
@@ -6,7 +5,7 @@ import { C, Card, Btn, Avatar } from './shared'
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = C.sans
-const NAVY = '#1B2D4F', GOLD = '#9A7B3B', GREEN = '#1A6B45'
+const NAVY = '#0F172A', GOLD = '#9A7B3B', GREEN = '#1A6B45'
 const AMBER = '#8B5E0A', RED = '#8B1A1A', PURPLE = '#3D2B6B'
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -22,7 +21,7 @@ const STATUS_CFG = {
   paused:         { bg:'#FEF5E4', text:AMBER,  border:'rgba(139,94,10,.25)',  dot:'#F59E0B', label:'Paused'          },
 }
 
-const PROVIDER_COLORS = { attorney:'#1B2D4F', consultant:'#7C3AED' }
+const PROVIDER_COLORS = { attorney:'#0F172A', consultant:'#7C3AED' }
 
 const DENIAL_CATEGORIES = [
   { value:'quality',       label:'Quality — Below marketplace standard'    },
@@ -558,7 +557,7 @@ function StatsTab() {
 
   if(loading) return <div style={{padding:'40px',textAlign:'center',color:'#9097A8'}}>Loading stats…</div>
 
-  const Kpi=({label,value,accent='#1B2D4F',icon})=><div style={{background:'#fff',border:`1px solid #DDD8CE`,borderTop:`3px solid ${accent}`,borderRadius:'8px',padding:'16px 18px'}}>
+  const Kpi=({label,value,accent='#0F172A',icon})=><div style={{background:'#fff',border:`1px solid #DDD8CE`,borderTop:`3px solid ${accent}`,borderRadius:'8px',padding:'16px 18px'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}><span style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'#9097A8'}}>{label}</span><span style={{fontSize:'15px',opacity:.4}}>{icon}</span></div>
     <div style={{fontWeight:800,fontSize:'22px',color:NAVY,fontVariantNumeric:'tabular-nums'}}>{value}</div>
   </div>

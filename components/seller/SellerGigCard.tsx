@@ -67,7 +67,7 @@ function StatusBadge({ status }: { status: string }) {
 function MetricCell({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ textAlign: 'center' as const, padding: '14px 18px' }}>
-      <div style={{ fontWeight: 700, fontSize: '20px', color: '#1B2D4F', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+      <div style={{ fontWeight: 700, fontSize: '20px', color: '#0F172A', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
         {value.toLocaleString()}
       </div>
       <div style={{ fontSize: '10px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.08em', marginTop: '4px' }}>
@@ -106,7 +106,7 @@ interface ActionBtnProps {
 
 function ActionBtn({ onClick, href, target, rel, variant = 'ghost', children }: ActionBtnProps) {
   const colors = {
-    navy:   { color: '#1B2D4F', border: '#1B2D4F', bg: 'transparent' },
+    navy:   { color: '#0F172A', border: '#0F172A', bg: 'transparent' },
     green:  { color: '#1A6B45', border: 'rgba(26,107,69,0.50)', bg: '#EAF5EE' },
     purple: { color: '#3D2B6B', border: 'rgba(61,43,107,0.45)', bg: '#EDEAF7' },
     red:    { color: '#8B1A1A', border: 'rgba(139,26,26,0.45)', bg: '#FAEAEA' },
@@ -177,7 +177,7 @@ export default function SellerGigCard({ gig, onStatusChange, onPublish }: Seller
 
           <h3 style={{
             fontFamily: serif, fontWeight: 600, fontSize: '19px',
-            color: '#1B2D4F', lineHeight: 1.25, margin: '0 0 6px',
+            color: '#0F172A', lineHeight: 1.25, margin: '0 0 6px',
             letterSpacing: '-0.01em',
           }}>
             {gig.title}

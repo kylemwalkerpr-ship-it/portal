@@ -66,7 +66,7 @@ export async function SeoIntroBlock({
     <header
       data-no-translate
       style={{
-        background: 'linear-gradient(135deg, #1B2D4F 0%, #0d2060 100%)',
+        background: 'linear-gradient(135deg, #0F172A 0%, #0d2060 100%)',
         color: '#FFF',
         padding: '40px 24px 28px',
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",

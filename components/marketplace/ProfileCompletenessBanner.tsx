@@ -86,7 +86,7 @@ export function ProfileCompletenessBanner({
             </div>
             <div style={subLabel}>
               {data.completed} of {data.total} sections complete · current tier{' '}
-              <b style={{ color: '#1D2433' }}>{capitalise(data.tier)}</b>
+              <b style={{ color: '#0F172A' }}>{capitalise(data.tier)}</b>
             </div>
           </div>
         </div>
@@ -107,7 +107,7 @@ export function ProfileCompletenessBanner({
             <li key={c.id} style={item}>
               <span style={dot} aria-hidden="true" />
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600, color: '#1D2433' }}>{c.label}</span>
+                <span style={{ fontWeight: 600, color: '#0F172A' }}>{c.label}</span>
                 {c.hint && <span style={hintStyle}> — {c.hint}</span>}
               </span>
               <span style={weightChip}>+{c.weight}%</span>
@@ -125,7 +125,7 @@ function ScoreRing({ score, tone }: { score: number; tone: 'ready' | 'progress' 
   const offset = circumference * (1 - score / 100)
   return (
     <svg width="48" height="48" viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
-      <circle cx="24" cy="24" r="18" fill="none" stroke="#E7E0CD" strokeWidth="4" />
+      <circle cx="24" cy="24" r="18" fill="none" stroke="#F1F5F9" strokeWidth="4" />
       <circle
         cx="24" cy="24" r="18" fill="none" stroke={stroke} strokeWidth="4"
         strokeDasharray={circumference}
@@ -134,7 +134,7 @@ function ScoreRing({ score, tone }: { score: number; tone: 'ready' | 'progress' 
         transform="rotate(-90 24 24)"
         style={{ transition: 'stroke-dashoffset .4s ease' }}
       />
-      <text x="24" y="28" textAnchor="middle" fontSize="13" fontWeight="700" fill="#1D2433"
+      <text x="24" y="28" textAnchor="middle" fontSize="13" fontWeight="700" fill="#0F172A"
         style={{ fontFamily: 'var(--font-inter), Inter, sans-serif' }}>
         {score}
       </text>
@@ -145,8 +145,8 @@ function ScoreRing({ score, tone }: { score: number; tone: 'ready' | 'progress' 
 function capitalise(s: string) { return s.charAt(0).toUpperCase() + s.slice(1) }
 
 const wrap: React.CSSProperties = {
-  background: 'linear-gradient(180deg, #FFFEF9 0%, #F4F0E6 100%)',
-  border: '1px solid #D9D1BD',
+  background: 'linear-gradient(180deg, #FFFFFF 0%, #EEF1F6 100%)',
+  border: '1px solid #E2E8F0',
   borderRadius: 12,
   padding: '14px 16px',
   marginBottom: 18,
@@ -155,13 +155,13 @@ const wrap: React.CSSProperties = {
 const head: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
 }
-const subLabel: React.CSSProperties = { marginTop: 4, fontSize: 12, color: '#4A4F5B' }
+const subLabel: React.CSSProperties = { marginTop: 4, fontSize: 12, color: '#334155' }
 const skeleton: React.CSSProperties = {
-  ...wrap, color: '#7B7B72', fontSize: 13, padding: 14,
+  ...wrap, color: '#64748B', fontSize: 13, padding: 14,
 }
 const statusLabel = (tone: 'ready' | 'progress' | 'urgent'): React.CSSProperties => ({
   fontFamily: "var(--font-lora), Lora, Georgia, serif",
-  fontSize: 17, fontWeight: 600, color: tone === 'urgent' ? '#B22234' : '#1D2433', letterSpacing: '-0.005em',
+  fontSize: 17, fontWeight: 600, color: tone === 'urgent' ? '#B22234' : '#0F172A', letterSpacing: '-0.005em',
 })
 const primaryCta = (tone: 'ready' | 'progress' | 'urgent'): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', height: 32, padding: '0 14px',
@@ -169,22 +169,22 @@ const primaryCta = (tone: 'ready' | 'progress' | 'urgent'): React.CSSProperties 
   borderRadius: 999, fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
 })
 const ghostCta: React.CSSProperties = {
-  height: 32, padding: '0 12px', border: '1px solid #D9D1BD', background: '#fff', color: '#1D2433',
+  height: 32, padding: '0 12px', border: '1px solid #E2E8F0', background: '#fff', color: '#0F172A',
   borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: 'pointer',
 }
 const list: React.CSSProperties = {
-  listStyle: 'none', margin: '12px 0 0', padding: '12px 0 0', borderTop: '1px solid #E7E0CD',
+  listStyle: 'none', margin: '12px 0 0', padding: '12px 0 0', borderTop: '1px solid #F1F5F9',
   display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto',
 }
 const item: React.CSSProperties = {
-  display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5, color: '#4A4F5B', padding: '4px 0',
+  display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12.5, color: '#334155', padding: '4px 0',
 }
 const dot: React.CSSProperties = {
   width: 6, height: 6, borderRadius: '50%', background: '#B22234', flexShrink: 0, transform: 'translateY(1px)',
 }
-const hintStyle: React.CSSProperties = { color: '#7B7B72', fontStyle: 'italic' }
+const hintStyle: React.CSSProperties = { color: '#64748B', fontStyle: 'italic' }
 const weightChip: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace",
-  fontSize: 10.5, color: '#4A4F5B', background: '#fff', border: '1px solid #E7E0CD',
+  fontSize: 10.5, color: '#334155', background: '#fff', border: '1px solid #F1F5F9',
   padding: '2px 7px', borderRadius: 999, flexShrink: 0,
 }

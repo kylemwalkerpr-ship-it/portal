@@ -37,7 +37,7 @@ type Ticket = {
 
 const STATUS_TONE: Record<string, string> = {
   active: '#1A6B3A', delivered: '#3C3B6E', completed: '#1A6B3A',
-  cancelled: '#8B1A1A', refunded: '#8B1A1A', disputed: '#B22234', paused: '#7B7B72',
+  cancelled: '#8B1A1A', refunded: '#8B1A1A', disputed: '#B22234', paused: '#64748B',
 }
 
 function fmtDate(iso: string) {
@@ -110,7 +110,7 @@ export function SupportShell() {
         button { font: inherit; cursor: pointer; }
         input, textarea, select { font: inherit; }
         .ys-sup-card { transition: background .12s; }
-        .ys-sup-card:hover { background: #F4F0E6; }
+        .ys-sup-card:hover { background: #EEF1F6; }
       `}</style>
 
       <aside style={leftRail}>
@@ -139,10 +139,10 @@ export function SupportShell() {
                 <button onClick={() => setSelectedId(o.id)} className="ys-sup-card" style={orderCard(selectedId === o.id)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <span style={orderId}>#{o.id.slice(0, 8)}</span>
-                    <span style={{ ...statusPill, color: STATUS_TONE[o.status] || '#4A4F5B', borderColor: STATUS_TONE[o.status] || '#D9D1BD' }}>{o.status}</span>
+                    <span style={{ ...statusPill, color: STATUS_TONE[o.status] || '#334155', borderColor: STATUS_TONE[o.status] || '#E2E8F0' }}>{o.status}</span>
                   </div>
                   <div style={partyLine}>
-                    {o.client?.name ?? '—'} <span style={{ color: '#7B7B72' }}>↔</span> {o.seller?.name ?? '—'}
+                    {o.client?.name ?? '—'} <span style={{ color: '#64748B' }}>↔</span> {o.seller?.name ?? '—'}
                   </div>
                   <div style={metaLine}>
                     {fmtDate(o.created_at)}
@@ -171,7 +171,7 @@ export function SupportShell() {
               <div style={{ minWidth: 0 }}>
                 <div style={eyebrow}>Order #{detail.order.id.slice(0, 8)}</div>
                 <h2 style={detailTitle}>
-                  {detail.order.buyer?.name ?? '—'} <span style={{ color: '#7B7B72' }}>↔</span> {detail.order.seller?.name ?? '—'}
+                  {detail.order.buyer?.name ?? '—'} <span style={{ color: '#64748B' }}>↔</span> {detail.order.seller?.name ?? '—'}
                 </h2>
                 <div style={metaLine}>
                   Status: <b>{detail.order.status}</b>
@@ -239,65 +239,65 @@ export function SupportShell() {
 
 const wrap: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: '380px 1fr',
-  minHeight: '100vh', background: '#FBFAF7',
-  fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: '#1D2433',
+  minHeight: '100vh', background: '#F7F8FA',
+  fontFamily: "var(--font-inter), Inter, system-ui, sans-serif", color: '#0F172A',
 }
 const leftRail: React.CSSProperties = {
-  borderRight: '1px solid #D9D1BD', background: '#FFFEF9', overflowY: 'auto', minHeight: 0,
+  borderRight: '1px solid #E2E8F0', background: '#FFFFFF', overflowY: 'auto', minHeight: 0,
 }
 const railHead: React.CSSProperties = {
   display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-  padding: '18px 18px 12px', borderBottom: '1px solid #E7E0CD', gap: 12,
+  padding: '18px 18px 12px', borderBottom: '1px solid #F1F5F9', gap: 12,
 }
 const eyebrow: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), 'IBM Plex Mono', monospace",
-  fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#7B7B72',
+  fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B',
 }
 const railTitle: React.CSSProperties = {
   margin: '2px 0 0', fontFamily: "var(--font-lora), Lora, Georgia, serif",
-  fontSize: 22, fontWeight: 500, color: '#1D2433',
+  fontSize: 22, fontWeight: 500, color: '#0F172A',
 }
 const ghostBtn: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: '50%', border: '1px solid #D9D1BD',
-  background: '#FBFAF7', color: '#1D2433', fontSize: 14,
+  width: 32, height: 32, borderRadius: '50%', border: '1px solid #E2E8F0',
+  background: '#F7F8FA', color: '#0F172A', fontSize: 14,
 }
 const filterRow: React.CSSProperties = {
-  display: 'flex', gap: 6, padding: '10px 18px', borderBottom: '1px solid #E7E0CD',
+  display: 'flex', gap: 6, padding: '10px 18px', borderBottom: '1px solid #F1F5F9',
 }
 const filterChip = (on: boolean): React.CSSProperties => ({
   padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, textTransform: 'capitalize',
-  border: `1px solid ${on ? '#1D2433' : '#D9D1BD'}`,
-  background: on ? '#1D2433' : '#FFFEF9', color: on ? '#fff' : '#4A4F5B',
+  border: `1px solid ${on ? '#0F172A' : '#E2E8F0'}`,
+  background: on ? '#0F172A' : '#FFFFFF', color: on ? '#fff' : '#334155',
 })
 const chipBadge: React.CSSProperties = {
   marginLeft: 6, padding: '0 6px', background: '#B22234', color: '#fff', borderRadius: 999, fontSize: 10,
 }
 const list: React.CSSProperties = { listStyle: 'none', margin: 0, padding: 8 }
 const orderCard = (on: boolean): React.CSSProperties => ({
-  width: '100%', textAlign: 'left', background: on ? '#F4F0E6' : 'transparent',
+  width: '100%', textAlign: 'left', background: on ? '#EEF1F6' : 'transparent',
   border: '1px solid transparent', borderRadius: 10, padding: '10px 12px',
   display: 'flex', flexDirection: 'column', gap: 4,
-  borderLeft: on ? '3px solid #1D2433' : '3px solid transparent',
+  borderLeft: on ? '3px solid #0F172A' : '3px solid transparent',
 })
 const orderId: React.CSSProperties = {
-  fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, color: '#7B7B72', letterSpacing: '0.06em',
+  fontFamily: "var(--font-plex-mono), monospace", fontSize: 11, color: '#64748B', letterSpacing: '0.06em',
 }
 const statusPill: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10, letterSpacing: '0.08em',
-  textTransform: 'uppercase', border: '1px solid #D9D1BD', padding: '1px 7px', borderRadius: 999,
+  textTransform: 'uppercase', border: '1px solid #E2E8F0', padding: '1px 7px', borderRadius: 999,
 }
 const partyLine: React.CSSProperties = {
-  fontSize: 13.5, fontWeight: 500, color: '#1D2433',
+  fontSize: 13.5, fontWeight: 500, color: '#0F172A',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 }
 const metaLine: React.CSSProperties = {
-  fontSize: 11.5, color: '#7B7B72', display: 'flex', alignItems: 'center', gap: 8,
+  fontSize: 11.5, color: '#64748B', display: 'flex', alignItems: 'center', gap: 8,
 }
 const openTicketBadge: React.CSSProperties = {
   padding: '1px 7px', background: 'rgba(178,34,52,0.1)', color: '#B22234',
   borderRadius: 999, fontWeight: 600, fontSize: 10.5,
 }
-const emptyRail: React.CSSProperties = { padding: 20, color: '#7B7B72', fontSize: 13, textAlign: 'center' }
+const emptyRail: React.CSSProperties = { padding: 20, color: '#64748B', fontSize: 13, textAlign: 'center' }
 const errBox: React.CSSProperties = {
   margin: '8px 18px', padding: 8, background: 'rgba(178,34,52,0.08)',
   border: '1px solid rgba(178,34,52,0.3)', borderRadius: 8, fontSize: 12, color: '#8B1A1A',
@@ -306,22 +306,22 @@ const errBox: React.CSSProperties = {
 const centerPane: React.CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 0 }
 const emptyCenter: React.CSSProperties = {
   flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-  padding: 40, textAlign: 'center', color: '#7B7B72',
+  padding: 40, textAlign: 'center', color: '#64748B',
 }
 const emptyTitle: React.CSSProperties = {
-  margin: 0, fontFamily: "var(--font-lora), serif", fontSize: 22, fontWeight: 500, color: '#1D2433',
+  margin: 0, fontFamily: "var(--font-lora), serif", fontSize: 22, fontWeight: 500, color: '#0F172A',
 }
 const emptySub: React.CSSProperties = { margin: '6px 0 0', fontSize: 13.5, maxWidth: '40ch' }
 const detailHead: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-  padding: '18px 24px 14px', borderBottom: '1px solid #E7E0CD', background: '#FFFEF9',
+  padding: '18px 24px 14px', borderBottom: '1px solid #F1F5F9', background: '#FFFFFF',
 }
 const detailTitle: React.CSSProperties = {
   margin: '2px 0 4px', fontFamily: "var(--font-lora), serif",
-  fontSize: 20, fontWeight: 500, color: '#1D2433',
+  fontSize: 20, fontWeight: 500, color: '#0F172A',
 }
 const primaryBtn: React.CSSProperties = {
-  background: '#1D2433', color: '#fff', border: 'none',
+  background: '#0F172A', color: '#fff', border: 'none',
   padding: '9px 18px', borderRadius: 999, fontSize: 13.5, fontWeight: 600,
 }
 const messages: React.CSSProperties = {
@@ -329,7 +329,7 @@ const messages: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0,
 }
 const userMsg: React.CSSProperties = {
-  background: '#FFFEF9', border: '1px solid #E7E0CD', borderRadius: 10, padding: '8px 12px',
+  background: '#FFFFFF', border: '1px solid #F1F5F9', borderRadius: 10, padding: '8px 12px',
   maxWidth: '78ch',
 }
 const sysMsg: React.CSSProperties = {
@@ -340,31 +340,31 @@ const sysMsg: React.CSSProperties = {
 }
 const msgMeta: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5,
-  color: '#7B7B72', letterSpacing: '0.04em', marginBottom: 4,
+  color: '#64748B', letterSpacing: '0.04em', marginBottom: 4,
 }
-const msgBody: React.CSSProperties = { fontSize: 14, lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#1D2433' }
+const msgBody: React.CSSProperties = { fontSize: 14, lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#0F172A' }
 const sysBody: React.CSSProperties = { fontSize: 12, lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#3C3B6E' }
 const attachLink: React.CSSProperties = {
   display: 'inline-block', marginTop: 6, fontSize: 12.5, color: '#3C3B6E',
 }
-const emptyMsgs: React.CSSProperties = { color: '#7B7B72', fontStyle: 'italic', textAlign: 'center', padding: 30 }
+const emptyMsgs: React.CSSProperties = { color: '#64748B', fontStyle: 'italic', textAlign: 'center', padding: 30 }
 
 const ticketsBlock: React.CSSProperties = {
-  borderTop: '1px solid #E7E0CD', padding: '12px 24px', background: '#FFFEF9',
+  borderTop: '1px solid #F1F5F9', padding: '12px 24px', background: '#FFFFFF',
 }
 const ticketsHead: React.CSSProperties = {
   fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5,
-  letterSpacing: '0.14em', textTransform: 'uppercase', color: '#7B7B72', marginBottom: 8,
+  letterSpacing: '0.14em', textTransform: 'uppercase', color: '#64748B', marginBottom: 8,
 }
 const ticketRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10,
-  padding: '6px 0', fontSize: 12.5, color: '#4A4F5B', flexWrap: 'wrap',
+  padding: '6px 0', fontSize: 12.5, color: '#334155', flexWrap: 'wrap',
 }
-const ticketKind: React.CSSProperties = { fontWeight: 700, color: '#1D2433', textTransform: 'capitalize' }
-const ticketReason: React.CSSProperties = { flex: 1, color: '#4A4F5B', minWidth: 0 }
+const ticketKind: React.CSSProperties = { fontWeight: 700, color: '#0F172A', textTransform: 'capitalize' }
+const ticketReason: React.CSSProperties = { flex: 1, color: '#334155', minWidth: 0 }
 const ticketAmount: React.CSSProperties = {
-  fontFamily: "var(--font-lora), serif", fontWeight: 600, color: '#1D2433',
+  fontFamily: "var(--font-lora), serif", fontWeight: 600, color: '#0F172A',
 }
 const ticketDate: React.CSSProperties = {
-  fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, color: '#7B7B72',
+  fontFamily: "var(--font-plex-mono), monospace", fontSize: 10.5, color: '#64748B',
 }

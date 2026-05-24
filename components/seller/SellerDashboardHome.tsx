@@ -27,8 +27,8 @@ const LEVEL_CONFIG: Record<string, { label: string; color: string; bg: string; b
   new_seller:     { label: 'New Provider',   color: '#5C6070', bg: '#F2EFE9', border: '#DDD8CE' },
   level_1:        { label: 'Level 1',        color: '#9A7B3B', bg: '#F5EDD6', border: 'rgba(154,123,59,0.30)' },
   level_2:        { label: 'Level 2',        color: '#9A7B3B', bg: '#F5EDD6', border: 'rgba(154,123,59,0.30)' },
-  top_attorney:   { label: 'Top Attorney',   color: '#1B2D4F', bg: '#EAF0F7', border: 'rgba(27,45,79,0.30)' },
-  top_consultant: { label: 'Top Consultant', color: '#1B2D4F', bg: '#EAF0F7', border: 'rgba(27,45,79,0.30)' },
+  top_attorney:   { label: 'Top Attorney',   color: '#0F172A', bg: '#EAF0F7', border: 'rgba(27,45,79,0.30)' },
+  top_consultant: { label: 'Top Consultant', color: '#0F172A', bg: '#EAF0F7', border: 'rgba(27,45,79,0.30)' },
 }
 
 function LevelBadge({ level }: { level: string }) {
@@ -42,12 +42,12 @@ function LevelBadge({ level }: { level: string }) {
 
 function StatCard({ icon, label, value, sub, accent }: { icon: string; label: string; value: React.ReactNode; sub?: string; accent?: string }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #DDD8CE', borderTop: `3px solid ${accent ?? '#1B2D4F'}`, borderRadius: '8px', padding: '20px 22px', boxShadow: '0 1px 3px rgba(27,45,79,0.06)' }}>
+    <div style={{ background: '#FFFFFF', border: '1px solid #DDD8CE', borderTop: `3px solid ${accent ?? '#0F172A'}`, borderRadius: '8px', padding: '20px 22px', boxShadow: '0 1px 3px rgba(27,45,79,0.06)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: '#9097A8' }}>{label}</span>
         <span style={{ fontSize: '18px', opacity: 0.35 }}>{icon}</span>
       </div>
-      <div style={{ fontWeight: 700, fontSize: '28px', color: '#1B2D4F', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ fontWeight: 700, fontSize: '28px', color: '#0F172A', lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{value}</div>
       {sub && <div style={{ color: '#9097A8', fontSize: '12px', marginTop: '7px', lineHeight: 1.4 }}>{sub}</div>}
     </div>
   )
@@ -102,7 +102,7 @@ export default function SellerDashboardHome() {
     <div style={{ display: 'grid', gap: '24px', fontFamily: sans }}>
 
       {/* Hero card */}
-      <div style={{ background: '#1B2D4F', borderRadius: '10px', padding: '28px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' as const, boxShadow: '0 4px 16px rgba(27,45,79,0.20)', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ background: '#0F172A', borderRadius: '10px', padding: '28px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' as const, boxShadow: '0 4px 16px rgba(27,45,79,0.20)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', right: '-20px', top: '-20px', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(196,164,90,0.05)', pointerEvents: 'none' }} />
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
@@ -134,7 +134,7 @@ export default function SellerDashboardHome() {
         {loading ? [1,2,3,4].map(i => <SkeletonStat key={i} />) : (
           <>
             <StatCard icon="⚖" label="Active Services"  value={activeGigs}                                sub="Currently live on marketplace"       accent="#1A6B45" />
-            <StatCard icon="📋" label="Active Orders"    value={activeOrders ?? '—'}                      sub={activeOrders === null ? 'Orders sync pending' : 'In progress'} accent="#1B2D4F" />
+            <StatCard icon="📋" label="Active Orders"    value={activeOrders ?? '—'}                      sub={activeOrders === null ? 'Orders sync pending' : 'In progress'} accent="#0F172A" />
             <StatCard icon="💷" label="Lifetime Earnings" value="—"                                       sub="Connect payout account to view"      accent="#9A7B3B" />
             <StatCard icon="★" label="Avg. Rating"      value={avgRating ? avgRating.toFixed(1) : '—'}  sub={avgRating ? 'Across all services' : 'No reviews yet'} accent="#3D2B6B" />
           </>
@@ -149,17 +149,17 @@ export default function SellerDashboardHome() {
 
       {/* Quick actions */}
       <div>
-        <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '18px', color: '#1B2D4F', margin: '0 0 14px', letterSpacing: '-0.01em' }}>
+        <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '18px', color: '#0F172A', margin: '0 0 14px', letterSpacing: '-0.01em' }}>
           Quick Actions
         </h3>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const }}>
-          <Link href="/dashboard/gigs/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#1B2D4F', color: '#FFFFFF', textDecoration: 'none', boxShadow: '0 2px 6px rgba(27,45,79,0.22)' }}>
+          <Link href="/dashboard/gigs/new" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#0F172A', color: '#FFFFFF', textDecoration: 'none', boxShadow: '0 2px 6px rgba(27,45,79,0.22)' }}>
             + Create New Service
           </Link>
-          <Link href="/dashboard/gigs" style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 20px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#1B2D4F', border: '1px solid #C8C2B6', textDecoration: 'none' }}>
+          <Link href="/dashboard/gigs" style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 20px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#0F172A', border: '1px solid #C8C2B6', textDecoration: 'none' }}>
             Manage Services
           </Link>
-          <Link href="/dashboard/orders" style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 20px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#1B2D4F', border: '1px solid #C8C2B6', textDecoration: 'none' }}>
+          <Link href="/dashboard/orders" style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 20px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#0F172A', border: '1px solid #C8C2B6', textDecoration: 'none' }}>
             View Orders
           </Link>
           <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 20px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, background: '#FFFFFF', color: '#9097A8', border: '1px solid #DDD8CE', textDecoration: 'none' }}>

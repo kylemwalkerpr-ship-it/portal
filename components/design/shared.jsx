@@ -1,34 +1,33 @@
 'use client'
-// @ts-nocheck
 import React from 'react'
 
 // Warm editorial palette. Off-white paper background, indigo accent (legacy
 // `cyan` key kept for compatibility with existing code), and a serif font
 // reference for premium headings.
 export const C = {
-  bg: '#FBFAF7',
+  bg: '#F7F8FA',
   surface: '#FFFFFF',
-  surface2: '#F4F2EE',
-  surface3: '#EAE7E0',
-  border: 'rgba(0,0,0,0.08)',
-  border2: 'rgba(0,0,0,0.14)',
+  surface2: '#EEF1F6',
+  surface3: '#DDE3EA',
+  border: '#E2E8F0',
+  border2: '#F1F5F9',
   cyan: '#3C3B6E',
-  cyanDark: '#2d2a5e',
-  cyanGlow: 'rgba(60,59,110,0.10)',
+  cyanDark: '#2A2A55',
+  cyanGlow: 'rgba(60,59,110,0.08)',
   studentMessageBg: '#E8EEF6',
-  studentMessageText: '#172033',
+  studentMessageText: '#0F172A',
   studentMessageBorder: '#C9D5E3',
   outboundMessageBg: '#FFFFFF',
-  outboundMessageText: '#1F2937',
+  outboundMessageText: '#0F172A',
   outboundMessageBorder: 'rgba(0,0,0,0.16)',
-  navy: '#B22234',
-  navyGlow: 'rgba(178,34,52,0.10)',
-  text: '#1F2937',
-  textMuted: '#6B7280',
-  textDim: '#9CA3AF',
-  green: '#059669',
+  navy: '#0F172A',
+  navyGlow: 'rgba(15,23,42,0.08)',
+  text: '#0F172A',
+  textMuted: '#334155',
+  textDim: '#64748B',
+  green: '#5F6B3A',
   orange: '#D97706',
-  red: '#DC2626',
+  red: '#B22234',
   purple: '#7C3AED',
   serif: "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif",
   sans: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
@@ -53,13 +52,13 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick = unde
   }
   const variants = {
     primary: {
-      background: '#1F2937', color: '#fff',
-      boxShadow: hovered && !disabled ? '0 6px 18px rgba(31,41,55,0.20)' : '0 1px 2px rgba(31,41,55,0.10)',
+      background: '#0F172A', color: '#fff',
+      boxShadow: hovered && !disabled ? '0 6px 18px rgba(15,23,42,0.20)' : '0 1px 2px rgba(15,23,42,0.10)',
     },
     secondary: { background: C.surface, color: C.text, border: `1px solid ${C.border2}` },
     ghost: { background: 'transparent', color: C.textMuted },
-    danger: { background: 'rgba(220,38,38,0.08)', color: C.red, border: `1px solid rgba(220,38,38,0.25)` },
-    success: { background: 'rgba(5,150,105,0.10)', color: C.green, border: `1px solid rgba(5,150,105,0.25)` },
+    danger: { background: 'rgba(178,34,52,0.08)', color: C.red, border: `1px solid rgba(178,34,52,0.25)` },
+    success: { background: 'rgba(95,107,58,0.10)', color: C.green, border: `1px solid rgba(95,107,58,0.25)` },
     outline: { background: 'transparent', color: C.text, border: `1px solid ${hovered && !disabled ? C.text : 'rgba(0,0,0,0.18)'}` },
     navy: { background: C.navy, color: '#fff', boxShadow: hovered && !disabled ? `0 6px 18px ${C.navyGlow}` : `0 1px 2px ${C.navyGlow}` },
   }
@@ -80,12 +79,12 @@ export function Btn({ children, variant = 'primary', size = 'md', onClick = unde
 
 export function Badge({ children, color = 'cyan', style = {}, ...props }) {
   const colors = {
-    cyan: { bg: 'rgba(60,59,110,0.10)', text: C.cyan, border: 'rgba(60,59,110,0.25)' },
-    green: { bg: 'rgba(5,150,105,0.10)', text: C.green, border: 'rgba(5,150,105,0.25)' },
+    cyan: { bg: 'rgba(60,59,110,0.08)', text: C.cyan, border: 'rgba(60,59,110,0.25)' },
+    green: { bg: 'rgba(95,107,58,0.10)', text: C.green, border: 'rgba(95,107,58,0.25)' },
     orange: { bg: 'rgba(217,119,6,0.10)', text: C.orange, border: 'rgba(217,119,6,0.25)' },
-    red: { bg: 'rgba(220,38,38,0.10)', text: C.red, border: 'rgba(220,38,38,0.25)' },
+    red: { bg: 'rgba(178,34,52,0.10)', text: C.red, border: 'rgba(178,34,52,0.25)' },
     purple: { bg: 'rgba(124,58,237,0.10)', text: C.purple, border: 'rgba(124,58,237,0.25)' },
-    gray: { bg: 'rgba(107,114,128,0.10)', text: C.textMuted, border: 'rgba(107,114,128,0.25)' },
+    gray: { bg: 'rgba(100,116,139,0.10)', text: C.textMuted, border: 'rgba(100,116,139,0.25)' },
   }
   const c = colors[color] || colors.cyan
   return (
@@ -121,8 +120,8 @@ export function Card({ children, style = {}, onClick = undefined, hover = false,
         cursor: onClick ? 'pointer' : undefined,
         transform: hovered && isHover ? 'translateY(-2px)' : undefined,
         boxShadow: hovered && isHover
-          ? '0 12px 32px rgba(15,18,32,0.10)'
-          : '0 1px 3px rgba(15,18,32,0.04)',
+          ? '0 12px 32px rgba(15,23,42,0.10)'
+          : '0 1px 3px rgba(15,23,42,0.04)',
         ...style,
       }}
     >
@@ -198,7 +197,7 @@ export function Select({ label, value, onChange, options, style }) {
 }
 
 export function Avatar({ name, src, size = 36, color }) {
-  const colors = ['#3C3B6E', '#B22234', '#059669', '#D97706', '#7C3AED']
+  const colors = ['#3C3B6E', '#B22234', '#5F6B3A', '#D97706', '#7C3AED']
   const idx = name ? name.charCodeAt(0) % colors.length : 0
   const bg = color || colors[idx]
   const initials = name ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'

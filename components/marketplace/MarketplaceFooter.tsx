@@ -9,14 +9,14 @@
  */
 
 const T = {
-  paper: '#FBFAF7',
-  paper2: '#F4F0E6',
-  vellum: '#FFFEF9',
-  ink: '#1D2433',
-  inkMid: '#4A4F5B',
-  inkSoft: '#7B7B72',
-  rule: '#D9D1BD',
-  ruleSoft: '#E7E0CD',
+  paper: '#F7F8FA',
+  paper2: '#EEF1F6',
+  vellum: '#FFFFFF',
+  ink: '#0F172A',
+  inkMid: '#334155',
+  inkSoft: '#64748B',
+  rule: '#E2E8F0',
+  ruleSoft: '#F1F5F9',
   indigo: '#3C3B6E',
   brick: '#B22234',
 }

@@ -16,13 +16,13 @@ export default function Error({
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
         <button
           onClick={() => reset()}
-          style={{ padding: '10px 18px', background: '#1B2D4F', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
+          style={{ padding: '10px 18px', background: '#0F172A', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
         >
           Try again
         </button>
         <a
           href="/"
-          style={{ padding: '10px 18px', background: 'transparent', color: '#1B2D4F', border: '1px solid #1B2D4F', borderRadius: 6, fontWeight: 700, textDecoration: 'none', fontSize: 14, display: 'inline-block' }}
+          style={{ padding: '10px 18px', background: 'transparent', color: '#0F172A', border: '1px solid #0F172A', borderRadius: 6, fontWeight: 700, textDecoration: 'none', fontSize: 14, display: 'inline-block' }}
         >
           Go home
         </a>

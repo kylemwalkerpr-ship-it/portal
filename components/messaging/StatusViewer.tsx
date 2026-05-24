@@ -87,7 +87,7 @@ export default function StatusViewer({ statuses, initialIndex = 0, onClose, view
           position: 'relative',
           width: 'min(420px, 92vw)',
           height: 'min(720px, 85vh)',
-          background: '#1D2433',
+          background: '#0F172A',
           borderRadius: 16,
           overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
@@ -133,17 +133,17 @@ export default function StatusViewer({ statuses, initialIndex = 0, onClose, view
         {/* Content card */}
         <div style={{ flex: 1, padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
           <div style={{
-            background: '#FFFEF9', borderRadius: 14, padding: 20,
+            background: '#FFFFFF', borderRadius: 14, padding: 20,
             display: 'flex', flexDirection: 'column', gap: 10,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7B7B72' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748B' }}>
               {payload.country_flag || '🌍'} New marketplace inquiry
             </div>
-            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1D2433', fontFamily: "var(--font-lora), Lora, Georgia, serif" }}>
+            <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#0F172A', fontFamily: "var(--font-lora), Lora, Georgia, serif" }}>
               {payload.case_type_label || 'Inquiry'}
             </h3>
             {payload.headline && (
-              <p style={{ margin: 0, fontSize: 14, color: '#4A4F5B', lineHeight: 1.5 }}>
+              <p style={{ margin: 0, fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
                 {payload.headline}
               </p>
             )}

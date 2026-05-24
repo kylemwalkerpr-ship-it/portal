@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const C = {
-  bg: '#FBFAF7',
+  bg: '#F7F8FA',
   surface: '#FFFFFF',
   surface2: '#F4F2EE',
   border: 'rgba(0,0,0,0.08)',

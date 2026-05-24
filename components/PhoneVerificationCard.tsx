@@ -35,7 +35,7 @@ import { useUser } from "@clerk/nextjs"
 
 type Mode = "idle" | "sending" | "code_sent" | "verifying" | "success"
 
-const NAVY = "#1B2D4F"
+const NAVY = "#0F172A"
 const GREEN = "#1A6B45"
 const RED = "#8B1A1A"
 const AMBER = "#8B5E0A"

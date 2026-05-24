@@ -131,7 +131,7 @@ function ScoreRing({ score, size = 96 }: { score: number; size?: number }) {
         textAnchor="middle"
         fontSize="18"
         fontWeight="700"
-        fill="#1B2D4F"
+        fill="#0F172A"
         fontFamily="system-ui, sans-serif"
       >
         {score}%
@@ -215,7 +215,7 @@ export default function SellerOptimizationPanel({ gigId }: Props) {
             fontFamily: serif,
             fontSize: '20px',
             fontWeight: 600,
-            color: '#1B2D4F',
+            color: '#0F172A',
             letterSpacing: '-0.01em',
             margin: '0 0 4px',
           }}>
@@ -248,7 +248,7 @@ export default function SellerOptimizationPanel({ gigId }: Props) {
                 <div style={{
                   height: '100%',
                   width: `${contentScore}%`,
-                  background: '#1B2D4F',
+                  background: '#0F172A',
                   borderRadius: '2px',
                   transition: 'width 0.4s',
                 }} />

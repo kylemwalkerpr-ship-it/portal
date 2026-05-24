@@ -128,7 +128,7 @@ export default function ChatScreen({
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 10,
-              background: '#1B2D4F',
+              background: '#0F172A',
               color: '#fff',
               border: 'none',
               borderRadius: 999,

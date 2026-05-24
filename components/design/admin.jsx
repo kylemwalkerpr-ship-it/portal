@@ -1,5 +1,4 @@
 'use client'
-// @ts-nocheck
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import AdminFinancials from './admin-financials'
@@ -665,7 +664,7 @@ function AdminApp({ onLogout }) {
     const [localPage, setLocalPage] = React.useState(1);
     const PER_PAGE = 15;
 
-    const ROLE_COLORS = { student: '#0891B2', consultant: '#7C3AED', attorney: '#1B2D4F', support: '#D97706', admin: '#DC2626' };
+    const ROLE_COLORS = { student: '#0891B2', consultant: '#7C3AED', attorney: '#0F172A', support: '#D97706', admin: '#DC2626' };
     const ROLE_BG     = { student: '#EFF6FF', consultant: '#F5F3FF', attorney: '#EFF6FF', support: '#FFF7ED', admin: '#FEF2F2' };
 
     const countries = React.useMemo(() => {
@@ -730,7 +729,7 @@ function AdminApp({ onLogout }) {
     const thStyle = (col, extra = {}) => ({
       padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700,
       color: sortCol === col ? '#C4A45A' : 'rgba(255,255,255,0.70)',
-      background: '#1B2D4F', whiteSpace: 'nowrap', cursor: 'pointer',
+      background: '#0F172A', whiteSpace: 'nowrap', cursor: 'pointer',
       letterSpacing: '0.06em', textTransform: 'uppercase', userSelect: 'none',
       borderBottom: '2px solid rgba(255,255,255,0.08)',
       transition: 'color 0.12s', ...extra,
@@ -794,8 +793,8 @@ function AdminApp({ onLogout }) {
             {['all', 'pending', 'student', 'consultant', 'attorney', 'support'].map(f => (
               <button key={f} onClick={() => { setUserFilter(f); setLocalPage(1); }} style={{
                 padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer',
-                border: `1px solid ${userFilter === f ? '#1B2D4F' : C.border}`,
-                background: userFilter === f ? '#1B2D4F' : C.surface2,
+                border: `1px solid ${userFilter === f ? '#0F172A' : C.border}`,
+                background: userFilter === f ? '#0F172A' : C.surface2,
                 color: userFilter === f ? '#fff' : C.textMuted,
                 fontWeight: userFilter === f ? 600 : 400, fontFamily: 'inherit',
               }}>
@@ -1003,7 +1002,7 @@ function AdminApp({ onLogout }) {
               }, []).map((p, i) => p === '…' ? (
                 <span key={`ellipsis-${i}`} style={{ padding: '6px 4px', fontSize: '13px', color: C.textMuted }}>…</span>
               ) : (
-                <button key={p} onClick={() => setLocalPage(p)} style={{ width: '32px', height: '32px', borderRadius: '6px', border: `1px solid ${p === localPage ? '#1B2D4F' : C.border}`, background: p === localPage ? '#1B2D4F' : C.surface2, color: p === localPage ? '#fff' : C.text, cursor: 'pointer', fontSize: '13px', fontWeight: p === localPage ? 700 : 400, fontFamily: 'inherit' }}>
+                <button key={p} onClick={() => setLocalPage(p)} style={{ width: '32px', height: '32px', borderRadius: '6px', border: `1px solid ${p === localPage ? '#0F172A' : C.border}`, background: p === localPage ? '#0F172A' : C.surface2, color: p === localPage ? '#fff' : C.text, cursor: 'pointer', fontSize: '13px', fontWeight: p === localPage ? 700 : 400, fontFamily: 'inherit' }}>
                   {p}
                 </button>
               ))}

@@ -14,7 +14,7 @@ import { C, Btn, Card, Badge } from './shared'
  * paginated ledger table.
  */
 
-const NAVY='#1B2D4F', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
+const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
 const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
 const SERIF=`'Cormorant Garamond', Georgia, serif`
 const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`

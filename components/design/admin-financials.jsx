@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
@@ -29,7 +28,7 @@ const monthKey = dateStr => { const d = new Date(dateStr); return isNaN(d) ? nul
 const monthLabel = key => { if (!key) return ''; const [y, m] = key.split('-'); return new Date(Number(y), Number(m) - 1, 1).toLocaleString('default', { month: 'short', year: '2-digit' }) }
 
 // ─── SVG chart primitives ─────────────────────────────────────────────────────
-function BarChart({ data, height = 120, barColor = '#1B2D4F', labelColor = '#9097A8' }) {
+function BarChart({ data, height = 120, barColor = '#0F172A', labelColor = '#9097A8' }) {
   if (!data.length) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '13px' }}>No data</div>
   const max = Math.max(...data.map(d => d.value), 1)
   const w = 100 / data.length
@@ -53,7 +52,7 @@ function BarChart({ data, height = 120, barColor = '#1B2D4F', labelColor = '#909
   )
 }
 
-function LineChart({ data, height = 100, color = '#1B2D4F', fillColor = 'rgba(27,45,79,0.08)' }) {
+function LineChart({ data, height = 100, color = '#0F172A', fillColor = 'rgba(27,45,79,0.08)' }) {
   if (data.length < 2) return null
   const max = Math.max(...data.map(d => d.value), 1)
   const pts = data.map((d, i) => ({
@@ -101,7 +100,7 @@ function DonutChart({ segments, size = 80 }) {
   )
 }
 
-function MiniSparkline({ values, color = '#1B2D4F' }) {
+function MiniSparkline({ values, color = '#0F172A' }) {
   if (!values || values.length < 2) return null
   const max = Math.max(...values, 1)
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 60},${20 - (v / max) * 18}`).join(' ')
@@ -113,16 +112,16 @@ function MiniSparkline({ values, color = '#1B2D4F' }) {
 }
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, delta, icon, accent = '#1B2D4F', onClick, chart }) {
+function KpiCard({ label, value, sub, delta, icon, accent = '#0F172A', onClick, chart }) {
   const [hov, setHov] = React.useState(false)
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} onClick={onClick}
-      style={{ background: '#fff', border: `1px solid ${hov && onClick ? '#1B2D4F' : '#DDD8CE'}`, borderTop: `3px solid ${accent}`, borderRadius: '8px', padding: '18px 20px', cursor: onClick ? 'pointer' : 'default', boxShadow: hov && onClick ? '0 4px 12px rgba(27,45,79,0.12)' : '0 1px 3px rgba(27,45,79,0.06)', transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      style={{ background: '#fff', border: `1px solid ${hov && onClick ? '#0F172A' : '#DDD8CE'}`, borderTop: `3px solid ${accent}`, borderRadius: '8px', padding: '18px 20px', cursor: onClick ? 'pointer' : 'default', boxShadow: hov && onClick ? '0 4px 12px rgba(27,45,79,0.12)' : '0 1px 3px rgba(27,45,79,0.06)', transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9097A8' }}>{label}</span>
         <span style={{ fontSize: '16px', opacity: 0.5 }}>{icon}</span>
       </div>
-      <div style={{ fontWeight: 800, fontSize: '26px', color: '#1B2D4F', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div style={{ fontWeight: 800, fontSize: '26px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {sub && <div style={{ fontSize: '12px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</div>}
       {delta !== undefined && (
         <div style={{ fontSize: '12px', fontWeight: 700, color: delta >= 0 ? '#1A6B45' : '#8B1A1A' }}>
@@ -140,7 +139,7 @@ function Section({ title, sub, action, children }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
         <div>
-          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#1B2D4F', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
+          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#0F172A', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
           {sub && <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</p>}
         </div>
         {action}
@@ -159,7 +158,7 @@ function DataTable({ cols, rows, emptyMsg = 'No data' }) {
           <thead>
             <tr>
               {cols.map(c => (
-                <th key={c.key} style={{ padding: '11px 14px', textAlign: c.right ? 'right' : 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.70)', background: '#1B2D4F', whiteSpace: 'nowrap', borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
+                <th key={c.key} style={{ padding: '11px 14px', textAlign: c.right ? 'right' : 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.70)', background: '#0F172A', whiteSpace: 'nowrap', borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
                   {c.label}
                 </th>
               ))}
@@ -324,7 +323,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#9097A8', marginBottom: '4px' }}>Finance</div>
-          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: '#1B2D4F', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Financial Intelligence</h2>
+          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: '#0F172A', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Financial Intelligence</h2>
           <p style={{ color: '#9097A8', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
             Full financial visibility across all users, transactions, liabilities, and projections.
           </p>
@@ -343,9 +342,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '10px 18px',
             fontSize: '13px', fontWeight: tab === t.id ? 600 : 400,
-            color: tab === t.id ? '#1B2D4F' : '#9097A8',
+            color: tab === t.id ? '#0F172A' : '#9097A8',
             background: 'none', border: 'none',
-            borderBottom: tab === t.id ? '2px solid #1B2D4F' : '2px solid transparent',
+            borderBottom: tab === t.id ? '2px solid #0F172A' : '2px solid transparent',
             cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: sans,
             transition: 'color 0.12s',
           }}>
@@ -361,7 +360,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
               <KpiCard label="Gross Revenue" value={fmt(grossRevenue, true)} sub={`${activeOrders.length} paid orders`} accent="#1A6B45"
                 chart={<MiniSparkline values={last6.map(k => monthlyMap[k].gross)} color="#1A6B45" />} />
-              <KpiCard label="Net Revenue (Platform)" value={fmt(netRevenue, true)} sub={`${platformPct}% platform cut`} delta={growthRate} accent="#1B2D4F"
+              <KpiCard label="Net Revenue (Platform)" value={fmt(netRevenue, true)} sub={`${platformPct}% platform cut`} delta={growthRate} accent="#0F172A"
                 chart={<MiniSparkline values={last6.map(k => monthlyMap[k].net)} />} />
               <KpiCard label="Total Paid Out" value={fmt(totalPayouts, true)} sub={`${consultantPct}% provider share`} accent="#9A7B3B"
                 chart={<MiniSparkline values={last6.map(k => monthlyMap[k].payouts)} color="#9A7B3B" />} />
@@ -374,16 +373,16 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             {/* Revenue split donut */}
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#1B2D4F', marginBottom: '16px' }}>Revenue Split</div>
+              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>Revenue Split</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
                 <DonutChart size={100} segments={[
-                  { label: `Platform (${platformPct}%)`, value: netRevenue, color: '#1B2D4F' },
+                  { label: `Platform (${platformPct}%)`, value: netRevenue, color: '#0F172A' },
                   { label: `Providers (${consultantPct}%)`, value: totalPayouts, color: '#9A7B3B' },
                   { label: 'Escrow Held', value: heldEscrow, color: '#D97706' },
                 ]} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
                   {[
-                    { label: `Platform Revenue (${platformPct}%)`, value: netRevenue, color: '#1B2D4F' },
+                    { label: `Platform Revenue (${platformPct}%)`, value: netRevenue, color: '#0F172A' },
                     { label: `Provider Payouts (${consultantPct}%)`, value: totalPayouts, color: '#9A7B3B' },
                     { label: 'In Escrow', value: heldEscrow, color: '#D97706' },
                     { label: 'Cancelled', value: cancelledValue, color: '#8B1A1A' },
@@ -391,7 +390,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                     <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: row.color, flexShrink: 0 }} />
                       <span style={{ fontSize: '12px', color: '#5C6070', flex: 1 }}>{row.label}</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#1B2D4F' }}>{fmt(row.value, true)}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{fmt(row.value, true)}</span>
                     </div>
                   ))}
                 </div>
@@ -400,7 +399,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
             {/* Key ratios */}
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#1B2D4F', marginBottom: '16px' }}>Key Ratios</div>
+              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>Key Ratios</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {[
                   { label: 'Avg. Order Value',       value: fmt(avgOrderValue) },
@@ -412,7 +411,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #F2EFE9' }}>
                     <span style={{ fontSize: '13px', color: '#5C6070' }}>{row.label}</span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#1B2D4F' }}>{row.value}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
                   </div>
                 ))}
               </div>
@@ -431,7 +430,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 {last3.map(k => (
                   <div key={k} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '11px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthLabel(k)}</div>
-                    <div style={{ fontWeight: 700, fontSize: '18px', color: '#1B2D4F', marginTop: '4px' }}>{fmt(monthlyMap[k].gross, true)}</div>
+                    <div style={{ fontWeight: 700, fontSize: '18px', color: '#0F172A', marginTop: '4px' }}>{fmt(monthlyMap[k].gross, true)}</div>
                     <div style={{ fontSize: '11px', color: '#1A6B45', marginTop: '2px' }}>{fmt(monthlyMap[k].net, true)} net</div>
                   </div>
                 ))}
@@ -444,7 +443,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <LineChart data={cumulativeData} height={120} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #F2EFE9' }}>
                 <span style={{ fontSize: '13px', color: '#9097A8' }}>All-time gross</span>
-                <span style={{ fontWeight: 700, color: '#1B2D4F' }}>{fmt(grossRevenue)}</span>
+                <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmt(grossRevenue)}</span>
               </div>
             </Card>
           </Section>
@@ -483,7 +482,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             action={
               <div style={{ display: 'flex', gap: '6px' }}>
                 {['spent', 'orders'].map(s => (
-                  <button key={s} onClick={() => setUserSort(s)} style={{ padding: '5px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: sans, border: `1px solid ${userSort === s ? '#1B2D4F' : '#DDD8CE'}`, background: userSort === s ? '#1B2D4F' : '#fff', color: userSort === s ? '#fff' : '#5C6070' }}>
+                  <button key={s} onClick={() => setUserSort(s)} style={{ padding: '5px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: sans, border: `1px solid ${userSort === s ? '#0F172A' : '#DDD8CE'}`, background: userSort === s ? '#0F172A' : '#fff', color: userSort === s ? '#fff' : '#5C6070' }}>
                     {s === 'spent' ? 'By Spend' : 'By Orders'}
                   </button>
                 ))}
@@ -587,7 +586,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <KpiCard label="Escrow Held" value={fmt(heldEscrow, true)} sub={`${held.length} orders locked`} accent="#D97706" icon="🔒" />
               <KpiCard label="Pending Provider Payouts" value={fmt(pendingRevenue, true)} sub="Platform cut from held orders" accent="#3D2B6B" icon="⏳" />
               <KpiCard label="Cancelled/Refund Exposure" value={fmt(cancelledValue, true)} sub={`${cancelled.length} cancelled orders`} accent="#8B1A1A" icon="⚠️" />
-              <KpiCard label="Total Liability" value={fmt(heldEscrow + cancelledValue, true)} sub="Max exposure if all fail" accent="#1B2D4F" icon="⚖️" />
+              <KpiCard label="Total Liability" value={fmt(heldEscrow + cancelledValue, true)} sub="Max exposure if all fail" accent="#0F172A" icon="⚖️" />
             </div>
           </Section>
 
@@ -644,7 +643,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
         <>
           <Section title="Revenue Projections" sub={`Based on ${last6.length}-month trailing average. ${roiNote}.`}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-              <KpiCard label="MRR (trailing avg)" value={fmt(mrr, true)} sub={`${last6.length}-month average`} accent="#1B2D4F" icon="📅" />
+              <KpiCard label="MRR (trailing avg)" value={fmt(mrr, true)} sub={`${last6.length}-month average`} accent="#0F172A" icon="📅" />
               <KpiCard label="Projected 3-Month" value={fmt(proj3m, true)} sub="Next 3 months at current pace" accent="#1A6B45" delta={growthRate} icon="📊" />
               <KpiCard label="Projected 6-Month" value={fmt(proj6m, true)} sub="Next 6 months at current pace" accent="#9A7B3B" icon="📈" />
               <KpiCard label="ARR (Annual Run Rate)" value={fmt(arr, true)} sub="12 × monthly average" accent="#3D2B6B" icon="🎯" />
@@ -680,7 +679,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <Section title="Break-Even & ROI" sub="Platform economics at current fee structure">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Card style={{ padding: '20px' }}>
-                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#1B2D4F', marginBottom: '14px' }}>Platform Economics</div>
+                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Platform Economics</div>
                 {[
                   { label: 'Gross Revenue Collected', value: fmt(grossRevenue) },
                   { label: `Platform Fee (${platformPct}%)`, value: fmt(netRevenue) },
@@ -691,12 +690,12 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F2EFE9' }}>
                     <span style={{ fontSize: '13px', color: '#5C6070' }}>{row.label}</span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#1B2D4F' }}>{row.value}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
                   </div>
                 ))}
               </Card>
               <Card style={{ padding: '20px' }}>
-                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#1B2D4F', marginBottom: '14px' }}>Provider Economics</div>
+                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Provider Economics</div>
                 {sortedProviders.slice(0, 6).map(p => (
                   <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F2EFE9' }}>
                     <span style={{ fontSize: '13px', color: '#5C6070', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{p.name}</span>

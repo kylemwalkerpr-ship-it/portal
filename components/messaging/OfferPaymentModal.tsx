@@ -9,7 +9,7 @@
  */
 import { useEffect, useState, useCallback } from 'react'
 
-const NAVY = '#1B2D4F'
+const NAVY = '#0F172A'
 const GOLD = '#9A7B3B'
 const RED  = '#8B1A1A'
 const GREEN = '#1A6B45'

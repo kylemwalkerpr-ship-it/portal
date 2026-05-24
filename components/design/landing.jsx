@@ -1,5 +1,4 @@
 'use client'
-// @ts-nocheck
 import React from 'react'
 import { C } from './shared'
 
@@ -68,7 +67,7 @@ export default function LandingPage({ onLogin, onSignup }) {
   const goSignUp = (lane) => onSignup?.(lane)
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FBFAF7', color: C.text, fontFamily: SANS }}>
+    <div style={{ minHeight: '100vh', background: '#F7F8FA', color: C.text, fontFamily: SANS }}>
       <Nav onSignIn={() => goSignIn('student')} />
 
       <Hero onPrimary={() => goSignUp('student')} />

@@ -6,7 +6,7 @@
  * broadcast, and whether the current viewer has already opened it.
  *
  *   hasStatus + !viewed → solid indigo ring (#3C3B6E)
- *   hasStatus +  viewed → dashed border-color ring (#D9D1BD)
+ *   hasStatus +  viewed → dashed border-color ring (#E2E8F0)
  *   !hasStatus          → no ring; child renders alone
  */
 import React from 'react'
@@ -21,7 +21,7 @@ interface StatusRingProps {
 export default function StatusRing({ children, hasStatus, viewed, size = 40 }: StatusRingProps) {
   if (!hasStatus) return <>{children}</>
 
-  const stroke = viewed ? '#D9D1BD' : '#3C3B6E'
+  const stroke = viewed ? '#E2E8F0' : '#3C3B6E'
   const dasharray = viewed ? '4 3' : undefined
   // SVG sits behind the avatar with 2px padding so the ring hugs but doesn't clip.
   const ringSize = size + 6

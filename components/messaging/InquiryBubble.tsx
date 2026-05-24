@@ -14,7 +14,7 @@ const GOLD = '#9A7B3B'
 function urgencyColor(u: string | undefined | null): string {
   const v = (u || '').toLowerCase()
   if (v === 'high' || v === 'urgent' || v === 'critical') return BRICK
-  if (v === 'low') return '#7B7B72'
+  if (v === 'low') return '#64748B'
   return INDIGO
 }
 

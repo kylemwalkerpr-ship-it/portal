@@ -29,7 +29,7 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
       <div style={{ height: '3px', background: 'linear-gradient(90deg, #9A7B3B 0%, #C4A45A 50%, #9A7B3B 100%)' }} />
 
       {/* Top navigation */}
-      <nav style={{ background: '#1B2D4F', boxShadow: '0 2px 12px rgba(0,0,0,0.18)' }}>
+      <nav style={{ background: '#0F172A', boxShadow: '0 2px 12px rgba(0,0,0,0.18)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '8px' }}>
 
           {/* Brand mark */}
@@ -96,7 +96,7 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
                 fontSize: 'clamp(22px, 5vw, 32px)',
                 fontWeight: 600,
                 letterSpacing: '-0.015em',
-                color: '#1B2D4F',
+                color: '#0F172A',
                 margin: 0,
                 lineHeight: 1.15,
               }}>
