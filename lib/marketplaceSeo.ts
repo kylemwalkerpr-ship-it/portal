@@ -26,10 +26,10 @@ export async function getMarketplaceBaseUrl(): Promise<string> {
  */
 export async function getMarketplaceCanonicalPath(path: string): Promise<string> {
   const host = await getHost()
-  if (host === MARKET_HOST) {
-    return path.replace(/^\/marketplace/, '') || '/'
-  }
-  return path
+  const stripped = host === MARKET_HOST ? (path.replace(/^\/marketplace/, '') || '/') : path
+  // Drop trailing slash — the host 308s `/foo/` → `/foo`, so canonicals must
+  // be the final form. Root `/` stays as `/`.
+  return stripped === '/' ? '/' : stripped.replace(/\/$/, '')
 }
 
 /**

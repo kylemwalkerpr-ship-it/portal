@@ -12,7 +12,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const isMarket = host === MARKET_HOST
   const base = `https://${isMarket ? MARKET_HOST : PORTAL_HOST}`
 
-  const mp = (path: string) => isMarket ? path.replace(/^\/marketplace/, '') || '/' : path
+  // Strip trailing slash because the host 308-redirects `/foo/` → `/foo`.
+  // Sitemaps must contain the canonical (final-destination) URL only.
+  const mp = (path: string) => {
+    const stripped = isMarket ? path.replace(/^\/marketplace/, '') : path
+    if (stripped === '' || stripped === '/') return '/'
+    return stripped.replace(/\/$/, '')
+  }
 
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}${mp('/marketplace/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
@@ -23,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const pack of TEMPLATE_PACKS) {
     entries.push({
-      url: `${base}${mp(`/marketplace/templates/${pack.slug}/`)}`,
+      url: `${base}${mp(`/marketplace/templates/${pack.slug}`)}`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.6,
@@ -44,7 +50,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const gig of gigs ?? []) {
       if (!gig.slug) continue
       entries.push({
-        url: `${base}${mp(`/marketplace/gigs/${gig.slug}/`)}`,
+        url: `${base}${mp(`/marketplace/gigs/${gig.slug}`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.6,
@@ -58,7 +64,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const a of attorneys ?? []) {
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${a.id}/`)}`,
+        url: `${base}${mp(`/marketplace/providers/${a.id}`)}`,
         lastModified: a.created_at ? new Date(a.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,
@@ -72,7 +78,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const c of consultants ?? []) {
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${c.id}/`)}`,
+        url: `${base}${mp(`/marketplace/providers/${c.id}`)}`,
         lastModified: c.created_at ? new Date(c.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,
