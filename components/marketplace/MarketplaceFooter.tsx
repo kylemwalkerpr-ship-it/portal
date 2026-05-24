@@ -38,6 +38,7 @@ const NAV_LINKS: FooterLink[] = [
   { label: 'For attorneys', href: 'https://portal.yousafeconsultancy.com/sign-up/attorney' },
   { label: 'For consultants', href: 'https://portal.yousafeconsultancy.com/sign-up/consultant' },
   { label: 'Open portal', href: 'https://portal.yousafeconsultancy.com/' },
+  { label: 'Help', href: '#faq' },
 ]
 
 const LEGAL_LINKS: FooterLink[] = [
@@ -68,36 +69,15 @@ export function MarketplaceFooter() {
         .cw-mkt-footer-wrap {
           width: min(1280px, calc(100vw - 32px));
           margin: 0 auto;
-          padding: 44px 0 16px;
+          padding: 18px 0 16px;
           display: grid;
-          grid-template-columns: minmax(0, auto) 1fr minmax(0, auto);
+          grid-template-columns: 1fr minmax(0, auto);
           align-items: center;
           gap: 18px;
         }
         @media (max-width: 760px) {
           .cw-mkt-footer-wrap { grid-template-columns: 1fr; gap: 12px; padding: 18px 0 14px; }
           .cw-mkt-footer-legal-row { justify-content: flex-start !important; }
-        }
-        .cw-mkt-brand {
-          display: inline-flex; align-items: center; gap: 10px; color: ${T.ink}; text-decoration: none;
-        }
-        .cw-mkt-brand-mark {
-          width: 28px; height: 28px; border-radius: 6px;
-          background: ${T.indigo}; color: #fff;
-          display: inline-grid; place-items: center;
-          font-family: ${F.display}; font-weight: 600; font-size: 16px;
-          position: relative; overflow: hidden;
-        }
-        .cw-mkt-brand-mark::after {
-          content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
-          background: linear-gradient(90deg, ${T.indigo} 0 42%, #fff 42% 58%, ${T.brick} 58% 100%);
-        }
-        .cw-mkt-brand-name {
-          font-family: ${F.display}; font-weight: 600; font-size: 15px; letter-spacing: -0.005em; color: ${T.ink};
-        }
-        .cw-mkt-brand-name span {
-          font-family: ${F.mono}; font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
-          color: ${T.inkSoft}; margin-left: 8px; font-weight: 500;
         }
         .cw-mkt-nav {
           display: flex; flex-wrap: wrap; gap: 4px 22px; justify-content: center;
@@ -125,7 +105,7 @@ export function MarketplaceFooter() {
         .cw-mkt-footer-brand-row {
           width: min(1280px, calc(100vw - 32px));
           margin: 0 auto;
-          padding: 0 0 20px;
+          padding: 28px 0 14px;
           display: flex;
           align-items: center;
           gap: 12px;
@@ -149,10 +129,6 @@ export function MarketplaceFooter() {
         <span className="tagline">Fixed-fee, escrowed legal briefs across US, UK &amp; CA.</span>
       </div>
       <div className="cw-mkt-footer-wrap">
-        <a className="cw-mkt-brand" href="/marketplace">
-          <span className="cw-mkt-brand-mark">Y</span>
-          <span className="cw-mkt-brand-name">YouSafe <span>Marketplace</span></span>
-        </a>
         <nav className="cw-mkt-nav">
           {NAV_LINKS.map((l) => (
             <a key={l.href} href={l.href}>{l.label}</a>

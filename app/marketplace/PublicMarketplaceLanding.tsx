@@ -1167,12 +1167,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </div>
       </section>
 
-      {/* Footer utility links */}
-      <div className="wrap" style={{ display: 'flex', justifyContent: 'center', gap: '24px', padding: '24px 20px 8px', fontSize: '13px', color: T.inkSoft }}>
-        <a href={`${PORTAL_URL}/sign-up/attorney`} style={{ color: 'inherit', textDecoration: 'none' }}>For attorneys &amp; consultants</a>
-        <a href="#faq" style={{ color: 'inherit', textDecoration: 'none' }}>Help</a>
-      </div>
-
       <MarketplaceFooter />
     </div>
   )
