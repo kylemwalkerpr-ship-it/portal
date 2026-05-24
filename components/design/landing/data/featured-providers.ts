@@ -47,9 +47,9 @@ export const FALLBACK_PROVIDERS: FeaturedProvider[] = [
 ]
 
 export const getFeaturedProviders = unstable_cache(async (): Promise<FeaturedProvider[]> => {
-  const db = createSupabaseAdminClient()
-
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_PROVIDERS
+    const db = createSupabaseAdminClient()
     // Re-use the same query pattern as app/api/sellers/route.ts
     const [{ data: attorneys }, { data: consultants }] = await Promise.all([
       db.from('attorneys').select('id, profile_id, headshot_url, jurisdictions, years_experience'),

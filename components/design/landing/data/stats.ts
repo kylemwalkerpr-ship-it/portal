@@ -15,9 +15,9 @@ export const FALLBACK_STATS: LandingStat[] = [
 ]
 
 export const getLandingStats = unstable_cache(async (): Promise<LandingStat[]> => {
-  const db = createSupabaseAdminClient()
-
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_STATS
+    const db = createSupabaseAdminClient()
     const [
       { count: inquiryCount },
       { count: orderCount },

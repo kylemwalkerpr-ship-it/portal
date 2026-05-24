@@ -48,9 +48,9 @@ export const FALLBACK_TESTIMONIALS: Testimonial[] = [
 ]
 
 export const getTestimonials = unstable_cache(async (): Promise<Testimonial[]> => {
-  const db = createSupabaseAdminClient()
-
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_TESTIMONIALS
+    const db = createSupabaseAdminClient()
     // Query top-rated reviews (5-star) as proxy for featured testimonials
     const { data: reviews } = await db
       .from('gig_reviews')

@@ -71,9 +71,9 @@ export const FALLBACK_GIGS: FeaturedGig[] = [
 ]
 
 export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> => {
-  const db = createSupabaseAdminClient()
-
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_GIGS
+    const db = createSupabaseAdminClient()
     const { data: gigs } = await db
       .from('gigs')
       .select('slug, title, category, avg_rating, review_count, order_count, gallery_images, provider_id, provider_type')

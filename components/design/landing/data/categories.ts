@@ -26,9 +26,9 @@ export const FALLBACK_COUNTS: Record<string, number> = {
 }
 
 export const getCategoryCounts = unstable_cache(async (): Promise<Record<string, number>> => {
-  const db = createSupabaseAdminClient()
-
   try {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_COUNTS
+    const db = createSupabaseAdminClient()
     const { data: gigs } = await db
       .from('gigs')
       .select('category')
