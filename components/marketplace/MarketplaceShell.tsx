@@ -233,7 +233,7 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         fontFamily: F.ui,
       }}
     >
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', height: 56 }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', height: 72 }}>
 
         {/* Brand */}
         <Link
@@ -243,13 +243,13 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
           {role === null ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
-                width: 22, height: 22, borderRadius: 4,
+                width: 26, height: 26, borderRadius: 4,
                 background: T.indigo, color: '#fff',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: F.display, fontWeight: 600, fontSize: 13,
+                fontFamily: F.display, fontWeight: 600, fontSize: 14,
               }}>Y</span>
               <span style={{
-                fontFamily: F.display, fontSize: 17, fontWeight: 600,
+                fontFamily: F.display, fontSize: 19, fontWeight: 600,
                 color: T.ink, letterSpacing: '0.005em',
               }}>YouSafe</span>
             </div>
@@ -280,8 +280,8 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
                 onClick={() => onNav(link.view as Section)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '0 16px',
-                  fontSize: '12.5px', fontWeight: active ? 600 : 500,
+                  padding: '0 18px',
+                  fontSize: '13.5px', fontWeight: active ? 600 : 500,
                   color: active ? T.ink : T.inkSoft,
                   background: active ? T.indigoSoft : 'none',
                   border: 'none',
@@ -299,30 +299,6 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
             )
           })}
         </nav>
-
-        {/* Search — only for public / client browse mode */}
-        {(!role || role === 'client') && (
-          <form
-            className="nav-search"
-            role="search"
-            action="/marketplace"
-            method="get"
-            style={{ display: 'flex', alignItems: 'center', background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '999px', padding: '0 6px 0 16px', gap: '10px', transition: 'border-color .15s, box-shadow .15s', marginRight: '12px' }}
-            onFocus={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.ink; (e.currentTarget as HTMLFormElement).style.boxShadow = '0 0 0 4px rgba(29,36,51,0.06)' }}
-            onBlur={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.rule; (e.currentTarget as HTMLFormElement).style.boxShadow = 'none' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: T.inkSoft, flex: '0 0 18px' }}>
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <input
-              name="q"
-              placeholder="Search services — I-130, OPT, Section 21…"
-              style={{ flex: 1, border: 0, background: 'transparent', font: 'inherit', fontSize: '14px', color: T.ink, outline: 'none' }}
-            />
-            <button type="submit" style={{ height: '32px', padding: '0 14px', borderRadius: '999px', background: T.ink, color: '#fff', fontSize: '12.5px', fontWeight: 600, letterSpacing: '0.01em', border: 'none', cursor: 'pointer' }}>Search</button>
-          </form>
-        )}
 
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
@@ -401,7 +377,7 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
       {roleLoaded && role !== null && section === 'browse' && (
         <div className="country-bar" id="jurisdictions" style={{ borderBottom: `1px solid ${T.rule}`, background: T.vellum }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px' }}>
-            <div className="country-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', flexWrap: 'wrap' }}>
+            <div className="country-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', flexWrap: 'wrap' }}>
               <CategoriesMenu country={country} />
               <div className="divider" style={{ height: '18px', width: '1px', background: T.rule, margin: '0 6px' }} />
               <CountryTabs active={country} />

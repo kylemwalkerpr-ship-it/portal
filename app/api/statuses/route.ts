@@ -13,16 +13,31 @@ export async function GET() {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
+  const role = auth.role
+  const isAttorney = role === 'attorney'
+  const isAuthorRole = role === 'client' || role === 'student'
+  if (!isAttorney && !isAuthorRole) {
+    // Consultants / admins / support — no access.
+    return Response.json({ statuses: [] })
+  }
+
   const nowIso = new Date().toISOString()
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: rows, error } = await auth.db
+  let query = auth.db
     .from('inquiry_statuses')
     .select('id, person_id, inquiry_id, payload, created_at, expires_at')
     .gt('expires_at', nowIso)
     .gt('created_at', twentyFourHoursAgo)
     .order('created_at', { ascending: false })
     .limit(100)
+
+  if (!isAttorney) {
+    // Author-only view for clients/students.
+    query = query.eq('person_id', auth.profileId)
+  }
+
+  const { data: rows, error } = await query
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
   const list = rows ?? []

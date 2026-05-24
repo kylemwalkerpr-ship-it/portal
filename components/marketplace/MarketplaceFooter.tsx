@@ -68,7 +68,7 @@ export function MarketplaceFooter() {
         .cw-mkt-footer-wrap {
           width: min(1280px, calc(100vw - 32px));
           margin: 0 auto;
-          padding: 20px 0 16px;
+          padding: 44px 0 16px;
           display: grid;
           grid-template-columns: minmax(0, auto) 1fr minmax(0, auto);
           align-items: center;
@@ -100,10 +100,11 @@ export function MarketplaceFooter() {
           color: ${T.inkSoft}; margin-left: 8px; font-weight: 500;
         }
         .cw-mkt-nav {
-          display: flex; flex-wrap: wrap; gap: 4px 18px; justify-content: center;
+          display: flex; flex-wrap: wrap; gap: 4px 22px; justify-content: center;
+          font-size: 14px; line-height: 1.6;
         }
         .cw-mkt-nav a {
-          color: ${T.inkMid}; text-decoration: none; font-size: 13px; padding: 2px 0;
+          color: ${T.inkMid}; text-decoration: none; padding: 2px 0;
           transition: color .12s;
         }
         .cw-mkt-nav a:hover { color: ${T.ink}; }
@@ -121,7 +122,32 @@ export function MarketplaceFooter() {
           font-size: 11.5px; line-height: 1.55; color: ${T.inkSoft};
           max-width: 78ch;
         }
+        .cw-mkt-footer-brand-row {
+          width: min(1280px, calc(100vw - 32px));
+          margin: 0 auto;
+          padding: 0 0 20px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .cw-mkt-footer-brand-row .mark {
+          width: 26px; height: 26px; border-radius: 4px;
+          background: ${T.indigo}; color: #fff;
+          display: inline-grid; place-items: center;
+          font-family: ${F.display}; font-weight: 600; font-size: 14px;
+        }
+        .cw-mkt-footer-brand-row .wordmark {
+          font-family: ${F.display}; font-weight: 600; font-size: 18px; color: ${T.ink};
+        }
+        .cw-mkt-footer-brand-row .tagline {
+          font-family: ${F.ui}; font-size: 13px; color: ${T.inkSoft}; margin-left: 4px;
+        }
       `}</style>
+      <div className="cw-mkt-footer-brand-row">
+        <span className="mark">Y</span>
+        <span className="wordmark">YouSafe Marketplace</span>
+        <span className="tagline">Fixed-fee, escrowed legal briefs across US, UK &amp; CA.</span>
+      </div>
       <div className="cw-mkt-footer-wrap">
         <a className="cw-mkt-brand" href="/marketplace">
           <span className="cw-mkt-brand-mark">Y</span>

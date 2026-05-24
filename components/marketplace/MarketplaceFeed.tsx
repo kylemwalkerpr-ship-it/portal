@@ -63,8 +63,28 @@ export default function MarketplaceFeed() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [freshIds, setFreshIds] = React.useState<Set<string>>(new Set())
+  const [authorised, setAuthorised] = React.useState<boolean | null>(null)
+  const [myProfileId, setMyProfileId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    fetch('/api/profile', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const role = d?.profile?.role
+        const ok = role === 'attorney' || role === 'client' || role === 'student'
+        setAuthorised(Boolean(ok))
+        // myProfileId is the author-filter target — set only for the
+        // roles that need to be scoped to their own broadcasts on the
+        // realtime channel. Attorneys see everything; leave it null.
+        if (role === 'client' || role === 'student') {
+          setMyProfileId(d?.profile?.id || null)
+        }
+      })
+      .catch(() => setAuthorised(false))
+  }, [])
+
+  React.useEffect(() => {
+    if (authorised !== true) return
     let cancelled = false
     fetch('/api/statuses')
       .then((r) => r.json())
@@ -76,14 +96,17 @@ export default function MarketplaceFeed() {
       .catch((e) => !cancelled && setError(String(e?.message || e)))
       .finally(() => !cancelled && setLoading(false))
     return () => { cancelled = true }
-  }, [])
+  }, [authorised])
 
   React.useEffect(() => {
+    if (authorised !== true) return
     const off = subscribeToTable('inquiry_statuses', 'public', (payload) => {
       if (payload.eventType !== 'INSERT' || !payload.new) return
       const row = payload.new
       // Skip expired rows that arrived stale
       if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return
+      // For client/student viewers, only accept their own broadcasts
+      if (myProfileId && row.person_id !== myProfileId) return
       const next: Status = {
         id: row.id,
         person_id: row.person_id,
@@ -110,7 +133,7 @@ export default function MarketplaceFeed() {
       }, 1200)
     })
     return () => off()
-  }, [])
+  }, [authorised, myProfileId])
 
   async function openStatus(s: Status) {
     // Optimistic mark-viewed.
@@ -120,6 +143,11 @@ export default function MarketplaceFeed() {
     } catch { /* swallow — view tracking is best-effort */ }
     if (s.inquiry_id) router.push(`/dashboard?page=inquiries&open=${encodeURIComponent(s.inquiry_id)}`)
   }
+
+  // Render nothing until we know, and nothing at all if the viewer
+  // isn't entitled to see the section.
+  if (authorised === null) return null
+  if (authorised === false) return null
 
   return (
     <div style={{ background: PAPER, padding: 20, borderRadius: 14, border: `1px solid ${SOFT_BORDER}` }}>
@@ -156,7 +184,7 @@ export default function MarketplaceFeed() {
       {loading ? (
         <div style={{ fontFamily: SANS, fontSize: 14, color: INK_SOFT, padding: '24px 0' }}>Loading live briefs…</div>
       ) : error ? (
-        <div style={{ fontFamily: SANS, fontSize: 14, color: BRICK, padding: '24px 0' }}>Couldn’t load briefs: {error}</div>
+        <div style={{ fontFamily: SANS, fontSize: 14, color: BRICK, padding: '24px 0' }}>Couldn't load briefs: {error}</div>
       ) : statuses.length === 0 ? (
         <div style={{ fontFamily: SANS, fontSize: 14, color: INK_SOFT, padding: '24px 0' }}>
           No active briefs right now. New inquiries appear here in real time.

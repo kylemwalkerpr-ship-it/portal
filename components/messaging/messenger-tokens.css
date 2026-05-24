@@ -1169,3 +1169,14 @@
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Default (dashboard-embedded): keep the legacy centered column. */
+.yousafe-messenger .cv-canvas-inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+/* Marketplace shell context: let bubbles affix to the pane edges. */
+.cw-market .yousafe-messenger .cv-canvas-inner {
+  max-width: none;
+  margin: 0;
+}

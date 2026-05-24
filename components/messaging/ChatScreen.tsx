@@ -117,7 +117,7 @@ export default function ChatScreen({
           position: 'relative',
         }}
       >
-        <div style={{ maxWidth: 760, margin: '0 auto', padding: '14px 18px', position: 'relative', zIndex: 2 }}>
+        <div className="cv-canvas-inner" style={{ padding: '14px 18px', position: 'relative', zIndex: 2 }}>
           {messages}
         </div>
         {showNewMessagePill && (

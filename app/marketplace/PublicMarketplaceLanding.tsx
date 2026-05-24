@@ -11,6 +11,7 @@ import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import MarketplaceFeed from '@/components/marketplace/MarketplaceFeed'
+import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroCaseFileSlideshow'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -554,8 +555,9 @@ const CSS = `
 .cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
 .cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
 
-.cw-market .hero { padding: 32px 0 32px; border-bottom: 1px solid ${T.rule}; }
-.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 36px; align-items: center; }
+.cw-market .hero { padding: 24px 0 28px; border-bottom: 1px solid ${T.rule}; }
+.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; align-items: center; }
+@keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: ${T.inkMid}; }
 .cw-market .flagbar { width: 28px; height: 8px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border: 1px solid ${T.rule}; }
 .cw-market .flagbar.uk { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
@@ -833,12 +835,55 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
   const currency = slice.currency
   const baseCountryParam = active === 'all' ? '' : `&country=${active}`
 
-  // Featured fallback: if the active jurisdiction has no gigs at all, borrow
-  // the global most-popular gig (max(impressions, reviews)) so the hero is
-  // never empty. The badge marks it as a cross-jurisdiction example.
-  const caseFileToShow = slice.caseFile ?? data.slices.all.caseFile
-  const caseFileIsFallback = !slice.caseFile && !!data.slices.all.caseFile
-
+  // Build one slide per jurisdiction that has a caseFile (most-popular gig).
+  // Always include the active slice first, then remaining jurisdictions.
+  // Fallback to the global top brief only for jurisdictions with zero gigs.
+  const slides: HeroSlide[] = []
+  const jxOrder: Country[] = [active, ...(['all', 'us', 'uk', 'ca'] as Country[]).filter((c) => c !== active)]
+  for (const jx of jxOrder) {
+    const s = data.slices[jx]
+    if (!s) continue
+    if (s.caseFile) {
+      slides.push({
+        id: s.caseFile.id,
+        title: s.caseFile.title,
+        providerName: s.caseFile.providerName,
+        provider_type: s.caseFile.provider_type,
+        providerCountry: s.caseFile.providerCountry,
+        jx: s.caseFile.jx,
+        avg_rating: s.caseFile.avg_rating,
+        review_count: s.caseFile.review_count,
+        slug: s.caseFile.slug,
+        caseTiers: s.caseFile.caseTiers,
+        isFallback: false,
+        label: s.label,
+      })
+    } else if (data.slices.all.caseFile) {
+      slides.push({
+        id: data.slices.all.caseFile.id,
+        title: data.slices.all.caseFile.title,
+        providerName: data.slices.all.caseFile.providerName,
+        provider_type: data.slices.all.caseFile.provider_type,
+        providerCountry: data.slices.all.caseFile.providerCountry,
+        jx: data.slices.all.caseFile.jx,
+        avg_rating: data.slices.all.caseFile.avg_rating,
+        review_count: data.slices.all.caseFile.review_count,
+        slug: data.slices.all.caseFile.slug,
+        caseTiers: data.slices.all.caseFile.caseTiers,
+        isFallback: true,
+        label: s.label,
+      })
+    }
+  }
+  // Deduplicate by id.
+  const deduped: HeroSlide[] = []
+  const seen = new Set<string>()
+  for (const s of slides) {
+    if (!seen.has(s.id)) {
+      seen.add(s.id)
+      deduped.push(s)
+    }
+  }
   // Featured grid fallback: same idea — fill with global top 6 if the slice
   // has nothing.
   const featuredToShow = slice.featured.length > 0 ? slice.featured : data.slices.all.featured
@@ -888,59 +933,15 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
             </div>
           </div>
 
-          {caseFileToShow ? (
-            <a
-              className="hero-card-link"
-              href={caseFileToShow.slug ? `/marketplace/gigs/${caseFileToShow.slug}` : withCountry('/marketplace?sort=most_orders', active)}
-              aria-label={`Open ${caseFileToShow.title}`}
-              style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
-            >
-            <aside className="hero-card" data-c={caseFileToShow.jx ?? 'us'} aria-label="Most-popular service listing">
-              <div className="file-meta">
-                <span>FILE · MC-{caseFileToShow.id.slice(0, 4).toUpperCase()}-{(caseFileToShow.providerCountry || (caseFileToShow.jx ? caseFileToShow.jx : 'XXX')).toUpperCase().slice(0, 3)}</span>
-                <span>{caseFileIsFallback ? 'GLOBAL · TOP BRIEF' : 'MOST POPULAR'}</span>
-              </div>
-              <h3>{caseFileToShow.title}</h3>
-              <div className="attorney">
-                <div className="avatar" style={{ background: `linear-gradient(135deg, ${T.indigo}, ${T.indigoDeep})` }}>
-                  {initialsOf(caseFileToShow.providerName)}
-                </div>
-                <div className="attorney-name">
-                  <b>{caseFileToShow.providerName}</b>
-                  <span>{caseFileToShow.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
-                </div>
-                {caseFileToShow.review_count > 0 ? (
-                  <div className="stars">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9" /></svg>
-                    {caseFileToShow.avg_rating.toFixed(2)} <span className="rev">· {caseFileToShow.review_count}</span>
-                  </div>
-                ) : null}
-              </div>
-              {caseFileToShow.caseTiers.length > 0 && (
-                <div className="tiers">
-                  {caseFileToShow.caseTiers.map((t, i) => (
-                    <div key={i} className="tier-row">
-                      <span className="lbl">{t.tier}</span>
-                      <span className="name">{['Cover memo + checklist review', 'Full evidence pack & declarations', 'Pack + attorney signature'][i] ?? ''}</span>
-                      <span className="price">{formatPrice(t.price, currency)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {caseFileToShow.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
-              {caseFileToShow.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
-              {caseFileIsFallback && (
-                <div className="hero-fallback-hint">
-                  No <b>{slice.label}</b> briefs yet — showing the platform's top brief.
-                </div>
-              )}
-            </aside>
-            </a>
-          ) : (
-            <aside className="hero-empty">
-              No active briefs yet — be the first to <a href={`${PORTAL_URL}/sign-up/attorney`} style={{ color: T.indigo, borderBottom: `1px solid ${T.indigo}` }}>list one</a>.
-            </aside>
-          )}
+          <HeroCaseFileSlideshow
+            slides={deduped}
+            currency={currency}
+            formatPrice={formatPrice}
+            initialsOf={initialsOf}
+            withCountry={withCountry}
+            T={T}
+            F={F}
+          />
         </div>
       </section>
 
