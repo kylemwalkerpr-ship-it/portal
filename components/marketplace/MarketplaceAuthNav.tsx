@@ -38,7 +38,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
   // SSR / signed-out fallback
   if (!isSignedIn) {
     return (
-      <nav className="nav-links" suppressHydrationWarning>
+      <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 8 }} suppressHydrationWarning>
         <a href={`${PORTAL_URL}/sign-in/student`}>Sign in</a>
         <a className="cta" href={signUpHref}>Open portal</a>
       </nav>

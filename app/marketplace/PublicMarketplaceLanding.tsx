@@ -7,13 +7,10 @@ import {
 } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
-import { CountryTabs, CountryPicker } from '@/components/marketplace/CountryTabs'
-import { CategoriesMenu } from '@/components/marketplace/CategoriesMenu'
-import { HelpDropdown } from '@/components/marketplace/HelpDropdown'
+import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
 import MarketplaceFeed from '@/components/marketplace/MarketplaceFeed'
-import MarketplaceAuthNav from '@/components/marketplace/MarketplaceAuthNav'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
 
@@ -858,63 +855,6 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SERVICE_JSONLD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }} />
 
-      {/* Top utility bar */}
-      <div className="topbar">
-        <div className="wrap topbar-inner">
-          <div className="topbar-left">
-            <span className="mono">YouSafe · Marketplace · {slice.label}</span>
-            {totalActive > 0 && (
-              <span className="pill-mini">{totalActive.toLocaleString('en-US')} briefs available now</span>
-            )}
-          </div>
-          <div className="topbar-right">
-            <a href={`${PORTAL_URL}/sign-up/attorney`}>For attorneys &amp; consultants</a>
-            <HelpDropdown items={FAQS} />
-          </div>
-        </div>
-      </div>
-
-      {/* Main header */}
-      <header className="nav">
-        <div className="wrap nav-inner">
-          <a className="brand" href={withCountry('/marketplace', active)} aria-label="YouSafe marketplace home">
-            <span className="brand-mark">Y</span>
-            <span className="brand-name">
-              <b>YouSafe</b>
-              <span>Marketplace</span>
-            </span>
-          </a>
-
-          <form className="nav-search" role="search" action="/marketplace" method="get">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <input name="q" placeholder={`Search ${slice.label === 'All jurisdictions' ? 'services' : slice.label + ' services'} — I-130, OPT, Section 21…`} />
-            {active !== 'all' && <input type="hidden" name="country" value={active} />}
-            <button type="submit" className="go">Search</button>
-          </form>
-
-          <MarketplaceAuthNav signUpHref={signUpHref('nav')} />
-        </div>
-      </header>
-
-      {/* Browse bar — categories dropdown + jurisdiction tabs in one row */}
-      <div className="country-bar" id="jurisdictions">
-        <div className="wrap country-bar-inner">
-          <CategoriesMenu
-            country={active}
-            counts={Object.fromEntries(slice.categories.map((c) => [c.cat.id, c.count]))}
-          />
-          <span className="divider" aria-hidden="true" />
-          <span className="label">Jurisdiction —</span>
-          <CountryTabs active={active} />
-          <span style={{ marginLeft: 'auto', fontFamily: F.mono, fontSize: '10.5px', letterSpacing: '0.12em', textTransform: 'uppercase', color: T.inkSoft }}>
-            {totalActive.toLocaleString('en-US')} briefs · {currency}
-          </span>
-        </div>
-      </div>
-
       {/* Hero */}
       <section className="hero">
         <div className="wrap hero-grid">
@@ -1228,6 +1168,12 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           <FaqAccordion items={FAQS} />
         </div>
       </section>
+
+      {/* Footer utility links */}
+      <div className="wrap" style={{ display: 'flex', justifyContent: 'center', gap: '24px', padding: '24px 20px 8px', fontSize: '13px', color: T.inkSoft }}>
+        <a href={`${PORTAL_URL}/sign-up/attorney`} style={{ color: 'inherit', textDecoration: 'none' }}>For attorneys &amp; consultants</a>
+        <a href="#faq" style={{ color: 'inherit', textDecoration: 'none' }}>Help</a>
+      </div>
 
       <MarketplaceFooter />
     </div>

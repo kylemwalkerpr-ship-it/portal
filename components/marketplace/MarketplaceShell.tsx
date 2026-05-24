@@ -7,6 +7,8 @@ import dynamic from 'next/dynamic'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import { T, F } from './tokens'
 import MarketplaceAuthNav from './MarketplaceAuthNav'
+import { CategoriesMenu } from './CategoriesMenu'
+import { CountryTabs } from './CountryTabs'
 
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
@@ -241,7 +243,7 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
           <div style={{ textAlign: 'left' as const }}>
             <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
             <div style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
-              {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : 'Consultant Portal'}
+              {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
             </div>
           </div>
         </Link>
@@ -275,6 +277,31 @@ function TopNav({ role, activeView, onNav }: { role: Role; activeView: Section; 
             )
           })}
         </nav>
+
+        {/* Search — only for public / client browse mode */}
+        {(!role || role === 'client') && (
+          <form
+            className="nav-search"
+            role="search"
+            action="/marketplace"
+            method="get"
+            style={{ display: 'flex', alignItems: 'center', background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: '999px', height: '40px', padding: '0 6px 0 16px', gap: '10px', transition: 'border-color .15s, box-shadow .15s', marginRight: '12px' }}
+            onFocus={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.ink; (e.currentTarget as HTMLFormElement).style.boxShadow = '0 0 0 4px rgba(29,36,51,0.06)' }}
+            onBlur={(e) => { (e.currentTarget as HTMLFormElement).style.borderColor = T.rule; (e.currentTarget as HTMLFormElement).style.boxShadow = 'none' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: T.inkSoft, flex: '0 0 18px' }}>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              name="q"
+              placeholder="Search services — I-130, OPT, Section 21…"
+              style={{ flex: 1, height: '100%', border: 0, background: 'transparent', font: 'inherit', fontSize: '14px', color: T.ink, outline: 'none' }}
+            />
+            <button type="submit" style={{ height: '32px', padding: '0 14px', borderRadius: '999px', background: T.ink, color: '#fff', fontSize: '12.5px', fontWeight: 600, letterSpacing: '0.01em', border: 'none', cursor: 'pointer' }}>Search</button>
+          </form>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', borderLeft: `1px solid ${T.ruleSoft}`, flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
@@ -339,11 +366,26 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     return null // unknown view → fall through to children
   }, [section, role])
 
+  const country = (searchParams?.get('country') as 'all' | 'us' | 'uk' | 'ca') ?? 'all'
+
   return (
-    <div style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui }}>
+    <div className="cw-market" style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui }}>
       {/* Top nav — always visible once role is known */}
       {roleLoaded && (
         <TopNav role={role} activeView={section} onNav={handleNav} />
+      )}
+
+      {/* Sub-nav — categories + jurisdiction tabs, only on browse */}
+      {roleLoaded && section === 'browse' && (
+        <div className="country-bar" id="jurisdictions" style={{ borderBottom: `1px solid ${T.rule}`, background: T.vellum }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 20px' }}>
+            <div className="country-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', flexWrap: 'wrap' }}>
+              <CategoriesMenu country={country} />
+              <div className="divider" style={{ height: '18px', width: '1px', background: T.rule, margin: '0 6px' }} />
+              <CountryTabs active={country} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Section content OR marketplace pages */}
