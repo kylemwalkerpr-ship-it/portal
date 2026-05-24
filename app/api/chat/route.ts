@@ -18,7 +18,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://www.yousafeconsultancy.com',
   'https://ca.yousafeconsultancy.com',
   'https://usa.yousafeconsultancy.com',
-  'https://checkout.yousafeconsultancy.com',
+  'https://uk.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
   'https://legal.yousafeconsultancy.com',

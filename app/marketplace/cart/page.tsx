@@ -338,7 +338,7 @@ export default function CartPage() {
             Browse our template packs and add the ones you need.
           </p>
           <Link
-            href="/templates"
+            href="/marketplace"
             style={{
               display: 'inline-block',
               padding: '10px 24px',
@@ -526,7 +526,7 @@ export default function CartPage() {
                     {!canUseWallet && walletBalanceCents !== null && payMethod === 'wallet' && (
                       <div style={{ paddingLeft: '28px' }}>
                         <Link
-                          href="/student?goto=billing"
+                          href="/dashboard?goto=billing"
                           style={{
                             display: 'inline-block',
                             padding: '8px 16px',

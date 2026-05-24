@@ -7,7 +7,7 @@ const FAMILY_ORIGINS = new Set([
   'https://www.yousafeconsultancy.com',
   'https://usa.yousafeconsultancy.com',
   'https://ca.yousafeconsultancy.com',
-  'https://checkout.yousafeconsultancy.com',
+  'https://uk.yousafeconsultancy.com',
   'https://legal.yousafeconsultancy.com',
   'https://portal.yousafeconsultancy.com',
   'https://support.yousafeconsultancy.com',
