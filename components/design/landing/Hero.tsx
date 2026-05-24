@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { T } from './tokens'
 import { Arrow, Shield, Scale, Lock, Coin } from './icons'
 
@@ -7,10 +7,90 @@ interface HeroProps {
   onSignup?: () => void
 }
 
-const POSTER_A = 'https://media.yousafeconsultancy.com/hero/student-working.poster.jpg?v=20260524'
+const MEDIA = 'https://media.yousafeconsultancy.com/hero'
+const V = '20260524'
+
+const A_POSTER = `${MEDIA}/student-working.poster.jpg?v=${V}`
+const A_H264   = `${MEDIA}/student-working.h264.mp4?v=${V}`
+const A_HEVC   = `${MEDIA}/student-working.hevc.mp4?v=${V}`
+const B_POSTER = `${MEDIA}/students-walking.poster.jpg?v=${V}`
+const B_H264   = `${MEDIA}/students-walking.h264.mp4?v=${V}`
+const B_HEVC   = `${MEDIA}/students-walking.hevc.mp4?v=${V}`
+
+const FADE_MS = 1200
+const HOLD_MS = 9500
+
 const MARKET_HOME = 'https://market.yousafeconsultancy.com/'
 
+function shouldSkipVideo(): boolean {
+  if (typeof window === 'undefined') return true
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  const saveData = (navigator as any).connection?.saveData
+  const slow = ['slow-2g', '2g', '3g'].includes((navigator as any).connection?.effectiveType)
+  const mobile = window.matchMedia?.('(max-width: 720px)')?.matches
+  return reducedMotion || saveData || slow || mobile
+}
+
 export default function Hero({ onSignup }: HeroProps) {
+  const videoARef = useRef<HTMLVideoElement>(null)
+  const videoBRef = useRef<HTMLVideoElement>(null)
+  const [active, setActive] = useState(0)
+  const [bothReady, setBothReady] = useState(false)
+  const [videoEnabled, setVideoEnabled] = useState(false)
+
+  // Determine whether video should load at all
+  useEffect(() => {
+    setVideoEnabled(!shouldSkipVideo())
+  }, [])
+
+  // IntersectionObserver: start preloading + playing when the hero enters viewport
+  useEffect(() => {
+    if (!videoEnabled) return
+    const a = videoARef.current
+    const b = videoBRef.current
+    if (!a) return
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          a.preload = 'auto'
+          if (b) b.preload = 'auto'
+          a.play?.().catch(() => {})
+          b?.play?.().catch(() => {})
+          io.disconnect()
+        }
+      }
+    })
+    io.observe(a)
+    return () => io.disconnect()
+  }, [videoEnabled])
+
+  // Crossfade controller: only start once both videos have loadedData
+  useEffect(() => {
+    if (!videoEnabled || !bothReady) return
+    const id = setInterval(() => setActive(p => p ^ 1), HOLD_MS)
+    return () => clearInterval(id)
+  }, [videoEnabled, bothReady])
+
+  // Track readiness per layer
+  const readiness = useRef({ a: false, b: false })
+  const markReady = (which: 'a' | 'b') => {
+    readiness.current[which] = true
+    if (readiness.current.a && readiness.current.b) {
+      setBothReady(true)
+    }
+  }
+
+  const videoBaseStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
+    transition: `opacity ${FADE_MS}ms ease`,
+    zIndex: 1,
+  }
+
   return (
     <header
       className="ys-hero"
@@ -191,162 +271,214 @@ export default function Hero({ onSignup }: HeroProps) {
         style={{
           position: 'relative',
           borderRadius: 22,
-          overflow: 'hidden',
-          aspectRatio: '4 / 5',
-          minHeight: 520,
-          background: `linear-gradient(135deg, ${T.indigo}, ${T.indigoDeep})`,
-          border: `1px solid ${T.rule}`,
-          boxShadow: '0 30px 80px rgba(15,23,42,0.18), 0 0 0 1px rgba(255,255,255,0.4) inset',
+          /* NO overflow:hidden here — the floating card breaks out right */
         }}
       >
-        {/* Poster layer (Phase 1: static image only, no video) */}
-        <img
-          src={POSTER_A}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
-          }}
-        />
-
-        {/* Overlays */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: `linear-gradient(180deg, rgba(15,23,42,0.10) 0%, rgba(15,23,42,0.45) 65%, rgba(15,23,42,0.78) 100%),
-                       radial-gradient(circle at 75% 15%, rgba(196,164,90,0.22), transparent 55%)`,
-            zIndex: 1,
-          }}
-        />
-
-        {/* US-UK-CA flag bar at top */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 4,
-            background:
-              'linear-gradient(90deg, #3c3b6e 0%, #3c3b6e 33%, #b22234 33%, #b22234 66%, #C4A45A 66%, #C4A45A 100%)',
-            zIndex: 2,
-          }}
-        />
-
-        {/* Top-left chip */}
+        {/* Inner clip container for rounded video/image corners */}
         <div
           style={{
-            position: 'absolute',
-            top: 24,
-            left: 24,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 11px',
-            borderRadius: 999,
-            background: 'rgba(255,255,255,0.18)',
-            border: '1px solid rgba(255,255,255,0.32)',
-            color: '#fff',
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            fontFamily: T.mono,
-            backdropFilter: 'blur(10px)',
-            zIndex: 2,
+            position: 'relative',
+            borderRadius: 22,
+            overflow: 'hidden',
+            aspectRatio: '4 / 5',
+            minHeight: 520,
+            background: `linear-gradient(135deg, ${T.indigo}, ${T.indigoDeep})`,
+            border: `1px solid ${T.rule}`,
+            boxShadow: '0 30px 80px rgba(15,23,42,0.18), 0 0 0 1px rgba(255,255,255,0.4) inset',
           }}
         >
-          <span
+          {/* Video layers (desktop only) */}
+          {videoEnabled && (
+            <>
+              <video
+                ref={videoARef}
+                poster={A_POSTER}
+                muted
+                loop
+                playsInline
+                preload="none"
+                onLoadedData={() => markReady('a')}
+                aria-hidden="true"
+                style={{
+                  ...videoBaseStyle,
+                  opacity: active === 0 ? 1 : 0,
+                }}
+              >
+                <source src={A_HEVC} type='video/mp4; codecs="hvc1"' />
+                <source src={A_H264} type="video/mp4" />
+              </video>
+              <video
+                ref={videoBRef}
+                poster={B_POSTER}
+                muted
+                loop
+                playsInline
+                preload="none"
+                onLoadedData={() => markReady('b')}
+                aria-hidden="true"
+                style={{
+                  ...videoBaseStyle,
+                  opacity: active === 1 ? 1 : 0,
+                }}
+              >
+                <source src={B_HEVC} type='video/mp4; codecs="hvc1"' />
+                <source src={B_H264} type="video/mp4" />
+              </video>
+            </>
+          )}
+
+          {/* Poster fallback when video is skipped */}
+          {!videoEnabled && (
+            <img
+              src={A_POSTER}
+              alt=""
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'saturate(0.85) contrast(1.05) brightness(0.92)',
+                zIndex: 1,
+              }}
+            />
+          )}
+
+          {/* Overlays */}
+          <div
+            aria-hidden="true"
             style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#86efac',
-              boxShadow: '0 0 0 4px rgba(134,239,172,0.25)',
+              position: 'absolute',
+              inset: 0,
+              background: `linear-gradient(180deg, rgba(15,23,42,0.10) 0%, rgba(15,23,42,0.45) 65%, rgba(15,23,42,0.78) 100%),
+                         radial-gradient(circle at 75% 15%, rgba(196,164,90,0.22), transparent 55%)`,
+              zIndex: 2,
             }}
           />
-          Active across US · UK · Canada
-        </div>
 
-        {/* Bottom card — pull-quote */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 24,
-            right: 24,
-            bottom: 24,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 14,
-            color: '#fff',
-            zIndex: 2,
-          }}
-        >
+          {/* US-UK-CA flag bar at top */}
           <div
+            aria-hidden="true"
             style={{
-              fontFamily: T.serif,
-              fontSize: 22,
-              fontWeight: 500,
-              lineHeight: 1.32,
-              letterSpacing: '-0.005em',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 4,
+              background:
+                'linear-gradient(90deg, #3c3b6e 0%, #3c3b6e 33%, #b22234 33%, #b22234 66%, #C4A45A 66%, #C4A45A 100%)',
+              zIndex: 3,
             }}
-          >
-            “The SOP review changed everything. Four rejections turned into three offers.”
-          </div>
+          />
+
+          {/* Top-left chip */}
           <div
             style={{
-              display: 'flex',
+              position: 'absolute',
+              top: 24,
+              left: 24,
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: 12,
-              paddingTop: 12,
-              borderTop: '1px solid rgba(255,255,255,0.20)',
+              gap: 8,
+              padding: '6px 11px',
+              borderRadius: 999,
+              background: 'rgba(255,255,255,0.18)',
+              border: '1px solid rgba(255,255,255,0.32)',
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              fontFamily: T.mono,
+              backdropFilter: 'blur(10px)',
+              zIndex: 3,
             }}
           >
             <span
               style={{
-                width: 32,
-                height: 32,
+                width: 6,
+                height: 6,
                 borderRadius: '50%',
-                background: `linear-gradient(135deg, ${T.gold}, ${T.brick})`,
-                color: '#fff',
-                fontFamily: T.serif,
-                fontWeight: 600,
-                fontSize: 14,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                background: '#86efac',
+                boxShadow: '0 0 0 4px rgba(134,239,172,0.25)',
               }}
-            >
-              P
-            </span>
-            <span style={{ fontSize: 12.5, opacity: 0.95, lineHeight: 1.3 }}>
-              <strong style={{ fontWeight: 700 }}>Priya S.</strong>
-              <br />
-              <span style={{ opacity: 0.75, fontSize: 11 }}>India → Australia · Education member</span>
-            </span>
-            <span
+            />
+            Active across US · UK · Canada
+          </div>
+
+          {/* Bottom card — pull-quote */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 24,
+              right: 24,
+              bottom: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 14,
+              color: '#fff',
+              zIndex: 3,
+            }}
+          >
+            <div
               style={{
-                marginLeft: 'auto',
-                fontFamily: T.mono,
-                fontSize: 10,
-                letterSpacing: '0.14em',
-                opacity: 0.75,
+                fontFamily: T.serif,
+                fontSize: 22,
+                fontWeight: 500,
+                lineHeight: 1.32,
+                letterSpacing: '-0.005em',
               }}
             >
-              VERIFIED
-            </span>
+              "The SOP review changed everything. Four rejections turned into three offers."
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                paddingTop: 12,
+                borderTop: '1px solid rgba(255,255,255,0.20)',
+              }}
+            >
+              <span
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg, ${T.gold}, ${T.brick})`,
+                  color: '#fff',
+                  fontFamily: T.serif,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                P
+              </span>
+              <span style={{ fontSize: 12.5, opacity: 0.95, lineHeight: 1.3 }}>
+                <strong style={{ fontWeight: 700 }}>Priya S.</strong>
+                <br />
+                <span style={{ opacity: 0.75, fontSize: 11 }}>India → Australia · Education member</span>
+              </span>
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  fontFamily: T.mono,
+                  fontSize: 10,
+                  letterSpacing: '0.14em',
+                  opacity: 0.75,
+                }}
+              >
+                VERIFIED
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Floating cost card on bottom-right */}
+        {/* Floating cost card — positioned on outer wrapper so it breaks out right */}
         <div
           style={{
             position: 'absolute',
@@ -361,7 +493,7 @@ export default function Hero({ onSignup }: HeroProps) {
             display: 'flex',
             alignItems: 'center',
             gap: 12,
-            zIndex: 3,
+            zIndex: 4,
             minWidth: 200,
           }}
         >
