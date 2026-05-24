@@ -21,7 +21,7 @@ export const T = {
   brick: '#B22234',
   gold: '#C4A45A',
   moss: '#5F6B3A',
-  serif: "'Cormorant Garamond', Georgia, 'Times New Roman', serif",
+  serif: "var(--font-cormorant), 'Cormorant Garamond', Georgia, 'Times New Roman', serif",
   sans: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
-  mono: "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace",
+  mono: "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace",
 } as const
