@@ -1,4 +1,5 @@
 import './globals.css'
+import './portal-themes.css'
 import type { Viewport } from 'next'
 import { Inter, Cormorant_Garamond, Lora, IBM_Plex_Mono } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'

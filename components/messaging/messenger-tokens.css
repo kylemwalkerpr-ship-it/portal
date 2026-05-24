@@ -9,23 +9,25 @@
   /* ── Tokens ───────────────────────────────────────────────────────── */
   --msg-font-size: 14px;
 
-  /* Marketplace neutrals (carry over from marketplace-home.html) */
-  --paper:        #F7F8FA;
-  --paper-2:      #EEF1F6;
-  --paper-3:      #DDE3EA;
-  --vellum:       #FFFFFF;
-  --ink:          #0F172A;
-  --ink-mid:      #334155;
-  --ink-soft:     #64748B;
-  --rule:         #E2E8F0;
-  --rule-soft:    #F1F5F9;
+  /* Portal theme inheritance — messenger follows the user's dashboard theme */
+  --paper:        var(--portal-bg);
+  --paper-2:      var(--portal-surface-2);
+  --paper-3:      var(--portal-surface-3);
+  --vellum:       var(--portal-surface);
+  --ink:          var(--portal-ink);
+  --ink-mid:      var(--portal-ink-mid);
+  --ink-soft:     var(--portal-ink-soft);
+  --rule:         var(--portal-rule);
+  --rule-soft:    var(--portal-rule-soft);
   --rule-hair:    rgba(15,23,42,0.10);
 
-  --indigo:       #3C3B6E;
-  --brick:        #B22234;
-  --gold:         #C4A45A;
-  --moss:         #5F6B3A;
-  --star:         #C68B27;
+  --indigo:       var(--portal-accent);
+  --indigo-deep:  var(--portal-accent-deep);
+  --indigo-soft:  var(--portal-accent-soft);
+  --brick:        var(--portal-brick);
+  --gold:         var(--portal-gold);
+  --moss:         var(--portal-moss);
+  --star:         var(--portal-star);
 
   /* WhatsApp signature greens (default accent) */
   --wa-green:     #00A884;
@@ -33,15 +35,15 @@
   --wa-tick-blue: #53BDEB;
 
   /* Resolved theme variables — overridden by [data-theme] */
-  --bg:           #F7F8FA;
-  --panel:        #FFFFFF;
-  --panel-2:      #EEF1F6;
+  --bg:           var(--portal-bg);
+  --panel:        var(--portal-surface);
+  --panel-2:      var(--portal-surface-2);
   --hover:        rgba(15,23,42,0.045);
-  --border:       #E2E8F0;
-  --border-soft:  #F1F5F9;
-  --text:         #0F172A;
-  --text-mid:     #334155;
-  --text-soft:    #64748B;
+  --border:       var(--portal-rule);
+  --border-soft:  var(--portal-rule-soft);
+  --text:         var(--portal-ink);
+  --text-mid:     var(--portal-ink-mid);
+  --text-soft:    var(--portal-ink-soft);
   --dim:          #98A2B3;
 
   --chat-bg:      #ECE5DD;
@@ -52,7 +54,7 @@
 
   --accent:       var(--wa-green);
   --accent-d:     var(--wa-green-d);
-  --danger:       #B22234;
+  --danger:       var(--portal-brick);
 
   --shadow-pop:   0 12px 32px -16px rgba(11,20,26,0.4), 0 1px 0 rgba(11,20,26,0.06);
   --shadow-menu:  0 2px 5px rgba(11,20,26,0.26);
