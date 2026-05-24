@@ -262,6 +262,38 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
           )}
         </Link>
 
+        {/* Home — links to the brand marketing site */}
+        <a
+          href="https://yousafeconsultancy.com/"
+          aria-label="YouSafe Consultancy home"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '0 14px',
+            marginRight: 4,
+            color: T.inkSoft,
+            fontSize: 13,
+            fontWeight: 500,
+            fontFamily: F.ui,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            transition: 'color 120ms ease',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = T.ink }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = T.inkSoft }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
+          </svg>
+          <span>Home</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: 0.55 }}>
+            <path d="M7 17 17 7" />
+            <path d="M9 7h8v8" />
+          </svg>
+        </a>
+
         {/* Nav tabs */}
         <nav style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
           {links.map(link => {
