@@ -11,7 +11,9 @@
 
 ## §0 — What's broken today
 
-An unauthenticated visitor at `/marketplace` sees four stacked chrome rows:
+The same architectural defect produces the cluttered nav for **both** unauthenticated and authenticated viewers. The screenshots the user provided confirm both states fail symmetrically.
+
+### 0.1 — Anonymous visitor at `/marketplace`
 
 ```
 [YouSafe CONSULTANT PORTAL] [Browse] [Find Attorney]   [Sign inOpen portal] [EN]   ← MarketplaceShell TopNav
@@ -20,13 +22,26 @@ An unauthenticated visitor at `/marketplace` sees four stacked chrome rows:
 [Categories ▾] [JURISDICTION] [All] [United States] [United Kingdom] [Canada]   [1 BRIEFS · USD]   ← PublicMarketplaceLanding `.country-bar`
 ```
 
-Three distinct defects:
+### 0.2 — Authenticated client visitor at `/marketplace`
 
-1. **Two brand marks stacked.** `MarketplaceShell.tsx`'s `TopNav` (lines 230–294 in that file) renders regardless of auth state because `{roleLoaded && <TopNav>}` evaluates true after `/api/profile` resolves to 401. `PublicMarketplaceLanding.tsx`'s own `<header className="nav">` block (lines ~876–902) then renders **inside** the shell, giving two navs.
+```
+[YouSafe MARKETPLACE] [Browse] [My Orders] [Find Attorney] [Inquiries] [Messages]   [👤 avatar] [EN]   ← MarketplaceShell TopNav (auth nav rendered as avatar)
+[YOUSAFE · MARKETPLACE · ALL JURISDICTIONS] [1 briefs available now]   [For attorneys & consultants] [Help]   ← PublicMarketplaceLanding `.topbar` (still rendering!)
+[YouSafe Marketplace] [search box] [Search]   [👤 avatar]   ← PublicMarketplaceLanding `<header className="nav">` (SECOND avatar)
+[Categories ▾] [JURISDICTION] [All] [United States] [United Kingdom] [Canada]   [1 BRIEFS · USD]   ← PublicMarketplaceLanding `.country-bar`
+```
 
-2. **Misleading role label.** `MarketplaceShell.tsx:244` reads `role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : 'Consultant Portal'`. The fallback for `role === null` is `'Consultant Portal'`, so anonymous visitors see "YouSafe CONSULTANT PORTAL" in the brand subtitle even though they are not consultants and aren't signed in.
+The signed-in case is **worse** because the avatar from `MarketplaceAuthNav` renders **twice** — once mounted inside `MarketplaceShell`'s `TopNav` (per brief 39 §2.3), and once mounted inside `PublicMarketplaceLanding`'s `<header className="nav">` (per brief 39 §2.2). Two avatars, two dropdowns, both wired to the same Clerk session. Clicking either opens an identical menu. The signed-in landing also stacks the full role-tab strip (Browse / My Orders / Find Attorney / Inquiries / Messages) **above** the now-pointless landing-only nav.
 
-3. **`MarketplaceAuthNav` signed-out anchors collide.** The component's signed-out branch renders `<nav className="nav-links">Sign in</a><a className="cta">Open portal</a></nav>`. The `.cw-market nav.nav-links { display: flex; gap: 6px }` rule that gives those anchors their spacing is **scoped to `.cw-market`** (the landing's root class). When `MarketplaceAuthNav` is mounted inside `MarketplaceShell`'s `TopNav` instead, there is no `.cw-market` ancestor, the rule doesn't apply, the anchors fall back to inline layout, and the text reads "Sign inOpen portal" with no whitespace.
+Four defects fall out of the same architectural issue, applied to both auth states:
+
+1. **Two brand marks stacked, both states.** `MarketplaceShell.tsx`'s `TopNav` (lines 230–294 in that file) renders regardless of auth state because `{roleLoaded && <TopNav>}` evaluates true after `/api/profile` resolves (whether 200 or 401). `PublicMarketplaceLanding.tsx`'s own `<header className="nav">` block (lines ~876–902) then renders **inside** the shell, giving two navs.
+
+2. **Duplicate avatar / auth cluster for signed-in viewers.** `MarketplaceAuthNav` is mounted in both `MarketplaceShell`'s `TopNav` AND `PublicMarketplaceLanding`'s `<header className="nav">`. For signed-in users this means two avatars side-by-side; for signed-out users it means two `Sign in` + `Open portal` clusters side-by-side. The user only sees the visible-because-bigger second one most of the time, but both render in the DOM.
+
+3. **Misleading role label.** `MarketplaceShell.tsx:244` reads `role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : 'Consultant Portal'`. The fallback for `role === null` is `'Consultant Portal'`, so anonymous visitors see "YouSafe CONSULTANT PORTAL" in the brand subtitle. Signed-in clients see "Marketplace" (correct); signed-in attorneys see "Attorney Portal" (correct); the bug is the anon fallback.
+
+4. **`MarketplaceAuthNav` signed-out anchors collide.** The component's signed-out branch renders `<nav className="nav-links">Sign in</a><a className="cta">Open portal</a></nav>`. The `.cw-market nav.nav-links { display: flex; gap: 6px }` rule that gives those anchors their spacing is **scoped to `.cw-market`** (the landing's root class). When `MarketplaceAuthNav` is mounted inside `MarketplaceShell`'s `TopNav` instead, there is no `.cw-market` ancestor, the rule doesn't apply, the anchors fall back to inline layout, and the text reads "Sign inOpen portal" with no whitespace. (Signed-in users escape this bug only because the avatar branch uses its own inline flex.)
 
 Target — Fiverr-clean single-row nav (the second reference screenshot the user posted): one row, one brand mark, a single right-cluster of [globe-EN] [secondary link] [primary pill]. Generous whitespace. Sub-nav (categories + jurisdiction tabs) lives in **one** thin row immediately below — not four stacked strips.
 
@@ -157,14 +172,47 @@ Two rows of chrome. One brand mark. One auth cluster. Sub-nav lives below — di
 ## §4 — Acceptance gates (Claude runs before committing)
 
 - `npx tsc --noEmit` clean. No `// @ts-nocheck` introduced.
-- Hard-refresh `/marketplace` while **signed-out** — exactly one nav row visible; brand subtitle reads "Marketplace" (not "Consultant Portal"); right cluster reads `🌐EN  Sign in  [Open portal]` with visible whitespace between every element. Sub-nav (categories + jurisdiction pills) renders below.
-- Hard-refresh `/marketplace` while **signed-in as a client** — same single-row nav; the right cluster is the avatar + dropdown from brief 39; sub-nav present; role tabs (`Browse / Marketplace / My Orders / Find Attorney / Inquiries / Messages` per the existing CLIENT_NAV) live in the centre of the TopNav.
-- Hard-refresh `/marketplace/gigs/<any-active-slug>` — one TopNav, no sub-nav (gig detail doesn't need categories/jurisdiction in chrome).
-- Hard-refresh `/marketplace?view=messages` while signed-in — one TopNav, no sub-nav, the inline UnifiedInbox mounts under it.
+
+### 4.1 — Signed-out visitor on `/marketplace`
+
+- Exactly **one** nav row visible above the page content; no `.topbar` strip; no second `<header>` element below the first.
+- Brand subtitle reads **"Marketplace"** (not "Consultant Portal").
+- Right cluster reads `🌐EN  Sign in  [Open portal]` with **visible whitespace** between every element (the "Sign inOpen portal" bug is dead).
+- Sub-nav (Categories ▾ + Jurisdiction pills [All] [United States] [United Kingdom] [Canada]) renders immediately below the TopNav.
+- DOM contains exactly **one** `MarketplaceAuthNav` instance (search `document.querySelectorAll('[data-mp-authnav]')` if you add that attribute for testability, or just confirm by inspecting the rendered output).
+
+### 4.2 — Signed-in client visitor on `/marketplace`
+
+- Exactly **one** nav row; same chrome shape as 4.1 but with role-aware tab strip in the centre (Browse / My Orders / Find Attorney / Inquiries / Messages — the existing `CLIENT_NAV` from `MarketplaceShell.tsx`).
+- Right cluster shows **one** avatar (not two). Click → the six-item dropdown from brief 39 §2.1.
+- Brand subtitle reads "Marketplace".
+- Sub-nav (Categories + Jurisdiction) still renders below.
+- DOM contains exactly **one** `MarketplaceAuthNav` instance.
+
+### 4.3 — Signed-in attorney visitor on `/marketplace`
+
+- Same shape as 4.2 but the role tab strip uses `ATTORNEY_NAV` (`Marketplace / Inquiry Queue / My Inquiries / Active Orders / Messages` from `MarketplaceShell.tsx:31-37`).
+- Brand subtitle reads **"Attorney Portal"** (this is the only role where the subtitle differs).
+- Avatar dropdown items match brief 39 §2.1.
+
+### 4.4 — Signed-in consultant visitor on `/marketplace`
+
+- Role tab strip uses `CONSULTANT_NAV`.
+- Brand subtitle reads **"Consultant Portal"** (the only legitimate use of this label — the user is actually a consultant).
+
+### 4.5 — Non-landing marketplace routes
+
+- Hard-refresh `/marketplace/gigs/<any-active-slug>` (signed-out + signed-in) — one TopNav, **no** sub-nav (gig detail doesn't need categories/jurisdiction in chrome — gate per §3.2.3).
+- Hard-refresh `/marketplace?view=messages` while signed-in — one TopNav, no sub-nav, the inline `UnifiedInbox` mounts under it.
+- Hard-refresh `/marketplace?view=orders` / `?view=inquiries` while signed-in — one TopNav, no sub-nav.
+
+### 4.6 — Grep invariants
+
 - `grep -rn '<header className="nav">' app/marketplace/PublicMarketplaceLanding.tsx` returns zero matches.
-- `grep -rn '\.topbar"' app/marketplace/PublicMarketplaceLanding.tsx` returns zero matches.
-- `grep -rn "country-bar" app/marketplace/PublicMarketplaceLanding.tsx` returns zero matches (moved into shell).
-- `grep -rn "Consultant Portal" components/marketplace/MarketplaceShell.tsx` returns zero matches.
+- `grep -rn 'className="topbar"' app/marketplace/PublicMarketplaceLanding.tsx` returns zero matches.
+- `grep -rn 'className="country-bar"' app/marketplace/PublicMarketplaceLanding.tsx` returns zero matches (moved into shell as `<SubNav>`).
+- `grep -rn "Consultant Portal" components/marketplace/MarketplaceShell.tsx` returns **one** match — the legitimate label for `role === 'consultant'` per §3.1.1's refactored ternary.
+- `grep -c 'MarketplaceAuthNav' app/marketplace/PublicMarketplaceLanding.tsx` returns zero (the landing's `<MarketplaceAuthNav signUpHref={signUpHref('nav')} />` mount is deleted along with the `<header className="nav">` block).
 
 ---
 
@@ -184,10 +232,19 @@ was stacking on top. Anonymous visitors now see one brand mark, one
 auth cluster (Sign in / Open portal with proper whitespace), and one
 sub-nav (categories + jurisdiction pills) — not four stacked rows.
 
+The same architectural defect was breaking the signed-in view too:
+because MarketplaceAuthNav was mounted in BOTH MarketplaceShell's
+TopNav AND PublicMarketplaceLanding's <header>, every authenticated
+client / attorney / consultant saw their avatar twice and the role-
+tab strip stacked above the now-pointless landing-only nav. Removing
+the landing's <header> deletes the second MarketplaceAuthNav mount
+in the same pass.
+
 Specifically:
   - MarketplaceShell.tsx brand subtitle no longer mislabels anonymous
-    visitors as "Consultant Portal"; defaults to "Marketplace" when
-    role is null / client / admin.
+    visitors as "Consultant Portal"; the refactored ternary now reads
+    attorney → "Attorney Portal", consultant → "Consultant Portal",
+    everything else (anon / client / admin) → "Marketplace".
   - Search input + nav-links CSS scope moved onto the shell's root via
     a className="cw-market" wrapper, so MarketplaceAuthNav's signed-out
     anchors inherit the .cw-market nav.nav-links gap rule and stop
@@ -197,7 +254,9 @@ Specifically:
     .topbar strip, and its inline country-bar — those are now the
     shell's responsibility. The Help and "For attorneys & consultants"
     links migrate to the footer; the "X briefs available now" pill is
-    removed as marketing fluff.
+    removed as marketing fluff. The landing's own MarketplaceAuthNav
+    mount goes with the <header>, leaving exactly one auth-cluster on
+    the page.
   - Sub-nav (Categories dropdown + Jurisdiction pills) lifts into a
     new <SubNav> rendered by MarketplaceShell directly below TopNav,
     gated on section === 'browse' so gig detail / messages / orders
