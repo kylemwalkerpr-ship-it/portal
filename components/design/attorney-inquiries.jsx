@@ -183,6 +183,11 @@ export default function AttorneyInquiries({ mode = 'queue' }) {
             ? 'Inquiries you have responded to or sent offers on. Multiple attorneys can respond to each — clients pick the best fit.'
             : 'Inbound intakes from clients. Multiple attorneys can respond — fast, well-fit responses win the engagement.'}
         </div>
+        {!isMine && (
+          <div style={{ fontSize: 12, color: DIM, marginTop: 8, fontStyle: 'italic' }}>
+            Auto-removed when an order is placed or the client archives.
+          </div>
+        )}
       </div>
 
       {schemaPending && (

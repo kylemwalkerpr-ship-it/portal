@@ -436,6 +436,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🗂️" label="Order Kanban" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/orders'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/orders' }} />
         <NavItem icon="🎫" label="Support Tickets" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/tickets'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/tickets' }} />
+        <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
@@ -2256,7 +2257,244 @@ function AdminApp({ onLogout }) {
     </div>
   );
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'Gigs', services: 'Catalogue', settings: 'Settings' };
+  // ── INQUIRIES ──
+  const Inquiries = () => {
+    const [inquiries, setInquiries] = React.useState([])
+    const [total, setTotal] = React.useState(0)
+    const [page, setPage] = React.useState(1)
+    const [loading, setLoading] = React.useState(true)
+    const [error, setError] = React.useState('')
+    const [statusFilter, setStatusFilter] = React.useState('all')
+    const [archivedFilter, setArchivedFilter] = React.useState('all')
+    const [searchQuery, setSearchQuery] = React.useState('')
+    const [selectedInquiry, setSelectedInquiry] = React.useState(null)
+    const [detailData, setDetailData] = React.useState(null)
+    const [detailLoading, setDetailLoading] = React.useState(false)
+    const PAGE_SIZE = 50
+
+    const load = React.useCallback(async () => {
+      setLoading(true); setError('')
+      try {
+        const p = new URLSearchParams()
+        p.set('page', String(page))
+        p.set('page_size', String(PAGE_SIZE))
+        if (statusFilter !== 'all') p.set('status', statusFilter)
+        if (archivedFilter !== 'all') p.set('archived', archivedFilter)
+        if (searchQuery.trim()) p.set('q', searchQuery.trim())
+        const r = await fetch(`/api/admin/inquiries?${p}`, { credentials: 'same-origin' })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
+        setInquiries(d.inquiries || [])
+        setTotal(d.total || 0)
+      } catch (e) {
+        setError(e.message || 'Failed to load inquiries.')
+      } finally {
+        setLoading(false)
+      }
+    }, [page, statusFilter, archivedFilter, searchQuery])
+
+    React.useEffect(() => { load() }, [load])
+
+    const openDetail = async (inq) => {
+      setSelectedInquiry(inq)
+      setDetailLoading(true)
+      try {
+        const r = await fetch(`/api/admin/inquiries/${inq.id}`, { credentials: 'same-origin' })
+        const d = await r.json().catch(() => ({}))
+        if (r.ok) setDetailData(d)
+        else setDetailData(null)
+      } catch {
+        setDetailData(null)
+      } finally {
+        setDetailLoading(false)
+      }
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+    const statusColor = (s) => {
+      if (s === 'open') return C.cyan
+      if (s === 'engaged') return C.purple
+      if (s === 'converted') return C.green
+      if (s === 'archived') return C.orange
+      if (s === 'closed') return C.textDim
+      if (s === 'cancelled') return C.red
+      return C.textMuted
+    }
+
+    const fmtDate = (s) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
+    return (
+      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div>
+          <div style={adminEyebrow}>Intake</div>
+          <h2 style={adminPageTitle}>Inquiries.</h2>
+          <p style={adminPageSub}>{total} total inquiries across the platform.</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '200px', maxWidth: '320px' }}>
+            <SearchInput value={searchQuery} onChange={v => { setSearchQuery(v); setPage(1) }} placeholder="Search by name, country, case type…" />
+          </div>
+          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1) }}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit', cursor: 'pointer' }}>
+            <option value="all">All statuses</option>
+            <option value="open">Open</option>
+            <option value="engaged">Engaged</option>
+            <option value="converted">Converted</option>
+            <option value="archived">Archived</option>
+            <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select value={archivedFilter} onChange={e => { setArchivedFilter(e.target.value); setPage(1) }}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit', cursor: 'pointer' }}>
+            <option value="all">All</option>
+            <option value="yes">Archived only</option>
+            <option value="no">Not archived</option>
+          </select>
+          <span style={{ fontSize: '12px', color: C.textMuted, marginLeft: 'auto' }}>
+            {total} result{total !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {error && (
+          <div style={{ padding: '10px 14px', borderRadius: '8px', background: `${C.red}10`, color: C.red, fontSize: '13px', fontWeight: 600 }}>{error}</div>
+        )}
+
+        <Card style={{ padding: 0, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {['Submitted', 'Client', 'Country', 'Case type', 'Urgency', 'Status', 'Order', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>Loading…</td></tr>
+              ) : inquiries.length === 0 ? (
+                <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>{searchQuery ? 'No inquiries match your search.' : 'No inquiries found.'}</td></tr>
+              ) : inquiries.map((inq, i) => (
+                <tr key={inq.id} className="yousafe-table-row" onClick={() => openDetail(inq)}
+                  style={{ borderBottom: i < inquiries.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.surface2 }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted, whiteSpace: 'nowrap' }}>{fmtDate(inq.created_at)}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600 }}>{inq.full_name || inq.email || '—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{inq.country || '—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px' }}>{inq.case_type_label || inq.case_type || '—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                    <span style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em', color: statusColor(inq.urgency) }}>{inq.urgency || '—'}</span>
+                  </td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', background: `${statusColor(inq.status)}18`, color: statusColor(inq.status) }}>
+                      {inq.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: C.textMuted }}>{inq.order_id || inq.order_number || '—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px' }}>
+                    <Btn variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openDetail(inq); }}>View</Btn>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: '12px', color: C.textMuted }}>
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+            </span>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <Btn variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</Btn>
+              <span style={{ fontSize: '12px', color: C.text, padding: '4px 10px' }}>Page {page} / {totalPages}</span>
+              <Btn variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next →</Btn>
+            </div>
+          </div>
+        )}
+
+        {selectedInquiry && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => { setSelectedInquiry(null); setDetailData(null) }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Inquiry details</h3>
+                  <div style={{ color: C.cyan, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>{selectedInquiry.id}</div>
+                </div>
+                <button onClick={() => { setSelectedInquiry(null); setDetailData(null) }} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  ['Client', selectedInquiry.full_name || selectedInquiry.email || '—'],
+                  ['Email', selectedInquiry.email || '—'],
+                  ['Country', selectedInquiry.country || '—'],
+                  ['Case type', selectedInquiry.case_type_label || selectedInquiry.case_type || '—'],
+                  ['Urgency', selectedInquiry.urgency || '—'],
+                  ['Status', selectedInquiry.status || '—'],
+                  ['Submitted', fmtDate(selectedInquiry.created_at)],
+                  ['Archived', selectedInquiry.archived_at ? fmtDate(selectedInquiry.archived_at) : '—'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '12px' }}>
+                    <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ color: C.text, fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {selectedInquiry.answers && Object.keys(selectedInquiry.answers).length > 0 && (
+                <Card style={{ marginBottom: '16px' }}>
+                  <div style={{ padding: '16px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted }}>Intake answers</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {Object.entries(selectedInquiry.answers).map(([key, value]) => (
+                        <div key={key}>
+                          <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '2px' }}>{key}</div>
+                          <div style={{ fontSize: '13px', color: C.text, whiteSpace: 'pre-wrap' }}>{typeof value === 'string' ? value : JSON.stringify(value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {detailLoading && <div style={{ color: C.textMuted, fontSize: '13px', padding: '16px', textAlign: 'center' }}>Loading thread…</div>}
+
+              {detailData && detailData.messages && detailData.messages.length > 0 && (
+                <Card>
+                  <div style={{ padding: '16px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted }}>Thread preview</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {detailData.messages.slice(0, 10).map((m) => (
+                        <div key={m.id} style={{ padding: '10px 12px', background: C.surface2, borderRadius: '8px', border: `1px solid ${C.border}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: C.textDim }}>{m.sender_role}</span>
+                            <span style={{ fontSize: '11px', color: C.textDim }}>{fmtDate(m.created_at)}</span>
+                          </div>
+                          <div style={{ fontSize: '13px', color: C.text, whiteSpace: 'pre-wrap' }}>{m.body}</div>
+                        </div>
+                      ))}
+                      {detailData.messages.length > 10 && (
+                        <div style={{ textAlign: 'center', fontSize: '12px', color: C.textMuted }}>+ {detailData.messages.length - 10} more messages</div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <Btn variant="ghost" size="sm" onClick={() => { setSelectedInquiry(null); setDetailData(null) }}>Close</Btn>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'Gigs', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2276,6 +2514,7 @@ function AdminApp({ onLogout }) {
           {page === 'users' && <Users />}
           {page === 'attorney-applications' && <AdminAttorneyApplications />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
+          {page === 'inquiries' && <Inquiries />}
           {page === 'escrow' && <AdminEscrow />}
           {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}

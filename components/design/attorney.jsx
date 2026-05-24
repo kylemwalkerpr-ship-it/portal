@@ -796,6 +796,7 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
   const effectiveOnboarded = true
   const bypassed = false
   const livePercent = DEFAULT_ATTORNEY_FEE_PERCENT
+  const isArchived = Boolean(inquiry?.archived_at)
 
   return (
     <div className="yousafe-thread-page" style={{ padding: embedded ? '18px 20px' : '20px 28px', maxWidth: embedded ? 'none' : '920px' }}>
@@ -806,6 +807,14 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
         >
           ← Back to {isChat ? 'messages' : 'my inquiries'}
         </button>
+      )}
+
+      {isArchived && (
+        <Card style={{ marginBottom: '14px', background: `${C.orange}10`, border: `1px solid ${C.orange}33` }}>
+          <div style={{ padding: '12px 16px', fontSize: '13px', color: C.text, fontWeight: 600 }}>
+            This inquiry was archived by the client. Existing messages remain for dispute reference.
+          </div>
+        </Card>
       )}
 
       <ClientBanner inquiry={inquiry} isChat={isChat} />
@@ -821,9 +830,10 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
         sending={sending}
         onSend={sendMessage}
         fileRef={chatFileRef}
-        onWithdrawOffer={withdrawOffer}
+        onWithdrawOffer={isArchived ? undefined : withdrawOffer}
         withdrawingOfferId={withdrawingId}
         embedded={embedded}
+        readOnly={isArchived}
       />
 
       <div style={{ marginTop: '24px' }}>
@@ -831,7 +841,7 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
           <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted, margin: 0 }}>
             My offers
           </h3>
-          {!hasPendingOffer && inquiry.status !== 'converted' && (
+          {!isArchived && !hasPendingOffer && inquiry.status !== 'converted' && (
             <Btn variant="primary" size="sm" onClick={() => setShowOfferModal(true)}>
               + Send custom offer
             </Btn>
@@ -843,13 +853,13 @@ export function InquiryThread({ inquiryId, onBack, isChat = false, embedded = fa
         ) : (
           <div style={{ display: 'grid', gap: '10px' }}>
             {offers.map((o) => (
-              <OfferRow key={o.id} offer={o} onWithdraw={() => withdrawOffer(o)} withdrawing={withdrawingId === o.id} />
+              <OfferRow key={o.id} offer={o} onWithdraw={isArchived ? undefined : () => withdrawOffer(o)} withdrawing={withdrawingId === o.id} />
             ))}
           </div>
         )}
       </div>
 
-      {showOfferModal && (
+      {!isArchived && showOfferModal && (
         <CustomOfferDialog
           chatId={inquiryId}
           providerRole="attorney"
@@ -1051,7 +1061,7 @@ function OfferRow({ offer, onWithdraw, withdrawing }) {
           </Badge>
         </div>
         <div style={{ marginTop: '8px', fontSize: '13px', color: C.text, whiteSpace: 'pre-wrap' }}>{offer.description}</div>
-        {offer.status === 'sent' && (
+        {offer.status === 'sent' && onWithdraw && (
           <div style={{ marginTop: '10px' }}>
             <Btn variant="danger" size="sm" disabled={withdrawing} onClick={onWithdraw}>
               {withdrawing ? 'Withdrawing...' : 'Withdraw'}
@@ -1773,7 +1783,7 @@ function ClientBanner({ inquiry, isChat }) {
   )
 }
 
-function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, sending, onSend, fileRef, onWithdrawOffer, withdrawingOfferId, embedded = false }) {
+function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, sending, onSend, fileRef, onWithdrawOffer, withdrawingOfferId, embedded = false, readOnly = false }) {
   const timeline = React.useMemo(() => buildOfferTimeline(messages, offers), [messages, offers])
 
   const header = (
@@ -1878,13 +1888,19 @@ function ConversationBox({ messages, offers = [], viewerRole, draft, setDraft, s
         )
       }
       composer={
-        <ComposerRow
-          draft={draft}
-          setDraft={setDraft}
-          sending={sending}
-          onSend={onSend}
-          fileRef={fileRef}
-        />
+        readOnly ? (
+          <div style={{ padding: '14px', textAlign: 'center', color: C.textMuted, fontSize: '13px', border: `1px dashed ${C.border}`, borderRadius: '12px', marginTop: '10px' }}>
+            This inquiry is read-only. You cannot send messages or offers on archived inquiries.
+          </div>
+        ) : (
+          <ComposerRow
+            draft={draft}
+            setDraft={setDraft}
+            sending={sending}
+            onSend={onSend}
+            fileRef={fileRef}
+          />
+        )
       }
     />
   )
