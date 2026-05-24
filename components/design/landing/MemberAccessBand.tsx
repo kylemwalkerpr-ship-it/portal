@@ -10,7 +10,20 @@ interface MemberAccessBandProps {
 const PORTAL = 'https://portal.yousafeconsultancy.com'
 const SUPPORT = 'https://support.yousafeconsultancy.com/'
 
-const ROLES = [
+interface Role {
+  id: string
+  label: string
+  blurb: string
+  Icon: React.FC<{ size?: number; stroke?: number; style?: React.CSSProperties }>
+  accent: string
+  accentSoft: string
+  signInHref: string
+  signUpHref: string | null
+  signUpLabel: string | null
+  external?: boolean
+}
+
+const ROLES: Role[] = [
   {
     id: 'student',
     label: 'Student / Client',
@@ -56,7 +69,7 @@ const ROLES = [
     signUpLabel: null,
     external: true,
   },
-] as const
+]
 
 export default function MemberAccessBand({ onOpenSignIn }: MemberAccessBandProps) {
   return (
