@@ -35,26 +35,40 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
     }
   }, [open])
 
+  // signUpHref is preserved for backward compat; modal flow uses Clerk methods directly.
+
   // SSR / signed-out fallback
   if (!isSignedIn) {
     return (
       <nav className="nav-links" style={{ display: 'flex', alignItems: 'center', gap: 8 }} suppressHydrationWarning>
-        <a
-          href={`${PORTAL_URL}/sign-in/student`}
-          style={{
-            fontFamily: F.ui, fontSize: 13, fontWeight: 500,
-            color: T.ink, textDecoration: 'none',
-            padding: '8px 14px', borderRadius: 999,
-          }}
-        >Sign in</a>
-        <a
-          href={signUpHref}
+        <button
+          type="button"
+          onClick={() => clerk.openSignUp({
+            unsafeMetadata: { requestedRole: 'attorney', signupSource: 'marketplace_join_panel' },
+            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
+            fallbackRedirectUrl: `${PORTAL_URL}/dashboard`,
+            signInUrl: `${PORTAL_URL}/sign-in/attorney`,
+          })}
           style={{
             fontFamily: F.ui, fontSize: 13, fontWeight: 600,
-            color: '#fff', textDecoration: 'none',
-            background: T.indigo, padding: '8px 16px', borderRadius: 999,
+            color: '#fff', background: T.indigo,
+            padding: '8px 16px', borderRadius: 999,
+            border: 'none', cursor: 'pointer',
           }}
-        >Open portal</a>
+        >Join Panel</button>
+        <button
+          type="button"
+          onClick={() => clerk.openSignIn({
+            forceRedirectUrl: `${PORTAL_URL}/dashboard`,
+            signUpUrl: `${PORTAL_URL}/sign-up/student`,
+          })}
+          style={{
+            fontFamily: F.ui, fontSize: 13, fontWeight: 500,
+            color: T.ink, background: 'transparent',
+            padding: '8px 14px', borderRadius: 999,
+            border: 'none', cursor: 'pointer',
+          }}
+        >Sign in</button>
       </nav>
     )
   }
