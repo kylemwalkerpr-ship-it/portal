@@ -123,14 +123,16 @@ export const getFeaturedProviders = unstable_cache(async (): Promise<FeaturedPro
     // Sort by order count descending
     mapped.sort((a, b) => b.orderCount - a.orderCount)
 
-    // Mix-and-fill: live first, fallback tops up to 6
-    const result = [...mapped]
-    let fallbackIdx = 0
-    while (result.length < 6 && fallbackIdx < FALLBACK_PROVIDERS.length) {
-      result.push(FALLBACK_PROVIDERS[fallbackIdx])
-      fallbackIdx++
+    if (mapped.length === 0) return FALLBACK_PROVIDERS
+
+    // Until enough live providers exist to fill 6 cards, cycle the real ones
+    // so every card links to a real, resolvable profile. FALLBACK_PROVIDERS
+    // only ships when there are zero live attorneys/consultants.
+    const result: FeaturedProvider[] = []
+    while (result.length < 6) {
+      result.push(mapped[result.length % mapped.length])
     }
-    return result.slice(0, 6)
+    return result
   } catch {
     return FALLBACK_PROVIDERS
   }

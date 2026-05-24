@@ -119,14 +119,14 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
       }
     })
 
-    // Mix-and-fill: live first, fallback tops up to 4
-    const result = [...mapped]
-    let fallbackIdx = 0
-    while (result.length < 4 && fallbackIdx < FALLBACK_GIGS.length) {
-      result.push(FALLBACK_GIGS[fallbackIdx])
-      fallbackIdx++
+    // Until enough live gigs exist to fill 4 cards, cycle the real ones so
+    // every card links to a real, resolvable gig page. FALLBACK_GIGS only
+    // ships when there are zero live gigs in the DB.
+    const result: FeaturedGig[] = []
+    while (result.length < 4) {
+      result.push(mapped[result.length % mapped.length])
     }
-    return result.slice(0, 4)
+    return result
   } catch {
     return FALLBACK_GIGS
   }

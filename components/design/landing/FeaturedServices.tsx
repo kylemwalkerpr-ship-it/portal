@@ -115,7 +115,7 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
 
         {/* Grid */}
         <div className="ys-feat-grid">
-          {items.map((gig) => {
+          {items.map((gig, idx) => {
             const accent = accentFor(gig.providerRole)
             const isPlaceholder =
               process.env.NODE_ENV !== 'production' &&
@@ -123,8 +123,8 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
 
             return (
               <a
-                key={gig.slug}
-                href={`${MARKET_HOME}/gigs/${gig.slug}`}
+                key={`${gig.slug}-${idx}`}
+                href={fallbackSlugs.has(gig.slug) ? MARKET_HOME : `${MARKET_HOME}/gigs/${gig.slug}`}
                 className="ys-feat-card"
                 style={{
                   display: 'flex',

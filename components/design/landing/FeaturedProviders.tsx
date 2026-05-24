@@ -2,9 +2,10 @@
 import React from 'react'
 import { T } from './tokens'
 import { Arrow, Star, Check } from './icons'
-import type { FeaturedProvider } from './data/featured-providers'
+import { FALLBACK_PROVIDERS, type FeaturedProvider } from './data/featured-providers'
 
 const MARKET = 'https://market.yousafeconsultancy.com'
+const fallbackProviderIds = new Set(FALLBACK_PROVIDERS.map((p) => p.id))
 
 interface FeaturedProvidersProps {
   providers: FeaturedProvider[]
@@ -44,10 +45,10 @@ export default function FeaturedProviders({ providers }: FeaturedProvidersProps)
       </div>
 
       <div className="ys-prov-strip">
-        {providers.map((p) => (
+        {providers.map((p, idx) => (
           <a
-            key={p.id}
-            href={`${MARKET}/providers/${p.id}`}
+            key={`${p.id}-${idx}`}
+            href={fallbackProviderIds.has(p.id) ? `${MARKET}/providers` : `${MARKET}/providers/${p.id}`}
             className="ys-prov-card"
             style={{
               flex: '0 0 260px',
