@@ -22,22 +22,20 @@ export default function DashboardClient({ role, status, userName, userId, expect
   const { signOut } = useClerk()
   const loggingOut = React.useRef(false)
 
-  const handleLogout = React.useCallback(async () => {
+  const handleLogout = React.useCallback(() => {
     // Prevent double-clicks / concurrent calls
     if (loggingOut.current) return
     loggingOut.current = true
 
-    try {
-      // Race against a 5-second timeout so a slow/failed Clerk API call
-      // never leaves the button frozen indefinitely
-      await Promise.race([
-        signOut(),
-        new Promise<void>(resolve => setTimeout(resolve, 5000)),
-      ])
-    } catch { /* ignore — redirect regardless */ }
+    // Fire signOut in the background — Clerk clears local SDK state
+    // synchronously, server-side session revocation continues over the wire
+    // after the page leaves. Awaiting it makes the button feel stuck for
+    // the full Clerk round-trip (sometimes seconds on a slow connection).
+    signOut().catch(() => {})
 
-    // Hard-navigate to the sign-in page so the user always ends up somewhere
-    // expected, even if Clerk's session clear failed or partially succeeded
+    // Hard-navigate immediately. The next page load runs a fresh Clerk
+    // session check, so even if the network call is still in flight the
+    // user lands on the public landing as expected.
     window.location.replace(PORTAL_URL)
   }, [signOut])
 
@@ -59,13 +57,10 @@ export default function DashboardClient({ role, status, userName, userId, expect
   }
 
   if (expectedRole && role !== expectedRole) {
-    const handleSwitchRoute = async () => {
+    const handleSwitchRoute = () => {
       const redirectUrl = signInForLane(expectedRole)
-      try {
-        await signOut({ redirectUrl })
-      } finally {
-        window.location.replace(redirectUrl)
-      }
+      signOut().catch(() => {})
+      window.location.replace(redirectUrl)
     }
 
     return (

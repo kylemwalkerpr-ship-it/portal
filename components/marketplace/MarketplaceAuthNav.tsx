@@ -142,7 +142,13 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
 
           <button
             role="menuitem"
-            onClick={() => clerk.signOut({ redirectUrl: PORTAL_URL })}
+            onClick={() => {
+              // Fire signOut in the background — don't block navigation on
+              // the Clerk round-trip; the next page load gets a fresh
+              // session check.
+              clerk.signOut().catch(() => {})
+              window.location.replace(PORTAL_URL)
+            }}
             style={{ ...linkStyle, color: T.brick, width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = T.paper2 }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
