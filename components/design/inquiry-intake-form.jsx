@@ -10,7 +10,12 @@ const DRAFT_KEY = 'yousafe-inquiry-draft-v1'
 // legal.yousafeconsultancy.com so attorneys see the same structured context
 // regardless of where the student submitted from. Auto-saves draft to
 // localStorage so a refresh doesn't lose work.
-export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaultName, defaultPhone, targetAttorney }) {
+//
+// Edit mode: when existingInquiry is provided, the form hydrates from the
+// inquiry row and PATCHes instead of POSTing.
+export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmail, defaultName, defaultPhone, targetAttorney, existingInquiry }) {
+  const isEditMode = !!existingInquiry
+
   const [country, setCountry] = React.useState(null)
   const [caseTypeId, setCaseTypeId] = React.useState('')
   const [answers, setAnswers] = React.useState({})
@@ -26,8 +31,26 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
   const [error, setError] = React.useState('')
   const [submittedId, setSubmittedId] = React.useState(null)
 
-  // Restore draft on mount.
+  // Hydrate from existing inquiry when in edit mode.
   React.useEffect(() => {
+    if (!isEditMode) return
+    const q = existingInquiry
+    if (q.country) setCountry(q.country)
+    if (q.case_type) setCaseTypeId(q.case_type)
+    if (q.answers && typeof q.answers === 'object') setAnswers(q.answers)
+    setContact({
+      full_name: q.full_name || defaultName || '',
+      email: q.email || defaultEmail || '',
+      phone: q.phone || defaultPhone || '',
+      notes: q.answers?._intake_notes || '',
+    })
+    setPhase('questions')
+    setQuestionIdx(0)
+  }, [isEditMode, existingInquiry, defaultEmail, defaultName, defaultPhone])
+
+  // Restore draft on mount (only for new submissions).
+  React.useEffect(() => {
+    if (isEditMode) return
     try {
       const raw = window.localStorage.getItem(DRAFT_KEY)
       if (!raw) return
@@ -41,10 +64,11 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
     } catch {
       /* ignore */
     }
-  }, [])
+  }, [isEditMode])
 
-  // Persist draft on change.
+  // Persist draft on change (only for new submissions).
   React.useEffect(() => {
+    if (isEditMode) return
     try {
       window.localStorage.setItem(
         DRAFT_KEY,
@@ -53,7 +77,7 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
     } catch {
       /* ignore */
     }
-  }, [country, caseTypeId, answers, questionIdx, phase, contact])
+  }, [country, caseTypeId, answers, questionIdx, phase, contact, isEditMode])
 
   const countryConfig = React.useMemo(() => COUNTRIES.find((c) => c.id === country), [country])
   const caseType = React.useMemo(
@@ -109,32 +133,53 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
     setError('')
     setSubmitting(true)
     try {
-      const res = await fetch('/api/inquiries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          email: contact.email.trim(),
-          full_name: contact.full_name.trim(),
-          phone: contact.phone.trim() || undefined,
-          country,
-          case_type: caseType.id,
-          case_type_label: caseType.label,
-          urgency: typeof answers.urgency === 'string' ? answers.urgency : undefined,
-          recommended_tier: recommended?.tier,
-          answers: { ...answers, _intake_notes: contact.notes.trim() },
-          source: targetAttorney ? 'portal:attorney-profile' : 'portal',
-          target_attorney_id: targetAttorney?.id,
-        }),
-      })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Could not submit your inquiry.')
-      try {
-        window.localStorage.removeItem(DRAFT_KEY)
-      } catch {
-        /* ignore */
+      if (isEditMode) {
+        const res = await fetch(`/api/client/inquiries/${existingInquiry.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            country,
+            case_type: caseType.id,
+            case_type_label: caseType.label,
+            urgency: typeof answers.urgency === 'string' ? answers.urgency : undefined,
+            headline: typeof answers._headline === 'string' ? answers._headline : undefined,
+            summary: typeof answers._summary === 'string' ? answers._summary : undefined,
+            answers: Object.fromEntries(Object.entries(answers).filter(([k]) => !k.startsWith('_'))),
+          }),
+        })
+        const payload = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(payload?.error || 'Could not save changes.')
+        if (onSaved && payload?.inquiry) onSaved(payload.inquiry)
+        else if (onSaved) onSaved(payload)
+      } else {
+        const res = await fetch('/api/inquiries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            email: contact.email.trim(),
+            full_name: contact.full_name.trim(),
+            phone: contact.phone.trim() || undefined,
+            country,
+            case_type: caseType.id,
+            case_type_label: caseType.label,
+            urgency: typeof answers.urgency === 'string' ? answers.urgency : undefined,
+            recommended_tier: recommended?.tier,
+            answers: { ...answers, _intake_notes: contact.notes.trim() },
+            source: targetAttorney ? 'portal:attorney-profile' : 'portal',
+            target_attorney_id: targetAttorney?.id,
+          }),
+        })
+        const payload = await res.json().catch(() => null)
+        if (!res.ok || !payload?.ok) throw new Error(payload?.error || 'Could not submit your inquiry.')
+        try {
+          window.localStorage.removeItem(DRAFT_KEY)
+        } catch {
+          /* ignore */
+        }
+        setSubmittedId(payload.id || true)
       }
-      setSubmittedId(payload.id || true)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
     } finally {
@@ -153,7 +198,7 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
     : 1
   const progressPct = Math.min(100, Math.round((currentStep / totalSteps) * 100))
 
-  if (submittedId) {
+  if (submittedId && !isEditMode) {
     return (
       <div style={{ padding: '40px 28px', maxWidth: '640px' }}>
         <div style={{
@@ -189,12 +234,14 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
       </button>
 
       <div style={{ marginBottom: '24px' }}>
-        <div style={eyebrow}>{targetAttorney ? `Direct inquiry to ${targetAttorney.name}` : 'Free legal intake'}</div>
-        <h2 style={pageTitle}>{targetAttorney ? 'Tell ' + targetAttorney.name.split(' ')[0] + ' about your case.' : 'Tell us about your case.'}</h2>
+        <div style={eyebrow}>{isEditMode ? 'Edit inquiry' : targetAttorney ? `Direct inquiry to ${targetAttorney.name}` : 'Free legal intake'}</div>
+        <h2 style={pageTitle}>{isEditMode ? 'Edit your inquiry' : targetAttorney ? 'Tell ' + targetAttorney.name.split(' ')[0] + ' about your case.' : 'Tell us about your case.'}</h2>
         <p style={pageSub}>
-          {targetAttorney
-            ? `${targetAttorney.name} will be notified directly. Other panel attorneys won't see this inquiry first — but if ${targetAttorney.name.split(' ')[0]} doesn't respond within a day, the inquiry opens to the panel as a backup.`
-            : 'We pre-screen your matter so an attorney can give you a useful first response without a 30-minute discovery call. Anything you put here is shared only with attorneys on the panel.'}
+          {isEditMode
+            ? 'Review and update your case details before saving.'
+            : targetAttorney
+              ? `${targetAttorney.name} will be notified directly. Other panel attorneys won't see this inquiry first — but if ${targetAttorney.name.split(' ')[0]} doesn't respond within a day, the inquiry opens to the panel as a backup.`
+              : 'We pre-screen your matter so an attorney can give you a useful first response without a 30-minute discovery call. Anything you put here is shared only with attorneys on the panel.'}
         </p>
       </div>
 
@@ -202,7 +249,21 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
 
       <div style={cardStyle}>
         {phase === 'country' && (
-          <CountryPicker country={country} onPick={(c) => { setCountry(c); setCaseTypeId(''); setAnswers({}) }} />
+          <>
+            {isEditMode && (
+              <div style={{ ...warningBox, marginBottom: '16px' }}>
+                Changing country may reset case-specific answers.
+              </div>
+            )}
+            <CountryPicker
+              country={country}
+              onPick={(c) => {
+                setCountry(c)
+                setCaseTypeId('')
+                if (!isEditMode) setAnswers({})
+              }}
+            />
+          </>
         )}
 
         {phase === 'case' && countryConfig && (
@@ -245,7 +306,7 @@ export default function IntakeForm({ onCancel, onSubmitted, defaultEmail, defaul
           </Btn>
           {phase === 'review' ? (
             <Btn variant="primary" size="md" onClick={submit} disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit inquiry'}
+              {submitting ? (isEditMode ? 'Saving…' : 'Submitting…') : (isEditMode ? 'Save changes' : 'Submit inquiry')}
             </Btn>
           ) : (
             <Btn variant="primary" size="md" onClick={next}>
@@ -638,6 +699,15 @@ const errorBox = {
   background: 'rgba(220,38,38,0.08)',
   border: '1px solid rgba(220,38,38,0.20)',
   color: C.red,
+  padding: '10px 12px',
+  borderRadius: '8px',
+  fontSize: '13px',
+}
+
+const warningBox = {
+  background: 'rgba(217,119,6,0.06)',
+  border: '1px solid rgba(217,119,6,0.20)',
+  color: '#8A6E2F',
   padding: '10px 12px',
   borderRadius: '8px',
   fontSize: '13px',
