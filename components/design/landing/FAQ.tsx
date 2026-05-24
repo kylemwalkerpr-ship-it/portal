@@ -33,7 +33,7 @@ const ITEMS = [
 ]
 
 export default function FAQ() {
-  const [openIdx, setOpenIdx] = React.useState<number | null>(0)
+  const [openIdx, setOpenIdx] = React.useState<number | null>(null)
 
   return (
     <section id="faq" style={{ background: T.surface, padding: '88px 40px' }}>

@@ -3,13 +3,80 @@ import React from 'react'
 import { T } from './tokens'
 import { Lock, Shield, Globe } from './icons'
 
+// Inline brand marks — recognizable acceptance-mark shapes, no external deps.
+// Production note: swap to official assets from each network's brand resource
+// centre when licensing is confirmed (per brief §3.12.1 table).
+
+const VisaMark = () => (
+  <svg viewBox="0 0 60 20" width="56" height="20" aria-hidden="true">
+    <text x="0" y="16" fontFamily="Helvetica, Arial, sans-serif" fontSize="18" fontWeight="900" fontStyle="italic" fill="#1A1F71" letterSpacing="0.5">VISA</text>
+  </svg>
+)
+
+const MastercardMark = () => (
+  <svg viewBox="0 0 48 30" width="42" height="26" aria-hidden="true">
+    <circle cx="19" cy="15" r="11" fill="#EB001B" />
+    <circle cx="30" cy="15" r="11" fill="#F79E1B" />
+    <path d="M24.5 7a11 11 0 0 1 0 16 11 11 0 0 1 0-16Z" fill="#FF5F00" />
+  </svg>
+)
+
+const AmexMark = () => (
+  <svg viewBox="0 0 56 30" width="50" height="26" aria-hidden="true">
+    <rect x="0" y="0" width="56" height="30" rx="3" fill="#1F72CD" />
+    <text x="28" y="13" fontFamily="Helvetica, Arial, sans-serif" fontSize="6" fontWeight="900" fill="#fff" textAnchor="middle" letterSpacing="0.4">AMERICAN</text>
+    <text x="28" y="22" fontFamily="Helvetica, Arial, sans-serif" fontSize="6" fontWeight="900" fill="#fff" textAnchor="middle" letterSpacing="0.4">EXPRESS</text>
+  </svg>
+)
+
+const DiscoverMark = () => (
+  <svg viewBox="0 0 80 22" width="72" height="20" aria-hidden="true">
+    <text x="0" y="16" fontFamily="Helvetica, Arial, sans-serif" fontSize="14" fontWeight="800" fill="#111" letterSpacing="-0.3">DISCOVER</text>
+    <circle cx="68" cy="11" r="6.5" fill="#F58220" />
+  </svg>
+)
+
+const ApplePayMark = () => (
+  <svg viewBox="0 0 56 22" width="52" height="22" aria-hidden="true">
+    <path d="M9.4 5.7c.5-.7.9-1.6.8-2.5-.7.04-1.6.5-2.1 1.1-.5.5-.9 1.4-.8 2.3.8.07 1.6-.4 2.1-.9Zm.8.9c-1.2-.07-2.1.7-2.7.7-.6 0-1.4-.6-2.3-.6-1.2.02-2.3.7-2.9 1.8-1.3 2.1-.3 5.3.9 7 .6.9 1.3 1.8 2.3 1.8.9-.04 1.3-.6 2.4-.6s1.5.6 2.4.6c1 0 1.7-.9 2.3-1.8.4-.6.7-1.3.9-2.1-2.4-.9-2.6-3.9-.2-5.1-.4-.5-1-1.7-3.1-1.7Z" fill="#111"/>
+    <text x="16" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="12" fontWeight="600" fill="#111">Pay</text>
+  </svg>
+)
+
+const GooglePayMark = () => (
+  <svg viewBox="0 0 56 22" width="52" height="22" aria-hidden="true">
+    <text x="0" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#4285F4">G</text>
+    <text x="9" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#EA4335">o</text>
+    <text x="18" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#FBBC04">o</text>
+    <text x="27" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#4285F4">g</text>
+    <text x="36" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#34A853">l</text>
+    <text x="40" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="13" fontWeight="700" fill="#EA4335">e</text>
+    <text x="49" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="12" fontWeight="600" fill="#5F6368">Pay</text>
+  </svg>
+)
+
+const SamsungPayMark = () => (
+  <svg viewBox="0 0 90 22" width="80" height="20" aria-hidden="true">
+    <text x="0" y="16" fontFamily="Helvetica, Arial, sans-serif" fontSize="11" fontWeight="700" fill="#1428A0" letterSpacing="-0.2">SAMSUNG</text>
+    <text x="60" y="16" fontFamily="Helvetica, Arial, sans-serif" fontSize="11" fontWeight="400" fill="#1428A0">Pay</text>
+  </svg>
+)
+
+const PayPalMark = () => (
+  <svg viewBox="0 0 64 22" width="60" height="20" aria-hidden="true">
+    <text x="0" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#003087">Pay</text>
+    <text x="25" y="17" fontFamily="Helvetica, Arial, sans-serif" fontSize="14" fontWeight="900" fontStyle="italic" fill="#009CDE">Pal</text>
+  </svg>
+)
+
 interface PaymentChipProps {
   brand: string
   ariaLabel: string
   available?: boolean
+  Mark: React.FC
 }
 
-function PaymentChip({ brand, ariaLabel, available = true }: PaymentChipProps) {
+function PaymentChip({ brand, ariaLabel, available = true, Mark }: PaymentChipProps) {
   return (
     <div
       role="img"
@@ -29,16 +96,7 @@ function PaymentChip({ brand, ariaLabel, available = true }: PaymentChipProps) {
         boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
       }}
     >
-      <span style={{
-        fontFamily: T.sans,
-        fontSize: 13,
-        fontWeight: 700,
-        color: T.ink,
-        letterSpacing: '-0.01em',
-        whiteSpace: 'nowrap',
-      }}>
-        {brand}
-      </span>
+      <Mark />
       {!available && (
         <span style={{
           position: 'absolute',
@@ -65,14 +123,14 @@ function PaymentChip({ brand, ariaLabel, available = true }: PaymentChipProps) {
 }
 
 const CHIPS = [
-  { brand: 'VISA',         ariaLabel: 'Visa accepted',             available: true  },
-  { brand: 'Mastercard',   ariaLabel: 'Mastercard accepted',       available: true  },
-  { brand: 'Amex',         ariaLabel: 'American Express accepted', available: true  },
-  { brand: 'Discover',     ariaLabel: 'Discover accepted',         available: true  },
-  { brand: 'Apple Pay',    ariaLabel: 'Apple Pay coming soon',     available: false },
-  { brand: 'Google Pay',   ariaLabel: 'Google Pay coming soon',    available: false },
-  { brand: 'Samsung Pay',  ariaLabel: 'Samsung Pay coming soon',   available: false },
-  { brand: 'PayPal',       ariaLabel: 'PayPal coming soon',        available: false },
+  { brand: 'Visa',         ariaLabel: 'Visa accepted',             available: true,  Mark: VisaMark },
+  { brand: 'Mastercard',   ariaLabel: 'Mastercard accepted',       available: true,  Mark: MastercardMark },
+  { brand: 'Amex',         ariaLabel: 'American Express accepted', available: true,  Mark: AmexMark },
+  { brand: 'Discover',     ariaLabel: 'Discover accepted',         available: true,  Mark: DiscoverMark },
+  { brand: 'Apple Pay',    ariaLabel: 'Apple Pay coming soon',     available: false, Mark: ApplePayMark },
+  { brand: 'Google Pay',   ariaLabel: 'Google Pay coming soon',    available: false, Mark: GooglePayMark },
+  { brand: 'Samsung Pay',  ariaLabel: 'Samsung Pay coming soon',   available: false, Mark: SamsungPayMark },
+  { brand: 'PayPal',       ariaLabel: 'PayPal coming soon',        available: false, Mark: PayPalMark },
 ]
 
 export default function PaymentMethods() {
@@ -123,7 +181,7 @@ export default function PaymentMethods() {
 
           <div className="ys-pay-chips">
             {CHIPS.map((c) => (
-              <PaymentChip key={c.brand} brand={c.brand} ariaLabel={c.ariaLabel} available={c.available} />
+              <PaymentChip key={c.brand} brand={c.brand} ariaLabel={c.ariaLabel} available={c.available} Mark={c.Mark} />
             ))}
           </div>
         </div>
