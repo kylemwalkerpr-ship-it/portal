@@ -35,19 +35,23 @@ export default function HomeClient({ stats, categoryCounts, gigs, providers, tes
   return (
     <>
       <Nav onOpenSignIn={() => setSignInOpen(true)} />
-      <Hero onSignup={() => { window.location.href = '/sign-up/student' }} />
-      <StatsBand stats={stats} />
-      <PopularCategories counts={categoryCounts} />
-      <FeaturedServices gigs={gigs} />
-      <TwoPractices />
-      <HowItWorks />
-      <MemberAccessBand onOpenSignIn={() => setSignInOpen(true)} />
-      <FeaturedProviders providers={providers} />
-      <Testimonials testimonials={testimonials} />
-      <TrustStrip />
-      <PaymentMethods />
-      <FAQ />
-      <FinalCTA />
+      {/* Sticky cascade: every section below pins under the nav as the
+          user scrolls; later sections paint over earlier ones, producing
+          a card-stack effect. Inner sections keep their full-bleed
+          backgrounds, so each one occludes the previous one cleanly. */}
+      <div className="stack-section"><Hero onSignup={() => { window.location.href = '/sign-up/student' }} /></div>
+      <div className="stack-section"><StatsBand stats={stats} /></div>
+      <div className="stack-section"><PopularCategories counts={categoryCounts} /></div>
+      <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
+      <div className="stack-section"><TwoPractices /></div>
+      <div className="stack-section"><HowItWorks /></div>
+      <div className="stack-section"><MemberAccessBand onOpenSignIn={() => setSignInOpen(true)} /></div>
+      <div className="stack-section"><FeaturedProviders providers={providers} /></div>
+      <div className="stack-section"><Testimonials testimonials={testimonials} /></div>
+      <div className="stack-section"><TrustStrip /></div>
+      <div className="stack-section"><PaymentMethods /></div>
+      <div className="stack-section"><FAQ /></div>
+      <div className="stack-section"><FinalCTA /></div>
       <MemberSignInModal open={signInOpen} onClose={() => setSignInOpen(false)} />
     </>
   )

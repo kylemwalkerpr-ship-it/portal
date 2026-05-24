@@ -39,6 +39,39 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
+/* Landing cascade — every wrapped section pins to the top of the viewport
+   (just under the sticky nav) until the next section scrolls up to cover
+   it. DOM order does the painting: later siblings paint on top of earlier
+   ones, so each new section visually slides over the previous one as the
+   user scrolls. `isolation: isolate` keeps each card's stacking context
+   local so internal z-indexes never leak. Inner sections already carry
+   their own opaque backgrounds, so the wrapper itself stays transparent. */
+.stack-section {
+  position: sticky;
+  top: 72px;
+  isolation: isolate;
+  /* Faint top-edge lift on each card so the cascade reads as layered
+     paper, not just a hard cut. */
+  box-shadow: 0 -10px 28px -16px rgba(15, 23, 42, 0.10);
+}
+/* Disable the cascade on small screens — sticky stacking with full-bleed
+   sections feels claustrophobic on mobile, and breaks if any section is
+   taller than the viewport. Sections just flow naturally on phones. */
+@media (max-width: 767px) {
+  .stack-section {
+    position: static;
+    box-shadow: none;
+  }
+}
+/* Respect users who ask for reduced motion — the cascade reads as
+   constant movement to motion-sensitive viewers. */
+@media (prefers-reduced-motion: reduce) {
+  .stack-section {
+    position: static;
+    box-shadow: none;
+  }
+}
+
 /* Premium serif for top-level headings across every dashboard. Components can
    override locally if they want a sans-serif title, but the default upgrades
    the visual feel everywhere with a single rule. */
