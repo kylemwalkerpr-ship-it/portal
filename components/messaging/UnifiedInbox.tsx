@@ -13,6 +13,8 @@ import AutoGrowInput from './AutoGrowInput'
 import StatusRing from './StatusRing'
 import StatusViewer from './StatusViewer'
 import MessengerSettings from './MessengerSettings'
+import ArchivedView from './ArchivedView'
+import StarredView from './StarredView'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
 /**
