@@ -12,6 +12,7 @@ import OfferRequestCard from './OfferRequestCard'
 import AutoGrowInput from './AutoGrowInput'
 import StatusRing from './StatusRing'
 import StatusViewer from './StatusViewer'
+import MessengerSettings from './MessengerSettings'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
 /**
@@ -72,10 +73,65 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [statusViewerOpen, setStatusViewerOpen] = React.useState(false)
   const [statusViewerPersonId, setStatusViewerPersonId] = React.useState(null)
 
+  // Settings panel
+  const [showSettings, setShowSettings] = React.useState(false)
+  const [theme, setTheme] = React.useState('system')
+  const [density, setDensity] = React.useState('comfortable')
+  const [wallpaper, setWallpaper] = React.useState('default')
+  const [globalMute, setGlobalMute] = React.useState(false)
+
+  // Mount: read persisted settings from localStorage and apply to DOM
+  React.useLayoutEffect(() => {
+    const root = document.querySelector('.yousafe-messenger')
+    if (!root) return
+
+    const storedTheme = localStorage.getItem('yousafe.messenger.theme') || 'system'
+    const storedDensity = localStorage.getItem('yousafe.messenger.density') || 'comfortable'
+    const storedWallpaper = localStorage.getItem('yousafe.messenger.wallpaper') || 'default'
+    const storedMute = localStorage.getItem('yousafe.messenger.globalMute') === 'true'
+
+    setTheme(storedTheme)
+    setDensity(storedDensity)
+    setWallpaper(storedWallpaper)
+    setGlobalMute(storedMute)
+
+    const resolveTheme = (t: string) => {
+      if (t === 'system') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      }
+      return t
+    }
+
+    const resolved = resolveTheme(storedTheme)
+    if (resolved === 'light') {
+      root.removeAttribute('data-theme')
+    } else {
+      root.setAttribute('data-theme', resolved)
+    }
+    root.setAttribute('data-density', storedDensity === 'comfortable' ? '' : storedDensity)
+    root.setAttribute('data-wallpaper', storedWallpaper === 'default' ? '' : storedWallpaper)
+  }, [])
+
+  // Watch system theme changes when theme is set to 'system'
+  React.useEffect(() => {
+    if (theme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => {
+      const root = document.querySelector('.yousafe-messenger')
+      if (root) root.setAttribute('data-theme', mq.matches ? 'dark' : 'light')
+    }
+    mq.addEventListener?.('change', onChange)
+    return () => mq.removeEventListener?.('change', onChange)
+  }, [theme])
+
   // Close menu on outside click
   React.useEffect(() => {
     if (!menuFor) return
-    const onDoc = (e) => { if (!e.target.closest?.('[data-rowmenu]')) setMenuFor(null) }
+    const onDoc = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('[data-rowmenu]')) {
+        setMenuFor(null)
+      }
+    }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [menuFor])
@@ -297,6 +353,62 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  const applySetting = (key: string, value: string) => {
+    const root = document.querySelector('.yousafe-messenger')
+    if (!root) return
+    if (key === 'theme') {
+      const resolved = value === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : value
+      if (resolved === 'light') {
+        root.removeAttribute('data-theme')
+      } else {
+        root.setAttribute('data-theme', resolved)
+      }
+    }
+    if (key === 'density') {
+      root.setAttribute('data-density', value === 'comfortable' ? '' : value)
+    }
+    if (key === 'wallpaper') {
+      root.setAttribute('data-wallpaper', value === 'default' ? '' : value)
+    }
+  }
+
+  const handleChangeTheme = (t: string) => {
+    setTheme(t)
+    localStorage.setItem('yousafe.messenger.theme', t)
+    applySetting('theme', t)
+  }
+
+  const handleChangeDensity = (d: string) => {
+    setDensity(d)
+    localStorage.setItem('yousafe.messenger.density', d)
+    applySetting('density', d)
+  }
+
+  const handleChangeWallpaper = (w: string) => {
+    setWallpaper(w)
+    localStorage.setItem('yousafe.messenger.wallpaper', w)
+    applySetting('wallpaper', w)
+  }
+
+  const handleToggleGlobalMute = async (muted: boolean) => {
+    setGlobalMute(muted)
+    localStorage.setItem('yousafe.messenger.globalMute', String(muted))
+    const farFuture = '2099-01-01T00:00:00.000Z'
+    const payload = JSON.stringify({ muted_until: muted ? farFuture : null })
+    await Promise.all(
+      conversations.map((c: any) =>
+        fetch(`/api/messages/conversations/${c.id}/mute`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+        }).catch(() => null)
+      )
+    )
+    await loadList(true)
+  }
+
   const handleSelectConversation = (id) => {
     setActiveId(id)
     setMobileShowChat(true)
@@ -409,7 +521,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
             </div>
           </div>
           <div className="cl-title-r">
-            <button className="iconbtn" title="Settings" onClick={() => { /* Phase 1 inert */ }}>
+            <button className="iconbtn" title="Settings" onClick={() => setShowSettings(true)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -647,6 +759,12 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg>
         </button>
+        <button className="iconbtn" title="Settings" onClick={() => setShowSettings(true)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
       </div>
     </div>
   ) : (
@@ -798,6 +916,18 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           viewerId={activeConv?.counterpart?.id}
         />
       )}
+      <MessengerSettings
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        theme={theme}
+        density={density}
+        wallpaper={wallpaper}
+        globalMute={globalMute}
+        onChangeTheme={handleChangeTheme}
+        onChangeDensity={handleChangeDensity}
+        onChangeWallpaper={handleChangeWallpaper}
+        onToggleGlobalMute={handleToggleGlobalMute}
+      />
     </div>
   )
 }

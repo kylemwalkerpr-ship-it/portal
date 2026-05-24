@@ -1034,6 +1034,107 @@
   color: var(--text);
 }
 
+.yousafe-messenger[data-density="compact"] {
+  --row-gap: 8px; --bub-gap: 1px; --bub-gap-end: 6px;
+  --msg-font-size: 13px;
+}
+.yousafe-messenger[data-density="compact"] .row {
+  padding: 8px 12px;
+}
+.yousafe-messenger[data-density="compact"] .bub {
+  padding: 4px 7px 6px;
+}
+.yousafe-messenger[data-density="compact"] .cv-scroll {
+  padding: 10px 4% 12px;
+}
+
+.yousafe-messenger[data-wallpaper="paper"] {
+  --chat-bg: var(--paper-2);
+}
+.yousafe-messenger[data-wallpaper="paper"] .cv-body-bg::before {
+  display: none;
+}
+
+.yousafe-messenger[data-wallpaper="none"] {
+  --chat-bg: var(--panel-2);
+}
+.yousafe-messenger[data-wallpaper="none"] .cv-body-bg::before {
+  display: none;
+}
+
+/* ── SETTINGS MODAL ────────────────────────────────────────────────── */
+.yousafe-messenger .settings-modal { width: min(520px, 92vw); }
+.yousafe-messenger .settings-scroll { padding: 4px 24px 24px; overflow-y: auto; max-height: 70vh; }
+.yousafe-messenger .settings-section { padding: 16px 0; border-bottom: 1px solid var(--border-soft); }
+.yousafe-messenger .settings-section:last-child { border-bottom: 0; }
+.yousafe-messenger .settings-section-title {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-soft); margin-bottom: 10px;
+}
+
+.yousafe-messenger .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.yousafe-messenger .seg button {
+  flex: 1; padding: 8px 12px;
+  background: var(--panel-2); color: var(--text-mid);
+  border-radius: 6px;
+  font-size: 13px; font-weight: 500;
+  text-transform: capitalize;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  min-width: 72px;
+}
+.yousafe-messenger .seg button:hover { color: var(--text); }
+.yousafe-messenger .seg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.yousafe-messenger .settings-list .settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; gap: 16px;
+  font-size: 13.5px;
+}
+.yousafe-messenger .settings-sub { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; line-height: 1.4; }
+.yousafe-messenger .settings-val { color: var(--accent-d); font-weight: 600; font-size: 12.5px; }
+
+.yousafe-messenger .settings-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text);
+  margin-right: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.yousafe-messenger .settings-btn:hover { background: var(--hover); }
+.yousafe-messenger .settings-btn.danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
+
+.yousafe-messenger .settings-switch {
+  width: 44px; height: 24px;
+  border-radius: 999px;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  position: relative;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.yousafe-messenger .settings-switch.on { background: var(--accent); }
+.yousafe-messenger .settings-switch-knob {
+  display: block;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transform: translateX(0);
+  transition: transform .15s;
+}
+.yousafe-messenger .settings-switch.on .settings-switch-knob {
+  transform: translateX(20px);
+}
+
 /* Starred view */
 .yousafe-messenger .starred-row {
   flex-direction: column; align-items: flex-start; gap: 4px;
