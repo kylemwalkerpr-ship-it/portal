@@ -13,6 +13,7 @@ import AttorneyInquiries from './attorney-inquiries'
 import AttorneyProfile from './attorney-profile'
 import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
+import { usePortalTheme } from './usePortalTheme'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
@@ -34,6 +35,7 @@ const PAGE_TITLES = {
 }
 
 export default function AttorneyApp({ onLogout, userName }) {
+  const [theme] = usePortalTheme()
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'overview'
     const params = new URLSearchParams(window.location.search)
@@ -255,7 +257,7 @@ export default function AttorneyApp({ onLogout, userName }) {
   const profileEmail = profileData?.profile?.email || ''
 
   return (
-    <div className="yousafe-dashboard-shell" style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
+    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
       <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
       <Sidebar
         page={page}

@@ -7,6 +7,8 @@ import CustomOfferDialog from './custom-offer-dialog'
 import { LanguageSelector } from '../language-selector'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import DashboardGuide from './DashboardGuide'
+import { usePortalTheme } from './usePortalTheme'
+import ThemePicker from './ThemePicker'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -65,6 +67,7 @@ function EarningsChart({ days }) {
 }
 
 function ConsultantApp({ onLogout }) {
+  const [theme, applyTheme] = usePortalTheme()
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'dashboard';
     const params = new URLSearchParams(window.location.search);
@@ -1379,6 +1382,13 @@ function ConsultantApp({ onLogout }) {
         </div>
       </Card>
       <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Appearance</div>
+        <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '16px' }}>
+          Choose your view — your saved theme follows you on every device.
+        </div>
+        <ThemePicker currentTheme={theme} onChange={applyTheme} />
+      </Card>
+      <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Notifications</div>
         {[['orders', 'New order requests'], ['messages', 'Student messages'], ['payments', 'Payment confirmations']].map(([key, label]) => (
           <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
@@ -1397,7 +1407,7 @@ function ConsultantApp({ onLogout }) {
 
 
   return (
-    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       {Sidebar()}
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {TopBar({ title: { dashboard: 'Dashboard', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'Dashboard' })}

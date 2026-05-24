@@ -22,6 +22,7 @@ import StudentDocuments from './student-documents'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
+import { usePortalTheme } from './usePortalTheme'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
 
 // ── Premium section primitives ────────────────────────────────────────────
@@ -1197,6 +1198,7 @@ function CheckoutChoice({ active, disabled, onClick, title, detail }) {
 }
 
 function StudentApp({ onLogout, userId, userName }) {
+  const [theme] = usePortalTheme()
   // Read ?goto=<section> from the URL so marketplace nav header links land on the right tab
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'dashboard'
@@ -3349,7 +3351,7 @@ function StudentApp({ onLogout, userId, userName }) {
 
   // ── RENDER ──
   return (
-    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={{

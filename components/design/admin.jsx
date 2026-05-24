@@ -10,6 +10,8 @@ import AdminOrders from './admin-orders'
 import AdminEscrow from './admin-escrow'
 import AdminDashboard from './admin-dashboard'
 import AdminAttorneyApplications from './admin-attorney-applications'
+import { usePortalTheme } from './usePortalTheme'
+import ThemePicker from './ThemePicker'
 import { LanguageSelector } from '../language-selector'
 
 const formatMoney = (value, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'USD').toUpperCase(), minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -74,6 +76,7 @@ const adminSectionHeading = {
 };
 
 function AdminApp({ onLogout }) {
+  const [theme, applyTheme] = usePortalTheme()
   const [loggingOut, setLoggingOut] = React.useState(false);
   const handleLogout = () => {
     if (loggingOut) return;
@@ -1933,6 +1936,7 @@ function AdminApp({ onLogout }) {
       { id: 'financial', label: 'Financial', icon: '💰' },
       { id: 'escrow',    label: 'Escrow & policy', icon: '🔒' },
       { id: 'platform',  label: 'Platform info', icon: '🏛' },
+      { id: 'appearance', label: 'Appearance', icon: '🎨' },
     ];
     const MONO = `'SF Mono', Menlo, Consolas, monospace`;
     return (
@@ -2134,6 +2138,16 @@ function AdminApp({ onLogout }) {
         </div>
       </Card>
       </>)}
+
+      {/* Appearance tab */}
+      {tab === 'appearance' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>
+            Choose your view — your saved theme follows you on every device.
+          </div>
+          <ThemePicker currentTheme={theme} onChange={applyTheme} />
+        </div>
+      )}
     </div>
     );
   };
@@ -2245,7 +2259,7 @@ function AdminApp({ onLogout }) {
   const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'Gigs', services: 'Catalogue', settings: 'Settings' };
 
   return (
-    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={pages[page] || 'Admin'} />

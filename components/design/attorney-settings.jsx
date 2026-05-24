@@ -2,6 +2,8 @@
 import React from 'react'
 import { Card, Btn, Badge, Avatar, Input, Select } from './shared'
 import { PhoneVerificationCard } from '../PhoneVerificationCard'
+import { usePortalTheme } from './usePortalTheme'
+import ThemePicker from './ThemePicker'
 
 /**
  * Attorney → Settings (Fiverr-grade).
@@ -24,6 +26,7 @@ const TABS = [
   { id: 'compliance',   label: 'Compliance',   icon: '🛡️' },
   { id: 'payouts',      label: 'Payouts',      icon: '💸' },
   { id: 'security',     label: 'Security',     icon: '🔑' },
+  { id: 'appearance',   label: 'Appearance',   icon: '🎨' },
 ]
 
 function splitDisplayName(full = '') {
@@ -142,6 +145,7 @@ export default function AttorneySettings() {
         {tab === 'compliance'   && <ComplianceTab data={data} flash={flash} reload={load} />}
         {tab === 'payouts'      && <PayoutsTab data={data} flash={flash} reload={load} />}
         {tab === 'security'     && <SecurityTab data={data} flash={flash} />}
+        {tab === 'appearance'   && <AppearanceTab />}
       </div>
     </div>
   )
@@ -461,6 +465,20 @@ function Row({ label, value }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER2}` }}>
       <span style={{ fontSize: 12, color: MUTED, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>{label}</span>
       <span style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{value}</span>
+    </div>
+  )
+}
+
+
+// ── Appearance tab ──────────────────────────────────────────────────────
+function AppearanceTab() {
+  const [theme, applyTheme] = usePortalTheme()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, marginBottom: 4 }}>
+        Choose your view — your saved theme follows you on every device.
+      </div>
+      <ThemePicker currentTheme={theme} onChange={applyTheme} />
     </div>
   )
 }

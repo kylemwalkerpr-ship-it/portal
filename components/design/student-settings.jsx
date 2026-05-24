@@ -2,6 +2,8 @@
 import React from 'react'
 import { Card, Btn, Badge, Avatar, Input, Select } from './shared'
 import { PhoneVerificationCard } from '../PhoneVerificationCard'
+import { usePortalTheme } from './usePortalTheme'
+import ThemePicker from './ThemePicker'
 
 /**
  * Student → Settings (Fiverr-grade).
@@ -23,6 +25,7 @@ const TABS = [
   { id: 'privacy',      label: 'Privacy',      icon: '🔐' },
   { id: 'security',     label: 'Security',     icon: '🛡️' },
   { id: 'verification', label: 'Verification', icon: '✅' },
+  { id: 'appearance',   label: 'Appearance',   icon: '🎨' },
 ]
 
 function splitDisplayName(full = '') {
@@ -147,6 +150,7 @@ export default function StudentSettings({ userName }) {
         {tab === 'privacy'      && <PrivacyTab data={data} setData={setData} flash={flash} />}
         {tab === 'security'     && <SecurityTab data={data} flash={flash} />}
         {tab === 'verification' && <VerificationTab flash={flash} />}
+        {tab === 'appearance'   && <AppearanceTab />}
       </div>
     </div>
   )
@@ -454,3 +458,17 @@ function VerificationTab({ flash }) {
 const infoRow = { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${BORDER2}` }
 const infoKey = { fontSize: 12, color: MUTED, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }
 const infoVal = { fontSize: 13, color: TEXT, fontWeight: 600 }
+
+
+// ── Appearance tab ──────────────────────────────────────────────────────
+function AppearanceTab() {
+  const [theme, applyTheme] = usePortalTheme()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.5, marginBottom: 4 }}>
+        Choose your view — your saved theme follows you on every device.
+      </div>
+      <ThemePicker currentTheme={theme} onChange={applyTheme} />
+    </div>
+  )
+}
