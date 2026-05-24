@@ -27,16 +27,15 @@ export default function DashboardClient({ role, status, userName, userId, expect
     if (loggingOut.current) return
     loggingOut.current = true
 
-    // Fire signOut in the background — Clerk clears local SDK state
-    // synchronously, server-side session revocation continues over the wire
-    // after the page leaves. Awaiting it makes the button feel stuck for
-    // the full Clerk round-trip (sometimes seconds on a slow connection).
-    signOut().catch(() => {})
-
-    // Hard-navigate immediately. The next page load runs a fresh Clerk
-    // session check, so even if the network call is still in flight the
-    // user lands on the public landing as expected.
-    window.location.replace(PORTAL_URL)
+    // Use Clerk's built-in redirectUrl so it clears the session cookie
+    // BEFORE navigating. The earlier fire-and-forget pattern raced with
+    // middleware: the cookie was still valid when `/` loaded, so middleware
+    // redirected back to /dashboard and the user appeared stuck. Delegating
+    // to Clerk's own redirect serializes cookie-clear → navigation.
+    signOut({ redirectUrl: PORTAL_URL }).catch(() => {
+      // If Clerk fails before navigating, force the bounce ourselves.
+      window.location.replace(PORTAL_URL)
+    })
   }, [signOut])
 
   if (errorState) {
@@ -58,9 +57,10 @@ export default function DashboardClient({ role, status, userName, userId, expect
 
   if (expectedRole && role !== expectedRole) {
     const handleSwitchRoute = () => {
-      const redirectUrl = signInForLane(expectedRole)
-      signOut().catch(() => {})
-      window.location.replace(redirectUrl)
+      const target = signInForLane(expectedRole)
+      signOut({ redirectUrl: target }).catch(() => {
+        window.location.replace(target)
+      })
     }
 
     return (

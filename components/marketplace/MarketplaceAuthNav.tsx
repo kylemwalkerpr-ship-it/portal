@@ -143,11 +143,13 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
           <button
             role="menuitem"
             onClick={() => {
-              // Fire signOut in the background — don't block navigation on
-              // the Clerk round-trip; the next page load gets a fresh
-              // session check.
-              clerk.signOut().catch(() => {})
-              window.location.replace(PORTAL_URL)
+              // Let Clerk handle cookie-clear → navigation in order. Fire
+              // and forget races with middleware: the session cookie is
+              // still live when `/` loads, so middleware bounces the user
+              // straight back to /dashboard and logout appears broken.
+              clerk.signOut({ redirectUrl: PORTAL_URL }).catch(() => {
+                window.location.replace(PORTAL_URL)
+              })
             }}
             style={{ ...linkStyle, color: T.brick, width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = T.paper2 }}
