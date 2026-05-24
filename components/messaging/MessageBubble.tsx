@@ -39,6 +39,11 @@ export interface MessageBubbleProps {
   replyTo?: ReplyToInfo | null
   onReplyClick?: (msgId: string) => void
   onReplyStart?: (msgId: string, snippet: string, senderName: string) => void
+  /* §D — profile preview drawer on avatar click */
+  avatarUrl?: string | null
+  avatarColor?: string
+  avatarName?: string
+  onAvatarClick?: () => void
 }
 
 function CheckIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
@@ -86,6 +91,10 @@ export default function MessageBubble({
   replyTo,
   onReplyClick,
   onReplyStart,
+  avatarUrl,
+  avatarColor,
+  avatarName,
+  onAvatarClick,
 }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = React.useState(false)
   const [pickerPos, setPickerPos] = React.useState({ x: 0, y: 0 })
@@ -128,8 +137,30 @@ export default function MessageBubble({
 
   const hasReactions = (reactions || []).length > 0
 
+  const showAvatar = !mine && isFirstInGroup && (avatarUrl || avatarName)
+
   return (
     <div className={`${rowClass} ${className || ''}`.trim()} style={style}>
+      {showAvatar && (
+        <button
+          type="button"
+          onClick={onAvatarClick}
+          style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: avatarColor || '#3C3B6E',
+            color: '#fff', display: 'grid', placeItems: 'center',
+            fontSize: 11, fontWeight: 600,
+            border: 'none', cursor: 'pointer', padding: 0,
+            alignSelf: 'flex-end', marginRight: 6, marginBottom: 2,
+            flexShrink: 0,
+          }}
+          title={avatarName || ''}
+        >
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+            : (avatarName || '?').charAt(0).toUpperCase()}
+        </button>
+      )}
       <div className={bubClass} onContextMenu={handleContextMenu} data-msgmenu>
         {replyTo && (
           <button

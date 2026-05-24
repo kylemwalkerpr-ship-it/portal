@@ -18,9 +18,10 @@ interface StatusViewerProps {
   viewerId?: string | null
   viewerRole?: string | null
   onRespond?: (statusId: string) => void
+  onOpenProfile?: (personId: string) => void
 }
 
-export default function StatusViewer({ statuses, initialIndex = 0, onClose, viewerId, viewerRole, onRespond }: StatusViewerProps) {
+export default function StatusViewer({ statuses, initialIndex = 0, onClose, viewerId, viewerRole, onRespond, onOpenProfile }: StatusViewerProps) {
   const [idx, setIdx] = React.useState(initialIndex)
   const [progress, setProgress] = React.useState(0)
   const status = statuses[idx]
@@ -120,7 +121,11 @@ export default function StatusViewer({ statuses, initialIndex = 0, onClose, view
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            role="button"
+            onClick={() => onOpenProfile?.(status.person_id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+          >
             <Avatar name={status.person_name} userId={status.person_id} size={36} />
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{isMine ? 'You' : status.person_name}</div>

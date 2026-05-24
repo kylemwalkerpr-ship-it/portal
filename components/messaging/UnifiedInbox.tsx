@@ -15,6 +15,7 @@ import MessengerSettings from './MessengerSettings'
 import ArchivedView from './ArchivedView'
 import StarredView from './StarredView'
 import InquiryComposer from './InquiryComposer'
+import ProfilePreviewDrawer from './ProfilePreviewDrawer'
 import { fmtRelative, fmtFullTime, sameDay, dateLabel, initials } from '@/lib/messaging/format'
 
 /**
@@ -101,6 +102,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Inquiry composer modal
   const [showInquiryComposer, setShowInquiryComposer] = React.useState(false)
+
+  // Profile preview drawer
+  const [previewSellerId, setPreviewSellerId] = React.useState<string | null>(null)
 
   // Mount: read role, persisted settings from localStorage and apply to DOM
   React.useLayoutEffect(() => {
@@ -785,7 +789,12 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           </svg>
         </button>
       )}
-      <div className="cv-head-info">
+      <div
+        className="cv-head-info"
+        role="button"
+        onClick={() => setPreviewSellerId(activeConv?.counterpart?.id)}
+        style={{ cursor: 'pointer' }}
+      >
         <div className="cv-head-avatar" style={{ background: activeConv?.counterpart?.avatar_color || '#3C3B6E' }}>
           {activeConv?.counterpart?.avatar_url
             ? <img src={activeConv.counterpart.avatar_url} alt="" style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
@@ -892,6 +901,8 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 m={m}
                 counterpartId={activeConv?.counterpart?.id}
                 counterpartName={activeConv?.counterpart?.full_name || 'Them'}
+                counterpartAvatarUrl={activeConv?.counterpart?.avatar_url}
+                counterpartAvatarColor={activeConv?.counterpart?.avatar_color}
                 offerBusy={offerBusyId === m.offer?.id}
                 onAccept={handleOfferAccept}
                 onDecline={handleOfferDecline}
@@ -904,6 +915,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 onReact={handleReact}
                 onReplyStart={handleReplyStart}
                 onReplyClick={handleReplyClick}
+                onOpenProfile={(id) => setPreviewSellerId(id)}
               />
             </div>
           </React.Fragment>
@@ -1014,6 +1026,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
               setThreadError('Network error. Please try again.')
             }
           }}
+          onOpenProfile={(id) => setPreviewSellerId(id)}
         />
       )}
       <MessengerSettings
@@ -1043,6 +1056,12 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           }}
         />
       )}
+      <ProfilePreviewDrawer
+        sellerId={previewSellerId}
+        viewerId={myProfileId}
+        open={!!previewSellerId}
+        onClose={() => setPreviewSellerId(null)}
+      />
     </div>
   )
 }
@@ -1051,6 +1070,8 @@ function ThreadMessage({
   m,
   counterpartId,
   counterpartName,
+  counterpartAvatarUrl,
+  counterpartAvatarColor,
   offerBusy,
   onAccept,
   onDecline,
@@ -1063,6 +1084,7 @@ function ThreadMessage({
   onReact,
   onReplyStart,
   onReplyClick,
+  onOpenProfile,
 }) {
   const mine = m.sender_id !== counterpartId
   const isOffer = m.type === 'offer' && m.offer && m.offer.id
@@ -1140,6 +1162,10 @@ function ThreadMessage({
         const name = senderName === 'Them' ? (counterpartName || 'Them') : senderName
         onReplyStart?.(msgId, snippet, name)
       }}
+      avatarUrl={!mine ? counterpartAvatarUrl : undefined}
+      avatarColor={!mine ? counterpartAvatarColor || '#3C3B6E' : undefined}
+      avatarName={!mine ? counterpartName : undefined}
+      onAvatarClick={!mine && isFirstInGroup ? () => onOpenProfile?.(m.sender_id) : undefined}
       body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
     />
   )
