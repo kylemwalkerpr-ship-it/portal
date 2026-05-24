@@ -108,6 +108,7 @@ export default function ChatScreen({
         ref={messagesRef}
         onScroll={handleScroll}
         className="cv-body-bg"
+        data-chat-canvas
         style={{
           flex: '1 1 auto',
           minHeight: 0,

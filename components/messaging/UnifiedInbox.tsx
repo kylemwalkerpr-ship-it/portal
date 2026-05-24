@@ -88,24 +88,27 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Settings panel
   const [showSettings, setShowSettings] = React.useState(false)
-  const [theme, setTheme] = React.useState('system')
+  const [theme, setTheme] = React.useState('light')
   const [density, setDensity] = React.useState('comfortable')
   const [wallpaper, setWallpaper] = React.useState('default')
+  const [wallpaperUrl, setWallpaperUrl] = React.useState('')
   const [globalMute, setGlobalMute] = React.useState(false)
 
   // Mount: read persisted settings from localStorage and apply to DOM
   React.useLayoutEffect(() => {
-    const root = document.querySelector('.yousafe-messenger')
+    const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
     if (!root) return
 
-    const storedTheme = localStorage.getItem('yousafe.messenger.theme') || 'system'
+    const storedTheme = localStorage.getItem('yousafe.messenger.theme') || 'light'
     const storedDensity = localStorage.getItem('yousafe.messenger.density') || 'comfortable'
     const storedWallpaper = localStorage.getItem('yousafe.messenger.wallpaper') || 'default'
+    const storedWallpaperUrl = localStorage.getItem('yousafe.messenger.wallpaper_url') || ''
     const storedMute = localStorage.getItem('yousafe.messenger.globalMute') === 'true'
 
     setTheme(storedTheme)
     setDensity(storedDensity)
     setWallpaper(storedWallpaper)
+    setWallpaperUrl(storedWallpaperUrl)
     setGlobalMute(storedMute)
 
     const resolveTheme = (t: string) => {
@@ -123,6 +126,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }
     root.setAttribute('data-density', storedDensity === 'comfortable' ? '' : storedDensity)
     root.setAttribute('data-wallpaper', storedWallpaper === 'default' ? '' : storedWallpaper)
+    if (storedWallpaper === 'custom' && storedWallpaperUrl) {
+      root.style.setProperty('--chat-bg-image', `url("${storedWallpaperUrl}")`)
+    }
   }, [])
 
   // Watch system theme changes when theme is set to 'system'
@@ -130,7 +136,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     if (theme !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = () => {
-      const root = document.querySelector('.yousafe-messenger')
+      const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
       if (root) root.setAttribute('data-theme', mq.matches ? 'dark' : 'light')
     }
     mq.addEventListener?.('change', onChange)
@@ -367,7 +373,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   }
 
   const applySetting = (key: string, value: string) => {
-    const root = document.querySelector('.yousafe-messenger')
+    const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
     if (!root) return
     if (key === 'theme') {
       const resolved = value === 'system'
@@ -384,6 +390,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }
     if (key === 'wallpaper') {
       root.setAttribute('data-wallpaper', value === 'default' ? '' : value)
+      if (value !== 'custom') {
+        root.style.removeProperty('--chat-bg-image')
+      }
     }
   }
 
@@ -403,6 +412,19 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     setWallpaper(w)
     localStorage.setItem('yousafe.messenger.wallpaper', w)
     applySetting('wallpaper', w)
+  }
+
+  const handleChangeWallpaperUrl = (url: string) => {
+    setWallpaperUrl(url)
+    if (url) {
+      localStorage.setItem('yousafe.messenger.wallpaper_url', url)
+      const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
+      if (root) root.style.setProperty('--chat-bg-image', `url("${url}")`)
+    } else {
+      localStorage.removeItem('yousafe.messenger.wallpaper_url')
+      const root = document.querySelector('.yousafe-messenger') as HTMLElement | null
+      if (root) root.style.removeProperty('--chat-bg-image')
+    }
   }
 
   const handleToggleGlobalMute = async (muted: boolean) => {
@@ -935,10 +957,12 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         theme={theme}
         density={density}
         wallpaper={wallpaper}
+        wallpaperUrl={wallpaperUrl}
         globalMute={globalMute}
         onChangeTheme={handleChangeTheme}
         onChangeDensity={handleChangeDensity}
         onChangeWallpaper={handleChangeWallpaper}
+        onChangeWallpaperUrl={handleChangeWallpaperUrl}
         onToggleGlobalMute={handleToggleGlobalMute}
       />
     </div>

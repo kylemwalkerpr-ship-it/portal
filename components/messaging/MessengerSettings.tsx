@@ -8,10 +8,12 @@ interface MessengerSettingsProps {
   theme: string
   density: string
   wallpaper: string
+  wallpaperUrl: string
   globalMute: boolean
   onChangeTheme: (t: string) => void
   onChangeDensity: (d: string) => void
   onChangeWallpaper: (w: string) => void
+  onChangeWallpaperUrl: (url: string) => void
   onToggleGlobalMute: (muted: boolean) => void
 }
 
@@ -61,13 +63,77 @@ export default function MessengerSettings({
   theme,
   density,
   wallpaper,
+  wallpaperUrl,
   globalMute,
   onChangeTheme,
   onChangeDensity,
   onChangeWallpaper,
+  onChangeWallpaperUrl,
   onToggleGlobalMute,
 }: MessengerSettingsProps) {
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadError, setUploadError] = React.useState('')
+  const fileRef = React.useRef<HTMLInputElement>(null)
+
   if (!open) return null
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError('')
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const r = await fetch('/api/messenger/wallpaper', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setUploadError(d?.error?.message || 'Upload failed.')
+        return
+      }
+      onChangeWallpaperUrl(d?.data?.url || '')
+      onChangeWallpaper('custom')
+    } catch {
+      setUploadError('Network error. Please try again.')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const handleReplace = () => {
+    fileRef.current?.click()
+  }
+
+  const handleRemove = async () => {
+    setUploadError('')
+    try {
+      const r = await fetch('/api/messenger/wallpaper', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        setUploadError(d?.error?.message || 'Remove failed.')
+        return
+      }
+    } catch {
+      // Best-effort; clear local state regardless
+    }
+    onChangeWallpaperUrl('')
+    onChangeWallpaper('default')
+  }
+
+  const wallpaperOptions = [
+    { id: 'default', label: 'Default doodle' },
+    { id: 'paper', label: 'Paper' },
+    { id: 'none', label: 'None' },
+    { id: 'custom', label: 'Custom' },
+  ]
 
   return (
     <div className="backdrop" onClick={onClose}>
@@ -109,14 +175,69 @@ export default function MessengerSettings({
 
           <SettingSection title="Chat wallpaper">
             <Segmented
-              options={[
-                { id: 'default', label: 'Default' },
-                { id: 'paper', label: 'Paper' },
-                { id: 'none', label: 'None' },
-              ]}
+              options={wallpaperOptions}
               value={wallpaper}
-              onChange={onChangeWallpaper}
+              onChange={(w) => {
+                onChangeWallpaper(w)
+                if (w !== 'custom') {
+                  onChangeWallpaperUrl('')
+                }
+              }}
             />
+            {wallpaper === 'custom' && (
+              <div style={{ marginTop: 12 }}>
+                {wallpaperUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <img
+                      src={wallpaperUrl}
+                      alt="Wallpaper"
+                      style={{ width: 96, height: 64, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }}
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="cl-pill"
+                        onClick={handleReplace}
+                        disabled={uploading}
+                      >
+                        Replace
+                      </button>
+                      <button
+                        type="button"
+                        className="cl-pill"
+                        onClick={handleRemove}
+                        disabled={uploading}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      type="button"
+                      className="cl-pill"
+                      onClick={handleReplace}
+                      disabled={uploading}
+                    >
+                      {uploading ? 'Uploading…' : 'Upload image'}
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                />
+                {uploadError && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--brick)' }}>
+                    {uploadError}
+                  </div>
+                )}
+              </div>
+            )}
           </SettingSection>
 
           <SettingSection title="Platform safety">
