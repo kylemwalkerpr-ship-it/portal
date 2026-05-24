@@ -1,4 +1,3 @@
-// @ts-nocheck
 'use client'
 import React from 'react'
 import './messenger-tokens.css'
@@ -45,8 +44,15 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const [searchInput, setSearchInput] = React.useState('')
   const [debouncedQ, setDebouncedQ] = React.useState('')
 
-  const [conversations, setConversations] = React.useState([])
-  const [counts, setCounts] = React.useState({})
+  const [conversations, setConversations] = React.useState<any[]>([])
+  const [counts, setCounts] = React.useState<{
+    all?: number
+    unread?: number
+    favourites?: number
+    groups?: number
+    archived?: number
+    totalUnread?: number
+  }>({})
   const [hasMore, setHasMore] = React.useState(false)
   const [listLoading, setListLoading] = React.useState(true)
   const [listError, setListError] = React.useState('')
@@ -69,6 +75,11 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
 
   // Reply quoting state
   const [replyingTo, setReplyingTo] = React.useState<{ id: string; senderName: string; snippet: string } | null>(null)
+
+  // Archived + Starred modal state (phase 2.2)
+  const [showArchived, setShowArchived] = React.useState(false)
+  const [showStarred, setShowStarred] = React.useState(false)
+  const [starredMsgs, setStarredMsgs] = React.useState<any[]>([])
 
   // Status broadcasts (24h ring)
   const [statuses, setStatuses] = React.useState([])
