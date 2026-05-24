@@ -6,7 +6,7 @@
  * with a brief opacity fade-in.
  *
  * Each card → tap marks the status viewed (`POST /api/statuses/:id/view`),
- * then routes the visitor to `/dashboard/inquiries/:inquiry_id`.
+ * then routes the visitor to `/dashboard?page=inquiries&open=<inquiry_id>`.
  */
 import React from 'react'
 import { useRouter } from 'next/navigation'
@@ -118,7 +118,7 @@ export default function MarketplaceFeed() {
     try {
       await fetch(`/api/statuses/${s.id}/view`, { method: 'POST' })
     } catch { /* swallow — view tracking is best-effort */ }
-    if (s.inquiry_id) router.push(`/dashboard/inquiries/${s.inquiry_id}`)
+    if (s.inquiry_id) router.push(`/dashboard?page=inquiries&open=${encodeURIComponent(s.inquiry_id)}`)
   }
 
   return (

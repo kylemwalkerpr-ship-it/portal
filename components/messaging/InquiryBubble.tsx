@@ -5,7 +5,6 @@
  * inside a chat thread. Shows a stylized "case brief" card.
  */
 import React from 'react'
-import Link from 'next/link'
 
 const INDIGO = '#3C3B6E'
 const BRICK = '#B22234'
@@ -28,7 +27,7 @@ function flagFromCountryCode(code: string | undefined | null): string {
   )
 }
 
-export default function InquiryBubble({ message }: { message: any }) {
+export default function InquiryBubble({ message, viewerRole }: { message: any; viewerRole?: string | null }) {
   const md = (message.metadata || {}) as Record<string, any>
   const snap = {
     id: message.ref_inquiry_id || md.inquiry_id,
@@ -128,13 +127,22 @@ export default function InquiryBubble({ message }: { message: any }) {
 
       {live.id ? (
         <div className="inq-card-cta">
-          <Link href={`/dashboard/inquiries/${live.id}`} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', background: INDIGO, color: '#fff',
-            borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none',
-          }}>
+          <a
+            href={(() => {
+              const base = 'https://portal.yousafeconsultancy.com/dashboard'
+              if (viewerRole === 'attorney' || viewerRole === 'consultant') {
+                return `${base}?page=mine&open=${encodeURIComponent(live.id)}`
+              }
+              return `${base}?page=inquiries&open=${encodeURIComponent(live.id)}`
+            })()}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', background: INDIGO, color: '#fff',
+              borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none',
+            }}
+          >
             Open full brief →
-          </Link>
+          </a>
         </div>
       ) : null}
     </div>

@@ -67,7 +67,8 @@ function EarningsChart({ days }) {
 function ConsultantApp({ onLogout }) {
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'dashboard';
-    const goto = new URLSearchParams(window.location.search).get('goto');
+    const params = new URLSearchParams(window.location.search);
+    const goto = params.get('goto') || params.get('page');
     const allowed = ['dashboard','orders','clients','messages','earnings','connect','settings'];
     return allowed.includes(goto) ? goto : 'dashboard';
   }, []);

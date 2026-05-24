@@ -14,6 +14,20 @@ export default function MyInquiries() {
   const [openId, setOpenId] = React.useState(null)
   const [showIntake, setShowIntake] = React.useState(false)
 
+  // Deep-link: ?open=<id> auto-opens inquiry and strips param
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const openId = params.get('open')
+    if (openId) {
+      setOpenId(openId)
+      params.delete('open')
+      const url = new URL(window.location.href)
+      url.search = params.toString()
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
+
   const load = React.useCallback((isInitial) => {
     if (isInitial) setLoading(true)
     fetch('/api/client/inquiries', { credentials: 'same-origin' })

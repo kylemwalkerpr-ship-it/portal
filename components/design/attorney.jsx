@@ -36,7 +36,8 @@ const PAGE_TITLES = {
 export default function AttorneyApp({ onLogout, userName }) {
   const initialPage = React.useMemo(() => {
     if (typeof window === 'undefined') return 'overview'
-    const goto = new URLSearchParams(window.location.search).get('goto')
+    const params = new URLSearchParams(window.location.search)
+    const goto = params.get('goto') || params.get('page')
     const allowed = ['overview','queue','mine','orders','messages','earnings','profile','settings']
     return allowed.includes(goto) ? goto : 'overview'
   }, [])

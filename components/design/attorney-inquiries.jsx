@@ -86,6 +86,20 @@ export default function AttorneyInquiries({ mode = 'queue' }) {
   const [error, setError] = React.useState('')
   const [schemaPending, setSchemaPending] = React.useState(false)
 
+  // Deep-link: ?open=<id> auto-opens inquiry and strips param
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const openId = params.get('open')
+    if (openId) {
+      setOpenId(openId)
+      params.delete('open')
+      const url = new URL(window.location.href)
+      url.search = params.toString()
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [])
+
   React.useEffect(() => {
     const t = setTimeout(() => { setDebouncedQ(searchInput); setPage(1) }, 300)
     return () => clearTimeout(t)

@@ -610,6 +610,24 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           </button>
         )}
 
+        {(role === 'attorney' || role === 'consultant') && (
+          <a
+            href="https://portal.yousafeconsultancy.com/dashboard?page=mine"
+            className="cl-pill"
+            style={{
+              marginBottom: 10,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            <span>📥</span>
+            Inquiries
+          </a>
+        )}
+
         <div className="cl-search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
@@ -916,6 +934,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 onReplyStart={handleReplyStart}
                 onReplyClick={handleReplyClick}
                 onOpenProfile={(id) => setPreviewSellerId(id)}
+                viewerRole={role}
               />
             </div>
           </React.Fragment>
@@ -1085,6 +1104,7 @@ function ThreadMessage({
   onReplyStart,
   onReplyClick,
   onOpenProfile,
+  viewerRole,
 }) {
   const mine = m.sender_id !== counterpartId
   const isOffer = m.type === 'offer' && m.offer && m.offer.id
@@ -1115,7 +1135,7 @@ function ThreadMessage({
     return (
       <div className={`bubrow ${mine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last' : ''}`}>
         <div className="bub" style={{ maxWidth: '75%', padding: 0, background: 'var(--panel)' }}>
-          <InquiryBubble message={m} />
+          <InquiryBubble message={m} viewerRole={viewerRole} />
           <div className="bub-foot" style={{ padding: '4px 8px' }}>
             <span>{fmtFullTime(m.created_at)}</span>
           </div>

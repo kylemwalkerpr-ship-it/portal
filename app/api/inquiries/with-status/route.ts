@@ -71,7 +71,10 @@ export async function POST(req: Request) {
       urgency: clean(answers.urgency as string, 60) || null,
       recommended_tier: tier.tier,
       answers,
-      source: 'messenger_composer',
+      source: 'status_broadcast',
+      status: 'open',
+      target_attorney_profile_id: null,
+      claimed_by_attorney_id: null,
     })
     .select('id')
     .single()

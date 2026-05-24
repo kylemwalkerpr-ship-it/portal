@@ -157,113 +157,140 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                 </span>
               </div>
 
-              {/* Tagline */}
-              {seller.tagline && (
-                <div style={{ fontSize: 13, color: TEXT_MID, textAlign: 'center', lineHeight: 1.5 }}>
-                  {seller.tagline}
-                </div>
-              )}
+              {seller.role === 'client' ? (
+                <>
+                  {/* Country */}
+                  {seller.country && (
+                    <div style={{ textAlign: 'center', fontSize: 12, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: "'SF Mono', Menlo, Consolas, monospace" }}>
+                      {seller.country}
+                    </div>
+                  )}
 
-              {/* Rating */}
-              <Stars avg={seller.rating_avg} count={seller.rating_count} />
+                  {/* Member since */}
+                  {seller.member_since && (
+                    <div style={{ textAlign: 'center', fontSize: 13, color: TEXT_MID }}>
+                      Member since {new Date(seller.member_since).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </div>
+                  )}
 
-              {/* Jurisdictions (attorney only) */}
-              {seller.role === 'attorney' && Array.isArray(seller.jurisdictions) && seller.jurisdictions.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {seller.jurisdictions.map((j: string) => (
-                    <span key={j} style={{
-                      fontSize: 11, fontWeight: 500,
-                      padding: '3px 8px', borderRadius: 6,
-                      background: `${MOSS}10`, color: MOSS,
-                    }}>{j}</span>
-                  ))}
-                </div>
-              )}
+                  {/* Inquiry count */}
+                  {typeof seller.inquiry_count === 'number' && (
+                    <div style={{ textAlign: 'center', fontSize: 13, color: TEXT_MID }}>
+                      Has posted {seller.inquiry_count} inquiry{seller.inquiry_count === 1 ? '' : 's'} on YouSafe
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Tagline */}
+                  {seller.tagline && (
+                    <div style={{ fontSize: 13, color: TEXT_MID, textAlign: 'center', lineHeight: 1.5 }}>
+                      {seller.tagline}
+                    </div>
+                  )}
 
-              {/* Specialties / practice areas */}
-              {Array.isArray(seller.specialties) && seller.specialties.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                    Specialties
-                  </div>
-                  <div style={{ fontSize: 13, color: TEXT_MID }}>
-                    {seller.specialties.slice(0, 6).join(', ')}
-                  </div>
-                </div>
-              )}
-              {(!Array.isArray(seller.specialties) || seller.specialties.length === 0) &&
-                Array.isArray(seller.practice_areas) && seller.practice_areas.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                    Practice areas
-                  </div>
-                  <div style={{ fontSize: 13, color: TEXT_MID }}>
-                    {seller.practice_areas.slice(0, 6).join(', ')}
-                  </div>
-                </div>
-              )}
+                  {/* Rating */}
+                  <Stars avg={seller.rating_avg} count={seller.rating_count} />
 
-              {/* Languages */}
-              {Array.isArray(seller.languages) && seller.languages.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                    Languages
-                  </div>
-                  <div style={{ fontSize: 13, color: TEXT_MID }}>
-                    {seller.languages.join(', ')}
-                  </div>
-                </div>
-              )}
+                  {/* Jurisdictions (attorney only) */}
+                  {seller.role === 'attorney' && Array.isArray(seller.jurisdictions) && seller.jurisdictions.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {seller.jurisdictions.map((j: string) => (
+                        <span key={j} style={{
+                          fontSize: 11, fontWeight: 500,
+                          padding: '3px 8px', borderRadius: 6,
+                          background: `${MOSS}10`, color: MOSS,
+                        }}>{j}</span>
+                      ))}
+                    </div>
+                  )}
 
-              {/* Years of experience */}
-              {seller.years_experience && (
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
-                    Experience
-                  </div>
-                  <div style={{ fontSize: 13, color: TEXT_MID }}>
-                    {seller.years_experience} year{seller.years_experience === 1 ? '' : 's'}
-                  </div>
-                </div>
-              )}
-
-              {/* Top 3 gigs */}
-              {gigs.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 8 }}>
-                    Top services
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {gigs.slice(0, 3).map((gig: any) => (
-                      <div key={gig.id} style={{
-                        padding: 10, borderRadius: 8,
-                        border: `1px solid ${BORDER}`,
-                        display: 'flex', flexDirection: 'column', gap: 2,
-                      }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{gig.title}</div>
-                        <div style={{ fontSize: 12, color: TEXT_SOFT }}>
-                          {gig.starting_price ? `From $${gig.starting_price}` : ''}
-                          {gig.order_count ? ` · ${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : ''}
-                        </div>
+                  {/* Specialties / practice areas */}
+                  {Array.isArray(seller.specialties) && seller.specialties.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
+                        Specialties
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      <div style={{ fontSize: 13, color: TEXT_MID }}>
+                        {seller.specialties.slice(0, 6).join(', ')}
+                      </div>
+                    </div>
+                  )}
+                  {(!Array.isArray(seller.specialties) || seller.specialties.length === 0) &&
+                    Array.isArray(seller.practice_areas) && seller.practice_areas.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
+                        Practice areas
+                      </div>
+                      <div style={{ fontSize: 13, color: TEXT_MID }}>
+                        {seller.practice_areas.slice(0, 6).join(', ')}
+                      </div>
+                    </div>
+                  )}
 
-              {/* Footer link */}
-              <a
-                href={`https://market.yousafeconsultancy.com/providers/${seller.profile_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: 13, fontWeight: 600, color: INDIGO,
-                  textDecoration: 'none', marginTop: 4,
-                }}
-              >
-                View full profile →
-              </a>
+                  {/* Languages */}
+                  {Array.isArray(seller.languages) && seller.languages.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
+                        Languages
+                      </div>
+                      <div style={{ fontSize: 13, color: TEXT_MID }}>
+                        {seller.languages.join(', ')}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Years of experience */}
+                  {seller.years_experience && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 6 }}>
+                        Experience
+                      </div>
+                      <div style={{ fontSize: 13, color: TEXT_MID }}>
+                        {seller.years_experience} year{seller.years_experience === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Top 3 gigs */}
+                  {gigs.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: TEXT_SOFT, marginBottom: 8 }}>
+                        Top services
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {gigs.slice(0, 3).map((gig: any) => (
+                          <div key={gig.id} style={{
+                            padding: 10, borderRadius: 8,
+                            border: `1px solid ${BORDER}`,
+                            display: 'flex', flexDirection: 'column', gap: 2,
+                          }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{gig.title}</div>
+                            <div style={{ fontSize: 12, color: TEXT_SOFT }}>
+                              {gig.starting_price ? `From $${gig.starting_price}` : ''}
+                              {gig.order_count ? ` · ${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Footer link */}
+                  <a
+                    href={`https://market.yousafeconsultancy.com/providers/${seller.profile_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      fontSize: 13, fontWeight: 600, color: INDIGO,
+                      textDecoration: 'none', marginTop: 4,
+                    }}
+                  >
+                    View full profile →
+                  </a>
+                </>
+              )}
             </div>
           )}
         </div>
