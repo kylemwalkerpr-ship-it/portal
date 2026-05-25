@@ -778,3 +778,50 @@ h1, h2, .yousafe-serif {
     padding-bottom: 2px !important;
   }
 }
+
+/* ── Portal landing — mobile collapse ────────────────────────────────────
+   The /components/design/landing/* sections use inline styles with fixed
+   2-column grids and large padding values. On phones this overflows and
+   shrinks the copy column to ~60% of viewport width. These overrides
+   collapse the 2-up sections to a single stacked column at ≤768px and
+   trim the bleed without touching the individual component files.
+   ---------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Hero: copy on top, media card below. */
+  .ys-hero {
+    grid-template-columns: 1fr !important;
+    gap: 32px !important;
+    padding: 36px 20px 56px !important;
+  }
+  .ys-hero__media {
+    max-width: 100%;
+  }
+
+  /* Stack-section padding is desktop-sized — pull it in so cards don't
+     bleed past the viewport. */
+  .stack-section > * {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  /* Trust strip horizontally scrolls instead of wrapping awkwardly. */
+  .ys-trust-strip {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+  }
+
+  /* Section-level 2-up grids (services, providers, practices, FAQ): one
+     column. The landing inline-styles use `grid-template-columns: repeat(2/3, …)`
+     so we override any descendant of stack-section that uses a fixed
+     multi-column grid. */
+  .stack-section [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Cap big display headlines so they don't overflow narrow viewports. */
+  .ys-hero h1,
+  .stack-section h2 {
+    font-size: clamp(28px, 8vw, 44px) !important;
+    line-height: 1.1 !important;
+  }
+}
