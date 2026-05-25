@@ -276,11 +276,13 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || 'Failed to save draft')
+        throw new Error(data?.error?.message || data?.error || 'Failed to save draft')
       }
 
+      // /api/gigs uses the apiEnvelope shape: { data: { gig }, error, meta }.
+      // Older code paths returned { gig } directly, so accept both for safety.
       const data = await res.json()
-      const savedGigId = data.gig?.id || currentGigId
+      const savedGigId = data?.data?.gig?.id || data?.gig?.id || currentGigId
       if (savedGigId && !currentGigId) setCurrentGigId(savedGigId)
 
       setAutoSaveStatus('Draft saved!')
@@ -313,11 +315,16 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       })
       if (!draftRes.ok) {
         const d = await draftRes.json()
-        throw new Error(d.error || 'Failed to save gig before publishing')
+        throw new Error(d?.error?.message || d?.error || 'Failed to save gig before publishing')
       }
       const draftData = await draftRes.json()
-      const resolvedGigId = draftData.gig?.id || currentGigId
-      if (resolvedGigId && !currentGigId) setCurrentGigId(resolvedGigId)
+      // apiEnvelope shape: { data: { gig }, error, meta }. Fall back to the
+      // flat { gig } shape in case the route is ever rolled back.
+      const resolvedGigId = draftData?.data?.gig?.id || draftData?.gig?.id || currentGigId
+      if (!resolvedGigId) {
+        throw new Error('Could not resolve the new gig ID from the save response. Refresh and try again.')
+      }
+      if (!currentGigId) setCurrentGigId(resolvedGigId)
 
       // Step 2: call the publish endpoint
       const publishRes = await fetch(`/api/gigs/${resolvedGigId}/publish`, {
@@ -326,7 +333,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       })
       if (!publishRes.ok) {
         const d = await publishRes.json()
-        throw new Error(d.error || 'Failed to publish gig')
+        throw new Error(d?.error?.message || d?.error || 'Failed to publish gig')
       }
 
       setAutoSaveStatus('Published!')
@@ -345,6 +352,49 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
 
   const updateGigData = (field: string, value: any) => {
     setGigData(prev => ({ ...prev, [field]: value }))
+  }
+
+  // Upload a local file into the gig's gallery. Requires a gig row to exist
+  // because /api/gigs/[id]/gallery is gig-scoped. If we're still building a
+  // brand-new gig (no currentGigId yet), persist a draft first so the upload
+  // has somewhere to attach. Returns the absolute URL the wizard should
+  // append to gallery_images, or throws with a user-facing message on error.
+  const uploadGalleryFile = async (file: File): Promise<string> => {
+    let gigIdForUpload = currentGigId
+    if (!gigIdForUpload) {
+      const draftPayload = { ...gigData, status: 'draft' }
+      const res = await fetch('/api/gigs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftPayload),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error?.message || body?.error || 'Could not save draft before upload.')
+      }
+      const body = await res.json()
+      gigIdForUpload = body?.data?.gig?.id || body?.gig?.id
+      if (!gigIdForUpload) throw new Error('Draft saved but no gig ID returned.')
+      setCurrentGigId(gigIdForUpload)
+    }
+
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`/api/gigs/${gigIdForUpload}/gallery`, {
+      method: 'POST',
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new Error(body?.error?.message || body?.error || 'Upload failed.')
+    }
+    const body = await res.json()
+    // /api/gigs/[id]/gallery returns the updated gig with gallery_images
+    // containing the newest entry last. Pick the last one's URL.
+    const gallery = body?.data?.gig?.gallery_images || body?.gig?.gallery_images || []
+    const latest = gallery[gallery.length - 1]
+    if (!latest) throw new Error('Uploaded, but no image URL was returned.')
+    return typeof latest === 'string' ? latest : (latest.url || latest)
   }
 
   const updateTier = (index: number, field: string, value: any) => {
@@ -453,6 +503,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
             onAddFAQ={addFAQ}
             onUpdateFAQ={updateFAQ}
             onRemoveFAQ={removeFAQ}
+            onUploadFile={uploadGalleryFile}
           />
         )}
 
@@ -870,14 +921,45 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
   )
 }
 
-function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ }: any) {
+function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile }: any) {
   const [imageUrlInput, setImageUrlInput] = React.useState('')
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadError, setUploadError] = React.useState('')
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const addImageUrl = () => {
     const url = imageUrlInput.trim()
     if (!url) return
     onChange('gallery_images', [...(gigData.gallery_images || []), url])
     setImageUrlInput('')
+  }
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset the input so picking the same file twice still fires onChange.
+    e.target.value = ''
+
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image must be 5 MB or less.')
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setUploadError('Use JPG, PNG, or WEBP.')
+      return
+    }
+
+    setUploadError('')
+    setUploading(true)
+    try {
+      if (!onUploadFile) throw new Error('Upload is unavailable. Use the URL field instead.')
+      const url = await onUploadFile(file)
+      onChange('gallery_images', [...(gigData.gallery_images || []), url])
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const removeImage = (index: number) => {
@@ -907,24 +989,55 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
       <div style={formSection}>
         <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: T.inkMuted }}>(at least 1 required)</span></label>
         {errors.gallery_images && <div style={{ ...formError, marginBottom: '8px' }}>{errors.gallery_images}</div>}
+        {uploadError && <div style={{ ...formError, marginBottom: '8px' }}>{uploadError}</div>}
+
+        {/* Upload from device — primary path. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={handleFilePick}
+          style={{ display: 'none' }}
+        />
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              padding: '10px 16px', background: T.indigo, color: '#fff',
+              border: 'none', borderRadius: '10px', fontSize: '13px',
+              fontWeight: 600, cursor: uploading ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            {uploading ? 'Uploading…' : 'Upload from device'}
+          </button>
+          <span style={{ alignSelf: 'center', fontSize: '12px', color: T.inkMuted }}>
+            JPG, PNG, or WEBP · max 5 MB · up to 5 images
+          </span>
+        </div>
+
+        {/* Fallback: paste a URL (e.g. hosted on a stock-photo site). */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <input
             type="url"
             value={imageUrlInput}
             onChange={e => setImageUrlInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrl() } }}
-            placeholder="https://example.com/image.jpg"
+            placeholder="Or paste an image URL: https://…"
             style={{ ...inputStyle, flex: 1 }}
           />
           <button
+            type="button"
             onClick={addImageUrl}
             style={{
-              padding: '10px 16px', background: T.indigo, color: '#fff',
-              border: 'none', borderRadius: '10px', fontSize: '13px',
+              padding: '10px 16px', background: 'transparent', color: T.indigo,
+              border: `1px solid ${T.indigo}`, borderRadius: '10px', fontSize: '13px',
               fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
-            Add Image
+            Add URL
           </button>
         </div>
         {(gigData.gallery_images || []).length > 0 ? (

@@ -41,7 +41,12 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   })
   if (upload.error) return fail(upload.error.message, 500)
 
-  const image = { id: crypto.randomUUID(), url: path, name: safe, size: file.size }
+  // Store the resolved public URL alongside the storage path so downstream
+  // consumers (the wizard preview, the marketplace gig card, the seller
+  // profile page) can render the image without re-resolving on every read.
+  const { data: pub } = auth.db.storage.from('gig-gallery').getPublicUrl(path)
+  const publicUrl = pub?.publicUrl || path
+  const image = { id: crypto.randomUUID(), url: publicUrl, path, name: safe, size: file.size }
   const { data: updated, error } = await auth.db
     .from('gigs')
     .update({ gallery_images: [...gallery, image], updated_at: new Date().toISOString() })

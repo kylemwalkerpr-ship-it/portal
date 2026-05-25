@@ -188,10 +188,25 @@ export async function PATCH(req: Request) {
     const profUpdate: Record<string, unknown> = {}
     if (usernameWrite !== undefined) profUpdate.username = usernameWrite
     if (lastStepWrite !== undefined) profUpdate.intake_last_step = lastStepWrite
-    const { error: profErr } = await ctx.db
+    let { error: profErr } = await ctx.db
       .from('profiles')
       .update(profUpdate)
       .eq('id', ctx.profileId)
+    // Self-heal: if a column doesn't exist on this DB (e.g.
+    // profiles.intake_last_step before the migration ran), strip it and
+    // retry. Don't block the wizard's save flow on a missing optional col.
+    if (profErr && /column .* does not exist/i.test(profErr.message || '')) {
+      const m = profErr.message.match(/column "?([\w_]+)"?/i)
+      if (m?.[1] && m[1] in profUpdate) {
+        delete profUpdate[m[1]]
+        if (Object.keys(profUpdate).length > 0) {
+          const retry = await ctx.db.from('profiles').update(profUpdate).eq('id', ctx.profileId)
+          profErr = retry.error
+        } else {
+          profErr = null
+        }
+      }
+    }
     if (profErr) return Response.json({ error: profErr.message }, { status: 500 })
   }
 
@@ -214,12 +229,28 @@ export async function PATCH(req: Request) {
 
   let attorney: any = null
   if (Object.keys(update).length > 0) {
-    const { data, error: updErr } = await ctx.db
+    let { data, error: updErr } = await ctx.db
       .from('attorneys')
       .update(update)
       .eq('id', ctx.attorneyId)
       .select('id, jurisdictions, practice_areas, bio, available, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone')
       .single()
+    // Self-heal: if a column on `attorneys` doesn't exist (partial migration),
+    // strip it and retry. Same pattern as the gigs POST route.
+    while (updErr && /column .* does not exist/i.test(updErr.message || '')) {
+      const m = updErr.message.match(/column "?([\w_]+)"?/i)
+      if (!m?.[1] || !(m[1] in update)) break
+      delete update[m[1]]
+      if (Object.keys(update).length === 0) { updErr = null; break }
+      const retry = await ctx.db
+        .from('attorneys')
+        .update(update)
+        .eq('id', ctx.attorneyId)
+        .select('*')
+        .single()
+      data = retry.data
+      updErr = retry.error
+    }
     if (updErr) return Response.json({ error: updErr.message }, { status: 500 })
     attorney = data
   }
