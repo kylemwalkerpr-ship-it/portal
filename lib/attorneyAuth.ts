@@ -26,13 +26,42 @@ export async function requireAttorney(): Promise<{ ctx?: AttorneyContext; error?
     return { error: 'Attorney account not active.', status: 403 }
   }
 
-  const { data: attorney } = await db
+  let { data: attorney } = await db
     .from('attorneys')
     .select('id')
     .eq('profile_id', profile.id)
-    .single()
+    .maybeSingle()
 
-  if (!attorney) return { error: 'Attorney record missing.', status: 404 }
+  // Self-heal: if the profile is active but the attorneys row is missing
+  // (manual DB activation that bypassed the approve flow, or a partial
+  // failure in the approve-application transaction), create it on first
+  // read rather than locking the dashboard out with "Attorney record missing".
+  if (!attorney) {
+    const { data: application } = await db
+      .from('attorney_applications')
+      .select('id, jurisdictions, practice_areas')
+      .eq('profile_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { data: created, error: createErr } = await db
+      .from('attorneys')
+      .insert({
+        profile_id: profile.id,
+        application_id: application?.id ?? null,
+        jurisdictions: application?.jurisdictions ?? null,
+        practice_areas: application?.practice_areas ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (createErr || !created) {
+      console.error('[attorneyAuth] self-heal failed', createErr?.message)
+      return { error: 'Attorney record missing.', status: 404 }
+    }
+    attorney = created
+  }
 
   return {
     ctx: {

@@ -27,8 +27,8 @@ const FIELDS = [
   },
   {
     name: 'malpractice_insurance',
-    label: 'Malpractice / PI insurance',
-    required: true,
+    label: 'Malpractice / PI insurance (optional)',
+    required: false,
     placeholder: 'Insurer + policy reference',
   },
   {

@@ -532,6 +532,13 @@ export default function AdminAttorneyApplications() {
               <button onClick={() => bulkAct('approve')} disabled={decisionPending} style={btnPrimary(GREEN)}>Approve all</button>
               <button onClick={() => bulkAct('decline')} disabled={decisionPending} style={btnPrimary(RED)}>Decline all</button>
               <button onClick={() => bulkAct('waitlist')} disabled={decisionPending} style={btnGhost(PURPLE)}>Waitlist</button>
+              <button
+                onClick={() => {
+                  if (window.confirm(`Delete ${selectedIds.size} application(s)? The profile rows are left intact so applicants can re-apply.`)) bulkAct('delete')
+                }}
+                disabled={decisionPending}
+                style={btnGhost(RED)}
+              >Delete</button>
               <button onClick={clearSelection} style={btnGhost(MUTED)}>Clear</button>
             </div>
           )}

@@ -257,7 +257,7 @@ export default function AttorneyApp({ onLogout, userName }) {
   const profileEmail = profileData?.profile?.email || ''
 
   return (
-    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
+    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg, color: C.text, fontFamily: 'inherit' }}>
       <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
       <Sidebar
         page={page}

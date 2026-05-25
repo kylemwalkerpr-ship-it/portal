@@ -12,7 +12,7 @@ import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { sendEmail, attorneyApprovalEmail, attorneyDeclineEmail } from '@/lib/email'
 
-const VALID_ACTIONS = ['approve', 'decline', 'waitlist', 'assign', 'prioritise'] as const
+const VALID_ACTIONS = ['approve', 'decline', 'waitlist', 'assign', 'prioritise', 'delete'] as const
 type Action = typeof VALID_ACTIONS[number]
 
 export async function POST(req: Request) {
@@ -115,6 +115,13 @@ export async function POST(req: Request) {
           notes, metadata: { priority },
         }).then(() => null, () => null)
         results.push({ id: app.id, ok: true })
+      } else if (action === 'delete') {
+        // Hard-delete the application row. Used for spam/duplicate submissions.
+        // The profile row is left intact (the user can re-apply). Events table
+        // has ON DELETE CASCADE.
+        const { error: delErr } = await db.from('attorney_applications').delete().eq('id', app.id)
+        if (delErr) throw delErr
+        results.push({ id: app.id, ok: true, status: 'deleted' })
       }
     } catch (e: any) {
       results.push({ id: app.id, ok: false, reason: e?.message || 'update failed' })

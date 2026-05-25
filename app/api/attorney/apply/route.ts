@@ -16,13 +16,15 @@ type ApplyBody = {
   notes?: string
 }
 
+// malpractice_insurance kept on the form as an optional field — many
+// solicitors carry firm-wide PI cover with no individual policy number, and
+// requiring it was blocking valid applications.
 const REQUIRED_FIELDS: (keyof ApplyBody)[] = [
   'full_name',
   'credential_type',
   'jurisdictions',
   'bar_number',
   'practice_areas',
-  'malpractice_insurance',
   'profile_url',
   'capacity',
 ]
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
     jurisdictions: fields.jurisdictions,
     bar_number: fields.bar_number,
     practice_areas: fields.practice_areas,
-    malpractice_insurance: fields.malpractice_insurance,
+    malpractice_insurance: fields.malpractice_insurance || null,
     profile_url: fields.profile_url,
     capacity: fields.capacity,
     notes: fields.notes || null,
