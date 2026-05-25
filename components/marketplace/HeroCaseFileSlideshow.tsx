@@ -107,9 +107,11 @@ export default function HeroCaseFileSlideshow({
   const prev = () => go(index - 1)
   const next = () => go(index + 1)
 
-  const slide = slides[index]
-  const jxLabel = (slide.jx ?? 'us').toUpperCase()
-
+  // Empty-state guard must come BEFORE reading slides[index]; otherwise an
+  // empty slides array crashes SSR with "Cannot read properties of undefined".
+  // That throw inside the layout's Suspense boundary surfaces as React #419
+  // ("We hit a snag") on every public landing fetch when the inventory query
+  // returns no jurisdictions with caseFiles.
   if (count === 0) {
     return (
       <aside className="hero-empty" style={{ background: '#fff', border: `1px dashed ${RULE}`, borderRadius: 18, padding: '48px 32px', textAlign: 'center', color: INK_SOFT, fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, lineHeight: 1.5 }}>
@@ -117,6 +119,12 @@ export default function HeroCaseFileSlideshow({
       </aside>
     )
   }
+
+  // Clamp index to a valid slot — defensive against `index` exceeding `count`
+  // after a state reset, hot-reload, or jurisdiction filter change.
+  const safeIndex = ((index % count) + count) % count
+  const slide = slides[safeIndex]
+  const jxLabel = (slide.jx ?? 'us').toUpperCase()
 
   const tierLabels = ['Cover memo + checklist review', 'Full evidence pack & declarations', 'Pack + attorney signature']
 
