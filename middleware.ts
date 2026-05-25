@@ -28,6 +28,15 @@ const isPublicRoute = createRouteMatcher([
   '/api/gig-reviews(.*)',
   '/api/attorneys(.*)',
   '/api/consultants(.*)',
+  // /api/profile is hit on every marketplace page by MarketplaceShell to
+  // resolve the current user's role. The GET handler returns
+  // `{ profile: null }` for anonymous callers; PATCH still enforces auth
+  // internally (401). Without this entry, anon visitors on
+  // market.yousafeconsultancy.com hit a fetch-level redirect to
+  // /sign-in/student which then bounces to portal — perceived as
+  // "the marketplace redirects to sign-in after I sign out".
+  '/api/profile',
+  '/api/sellers(.*)',
 ])
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
