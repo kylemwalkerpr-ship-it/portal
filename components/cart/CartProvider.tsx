@@ -42,10 +42,16 @@ function saveCart(items: CartItem[]) {
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(loadCart)
+  // Start with an empty cart on both server and first client render so the
+  // markup matches and React doesn't trigger hydration error #419/#418.
+  // Real cart contents are hydrated from localStorage in the effect below,
+  // which only runs client-side after the first commit.
+  const [items, setItems] = useState<CartItem[]>([])
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
+    const stored = loadCart()
+    if (stored.length) setItems(stored)
     setHydrated(true)
   }, [])
 
