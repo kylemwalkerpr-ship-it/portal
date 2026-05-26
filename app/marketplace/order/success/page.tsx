@@ -91,6 +91,11 @@ export default async function SuccessPage({
           <p style={{ fontSize: '15px', color: C.textMuted, lineHeight: 1.6, margin: '0 0 28px' }}>
             Thank you for your purchase. A confirmation email has been sent to{' '}
             <strong style={{ color: C.text }}>{order.email}</strong>. Your downloads are listed below.
+            You can also re-download any time from{' '}
+            <a href="/dashboard/templates" style={{ color: C.cyan, fontWeight: 600 }}>
+              My Templates
+            </a>{' '}
+            in your dashboard.
           </p>
 
           <h2 style={{ fontFamily: SERIF, fontSize: '22px', fontWeight: 500, margin: '0 0 16px' }}>
@@ -122,9 +127,14 @@ export default async function SuccessPage({
                     <div style={{ fontSize: '13px', color: C.textMuted }}>{pack.category}</div>
                   </div>
                   {hasDeliveryFile ? (
+                    // Routes through the authenticated download endpoint
+                    // which mints a 60-second signed URL after re-
+                    // verifying the user owns this slug. Re-downloads
+                    // work because each click hits the endpoint fresh.
+                    // Falling back to the in-dashboard "My Templates"
+                    // page is the persistent re-entry point.
                     <a
-                      href={`/${pack.delivery_file}`}
-                      download
+                      href={`/api/templates/download/${encodeURIComponent(slug)}`}
                       style={{
                         padding: '8px 18px',
                         borderRadius: '6px',
