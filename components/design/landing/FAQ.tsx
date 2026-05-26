@@ -48,15 +48,28 @@ export default function FAQ() {
           grid-template-columns: 1fr 1fr;
           gap: 0 40px;
         }
+        /* Two-column desktop pins the left column so the heading and
+           Talk-to-support CTA stay visible while the reader scrolls the
+           question list. */
+        .ys-faq-aside { position: sticky; top: 96px; align-self: start; }
         @media (max-width: 980px) {
           .ys-faq-grid { grid-template-columns: 1fr; gap: 32px; }
           .ys-faq-items { grid-template-columns: 1fr; }
+          /* Mobile collapses to a single column — the heading is no
+             longer beside the list, it's stacked above it. A sticky
+             aside in that layout floats over the questions while the
+             user scrolls and the visible text starts overlapping (the
+             bug the user screenshotted). Un-stick it on mobile. */
+          .ys-faq-aside { position: static; top: auto; }
         }
+        /* The questions section is also sticky-free on the section
+           background — make sure no parent sets overflow:clip that
+           would re-create a stacking context bug. */
       `}</style>
 
       <div style={{ maxWidth: 1240, margin: '0 auto' }}>
         <div className="ys-faq-grid">
-          <div style={{ position: 'sticky', top: 96, alignSelf: 'start' }}>
+          <div className="ys-faq-aside">
             <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.inkSoft }}>
               Frequently asked
             </span>
