@@ -267,7 +267,7 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                           }}>
                             <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{gig.title}</div>
                             <div style={{ fontSize: 12, color: TEXT_SOFT }}>
-                              {gig.starting_price ? `From $${gig.starting_price}` : ''}
+                              {gig.starting_price ? `From $${Number(gig.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : ''}
                               {gig.order_count ? ` · ${gig.order_count} order${gig.order_count === 1 ? '' : 's'}` : ''}
                             </div>
                           </div>

@@ -20,7 +20,9 @@ const MONO=`'SF Mono', Menlo, Consolas, monospace`
 const PAGE_SIZE = 24
 
 const fmtN = n => Number(n ?? 0).toLocaleString('en-US')
-const fmtPrice = n => n ? `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'
+// starting_price is stored in cents (DB contract — see AttorneyIntakeWizard
+// where dollars × 100 is persisted). Divide back to dollars before display.
+const fmtPrice = n => n ? `$${Number(n / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'
 const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase() || '').join('')
 
 function Stars({ value, size = 13 }) {

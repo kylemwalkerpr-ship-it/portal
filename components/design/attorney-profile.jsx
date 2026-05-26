@@ -2,6 +2,7 @@
 import React from 'react'
 import { Card, Btn, Badge } from './shared'
 import AttorneyProfileEditor from './attorney-profile-editor'
+import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 /**
  * Attorney → My Profile (Fiverr-grade shell).
@@ -271,7 +272,7 @@ function PreviewTab({ strength }) {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
             {a.offers_free_consult && <Badge color="green" style={{ fontSize: 10 }}>Free consult</Badge>}
-            {Number(a.starting_price || 0) > 0 && <Badge color="cyan" style={{ fontSize: 10 }}>From ${Number(a.starting_price).toLocaleString()}</Badge>}
+            {Number(a.starting_price || 0) > 0 && <Badge color="cyan" style={{ fontSize: 10 }}>From ${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</Badge>}
             {strength?.rating && <Badge color="orange" style={{ fontSize: 10 }}>★ {strength.rating.avg} ({strength.rating.count})</Badge>}
           </div>
 
@@ -293,7 +294,7 @@ function PreviewTab({ strength }) {
           )}
           {a.bio && (
             <PreviewSection label="About">
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{a.bio}</div>
+              <div style={{ lineHeight: 1.7 }}>{renderBioMarkdown(a.bio)}</div>
             </PreviewSection>
           )}
           {a.education && (

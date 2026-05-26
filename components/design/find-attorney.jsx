@@ -4,6 +4,7 @@ import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
 import IntakeForm from './inquiry-intake-form'
 import ChatSidePane from '../marketplace/ChatSidePane'
+import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 // Browse list + full-screen detail (Fiverr-style seller profile).
 export default function FindAttorney() {
@@ -208,7 +209,7 @@ function AttorneyCard({ attorney, onSelect }) {
             {attorney.starting_price ? (
               <div>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>From</div>
-                <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, fontWeight: 500 }}>${Number(attorney.starting_price).toFixed(0)}</div>
+                <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, fontWeight: 500 }}>${Number(attorney.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
               </div>
             ) : (
               <div style={{ fontSize: '12px', color: C.textMuted }}>Custom quote</div>
@@ -354,7 +355,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
             {a.starting_price ? (
               <>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Starting at</div>
-                <div style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price).toFixed(0)}</div>
+                <div style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
               </>
             ) : (
               <div style={{ color: C.textMuted, fontSize: '13px' }}>Custom-quoted per matter</div>
@@ -388,7 +389,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
 
           {a.bio && (
             <Section title="About">
-              <div style={{ ...proseStyle, whiteSpace: 'pre-wrap' }}>{a.bio}</div>
+              <div style={proseStyle}>{renderBioMarkdown(a.bio)}</div>
             </Section>
           )}
 
