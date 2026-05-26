@@ -78,9 +78,16 @@ export function OfferComposerInline({ conversationId, onSent, onClose }: OfferCo
       })
       const data: any = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const msg = data?.field_errors
-          ? Object.values(data.field_errors).join(' ')
-          : (data?.error || 'Could not send offer.')
+        // apiEnvelope shape: { data: null, error: { message, fields? }, meta }.
+        // Older routes used { error: 'string' } directly. Accept both
+        // shapes so the surfaced message is a readable string instead of
+        // "[object Object]" (the symptom in the user-reported screenshot).
+        const fieldErrors = data?.error?.fields || data?.field_errors
+        const msg = fieldErrors
+          ? Object.values(fieldErrors).join(' ')
+          : (data?.error?.message
+            || (typeof data?.error === 'string' ? data.error : null)
+            || 'Could not send offer.')
         setError(String(msg))
         return
       }

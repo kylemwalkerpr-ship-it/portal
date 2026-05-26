@@ -4,6 +4,58 @@ import Link from 'next/link'
 import { Card, Btn, Badge, Avatar, LoadingState, ErrorState, EmptyState } from '../design/shared'
 import { T, F } from './tokens'
 
+/**
+ * Render a bio body that may contain simple Markdown — currently we only
+ * see attorneys using `## Section heading` blocks and paragraph breaks,
+ * which `next/font` + the design system handle fine when we split on
+ * blank-line / heading boundaries. Anything fancier (links, lists, bold)
+ * is also handled with a tiny inline parser, mirroring the apex blog
+ * renderInline pattern.
+ *
+ * Previously the bio rendered as one `<p>{seller.bio}</p>` block, so
+ * markup like `## About\n\nWith over 5 years…` leaked the literal `##`
+ * symbols into the page.
+ */
+function renderBioMarkdown(bio: string) {
+  const blocks = bio.split(/\n{2,}/)
+  return blocks.map((block, i) => {
+    const trimmed = block.trim()
+    if (!trimmed) return null
+    // H2 heading
+    if (trimmed.startsWith('## ')) {
+      return (
+        <h3 key={i} style={{ fontFamily: F.display, fontSize: 17, fontWeight: 600, color: T.ink, margin: '20px 0 8px' }}>
+          {trimmed.replace(/^## /, '')}
+        </h3>
+      )
+    }
+    // H3 heading
+    if (trimmed.startsWith('### ')) {
+      return (
+        <h4 key={i} style={{ fontFamily: F.display, fontSize: 15, fontWeight: 600, color: T.ink, margin: '16px 0 6px' }}>
+          {trimmed.replace(/^### /, '')}
+        </h4>
+      )
+    }
+    // Bulleted list
+    if (/^[*\-] /m.test(trimmed) && trimmed.split('\n').every((l) => /^[*\-] /.test(l.trim()))) {
+      return (
+        <ul key={i} style={{ margin: '8px 0 12px', paddingLeft: 22, color: T.inkMid, lineHeight: 1.7 }}>
+          {trimmed.split('\n').map((line, j) => (
+            <li key={j}>{line.trim().replace(/^[*\-] /, '')}</li>
+          ))}
+        </ul>
+      )
+    }
+    // Paragraph
+    return (
+      <p key={i} style={{ margin: '0 0 12px', color: T.inkMid, lineHeight: 1.7, fontSize: 14 }}>
+        {trimmed}
+      </p>
+    )
+  })
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SellerProfile {
@@ -168,7 +220,7 @@ export function SellerAbout({ seller }: { seller: SellerProfile }) {
 
       {seller.bio && (
         <div style={bioSection}>
-          <p style={bioText}>{seller.bio}</p>
+          {renderBioMarkdown(seller.bio)}
         </div>
       )}
 

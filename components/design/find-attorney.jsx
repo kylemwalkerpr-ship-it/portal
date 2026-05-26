@@ -457,7 +457,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
                 Submit an inquiry →
               </Btn>
               <DividerLite />
-              <Btn variant="secondary" size="md" fullWidth onClick={() => setChatOpen(true)}>
+              <Btn variant="brand" size="md" fullWidth onClick={() => setChatOpen(true)}>
                 💬 Chat with {a.full_name?.split(' ')[0] || 'attorney'}
               </Btn>
               <p style={{ color: C.textDim, fontSize: '12px', textAlign: 'center', margin: '8px 0 0', lineHeight: 1.5 }}>

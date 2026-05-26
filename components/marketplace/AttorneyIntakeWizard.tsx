@@ -598,16 +598,28 @@ function PricingStep({ form, setField }: { form: Form; setField: any }) {
           style={inputStyle}
         />
       </Field>
-      <Field label="Starting price (USD cents)" required help="The lowest price you'd typically quote — shown as 'starting at $X' on cards. Enter cents (so $250 = 25000).">
-        <input
-          type="number"
-          min={100}
-          step={100}
-          value={form.starting_price}
-          onChange={(e) => setField('starting_price', e.target.value === '' ? '' : Number(e.target.value))}
-          placeholder="25000"
-          style={inputStyle}
-        />
+      <Field label="Starting price (USD)" required help="The lowest price you'd typically quote — shown as 'starting at $X' on cards. Enter the dollar amount (e.g. 250 for $250).">
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748B', fontSize: 14, pointerEvents: 'none' }}>$</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            // form.starting_price is stored in cents (DB contract). UI
+            // accepts dollars and converts on save; we divide back to
+            // dollars for display so the user sees what they typed.
+            value={form.starting_price === '' ? '' : Math.round(Number(form.starting_price) / 100)}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === '') return setField('starting_price', '')
+              const dollars = Number(v)
+              if (!Number.isFinite(dollars) || dollars < 0) return
+              setField('starting_price', Math.round(dollars * 100))
+            }}
+            placeholder="250"
+            style={{ ...inputStyle, paddingLeft: 26 }}
+          />
+        </div>
       </Field>
       <Field label="Do you offer free 15-min consults?" help="Optional but helps conversion — students like a low-stakes first call.">
         <div style={{ display: 'flex', gap: 8 }}>
