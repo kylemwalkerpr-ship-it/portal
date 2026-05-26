@@ -13,6 +13,11 @@ import { CategoryBar } from './CategoryBar'
 // Lazy-load the heavier section panels to keep initial bundle small
 const FindAttorney  = dynamic(() => import('@/components/design/find-attorney'),  { ssr: false })
 const MyInquiries   = dynamic(() => import('@/components/design/my-inquiries'),   { ssr: false })
+// Attorney-side inquiries component — calls /api/attorney/inquiries. The
+// MyInquiries import above is CLIENT-side (/api/client/inquiries) and 403s
+// when an attorney hits it, which is what produced the "Client account not
+// active" banner the user screenshotted.
+const AttorneyInquiries = dynamic(() => import('@/components/design/attorney-inquiries'), { ssr: false })
 const UnifiedInbox  = dynamic(() => import('@/components/messaging/UnifiedInbox'), { ssr: false })
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -417,15 +422,21 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     }
   }, [router])
 
-  // Render section content
+  // Render section content. Attorneys see the attorney-side inquiry
+  // queue / "mine" tab; clients see /api/client/inquiries. Routing both
+  // roles to the same MyInquiries component was the bug that produced
+  // "Client account not active." on the attorney marketplace.
   const sectionContent = React.useMemo(() => {
     if (section === 'browse')     return null                      // render children
     if (section === 'orders')     return <OrdersPanel role={role} />
     if (section === 'messages')   return <MessagesPanel role={role} />
     if (section === 'attorneys')  return <FindAttorney />
-    if (section === 'inquiries')  return <MyInquiries />
-    if (section === 'queue')      return <MyInquiries />           // attorney inquiry queue fallback
-    if (section === 'mine')       return <MyInquiries />
+    if (section === 'inquiries')  {
+      if (role === 'attorney') return <AttorneyInquiries mode="queue" />
+      return <MyInquiries />
+    }
+    if (section === 'queue')      return <AttorneyInquiries mode="queue" />
+    if (section === 'mine')       return <AttorneyInquiries mode="mine" />
     return null // unknown view → fall through to children
   }, [section, role])
 
