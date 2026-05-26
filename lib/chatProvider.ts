@@ -42,7 +42,10 @@ function buildGroq(apiKey: string): ChatProvider {
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`Groq ${res.status}: ${text.slice(0, 300)}`)
+        const fp = apiKey
+          ? `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
+          : '[missing]'
+        throw new Error(`Groq ${res.status} ${fp}: ${text.slice(0, 280)}`)
       }
       const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
       const reply = data.choices?.[0]?.message?.content?.trim()
@@ -56,14 +59,22 @@ function buildGemini(apiKey: string): ChatProvider {
   return {
     name: 'gemini',
     async reply(system, history) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
+      // Send key in the x-goog-api-key header instead of the query
+      // string. This is Google's recommended placement (avoids the
+      // key appearing in proxy/edge access logs) AND sidesteps any
+      // URL-encoding edge cases that have caused INVALID_ARGUMENT
+      // on Cloudflare workers when the value contained whitespace.
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
       const contents = history.map(t => ({
         role: t.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: t.content }],
       }))
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: system }] },
           contents,
@@ -75,7 +86,13 @@ function buildGemini(apiKey: string): ChatProvider {
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`Gemini ${res.status}: ${text.slice(0, 300)}`)
+        // Include a fingerprint of the key (length + prefix + suffix
+        // only — never the full value) so config drift is visible
+        // from the error surface without leaking the secret.
+        const fp = apiKey
+          ? `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
+          : '[missing]'
+        throw new Error(`Gemini ${res.status} ${fp}: ${text.slice(0, 280)}`)
       }
       const data = await res.json() as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
