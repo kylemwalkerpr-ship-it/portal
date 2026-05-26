@@ -53,7 +53,7 @@ export async function GET(req: Request) {
     .select(`
       id, slug, title, pitch, tagline, description, requirements, faq,
       gallery_images, video_url, seo_title, seo_description,
-      category, subcategory, tags, status,
+      category, subcategory, jurisdiction, tags, status,
       gig_status_reason, suspended_at, archived_at, deleted_at,
       featured_until, boost_until, created_at,
       tiers:gig_tiers(tier, title, price, delivery_days, revisions, features, is_active, description)
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
     const retry = await db
       .from('gigs')
       .select(`
-        id, slug, title, pitch, category, subcategory, tags, status,
+        id, slug, title, pitch, category, subcategory, jurisdiction, tags, status,
         gig_status_reason, suspended_at, archived_at, deleted_at,
         featured_until, boost_until, created_at,
         tiers:gig_tiers(tier, title, price, delivery_days, revisions, features, is_active, description)
@@ -122,6 +122,7 @@ export async function GET(req: Request) {
       seo_description: row.seo_description ?? '',
       category: row.category,
       subcategory: row.subcategory,
+      jurisdiction: row.jurisdiction ?? null,
       tags: row.tags,
       status: row.status,
       gig_status_reason: row.gig_status_reason,

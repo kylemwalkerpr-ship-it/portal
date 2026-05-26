@@ -1,7 +1,9 @@
 'use client'
 
 import React from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { computeSEOScore } from '@/lib/seoUtils'
 import type { SEOData } from '@/lib/seoUtils'
 
@@ -51,6 +53,8 @@ interface SellerGigCardProps {
   onToggleExpand: (id: string) => void
   onStatusChange: (id: string, status: string) => void
   onPublish: (id: string) => void
+  onDuplicate: (id: string) => void
+  onNotice: (type: 'ok' | 'err', msg: string) => void
 }
 
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -180,39 +184,193 @@ function InlineMetric({ label, value, hint }: { label: string; value: string; hi
   )
 }
 
-interface KebabAction { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }
+type KebabItem =
+  | { kind: 'action'; label: string; icon?: React.ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean }
+  | { kind: 'divider' }
 
-function KebabMenu({ actions }: { actions: KebabAction[] }) {
-  const [open, setOpen] = React.useState(false)
-  const ref = React.useRef<HTMLDivElement>(null)
+// Icons are 14px monochrome strokes that inherit currentColor.
+const ICON = {
+  share: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M11 5L8 2L5 5M8 2V10M3 10V13a1 1 0 001 1h8a1 1 0 001-1v-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  link: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M6.5 9.5l3-3M7 4.5L8.5 3a2.5 2.5 0 013.5 3.5L10.5 8M9 11.5L7.5 13a2.5 2.5 0 01-3.5-3.5L5.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  ),
+  external: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M9 3h4v4M13 3L7 9M11 9v3a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  copy: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="5" y="5" width="8" height="9" rx="1.2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-5A1.5 1.5 0 003 3.5v7A1.5 1.5 0 004.5 12H5" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  ),
+  edit: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5L11 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  ),
+  chart: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 13V5M7 13V8M11 13V3M2 13.5h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  ),
+  pause: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="5" y="3" width="2" height="10" rx="0.6" fill="currentColor" />
+      <rect x="9" y="3" width="2" height="10" rx="0.6" fill="currentColor" />
+    </svg>
+  ),
+  play: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M5 3l8 5-8 5V3z" fill="currentColor" />
+    </svg>
+  ),
+  archive: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="2" y="3" width="12" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M3 6v6.5A1.5 1.5 0 004.5 14h7a1.5 1.5 0 001.5-1.5V6M6.5 8.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  ),
+  restore: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 8a5 5 0 109-3M3 4v3h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  trash: (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 4.5h10M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5M4.5 4.5l.5 8.5a1 1 0 001 1h4a1 1 0 001-1l.5-8.5M7 7v5M9 7v5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+}
+
+interface MenuCoords { top: number; left: number }
+
+function KebabMenu({ items }: { items: KebabItem[] }) {
+  const [coords, setCoords] = React.useState<MenuCoords | null>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  const open = coords !== null
+
+  const close = React.useCallback(() => setCoords(null), [])
+
+  const place = React.useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (!r) return
+    const MENU_WIDTH = 200
+    const MENU_PAD = 8
+    const top = r.bottom + 6
+    // Anchor right-aligned to the button, but keep on-screen
+    let left = r.right - MENU_WIDTH
+    if (left < MENU_PAD) left = MENU_PAD
+    if (left + MENU_WIDTH > window.innerWidth - MENU_PAD) left = window.innerWidth - MENU_WIDTH - MENU_PAD
+    setCoords({ top, left })
+  }, [])
 
   React.useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    const onClickAway = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      if (btnRef.current?.contains(e.target as Node)) return
+      close()
     }
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', esc)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onScrollOrResize = () => close()
+    document.addEventListener('mousedown', onClickAway)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize)
     return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', esc)
+      document.removeEventListener('mousedown', onClickAway)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
     }
-  }, [open])
+  }, [open, close])
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (open) close()
+    else place()
+  }
+
+  const menu = open && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      style={{
+        position: 'fixed' as const,
+        top: `${coords!.top}px`,
+        left: `${coords!.left}px`,
+        width: '200px',
+        background: '#FFFFFF',
+        border: '1px solid #DDD8CE',
+        borderRadius: '8px',
+        boxShadow: '0 10px 36px rgba(15,23,42,0.14), 0 3px 10px rgba(15,23,42,0.08)',
+        padding: '5px',
+        zIndex: 1000,
+        fontFamily: sans,
+        animation: 'kebabFadeIn 0.12s ease-out',
+      }}
+    >
+      <style>{`@keyframes kebabFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      {items.map((item, i) => {
+        if (item.kind === 'divider') {
+          return <div key={`d-${i}`} role="separator" style={{ height: '1px', background: '#F2EFE9', margin: '4px 6px' }} />
+        }
+        const color = item.disabled ? '#B0A99A' : item.danger ? '#8B1A1A' : '#0F172A'
+        return (
+          <button
+            key={item.label}
+            role="menuitem"
+            type="button"
+            disabled={item.disabled}
+            onClick={(e) => { e.stopPropagation(); close(); item.onClick() }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              width: '100%', textAlign: 'left' as const,
+              padding: '8px 10px', fontSize: '13px', fontWeight: 500,
+              color, background: 'transparent',
+              border: 'none', borderRadius: '5px',
+              cursor: item.disabled ? 'not-allowed' : 'pointer',
+              fontFamily: sans,
+            }}
+            onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLButtonElement).style.background = item.danger ? '#FAEAEA' : '#F7F5F0' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+          >
+            <span style={{ width: '14px', height: '14px', flexShrink: 0, color, opacity: 0.85, display: 'inline-flex' }}>
+              {item.icon}
+            </span>
+            <span style={{ flex: 1 }}>{item.label}</span>
+          </button>
+        )
+      })}
+    </div>,
+    document.body,
+  ) : null
 
   return (
-    <div ref={ref} style={{ position: 'relative' as const }}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         aria-label="More actions"
+        aria-haspopup="menu"
         aria-expanded={open}
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
+        onClick={toggle}
         style={{
           width: '30px', height: '30px', borderRadius: '6px',
           background: open ? '#F2EFE9' : 'transparent',
           border: '1px solid #DDD8CE', cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           color: '#5C6070', padding: 0,
+          transition: 'background 0.12s',
         }}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
@@ -221,40 +379,8 @@ function KebabMenu({ actions }: { actions: KebabAction[] }) {
           <circle cx="13" cy="8" r="1.6" />
         </svg>
       </button>
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: 'absolute' as const, top: 'calc(100% + 4px)', right: 0,
-            background: '#FFFFFF', border: '1px solid #DDD8CE', borderRadius: '7px',
-            boxShadow: '0 6px 24px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06)',
-            minWidth: '170px', padding: '4px', zIndex: 30,
-          }}
-        >
-          {actions.map((a) => (
-            <button
-              key={a.label}
-              role="menuitem"
-              type="button"
-              disabled={a.disabled}
-              onClick={(e) => { e.stopPropagation(); setOpen(false); a.onClick() }}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left' as const,
-                padding: '8px 12px', fontSize: '13px', fontWeight: 500,
-                color: a.disabled ? '#B0A99A' : a.danger ? '#8B1A1A' : '#0F172A',
-                background: 'transparent', border: 'none', borderRadius: '4px',
-                cursor: a.disabled ? 'not-allowed' : 'pointer',
-                fontFamily: sans,
-              }}
-              onMouseEnter={(e) => { if (!a.disabled) (e.currentTarget as HTMLButtonElement).style.background = a.danger ? '#FAEAEA' : '#F7F5F0' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      {menu}
+    </>
   )
 }
 
@@ -293,8 +419,9 @@ function PrimaryAction({ status, gigId, onPublish }: { status: string; gigId: st
 export default function SellerGigCard({
   gig, selected, expanded,
   onToggleSelect, onToggleExpand,
-  onStatusChange, onPublish,
+  onStatusChange, onPublish, onDuplicate, onNotice,
 }: SellerGigCardProps) {
+  const router = useRouter()
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
   const [hovered, setHovered] = React.useState(false)
   const cfg = STATUS_CONFIG[gig.status] ?? STATUS_CONFIG.draft
@@ -328,18 +455,71 @@ export default function SellerGigCard({
   const canArchive = ['active', 'draft', 'paused', 'suspended'].includes(gig.status)
   const canRestore = gig.status === 'archived'
   const canDelete = gig.status !== 'deleted'
+  // The primary button shows Edit only for live/in-review states — for
+  // every other status the primary is a state action (Publish/Resume/etc),
+  // so Edit needs to live in the kebab instead.
+  const editIsPrimary = ['active', 'pending_review', 'denied', 'appeal_pending'].includes(gig.status)
+  const isViewable = gig.status === 'active'
 
-  const kebabActions: KebabAction[] = []
-  kebabActions.push({ label: 'Edit', onClick: () => { window.location.assign(`/dashboard/gigs/${gig.id}/edit`) } })
-  kebabActions.push({ label: 'Preview ↗', onClick: () => { window.open(`/marketplace/gigs/${gig.slug}`, '_blank', 'noopener,noreferrer') } })
-  if (canPublish) kebabActions.push({ label: 'Publish', onClick: () => onPublish(gig.id) })
-  if (canResume)  kebabActions.push({ label: 'Resume',  onClick: () => onPublish(gig.id) })
-  if (canPause)   kebabActions.push({ label: 'Pause',   onClick: () => onStatusChange(gig.id, 'paused') })
-  if (canArchive) kebabActions.push({ label: 'Archive', onClick: () => onStatusChange(gig.id, 'archived') })
-  if (canRestore) kebabActions.push({ label: 'Restore to draft', onClick: () => onStatusChange(gig.id, 'draft') })
+  const handleShare = async () => {
+    const url = `${window.location.origin}/marketplace/gigs/${gig.slug}`
+    // Use Web Share API on mobile/PWA, fall back to clipboard.
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> }
+    if (typeof nav.share === 'function') {
+      try { await nav.share({ title: gig.title, url }); return } catch { /* user cancelled — fall through to copy */ }
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      onNotice('ok', 'Public link copied to clipboard.')
+    } catch {
+      onNotice('err', `Could not copy. Link: ${url}`)
+    }
+  }
+
+  const handleCopyLink = async () => {
+    const url = `${window.location.origin}/marketplace/gigs/${gig.slug}`
+    try {
+      await navigator.clipboard.writeText(url)
+      onNotice('ok', 'Public link copied to clipboard.')
+    } catch {
+      onNotice('err', 'Could not copy link to clipboard.')
+    }
+  }
+
+  const items: KebabItem[] = []
+
+  // 1) View & share actions — present for every status (so a deleted gig
+  //    can still be inspected before being purged).
+  if (!editIsPrimary && gig.status !== 'deleted') {
+    items.push({ kind: 'action', label: 'Edit', icon: ICON.edit, onClick: () => router.push(`/dashboard/gigs/${gig.id}/edit`) })
+  }
+  items.push({ kind: 'action', label: 'Preview', icon: ICON.external, onClick: () => window.open(`/marketplace/gigs/${gig.slug}`, '_blank', 'noopener,noreferrer') })
+  items.push({ kind: 'action', label: 'Share', icon: ICON.share, onClick: handleShare, disabled: !isViewable })
+  items.push({ kind: 'action', label: 'Copy public link', icon: ICON.link, onClick: handleCopyLink, disabled: !isViewable })
+  items.push({ kind: 'action', label: 'Duplicate', icon: ICON.copy, onClick: () => onDuplicate(gig.id) })
+  items.push({ kind: 'action', label: 'SEO insights', icon: ICON.chart, onClick: () => router.push('/dashboard/seo-analytics') })
+
+  // 2) State-change actions — only the transitions the seller is allowed
+  //    to drive from here. The primary button on the row handles the
+  //    most-likely next action; the kebab carries everything else.
+  const stateActions: KebabItem[] = []
+  if (canPublish && gig.status !== 'draft') stateActions.push({ kind: 'action', label: 'Publish', icon: ICON.play, onClick: () => onPublish(gig.id) })
+  if (canResume && gig.status !== 'paused') stateActions.push({ kind: 'action', label: 'Resume', icon: ICON.play, onClick: () => onPublish(gig.id) })
+  if (canPause) stateActions.push({ kind: 'action', label: 'Pause', icon: ICON.pause, onClick: () => onStatusChange(gig.id, 'paused') })
+  if (canArchive) stateActions.push({ kind: 'action', label: 'Archive', icon: ICON.archive, onClick: () => onStatusChange(gig.id, 'archived') })
+  if (canRestore) stateActions.push({ kind: 'action', label: 'Restore to draft', icon: ICON.restore, onClick: () => onStatusChange(gig.id, 'draft') })
+  if (stateActions.length) {
+    items.push({ kind: 'divider' })
+    items.push(...stateActions)
+  }
+
+  // 3) Destructive — always last, with a two-step confirm.
   if (canDelete) {
-    kebabActions.push({
+    items.push({ kind: 'divider' })
+    items.push({
+      kind: 'action',
       label: confirmingDelete ? 'Confirm delete?' : 'Delete',
+      icon: ICON.trash,
       danger: true,
       onClick: () => {
         if (!confirmingDelete) { setConfirmingDelete(true); setTimeout(() => setConfirmingDelete(false), 4000); return }
@@ -474,7 +654,7 @@ export default function SellerGigCard({
         {/* Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           <PrimaryAction status={gig.status} gigId={gig.id} onPublish={onPublish} />
-          <KebabMenu actions={kebabActions} />
+          <KebabMenu items={items} />
           <button
             type="button"
             aria-label={expanded ? 'Collapse details' : 'Expand details'}

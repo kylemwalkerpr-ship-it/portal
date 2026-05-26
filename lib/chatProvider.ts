@@ -87,10 +87,39 @@ function buildGemini(apiKey: string): ChatProvider {
   }
 }
 
+// Build a chained provider that tries each adapter in order. If the
+// first one fails with an auth / rate-limit / 5xx error, fall through
+// to the next instead of bubbling the failure to the caller. Same
+// envelope (.name + .reply) as a single provider, so every consumer
+// keeps working unchanged.
+function chain(primary: ChatProvider, fallback: ChatProvider): ChatProvider {
+  return {
+    name: `${primary.name}+${fallback.name}`,
+    async reply(system, history) {
+      try {
+        return await primary.reply(system, history)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        // Retry on auth, quota, rate-limit, or transient server errors.
+        // Anything else (malformed payload, content filter) is a real
+        // failure — re-throw so the caller can surface it.
+        const retryable = /\b(401|403|429|5\d\d)\b|invalid[_ ]api[_ ]key|quota|rate.?limit/i.test(msg)
+        if (!retryable) throw e
+        console.warn(`[chatProvider] ${primary.name} failed (${msg.slice(0, 160)}); falling back to ${fallback.name}`)
+        return await fallback.reply(system, history)
+      }
+    },
+  }
+}
+
 export function getChatProvider(): ChatProvider | null {
-  const groq = process.env.GROQ_API_KEY
-  if (groq) return buildGroq(groq)
-  const gemini = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
-  if (gemini) return buildGemini(gemini)
+  const groqKey = process.env.GROQ_API_KEY
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+  const groq = groqKey ? buildGroq(groqKey) : null
+  const gemini = geminiKey ? buildGemini(geminiKey) : null
+
+  if (groq && gemini) return chain(groq, gemini)
+  if (groq) return groq
+  if (gemini) return gemini
   return null
 }

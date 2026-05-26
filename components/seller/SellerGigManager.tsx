@@ -2,6 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import SellerGigCard from './SellerGigCard'
 
 interface GigMetrics { impressions: number; clicks: number; saves: number }
@@ -289,6 +290,7 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 export default function SellerGigManager() {
+  const router = useRouter()
   const [gigs, setGigs] = React.useState<Gig[]>([])
   const [count, setCount] = React.useState(0)
   const [gigLimit, setGigLimit] = React.useState(FALLBACK_LIMIT)
@@ -341,6 +343,35 @@ export default function SellerGigManager() {
       const fieldList = err.fields ? Object.values(err.fields).filter(Boolean) : []
       const detail = fieldList.length ? `${err.message}: ${fieldList.join(' · ')}` : (err.message || 'Publish failed.')
       flash('err', detail)
+    }
+  }
+
+  const handleDuplicate = async (id: string) => {
+    const source = gigs.find((g) => g.id === id)
+    if (!source) { flash('err', 'Could not find the service to duplicate.'); return }
+    if (count >= gigLimit) {
+      flash('err', `You're at your ${gigLimit}-service limit. Archive or delete one first.`)
+      return
+    }
+    try {
+      // Reuse the existing create endpoint — it accepts the full gig
+      // shape and stamps a fresh slug + status=draft, so the duplicate
+      // is safe to publish independently of the original.
+      const payload = {
+        title: `${source.title} (copy)`.slice(0, 80),
+        pitch: source.pitch || '',
+        category: source.category || null,
+        jurisdiction: (source as Gig & { jurisdiction?: string }).jurisdiction || null,
+        tags: Array.isArray(source.tags) ? source.tags : [],
+        tiers: Array.isArray(source.tiers) ? source.tiers : [],
+      }
+      const data = (await requestJson('/api/gigs', { method: 'POST', body: JSON.stringify(payload) })) as { gig?: { id?: string } }
+      const newId = data?.gig?.id
+      flash('ok', 'Service duplicated as draft.')
+      if (newId) router.push(`/dashboard/gigs/${newId}/edit`)
+      else await load()
+    } catch (e: unknown) {
+      flash('err', e instanceof Error ? e.message : 'Duplicate failed.')
     }
   }
 
@@ -632,6 +663,8 @@ export default function SellerGigManager() {
                   onToggleExpand={toggleExpand}
                   onStatusChange={handleStatusChange}
                   onPublish={handlePublish}
+                  onDuplicate={handleDuplicate}
+                  onNotice={flash}
                 />
               ))}
             </div>
