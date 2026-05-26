@@ -3,6 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import type { ComplianceItem, ComplianceStatus } from '@/lib/complianceItems'
+import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
 
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -206,17 +207,36 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                         {isOpen ? 'Hide' : 'Explain'}
                       </button>
                       {item.actionHref && item.actionLabel && (
-                        <Link
-                          href={item.actionHref}
-                          style={{
-                            padding: '5px 10px', borderRadius: '5px',
-                            background: '#0F172A', color: '#FFFFFF',
-                            fontSize: '11px', fontWeight: 700,
-                            textDecoration: 'none', whiteSpace: 'nowrap' as const,
-                          }}
-                        >
-                          {item.actionLabel}
-                        </Link>
+                        // In-page hash links (e.g. "/dashboard/compliance#phone")
+                        // need plain <a> for smooth scroll on the current
+                        // route; Next.js <Link> intercepts navigation and
+                        // skips the scroll. Detect by leading-hash or
+                        // same-pathname-with-hash and render accordingly.
+                        item.actionHref.includes('#') && item.actionHref.startsWith('/dashboard/compliance') ? (
+                          <a
+                            href={`#${item.actionHref.split('#')[1] || ''}`}
+                            style={{
+                              padding: '5px 10px', borderRadius: '5px',
+                              background: '#0F172A', color: '#FFFFFF',
+                              fontSize: '11px', fontWeight: 700,
+                              textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                            }}
+                          >
+                            {item.actionLabel}
+                          </a>
+                        ) : (
+                          <Link
+                            href={item.actionHref}
+                            style={{
+                              padding: '5px 10px', borderRadius: '5px',
+                              background: '#0F172A', color: '#FFFFFF',
+                              fontSize: '11px', fontWeight: 700,
+                              textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                            }}
+                          >
+                            {item.actionLabel}
+                          </Link>
+                        )
                       )}
                     </div>
                   </div>
@@ -241,6 +261,31 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
             })}
           </div>
         ) : null}
+      </section>
+
+      {/* Phone verification card — anchored so the compliance list's
+          "Verify" link scrolls here. PhoneVerificationCard drives the
+          full SMS-OTP flow via Clerk; on success it pokes
+          /api/profile/sync-phone which updates the profiles row this
+          compliance endpoint reads. We refresh on mount of the success
+          state so the "Phone verified" row flips green without a manual
+          page reload. */}
+      <section id="phone" style={{ scrollMarginTop: '80px' }}>
+        <PhoneVerificationCard />
+        <button
+          type="button"
+          onClick={load}
+          style={{
+            marginTop: '8px', padding: '5px 10px',
+            background: 'transparent', color: '#5C6070',
+            border: '1px solid #DDD8CE', borderRadius: '5px',
+            fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+            fontFamily: sans,
+          }}
+          title="Refresh compliance status after verifying"
+        >
+          ↻ Refresh status after verifying
+        </button>
       </section>
 
       {/* Document upload card */}

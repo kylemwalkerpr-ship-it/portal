@@ -24,7 +24,7 @@ import { getChatProvider } from '@/lib/chatProvider'
 //     type — not personalised with fabricated identifiers.
 
 const ALLOWED_ITEMS = new Set([
-  'email', 'application', 'credential_type', 'bar_number',
+  'email', 'phone', 'application', 'credential_type', 'bar_number',
   'malpractice', 'jurisdictions', 'payout', 'accepting',
 ])
 
@@ -32,6 +32,10 @@ const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
   email: {
     attorney: 'Email verification — the verification link YouSafe sent at signup. Explain what to do if they never received it (check spam, request resend from the dashboard). Do NOT generate the link or any verification code.',
     consultant: 'Email verification — the verification link YouSafe sent at signup. Explain what to do if they never received it (check spam, request resend). Do NOT generate the link or any verification code.',
+  },
+  phone: {
+    attorney: 'Phone verification — confirms the seller controls a phone number where YouSafe can reach them for SMS notifications and two-factor auth (TOTP recommended on top). Explain: open the Phone verification card on this page, enter their number with country code, enter the 6-digit SMS code, done. Note SMS rates vary by carrier. Do NOT generate a phone number or verification code.',
+    consultant: 'Phone verification — confirms the seller controls a phone number where YouSafe can reach them for SMS notifications and two-factor auth (TOTP recommended on top). Explain: open the Phone verification card on this page, enter their number with country code, enter the 6-digit SMS code, done. Note SMS rates vary by carrier. Do NOT generate a phone number or verification code.',
   },
   application: {
     attorney: 'Attorney application status — the seller submitted an application that an admin reviews manually. Explain that "Pending admin review" means a human is checking the materials, typical turnaround 1–3 business days. If "Not started", direct them to /dashboard/attorney/intake.',

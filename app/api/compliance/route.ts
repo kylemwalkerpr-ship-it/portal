@@ -4,6 +4,14 @@ import { computeAttorneyStrength } from '@/lib/attorneyProfileStrength'
 import { computeConsultantStrength } from '@/lib/consultantProfileStrength'
 import type { ComplianceItem, ComplianceSnapshot } from '@/lib/complianceItems'
 
+// Mask phone for display so the row doesn't leak the full number into
+// every screenshot the seller takes of their dashboard. We keep last 4.
+function maskPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 4) return '••• ••• ••••'
+  return `••• ••• ${digits.slice(-4)}`
+}
+
 // Pulls the seller's compliance state from the real source tables —
 // no inference, no fabricated values. The AI guidance endpoint
 // (/api/compliance/guide) consumes this same shape so the assistant
@@ -20,7 +28,7 @@ export async function GET() {
 
   const { data: profile } = await db
     .from('profiles')
-    .select('email, email_verified_at')
+    .select('email, email_verified_at, phone, phone_verified, phone_verified_at')
     .eq('id', auth.profileId)
     .single()
 
@@ -48,6 +56,8 @@ export async function GET() {
 
   // Compute each item's status from real columns.
   const emailVerified = !!profile?.email_verified_at
+  const phoneVerified = !!profile?.phone_verified
+  const phoneOnFile = !!(profile?.phone && String(profile.phone).trim())
   const appApproved = (appRow?.status || '') === 'approved'
   const credentialFilled = !!(appRow?.credential_type && String(appRow.credential_type).trim())
   const barFilled = !!(appRow?.bar_number && String(appRow.bar_number).trim())
@@ -70,6 +80,18 @@ export async function GET() {
       detail: emailVerified ? (profile?.email || '') : 'Click the link we sent when you signed up.',
       actionHref: emailVerified ? null : '/dashboard',
       actionLabel: emailVerified ? null : 'Resend',
+    },
+    {
+      id: 'phone',
+      label: 'Phone verified',
+      status: phoneVerified ? 'ok' : 'missing',
+      detail: phoneVerified
+        ? (profile?.phone ? `Verified · ${maskPhone(String(profile.phone))}` : 'Verified')
+        : phoneOnFile
+          ? 'Phone on file but not verified yet — confirm via SMS code.'
+          : 'Required for SMS notifications and two-factor auth.',
+      actionHref: '/dashboard/compliance#phone',
+      actionLabel: phoneVerified ? 'Re-verify' : 'Verify',
     },
     {
       id: 'application',
