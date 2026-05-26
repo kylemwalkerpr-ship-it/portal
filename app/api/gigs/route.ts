@@ -212,17 +212,22 @@ export async function POST(req: Request) {
     .select('*')
     .single()
 
-  // Self-heal: tagline (or any other) column missing — retry without it.
+  // Self-heal: any missing column — retry without it. Match both the
+  // standard SQL "column ... does not exist" and PostgREST's
+  // "Could not find the 'X' column of 'gigs' in the schema cache".
   // Run supabase/gigs_columns_patch.sql to restore full fidelity.
-  if (error && /column .* does not exist/i.test(error.message || '')) {
-    const match = error.message.match(/column "?([\w_]+)"? of relation/i) || error.message.match(/column "?([\w_]+)"? does not exist/i)
-    const badCol = match?.[1]
-    if (badCol && badCol in insertPayload) {
-      delete insertPayload[badCol]
-      const retry = await db.from('gigs').insert(insertPayload).select('*').single()
-      gig = retry.data as any
-      error = retry.error as any
-    }
+  while (error && /(does not exist|in the schema cache)/i.test(error.message || '')) {
+    const msg = error.message
+    const m =
+      msg.match(/column "?([\w_]+)"? of relation/i) ||
+      msg.match(/column "?([\w_]+)"? does not exist/i) ||
+      msg.match(/Could not find the '([\w_]+)' column/i)
+    const badCol = m?.[1]
+    if (!badCol || !(badCol in insertPayload)) break
+    delete insertPayload[badCol]
+    const retry = await db.from('gigs').insert(insertPayload).select('*').single()
+    gig = retry.data as any
+    error = retry.error as any
   }
 
   if (error || !gig) return fail(error?.message || 'Could not create gig.', 500)

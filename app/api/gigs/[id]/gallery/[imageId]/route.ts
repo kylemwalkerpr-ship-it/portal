@@ -21,7 +21,8 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
     updated_at: new Date().toISOString(),
   }
   let updateResult = await auth.db.from('gigs').update(updatePayload).eq('id', id).select('*').single()
-  if (updateResult.error && /column .*cover_image_url/i.test(updateResult.error.message || '')) {
+  // Match both PostgREST messages for missing column.
+  if (updateResult.error && /cover_image_url/i.test(updateResult.error.message || '')) {
     const { cover_image_url: _drop, ...rest } = updatePayload
     updateResult = await auth.db.from('gigs').update(rest).eq('id', id).select('*').single()
   }

@@ -65,8 +65,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     .eq('id', id)
     .select('*')
     .single()
-  // Self-heal if cover_image_url column doesn't exist yet.
-  if (updateResult.error && /column .*cover_image_url/i.test(updateResult.error.message || '')) {
+  // Self-heal if cover_image_url column doesn't exist yet. PostgREST
+  // can surface this as "Could not find the 'cover_image_url' column
+  // ... in the schema cache" rather than the standard SQL message.
+  if (updateResult.error && /cover_image_url/i.test(updateResult.error.message || '')) {
     const { cover_image_url: _drop, ...rest } = updatePayload
     updateResult = await auth.db.from('gigs').update(rest).eq('id', id).select('*').single()
   }

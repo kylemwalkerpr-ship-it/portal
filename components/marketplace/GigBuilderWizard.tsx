@@ -242,6 +242,31 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     window.localStorage.setItem(BUILDER_DRAFT_KEY, JSON.stringify(gigData))
   }, [gigData, gigId, existingGig])
 
+  // For published / existing gigs we allow free movement between steps —
+  // the user is editing a real record, they shouldn't have to re-prove a
+  // step to revisit it. New-gig drafts still enforce sequential validation
+  // so a half-filled draft can't accidentally publish.
+  const isExistingGig = Boolean(gigId || existingGig?.id || currentGigId)
+  const isPublished = (existingGig?.status || gigData.status) === 'active'
+
+  const handleJumpToStep = (target: number) => {
+    if (target === currentStep) return
+    if (isExistingGig || target < currentStep) {
+      // Backward navigation always allowed; forward navigation on an
+      // existing gig also allowed (record is already saved).
+      setCurrentStep(target)
+      return
+    }
+    // Forward jump on a new draft — validate every step in between.
+    for (let s = currentStep; s < target; s++) {
+      if (!validateStep(s)) {
+        setCurrentStep(s)
+        return
+      }
+    }
+    setCurrentStep(target)
+  }
+
   const handleNext = () => {
     if (validateStep(currentStep)) {
       if (currentStep < STEPS.length - 1) {
@@ -253,6 +278,39 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1)
+    }
+  }
+
+  // Update an existing gig in-place without touching its publish status.
+  // Used when the user opens a live gig in the wizard to tweak something
+  // — they don't want a "Publish" button that flips state, they want
+  // their edits committed against the current row.
+  const handleUpdate = async () => {
+    if (!currentGigId) return handleSaveDraft()
+    setSaving(true)
+    setAutoSaveStatus('Saving changes…')
+    try {
+      const payload = { ...gigData }
+      // Don't override status — let the gig stay in whatever lifecycle
+      // state it was in (active, paused, draft).
+      delete (payload as any).status
+      const res = await fetch(`/api/gigs/${currentGigId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error?.message || data?.error || 'Failed to update gig.')
+      }
+      setAutoSaveStatus('Changes saved')
+      if (typeof window !== 'undefined') window.localStorage.removeItem(BUILDER_DRAFT_KEY)
+      setTimeout(() => setAutoSaveStatus(''), 2200)
+      if (onComplete) onComplete(currentGigId)
+    } catch (e: any) {
+      setAutoSaveStatus(`Error: ${e.message}`)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -445,27 +503,52 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       <div style={progressContainer}>
         <ProgressBar value={progress} />
         <div style={stepIndicator}>
-          {STEPS.map((step, index) => (
-            <div key={step.id} style={{ flex: 1 }}>
-              <div
+          {STEPS.map((step, index) => {
+            // Steps are click-jumpable on an existing gig (any direction)
+            // and backward-jumpable on a new draft. Forward jumps on a
+            // new draft validate intermediate steps in sequence so we
+            // can't end up in an "invisible failure" state.
+            const clickable = isExistingGig || index <= currentStep ||
+              // Forward navigation if every step before the target is
+              // already valid — visual affordance only; the actual
+              // validation runs inside handleJumpToStep.
+              false
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => handleJumpToStep(index)}
                 style={{
-                  ...stepDot,
-                  ...(index < currentStep ? stepDotCompleted : {}),
-                  ...(index === currentStep ? stepDotActive : {}),
+                  flex: 1, background: 'transparent', border: 'none',
+                  cursor: clickable ? 'pointer' : 'default',
+                  padding: 0, fontFamily: 'inherit', textAlign: 'center',
+                  opacity: clickable ? 1 : 0.65,
                 }}
+                aria-current={index === currentStep ? 'step' : undefined}
+                title={clickable
+                  ? `Jump to: ${step.title}`
+                  : `Complete previous steps first`}
               >
-                {index < currentStep ? '✓' : index + 1}
-              </div>
-              <div
-                style={{
-                  ...stepLabel,
-                  ...(index === currentStep ? stepLabelActive : {}),
-                }}
-              >
-                {step.title}
-              </div>
-            </div>
-          ))}
+                <div
+                  style={{
+                    ...stepDot,
+                    ...(index < currentStep ? stepDotCompleted : {}),
+                    ...(index === currentStep ? stepDotActive : {}),
+                  }}
+                >
+                  {index < currentStep ? '✓' : index + 1}
+                </div>
+                <div
+                  style={{
+                    ...stepLabel,
+                    ...(index === currentStep ? stepLabelActive : {}),
+                  }}
+                >
+                  {step.title}
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -528,10 +611,25 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
           <Btn variant="secondary" onClick={onCancel} disabled={saving}>
             Cancel
           </Btn>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {currentStep > 0 && (
               <Btn variant="secondary" onClick={handleBack} disabled={saving}>
                 Back
+              </Btn>
+            )}
+            {/* For an existing gig, an Update button is always available
+                — the user shouldn't have to walk to the final step to
+                commit a typo fix on step 1. For new drafts, Save Draft
+                is also available everywhere so the user can step away
+                without losing work. */}
+            {isExistingGig && (
+              <Btn variant="secondary" onClick={handleUpdate} disabled={saving}>
+                {saving ? 'Saving…' : (isPublished ? 'Update Gig' : 'Save Changes')}
+              </Btn>
+            )}
+            {!isExistingGig && (
+              <Btn variant="secondary" onClick={handleSaveDraft} disabled={saving}>
+                {saving ? 'Saving…' : 'Save Draft'}
               </Btn>
             )}
             {currentStep < STEPS.length - 1 ? (
@@ -539,19 +637,28 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
                 Next
               </Btn>
             ) : (
-              <>
-                <Btn variant="secondary" onClick={handleSaveDraft} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save Draft'}
+              // Final step: published gigs use Update (above) — the
+              // primary CTA flips between Publish (for unpublished gigs)
+              // and Update Gig (for already-live ones) so the
+              // commit-to-live action is always one click away.
+              isPublished ? (
+                <Btn
+                  variant="primary"
+                  onClick={handleUpdate}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving…' : 'Update Gig'}
                 </Btn>
+              ) : (
                 <Btn
                   variant="primary"
                   onClick={handlePublish}
                   disabled={saving || !profileReady}
                   title={!profileReady ? 'Complete your profile to ≥75% (and set your handle) before publishing.' : undefined}
                 >
-                  {saving ? 'Publishing...' : profileReady ? 'Publish Gig' : 'Profile incomplete'}
+                  {saving ? 'Publishing…' : profileReady ? 'Publish Gig' : 'Profile incomplete'}
                 </Btn>
-              </>
+              )
             )}
           </div>
         </div>

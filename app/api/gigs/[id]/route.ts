@@ -77,7 +77,11 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   // Self-heal: if the cover_image_url column doesn't exist on this
   // schema, drop it and retry. The gallery_images write is enough
   // because the API readers fall back to gallery_images[0]?.url.
-  if (updateResult.error && /column .*cover_image_url/i.test(updateResult.error.message || '')) {
+  // PostgREST surfaces this two different ways:
+  //   "column \"cover_image_url\" of relation \"gigs\" does not exist"
+  //   "Could not find the 'cover_image_url' column of 'gigs' in the schema cache"
+  // Match either.
+  if (updateResult.error && /cover_image_url/i.test(updateResult.error.message || '')) {
     const { cover_image_url: _drop, ...rest } = payload
     updateResult = await auth.db.from('gigs').update(rest).eq('id', id).select('*, tiers:gig_tiers(*)').single()
   }
