@@ -541,11 +541,33 @@ export function ProgressBar({ value, color = C.cyan, style = {} }) {
 
 export function NavItem({ icon, label, active, onClick, badge, badgeColor = 'red' }) {
   const [hovered, setHovered] = React.useState(false)
+  const ref = React.useRef(null)
+  // Auto-centre the active item in the scroll container. On desktop the
+  // sidebar is vertical and the nav is taller than the viewport rarely
+  // matters; on mobile the same nav becomes a horizontal scroll strip
+  // (see globals.css .yousafe-sidebar-nav @media (max-width: 760px))
+  // and without this the user can scroll the strip away from where they
+  // actually are, then click "Active Orders" and lose track of the
+  // highlight under the fold.
+  React.useEffect(() => {
+    if (!active || !ref.current) return
+    const id = requestAnimationFrame(() => {
+      try {
+        ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+      } catch {
+        ref.current.scrollIntoView(false)
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [active])
   return (
     <div
+      ref={ref}
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      data-nav-active={active ? 'true' : 'false'}
+      className="yousafe-nav-item"
       style={{
         display: 'flex', alignItems: 'center', gap: '12px',
         padding: '10px 12px 10px 14px', borderRadius: '0 10px 10px 0',

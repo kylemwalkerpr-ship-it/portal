@@ -208,12 +208,38 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
 
 function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' }) {
   const [scrolled, setScrolled] = React.useState(false)
+  // Refs for the scrollable nav strip + the currently-active button so we
+  // can auto-scroll the active tab into view on mobile. Without this, when
+  // the user is at the rightmost tab and the strip wraps to a second mount
+  // (deep link, role change), they see the leftmost tabs instead of where
+  // they actually are.
+  const navScrollRef = React.useRef<HTMLElement | null>(null)
+  const activeNavRef = React.useRef<HTMLButtonElement | null>(null)
 
   React.useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 4)
     window.addEventListener('scroll', fn, { passive: true })
     return () => window.removeEventListener('scroll', fn)
   }, [])
+
+  // Centre the active tab in the strip whenever activeView changes. Uses
+  // `inline: 'center'` so the chosen item sits in the middle of the
+  // viewport — feels like a sticky cursor.
+  React.useEffect(() => {
+    const el = activeNavRef.current
+    if (!el || typeof el.scrollIntoView !== 'function') return
+    // requestAnimationFrame so the layout has settled before we measure
+    const id = requestAnimationFrame(() => {
+      try {
+        el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+      } catch {
+        // Older browsers may not support the options object — fall back
+        // to the legacy boolean form (alignToTop=true).
+        el.scrollIntoView(true)
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [activeView])
 
   const links = navLinksForRole(role)
 
@@ -294,13 +320,20 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
           </svg>
         </a>
 
-        {/* Nav tabs */}
-        <nav style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}>
+        {/* Nav tabs — scrollable on mobile; the active item scrolls itself
+            into view so the user always sees which section they're on
+            even after they've scrolled the tab strip sideways. */}
+        <nav
+          ref={navScrollRef}
+          className="ys-market-nav"
+          style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}
+        >
           {links.map(link => {
             const active = link.view === activeView
             return (
               <button
                 key={link.view}
+                ref={(el) => { if (active) activeNavRef.current = el }}
                 onClick={() => onNav(link.view as Section)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '5px',

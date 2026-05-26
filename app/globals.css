@@ -833,3 +833,62 @@ section[id] {
     line-height: 1.1 !important;
   }
 }
+
+/* ── Marketplace shell — mobile collapse ─────────────────────────────────
+   At <=768px the TopNav strip wraps the brand/home/nav-tabs/jurisdiction
+   /lang/auth into a tight 2-row arrangement so nothing overflows. The
+   nav-tabs row gets full horizontal scroll; the active tab auto-scrolls
+   into view via the JS hook in MarketplaceShell.tsx.
+   ---------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Container row */
+  header[style*="position: sticky"][style*="top: 0"] > div[style*="max-width: 1280px"],
+  header[style*="position:sticky"][style*="top:0"] > div[style*="max-width:1280px"] {
+    height: auto !important;
+    min-height: 56px !important;
+    padding: 8px 14px !important;
+    flex-wrap: wrap !important;
+    row-gap: 4px !important;
+  }
+
+  /* Nav tabs strip — full width, scrollable */
+  .ys-market-nav {
+    order: 99 !important;            /* push to second row */
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    margin-top: 4px !important;
+    border-top: 1px solid rgba(0,0,0,0.05) !important;
+    padding-top: 4px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  .ys-market-nav::-webkit-scrollbar { display: none; }
+  .ys-market-nav > button {
+    height: 40px;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* ── Dashboard sidebar mobile nav — active-state polish ────────────────
+   Pairs with the auto-scroll-into-view behaviour on NavItem. Tightens
+   the horizontal pill row so the active item visibly anchors in the
+   centre when it scrolls into view. */
+@media (max-width: 760px) {
+  .yousafe-sidebar-nav {
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 16px;
+  }
+  .yousafe-sidebar-nav > .yousafe-nav-item {
+    scroll-snap-align: center;
+    border-radius: 999px !important;
+    border-left: 0 !important;
+    margin-left: 0 !important;
+    padding: 8px 14px !important;
+  }
+  .yousafe-sidebar-nav > .yousafe-nav-item[data-nav-active="true"] {
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.08) inset;
+  }
+}
