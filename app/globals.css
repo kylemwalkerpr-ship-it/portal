@@ -779,6 +779,14 @@ h1, h2, .yousafe-serif {
   }
 }
 
+/* Anchor-link scroll offset. Landing nav is sticky at ~72px; without a
+   scroll-margin-top, clicking #practices / #how / #faq scrolls the section
+   under the nav and hides its heading. */
+.stack-section,
+section[id] {
+  scroll-margin-top: 88px;
+}
+
 /* ── Portal landing — mobile collapse ────────────────────────────────────
    The /components/design/landing/* sections use inline styles with fixed
    2-column grids and large padding values. On phones this overflows and

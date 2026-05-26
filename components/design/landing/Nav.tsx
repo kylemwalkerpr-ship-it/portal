@@ -144,10 +144,13 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           <ArrowUR size={10} stroke={2} style={{ color: T.inkDim, marginLeft: 1 }} />
         </a>
         <span aria-hidden="true" style={{ width: 1, height: 18, background: T.rule, margin: '0 4px' }} />
-        <a href="#categories" className="ys-nav-link" style={navLinkStyle}>Categories</a>
+        {/* Categories goes to the real marketplace browse page — the
+            #categories anchor pointed at PopularCategories.tsx which
+            isn't rendered in the trimmed 7-section landing. */}
+        <a href="/marketplace" className="ys-nav-link" style={navLinkStyle}>Browse services</a>
         <a href="#practices" className="ys-nav-link" style={navLinkStyle}>Practices</a>
         <a href="#how" className="ys-nav-link" style={navLinkStyle}>How it works</a>
-        <a href="#trust" className="ys-nav-link" style={navLinkStyle}>Trust &amp; safety</a>
+        <a href="#faq" className="ys-nav-link" style={navLinkStyle}>FAQ</a>
       </div>
 
       {/* Right side */}

@@ -45,6 +45,7 @@ const PRACTICES: PracticeCard[] = [
 export default function TwoPractices() {
   return (
     <section
+      id="practices"
       style={{
         background: T.surface2,
         padding: '80px 40px',
