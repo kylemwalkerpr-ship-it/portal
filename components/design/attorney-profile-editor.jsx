@@ -338,6 +338,23 @@ export default function AttorneyProfileEditor() {
           value={Boolean(a.offers_free_consult)}
           onChange={(v) => save('offers_free_consult', v)}
         />
+        {/* Booking URL — only collected when the free consult toggle is
+            on. When set, the public card's "Free 15-min consult" badge
+            becomes a clickable link that opens the booking page in a
+            new tab. Without it, the badge stays static (informational
+            only) so the seller can flip the toggle on without yet
+            having a scheduling tool wired up. */}
+        {a.offers_free_consult && (
+          <div style={{ marginTop: '12px' }}>
+            <EditableField
+              label="Free consult booking link"
+              help="Calendly / Cal.com / Google Calendar appointments link. Paste the public URL. When set, students can book a 15-min slot directly from your card."
+              value={a.consult_booking_url}
+              placeholder="https://calendly.com/your-handle/15min"
+              onSave={(v) => save('consult_booking_url', v)}
+            />
+          </div>
+        )}
         <ToggleRow
           label="Currently accepting new clients"
           help="Turn off if your queue is full. Profile stays visible but cards show 'Limited'."

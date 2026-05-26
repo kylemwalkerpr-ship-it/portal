@@ -11,6 +11,7 @@ const ENRICHED_FIELDS = [
   'education',
   'specialties',
   'offers_free_consult',
+  'consult_booking_url',
   'starting_price',
   'video_intro_url',
   'timezone',
@@ -56,7 +57,7 @@ export async function GET() {
   const [attorneyRes, applicationRes, rating] = await Promise.all([
     db
       .from('attorneys')
-      .select('id, jurisdictions, practice_areas, bio, available, application_id, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone, created_at')
+      .select('id, jurisdictions, practice_areas, bio, available, application_id, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, consult_booking_url, starting_price, video_intro_url, timezone, created_at')
       .eq('profile_id', profile.id)
       .maybeSingle(),
     db
@@ -117,6 +118,13 @@ export async function PATCH(req: Request) {
   if ('video_intro_url' in body) update.video_intro_url = clean(body.video_intro_url, 500)
   if ('timezone' in body) update.timezone = clean(body.timezone, 80)
   if ('offers_free_consult' in body) update.offers_free_consult = Boolean(body.offers_free_consult)
+  if ('consult_booking_url' in body) {
+    // Light validation only — anything that looks like an HTTPS URL.
+    // The full validator (Calendly / Cal.com / etc. host checks) belongs
+    // in the editor; here we just refuse javascript: and other schemes.
+    const raw = clean(body.consult_booking_url, 400)
+    update.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
+  }
   if ('available' in body) update.available = Boolean(body.available)
 
   if ('years_experience' in body) {

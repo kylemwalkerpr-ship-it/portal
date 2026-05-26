@@ -206,7 +206,7 @@ function AttorneyCard({ attorney, onSelect }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: '12px' }}>
           <div>
-            {attorney.starting_price ? (
+            {Number(attorney.starting_price) >= 2500 ? (
               <div>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>From</div>
                 <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, fontWeight: 500 }}>${Number(attorney.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
@@ -215,7 +215,19 @@ function AttorneyCard({ attorney, onSelect }) {
               <div style={{ fontSize: '12px', color: C.textMuted }}>Custom quote</div>
             )}
             {attorney.offers_free_consult && (
-              <div style={{ fontSize: '11px', color: C.green, fontWeight: 600, marginTop: '2px' }}>Free 15-min consult</div>
+              attorney.consult_booking_url ? (
+                <a
+                  href={attorney.consult_booking_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ fontSize: '11px', color: C.green, fontWeight: 700, marginTop: '4px', textDecoration: 'underline', display: 'inline-block' }}
+                >
+                  📅 Book free 15-min consult →
+                </a>
+              ) : (
+                <div style={{ fontSize: '11px', color: C.green, fontWeight: 600, marginTop: '2px' }}>Free 15-min consult</div>
+              )
             )}
           </div>
           <Btn variant="primary" size="sm" onClick={onSelect}>
@@ -353,7 +365,14 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
             </div>
           </div>
           <div className="ys-attorney-hero-right" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-            {a.starting_price ? (
+            {/* Hide the "Starting at" block for placeholder/sentinel
+                values. An attorney who hasn't set a real price will
+                often have starting_price = 100 cents (default seed)
+                or 0 — neither is meaningful to a buyer, and showing
+                "$1" hurts the brand more than showing nothing. The
+                $25 floor matches the cheapest active gig tier
+                allowed by the wizard. */}
+            {Number(a.starting_price) >= 2500 ? (
               <>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Starting at</div>
                 <div className="ys-attorney-hero-price" style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
@@ -361,10 +380,42 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
             ) : (
               <div style={{ color: C.textMuted, fontSize: '13px' }}>Custom-quoted per matter</div>
             )}
+            {/* Free consult badge — clickable when the attorney has
+                pasted a Calendly / Cal.com / equivalent booking link
+                in their profile editor. Without a URL the badge stays
+                informational. target="_blank" + rel="noopener" so we
+                never share session via Referer to the third-party
+                scheduler. */}
             {a.offers_free_consult && (
-              <div style={{ background: 'rgba(5,150,105,0.10)', color: C.green, border: '1px solid rgba(5,150,105,0.25)', borderRadius: '999px', padding: '4px 10px', fontSize: '11px', fontWeight: 700, textAlign: 'center' }}>
-                Free 15-min consult
-              </div>
+              a.consult_booking_url ? (
+                <a
+                  href={a.consult_booking_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    background: C.green,
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '999px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: '0 1px 3px rgba(5,150,105,0.30)',
+                  }}
+                  title="Book a free 15-minute consult"
+                >
+                  📅 Book free 15-min consult
+                </a>
+              ) : (
+                <div style={{ background: 'rgba(5,150,105,0.10)', color: C.green, border: '1px solid rgba(5,150,105,0.25)', borderRadius: '999px', padding: '4px 10px', fontSize: '11px', fontWeight: 700, textAlign: 'center' }}>
+                  Free 15-min consult
+                </div>
+              )
             )}
             {!a.available && <Badge color="orange">Limited availability</Badge>}
           </div>
