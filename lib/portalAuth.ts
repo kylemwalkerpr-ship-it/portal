@@ -43,7 +43,17 @@ export async function requirePortalUser(): Promise<
     } catch { /* Clerk unavailable — proceed without email */ }
   }
 
-  return { db, profile, profileId: profile.id, role: String(profile.role || '') }
+  // Normalize legacy 'student' role to 'client'. The student dashboard
+  // UI labels these users as "Student" but every downstream API check
+  // (offers/accept, payments/charge, saved-gigs, checkout/order, etc.)
+  // is written as `auth.role !== 'client'`. Without this normalisation,
+  // older profiles provisioned with role='student' hit a cascade of
+  // 403s on the dashboard (saved-gigs, balance, attorney-chats, etc.).
+  // 'client' and 'student' represent the same buyer persona at the
+  // back-end level; sellers (attorney/consultant) and admins still
+  // travel through unchanged.
+  const normalisedRole = profile.role === 'student' ? 'client' : String(profile.role || '')
+  return { db, profile, profileId: profile.id, role: normalisedRole }
 }
 
 export async function requireAdminUser() {
@@ -72,5 +82,8 @@ export async function getOptionalPortalUser(): Promise<PortalUserContext | null>
   if (error || !profile) return null
   if (profile.status && profile.status !== 'active') return null
 
-  return { db, profile, profileId: profile.id, role: String(profile.role || '') }
+  // Same student → client normalisation as requirePortalUser. Keeps
+  // downstream `auth.role !== 'client'` checks working for both.
+  const normalisedRole = profile.role === 'student' ? 'client' : String(profile.role || '')
+  return { db, profile, profileId: profile.id, role: normalisedRole }
 }

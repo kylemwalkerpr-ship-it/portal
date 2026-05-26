@@ -20,7 +20,16 @@ export async function requireClient(): Promise<{ ctx?: ClientContext; error?: st
     .single()
 
   if (!profile) return { error: 'Profile not found.', status: 404 }
-  if (profile.role !== 'client' || profile.status !== 'active') {
+  // Accept both 'client' and 'student' — legacy provisioning paths
+  // labelled buyer profiles 'student'; the UI still does so in the
+  // sidebar, but every back-end gate has standardised on 'client'.
+  // Without this widening, anyone whose profile row was created via
+  // the older sign-up path hits a cascade of 403s on the student
+  // dashboard (home, balance, saved-gigs, attorney-chats, etc.) and
+  // sees the red "Client account not active." banner above an
+  // otherwise functional UI.
+  const isBuyer = profile.role === 'client' || profile.role === 'student'
+  if (!isBuyer || profile.status !== 'active') {
     return { error: 'Client account not active.', status: 403 }
   }
 

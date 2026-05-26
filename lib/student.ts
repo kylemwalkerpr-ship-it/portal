@@ -26,7 +26,14 @@ export async function getCurrentStudent(): Promise<StudentAuth> {
 
   const profile = profileRes.data
   if (!profile) return { error: 'Profile not found', status: 404 }
-  if (profile.role !== 'client') return { error: 'Forbidden', status: 403 }
+  // Accept both 'client' and 'student'. The student dashboard UI
+  // labels these users as "Student" but every back-end gate
+  // standardised on 'client'. Legacy provisioning paths wrote
+  // 'student' to profile.role and were never migrated — without this
+  // widening those users see a cascade of 403s on the dashboard.
+  // Sellers (attorney/consultant) and admins still rejected.
+  const isBuyer = profile.role === 'client' || profile.role === 'student'
+  if (!isBuyer) return { error: 'Forbidden', status: 403 }
   if (profile.status === 'suspended') return { error: 'Account suspended', status: 403 }
 
   // If email is missing from the profile row, resolve it from Clerk and
