@@ -9,6 +9,7 @@ import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
 import { GigCard } from './MarketplaceHero'
 import GalleryManager from './GalleryManager'
 import SEOPreviewPanel from './SEOPreviewPanel'
+import AIDraftButton from './AIDraftButton'
 
 const wizardContainer: CSSProperties = {
   maxWidth: '800px',
@@ -915,6 +916,22 @@ function CategoryStep({ gigData, errors, onChange }: any) {
 function BasicsStep({ gigData, errors, onChange }: any) {
   const [tagInput, setTagInput] = React.useState('')
 
+  // Latest-context closure — re-created every render, so AI Draft
+  // requests always reflect what the seller has typed at click time.
+  const getContext = () => ({
+    title: gigData.title,
+    tagline: gigData.tagline,
+    pitch: gigData.pitch || gigData.tagline,
+    description: gigData.description,
+    category: gigData.category,
+    subcategory: gigData.subcategory,
+    jurisdiction: gigData.jurisdiction,
+    tags: gigData.tags,
+    seo_title: gigData.seo_title,
+    seo_description: gigData.seo_description,
+  })
+  const minimalContext = !gigData.title?.trim() && !gigData.category
+
   const addTag = (raw: string) => {
     const tag = raw.trim().toLowerCase()
     if (!tag) return
@@ -932,6 +949,9 @@ function BasicsStep({ gigData, errors, onChange }: any) {
   const descLen = gigData.description.length
   const descColor = descLen < 300 ? T.brick : descLen > 2500 ? T.brick : T.inkMuted
 
+  const labelRow: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }
+  const inlineLabel: CSSProperties = { ...formLabel, marginBottom: 0 }
+
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '24px', color: T.ink }}>
@@ -939,7 +959,15 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </h2>
 
       <div style={formSection}>
-        <label style={formLabel}>Gig Title * <span style={{ fontWeight: 400, color: T.inkMuted }}>(20–80 chars)</span></label>
+        <div style={labelRow}>
+          <label style={inlineLabel}>Gig Title * <span style={{ fontWeight: 400, color: T.inkMuted }}>(20–80 chars)</span></label>
+          <AIDraftButton
+            field="title"
+            getContext={getContext}
+            minimalContext={minimalContext}
+            onApply={(v) => onChange('title', String(v))}
+          />
+        </div>
         <input
           type="text"
           value={gigData.title}
@@ -955,7 +983,15 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: T.inkMuted }}>(40–160 chars)</span></label>
+        <div style={labelRow}>
+          <label style={inlineLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: T.inkMuted }}>(40–160 chars)</span></label>
+          <AIDraftButton
+            field="tagline"
+            getContext={getContext}
+            minimalContext={minimalContext}
+            onApply={(v) => onChange('tagline', String(v))}
+          />
+        </div>
         <textarea
           value={gigData.tagline}
           onChange={e => onChange('tagline', e.target.value)}
@@ -970,7 +1006,16 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Detailed Description * <span style={{ fontWeight: 400, color: T.inkMuted }}>(300–2500 chars)</span></label>
+        <div style={labelRow}>
+          <label style={inlineLabel}>Detailed Description * <span style={{ fontWeight: 400, color: T.inkMuted }}>(300–2500 chars)</span></label>
+          <AIDraftButton
+            field="description"
+            getContext={getContext}
+            minimalContext={minimalContext}
+            label="Draft full description"
+            onApply={(v) => onChange('description', String(v))}
+          />
+        </div>
         <textarea
           value={gigData.description}
           onChange={e => onChange('description', e.target.value)}
@@ -986,7 +1031,16 @@ function BasicsStep({ gigData, errors, onChange }: any) {
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Tags * <span style={{ fontWeight: 400, color: T.inkMuted }}>(3–5 tags)</span></label>
+        <div style={labelRow}>
+          <label style={inlineLabel}>Tags * <span style={{ fontWeight: 400, color: T.inkMuted }}>(3–5 tags)</span></label>
+          <AIDraftButton
+            field="tags"
+            getContext={getContext}
+            minimalContext={minimalContext}
+            label="Suggest tags"
+            onApply={(v) => onChange('tags', Array.isArray(v) ? v.slice(0, 5) : [])}
+          />
+        </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
           {gigData.tags.map((tag: string) => (
             <span
@@ -1369,12 +1423,31 @@ function SEOStep({ gigData, errors, onChange }: any) {
 
       {/* SEO Title field */}
       <div style={formSection}>
-        <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
-          SEO Title{' '}
-          <span style={{ fontWeight: 400, color: T.inkMuted }}>
-            (leave blank to use gig title · max 60 chars for best display)
-          </span>
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+          <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted, marginBottom: 0 }}>
+            SEO Title{' '}
+            <span style={{ fontWeight: 400, color: T.inkMuted }}>
+              (leave blank to use gig title · max 60 chars for best display)
+            </span>
+          </label>
+          <AIDraftButton
+            field="seo_title"
+            getContext={() => ({
+              title: gigData.title,
+              tagline: gigData.tagline,
+              pitch: gigData.pitch || gigData.tagline,
+              description: gigData.description,
+              category: gigData.category,
+              subcategory: gigData.subcategory,
+              jurisdiction: gigData.jurisdiction,
+              tags: gigData.tags,
+              seo_title: gigData.seo_title,
+              seo_description: gigData.seo_description,
+            })}
+            minimalContext={!gigData.title?.trim()}
+            onApply={(v) => onChange('seo_title', String(v))}
+          />
+        </div>
         <input
           type="text"
           value={gigData.seo_title}
@@ -1391,12 +1464,31 @@ function SEOStep({ gigData, errors, onChange }: any) {
 
       {/* Meta Description field */}
       <div style={formSection}>
-        <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
-          Meta Description{' '}
-          <span style={{ fontWeight: 400, color: T.inkMuted }}>
-            (optimal: 120–160 chars for full search snippet)
-          </span>
-        </label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+          <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted, marginBottom: 0 }}>
+            Meta Description{' '}
+            <span style={{ fontWeight: 400, color: T.inkMuted }}>
+              (optimal: 120–160 chars for full search snippet)
+            </span>
+          </label>
+          <AIDraftButton
+            field="seo_description"
+            getContext={() => ({
+              title: gigData.title,
+              tagline: gigData.tagline,
+              pitch: gigData.pitch || gigData.tagline,
+              description: gigData.description,
+              category: gigData.category,
+              subcategory: gigData.subcategory,
+              jurisdiction: gigData.jurisdiction,
+              tags: gigData.tags,
+              seo_title: gigData.seo_title,
+              seo_description: gigData.seo_description,
+            })}
+            minimalContext={!gigData.title?.trim()}
+            onApply={(v) => onChange('seo_description', String(v))}
+          />
+        </div>
         <textarea
           value={gigData.seo_description}
           onChange={e => onChange('seo_description', e.target.value)}

@@ -673,6 +673,10 @@ const CSS = `
 .cw-market .gig[data-c="ca"] .plate::after { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
 .cw-market .gig .plate-tag { position: absolute; left: 14px; bottom: 12px; padding: 4px 9px; background: rgba(29,36,51,0.85); color: #fff; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; border-radius: 3px; }
 .cw-market .gig .plate-glyph { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; font-family: ${F.display}; font-style: italic; font-size: 56px; color: rgba(60,59,110,0.18); letter-spacing: -0.02em; font-weight: 500; pointer-events: none; }
+.cw-market .gig .plate-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.cw-market .gig .plate.has-cover { background: ${T.ink}; }
+.cw-market .gig .plate.has-cover::before { content: none; }
+.cw-market .gig .plate.has-cover .plate-tag { background: rgba(15,23,42,0.78); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .cw-market .gig .body { padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .cw-market .gig .seller { display: flex; align-items: center; gap: 10px; }
 .cw-market .gig .seller .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; font-size: 13px; color: #fff; flex: 0 0 30px; }
@@ -1028,8 +1032,13 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                 return (
                   <a key={g.id} href={href} className="gig-link" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
                   <article className="gig" data-c={cardCountry}>
-                    <div className="plate">
-                      <span className="plate-glyph">{glyphFor(g)}</span>
+                    <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
+                      {g.cover_image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="plate-img" src={g.cover_image_url} alt="" loading="lazy" />
+                      ) : (
+                        <span className="plate-glyph">{glyphFor(g)}</span>
+                      )}
                       <span className="plate-tag">{tag}</span>
                     </div>
                     <div className="body">
