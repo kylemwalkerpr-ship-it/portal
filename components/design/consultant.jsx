@@ -15,6 +15,23 @@ import AutoGrowInput from '../messaging/AutoGrowInput'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
 
+// Compact stat cell for the consultant My Office hero strip. Matches
+// the attorney HeroStat shape so the two surfaces feel consistent.
+function ConsultantHeroStat({ label, value, accent }) {
+  return (
+    <div style={{ padding: '14px 12px', borderRight: `1px solid ${C.border}` }}>
+      <div style={{
+        fontSize: '11px', fontWeight: 800, color: C.textMuted,
+        letterSpacing: '.12em', textTransform: 'uppercase',
+      }}>{label}</div>
+      <div style={{
+        fontSize: '20px', fontWeight: 700, color: accent || C.text,
+        marginTop: '2px', fontFamily: C.serif, letterSpacing: '-0.012em',
+      }}>{value}</div>
+    </div>
+  )
+}
+
 function EarningsChart({ days }) {
   const data = Array.isArray(days) && days.length > 0 ? days : [];
   if (data.length === 0) {
@@ -751,20 +768,58 @@ function ConsultantApp({ onLogout }) {
   // ── DASHBOARD ──
   const Dashboard = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Welcome back, {profileName || 'Consultant'} 👋</h2>
-
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>{newOrders > 0 ? `You have ${newOrders} new order${newOrders === 1 ? '' : 's'} waiting for acceptance.` : 'All orders are up to date.'}</p>
+      {/* Premium "My Office" header — gradient panel matching the
+          attorney overview and gig manager workbench. Houses the
+          headline, contextual status line, and a glanceable 4-cell
+          stat strip with the most-used consultant counters. */}
+      <div style={{
+        background: `linear-gradient(135deg, ${C.surface} 0%, ${C.surface2 || C.bg} 100%)`,
+        border: `1px solid ${C.border}`,
+        borderRadius: '16px',
+        padding: '24px 24px 0',
+        boxShadow: '0 10px 30px -22px rgba(60,59,110,0.35)',
+        overflow: 'hidden',
+      }}>
+        <div style={{ paddingBottom: '20px' }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 800,
+            letterSpacing: '.14em', textTransform: 'uppercase',
+            color: C.cyan, marginBottom: '4px',
+          }}>
+            My Office · Today
+          </div>
+          <h1 style={{
+            fontFamily: C.serif, fontSize: 'clamp(26px, 3.4vw, 36px)',
+            fontWeight: 600, margin: 0, letterSpacing: '-0.012em',
+            color: C.text, lineHeight: 1.1,
+          }}>
+            Welcome back, {profileName || 'Consultant'}.
+          </h1>
+          <p style={{
+            color: C.textMuted, fontSize: '14px', margin: '6px 0 0',
+            lineHeight: 1.55,
+          }}>
+            {newOrders > 0
+              ? `You have ${newOrders} new order${newOrders === 1 ? '' : 's'} waiting for acceptance.`
+              : 'All orders are up to date.'}
+          </p>
+        </div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          borderTop: `1px solid ${C.border}`,
+          background: C.surface,
+          margin: '0 -24px',
+          padding: '0 24px',
+        }}>
+          <ConsultantHeroStat label="Active orders" value={activeOrders} accent={C.cyan} />
+          <ConsultantHeroStat label="New requests" value={newOrders} accent={C.orange || C.amber || C.text} />
+          <ConsultantHeroStat label="This month" value={`$${monthEarnings}`} accent={C.green} />
+          <ConsultantHeroStat label="Completed" value={orders.filter(o => o.status === 'completed').length} accent={C.purple || C.text} />
+        </div>
       </div>
 
       <DashboardGuide role="consultant" />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
-        <StatCard label="Active Orders" value={activeOrders} icon="📦" color={C.cyan} />
-        <StatCard label="New Requests" value={newOrders} icon="🆕" color={C.orange} />
-        <StatCard label="This Month" value={`$${monthEarnings}`} icon="💰" color={C.green} />
-        <StatCard label="Completed" value={orders.filter(o => o.status === 'completed').length} icon="🏆" color={C.purple} />
-      </div>
       {!connectStatus?.onboarded && (
         <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '14px', padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: '240px' }}>

@@ -28,6 +28,24 @@ const fmtRelative = s => {
   return `${Math.floor(d/30)}mo ago`
 }
 
+// Compact stat cell used in the premium My Office hero strip. Smaller
+// than StatTile and not interactive — just a glanceable "what's the
+// number" cell inside the gradient header.
+function HeroStat({ label, value, accent = NAVY }) {
+  return (
+    <div style={{ padding: '14px 12px', borderRight: `1px solid ${BORDER}` }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: MUTED,
+        letterSpacing: '.12em', textTransform: 'uppercase', fontFamily: MONO,
+      }}>{label}</div>
+      <div style={{
+        fontSize: 20, fontWeight: 600, color: accent,
+        marginTop: 2, fontFamily: SERIF, letterSpacing: '-.012em',
+      }}>{value}</div>
+    </div>
+  )
+}
+
 function StatTile({ icon, label, value, accent = NAVY, sub, onClick }) {
   return (
     <button
@@ -118,27 +136,57 @@ export default function AttorneyOverview({ onJump, displayName }) {
 
   return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: 22, fontFamily: SANS, background: BG, minHeight: '100vh' }}>
-      {/* Header */}
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>Today</div>
-        <h1 style={{ fontFamily: SERIF, fontSize: 34, fontWeight: 500, color: TEXT, margin: 0, letterSpacing: '-.012em' }}>
-          Welcome back{greeting ? `, ${greeting}` : ''}.
-        </h1>
-        <div style={{ fontSize: 14, color: MUTED, marginTop: 6 }}>
-          {loading
-            ? 'Pulling your pipeline…'
-            : noActivity
-              ? 'Open the queue to respond to your first inquiry, or finish setting up payouts.'
-              : stats.review > 0
-                ? <>You have <strong style={{ color: AMBER }}>{stats.review}</strong> order{stats.review === 1 ? '' : 's'} awaiting client approval — escrow releases on approval.</>
-                : stats.overdue > 0
-                  ? <><strong style={{ color: RED }}>{stats.overdue}</strong> order{stats.overdue === 1 ? '' : 's'} past deadline. Reach out to your client to keep the engagement healthy.</>
-                  : inq.targeted_to_me > 0
-                    ? <><strong style={{ color: PURPLE }}>{inq.targeted_to_me}</strong> inquir{inq.targeted_to_me === 1 ? 'y' : 'ies'} targeted directly to you. Respond first to win.</>
-                    : stats.active > 0
-                      ? <>{stats.active} order{stats.active === 1 ? '' : 's'} in progress · {unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : 'inbox clear'}.</>
-                      : 'No active orders right now. Check the queue or revise your profile to win more inquiries.'}
+      {/* Premium "My Office" header — gradient panel with eyebrow,
+          serif headline, contextual status sub-line, and a 4-cell
+          stat strip showing the most relevant pipeline counters.
+          Mirrors the gig manager workbench surface to feel like one
+          coherent attorney portal. */}
+      <div style={{
+        background: `linear-gradient(135deg, ${SURFACE} 0%, ${SURFACE2} 100%)`,
+        border: `1px solid ${BORDER}`,
+        borderRadius: 16,
+        padding: '24px 24px 0',
+        boxShadow: '0 10px 30px -22px rgba(60,59,110,0.35)',
+        overflow: 'hidden',
+      }}>
+        <div style={{ paddingBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.14em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>
+            My Office · Today
+          </div>
+          <h1 style={{ fontFamily: SERIF, fontSize: 'clamp(26px, 3.4vw, 36px)', fontWeight: 500, color: TEXT, margin: 0, letterSpacing: '-.012em' }}>
+            Welcome back{greeting ? `, ${greeting}` : ''}.
+          </h1>
+          <div style={{ fontSize: 14, color: MUTED, marginTop: 6 }}>
+            {loading
+              ? 'Pulling your pipeline…'
+              : noActivity
+                ? 'Open the queue to respond to your first inquiry, or finish setting up payouts.'
+                : stats.review > 0
+                  ? <>You have <strong style={{ color: AMBER }}>{stats.review}</strong> order{stats.review === 1 ? '' : 's'} awaiting client approval — escrow releases on approval.</>
+                  : stats.overdue > 0
+                    ? <><strong style={{ color: RED }}>{stats.overdue}</strong> order{stats.overdue === 1 ? '' : 's'} past deadline. Reach out to your client to keep the engagement healthy.</>
+                    : inq.targeted_to_me > 0
+                      ? <><strong style={{ color: PURPLE }}>{inq.targeted_to_me}</strong> inquir{inq.targeted_to_me === 1 ? 'y' : 'ies'} targeted directly to you. Respond first to win.</>
+                      : stats.active > 0
+                        ? <>{stats.active} order{stats.active === 1 ? '' : 's'} in progress · {unread > 0 ? `${unread} unread message${unread === 1 ? '' : 's'}` : 'inbox clear'}.</>
+                        : 'No active orders right now. Check the queue or revise your profile to win more inquiries.'}
+          </div>
         </div>
+        {!loading && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+            borderTop: `1px solid ${BORDER}`,
+            background: SURFACE,
+            margin: '0 -24px',
+            padding: '0 24px',
+          }}>
+            <HeroStat label="Open queue" value={fmtN(inq.open ?? 0)} accent={CYAN} />
+            <HeroStat label="Active orders" value={fmtN(stats.active ?? 0)} accent={CYAN} />
+            <HeroStat label="Overdue" value={fmtN(stats.overdue ?? 0)} accent={stats.overdue > 0 ? RED : MUTED} />
+            <HeroStat label="30-day earnings" value={fmtMoney(stats.transferred30d ?? 0)} accent={GREEN} />
+          </div>
+        )}
       </div>
 
       {error && (
