@@ -105,6 +105,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable} ${lora.variable} ${plexMono.variable}`}>
       <head>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7367546228282360"
+          crossOrigin="anonymous"
+        />
         {/* hreflang removed pending per-locale URL routes */}
       </head>
       {/* overflowX: 'clip' — `hidden` here turns body into a scroll container,
