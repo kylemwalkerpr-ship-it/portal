@@ -3,20 +3,17 @@ import React from 'react'
 import Link from 'next/link'
 import { Card, Btn, Badge, Avatar, LoadingState, ErrorState, EmptyState } from '../design/shared'
 import { T, F } from './tokens'
+import { renderBioMarkdown as sharedRenderBioMarkdown } from '@/lib/bioMarkdown'
 
 /**
- * Render a bio body that may contain simple Markdown — currently we only
- * see attorneys using `## Section heading` blocks and paragraph breaks,
- * which `next/font` + the design system handle fine when we split on
- * blank-line / heading boundaries. Anything fancier (links, lists, bold)
- * is also handled with a tiny inline parser, mirroring the apex blog
- * renderInline pattern.
- *
- * Previously the bio rendered as one `<p>{seller.bio}</p>` block, so
- * markup like `## About\n\nWith over 5 years…` leaked the literal `##`
- * symbols into the page.
+ * Use the shared lib/bioMarkdown helper so attorney/consultant/seller
+ * profiles all render bio markdown consistently. Kept a local
+ * `renderBioMarkdown` name in case anything below references it.
  */
-function renderBioMarkdown(bio: string) {
+const renderBioMarkdown = sharedRenderBioMarkdown
+// Legacy implementation kept temporarily for diff readability; safe to
+// delete after this commit lands.
+function _legacyRenderBioMarkdown(bio: string) {
   const blocks = bio.split(/\n{2,}/)
   return blocks.map((block, i) => {
     const trimmed = block.trim()

@@ -4,6 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import { Btn, Card, Badge } from '../design/shared'
 import { T, F } from './tokens'
+import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 /**
  * /marketplace/providers — paginated, faceted provider directory.
@@ -14,7 +15,8 @@ import { T, F } from './tokens'
 const PAGE_SIZE = 24
 
 const fmtN = n => Number(n ?? 0).toLocaleString('en-US')
-const fmtPrice = n => n ? `$${Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'
+// starting_price is stored in cents; divide for display.
+const fmtPrice = n => n ? `$${Number(n / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'
 const initials = name => String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase() || '').join('')
 
 function Stars({ value, size = 13 }) {
@@ -470,7 +472,7 @@ function ProviderSidePane({ a, onClose }) {
           {a.bio && (
             <div>
               <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: T.inkSoft, marginBottom: 8 }}>About</div>
-              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.ink, whiteSpace: 'pre-line' }}>{a.bio}</p>
+              <div style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: T.ink }}>{renderBioMarkdown(a.bio)}</div>
             </div>
           )}
 
