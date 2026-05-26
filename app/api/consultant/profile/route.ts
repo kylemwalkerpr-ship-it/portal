@@ -41,7 +41,7 @@ export async function GET() {
   const { data: full } = await db
     .from('consultants')
     .select(
-      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, jurisdictions, practice_areas, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, video_intro_url',
+      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, jurisdictions, practice_areas, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url',
     )
     .eq('id', consultant.id)
     .maybeSingle()
@@ -117,6 +117,13 @@ export async function PATCH(req: Request) {
   if (typeof body.available === 'boolean') consultantPayload.available = body.available
   if (typeof body.auto_withdraw === 'boolean') consultantPayload.auto_withdraw = body.auto_withdraw
   if (typeof body.offers_free_consult === 'boolean') consultantPayload.offers_free_consult = body.offers_free_consult
+  if ('consult_booking_url' in body) {
+    // Light validation only — HTTPS-only, no javascript: schemes. The
+    // editor enforces a Calendly/Cal.com hint but anything that looks
+    // like a real URL is accepted (consultants may use other tools).
+    const raw = cleanText((body as Record<string, unknown>).consult_booking_url, 400)
+    consultantPayload.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
+  }
   if (body.notif_prefs && typeof body.notif_prefs === 'object') consultantPayload.notif_prefs = body.notif_prefs
 
   for (const [k, max] of Object.entries(RICH_TEXT)) {

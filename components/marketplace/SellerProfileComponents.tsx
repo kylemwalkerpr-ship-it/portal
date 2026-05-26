@@ -85,6 +85,7 @@ export interface SellerProfile {
   years_experience?: number | null
   starting_price?: number | null
   offers_free_consult?: boolean
+  consult_booking_url?: string | null
   capacity?: string | null
   profile_url?: string | null
   timezone?: string | null
@@ -275,7 +276,27 @@ export function SellerAbout({ seller }: { seller: SellerProfile }) {
         {seller.offers_free_consult && (
           <div style={aboutItem}>
             <span style={aboutLabel}>Free Consult</span>
-            <span style={aboutValue}>15 minutes available</span>
+            {seller.consult_booking_url ? (
+              // Clickable booking link → opens Calendly / Cal.com /
+              // equivalent in a new tab. rel="noopener noreferrer"
+              // so the third-party scheduler can't see the portal
+              // tab via window.opener or leak via Referer.
+              <a
+                href={seller.consult_booking_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: '#1A6B45',
+                  fontWeight: 700,
+                  textDecoration: 'underline',
+                  fontSize: '13px',
+                }}
+              >
+                📅 Book 15 min →
+              </a>
+            ) : (
+              <span style={aboutValue}>15 minutes available</span>
+            )}
           </div>
         )}
       </div>

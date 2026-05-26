@@ -107,6 +107,12 @@ function ConsultantApp({ onLogout }) {
   const [profileEmail, setProfileEmail] = React.useState('');
   const [profileBio, setProfileBio] = React.useState('');
   const [profileAvatarUrl, setProfileAvatarUrl] = React.useState('');
+  // Free consult engagement option — toggle + booking URL. When the
+  // toggle is on AND the URL is set, the public seller card shows a
+  // clickable "Book free 15-min consult" CTA pointing to the URL.
+  // Without the URL, the badge is informational only.
+  const [offersFreeConsult, setOffersFreeConsult] = React.useState(false);
+  const [consultBookingUrl, setConsultBookingUrl] = React.useState('');
   const [gigUsage, setGigUsage] = React.useState({ used: 0, limit: 5 });
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
   const [available, setAvailable] = React.useState(true);
@@ -158,6 +164,8 @@ function ConsultantApp({ onLogout }) {
         setProfileBio(data.consultant?.bio || '');
         setProfileAvatarUrl(data.consultant?.avatarUrl || '');
         setAvailable(data.consultant?.available !== false);
+        setOffersFreeConsult(Boolean(data.consultant?.offers_free_consult || data.consultant?.offersFreeConsult));
+        setConsultBookingUrl(String(data.consultant?.consult_booking_url || data.consultant?.consultBookingUrl || ''));
         setNotifPrefs(data.consultant?.notifPrefs || { orders: true, messages: true, payments: true });
         setAutoWithdraw(Boolean(data.consultant?.autoWithdraw));
         setConnectStatus(status);
@@ -212,6 +220,8 @@ function ConsultantApp({ onLogout }) {
       full_name: profileName,
       email: profileEmail,
       bio: profileBio,
+      offers_free_consult: offersFreeConsult,
+      consult_booking_url: consultBookingUrl.trim() || null,
     });
     if (ok) setActionNotice('Profile saved.');
   };
@@ -1422,6 +1432,41 @@ function ConsultantApp({ onLogout }) {
           <Input label="First and last name" value={profileName} onChange={setProfileName} placeholder="First Last" />
           <Input label="Email" type="email" value={profileEmail} onChange={setProfileEmail} placeholder="Email address" />
           <Input label="Bio" value={profileBio} onChange={setProfileBio} placeholder="Short profile summary" />
+
+          {/* Free consult toggle — when on, students see a "Free 15-min
+              consult" badge on the public card. When the URL below is
+              also set, the badge becomes a clickable Calendly/Cal.com
+              link. Without the URL, the badge stays informational. */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>Offer a free 15-minute consult</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>Strongly boosts click-through. Save below after toggling.</div>
+            </div>
+            <button onClick={() => setOffersFreeConsult(v => !v)} style={{
+              width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+              background: offersFreeConsult ? C.green : C.surface3, position: 'relative', transition: 'background 0.2s',
+            }}>
+              <div style={{ position: 'absolute', top: '3px', left: offersFreeConsult ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+            </button>
+          </div>
+
+          {/* Booking URL — only shown when the toggle above is on.
+              Hides cleanly via short-circuit so consultants who don't
+              offer consults don't see a field they can't use. */}
+          {offersFreeConsult && (
+            <div style={{ padding: '4px 0' }}>
+              <Input
+                label="Free consult booking link"
+                value={consultBookingUrl}
+                onChange={setConsultBookingUrl}
+                placeholder="https://calendly.com/your-handle/15min"
+              />
+              <div style={{ fontSize: '11px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>
+                Paste your Calendly, Cal.com, or Google Calendar appointments URL. When set, students can book a 15-min slot directly from your public card. Leave blank to keep the badge informational only.
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>Available for orders</div>
