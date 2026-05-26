@@ -77,10 +77,26 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const storagePath = `${id}/${profileId}/${crypto.randomUUID()}-${safeName}`
 
   const buf = await file.arrayBuffer()
-  const upload = await db.storage.from(BUCKET).upload(storagePath, buf, {
+  let upload = await db.storage.from(BUCKET).upload(storagePath, buf, {
     contentType: file.type || 'application/octet-stream',
     upsert: false,
   })
+  // Self-heal: if the bucket doesn't exist yet, create it (public so the
+  // public URL resolves in the browser) and retry the upload. Avoids the
+  // chicken-and-egg "bucket not found" error on first ever attachment.
+  // See supabase/message_attachments_bucket.sql for the canonical
+  // migration; this is a runtime fallback for tenants that haven't
+  // run it yet.
+  if (upload.error && /bucket not found|does not exist/i.test(upload.error.message || '')) {
+    const create = await db.storage.createBucket(BUCKET, { public: true })
+    if (create.error && !/already exists/i.test(create.error.message || '')) {
+      return Response.json({ error: `Could not create bucket: ${create.error.message}` }, { status: 500 })
+    }
+    upload = await db.storage.from(BUCKET).upload(storagePath, buf, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    })
+  }
   if (upload.error) {
     return Response.json({ error: upload.error.message }, { status: 500 })
   }

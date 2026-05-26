@@ -155,6 +155,25 @@ export default function AutoGrowInput({
       setAttachError('Voice notes are not supported in this browser.')
       return
     }
+    // If the user has already blocked mic access for this site, the
+    // getUserMedia call will silently no-op (browsers don't re-prompt
+    // once "Block" was selected). Catch that case up-front and surface
+    // explicit unblock steps — otherwise the user keeps clicking and
+    // nothing happens.
+    try {
+      if (typeof navigator.permissions?.query === 'function') {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+        if (status.state === 'denied') {
+          setAttachError(
+            'Microphone is blocked. Click the lock icon next to the URL bar → Site settings → Microphone → Allow, then reload this page.',
+          )
+          return
+        }
+      }
+    } catch {
+      // Permissions API not available for mic in some browsers; fall
+      // through and let getUserMedia raise the regular prompt/error.
+    }
     setAttachError('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -190,7 +209,16 @@ export default function AutoGrowInput({
         })
       }, 1000)
     } catch (err: any) {
-      setAttachError(err?.message || 'Microphone access denied. Allow it in your browser settings to record voice notes.')
+      const name = err?.name || ''
+      if (name === 'NotAllowedError' || /permission|denied/i.test(err?.message || '')) {
+        setAttachError(
+          'Microphone permission denied. Click the lock icon next to the URL bar → Site settings → Microphone → Allow, then reload this page and try again.',
+        )
+      } else if (name === 'NotFoundError') {
+        setAttachError('No microphone detected on this device.')
+      } else {
+        setAttachError(err?.message || 'Could not start recording.')
+      }
     }
   }
 
