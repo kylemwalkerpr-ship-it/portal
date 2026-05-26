@@ -10,6 +10,7 @@ import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
 import { GigCard } from './MarketplaceHero'
 import { CATEGORIES, getCategoryById } from '@/lib/categories'
+import { responsiveImageProps } from '@/lib/responsiveImage'
 import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
@@ -619,9 +620,8 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                       >
                         {gig.gallery_images?.[0]?.url ? (
                           <img
-                            src={gig.gallery_images[0].url}
-                            alt={gig.title}
                             style={gigListImage}
+                            {...responsiveImageProps(gig.gallery_images[0].url, gig.title)}
                           />
                         ) : (
                           <div

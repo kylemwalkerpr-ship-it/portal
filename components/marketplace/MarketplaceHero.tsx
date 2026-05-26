@@ -4,6 +4,7 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { T, F } from './tokens'
+import { responsiveImageProps } from '@/lib/responsiveImage'
 
 const gigCard: CSSProperties = {
   background: T.vellum,
@@ -147,7 +148,7 @@ export function GigCard({ gig }: GigCardProps) {
       onMouseLeave={() => setHovered(false)}
     >
       {imageUrl ? (
-        <img src={imageUrl} alt={gig.title} style={gigImage} />
+        <img style={gigImage} {...responsiveImageProps(imageUrl, gig.title)} />
       ) : (
         <div style={{ ...gigImage, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', color: T.inkSoft, fontWeight: 700, letterSpacing: '.04em' }}>
           {gig.title.slice(0, 2).toUpperCase()}

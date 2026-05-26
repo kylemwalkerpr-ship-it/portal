@@ -4,6 +4,7 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { Card, LoadingState, ErrorState, EmptyState, Btn } from '../design/shared'
+import { responsiveImageProps } from '@/lib/responsiveImage'
 import {
   SellerProfileCard,
   PricingTiers,
@@ -418,7 +419,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           <div style={mainContent}>
             <div>
               {mainImage ? (
-                <img src={mainImage} alt={gig.title} style={gigImage} />
+                <img style={gigImage} {...responsiveImageProps(mainImage, gig.title, true)} />
               ) : (
                 <div
                   style={{
@@ -439,13 +440,12 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                   {images.map((img: any, index: number) => (
                     <img
                       key={index}
-                      src={img.url}
-                      alt={`${gig.title} ${index + 1}`}
                       style={{
                         ...galleryThumbnail,
                         borderColor: mainImage === img.url ? T.indigo : T.ruleSoft,
                       }}
                       onClick={() => setMainImage(img.url)}
+                      {...responsiveImageProps(img.url, `${gig.title} ${index + 1}`)}
                     />
                   ))}
                 </div>

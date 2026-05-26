@@ -461,6 +461,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
         <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="💼" label="My Office" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
+        <NavItem icon="📊" label="SEO Analytics" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/seo-analytics'} onClick={() => goToRoute('/dashboard/seo-analytics')} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
