@@ -520,11 +520,14 @@ export default function GigSEOAnalytics() {
           </div>
         </Card>
 
-        <Card style={{ padding: '18px' }}>
-          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
-            Best Performing
-          </div>
-          {bestScore && (
+        {/* Best Performing — only meaningful when there's more than one
+            service to compare. Suppressed for single-gig sellers so the
+            two large cards (Average + Health) carry the summary. */}
+        {scoredGigs.length > 1 && bestScore && (
+          <Card style={{ padding: '18px' }}>
+            <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+              Best Performing
+            </div>
             <div style={{ marginTop: '8px' }}>
               <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: T.moss, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {bestScore.gig.title}
@@ -533,24 +536,55 @@ export default function GigSEOAnalytics() {
                 Score: {bestScore.score.score}/100 — {scoreLabel(bestScore.score.score)}
               </div>
             </div>
-          )}
-        </Card>
+          </Card>
+        )}
 
-        <Card style={{ padding: '18px' }}>
-          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
-            Needs Most Work
-          </div>
-          {worstScore && (
-            <div style={{ marginTop: '8px' }}>
-              <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: T.brick, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {worstScore.gig.title}
-              </div>
-              <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>
-                Score: {worstScore.score.score}/100 — {scoreLabel(worstScore.score.score)}
-              </div>
-            </div>
-          )}
-        </Card>
+        {/* Needs Most Work — only show when the lowest-scoring gig
+            actually has work to do AND there's more than one gig (the
+            same gig can't be both best and worst). When everything is
+            healthy, flip to an "All Optimized" celebration card so the
+            slot isn't wasted. */}
+        {(() => {
+          const hasGap = scoredGigs.length > 1 && worstScore && worstScore.score.score < 80
+          if (hasGap) {
+            const worst = worstScore!
+            return (
+              <Card style={{ padding: '18px' }}>
+                <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+                  Needs Most Work
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: scoreColor(worst.score.score), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {worst.gig.title}
+                  </div>
+                  <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>
+                    Score: {worst.score.score}/100 — {scoreLabel(worst.score.score)}
+                  </div>
+                </div>
+              </Card>
+            )
+          }
+          // All gigs (or the only gig) are at >= 80 — show a positive
+          // signal instead of misleading red-text card.
+          if (scoredGigs.length >= 1) {
+            return (
+              <Card style={{ padding: '18px' }}>
+                <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+                  All Optimized
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: T.moss }}>
+                    ✓ No issues to fix
+                  </div>
+                  <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>
+                    {scoredGigs.length === 1 ? 'Your service is fully optimized.' : 'Every service is performing well.'}
+                  </div>
+                </div>
+              </Card>
+            )
+          }
+          return null
+        })()}
 
         <Card style={{ padding: '18px' }}>
           <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
