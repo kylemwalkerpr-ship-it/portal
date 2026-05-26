@@ -305,51 +305,12 @@ export default function GigSEOAnalytics() {
     ? scoredGigs.reduce((worst, s) => s.score.score < (worst?.score?.score ?? 100) ? s : worst, scoredGigs[0])
     : null
 
-  if (loading) {
-    return (
-      <div>
-        <div style={{ color: T.inkSoft, fontSize: '14px' }}>Loading SEO analytics…</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div>
-        <div style={{ color: T.brick, fontSize: '14px' }}>Error: {error}</div>
-        <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }} onClick={() => window.location.reload()}>
-          Retry
-        </Btn>
-      </div>
-    )
-  }
-
-  if (gigs.length === 0) {
-    return (
-      <div>
-        <Card style={{ padding: '24px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📊</div>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: T.ink, marginBottom: '8px' }}>
-            No services yet
-          </div>
-          <div style={{ color: T.inkSoft, fontSize: '13px', lineHeight: 1.6 }}>
-            Create your first service to start tracking SEO performance.
-            <br />
-            <a href="/dashboard/gigs/new" style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
-              Create a service →
-            </a>
-          </div>
-        </Card>
-      </div>
-    )
-  }
-
   // ────────────────────────────────────────────────────────────
-  // CSV Export
+  // CSV Export — defined before early returns so the hook count
+  // stays consistent across loading/empty/live states.
   // ────────────────────────────────────────────────────────────
 
   const exportCSV = React.useCallback(() => {
-    // Build CSV rows
     const headers = [
       'Title', 'Status', 'SEO Score', 'Score Label',
       'Category', 'Jurisdiction',
@@ -392,7 +353,6 @@ export default function GigSEOAnalytics() {
         failed || 'All checks pass',
       ]
 
-      // Escape CSV fields (wrap in quotes if they contain commas, quotes, or newlines)
       return row.map(cell => {
         if (typeof cell !== 'string') cell = String(cell)
         if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
@@ -402,7 +362,7 @@ export default function GigSEOAnalytics() {
       }).join(',')
     })
 
-    const bom = '\uFEFF' // UTF-8 BOM for Excel compatibility
+    const bom = '\uFEFF'
     const csv = bom + headers.join(',') + '\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -412,6 +372,45 @@ export default function GigSEOAnalytics() {
     a.click()
     URL.revokeObjectURL(url)
   }, [scoredGigs])
+
+  if (loading) {
+    return (
+      <div>
+        <div style={{ color: T.inkSoft, fontSize: '14px' }}>Loading SEO analytics…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div>
+        <div style={{ color: T.brick, fontSize: '14px' }}>Error: {error}</div>
+        <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }} onClick={() => window.location.reload()}>
+          Retry
+        </Btn>
+      </div>
+    )
+  }
+
+  if (gigs.length === 0) {
+    return (
+      <div>
+        <Card style={{ padding: '24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📊</div>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: T.ink, marginBottom: '8px' }}>
+            No services yet
+          </div>
+          <div style={{ color: T.inkSoft, fontSize: '13px', lineHeight: 1.6 }}>
+            Create your first service to start tracking SEO performance.
+            <br />
+            <a href="/dashboard/gigs/new" style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
+              Create a service →
+            </a>
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   const passedTotal = scoredGigs.reduce((sum, s) => sum + s.score.checks.filter(c => c.passed).reduce((w, c) => w + c.weight, 0), 0)
   const maxTotal = scoredGigs.length * 100
