@@ -28,7 +28,7 @@ export async function GET() {
 
   const { data: profile } = await db
     .from('profiles')
-    .select('email, email_verified_at, phone, phone_verified, phone_verified_at')
+    .select('email, email_verified_at, phone, phone_verified, phone_verified_at, two_factor_enabled')
     .eq('id', auth.profileId)
     .single()
 
@@ -58,6 +58,7 @@ export async function GET() {
   const emailVerified = !!profile?.email_verified_at
   const phoneVerified = !!profile?.phone_verified
   const phoneOnFile = !!(profile?.phone && String(profile.phone).trim())
+  const twoFactorEnabled = !!profile?.two_factor_enabled
   const appApproved = (appRow?.status || '') === 'approved'
   const credentialFilled = !!(appRow?.credential_type && String(appRow.credential_type).trim())
   const barFilled = !!(appRow?.bar_number && String(appRow.bar_number).trim())
@@ -92,6 +93,16 @@ export async function GET() {
           : 'Required for SMS notifications and two-factor auth.',
       actionHref: '/dashboard/compliance#phone',
       actionLabel: phoneVerified ? 'Re-verify' : 'Verify',
+    },
+    {
+      id: 'two_factor',
+      label: 'Two-factor authentication',
+      status: twoFactorEnabled ? 'ok' : 'missing',
+      detail: twoFactorEnabled
+        ? 'Authenticator app linked — code required on every new sign-in.'
+        : 'Authenticator app not set up. Strongly recommended for credentialled accounts.',
+      actionHref: '/dashboard/compliance#two-factor',
+      actionLabel: twoFactorEnabled ? 'Manage' : 'Set up',
     },
     {
       id: 'application',

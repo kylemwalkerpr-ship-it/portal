@@ -24,8 +24,8 @@ import { getChatProvider } from '@/lib/chatProvider'
 //     type — not personalised with fabricated identifiers.
 
 const ALLOWED_ITEMS = new Set([
-  'email', 'phone', 'application', 'credential_type', 'bar_number',
-  'malpractice', 'jurisdictions', 'payout', 'accepting',
+  'email', 'phone', 'two_factor', 'application', 'credential_type',
+  'bar_number', 'malpractice', 'jurisdictions', 'payout', 'accepting',
 ])
 
 const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
@@ -36,6 +36,10 @@ const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
   phone: {
     attorney: 'Phone verification — confirms the seller controls a phone number where YouSafe can reach them for SMS notifications and two-factor auth (TOTP recommended on top). Explain: open the Phone verification card on this page, enter their number with country code, enter the 6-digit SMS code, done. Note SMS rates vary by carrier. Do NOT generate a phone number or verification code.',
     consultant: 'Phone verification — confirms the seller controls a phone number where YouSafe can reach them for SMS notifications and two-factor auth (TOTP recommended on top). Explain: open the Phone verification card on this page, enter their number with country code, enter the 6-digit SMS code, done. Note SMS rates vary by carrier. Do NOT generate a phone number or verification code.',
+  },
+  two_factor: {
+    attorney: 'Two-factor authentication via authenticator app (TOTP) — Google Authenticator, 1Password, Authy, etc. Explain: open the Two-factor card on this page, scan the QR with their app, type the 6-digit code, save the backup codes shown ONCE. Strongly recommended for attorneys because access to client documents requires elevated protection. Do NOT generate a TOTP secret, QR code, or backup codes.',
+    consultant: 'Two-factor authentication via authenticator app (TOTP) — Google Authenticator, 1Password, Authy, etc. Explain: open the Two-factor card on this page, scan the QR with their app, type the 6-digit code, save the backup codes shown ONCE. Strongly recommended for consultants because access to client documents requires elevated protection. Do NOT generate a TOTP secret, QR code, or backup codes.',
   },
   application: {
     attorney: 'Attorney application status — the seller submitted an application that an admin reviews manually. Explain that "Pending admin review" means a human is checking the materials, typical turnaround 1–3 business days. If "Not started", direct them to /dashboard/attorney/intake.',

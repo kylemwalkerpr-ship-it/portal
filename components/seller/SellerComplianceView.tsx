@@ -4,6 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import type { ComplianceItem, ComplianceStatus } from '@/lib/complianceItems'
 import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
+import { TwoFactorCard } from '@/components/TwoFactorCard'
 
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -212,6 +213,10 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                         // route; Next.js <Link> intercepts navigation and
                         // skips the scroll. Detect by leading-hash or
                         // same-pathname-with-hash and render accordingly.
+                        // Same-page hash links: /dashboard/compliance#phone,
+                        // /dashboard/compliance#two-factor, etc. The Next.js
+                        // Link component swallows the scroll on same-route
+                        // navigation; a plain <a> respects the hash.
                         item.actionHref.includes('#') && item.actionHref.startsWith('/dashboard/compliance') ? (
                           <a
                             href={`#${item.actionHref.split('#')[1] || ''}`}
@@ -272,6 +277,14 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
           page reload. */}
       <section id="phone" style={{ scrollMarginTop: '80px' }}>
         <PhoneVerificationCard />
+      </section>
+
+      {/* Two-factor authentication card — same pattern as phone:
+          Clerk owns enrolment, /api/profile/sync-phone mirrors the
+          two_factor_enabled flag into profiles after success so the
+          compliance row above flips to ✓ Enabled. */}
+      <section id="two-factor" style={{ scrollMarginTop: '80px' }}>
+        <TwoFactorCard />
         <button
           type="button"
           onClick={load}
@@ -282,7 +295,7 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
             fontSize: '11px', fontWeight: 600, cursor: 'pointer',
             fontFamily: sans,
           }}
-          title="Refresh compliance status after verifying"
+          title="Refresh compliance status after verifying phone or enabling 2FA"
         >
           ↻ Refresh status after verifying
         </button>
