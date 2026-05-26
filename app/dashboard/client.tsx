@@ -22,21 +22,42 @@ export default function DashboardClient({ role, status, userName, userId, expect
   const { signOut } = useClerk()
   const loggingOut = React.useRef(false)
 
-  // First-mount lane bridge. If sign-up wrote a requested lane to
-  // sessionStorage (because Clerk dropped unsafeMetadata across an
-  // OAuth roundtrip), promote the freshly-provisioned 'client' profile
-  // to whatever lane the user actually came in to use. The server-side
-  // /api/profile/sync-lane route guards against promoting users who
-  // already have client activity, so this is safe to call on every
-  // mount — it's a no-op for anyone who isn't a brand-new sign-up.
+  // First-mount lane bridge. SignUpClient writes the requested lane to
+  // BOTH sessionStorage AND a SameSite=Lax cookie before kicking off
+  // OAuth — the cookie is what the server (app/dashboard/page.tsx)
+  // already used to provision the profile on the right lane. This
+  // client-side bridge is the belt-and-braces fallback for cases
+  // where the server-side cookie was missed (HTTPS/dev mismatches,
+  // older sessions, in-flight tabs) — it POSTs /api/profile/sync-lane
+  // to promote the freshly-provisioned 'client' profile post-hoc.
+  //
+  // The server-side sync-lane route guards against promoting users
+  // who already have client activity, so this is safe to call on
+  // every mount — it's a no-op for anyone who isn't a brand-new
+  // sign-up. Both stores are cleared after the call regardless of
+  // outcome so a stale lane can't survive across visits.
+  const clearLaneStores = React.useCallback(() => {
+    try { window.sessionStorage.removeItem('ys.requestedLane') } catch {}
+    try { document.cookie = 'ys_requested_lane=; Max-Age=0; Path=/; SameSite=Lax' } catch {}
+  }, [])
   React.useEffect(() => {
     if (typeof window === 'undefined') return
     let stored: string | null = null
-    try { stored = window.sessionStorage.getItem('ys.requestedLane') } catch { return }
+    try { stored = window.sessionStorage.getItem('ys.requestedLane') } catch {}
+    if (!stored) {
+      // Fall back to the cookie if sessionStorage is empty (popup OAuth,
+      // cross-tab restore, etc.). Cookie was written by SignUpClient
+      // and is the same value sessionStorage would have held.
+      try {
+        const m = document.cookie.match(/(?:^|;\s*)ys_requested_lane=([^;]+)/)
+        if (m) stored = decodeURIComponent(m[1])
+      } catch {}
+    }
     if (!stored || stored === 'client') return
-    // Don't re-fire after we already have the right role on this mount.
+    // Don't re-fire when we already landed on the right role — the
+    // server-side cookie path already handled it.
     if (stored === role) {
-      try { window.sessionStorage.removeItem('ys.requestedLane') } catch {}
+      clearLaneStores()
       return
     }
     fetch('/api/profile/sync-lane', {
@@ -47,18 +68,15 @@ export default function DashboardClient({ role, status, userName, userId, expect
     })
       .then(r => r.ok ? r.json() : null)
       .then((d: any) => {
-        try { window.sessionStorage.removeItem('ys.requestedLane') } catch {}
-        // Only reload when the server actually promoted the profile —
-        // a no-op response (already on the right lane, or guarded by
-        // existing activity) means the current page state is correct.
+        clearLaneStores()
         if (d?.promoted) {
           window.location.reload()
         }
       })
       .catch(() => {
-        try { window.sessionStorage.removeItem('ys.requestedLane') } catch {}
+        clearLaneStores()
       })
-  }, [role])
+  }, [role, clearLaneStores])
 
   const handleLogout = React.useCallback(() => {
     // Prevent double-clicks / concurrent calls

@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -57,6 +58,28 @@ export default async function DashboardPage({
 async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertical?: string }>) {
   const params = await searchParams
   let requestedRole = normalizeAuthLane(params.lane)
+  // SignUpClient writes `ys_requested_lane` as a SameSite=Lax cookie
+  // before kicking off OAuth. That cookie survives every Clerk
+  // round-trip mode (popup, top-level redirect, new tab) and is the
+  // only durable signal we have when both Clerk's unsafeMetadata AND
+  // the `?lane=` query string are lost across the OAuth callback.
+  // Prefer it over the URL hint so a stale URL can't override a fresh
+  // sign-up attempt — but still allow the URL value to win when the
+  // cookie hasn't been set (existing users, deep links, etc).
+  let cookieLane: AuthLane | null = null
+  try {
+    const jar = await cookies()
+    const raw = jar.get('ys_requested_lane')?.value
+    if (raw) {
+      const decoded = decodeURIComponent(raw)
+      if (decoded && decoded !== 'client') {
+        cookieLane = normalizeAuthLane(decoded)
+      }
+    }
+  } catch { /* cookies() can throw in some prerendering contexts; non-fatal */ }
+  if (cookieLane && !params.lane) {
+    requestedRole = cookieLane
+  }
   // Verticals let one portal serve study-abroad consultancy + legal document
   // prep. The wizard on caseworks deep-links here with ?vertical=legal so we
   // can tag the freshly-created profile.
@@ -98,19 +121,23 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   let clerkData: Awaited<ReturnType<typeof getClerkUserData>> | null = null
   if (!profile) {
     clerkData = await getClerkUserData(userId)
-    // Clerk's unsafe_metadata.requestedRole is the most authoritative
-    // signal — it was set at sign-up and travels with the user across
-    // verification email redirects, OAuth callbacks, and tab restarts.
-    // The URL ?lane= is just a hint and can be dropped by intermediate
-    // Clerk routes. If they conflict, prefer the metadata.
+    // Priority chain when there's no profile row yet:
+    //   1. Clerk unsafe_metadata.requestedRole (lossy through OAuth)
+    //   2. ys_requested_lane cookie (the durable bridge written by
+    //      SignUpClient before OAuth — only set when lane !== client)
+    //   3. URL `?lane=` hint
     //
-    // Previously this preferred params.lane unconditionally, which meant
-    // an attorney who landed back on /dashboard without ?lane=attorney
-    // (e.g. after email verification) was provisioned as the default
-    // 'client' lane — the symptom the user reported on
-    // portal.yousafeconsultancy.com.
+    // Clerk's metadata is authoritative WHEN PRESENT, but Google OAuth
+    // first-time consent reliably drops it. The cookie picks up that
+    // slack: it was set on /sign-up/attorney before the user was
+    // redirected away, survives the full OAuth round-trip including
+    // popup contexts, and is read here at the very first server
+    // render — so the profile is created with role='attorney' on
+    // line 1 instead of waiting on a client-side reload bridge.
     if (clerkData.requestedRole) {
       requestedRole = clerkData.requestedRole
+    } else if (cookieLane) {
+      requestedRole = cookieLane
     }
   }
 

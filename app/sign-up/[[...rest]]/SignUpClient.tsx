@@ -61,17 +61,33 @@ export default function SignUpClient() {
     }
   }, [])
 
-  // Mirror the resolved lane into sessionStorage BEFORE Clerk takes the
-  // browser over for OAuth. Clerk's `unsafeMetadata.requestedRole` is
-  // dropped on several OAuth roundtrips (most reliably with Google's
-  // first-time consent screen), which is what produced
-  // `/dashboard?lane=student` for users who clicked "Apply as attorney
-  // with Google". The dashboard's lane bridge consumes this on first
-  // load and POSTs /api/profile/sync-lane to promote the profile if the
-  // user hasn't generated any client-side activity yet.
+  // Mirror the resolved lane into BOTH sessionStorage and a cookie
+  // BEFORE Clerk takes the browser over for OAuth. Clerk's
+  // `unsafeMetadata.requestedRole` is dropped on several OAuth
+  // roundtrips (most reliably with Google's first-time consent screen),
+  // which is what produced `/dashboard?lane=student` for users who
+  // clicked "Apply as attorney with Google".
+  //
+  // Why two stores:
+  //   - sessionStorage works for inline same-tab OAuth — fast, no
+  //     network roundtrip — and is what DashboardClient consumes.
+  //   - A cookie is the only thing that survives popup-style OAuth
+  //     (Clerk sometimes opens Google in a new window) and is also
+  //     readable server-side from app/dashboard/page.tsx, so the
+  //     dashboard's first server render lands on the right lane
+  //     without a client-side reload.
+  //
+  // The cookie is path=/, SameSite=Lax (so it travels through the
+  // OAuth redirect), no Secure flag in dev so localhost still works,
+  // and a 1-hour Max-Age so it can't outlive its purpose. Both
+  // stores get cleared after the dashboard promotes the profile.
   useEffect(() => {
     if (typeof window === 'undefined' || lane === 'client') return
     try { window.sessionStorage.setItem('ys.requestedLane', lane) } catch {}
+    try {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+      document.cookie = `ys_requested_lane=${encodeURIComponent(lane)}; Max-Age=3600; Path=/; SameSite=Lax${secure}`
+    } catch {}
   }, [lane])
 
   if (shouldRedirect) {
