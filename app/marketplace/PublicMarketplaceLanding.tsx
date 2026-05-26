@@ -229,15 +229,15 @@ async function loadLandingData(): Promise<LandingData> {
   // One fat query: every active gig with provider country + tiers. The
   // marketplace inventory is small enough that pulling it whole on a public
   // landing is cheap, and partitioning happens in memory afterwards.
-  // Include gallery_images + cover_image_url so card components rendered
-  // from this server-side query (HeroCaseFileSlideshow, AllGigsDrawer)
-  // have a cover image to show. Without these columns the public
-  // marketplace landing was rendering text-only cards even when the
-  // gig had a real uploaded cover.
+  // Do NOT request cover_image_url by name — that column is optional and
+  // missing on some deployments; naming it triggers a PostgREST 42703 that
+  // empties the whole inventory and leaves the marketplace blank.
+  // resolveCoverUrl() below derives the cover from gallery_images[0] when
+  // the column is absent, so card components still get an image.
   const inventoryP = db
     .from('gigs')
     .select(
-      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, cover_image_url, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
+      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })

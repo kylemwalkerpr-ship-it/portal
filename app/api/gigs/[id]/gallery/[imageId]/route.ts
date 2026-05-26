@@ -6,7 +6,10 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { id, imageId } = await context.params
-  const { data: gig } = await auth.db.from('gigs').select('provider_id, gallery_images, cover_image_url').eq('id', id).single()
+  // Don't name cover_image_url in the read — the column is optional on
+  // older deployments and a 42703 here would mask the gig as 'not found'.
+  // The write path below already self-heals when the column is missing.
+  const { data: gig } = await auth.db.from('gigs').select('provider_id, gallery_images').eq('id', id).single()
   if (!gig) return fail('Gig not found.', 404)
   if (gig.provider_id !== auth.profileId && auth.role !== 'admin') return fail('Forbidden.', 403)
   const gallery = Array.isArray(gig.gallery_images) ? gig.gallery_images : []
