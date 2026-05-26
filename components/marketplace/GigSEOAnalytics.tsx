@@ -15,6 +15,37 @@ import React from 'react'
 import { Btn, Card, Badge } from '../design/shared'
 import { T, F } from './tokens'
 import { computeSEOScore, type SEOData, type SEOScoreResult } from '@/lib/seoUtils'
+import GigSEOInlineEditor, { type EditableField } from './GigSEOInlineEditor'
+
+// Map each computeSEOScore check label to the field that fixes it.
+// The label strings come straight from lib/seoUtils.ts — keep in sync.
+function checkLabelToField(label: string): EditableField | null {
+  const l = label.toLowerCase()
+  if (l.includes('seo title')) return 'seo_title'
+  if (l.includes('title')) return 'title'
+  if (l.includes('seo description')) return 'seo_description'
+  if (l.includes('meta description')) return 'seo_description'
+  if (l.includes('pitch') || l.includes('tagline')) return 'pitch'
+  if (l.includes('description')) return 'description'
+  if (l.includes('tags')) return 'tags'
+  if (l.includes('category')) return 'category'
+  if (l.includes('jurisdiction')) return 'jurisdiction'
+  if (l.includes('keywords')) return 'title'
+  return null
+}
+
+function initialValueForField(gig: GigItem, field: EditableField): string | string[] {
+  switch (field) {
+    case 'title':           return gig.title || ''
+    case 'seo_title':       return gig.seo_title || ''
+    case 'seo_description': return gig.seo_description || ''
+    case 'pitch':           return gig.pitch || ''
+    case 'description':     return gig.description || ''
+    case 'tags':            return Array.isArray(gig.tags) ? gig.tags : []
+    case 'category':        return gig.category || ''
+    case 'jurisdiction':    return gig.jurisdiction || ''
+  }
+}
 
 interface GigItem {
   id: string
@@ -96,8 +127,26 @@ function ScoreRing({ score, size = 60 }: { score: number; size?: number }) {
   )
 }
 
-function GigScoreCard({ gig }: { gig: GigItem }) {
+function GigScoreCard({ gig, onSaved }: { gig: GigItem; onSaved: () => void }) {
   const [expanded, setExpanded] = React.useState(false)
+  const [editingField, setEditingField] = React.useState<EditableField | null>(null)
+  const [editingHint, setEditingHint] = React.useState<string>('')
+
+  const openEditor = (field: EditableField, hint: string) => {
+    setEditingField(field)
+    setEditingHint(hint)
+    setExpanded(true)
+  }
+
+  const closeEditor = () => {
+    setEditingField(null)
+    setEditingHint('')
+  }
+
+  const handleSaved = () => {
+    closeEditor()
+    onSaved()
+  }
 
   const seoData: SEOData = {
     title: gig.title || '',
@@ -182,54 +231,96 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
             </div>
           </div>
 
-          {/* Checks */}
+          {/* Checks — failed rows are click-to-fix */}
           {failedChecks.length > 0 && (
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: T.brick, marginBottom: '8px' }}>
-                {failedChecks.length} check{failedChecks.length > 1 ? 's' : ''} to fix
-              </div>
-              {failedChecks.map((check, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    gap: '8px',
-                    alignItems: 'flex-start',
-                    padding: '6px 8px',
-                    background: `${T.brick}08`,
-                    borderRadius: '6px',
-                    marginBottom: '4px',
-                    fontSize: '12px',
-                  }}
-                >
-                  <span style={{ color: T.brick, marginTop: '1px' }}>✕</span>
-                  <div>
-                    <span style={{ color: T.ink, fontWeight: 600 }}>{check.label}</span>
-                    <span style={{ color: T.inkSoft }}> — {check.hint}</span>
-                    <span style={{ color: T.inkSoft, fontSize: '11px', marginLeft: '4px' }}>(+{check.weight} pts)</span>
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: T.brick }}>
+                  {failedChecks.length} check{failedChecks.length > 1 ? 's' : ''} to fix
                 </div>
-              ))}
+                <div style={{ fontSize: '10px', color: T.inkSoft, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  Click a row to fix
+                </div>
+              </div>
+              {failedChecks.map((check, i) => {
+                const field = checkLabelToField(check.label)
+                const isOpen = editingField !== null && field === editingField
+                const clickable = field !== null
+                return (
+                  <div key={i}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!field) return
+                        if (isOpen) closeEditor()
+                        else openEditor(field, check.hint)
+                      }}
+                      disabled={!clickable}
+                      style={{
+                        display: 'flex',
+                        width: '100%',
+                        textAlign: 'left' as const,
+                        gap: '8px',
+                        alignItems: 'flex-start',
+                        padding: '8px 10px',
+                        background: isOpen ? `${T.indigo}12` : `${T.brick}08`,
+                        border: `1px solid ${isOpen ? `${T.indigo}40` : 'transparent'}`,
+                        borderRadius: '6px',
+                        marginBottom: '4px',
+                        fontSize: '12px',
+                        cursor: clickable ? 'pointer' : 'default',
+                        fontFamily: 'inherit',
+                        transition: 'background 0.15s, border-color 0.15s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (clickable && !isOpen) (e.currentTarget as HTMLButtonElement).style.background = `${T.brick}14`
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isOpen) (e.currentTarget as HTMLButtonElement).style.background = `${T.brick}08`
+                      }}
+                    >
+                      <span style={{ color: T.brick, marginTop: '1px', flexShrink: 0 }}>✕</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ color: T.ink, fontWeight: 600 }}>{check.label}</span>
+                        <span style={{ color: T.inkSoft }}> — {check.hint}</span>
+                        <span style={{ color: T.inkSoft, fontSize: '11px', marginLeft: '4px' }}>(+{check.weight} pts)</span>
+                      </div>
+                      {clickable && (
+                        <span style={{
+                          flexShrink: 0,
+                          fontSize: '11px', fontWeight: 700,
+                          color: isOpen ? T.indigo : T.inkSoft,
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                        }}>
+                          {isOpen ? 'Close' : 'Fix ↗'}
+                        </span>
+                      )}
+                    </button>
+                    {isOpen && field && (
+                      <GigSEOInlineEditor
+                        gigId={gig.id}
+                        field={field}
+                        initialValue={initialValueForField(gig, field)}
+                        hintFromCheck={check.hint}
+                        onSaved={handleSaved}
+                        onCancel={closeEditor}
+                      />
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 
-          {/* Suggestions */}
-          <div style={{ background: `${T.indigo}08`, borderRadius: '8px', padding: '10px 12px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: T.indigo, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
-              Optimization suggestions
-            </div>
-            {failedChecks.length > 0 ? (
-              failedChecks.map((check, i) => (
-                <div key={i} style={{ fontSize: '12px', color: T.inkMid, lineHeight: 1.6, padding: '2px 0' }}>
-                  • {check.hint}
-                </div>
-              ))
-            ) : (
+          {/* Suggestions banner — only when all checks pass */}
+          {failedChecks.length === 0 && (
+            <div style={{ background: `${T.moss}10`, borderRadius: '8px', padding: '10px 12px' }}>
               <div style={{ fontSize: '12px', color: T.moss, fontWeight: 600 }}>
                 ✓ All checks pass — your gig is well-optimized for search!
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -242,24 +333,21 @@ export default function GigSEOAnalytics() {
   const [error, setError] = React.useState<string | null>(null)
   const [sortBy, setSortBy] = React.useState<'score-asc' | 'score-desc' | 'title' | 'status'>('score-asc')
 
-  React.useEffect(() => {
-    let cancelled = false
-    fetch('/api/gigs', { credentials: 'same-origin' })
-      .then(async r => {
-        const payload = await r.json().catch(() => ({}))
-        const data = payload?.data ?? payload
-        if (!cancelled) {
-          setGigs((data?.gigs ?? []).filter((g: GigItem) => g.status !== 'deleted'))
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e.message || 'Could not load gigs.')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
+  const loadGigs = React.useCallback(async () => {
+    setError(null)
+    try {
+      const r = await fetch('/api/gigs', { credentials: 'same-origin' })
+      const payload = await r.json().catch(() => ({}))
+      const data = payload?.data ?? payload
+      setGigs((data?.gigs ?? []).filter((g: GigItem) => g.status !== 'deleted'))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load gigs.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  React.useEffect(() => { loadGigs() }, [loadGigs])
 
   // Compute scores and sort
   const scoredGigs = React.useMemo(() => {
@@ -538,8 +626,8 @@ export default function GigSEOAnalytics() {
 
       {/* Gig score cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {scoredGigs.map(({ gig, score }) => (
-          <GigScoreCard key={gig.id} gig={gig} />
+        {scoredGigs.map(({ gig }) => (
+          <GigScoreCard key={gig.id} gig={gig} onSaved={loadGigs} />
         ))}
       </div>
     </div>
