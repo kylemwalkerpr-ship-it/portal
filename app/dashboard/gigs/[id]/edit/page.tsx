@@ -1,6 +1,7 @@
 import { GigBuilderWizardClient } from '@/components/marketplace/GigBuilderWizardClient'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import SellerShell from '@/components/seller/SellerShell'
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -8,5 +9,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (auth.role === 'client') redirect('/marketplace')
   if (!['attorney', 'consultant'].includes(auth.role)) redirect('/dashboard')
   const { id } = await params
-  return <GigBuilderWizardClient gigId={id} />
+  return (
+    <SellerShell title="Edit Service" subtitle="Update your service details and pricing">
+      <GigBuilderWizardClient gigId={id} />
+    </SellerShell>
+  )
 }

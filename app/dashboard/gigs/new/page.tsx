@@ -1,6 +1,7 @@
 import { GigBuilderWizardNew } from '@/components/marketplace/GigBuilderWizardNew'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
+import SellerShell from '@/components/seller/SellerShell'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
 
@@ -25,5 +26,9 @@ export default async function Page() {
     }
   }
 
-  return <GigBuilderWizardNew />
+  return (
+    <SellerShell title="New Service" subtitle="Set up your service with clear scope and pricing">
+      <GigBuilderWizardNew />
+    </SellerShell>
+  )
 }

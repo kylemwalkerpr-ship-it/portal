@@ -62,7 +62,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px' }}>
+      <div style={{ padding: '32px' }}>
         <LoadingState label="Loading gig details..." />
       </div>
     )
@@ -70,7 +70,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px' }}>
+      <div style={{ padding: '32px' }}>
         <ErrorState message={error} onRetry={() => window.location.reload()} />
       </div>
     )
@@ -78,7 +78,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
 
   if (!gig) {
     return (
-      <div style={{ minHeight: '100vh', background: T.paper, padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: T.ink }}>
             Gig not found

@@ -8,24 +8,13 @@
  * - Overall SEO health summary (avg score, best/worst gig)
  * - Per-gig score cards with checklist + suggestions
  * - Quick-action buttons to jump to the gig editor
+ * - CSV export of all scores and checks
  */
 
 import React from 'react'
-import { C, Btn, Card, Badge, ProgressBar } from '../design/shared'
+import { Btn, Card, Badge } from '../design/shared'
+import { T, F } from './tokens'
 import { computeSEOScore, type SEOData, type SEOScoreResult } from '@/lib/seoUtils'
-
-const INDIGO = '#3C3B6E'
-const BRICK = '#B22234'
-const INK = '#0F172A'
-const INK_MID = '#334155'
-const INK_SOFT = '#64748B'
-const BORDER = '#E2E8F0'
-const PAPER = '#F7F8FA'
-const VELLUM = '#FFFFFF'
-const SERIF = "var(--font-lora), Lora, Georgia, serif"
-const SANS = "var(--font-inter), Inter, system-ui, sans-serif"
-const GREEN = '#1A6B45'
-const AMBER = '#D97706'
 
 interface GigItem {
   id: string
@@ -49,9 +38,9 @@ interface GigItem {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return GREEN
-  if (score >= 50) return AMBER
-  return BRICK
+  if (score >= 80) return T.moss
+  if (score >= 50) return '#D97706'
+  return T.brick
 }
 
 function scoreLabel(score: number): string {
@@ -75,7 +64,7 @@ function ScoreRing({ score, size = 60 }: { score: number; size?: number }) {
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke={BORDER}
+        stroke={T.rule}
         strokeWidth={strokeWidth}
       />
       <circle
@@ -99,7 +88,7 @@ function ScoreRing({ score, size = 60 }: { score: number; size?: number }) {
         fontSize={size * 0.28}
         fontWeight={800}
         fill={color}
-        fontFamily={SANS}
+        fontFamily={F.ui}
       >
         {score}
       </text>
@@ -126,11 +115,13 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
   const passedCount = scoreResult.checks.length - failedChecks.length
   const totalCount = scoreResult.checks.length
 
+  const color = scoreColor(scoreResult.score)
+
   return (
     <Card style={{
       padding: '18px 20px',
-      border: `1px solid ${scoreResult.score >= 80 ? `${GREEN}33` : scoreResult.score >= 50 ? `${AMBER}33` : `${BRICK}33`}`,
-      borderLeft: `4px solid ${scoreColor(scoreResult.score)}`,
+      border: `1px solid ${scoreResult.score >= 80 ? `${T.moss}33` : scoreResult.score >= 50 ? `${'#D97706'}33` : `${T.brick}33`}`,
+      borderLeft: `4px solid ${color}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer' }}
         onClick={() => setExpanded(!expanded)}
@@ -142,14 +133,14 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, fontSize: '14px', color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '14px', color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {gig.title}
             </span>
             <Badge color={gig.status === 'active' ? 'green' : 'orange'} style={{ fontSize: '10px' }}>
               {gig.status}
             </Badge>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '12px', color: INK_SOFT }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '12px', color: T.inkSoft }}>
             <span>Score: {scoreResult.score}/100 · {scoreLabel(scoreResult.score)}</span>
             <span>·</span>
             <span>{passedCount}/{totalCount} checks passed</span>
@@ -166,25 +157,25 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
           <a href={`/dashboard/gigs/${gig.id}/edit`} style={{ textDecoration: 'none' }}>
             <Btn variant="secondary" size="sm">Edit</Btn>
           </a>
-          <span style={{ color: INK_SOFT, fontSize: '12px', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          <span style={{ color: T.inkSoft, fontSize: '12px', transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
             ▼
           </span>
         </div>
       </div>
 
       {expanded && (
-        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${T.rule}` }}>
           {/* Score bar */}
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', color: INK_SOFT }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', color: T.inkSoft }}>
               <span>SEO Optimization Score</span>
-              <span style={{ fontWeight: 700, color: scoreColor(scoreResult.score) }}>{scoreResult.score}%</span>
+              <span style={{ fontWeight: 700, color: color }}>{scoreResult.score}%</span>
             </div>
-            <div style={{ height: '6px', background: BORDER, borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ height: '6px', background: T.rule, borderRadius: '3px', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${scoreResult.score}%`,
-                background: scoreColor(scoreResult.score),
+                background: color,
                 borderRadius: '3px',
                 transition: 'width 0.5s ease',
               }} />
@@ -194,7 +185,7 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
           {/* Checks */}
           {failedChecks.length > 0 && (
             <div style={{ marginBottom: '14px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: BRICK, marginBottom: '8px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: T.brick, marginBottom: '8px' }}>
                 {failedChecks.length} check{failedChecks.length > 1 ? 's' : ''} to fix
               </div>
               {failedChecks.map((check, i) => (
@@ -205,17 +196,17 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
                     gap: '8px',
                     alignItems: 'flex-start',
                     padding: '6px 8px',
-                    background: `${BRICK}08`,
+                    background: `${T.brick}08`,
                     borderRadius: '6px',
                     marginBottom: '4px',
                     fontSize: '12px',
                   }}
                 >
-                  <span style={{ color: BRICK, marginTop: '1px' }}>✕</span>
+                  <span style={{ color: T.brick, marginTop: '1px' }}>✕</span>
                   <div>
-                    <span style={{ color: INK, fontWeight: 600 }}>{check.label}</span>
-                    <span style={{ color: INK_SOFT }}> — {check.hint}</span>
-                    <span style={{ color: INK_SOFT, fontSize: '11px', marginLeft: '4px' }}>(+{check.weight} pts)</span>
+                    <span style={{ color: T.ink, fontWeight: 600 }}>{check.label}</span>
+                    <span style={{ color: T.inkSoft }}> — {check.hint}</span>
+                    <span style={{ color: T.inkSoft, fontSize: '11px', marginLeft: '4px' }}>(+{check.weight} pts)</span>
                   </div>
                 </div>
               ))}
@@ -223,17 +214,18 @@ function GigScoreCard({ gig }: { gig: GigItem }) {
           )}
 
           {/* Suggestions */}
-          <div style={{ background: `${INDIGO}08`, borderRadius: '8px', padding: '10px 12px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: INDIGO, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+          <div style={{ background: `${T.indigo}08`, borderRadius: '8px', padding: '10px 12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: T.indigo, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
               Optimization suggestions
             </div>
-            {failedChecks.map((check, i) => (
-              <div key={i} style={{ fontSize: '12px', color: INK_MID, lineHeight: 1.6, padding: '2px 0' }}>
-                • {check.hint}
-              </div>
-            ))}
-            {failedChecks.length === 0 && (
-              <div style={{ fontSize: '12px', color: GREEN, fontWeight: 600 }}>
+            {failedChecks.length > 0 ? (
+              failedChecks.map((check, i) => (
+                <div key={i} style={{ fontSize: '12px', color: T.inkMid, lineHeight: 1.6, padding: '2px 0' }}>
+                  • {check.hint}
+                </div>
+              ))
+            ) : (
+              <div style={{ fontSize: '12px', color: T.moss, fontWeight: 600 }}>
                 ✓ All checks pass — your gig is well-optimized for search!
               </div>
             )}
@@ -315,16 +307,16 @@ export default function GigSEOAnalytics() {
 
   if (loading) {
     return (
-      <div style={{ padding: '28px' }}>
-        <div style={{ color: INK_SOFT, fontSize: '14px' }}>Loading SEO analytics…</div>
+      <div>
+        <div style={{ color: T.inkSoft, fontSize: '14px' }}>Loading SEO analytics…</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div style={{ padding: '28px' }}>
-        <div style={{ color: BRICK, fontSize: '14px' }}>Error: {error}</div>
+      <div>
+        <div style={{ color: T.brick, fontSize: '14px' }}>Error: {error}</div>
         <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }} onClick={() => window.location.reload()}>
           Retry
         </Btn>
@@ -334,17 +326,16 @@ export default function GigSEOAnalytics() {
 
   if (gigs.length === 0) {
     return (
-      <div style={{ padding: '28px' }}>
-        <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: '8px' }}>SEO Analytics</div>
+      <div>
         <Card style={{ padding: '24px', textAlign: 'center' }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>📊</div>
-          <div style={{ fontWeight: 700, fontSize: '15px', color: INK, marginBottom: '8px' }}>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: T.ink, marginBottom: '8px' }}>
             No services yet
           </div>
-          <div style={{ color: INK_SOFT, fontSize: '13px', lineHeight: 1.6 }}>
+          <div style={{ color: T.inkSoft, fontSize: '13px', lineHeight: 1.6 }}>
             Create your first service to start tracking SEO performance.
             <br />
-            <a href="/dashboard/gigs/new" style={{ color: INDIGO, fontWeight: 600, textDecoration: 'none' }}>
+            <a href="/dashboard/gigs/new" style={{ color: T.indigo, fontWeight: 600, textDecoration: 'none' }}>
               Create a service →
             </a>
           </div>
@@ -426,57 +417,32 @@ export default function GigSEOAnalytics() {
   const maxTotal = scoredGigs.length * 100
 
   return (
-    <div style={{ padding: '28px', maxWidth: '1080px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 800, color: INK_SOFT, letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: '4px' }}>
-          Analytics
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-          <div>
-            <h2 style={{ fontFamily: SERIF, fontSize: '30px', fontWeight: 500, color: INK, margin: '0 0 8px', letterSpacing: '-0.012em' }}>
-              SEO Performance
-            </h2>
-            <p style={{ color: INK_SOFT, fontSize: '14px', margin: 0, lineHeight: 1.55 }}>
-              Search optimization scores across all your services. Higher scores mean better visibility in marketplace search results.
-            </p>
-          </div>
-          <Btn
-            variant="secondary"
-            size="sm"
-            onClick={exportCSV}
-            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-          >
-            ↓ Export CSV
-          </Btn>
-        </div>
-      </div>
-
+    <div style={{ display: 'grid', gap: '24px' }}>
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
         <Card style={{ padding: '18px' }}>
-          <div style={{ color: INK_SOFT, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
             Average Score
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
             <ScoreRing score={avgScore} size={44} />
             <div>
-              <div style={{ fontFamily: SERIF, fontSize: '22px', fontWeight: 600, color: INK }}>{avgScore}/100</div>
-              <div style={{ fontSize: '12px', color: INK_SOFT, marginTop: '2px' }}>{scoredGigs.length} service{scoredGigs.length > 1 ? 's' : ''}</div>
+              <div style={{ fontFamily: F.display, fontSize: '22px', fontWeight: 600, color: T.ink }}>{avgScore}/100</div>
+              <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>{scoredGigs.length} service{scoredGigs.length > 1 ? 's' : ''}</div>
             </div>
           </div>
         </Card>
 
         <Card style={{ padding: '18px' }}>
-          <div style={{ color: INK_SOFT, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
             Best Performing
           </div>
           {bestScore && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontFamily: SERIF, fontSize: '18px', fontWeight: 600, color: GREEN, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: T.moss, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {bestScore.gig.title}
               </div>
-              <div style={{ fontSize: '12px', color: INK_SOFT, marginTop: '2px' }}>
+              <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>
                 Score: {bestScore.score.score}/100 — {scoreLabel(bestScore.score.score)}
               </div>
             </div>
@@ -484,15 +450,15 @@ export default function GigSEOAnalytics() {
         </Card>
 
         <Card style={{ padding: '18px' }}>
-          <div style={{ color: INK_SOFT, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
             Needs Most Work
           </div>
           {worstScore && (
             <div style={{ marginTop: '8px' }}>
-              <div style={{ fontFamily: SERIF, fontSize: '18px', fontWeight: 600, color: BRICK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontFamily: F.display, fontSize: '18px', fontWeight: 600, color: T.brick, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {worstScore.gig.title}
               </div>
-              <div style={{ fontSize: '12px', color: INK_SOFT, marginTop: '2px' }}>
+              <div style={{ fontSize: '12px', color: T.inkSoft, marginTop: '2px' }}>
                 Score: {worstScore.score.score}/100 — {scoreLabel(worstScore.score.score)}
               </div>
             </div>
@@ -500,14 +466,14 @@ export default function GigSEOAnalytics() {
         </Card>
 
         <Card style={{ padding: '18px' }}>
-          <div style={{ color: INK_SOFT, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+          <div style={{ color: T.inkSoft, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
             Overall Health
           </div>
           <div style={{ marginTop: '8px' }}>
-            <div style={{ fontFamily: SERIF, fontSize: '22px', fontWeight: 600, color: scoreColor(avgScore) }}>
+            <div style={{ fontFamily: F.display, fontSize: '22px', fontWeight: 600, color: scoreColor(avgScore) }}>
               {maxTotal > 0 ? Math.round((passedTotal / maxTotal) * 100) : 0}%
             </div>
-            <div style={{ height: '4px', background: BORDER, borderRadius: '2px', marginTop: '8px', overflow: 'hidden' }}>
+            <div style={{ height: '4px', background: T.rule, borderRadius: '2px', marginTop: '8px', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${maxTotal > 0 ? (passedTotal / maxTotal) * 100 : 0}%`,
@@ -519,12 +485,22 @@ export default function GigSEOAnalytics() {
         </Card>
       </div>
 
-      {/* Sort controls */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ fontSize: '13px', color: INK_MID }}>
+      {/* Toolbar: sort + export */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        padding: '14px 18px',
+        background: T.vellum,
+        border: `1px solid ${T.rule}`,
+        borderRadius: '12px',
+      }}>
+        <div style={{ fontSize: '13px', color: T.inkMid }}>
           {gigs.length} service{gigs.length > 1 ? 's' : ''} · Sort by:
         </div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           {([
             { value: 'score-asc', label: 'Worst first' },
             { value: 'score-desc', label: 'Best first' },
@@ -537,9 +513,9 @@ export default function GigSEOAnalytics() {
               style={{
                 padding: '5px 12px',
                 borderRadius: '999px',
-                border: `1px solid ${sortBy === opt.value ? INDIGO : BORDER}`,
-                background: sortBy === opt.value ? `${INDIGO}12` : VELLUM,
-                color: sortBy === opt.value ? INDIGO : INK_SOFT,
+                border: `1px solid ${sortBy === opt.value ? T.indigo : T.rule}`,
+                background: sortBy === opt.value ? `${T.indigo}12` : T.vellum,
+                color: sortBy === opt.value ? T.indigo : T.inkSoft,
                 fontSize: '12px',
                 fontWeight: sortBy === opt.value ? 700 : 500,
                 cursor: 'pointer',
@@ -549,6 +525,15 @@ export default function GigSEOAnalytics() {
               {opt.label}
             </button>
           ))}
+          <div style={{ width: '1px', height: '20px', background: T.rule, margin: '0 4px' }} />
+          <Btn
+            variant="secondary"
+            size="sm"
+            onClick={exportCSV}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            ↓ Export CSV
+          </Btn>
         </div>
       </div>
 
