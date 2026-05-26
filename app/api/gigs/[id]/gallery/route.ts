@@ -25,7 +25,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (!gig) return fail('Gig not found.', 404)
   if (gig.provider_id !== auth.profileId && auth.role !== 'admin') return fail('Forbidden.', 403)
   const gallery = Array.isArray(gig.gallery_images) ? gig.gallery_images : []
-  if (gallery.length >= 5) return fail('Maximum 5 gallery images.', 409)
+  if (gallery.length >= 3) return fail('Maximum 3 gallery images.', 409)
 
   const form = await req.formData().catch(() => null)
   const file = form?.get('file')

@@ -926,11 +926,13 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
   const [uploading, setUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState('')
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const images = gigData.gallery_images || []
+  const canAddMore = images.length < 3
 
   const addImageUrl = () => {
     const url = imageUrlInput.trim()
-    if (!url) return
-    onChange('gallery_images', [...(gigData.gallery_images || []), url])
+    if (!url || !canAddMore) return
+    onChange('gallery_images', [...images, url])
     setImageUrlInput('')
   }
 
@@ -954,7 +956,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
     try {
       if (!onUploadFile) throw new Error('Upload is unavailable. Use the URL field instead.')
       const url = await onUploadFile(file)
-      onChange('gallery_images', [...(gigData.gallery_images || []), url])
+      onChange('gallery_images', [...images, url])
     } catch (err: any) {
       setUploadError(err?.message || 'Upload failed.')
     } finally {
@@ -963,7 +965,20 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
   }
 
   const removeImage = (index: number) => {
-    onChange('gallery_images', gigData.gallery_images.filter((_: string, i: number) => i !== index))
+    onChange('gallery_images', images.filter((_: string, i: number) => i !== index))
+  }
+
+  const moveToFirst = (index: number) => {
+    const next = [...images]
+    const [item] = next.splice(index, 1)
+    next.unshift(item)
+    onChange('gallery_images', next)
+  }
+
+  const resolveImageUrl = (img: any): string => {
+    if (typeof img === 'string') return img
+    if (img?.url) return img.url
+    return ''
   }
 
   return (
@@ -987,7 +1002,12 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
       </div>
 
       <div style={formSection}>
-        <label style={formLabel}>Gallery Images * <span style={{ fontWeight: 400, color: T.inkMuted }}>(at least 1 required)</span></label>
+        <label style={formLabel}>
+          Gallery Images *{' '}
+          <span style={{ fontWeight: 400, color: T.inkMuted }}>
+            (1 required, up to 3 — first image is your cover photo)
+          </span>
+        </label>
         {errors.gallery_images && <div style={{ ...formError, marginBottom: '8px' }}>{errors.gallery_images}</div>}
         {uploadError && <div style={{ ...formError, marginBottom: '8px' }}>{uploadError}</div>}
 
@@ -998,86 +1018,135 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
           accept="image/jpeg,image/png,image/webp"
           onChange={handleFilePick}
           style={{ display: 'none' }}
+          disabled={!canAddMore}
         />
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || !canAddMore}
             style={{
               padding: '10px 16px', background: T.indigo, color: '#fff',
               border: 'none', borderRadius: '10px', fontSize: '13px',
-              fontWeight: 600, cursor: uploading ? 'wait' : 'pointer', whiteSpace: 'nowrap',
-              opacity: uploading ? 0.7 : 1,
+              fontWeight: 600, cursor: (uploading || !canAddMore) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+              opacity: (uploading || !canAddMore) ? 0.5 : 1,
             }}
           >
             {uploading ? 'Uploading…' : 'Upload from device'}
           </button>
           <span style={{ alignSelf: 'center', fontSize: '12px', color: T.inkMuted }}>
-            JPG, PNG, or WEBP · max 5 MB · up to 5 images
+            JPG, PNG, or WEBP · max 5 MB · {images.length}/3 images
           </span>
         </div>
 
-        {/* Fallback: paste a URL (e.g. hosted on a stock-photo site). */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-          <input
-            type="url"
-            value={imageUrlInput}
-            onChange={e => setImageUrlInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrl() } }}
-            placeholder="Or paste an image URL: https://…"
-            style={{ ...inputStyle, flex: 1 }}
-          />
-          <button
-            type="button"
-            onClick={addImageUrl}
-            style={{
-              padding: '10px 16px', background: 'transparent', color: T.indigo,
-              border: `1px solid ${T.indigo}`, borderRadius: '10px', fontSize: '13px',
-              fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            Add URL
-          </button>
-        </div>
-        {(gigData.gallery_images || []).length > 0 ? (
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {(gigData.gallery_images as string[]).map((url: string, i: number) => (
-              <div
-                key={i}
-                style={{
-                  position: 'relative', width: '120px', height: '80px',
-                  borderRadius: '8px', overflow: 'hidden',
-                  border: `1px solid ${T.rule}`, background: T.vellum2,
-                }}
-              >
-                <img
-                  src={url}
-                  alt={`Gallery ${i + 1}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-                <button
-                  onClick={() => removeImage(i)}
-                  style={{
-                    position: 'absolute', top: '4px', right: '4px',
-                    background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
-                    borderRadius: '50%', width: '20px', height: '20px',
-                    cursor: 'pointer', fontSize: '12px', lineHeight: 1, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ padding: '16px', textAlign: 'center', color: T.inkMuted, background: T.vellum2, borderRadius: '12px', fontSize: '13px' }}>
-            No images added yet. Paste an image URL above to add gallery images.
+        {/* Fallback: paste a URL */}
+        {canAddMore && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <input
+              type="url"
+              value={imageUrlInput}
+              onChange={e => setImageUrlInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrl() } }}
+              placeholder="Or paste an image URL: https://…"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={addImageUrl}
+              style={{
+                padding: '10px 16px', background: 'transparent', color: T.indigo,
+                border: `1px solid ${T.indigo}`, borderRadius: '10px', fontSize: '13px',
+                fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              Add URL
+            </button>
           </div>
         )}
-        <div style={formHint}>{(gigData.gallery_images || []).length} image(s) added</div>
+
+        {images.length > 0 ? (
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {images.map((img: any, i: number) => {
+              const url = resolveImageUrl(img)
+              const isCover = i === 0
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: 'relative', width: '140px',
+                    borderRadius: '10px', overflow: 'hidden',
+                    border: `2px solid ${isCover ? T.indigo : T.rule}`,
+                    background: T.vellum2,
+                    display: 'flex', flexDirection: 'column',
+                  }}
+                >
+                  <div style={{ width: '100%', height: '100px', position: 'relative', overflow: 'hidden' }}>
+                    <img
+                      src={url}
+                      alt={`Gallery ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                    {isCover && (
+                      <div
+                        style={{
+                          position: 'absolute', top: '4px', left: '4px',
+                          background: T.indigo, color: '#fff',
+                          fontSize: '10px', fontWeight: 700,
+                          padding: '2px 7px', borderRadius: '4px',
+                          letterSpacing: '0.04em', textTransform: 'uppercase',
+                        }}
+                      >
+                        Cover
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removeImage(i)}
+                      style={{
+                        position: 'absolute', top: '4px', right: '4px',
+                        background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
+                        borderRadius: '50%', width: '22px', height: '22px',
+                        cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div style={{ padding: '6px 8px', background: isCover ? `${T.indigo}08` : T.paper, borderTop: `1px solid ${T.ruleSoft}` }}>
+                    {!isCover && (
+                      <button
+                        type="button"
+                        onClick={() => moveToFirst(i)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          fontSize: '11px', color: T.indigo, fontWeight: 600,
+                          padding: 0, fontFamily: 'inherit', width: '100%',
+                          textAlign: 'center',
+                        }}
+                      >
+                        Set as cover
+                      </button>
+                    )}
+                    {isCover && (
+                      <span style={{ fontSize: '10px', color: T.indigo, fontWeight: 600, display: 'block', textAlign: 'center', letterSpacing: '0.02em' }}>
+                        Gig cover photo
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: '24px', textAlign: 'center', color: T.inkMuted, background: T.vellum2, borderRadius: '12px', fontSize: '13px', border: `2px dashed ${T.rule}` }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>🖼️</div>
+            <p style={{ margin: '0 0 4px', fontWeight: 600, color: T.ink }}>Add your first gallery image</p>
+            <p style={{ margin: 0 }}>Upload a photo from your device or paste an image URL above.</p>
+            <p style={{ margin: '8px 0 0', fontSize: '11px' }}>The first image becomes the cover on your gig card.</p>
+          </div>
+        )}
+        <div style={formHint}>{images.length}/3 images · first image = cover photo on marketplace cards</div>
       </div>
 
       <div style={formSection}>
@@ -1189,7 +1258,7 @@ function ReviewStep({ gigData, onEdit }: any) {
     { label: 'Tags (3–5)', ok: gigData.tags.length >= 3 && gigData.tags.length <= 5, step: 1 },
     { label: 'At least one complete pricing tier', ok: activeTiers.length >= 1, step: 2 },
     { label: 'Requirements filled in', ok: !!gigData.requirements.trim(), step: 3 },
-    { label: 'At least one gallery image', ok: (gigData.gallery_images || []).length >= 1, step: 3 },
+    { label: 'Cover image added', ok: (gigData.gallery_images || []).length >= 1, step: 3 },
   ]
 
   const allPassed = checks.every(c => c.ok)
@@ -1239,6 +1308,46 @@ function ReviewStep({ gigData, onEdit }: any) {
           </div>
         )}
       </Card>
+
+      {/* Cover image preview */}
+      {(gigData.gallery_images || []).length > 0 && (
+        <Card style={{ padding: '24px', marginBottom: '24px', overflow: 'hidden' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: T.inkMuted, marginBottom: '8px', display: 'block' }}>
+            Cover Image
+          </label>
+          <div
+            style={{
+              width: '100%', maxHeight: '280px', borderRadius: '12px', overflow: 'hidden',
+              border: `1px solid ${T.rule}`, background: T.vellum2,
+            }}
+          >
+            <img
+              src={typeof gigData.gallery_images[0] === 'string' ? gigData.gallery_images[0] : (gigData.gallery_images[0]?.url || '')}
+              alt="Gig cover"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', maxHeight: '280px' }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          </div>
+          {(gigData.gallery_images || []).length > 1 && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              {gigData.gallery_images.slice(1).map((img: any, i: number) => {
+                const url = typeof img === 'string' ? img : (img?.url || '')
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      width: '60px', height: '45px', borderRadius: '6px', overflow: 'hidden',
+                      border: `1px solid ${T.rule}`, background: T.vellum2,
+                    }}
+                  >
+                    <img src={url} alt={`Gallery ${i + 2}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card style={{ padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'grid', gap: '16px' }}>

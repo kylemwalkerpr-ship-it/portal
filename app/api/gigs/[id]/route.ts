@@ -45,7 +45,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
   if ('tags' in body) payload.tags = Array.isArray(body.tags) ? body.tags.map(String).slice(0, 5) : []
   if ('faq' in body) payload.faq = Array.isArray(body.faq) ? body.faq.slice(0, 10) : []
-  if ('gallery_images' in body) payload.gallery_images = Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 5) : []
+  if ('gallery_images' in body) payload.gallery_images = Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 3) : []
   if ('slug' in body) payload.slug = buildSlug(String(body.slug || existing.title))
 
   const { data: gig, error } = await auth.db.from('gigs').update(payload).eq('id', id).select('*, tiers:gig_tiers(*)').single()
