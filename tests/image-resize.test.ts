@@ -2,7 +2,9 @@
  * image-resize.test.ts
  *
  * Unit tests for the POST /api/images/resize endpoint.
- * All storage calls are mocked — no real file processing.
+ * The route uploads images as-is to Supabase Storage (no server-side sharp
+ * processing). On-the-fly image transforms happen via Supabase URL query
+ * params at render time (see lib/responsiveImage.ts).
  */
 
 import http from 'http'
@@ -22,15 +24,6 @@ jest.mock('@/lib/auth', () => ({
 jest.mock('@/lib/supabase', () => ({
   createSupabaseAdminClient: jest.fn(() => db),
 }))
-
-// Mock sharp to avoid actual image processing in tests
-jest.mock('sharp', () => {
-  return jest.fn().mockImplementation(() => ({
-    resize: jest.fn().mockReturnThis(),
-    webp: jest.fn().mockReturnThis(),
-    toBuffer: jest.fn().mockResolvedValue(Buffer.from('fake-webp-buffer')),
-  }))
-})
 
 // ────────────────────────────────────────────────────────────
 // Tiny HTTP adapter for exercising route handlers in-process
@@ -183,7 +176,7 @@ describe('POST /api/images/resize', () => {
     expect(res.body.error.message).toMatch(/JPG|PNG|WEBP/)
   })
 
-  it('resizes with default card preset', async () => {
+  it('uploads the image as-is to storage with a dims suffix in the path', async () => {
     const { POST } = await import('@/app/api/images/resize/route')
     const res = await request(jsonServer(POST))
       .post('/api/images/resize')
@@ -191,16 +184,18 @@ describe('POST /api/images/resize', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.data.url).toContain('cdn.example.com')
-    expect(res.body.data.width).toBe(1200)
-    expect(res.body.data.height).toBe(800)
-    expect(res.body.data.format).toBe('webp')
-    expect(res.body.data.preset).toBe('card')
+    // No server-side processing — width/height come from form fields only
+    expect(res.body.data.width).toBe(0)
+    expect(res.body.data.height).toBe(0)
+    expect(res.body.data.format).toBe('jpeg') // from image/jpeg MIME
+    expect(res.body.data.preset).toBe('card') // default preset
     expect(uploadedPaths.length).toBe(1)
     expect(uploadedPaths[0]).toContain('seller-profile/resized/')
-    expect(uploadedPaths[0]).toContain('1200x800')
+    // Default preset "card" is used in the filename dims segment
+    expect(uploadedPaths[0]).toContain('-card.')
   })
 
-  it('accepts custom dimensions via preset parameter', async () => {
+  it('accepts a custom preset parameter', async () => {
     const { POST } = await import('@/app/api/images/resize/route')
     const res = await request(jsonServer(POST))
       .post('/api/images/resize')
@@ -208,13 +203,11 @@ describe('POST /api/images/resize', () => {
       .attach('file', Buffer.from('fake-image'), 'test.jpg')
 
     expect(res.status).toBe(201)
-    expect(res.body.data.width).toBe(800)
-    expect(res.body.data.height).toBe(800)
     expect(res.body.data.preset).toBe('square')
-    expect(uploadedPaths[0]).toContain('800x800')
+    expect(uploadedPaths[0]).toContain('-square.')
   })
 
-  it('accepts custom width/height overrides', async () => {
+  it('accepts original width/height metadata for the filename', async () => {
     const { POST } = await import('@/app/api/images/resize/route')
     const res = await request(jsonServer(POST))
       .post('/api/images/resize')
@@ -226,30 +219,15 @@ describe('POST /api/images/resize', () => {
     expect(res.body.data.width).toBe(400)
     expect(res.body.data.height).toBe(300)
     expect(res.body.data.preset).toBe('custom')
+    expect(uploadedPaths[0]).toContain('400x300')
   })
 
-  it('clamps dimensions to 2560 maximum', async () => {
+  it('stores the file with its original extension', async () => {
     const { POST } = await import('@/app/api/images/resize/route')
-    const res = await request(jsonServer(POST))
-      .post('/api/images/resize')
-      .field('width', '5000')
-      .field('height', '5000')
-      .attach('file', Buffer.from('fake-image'), 'test.jpg')
-
-    expect(res.status).toBe(201)
-    expect(res.body.data.width).toBe(2560)
-    expect(res.body.data.height).toBe(2560)
-  })
-
-  it('uploads the processed image to storage', async () => {
-    const { POST } = await import('@/app/api/images/resize/route')
-    const res = await request(jsonServer(POST))
+    await request(jsonServer(POST))
       .post('/api/images/resize')
       .attach('file', Buffer.from('fake-image'), 'test.jpg')
 
-    expect(res.status).toBe(201)
-    expect(uploadedPaths.length).toBe(1)
-    expect(uploadedPaths[0]).toContain('resized')
-    expect(uploadedPaths[0]).toContain('webp')
+    expect(uploadedPaths[0]).toMatch(/\.jpg$/)
   })
 })
