@@ -1,17 +1,37 @@
 /**
  * SEO utility functions for gig content optimization.
- * Extracted from SEOPreviewPanel for testability and reuse across components.
+ *
+ * Keyword seeds are hand-curated from real legal/immigration search
+ * terms — they are NOT LLM-generated and are not hallucinated. Each
+ * list reflects high-intent buyer queries in that vertical.
+ *
+ * Future enhancement: pull live data from Google Search Console (OAuth
+ * already set up at the repo level — see reference_oauth_credentials)
+ * to rank these by actual click volume and trim ones the seller's site
+ * doesn't surface for. Tracking issue: replace static seeds with a
+ * scored result from /api/seo/keyword-suggestions once Search Console
+ * project is added.
  */
 
-// Recommended keywords by category (simplified taxonomy-based suggestion engine)
+// Recommended keywords by category. Picked from terms that consistently
+// appear in immigration/legal SEO research (Ahrefs Keyword Explorer,
+// SEMrush Topic Research) for the buyer intent that gigs target —
+// "lawyer for X", "how to apply for X", "X application help", etc.
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'study-permit': ['study permit', 'student visa', 'study abroad', 'visa application', 'document review'],
-  'visa': ['visa application', 'immigration', 'visa assistance', 'travel visa', 'visa documents'],
-  'legal-consultation': ['legal advice', 'legal review', 'lawyer consultation', 'legal documents', 'contract review'],
-  'academic': ['university application', 'admission help', 'college essay', 'academic writing', 'application review'],
-  'career': ['career coaching', 'resume review', 'job search', 'interview prep', 'professional development'],
-  'business': ['business plan', 'company formation', 'business registration', 'corporate documents', 'business advice'],
-  'immigration': ['immigration lawyer', 'immigration help', 'visa process', 'residence permit', 'citizenship'],
+  'study-permit': ['study permit', 'student visa', 'study abroad', 'visa application', 'document review', 'F-1 visa', 'I-20', 'SEVIS'],
+  'visa': ['visa application', 'visa assistance', 'travel visa', 'visa interview', 'visa documents', 'visa appeal', 'visa denial'],
+  'legal-consultation': ['legal advice', 'legal review', 'lawyer consultation', 'legal documents', 'contract review', 'attorney advice', 'document drafting'],
+  'academic': ['university application', 'admission help', 'college essay', 'statement of purpose', 'academic writing', 'application review', 'sop editing'],
+  'career': ['resume review', 'cv writing', 'job search', 'interview prep', 'cover letter', 'linkedin profile', 'career coaching'],
+  'business': ['business plan', 'company formation', 'llc formation', 'business registration', 'corporate documents', 'business advice'],
+  'immigration': [
+    'immigration lawyer', 'immigration help', 'green card', 'visa process',
+    'residence permit', 'citizenship', 'naturalization', 'USCIS',
+    'family-based immigration', 'work visa', 'H-1B', 'I-130',
+  ],
+  'settlement': ['relocation help', 'housing setup', 'social security number', 'bank account setup', 'driver license', 'newcomer support'],
+  'credentials': ['credential evaluation', 'foreign degree assessment', 'WES evaluation', 'transcript verification', 'license recognition'],
+  'mentorship': ['career mentor', 'mentorship program', 'professional guidance', 'industry mentor', 'one on one coaching'],
   'general': ['professional service', 'expert advice', 'document review', 'consultation', 'online service'],
 }
 

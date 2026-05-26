@@ -9,6 +9,11 @@ interface SEOPreviewPanelProps {
   gigData: SEOData
   gigSlug?: string
   gigId?: string
+  // When provided, "Suggested keywords" chips become clickable — a click
+  // on an un-used chip adds it to the gig's tags. The wizard wires this
+  // through to gigData.tags so a single click registers the keyword for
+  // the gig (no copy-paste, no manual retyping).
+  onAddTag?: (tag: string) => void
 }
 
 const SERP_PREVIEW_STYLE: React.CSSProperties = {
@@ -19,7 +24,7 @@ const SERP_PREVIEW_STYLE: React.CSSProperties = {
   fontFamily: 'Arial, sans-serif',
 }
 
-export default function SEOPreviewPanel({ gigData, gigSlug }: SEOPreviewPanelProps) {
+export default function SEOPreviewPanel({ gigData, gigSlug, onAddTag }: SEOPreviewPanelProps) {
   // Normalize data to match SEOData interface, providing defaults for optional fields
   const normalizedData: SEOData = {
     title: gigData.title || '',
@@ -206,7 +211,9 @@ export default function SEOPreviewPanel({ gigData, gigSlug }: SEOPreviewPanelPro
           Suggested Keywords
         </div>
         <div style={{ fontSize: '12px', color: T.inkMid, marginBottom: '8px' }}>
-          Try incorporating these into your title, pitch, and description for better search ranking:
+          {onAddTag
+            ? 'Curated from real legal/immigration search terms in this category. Click a chip to add it to your tags.'
+            : 'Try incorporating these into your title, pitch, and description for better search ranking:'}
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {getKeywordsForCategory(normalizedData.category).map((kw) => {
@@ -214,21 +221,67 @@ export default function SEOPreviewPanel({ gigData, gigSlug }: SEOPreviewPanelPro
             const inDesc = normalizedData.description.toLowerCase().includes(kw.toLowerCase())
             const inTags = normalizedData.tags.some((t) => t.toLowerCase() === kw.toLowerCase())
             const used = inTitle || inDesc || inTags
+            const tagsFull = normalizedData.tags.length >= 5 && !inTags
+            const clickable = !!onAddTag && !inTags && !tagsFull
+            const chipStyle: React.CSSProperties = {
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 500,
+              background: used ? `${T.moss}15` : T.paper2,
+              color: used ? T.moss : T.inkMid,
+              border: `1px solid ${used ? `${T.moss}30` : T.rule}`,
+              cursor: clickable ? 'pointer' : (tagsFull ? 'not-allowed' : 'default'),
+              opacity: tagsFull ? 0.55 : 1,
+              fontFamily: 'inherit',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'background 0.12s, border-color 0.12s, transform 0.08s',
+            }
+            const hover = (e: React.MouseEvent<HTMLElement>, on: boolean) => {
+              if (!clickable) return
+              const el = e.currentTarget as HTMLElement
+              el.style.background = on ? `${T.indigo}10` : T.paper2
+              el.style.borderColor = on ? `${T.indigo}50` : T.rule
+              el.style.color = on ? T.indigo : T.inkMid
+            }
+            const content = (
+              <>
+                {kw}
+                {inTags ? (
+                  <span aria-label="Already in tags">✓</span>
+                ) : used ? (
+                  <span aria-label="Already in title or description" style={{ fontSize: '10px' }}>✓</span>
+                ) : clickable ? (
+                  <span aria-hidden style={{ fontSize: '12px', lineHeight: 1, fontWeight: 700 }}>+</span>
+                ) : tagsFull ? (
+                  <span aria-label="Tag limit reached" style={{ fontSize: '10px', color: T.inkSoft }}>5/5</span>
+                ) : null}
+              </>
+            )
+            if (clickable) {
+              return (
+                <button
+                  key={kw}
+                  type="button"
+                  aria-label={`Add "${kw}" to tags`}
+                  onClick={() => onAddTag!(kw)}
+                  onMouseEnter={(e) => hover(e, true)}
+                  onMouseLeave={(e) => hover(e, false)}
+                  style={chipStyle}
+                >
+                  {content}
+                </button>
+              )
+            }
             return (
               <span
                 key={kw}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  background: used ? `${T.moss}15` : T.paper2,
-                  color: used ? T.moss : T.inkMid,
-                  border: `1px solid ${used ? `${T.moss}30` : T.rule}`,
-                }}
+                title={tagsFull ? 'Remove a tag first — limit is 5.' : undefined}
+                style={chipStyle}
               >
-                {kw}
-                {used && <span style={{ marginLeft: '4px' }}>✓</span>}
+                {content}
               </span>
             )
           })}

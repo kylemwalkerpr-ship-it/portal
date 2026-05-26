@@ -1650,6 +1650,14 @@ function SEOStep({ gigData, errors, onChange }: any) {
             category: gigData.category,
             jurisdiction: gigData.jurisdiction,
           }}
+          onAddTag={(kw) => {
+            const current = Array.isArray(gigData.tags) ? gigData.tags : []
+            const normalized = kw.trim().toLowerCase()
+            if (!normalized) return
+            if (current.length >= 5) return
+            if (current.some((t: string) => t.toLowerCase() === normalized)) return
+            onChange('tags', [...current, normalized])
+          }}
         />
       </div>
 

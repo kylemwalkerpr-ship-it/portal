@@ -415,6 +415,53 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           </div>
         </div>
 
+        {gig.viewer_is_owner && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap' as const,
+              padding: '12px 16px',
+              marginBottom: '16px',
+              borderRadius: '10px',
+              background: gig.status === 'active' ? `${T.indigo}08` : `${T.gold}15`,
+              border: `1px solid ${gig.status === 'active' ? `${T.indigo}30` : `${T.gold}55`}`,
+            }}
+          >
+            <span style={{
+              padding: '3px 9px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase' as const,
+              background: gig.status === 'active' ? T.moss : T.gold,
+              color: '#FFFFFF',
+            }}>
+              {gig.status === 'active' ? 'Live preview' : `Owner preview · ${gig.status}`}
+            </span>
+            <span style={{ fontSize: '13px', color: T.inkMid, lineHeight: 1.4, flex: 1, minWidth: '180px' }}>
+              {gig.status === 'active'
+                ? "This is exactly what buyers see. Edit any field, swap images, and tune SEO from the wizard."
+                : "Only you can see this preview. Edit text, swap gallery images, and tune SEO — then publish when ready."}
+            </span>
+            <Link
+              href={`/dashboard/gigs/${gig.id}/edit`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: '8px 14px', borderRadius: '6px',
+                background: T.ink, color: '#FFFFFF',
+                fontSize: '12px', fontWeight: 700,
+                letterSpacing: '0.01em', textDecoration: 'none',
+                whiteSpace: 'nowrap' as const,
+              }}
+            >
+              Edit gig ↗
+            </Link>
+          </div>
+        )}
+
         <div style={contentLayout} className="ys-content-layout">
           <div style={mainContent}>
             <div>

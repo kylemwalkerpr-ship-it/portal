@@ -8,14 +8,24 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
   const db = auth ? auth.db : createSupabaseAdminClient()
   const { slug } = await context.params
 
+  // Load the gig without filtering by status — we need to know the
+  // requested gig before we can decide whether the viewer is allowed
+  // to see it. Public visitors only see active gigs; signed-in
+  // providers see their own gigs at any status (so they can preview /
+  // edit drafts from the marketplace surface).
   const { data: gig, error } = await db
     .from('gigs')
     .select('*, tiers:gig_tiers(*), reviews:gig_reviews(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username, created_at)')
     .eq('slug', slug)
-    .eq('status', 'active')
     .single()
 
   if (error || !gig) return fail(error?.message || 'Gig not found.', 404)
+
+  const isOwner = !!auth && gig.provider_id === auth.profileId && gig.provider_type === auth.role
+  const isAdmin = !!auth && auth.role === 'admin'
+  if (gig.status !== 'active' && !isOwner && !isAdmin) {
+    return fail('Gig not found.', 404)
+  }
 
   // Get provider stats
   const [{ data: providerGigs }, { data: providerReviews }] = await Promise.all([
@@ -73,6 +83,10 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       provider_response_time: providerStats.response_time,
       provider_is_online: providerStats.is_online,
       similar_gigs: normalizedSimilar,
+      // Owner flag so the client can render edit affordances on the
+      // public marketplace page without leaking the check to anonymous
+      // viewers (they always get false).
+      viewer_is_owner: isOwner || isAdmin,
     },
     seo: {
       title: `${gig.seo_title || gig.title} | YouSafe`,
