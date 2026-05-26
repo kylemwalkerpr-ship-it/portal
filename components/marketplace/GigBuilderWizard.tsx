@@ -1284,7 +1284,48 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
           </div>
 
           <div>
-            <label style={formLabel}>Features (one per line)</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+              <label style={{ ...formLabel, marginBottom: 0 }}>Features (one per line)</label>
+              <AIDraftButton
+                field="tier_features"
+                getContext={() => ({
+                  title: gigData.title,
+                  tagline: gigData.tagline,
+                  pitch: gigData.pitch || gigData.tagline,
+                  description: gigData.description,
+                  requirements: gigData.requirements,
+                  category: gigData.category,
+                  subcategory: gigData.subcategory,
+                  jurisdiction: gigData.jurisdiction,
+                  tags: gigData.tags,
+                  seo_title: gigData.seo_title,
+                  seo_description: gigData.seo_description,
+                  // Tier-scoped context — the model uses this to size
+                  // bullets to the tier and keep the value ladder clean.
+                  tier: {
+                    tier: tier.tier,
+                    title: tier.title,
+                    price: tier.price,
+                    delivery_days: tier.delivery_days,
+                    revisions: tier.revisions,
+                    features: tier.features,
+                  },
+                  otherTiers: gigData.tiers
+                    .filter((_: unknown, i: number) => i !== index)
+                    .map((o: { tier?: string; title?: string; price?: number; delivery_days?: number; revisions?: number; features?: string[] }) => ({
+                      tier: o.tier,
+                      title: o.title,
+                      price: o.price,
+                      delivery_days: o.delivery_days,
+                      revisions: o.revisions,
+                      features: o.features,
+                    })),
+                })}
+                minimalContext={!gigData.title?.trim()}
+                label={`Draft ${String(tier.tier || 'tier')} bullets`}
+                onApply={(v) => onTierChange(index, 'features', Array.isArray(v) ? v : [])}
+              />
+            </div>
             <textarea
               value={tier.features.join('\n')}
               onChange={e => onTierChange(index, 'features', e.target.value.split('\n').map(f => f.trim()).filter(Boolean))}
@@ -1292,7 +1333,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
               style={{ ...textareaStyle, minHeight: '100px' }}
             />
             <div style={formHint}>
-              List what's included in this tier. Each line becomes a feature bullet.
+              List what&apos;s included in this tier. Each line becomes a feature bullet.
             </div>
           </div>
         </Card>

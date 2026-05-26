@@ -1,6 +1,23 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { ALLOWED_FIELDS, draftField, type FaqEntry, type SuggestContext, type SuggestField } from '@/lib/seoSuggest'
+import { ALLOWED_FIELDS, draftField, type FaqEntry, type SuggestContext, type SuggestField, type TierSummary } from '@/lib/seoSuggest'
+
+// Coerce a JSON tier object from the wizard into our typed shape.
+// Numbers come through as `number` already in JSON, but Object.values
+// can include unknowns from older draft payloads. Reject anything we
+// can't safely use; the prompt builder handles missing fields itself.
+function sanitizeTier(raw: Record<string, unknown>): TierSummary {
+  const t: TierSummary = {}
+  if (typeof raw.tier === 'string') t.tier = raw.tier
+  if (typeof raw.title === 'string') t.title = raw.title
+  if (typeof raw.price === 'number') t.price = raw.price
+  if (typeof raw.delivery_days === 'number') t.delivery_days = raw.delivery_days
+  if (typeof raw.revisions === 'number') t.revisions = raw.revisions
+  if (Array.isArray(raw.features)) {
+    t.features = raw.features.filter((f): f is string => typeof f === 'string')
+  }
+  return t
+}
 
 // Pre-create draft endpoint for the gig builder wizard. Accepts the
 // seller's in-progress context inline so AI drafting works before a
@@ -35,6 +52,14 @@ export async function POST(req: Request) {
           !!f && typeof f === 'object' &&
           typeof (f as Record<string, unknown>).question === 'string' &&
           typeof (f as Record<string, unknown>).answer === 'string'))
+      : null,
+    tier: (ctxRaw.tier && typeof ctxRaw.tier === 'object')
+      ? sanitizeTier(ctxRaw.tier as Record<string, unknown>)
+      : null,
+    otherTiers: Array.isArray(ctxRaw.otherTiers)
+      ? ctxRaw.otherTiers
+          .filter((o) => o && typeof o === 'object')
+          .map((o) => sanitizeTier(o as Record<string, unknown>))
       : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''

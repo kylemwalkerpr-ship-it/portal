@@ -5,7 +5,16 @@ import { T, F } from './tokens'
 
 export type DraftField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq' | 'tier_features'
+
+export interface TierSummary {
+  tier?: 'basic' | 'standard' | 'premium' | string
+  title?: string
+  price?: number
+  delivery_days?: number
+  revisions?: number
+  features?: string[]
+}
 
 export interface FaqEntry { question: string; answer: string }
 
@@ -33,6 +42,8 @@ export interface DraftContext {
   seo_title?: string | null
   seo_description?: string | null
   faq?: FaqEntry[] | null
+  tier?: TierSummary | null
+  otherTiers?: TierSummary[] | null
 }
 
 interface AIDraftButtonProps {
@@ -98,6 +109,7 @@ export default function AIDraftButton({
   const panelRef = React.useRef<HTMLDivElement>(null)
   const isTagsField = field === 'tags'
   const isFaqField = field === 'faq'
+  const isFeaturesField = field === 'tier_features'
 
   const resetAll = React.useCallback(() => {
     setOpen(false)
@@ -172,6 +184,13 @@ export default function AIDraftButton({
         .filter((t) => t.length > 0 && t.length <= 32)
         .slice(0, 5)
       if (!cleaned.length) { setError('Add at least one tag before saving.'); return }
+      onApply(cleaned)
+    } else if (isFeaturesField) {
+      const cleaned = draftTags
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0 && t.length <= 120)
+        .slice(0, 7)
+      if (!cleaned.length) { setError('Add at least one feature bullet before saving.'); return }
       onApply(cleaned)
     } else {
       const cleaned = draftText.trim()
@@ -376,6 +395,8 @@ export default function AIDraftButton({
               )}
               {isFaqField ? (
                 <FaqPreview entries={draftFaq} onChange={setDraftFaq} />
+              ) : isFeaturesField ? (
+                <FeaturesPreview features={draftTags} onChange={setDraftTags} />
               ) : isTagsField ? (
                 <TagsPreview tags={draftTags} onChange={setDraftTags} />
               ) : (
@@ -396,10 +417,15 @@ export default function AIDraftButton({
                   }}
                 />
               )}
-              {!isTagsField && !isFaqField && (
+              {!isTagsField && !isFaqField && !isFeaturesField && (
                 <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: T.inkSoft }}>
                   <span>AI draft — edit before saving</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums' }}>{draftText.length} chars</span>
+                </div>
+              )}
+              {isFeaturesField && (
+                <div style={{ marginTop: '6px', fontSize: '10px', color: T.inkSoft }}>
+                  {draftTags.length} bullet{draftTags.length === 1 ? '' : 's'} · max 7 — edit, remove, reorder before saving
                 </div>
               )}
               {isFaqField && (
@@ -621,6 +647,89 @@ function FaqPreview({
           }}
         >
           + Add empty Q&A
+        </button>
+      )}
+    </div>
+  )
+}
+
+function FeaturesPreview({
+  features, onChange,
+}: { features: string[]; onChange: (next: string[]) => void }) {
+  const setAt = (i: number, value: string) => {
+    onChange(features.map((f, idx) => (idx === i ? value : f)))
+  }
+  const remove = (i: number) => onChange(features.filter((_, idx) => idx !== i))
+  const move = (i: number, dir: -1 | 1) => {
+    const next = [...features]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
+  const addBlank = () => onChange([...features, ''])
+  const iconBtn: React.CSSProperties = {
+    width: '22px', height: '22px',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: 'transparent', border: `1px solid ${T.rule}`,
+    borderRadius: '4px', cursor: 'pointer',
+    color: T.inkSoft, padding: 0, fontSize: '12px',
+  }
+  return (
+    <div style={{ display: 'grid', gap: '6px' }}>
+      {features.map((f, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '6px 8px',
+            borderRadius: '7px',
+            border: `1px solid ${T.indigo}33`,
+            background: `${T.indigo}05`,
+          }}
+        >
+          <span style={{
+            fontSize: '10px', fontWeight: 700, color: T.indigo,
+            minWidth: '14px', textAlign: 'center' as const,
+          }}>
+            {i + 1}
+          </span>
+          <input
+            type="text"
+            value={f}
+            onChange={(e) => setAt(i, e.target.value)}
+            maxLength={120}
+            placeholder="e.g. Document review and feedback"
+            style={{
+              flex: 1, minWidth: 0,
+              padding: '6px 8px',
+              borderRadius: '5px',
+              border: `1px solid ${T.rule}`,
+              background: '#FFFFFF',
+              fontFamily: F.ui, fontSize: '12.5px',
+              color: T.ink, outline: 'none',
+              lineHeight: 1.4,
+            }}
+          />
+          <button type="button" aria-label="Move up"   onClick={() => move(i, -1)} disabled={i === 0} style={{ ...iconBtn, opacity: i === 0 ? 0.4 : 1 }}>↑</button>
+          <button type="button" aria-label="Move down" onClick={() => move(i, 1)}  disabled={i === features.length - 1} style={{ ...iconBtn, opacity: i === features.length - 1 ? 0.4 : 1 }}>↓</button>
+          <button type="button" aria-label="Remove"    onClick={() => remove(i)} style={{ ...iconBtn, color: T.brick, borderColor: `${T.brick}40` }}>×</button>
+        </div>
+      ))}
+      {features.length < 7 && (
+        <button
+          type="button"
+          onClick={addBlank}
+          style={{
+            width: '100%', padding: '7px',
+            borderRadius: '6px', cursor: 'pointer',
+            background: 'transparent', color: T.indigo,
+            border: `1px dashed ${T.indigo}55`,
+            fontSize: '12px', fontWeight: 600,
+            fontFamily: F.ui,
+          }}
+        >
+          + Add empty bullet
         </button>
       )}
     </div>

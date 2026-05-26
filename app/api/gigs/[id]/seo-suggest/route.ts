@@ -1,6 +1,19 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { ALLOWED_FIELDS, draftField, type SuggestContext, type SuggestField } from '@/lib/seoSuggest'
+import { ALLOWED_FIELDS, draftField, type SuggestContext, type SuggestField, type TierSummary } from '@/lib/seoSuggest'
+
+function sanitizeTier(raw: Record<string, unknown>): TierSummary {
+  const t: TierSummary = {}
+  if (typeof raw.tier === 'string') t.tier = raw.tier
+  if (typeof raw.title === 'string') t.title = raw.title
+  if (typeof raw.price === 'number') t.price = raw.price
+  if (typeof raw.delivery_days === 'number') t.delivery_days = raw.delivery_days
+  if (typeof raw.revisions === 'number') t.revisions = raw.revisions
+  if (Array.isArray(raw.features)) {
+    t.features = raw.features.filter((f): f is string => typeof f === 'string')
+  }
+  return t
+}
 
 // Post-create draft endpoint — loads the gig from DB and passes its
 // current fields to the shared draft function. For the wizard's
@@ -33,6 +46,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     seo_title: gig.seo_title,
     seo_description: gig.seo_description,
     faq: Array.isArray(gig.faq) ? gig.faq : null,
+    tier: (body?.context?.tier && typeof body.context.tier === 'object')
+      ? sanitizeTier(body.context.tier as Record<string, unknown>)
+      : null,
+    otherTiers: Array.isArray(body?.context?.otherTiers)
+      ? body.context.otherTiers
+          .filter((o: unknown) => o && typeof o === 'object')
+          .map((o: unknown) => sanitizeTier(o as Record<string, unknown>))
+      : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)

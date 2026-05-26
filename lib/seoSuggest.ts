@@ -10,11 +10,20 @@ export type { SeoResearch, KeywordSignal } from './seoResearch'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq' | 'tier_features'
 
 export const ALLOWED_FIELDS: SuggestField[] = [
-  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq',
+  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq', 'tier_features',
 ]
+
+export interface TierSummary {
+  tier?: 'basic' | 'standard' | 'premium' | string
+  title?: string
+  price?: number
+  delivery_days?: number
+  revisions?: number
+  features?: string[]
+}
 
 export interface FaqEntry { question: string; answer: string }
 
@@ -31,6 +40,11 @@ export interface SuggestContext {
   seo_title?: string | null
   seo_description?: string | null
   faq?: FaqEntry[] | null
+  // Tier-scoped fields — required only when field === 'tier_features'.
+  // tier is the one being drafted, otherTiers are the rest so the model
+  // can keep value ladders clean (basic doesn't promise standard's perks).
+  tier?: TierSummary | null
+  otherTiers?: TierSummary[] | null
 }
 
 export type SuggestSuccess = { ok: true; value: string | string[] | FaqEntry[]; research: SeoResearch }
@@ -157,6 +171,59 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           baseContext,
         ].join('\n'),
       }
+    case 'tier_features': {
+      const t = ctx.tier ?? {}
+      const tierLabel = String(t.tier || t.title || 'this tier')
+      const dollars = typeof t.price === 'number' && t.price > 0 ? `$${(t.price / 100).toFixed(2)}` : 'unset'
+      const days = typeof t.delivery_days === 'number' && t.delivery_days > 0 ? `${t.delivery_days} days` : 'unset'
+      const revs = typeof t.revisions === 'number' ? `${t.revisions} revisions` : 'unset'
+      const others = (ctx.otherTiers ?? []).filter((o) => o && (o.title || o.tier))
+      const ladder = others.length
+        ? others
+            .map((o) => {
+              const olabel = o.tier || o.title || 'tier'
+              const oprice = typeof o.price === 'number' && o.price > 0 ? `$${(o.price / 100).toFixed(2)}` : '—'
+              const ofeats = Array.isArray(o.features) && o.features.length
+                ? o.features.slice(0, 5).join('; ')
+                : '(none yet)'
+              return `- ${olabel} @ ${oprice}: ${ofeats}`
+            })
+            .join('\n')
+        : '(no other tiers configured)'
+
+      // Tier-specific guidance: basic = entry point, standard = best-value
+      // middle, premium = premium scope. We tell the model exactly how
+      // to scale the bullet list so the value ladder reads cleanly.
+      const tierGuidance =
+        tierLabel.toLowerCase().includes('basic') || tierLabel.toLowerCase().includes('starter')
+          ? 'This is the BASIC tier. Cover the minimum viable deliverable — 3–5 narrow, concrete bullets. No premium-tier perks (no rush delivery, no unlimited revisions, no add-ons).'
+          : tierLabel.toLowerCase().includes('premium') || tierLabel.toLowerCase().includes('pro')
+            ? 'This is the PREMIUM tier. 5–7 bullets covering the full scope. Include EVERYTHING from basic + standard, plus 2–3 premium differentiators (e.g. faster turnaround, more revisions, follow-up call, document re-submission if denied).'
+            : 'This is the STANDARD / middle tier. 4–6 bullets. Strict superset of basic with 1–2 added perks. Must clearly be more than basic but less than premium.'
+
+      return {
+        format: 'list', hardLimit: 7,
+        prompt: [
+          'Draft the "what\'s included" feature bullets for a gig pricing tier.',
+          '',
+          `Tier being drafted: ${tierLabel} (${dollars}, ${days}, ${revs})`,
+          '',
+          `Other tiers on this gig (do NOT duplicate their bullets; keep value ladder intact):`,
+          ladder,
+          '',
+          tierGuidance,
+          '',
+          'Output rules:',
+          '- Return ONLY the bullets, one per line, no hyphens / dashes / numbers / bullets characters — just the text.',
+          '- Each line is 3–8 words. Action-led ("Document review and feedback"). Title case OR sentence case, consistent.',
+          '- Plain language. No emoji. No promotional fluff ("amazing", "fast"). No outcome promises ("guaranteed approval").',
+          '- Each bullet must be a concrete deliverable, not a feeling.',
+          '',
+          'Context (the broader gig):',
+          baseContext,
+        ].join('\n'),
+      }
+    }
     case 'requirements':
       return {
         format: 'string', hardLimit: 1200,
@@ -188,6 +255,17 @@ function parseTags(raw: string): string[] {
     .map((t) => t.trim().replace(/^["'`#]+|["'`]+$/g, '').toLowerCase())
     .filter((t) => t.length > 0 && t.length <= 32)
     .slice(0, 5)
+}
+
+// Tier feature bullets are sentences, not hashtags — they're allowed to
+// be longer and there are up to 7 of them. Strip any markdown bullet
+// markers the model may have prepended despite our instructions.
+function parseFeatureBullets(raw: string): string[] {
+  return raw
+    .split(/\r?\n/g)
+    .map((line) => line.replace(/^[\s\-•*·\d.)\]]+/, '').replace(/^["'`]+|["'`]+$/g, '').trim())
+    .filter((line) => line.length >= 3 && line.length <= 120)
+    .slice(0, 7)
 }
 
 // Parse the model's Q: / A: block into structured pairs. We're
@@ -282,9 +360,15 @@ export async function draftField(
   }
 
   if (spec.format === 'list') {
-    const tags = parseTags(raw)
-    if (!tags.length) return { ok: false, status: 502, message: 'Model returned no usable tags. Try again.' }
-    return { ok: true, value: tags, research }
+    // Two list-shaped fields with very different content rules:
+    //   tags = short, lowercase, max 5
+    //   tier_features = sentence-length bullets, max 7
+    const items = field === 'tier_features' ? parseFeatureBullets(raw) : parseTags(raw)
+    if (!items.length) {
+      const noun = field === 'tier_features' ? 'feature bullets' : 'tags'
+      return { ok: false, status: 502, message: `Model returned no usable ${noun}. Try again.` }
+    }
+    return { ok: true, value: items, research }
   }
 
   if (spec.format === 'faq') {
