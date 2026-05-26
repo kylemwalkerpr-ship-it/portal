@@ -1232,7 +1232,28 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
       </h2>
 
       <div style={formSection}>
-        <label style={formLabel}>Client Requirements *</label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+          <label style={{ ...formLabel, marginBottom: 0 }}>Client Requirements *</label>
+          <AIDraftButton
+            field="requirements"
+            getContext={() => ({
+              title: gigData.title,
+              tagline: gigData.tagline,
+              pitch: gigData.pitch || gigData.tagline,
+              description: gigData.description,
+              requirements: gigData.requirements,
+              category: gigData.category,
+              subcategory: gigData.subcategory,
+              jurisdiction: gigData.jurisdiction,
+              tags: gigData.tags,
+              seo_title: gigData.seo_title,
+              seo_description: gigData.seo_description,
+            })}
+            minimalContext={!gigData.title?.trim() && !gigData.category}
+            label="Draft requirements"
+            onApply={(v) => onChange('requirements', String(v))}
+          />
+        </div>
         <textarea
           value={gigData.requirements}
           onChange={e => onChange('requirements', e.target.value)}

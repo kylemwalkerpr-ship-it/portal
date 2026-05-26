@@ -25,6 +25,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     tagline: gig.tagline,
     pitch: gig.pitch,
     description: gig.description,
+    requirements: gig.requirements,
     category: gig.category,
     subcategory: gig.subcategory,
     jurisdiction: gig.jurisdiction,

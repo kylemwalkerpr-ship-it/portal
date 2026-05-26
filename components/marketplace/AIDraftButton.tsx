@@ -5,13 +5,14 @@ import { T, F } from './tokens'
 
 export type DraftField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
 
 export interface DraftContext {
   title?: string | null
   tagline?: string | null
   pitch?: string | null
   description?: string | null
+  requirements?: string | null
   category?: string | null
   subcategory?: string | null
   jurisdiction?: string | null

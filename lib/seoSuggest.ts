@@ -7,10 +7,10 @@ import { getChatProvider } from './chatProvider'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
 
 export const ALLOWED_FIELDS: SuggestField[] = [
-  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags',
+  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements',
 ]
 
 export interface SuggestContext {
@@ -18,6 +18,7 @@ export interface SuggestContext {
   tagline?: string | null
   pitch?: string | null
   description?: string | null
+  requirements?: string | null
   category?: string | null
   subcategory?: string | null
   jurisdiction?: string | null
@@ -126,6 +127,21 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Suggest 5 marketplace search tags for this service.',
           'Requirements: lowercase, 1–3 words each, no punctuation other than spaces, no emoji, no hashtags.',
           'Return ONLY the tags, comma-separated on a single line. No labels, no quotes.',
+          '',
+          'Context:',
+          baseContext,
+        ].join('\n'),
+      }
+    case 'requirements':
+      return {
+        format: 'string', hardLimit: 1200,
+        prompt: [
+          'Write a "what we need from the client to begin" requirements list for this legal/immigration gig.',
+          'Format: 4–8 short bullet items, each on its own line, each starting with "- " (hyphen + space).',
+          'Each bullet is one concrete document, fact, or decision the seller needs before they can start work.',
+          'Plain language. No emoji. No headings. No closing paragraph. Do NOT promise outcomes, timelines, or eligibility.',
+          'Examples of good bullets: "- Current visa status and date of last entry", "- Form I-20 (front and back)", "- Description of the events that led to the SEVIS termination".',
+          'Return ONLY the bullet list.',
           '',
           'Context:',
           baseContext,

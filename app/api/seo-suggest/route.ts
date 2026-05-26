@@ -23,6 +23,7 @@ export async function POST(req: Request) {
     tagline: typeof ctxRaw.tagline === 'string' ? ctxRaw.tagline : null,
     pitch: typeof ctxRaw.pitch === 'string' ? ctxRaw.pitch : null,
     description: typeof ctxRaw.description === 'string' ? ctxRaw.description : null,
+    requirements: typeof ctxRaw.requirements === 'string' ? ctxRaw.requirements : null,
     category: typeof ctxRaw.category === 'string' ? ctxRaw.category : null,
     subcategory: typeof ctxRaw.subcategory === 'string' ? ctxRaw.subcategory : null,
     jurisdiction: typeof ctxRaw.jurisdiction === 'string' ? ctxRaw.jurisdiction : null,
