@@ -109,13 +109,22 @@ export default function Nav({ onOpenSignIn }: NavProps) {
         </span>
       </a>
 
-      {/* Center links */}
+      {/* Center links — horizontally scrollable on mobile so a narrow
+          phone never truncates the link strip. Scrollbar is hidden via
+          .ys-nav-links::-webkit-scrollbar in app/globals.css; the row
+          still scrolls with touch/swipe + arrow keys. */}
       <div
         className="ys-nav-links"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 4,
+          minWidth: 0,
+          flex: '1 1 auto',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         <a
@@ -153,13 +162,19 @@ export default function Nav({ onOpenSignIn }: NavProps) {
         <a href="#faq" className="ys-nav-link" style={navLinkStyle}>FAQ</a>
       </div>
 
-      {/* Right side */}
+      {/* Right side. On mobile we collapse to just the brand CTA so the
+          row never overflows. The scrollable .ys-nav-links handles
+          discovery of the rest of the page. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
-        <GlobalLanguageBar />
+        <div className="ys-nav-right-extras">
+          <GlobalLanguageBar />
+        </div>
 
-        <Btn variant="ghost" size="sm" onClick={onOpenSignIn}>
-          Sign in
-        </Btn>
+        <div className="ys-nav-right-extras">
+          <Btn variant="ghost" size="sm" onClick={onOpenSignIn}>
+            Sign in
+          </Btn>
+        </div>
         <Btn
           variant="brand"
           size="sm"

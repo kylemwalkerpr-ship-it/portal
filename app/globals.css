@@ -892,3 +892,37 @@ section[id] {
     box-shadow: 0 0 0 1px rgba(0,0,0,0.08) inset;
   }
 }
+
+/* ── Portal landing top nav — mobile-scroll behaviour ────────────────
+   .ys-nav-links is already inline-styled with overflow-x: auto in
+   components/design/landing/Nav.tsx. Hide its scrollbar entirely (the
+   strip stays swipe-scrollable) and on mobile shrink the row's
+   horizontal padding + collapse the right-side extras so just the
+   brand "Start an inquiry" CTA stays visible. */
+.ys-nav-links {
+  scrollbar-width: none;
+}
+.ys-nav-links::-webkit-scrollbar { display: none; }
+
+@media (max-width: 900px) {
+  /* The whole TopNav row */
+  .ys-nav-links + div + .ys-nav-links,
+  nav.ys-nav-links { padding-right: 4px; }
+
+  /* Collapse the language picker + Sign in button on phones — the
+     "Start an inquiry" brand button remains, which routes to a page
+     that exposes both sign-in and sign-up. */
+  .ys-nav-right-extras { display: none !important; }
+}
+
+@media (max-width: 600px) {
+  /* Compact link sizing so 3-4 items are visible without scroll on
+     the most common phone widths. */
+  .ys-nav-link {
+    padding: 6px 10px !important;
+    font-size: 12.5px !important;
+  }
+  /* Hide the "Home" external-arrow indicator on phones to save
+     ~12px — the link itself remains. */
+  .ys-nav-home svg:last-child { display: none; }
+}
