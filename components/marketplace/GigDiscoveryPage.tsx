@@ -154,6 +154,17 @@ function money(cents: number, currency = 'usd') {
   }).format(Number(cents || 0) / 100)
 }
 
+// Cheap order-sensitive array equality used by the URL → state
+// hydration effect so we only call setState when something actually
+// changed (otherwise React still re-renders on identical-but-new-ref
+// arrays, and we'd burn a render every searchParams tick).
+function arraysEqual(a: readonly string[], b: readonly string[]) {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
 async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {
     credentials: 'same-origin',
@@ -326,6 +337,53 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     const target = qs ? `${pathname}?${qs}` : pathname
     router.replace(target, { scroll: false })
   }, [buildQuery, pathname, router])
+
+  // External URL → state hydration.
+  //
+  // useState(initialCategories) only runs on the first render — so when
+  // the header CategoryMegaDropdown navigates to /marketplace?category=X
+  // (or any other external URL change: back/forward, paste-link, the
+  // jurisdiction picker in the navbar), searchParams updates but the
+  // local filter state stays stale: checkboxes don't tick, chips don't
+  // appear, the API request still uses yesterday's filters.
+  //
+  // This effect reads the URL whenever searchParams changes and pushes
+  // the values into local state IF they actually differ. The buildQuery
+  // → router.replace effect above writes state → URL; this one writes
+  // URL → state. They can't loop because each only fires when its
+  // source actually changed (and React's setState bail-out short-circuits
+  // identical values).
+  React.useEffect(() => {
+    if (!searchParams) return
+    const nextCategories = searchParams.getAll('category').filter(Boolean)
+    if (categoryId && !nextCategories.includes(categoryId)) nextCategories.push(categoryId)
+    setSelectedCategories(prev => arraysEqual(prev, nextCategories) ? prev : nextCategories)
+
+    const nextProviderTypes = searchParams.getAll('provider_type').filter(Boolean)
+    setSelectedProviderTypes(prev => arraysEqual(prev, nextProviderTypes) ? prev : nextProviderTypes)
+
+    const single = searchParams.get('country')
+    const multi = searchParams.getAll('jurisdiction').filter(Boolean)
+    const merged = Array.from(new Set([
+      ...multi,
+      ...(single ? [single.toLowerCase()] : []),
+    ].filter((c) => ['us', 'uk', 'ca'].includes(c))))
+    setSelectedJurisdictions(prev => arraysEqual(prev, merged) ? prev : merged)
+
+    const nextDelivery = searchParams.getAll('delivery_days').filter(Boolean)
+    setSelectedDeliveryTimes(prev => arraysEqual(prev, nextDelivery) ? prev : nextDelivery)
+
+    const nextMin = searchParams.get('min_price') || ''
+    setMinPrice(prev => prev === nextMin ? prev : nextMin)
+    const nextMax = searchParams.get('max_price') || ''
+    setMaxPrice(prev => prev === nextMax ? prev : nextMax)
+    const nextRating = searchParams.get('min_rating') || ''
+    setSelectedRating(prev => prev === nextRating ? prev : nextRating)
+    const nextSort = searchParams.get('sort') || 'relevance'
+    setSort(prev => prev === nextSort ? prev : nextSort)
+    const nextQ = searchParams.get('q') || ''
+    setSearchQuery(prev => prev === nextQ ? prev : nextQ)
+  }, [searchParams, categoryId])
 
   const loadGigs = React.useCallback(async () => {
     setLoading(true)
