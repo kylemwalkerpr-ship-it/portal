@@ -1044,6 +1044,8 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         placeholder={isDeleted ? 'This inquiry was deleted by the client. No further actions are possible.' : isArchived ? 'Inquiry archived — cannot send new messages.' : 'Type a message…'}
         replyTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
+        conversationId={activeId}
+        onAttachmentSent={() => { loadThread(true); loadList(true) }}
       />
     </div>
   )
@@ -1257,6 +1259,68 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   )
 }
 
+// Decide what the message bubble's body should look like based on the
+// row's `type` + attachment fields. Voice notes render an inline audio
+// player; image attachments render a clickable thumbnail; other files
+// render a download chip. Text-only messages fall through to the plain
+// string body. Keeps MessageBubble dumb — it accepts a ReactNode body
+// and we hand it the right element here.
+function renderMessageBody(m: any): React.ReactNode {
+  const url = m.attachment_url
+  const name = m.attachment_name || 'Attachment'
+  const mime = m.metadata?.mime as string | undefined
+  const isVoice = m.type === 'voice' || (mime && mime.startsWith('audio/')) || m.metadata?.is_voice
+  const isImage = (mime && mime.startsWith('image/')) || /\.(jpe?g|png|webp|gif)$/i.test(name)
+
+  if (url && isVoice) {
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, minWidth: 220 }}>
+        <span style={{ fontSize: 11, opacity: 0.7, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          🎙 Voice message
+        </span>
+        <audio controls preload="metadata" src={url} style={{ width: '100%', maxWidth: 280 }} />
+      </span>
+    )
+  }
+  if (url && isImage) {
+    return (
+      <span style={{ display: 'inline-block' }}>
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          <img
+            src={url}
+            alt={name}
+            style={{ maxWidth: 260, maxHeight: 260, borderRadius: 8, display: 'block' }}
+          />
+        </a>
+        {m.body && m.body !== `📎 ${name}` && (
+          <span style={{ display: 'block', marginTop: 6 }}>{m.body}</span>
+        )}
+      </span>
+    )
+  }
+  if (url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        download={name}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '8px 12px', borderRadius: 8,
+          background: 'rgba(15,23,42,0.04)', border: '1px solid rgba(15,23,42,0.08)',
+          textDecoration: 'none', color: 'inherit', fontSize: 13, fontWeight: 500,
+          maxWidth: 280,
+        }}
+      >
+        <span aria-hidden style={{ fontSize: 18 }}>📎</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      </a>
+    )
+  }
+  return m.body || '(message)'
+}
+
 function ThreadMessage({
   m,
   counterpartId,
@@ -1358,7 +1422,7 @@ function ThreadMessage({
       avatarColor={!mine ? counterpartAvatarColor || '#3C3B6E' : undefined}
       avatarName={!mine ? counterpartName : undefined}
       onAvatarClick={!mine && isFirstInGroup ? () => onOpenProfile?.(m.sender_id) : undefined}
-      body={m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '(message)')}
+      body={renderMessageBody(m)}
     />
   )
 }
