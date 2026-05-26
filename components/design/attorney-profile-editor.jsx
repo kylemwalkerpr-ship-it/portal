@@ -260,10 +260,18 @@ export default function AttorneyProfileEditor() {
           />
           <EditableField
             label="Starting price (USD)"
-            help="Lowest price you'd typically quote. Shown as 'starting at $X' on cards."
+            help="Enter whole dollars (e.g. 250 for $250). Lowest price you'd typically quote — shown as 'starting at $X' on cards."
             type="number"
-            value={a.starting_price}
-            onSave={(v) => save('starting_price', Number(v) || null)}
+            // starting_price is stored in cents (DB contract — see the gig
+            // builder + marketplace renderers, all of which divide by 100).
+            // Display dollars; convert on save so the value the user typed
+            // matches what shows up on their profile card.
+            value={a.starting_price == null ? '' : Math.round(Number(a.starting_price) / 100)}
+            onSave={(v) => {
+              const dollars = Number(v)
+              if (!Number.isFinite(dollars) || dollars <= 0) return save('starting_price', null)
+              return save('starting_price', Math.round(dollars * 100))
+            }}
           />
           <EditableField
             label="Timezone"
@@ -346,6 +354,54 @@ export default function AttorneyProfileEditor() {
           />
         </div>
       </Card>
+
+      {/* Explicit save bar. Fields already auto-save on blur, but the
+          button gives users a single, deliberate action so they can
+          confirm everything is committed before leaving the page. It
+          dispatches a `submit` event that bubbles to whatever input
+          currently has focus — that forces any unblurred draft to
+          commit via EditableField's onBlur path — and then re-fetches
+          the canonical profile so the displayed values match the DB. */}
+      <div
+        style={{
+          position: 'sticky', bottom: 0, marginTop: '12px',
+          padding: '14px 0 18px', background: `linear-gradient(180deg, transparent, ${C.surface} 28%)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+        }}
+      >
+        <div style={{ fontSize: '12px', color: C.textDim }}>
+          Changes auto-save when you click away from a field.
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {savedFlash && <span style={{ color: C.green, fontSize: '12px', fontWeight: 700 }}>{savedFlash} ✓</span>}
+          <Btn
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              // Force any focused input to blur so its draft commits via
+              // EditableField's onBlur handler before we re-fetch.
+              const el = typeof document !== 'undefined' ? document.activeElement : null
+              if (el && typeof (el).blur === 'function') (el).blur()
+              setSaving(true)
+              setError('')
+              try {
+                const res = await fetch('/api/attorney/profile', { credentials: 'same-origin' })
+                const payload = await res.json().catch(() => null)
+                if (!res.ok) throw new Error(payload?.error || 'Could not refresh profile.')
+                setData(payload)
+                setSavedFlash('Profile saved')
+                window.setTimeout(() => setSavedFlash(''), 1600)
+              } catch (e) {
+                setError(e.message)
+              } finally {
+                setSaving(false)
+              }
+            }}
+          >
+            {saving ? 'Saving…' : 'Save profile'}
+          </Btn>
+        </div>
+      </div>
     </div>
   )
 }
