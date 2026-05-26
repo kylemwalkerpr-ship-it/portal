@@ -1,9 +1,7 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { redirect } from 'next/navigation'
-import dynamic from 'next/dynamic'
 import SellerShell from '@/components/seller/SellerShell'
-
-const GigSEOAnalytics = dynamic(() => import('@/components/marketplace/GigSEOAnalytics'), { ssr: false })
+import GigSEOAnalyticsWrapper from '@/components/marketplace/GigSEOAnalyticsWrapper'
 
 export default async function SEOAnalyticsPage() {
   const auth = await requirePortalUser()
@@ -18,7 +16,7 @@ export default async function SEOAnalyticsPage() {
 
   return (
     <SellerShell title="SEO Analytics" subtitle="Search optimization scores across all your services">
-      <GigSEOAnalytics />
+      <GigSEOAnalyticsWrapper />
     </SellerShell>
   )
 }
