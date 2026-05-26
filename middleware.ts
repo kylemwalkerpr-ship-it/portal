@@ -26,6 +26,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/gigs(.*)',
   '/api/gig-categories(.*)',
   '/api/gig-reviews(.*)',
+  // /api/reviews powers the public ReviewsSection on attorney/consultant
+  // and gig detail pages. GET is anonymous-safe (reads gig_reviews +
+  // profile name only); POST is auth-gated inside the handler.
+  '/api/reviews(.*)',
   '/api/attorneys(.*)',
   '/api/consultants(.*)',
   // /api/profile is hit on every marketplace page by MarketplaceShell to
@@ -38,6 +42,44 @@ const isPublicRoute = createRouteMatcher([
   '/api/profile',
   '/api/sellers(.*)',
 ])
+
+// Origins we permit for cross-origin API calls. The market subdomain
+// is the most common consumer — students browse there, then click
+// "Chat with attorney" which hits portal API endpoints across origins.
+// Without these, the browser preflights /api/messages/start etc. and
+// the portal's redirect-to-sign-in response (which has no CORS headers)
+// breaks the fetch with "Preflight response is not successful".
+const ALLOWED_CROSS_ORIGINS = new Set([
+  'https://market.yousafeconsultancy.com',
+  'https://yousafeconsultancy.com',
+  'https://www.yousafeconsultancy.com',
+  'https://usa.yousafeconsultancy.com',
+  'https://ca.yousafeconsultancy.com',
+  'https://uk.yousafeconsultancy.com',
+  'https://legal.yousafeconsultancy.com',
+  'https://support.yousafeconsultancy.com',
+])
+
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || ''
+  const headers: Record<string, string> = { Vary: 'Origin' }
+  if (ALLOWED_CROSS_ORIGINS.has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin
+    headers['Access-Control-Allow-Credentials'] = 'true'
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, PUT, DELETE, OPTIONS'
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    headers['Access-Control-Max-Age'] = '86400'
+  }
+  return headers
+}
+
+function withCorsHeaders(res: NextResponse, req: Request): NextResponse {
+  const corsHeaders = corsHeadersFor(req)
+  for (const [k, v] of Object.entries(corsHeaders)) {
+    res.headers.set(k, v)
+  }
+  return res
+}
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
 
@@ -115,6 +157,17 @@ export default clerkMiddleware(
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
 
+    // ── CORS preflight ───────────────────────────────────────────────────
+    // OPTIONS to any API path from an allowed cross-origin gets a 204
+    // with the right Access-Control-* headers. Without this the browser
+    // never even sends the real request because the preflight fails.
+    if (req.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+      const origin = req.headers.get('origin') || ''
+      if (ALLOWED_CROSS_ORIGINS.has(origin)) {
+        return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
+      }
+    }
+
     // ── Hostname-based routing ───────────────────────────────────────────
     // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
     // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
@@ -149,7 +202,9 @@ export default clerkMiddleware(
       return NextResponse.redirect(redirectUrl, { status: 301 })
     }
 
-    if (pathname !== '/' && isPublicRoute(req)) return withPathHeaders(NextResponse.next(), pathname, search, lang)
+    if (pathname !== '/' && isPublicRoute(req)) {
+      return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
+    }
 
     const { userId } = await auth()
 
@@ -159,6 +214,19 @@ export default clerkMiddleware(
     }
 
     if (!userId) {
+      // Cross-origin (or any) fetch to a non-public API path with no
+      // session: return 401 JSON. Redirecting to /sign-in breaks
+      // browser fetches — preflight to the redirect target fails
+      // because the sign-in page doesn't carry CORS headers, and even
+      // a successful follow would drop the credentials. The client
+      // handles 401 by opening the sign-in modal / lane bridge.
+      if (pathname.startsWith('/api/')) {
+        const body = JSON.stringify({ error: 'Unauthorized', signInRequired: true })
+        return new NextResponse(body, {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) },
+        })
+      }
       const lane = req.nextUrl.searchParams.get('lane')
       const laneSegment =
         lane === 'consultant' ? 'consultant'
@@ -170,7 +238,7 @@ export default clerkMiddleware(
       return NextResponse.redirect(signInUrl)
     }
 
-    return withPathHeaders(NextResponse.next(), pathname, search, lang)
+    return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
   },
   {
     authorizedParties: AUTHORIZED_PARTIES.length > 0 ? AUTHORIZED_PARTIES : undefined,

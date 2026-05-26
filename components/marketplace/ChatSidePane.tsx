@@ -72,8 +72,19 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     if (!attorneyId || !open) return
     setLoading(true); setError('')
     try {
-      // Look up existing chats and filter for this attorney
-      const r = await fetch('/api/client/attorney-chats', { credentials: 'same-origin' })
+      // credentials: 'include' so the Clerk session cookie travels
+      // when this pane runs on market.yousafeconsultancy.com and
+      // talks to portal.yousafeconsultancy.com (same site, different
+      // origin). 'same-origin' would drop the cookie and force every
+      // marketplace visitor to look unauthenticated.
+      const r = await fetch('/api/client/attorney-chats', { credentials: 'include' })
+      if (r.status === 401) {
+        // Anonymous visitor — not a load failure, just unauthenticated.
+        // Show the sign-in CTA instead of an error banner.
+        setError('SIGN_IN_REQUIRED')
+        setChatId(null); setMessages([])
+        return
+      }
       const d = await r.json().catch(() => ({}))
       if (r.ok) {
         const list = d?.chats || []
@@ -96,7 +107,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
 
   const loadMessages = async (id) => {
     try {
-      const r = await fetch(`/api/client/attorney-chats/${id}`, { credentials: 'same-origin' })
+      const r = await fetch(`/api/client/attorney-chats/${id}`, { credentials: 'include' })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Could not load thread.')
       setMessages(d.messages || [])
@@ -118,7 +129,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       ? { counterpart_profile_id: counterpartProfileId, context_kind: contextKind || 'general', context_id: contextId || null }
       : { counterpart_attorney_id: attorneyId }
     fetch('/api/messages/start', {
-      method: 'POST', credentials: 'same-origin',
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
@@ -146,7 +157,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       // This path is the cleanest — no legacy inquiry creation, deep-link-safe.
       if (conversationId) {
         const r = await fetch(`/api/messages/conversations/${conversationId}`, {
-          method: 'POST', credentials: 'same-origin',
+          method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ body: text }),
         })
@@ -155,7 +166,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
         setDraft('')
         // Refresh thread via the conversation endpoint for live history
         try {
-          const tr = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'same-origin' })
+          const tr = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'include' })
           const td = await tr.json().catch(() => ({}))
           if (tr.ok && td?.messages) {
             // Normalise to the legacy shape so the existing render works
@@ -174,7 +185,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
         // Create chat via attorney-message endpoint (also returns the
         // unified conversation_id for deep-linking into Messages).
         const r = await fetch('/api/client/attorney-message', {
-          method: 'POST', credentials: 'same-origin',
+          method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ attorneyId, message: text }),
         })
@@ -187,7 +198,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
       } else {
         // Existing chat — append a message
         const r = await fetch(`/api/client/attorney-chats/${chatId}/messages`, {
-          method: 'POST', credentials: 'same-origin',
+          method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ body: text }),
         })
@@ -216,7 +227,21 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     </div>
   )
 
-  const banner = error ? (
+  // SIGN_IN_REQUIRED is the friendly anonymous-visitor signal — show a
+  // sign-in CTA instead of a red error banner. Any other error string
+  // is a real failure (offline, 5xx, malformed response) and gets the
+  // standard red treatment.
+  const banner = error === 'SIGN_IN_REQUIRED' ? (
+    <div style={{ padding: '12px 14px', background: `${CYAN}10`, color: CYAN, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <span>Sign in to message this attorney.</span>
+      <a
+        href={`https://portal.yousafeconsultancy.com/sign-in/student?return_to=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '/')}`}
+        style={{ background: CYAN, color: '#FFFFFF', padding: '6px 12px', borderRadius: 6, textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
+      >
+        Sign in →
+      </a>
+    </div>
+  ) : error ? (
     <div style={{ padding: '10px 14px', background: `${RED}10`, color: RED, fontSize: 12, fontWeight: 600 }}>
       {error}
     </div>
