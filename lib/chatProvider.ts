@@ -113,8 +113,13 @@ function chain(primary: ChatProvider, fallback: ChatProvider): ChatProvider {
 }
 
 export function getChatProvider(): ChatProvider | null {
-  const groqKey = process.env.GROQ_API_KEY
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+  // Trim before use — secrets piped through CI sometimes pick up a
+  // trailing newline that survives all the way to the worker, and
+  // encodeURIComponent() on that newline turns into %0A in the
+  // request URL, which Google's Generative Language API rejects with
+  // API_KEY_INVALID. Same applies to Groq's Authorization header.
+  const groqKey = (process.env.GROQ_API_KEY || '').trim()
+  const geminiKey = ((process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) || '').trim()
   const groq = groqKey ? buildGroq(groqKey) : null
   const gemini = geminiKey ? buildGemini(geminiKey) : null
 
