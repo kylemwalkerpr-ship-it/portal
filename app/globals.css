@@ -696,6 +696,47 @@ h1, h2, .yousafe-serif {
     min-width: 0 !important;
   }
 
+  /* Find Attorney — attorney profile detail view. Outer container
+     padding shrinks, hero grid collapses to a single centred column,
+     name+credential row scales to a readable mobile size, and the
+     "Engage this attorney" sidebar un-stickies so users hit the
+     CTA inline instead of needing to scroll past the bio first. */
+  .ys-attorney-detail {
+    padding: 16px 14px !important;
+  }
+  .ys-attorney-hero-grid {
+    grid-template-columns: 1fr !important;
+    padding: 20px 18px !important;
+    gap: 16px !important;
+    text-align: center;
+  }
+  .ys-attorney-hero-grid > * {
+    min-width: 0 !important;
+  }
+  .ys-attorney-hero-avatar-wrap {
+    display: flex;
+    justify-content: center;
+  }
+  .ys-attorney-hero-avatar {
+    width: 96px !important;
+    height: 96px !important;
+    font-size: 38px !important;
+  }
+  .ys-attorney-hero-name {
+    font-size: 26px !important;
+    line-height: 1.15;
+  }
+  .ys-attorney-hero-right {
+    align-items: center !important;
+  }
+  .ys-attorney-hero-price {
+    font-size: 26px !important;
+  }
+  .ys-attorney-detail-aside {
+    position: static !important;
+    top: auto !important;
+  }
+
   .yousafe-mobile-row {
     flex-direction: column !important;
     align-items: stretch !important;

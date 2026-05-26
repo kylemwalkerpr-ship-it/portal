@@ -304,27 +304,28 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
   const initial = (a.full_name || '?').trim().charAt(0).toUpperCase()
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: '1080px' }}>
+    <div className="ys-attorney-detail" style={{ padding: '24px 28px', maxWidth: '1080px' }}>
       <button onClick={onBack} type="button" style={backBtn}>← Back to attorneys</button>
 
       {/* Hero */}
       <Card>
-        <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: '28px', alignItems: 'center' }}>
-          <div>
+        <div className="ys-attorney-hero-grid" style={{ padding: '32px', display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: '28px', alignItems: 'center' }}>
+          <div className="ys-attorney-hero-avatar-wrap">
             {a.headshot_url ? (
               <img
                 src={a.headshot_url}
                 alt={a.full_name}
+                className="ys-attorney-hero-avatar"
                 style={{ width: '160px', height: '160px', borderRadius: '50%', objectFit: 'cover', border: `4px solid ${C.surface}`, boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}
               />
             ) : (
-              <div style={{ width: '160px', height: '160px', borderRadius: '50%', background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.serif, fontSize: '64px', color: C.cyan }}>
+              <div className="ys-attorney-hero-avatar" style={{ width: '160px', height: '160px', borderRadius: '50%', background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.serif, fontSize: '64px', color: C.cyan }}>
                 {initial}
               </div>
             )}
           </div>
           <div>
-            <h1 style={{ fontFamily: C.serif, fontSize: '40px', fontWeight: 500, color: C.text, margin: '0 0 4px', letterSpacing: '-0.012em' }}>
+            <h1 className="ys-attorney-hero-name" style={{ fontFamily: C.serif, fontSize: '40px', fontWeight: 500, color: C.text, margin: '0 0 4px', letterSpacing: '-0.012em' }}>
               {a.full_name}
             </h1>
             {a.credential_type && (
@@ -351,11 +352,11 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+          <div className="ys-attorney-hero-right" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
             {a.starting_price ? (
               <>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Starting at</div>
-                <div style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                <div className="ys-attorney-hero-price" style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
               </>
             ) : (
               <div style={{ color: C.textMuted, fontSize: '13px' }}>Custom-quoted per matter</div>
@@ -440,8 +441,9 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
           </Section>
         </div>
 
-        {/* Sticky sidebar */}
-        <aside style={{ position: 'sticky', top: '20px' }}>
+        {/* Sticky sidebar — un-sticky on mobile so the engage CTA doesn't
+            pin below the long bio scroll. */}
+        <aside className="ys-attorney-detail-aside" style={{ position: 'sticky', top: '20px' }}>
           <Card>
             <div style={{ padding: '20px' }}>
               <SectionHeading>Engage this attorney</SectionHeading>
