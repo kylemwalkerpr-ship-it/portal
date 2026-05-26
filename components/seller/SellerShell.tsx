@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Services', href: '/dashboard/gigs' },
   { label: 'Orders', href: '/dashboard/orders' },
+  { label: 'Marketplace', href: '/dashboard/marketplace' },
 ]
 
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
