@@ -545,7 +545,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
             ) : (
               <>
                 {view === 'grid' ? (
-                  <div style={gigGrid}>
+                  <div style={gigGrid} className="ys-gig-grid">
                     {gigs.map(gig => (
                       <GigCard key={gig.id} gig={gig} />
                     ))}
@@ -557,6 +557,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
                         key={gig.id}
                         href={`/marketplace/gigs/${gig.slug}`}
                         style={gigListItem}
+                        className="ys-gig-list-item"
                       >
                         {gig.gallery_images?.[0]?.url ? (
                           <img
@@ -711,6 +712,18 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
           }
           .ys-filter-sidebar {
             display: none !important;
+          }
+        }
+        @media (max-width: 700px) {
+          /* Tighten the grid to 1 column under 700px. The default
+             auto-fill with min(280px) actually already wraps to 1 col
+             on narrow screens, but explicit is clearer than implicit. */
+          .ys-gig-grid {
+            grid-template-columns: 1fr !important;
+          }
+          /* List view: stack image above content so titles can read. */
+          .ys-gig-list-item {
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>

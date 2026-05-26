@@ -126,6 +126,36 @@
 @media (max-width: 900px) { .yousafe-messenger .cl { width: 340px; } }
 @media (max-width: 680px) { .yousafe-messenger .cl { width: 100%; position: absolute; inset: 0; z-index: 5; } }
 
+/* ── ChatScreen mobile pane toggle ─────────────────────────────────────
+   Below 680px the messenger shows only ONE pane at a time — either the
+   conversation list (sidebar) or the open chat. The active pane is
+   driven by data-mobile-view on the ChatScreen root, which UnifiedInbox
+   flips when a conversation is selected.
+
+   Desktop (>680px): ignored — both panes render side-by-side. */
+@media (max-width: 680px) {
+  .ys-chatscreen[data-mobile-view] {
+    /* Make sure the root is a positioning context for any absolutely-
+       positioned chrome (drawers, modals, the .cl sidebar's inset:0). */
+    position: relative;
+  }
+  /* When user is browsing the list, hide the chat pane. */
+  .ys-chatscreen[data-mobile-view="list"] .ys-chatscreen-sidebar {
+    width: 100% !important;
+    border-right: 0 !important;
+  }
+  .ys-chatscreen[data-mobile-view="list"] .ys-chatscreen-chat {
+    display: none !important;
+  }
+  /* When user has opened a conversation, hide the sidebar. */
+  .ys-chatscreen[data-mobile-view="chat"] .ys-chatscreen-sidebar {
+    display: none !important;
+  }
+  .ys-chatscreen[data-mobile-view="chat"] .ys-chatscreen-chat {
+    width: 100% !important;
+  }
+}
+
 .yousafe-messenger .cl-head {
   background: var(--panel-2);
   padding: 12px 14px 0;

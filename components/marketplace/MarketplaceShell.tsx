@@ -258,11 +258,12 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         fontFamily: F.ui,
       }}
     >
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', height: 72 }}>
+      <div className="ys-shell-header-inner" style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 28px', display: 'flex', alignItems: 'center', height: 72 }}>
 
         {/* Brand */}
         <Link
           href={role === null ? '/marketplace' : 'https://portal.yousafeconsultancy.com/dashboard'}
+          className="ys-shell-brand"
           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px 0 0', marginRight: '2px', textDecoration: 'none', flexShrink: 0 }}
         >
           {role === null ? (
@@ -281,7 +282,7 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
           ) : (
             <div style={{ textAlign: 'left' as const }}>
               <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-              <div style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+              <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                 {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
               </div>
             </div>
@@ -292,6 +293,7 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         <a
           href="https://yousafeconsultancy.com/"
           aria-label="YouSafe Consultancy home"
+          className="ys-shell-home"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -358,15 +360,15 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         </nav>
 
         {role !== null && (
-          <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+          <div className="ys-shell-jx" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
             <JurisdictionDropdown active={country} />
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <GlobalLanguageBar />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
+        <div className="ys-shell-aux" style={{ display: 'flex', alignItems: 'center', paddingLeft: '12px', flexShrink: 0 }}>
           <MarketplaceAuthNav signUpHref="https://portal.yousafeconsultancy.com/sign-up/student?lane=student&source=market_shell" />
         </div>
       </div>
@@ -431,6 +433,25 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
 
   return (
     <div className="cw-market" style={{ minHeight: '100vh', background: T.paper, fontFamily: F.ui }}>
+      {/* Mobile-specific overrides for the top nav + category bar. Inline
+          styles can't carry media queries, so we attach class names to
+          the affected elements and let CSS take over below 720px. */}
+      <style>{`
+        @media (max-width: 720px) {
+          .ys-shell-header-inner { padding: 0 12px !important; height: 60px !important; }
+          .ys-shell-home { padding: 0 8px !important; }
+          .ys-shell-home span { display: none !important; }
+          .ys-shell-home svg:last-child { display: none !important; }
+          .ys-shell-brand { padding-right: 10px !important; }
+          .ys-shell-brand-sub { display: none !important; }
+          .ys-shell-aux { padding-left: 6px !important; }
+          .ys-shell-jx { padding-left: 6px !important; }
+          .ys-cat-bar-inner { padding: 0 12px !important; height: 46px !important; }
+        }
+        @media (max-width: 480px) {
+          .ys-shell-jx { display: none !important; }
+        }
+      `}</style>
       {/* Top nav — always visible once role is known */}
       {roleLoaded && (
         <TopNav role={role} activeView={section} onNav={handleNav} country={country} />

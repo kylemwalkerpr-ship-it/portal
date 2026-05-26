@@ -624,7 +624,34 @@ const CSS = `
 .cw-market .filters a .ct { font-family: ${F.mono}; font-size: 10.5px; margin-left: 6px; color: currentColor; opacity: 0.7; }
 .cw-market .gig-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 @media (max-width: 1080px) { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .cw-market .gig-grid { grid-template-columns: 1fr; } .cw-market .nav-search { display: none; } }
+@media (max-width: 700px) {
+  .cw-market .gig-grid { grid-template-columns: 1fr; }
+  .cw-market .nav-search { display: none; }
+  /* Hero search becomes a stack so it fits a phone width without overflow.
+     The button and jurisdiction picker get their own row under the input. */
+  .cw-market .hero-search { flex-wrap: wrap; padding: 8px; gap: 8px; border-radius: 14px; }
+  .cw-market .hero-search > svg { display: none; }
+  .cw-market .hero-search input { flex-basis: 100%; min-width: 0; height: 40px; font-size: 14px; padding: 0 6px; }
+  .cw-market .hero-search .pick { border-left: 0; padding: 0 6px; height: 36px; font-size: 12px; flex: 1 1 auto; }
+  .cw-market .hero-search button.search-go { height: 36px; padding: 0 16px; font-size: 12.5px; flex: 0 0 auto; }
+  .cw-market .hero h1 { font-size: clamp(28px, 9vw, 38px); }
+  .cw-market .hero p.lede { font-size: 14px; }
+  /* Topbar (announcements row) becomes more compact and wraps. */
+  .cw-market .topbar-inner { flex-wrap: wrap; gap: 6px 12px; height: auto; padding: 6px 0; }
+  .cw-market .topbar-left, .cw-market .topbar-right { gap: 10px; }
+  /* Country-bar's pills already wrap; just trim padding so they fit. */
+  .cw-market .country-bar a { padding: 5px 10px; font-size: 12px; }
+  /* Trust strip wraps cleanly on mobile already; tighten spacing. */
+  .cw-market .trust-inner { gap: 10px 18px; }
+  /* Section heads stack vertically so meta doesn't crash into the title. */
+  .cw-market .section-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .cw-market .section-head .meta { text-align: left; }
+  /* Filters wrap (they already do via flex-wrap) — just verify spacing. */
+  .cw-market .filters { gap: 4px; }
+  /* Suggest chips shrink. */
+  .cw-market .suggest { gap: 4px; }
+  .cw-market .suggest a { padding: 4px 9px; font-size: 11.5px; }
+}
 
 .cw-market .gig { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform .25s, box-shadow .25s, border-color .25s; }
 .cw-market .gig:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(29,36,51,0.04), 0 18px 38px -28px rgba(29,36,51,0.22); border-color: ${T.ink}; }

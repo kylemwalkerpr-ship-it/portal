@@ -14,6 +14,14 @@ export interface ChatScreenProps {
   unreadDivider?: { afterMessageId: string } | null
   className?: string
   style?: React.CSSProperties
+  /**
+   * Mobile pane toggle. When true and viewport ≤680px, the chat region
+   * fills the screen and the sidebar is hidden. When false (or when no
+   * conversation is selected), the sidebar fills the screen and the
+   * chat region is hidden. At >680px both panes render side-by-side
+   * regardless of this value.
+   */
+  mobileShowChat?: boolean
 }
 
 export default function ChatScreen({
@@ -26,6 +34,7 @@ export default function ChatScreen({
   unreadDivider,
   className,
   style,
+  mobileShowChat = false,
 }: ChatScreenProps) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const messagesRef = React.useRef<HTMLDivElement>(null)
@@ -87,6 +96,7 @@ export default function ChatScreen({
 
   const chatRegion = (
     <div
+      className="ys-chatscreen-chat"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -150,10 +160,17 @@ export default function ChatScreen({
     </div>
   )
 
+  // Compose top-level className + data-attribute so the mobile-pane
+  // CSS rules in messenger-tokens.css can hide whichever side is not
+  // currently active at ≤680px. Desktop ignores the data attribute and
+  // shows both panes side-by-side.
+  const wrapperClass = ['ys-chatscreen', className].filter(Boolean).join(' ')
+
   return (
     <div
       ref={containerRef}
-      className={className}
+      className={wrapperClass}
+      data-mobile-view={isSplit ? (mobileShowChat ? 'chat' : 'list') : 'chat'}
       style={{
         display: 'flex',
         flexDirection: isSplit ? 'row' : 'column',
@@ -164,6 +181,7 @@ export default function ChatScreen({
     >
       {isSplit && (
         <div
+          className="ys-chatscreen-sidebar"
           style={{
             width: 340,
             flexShrink: 0,

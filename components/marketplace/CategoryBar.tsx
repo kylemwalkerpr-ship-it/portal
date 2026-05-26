@@ -64,6 +64,7 @@ export function CategoryBar({ country }: Props) {
       }}
     >
       <div
+        className="ys-cat-bar-inner"
         style={{
           maxWidth: '1280px',
           margin: '0 auto',
