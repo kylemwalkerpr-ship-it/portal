@@ -1,4 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -49,6 +50,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
     const cheapest = activeTiers.sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
 
+    // Use the helper so a string-only legacy gallery still produces a
+    // usable cover, and so cover_image_url falls back to gallery_images[0]
+    // when it's not explicitly set on the row.
     return {
       id: gig.id,
       slug: gig.slug,
@@ -59,8 +63,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       avg_rating: gig.avg_rating,
       review_count: gig.review_count,
       order_count: gig.order_count,
-      image_url: gig.cover_image_url,
-      gallery_images: gig.gallery_images,
+      image_url: resolveCoverUrl(gig),
+      gallery_images: normalizeGallery(gig.gallery_images),
     }
   })
 

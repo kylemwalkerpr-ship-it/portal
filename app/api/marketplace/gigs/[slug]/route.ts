@@ -1,4 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
@@ -50,17 +51,28 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     .neq('id', gig.id)
     .limit(6)
 
-  const cover = Array.isArray(gig.gallery_images) && gig.gallery_images[0]?.url ? gig.gallery_images[0].url : null
+  // resolveCoverUrl handles both shapes — `{url}` objects (current) and
+  // bare strings (older builder versions). Without this, gigs created
+  // before the wizard fix never rendered a cover anywhere.
+  const cover = resolveCoverUrl(gig)
+  const normalizedGallery = normalizeGallery(gig.gallery_images)
+  const normalizedSimilar = (similarGigs || []).map((sg: any) => ({
+    ...sg,
+    gallery_images: normalizeGallery(sg.gallery_images),
+    cover_image_url: resolveCoverUrl(sg),
+  }))
 
   return ok({
     gig: {
       ...gig,
+      gallery_images: normalizedGallery,
+      cover_image_url: cover,
       provider_avg_rating: providerStats.avg_rating,
       provider_review_count: providerStats.review_count,
       provider_order_count: providerStats.order_count,
       provider_response_time: providerStats.response_time,
       provider_is_online: providerStats.is_online,
-      similar_gigs: similarGigs || [],
+      similar_gigs: normalizedSimilar,
     },
     seo: {
       title: `${gig.seo_title || gig.title} | YouSafe`,

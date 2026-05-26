@@ -932,7 +932,11 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
   const addImageUrl = () => {
     const url = imageUrlInput.trim()
     if (!url || !canAddMore) return
-    onChange('gallery_images', [...images, url])
+    // Store as a {url} object so marketplace renderers (which all read
+    // gig.gallery_images[0]?.url) can pick the cover up. Pushing a bare
+    // string instead — which this used to do — left the cover invisible
+    // on every gig card because "https://…"?.url is undefined.
+    onChange('gallery_images', [...images, { url }])
     setImageUrlInput('')
   }
 
@@ -956,7 +960,9 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
     try {
       if (!onUploadFile) throw new Error('Upload is unavailable. Use the URL field instead.')
       const url = await onUploadFile(file)
-      onChange('gallery_images', [...images, url])
+      // Same fix as addImageUrl — store as {url} so the marketplace card's
+      // gig.gallery_images[0]?.url access path actually finds the cover.
+      onChange('gallery_images', [...images, { url, name: file.name, size: file.size }])
     } catch (err: any) {
       setUploadError(err?.message || 'Upload failed.')
     } finally {

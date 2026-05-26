@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { getCategoryFilterTerms } from '@/lib/categories'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
@@ -66,8 +67,16 @@ export async function GET(req: Request) {
     .map((gig: any) => {
       const activeTiers = (gig.tiers || []).filter((t: any) => t.is_active)
       const cheapest = activeTiers.sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
+      const gallery = normalizeGallery(gig.gallery_images)
       return {
         ...gig,
+        // Coerce gallery_images so consumers can safely read [0]?.url
+        // regardless of whether the row was written as strings (old
+        // builder bug) or {url} objects (current shape). Also surface a
+        // top-level cover_image_url so card components can grab the
+        // resolved cover without re-implementing the lookup.
+        gallery_images: gallery,
+        cover_image_url: resolveCoverUrl(gig),
         starting_price: cheapest?.price ?? null,
         delivery_days: cheapest?.delivery_days ?? null,
         new_badge: Number(gig.order_count || 0) < 5 && Number(gig.review_count || 0) < 3,
