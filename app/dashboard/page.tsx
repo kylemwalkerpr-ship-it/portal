@@ -98,7 +98,20 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   let clerkData: Awaited<ReturnType<typeof getClerkUserData>> | null = null
   if (!profile) {
     clerkData = await getClerkUserData(userId)
-    requestedRole = params.lane ? requestedRole : clerkData.requestedRole ?? requestedRole
+    // Clerk's unsafe_metadata.requestedRole is the most authoritative
+    // signal — it was set at sign-up and travels with the user across
+    // verification email redirects, OAuth callbacks, and tab restarts.
+    // The URL ?lane= is just a hint and can be dropped by intermediate
+    // Clerk routes. If they conflict, prefer the metadata.
+    //
+    // Previously this preferred params.lane unconditionally, which meant
+    // an attorney who landed back on /dashboard without ?lane=attorney
+    // (e.g. after email verification) was provisioned as the default
+    // 'client' lane — the symptom the user reported on
+    // portal.yousafeconsultancy.com.
+    if (clerkData.requestedRole) {
+      requestedRole = clerkData.requestedRole
+    }
   }
 
   if (!profile && clerkData?.email) {

@@ -185,12 +185,16 @@ export default function MemberAccessBand({ onOpenSignIn }: MemberAccessBandProps
           >
             Sign in to your account
           </button>
-          <a
-            href={`${PORTAL}/sign-up/student`}
-            style={{ fontFamily: T.sans, fontSize: 13, color: T.inkSoft, textDecoration: 'none' }}
+          <button
+            type="button"
+            onClick={onOpenSignIn}
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: T.sans, fontSize: 13, color: T.inkSoft, padding: 0,
+            }}
           >
-            Not a member yet? <span style={{ color: T.indigo, textDecoration: 'underline' }}>Create a free account →</span>
-          </a>
+            Not a member yet? <span style={{ color: T.indigo, textDecoration: 'underline' }}>Pick your role to create an account →</span>
+          </button>
         </div>
       </div>
     </section>

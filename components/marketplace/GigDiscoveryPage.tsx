@@ -432,14 +432,31 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     loadGigs()
   }
 
+  // Title reflects the active filter so the user can see at a glance that
+  // their selection took effect. Previously this stayed "All Services" for
+  // every URL using ?category= (only the /marketplace/categories/[id]
+  // route ever passed a categoryName prop), so toggling categories in the
+  // sidebar visibly changed the URL + gig grid but left the page title
+  // unchanged — easy to misread as "the page didn't react".
+  const titleText = (() => {
+    if (categoryName) return categoryName
+    if (selectedCategories.length === 1) {
+      return getCategoryById(selectedCategories[0])?.name || 'All Services'
+    }
+    if (selectedCategories.length > 1) return `${selectedCategories.length} categories`
+    if (selectedJurisdictions.length === 1) {
+      return ({ us: 'United States', uk: 'United Kingdom', ca: 'Canada' }[selectedJurisdictions[0]]
+        || selectedJurisdictions[0].toUpperCase()) + ' services'
+    }
+    return 'All services'
+  })()
+
   return (
     <div style={pageShell}>
       <main style={inner}>
         <div style={toolbar}>
           <div>
-            <h1 style={titleStyle}>
-              {categoryName || 'All Services'}
-            </h1>
+            <h1 style={titleStyle}>{titleText}</h1>
             <ResultsCount total={total} showing={gigs.length} />
             <form onSubmit={handleSearchSubmit} style={searchBar}>
               <SearchInput
