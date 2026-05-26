@@ -224,6 +224,27 @@ export function AttorneyIntakeWizard() {
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  async function navigateToStep(targetStep: number) {
+    if (targetStep === step || saving) return
+    // Save current step data first so no input is lost when jumping via chips.
+    const payload = stepPayload(step, form)
+    // Preserve the furthest step reached so the wizard resumes correctly.
+    payload.intake_last_step = Math.max(step, targetStep)
+    const ok = await persist(payload)
+    if (ok) setStep(targetStep)
+  }
+
+  function goBack() {
+    if (step <= 0 || saving) return
+    // Save current step data before going back so changes aren't lost.
+    const payload = stepPayload(step, form)
+    // Preserve progress — going back shouldn't reset the resume step.
+    payload.intake_last_step = step
+    persist(payload).then((ok) => {
+      if (ok) setStep(step - 1)
+    })
+  }
+
   if (!loaded) {
     return (
       <main style={pageWrap}>
@@ -239,6 +260,10 @@ export function AttorneyIntakeWizard() {
   const score = strength?.score ?? 0
   const ready = !!strength?.publish_ready
   const threshold = strength?.publish_threshold ?? 75
+  // Required-field check for the current step. If non-null, the Save &
+  // continue button is disabled and the message is surfaced inline so
+  // the user knows exactly what's missing before clicking.
+  const blocker = stepBlocker(step, form)
 
   return (
     <main style={pageWrap}>
@@ -269,7 +294,7 @@ export function AttorneyIntakeWizard() {
             <button
               key={s.id}
               type="button"
-              onClick={() => setStep(i)}
+              onClick={() => navigateToStep(i)}
               style={stepChip(active, done)}
             >
               <span style={stepNum(active, done)}>{done ? '✓' : i + 1}</span>
@@ -296,9 +321,24 @@ export function AttorneyIntakeWizard() {
         {step === 5 && <PricingStep form={form} setField={setField} />}
         {step === 6 && <ReviewStep form={form} strength={strength} ready={ready} threshold={threshold} />}
 
+        {blocker && !isLast && (
+          <div style={{
+            margin: '12px 0 0',
+            padding: '10px 12px',
+            background: 'rgba(178,34,52,0.08)',
+            border: '1px solid rgba(178,34,52,0.20)',
+            borderRadius: 8,
+            color: '#B22234',
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}>
+            <strong style={{ fontWeight: 700 }}>Required to continue:</strong> {blocker}
+          </div>
+        )}
+
         <footer style={footerRow}>
           {step > 0 ? (
-            <button type="button" style={ghostBtn} onClick={() => setStep(step - 1)}>← Back</button>
+            <button type="button" style={ghostBtn} onClick={goBack}>← Back</button>
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             {!isLast && (
@@ -307,7 +347,13 @@ export function AttorneyIntakeWizard() {
               </button>
             )}
             {!isLast ? (
-              <button type="button" style={primaryBtn} onClick={() => saveStep(step + 1)} disabled={saving}>
+              <button
+                type="button"
+                style={{ ...primaryBtn, opacity: blocker ? 0.5 : 1, cursor: blocker ? 'not-allowed' : 'pointer' }}
+                onClick={() => saveStep(step + 1)}
+                disabled={saving || !!blocker}
+                title={blocker || ''}
+              >
                 {saving ? 'Saving…' : 'Save & continue →'}
               </button>
             ) : (
@@ -332,6 +378,46 @@ export function AttorneyIntakeWizard() {
       </p>
     </main>
   )
+}
+
+/* ─────────────────── per-step required-field check ────────────────── */
+
+// Returns the human-readable reason the step's required fields aren't
+// satisfied, or null when the user can proceed. Drives the "Save &
+// continue" button's disabled+title state so missing inputs are
+// flagged BEFORE the user clicks rather than after a silent advance.
+function stepBlocker(step: number, f: Form): string | null {
+  switch (step) {
+    case 0:
+      if (!f.username.trim()) return 'Pick a profile handle to continue.'
+      if (!/^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/.test(f.username))
+        return 'Handle must be 3–32 chars, lowercase letters/numbers/dashes/underscores, and start+end with a letter or number.'
+      return null
+    case 1:
+      if (!f.credential_type.trim()) return 'Choose a credential type.'
+      if (f.credential_type === 'Other') return 'Type your actual credential in the box below the dropdown.'
+      if (!f.bar_number.trim()) return 'Add your bar / regulator number.'
+      return null
+    case 2:
+      if (!f.headshot_url) return 'Upload a headshot.'
+      if (!f.tagline.trim()) return 'Write a one-line tagline.'
+      if (!f.intro.trim()) return 'Add a short intro (2–3 sentences).'
+      return null
+    case 3:
+      if (!f.bio.trim()) return 'Write a long bio.'
+      return null
+    case 4:
+      if (!f.jurisdictions.trim()) return 'Add at least one jurisdiction.'
+      if (!f.practice_areas.trim()) return 'Add at least one practice area.'
+      if (f.specialties.length < 3) return `Pick at least 3 specialty tags (currently ${f.specialties.length}).`
+      return null
+    case 5:
+      if (f.years_experience === '' || Number(f.years_experience) < 0) return 'Enter years of experience.'
+      if (f.starting_price === '' || Number(f.starting_price) <= 0) return 'Enter a starting price.'
+      return null
+    default:
+      return null
+  }
 }
 
 /* ─────────────────── per-step payload selectors ────────────────────── */
@@ -414,6 +500,12 @@ function HandleStep({ form, setField }: { form: Form; setField: any }) {
 }
 
 function IdentityStep({ form, setField, options }: { form: Form; setField: any; options: string[] }) {
+  // "Other" requires the attorney to type the actual credential. We store
+  // the custom string back into credential_type when they edit the field,
+  // so the saved value is always the real credential name — not the
+  // literal word "Other".
+  const isPreset = options.includes(form.credential_type)
+  const showOtherInput = form.credential_type === 'Other' || (!isPreset && form.credential_type.length > 0)
   return (
     <div style={fieldStack}>
       <Field label="Display name" help="From your account. Edit in your account settings if it's wrong.">
@@ -426,13 +518,22 @@ function IdentityStep({ form, setField, options }: { form: Form; setField: any; 
       </Field>
       <Field label="Credential type" required help="Used as the verified badge on your profile and gig cards.">
         <select
-          value={form.credential_type}
+          value={isPreset ? form.credential_type : (showOtherInput ? 'Other' : '')}
           onChange={(e) => setField('credential_type', e.target.value)}
           style={inputStyle}
         >
           <option value="">Select your credential…</option>
           {options.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
+        {showOtherInput && (
+          <input
+            type="text"
+            value={form.credential_type === 'Other' ? '' : form.credential_type}
+            onChange={(e) => setField('credential_type', e.target.value)}
+            placeholder="Describe your credential (e.g. ICCRC R-1234, Australia MARN 1234567)"
+            style={{ ...inputStyle, marginTop: 8 }}
+          />
+        )}
       </Field>
       <Field label="Bar / regulator number" required help="Your bar admission or regulator registration number. Stored privately for verification.">
         <input
@@ -442,8 +543,19 @@ function IdentityStep({ form, setField, options }: { form: Form; setField: any; 
           placeholder="e.g. NY 5234112 · or OISC F2019xxx · or RCIC R5xxxxx"
           style={inputStyle}
         />
+        {form.credential_type && form.bar_number.trim().length === 0 && (
+          <RequiredHint text="Add your bar / regulator number — saved privately, used for verification." />
+        )}
       </Field>
     </div>
+  )
+}
+
+function RequiredHint({ text }: { text: string }) {
+  return (
+    <p style={{ margin: '6px 0 0', fontSize: 12, color: '#B22234' }}>
+      {text}
+    </p>
   )
 }
 
@@ -567,18 +679,23 @@ function CoverageStep({ form, setField, toggleArr }: { form: Form; setField: any
           style={inputStyle}
         />
       </Field>
-      <Field label="Specialties (3+ tags)" required help="Pick the ones that match your work. These power the marketplace search facets.">
+      <Field label="Specialties (3+ tags)" required help="Pick the ones that match your work. Add your own if it's not in the list. These power the marketplace search facets.">
         <ChipPicker
           all={SPECIALTY_SUGGESTIONS}
           selected={form.specialties}
           onToggle={(v) => toggleArr('specialties', v)}
+          addLabel="Add another specialty…"
         />
+        {form.specialties.length > 0 && form.specialties.length < 3 && (
+          <RequiredHint text={`Pick at least 3 (currently ${form.specialties.length}) so search facets surface you accurately.`} />
+        )}
       </Field>
-      <Field label="Languages" help="Beyond English. Students filter by language.">
+      <Field label="Languages" help="Beyond English. Add any others students might filter by.">
         <ChipPicker
           all={LANGUAGE_SUGGESTIONS}
           selected={form.languages}
           onToggle={(v) => toggleArr('languages', v)}
+          addLabel="Add another language…"
         />
       </Field>
     </div>
@@ -588,13 +705,22 @@ function CoverageStep({ form, setField, toggleArr }: { form: Form; setField: any
 function PricingStep({ form, setField }: { form: Form; setField: any }) {
   return (
     <div style={fieldStack}>
-      <Field label="Years of experience" required>
+      <Field label="Years of experience" required help="Whole number, 0-60. Shows on your profile sidebar.">
         <input
           type="number"
           min={0}
           max={60}
-          value={form.years_experience}
-          onChange={(e) => setField('years_experience', e.target.value === '' ? '' : Number(e.target.value))}
+          step={1}
+          inputMode="numeric"
+          value={form.years_experience === '' ? '' : String(form.years_experience)}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === '') return setField('years_experience', '')
+            const n = parseInt(v, 10)
+            if (!Number.isFinite(n) || n < 0 || n > 60) return
+            setField('years_experience', n)
+          }}
+          placeholder="5"
           style={inputStyle}
         />
       </Field>
@@ -740,20 +866,72 @@ function CharCount({ n, min, max }: { n: number; min: number; max: number }) {
   )
 }
 
-function ChipPicker({ all, selected, onToggle }: { all: string[]; selected: string[]; onToggle: (v: string) => void }) {
+function ChipPicker({ all, selected, onToggle, addLabel }: {
+  all: string[]
+  selected: string[]
+  onToggle: (v: string) => void
+  addLabel?: string
+}) {
+  const [customDraft, setCustomDraft] = useState('')
+  // Combine the preset suggestions with any custom values the attorney
+  // has already picked (so they remain visible as filled chips). Dedupe
+  // case-insensitively but preserve the original casing.
+  const seen = new Set(all.map((s) => s.toLowerCase()))
+  const customSelected = selected.filter((s) => !seen.has(s.toLowerCase()))
+  const chips = [...all, ...customSelected]
+
+  const addCustom = () => {
+    const v = customDraft.trim()
+    if (!v) return
+    if (v.length > 80) return
+    // Don't duplicate — toggle is idempotent in either direction
+    const exists = selected.some((s) => s.toLowerCase() === v.toLowerCase())
+    if (!exists) onToggle(v)
+    setCustomDraft('')
+  }
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {all.map((v) => {
-        const on = selected.includes(v)
-        return (
-          <button
-            key={v}
-            type="button"
-            onClick={() => onToggle(v)}
-            style={pillBtn(on)}
-          >{v}</button>
-        )
-      })}
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {chips.map((v) => {
+          const on = selected.some((s) => s.toLowerCase() === v.toLowerCase())
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onToggle(v)}
+              style={pillBtn(on)}
+            >{v}</button>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <input
+          type="text"
+          value={customDraft}
+          onChange={(e) => setCustomDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addCustom()
+            }
+          }}
+          placeholder={addLabel || 'Add another…'}
+          maxLength={80}
+          style={{ ...inputStyle, flex: 1, padding: '8px 12px', fontSize: 13 }}
+        />
+        <button
+          type="button"
+          onClick={addCustom}
+          disabled={!customDraft.trim()}
+          style={{
+            ...ghostBtn,
+            padding: '8px 16px',
+            opacity: customDraft.trim() ? 1 : 0.5,
+            cursor: customDraft.trim() ? 'pointer' : 'not-allowed',
+          }}
+        >Add</button>
+      </div>
     </div>
   )
 }
