@@ -195,6 +195,10 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const [errors, setErrors] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = React.useState('')
+  // Field-level errors returned from /publish (status 422). Each entry
+  // maps a gig field → human message. Surfaced as a clear panel above
+  // the wizard footer so the seller knows exactly what's missing.
+  const [publishErrors, setPublishErrors] = React.useState<Record<string, string>>({})
   const [profileReady, setProfileReady] = React.useState(true)
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const handleReadyChange = React.useCallback((ready: boolean) => setProfileReady(ready), [])
@@ -366,6 +370,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const handlePublish = async () => {
     setSaving(true)
     setAutoSaveStatus('Publishing...')
+    setPublishErrors({})
     try {
       // Step 1: save draft (creates gig if new, or patches existing)
       const draftPayload = { ...gigData, status: 'draft' }
@@ -397,6 +402,13 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
       })
       if (!publishRes.ok) {
         const d = await publishRes.json()
+        // 422 = validation: lift the per-field errors into state so the
+        // wizard can render them next to the publish button. The seller
+        // sees what's missing instead of a generic "failed" banner.
+        if (publishRes.status === 422 && d?.error?.fields && typeof d.error.fields === 'object') {
+          setPublishErrors(d.error.fields as Record<string, string>)
+          throw new Error(d?.error?.message || 'A few details are missing before this gig can publish.')
+        }
         throw new Error(d?.error?.message || d?.error || 'Failed to publish gig')
       }
 
@@ -694,6 +706,75 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         {autoSaveStatus && (
           <div style={{ marginTop: '16px', fontSize: '13px', color: autoSaveStatus.includes('Error') ? T.brick : T.moss }}>
             {autoSaveStatus}
+          </div>
+        )}
+
+        {Object.keys(publishErrors).length > 0 && (
+          <div style={{
+            marginTop: '16px',
+            padding: '14px 18px',
+            background: `${T.brick}08`,
+            border: `1px solid ${T.brick}33`,
+            borderRadius: '10px',
+          }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: T.brick, letterSpacing: '0.04em', textTransform: 'uppercase' as const, marginBottom: '8px' }}>
+              Can&apos;t publish yet — fix these first
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '18px', display: 'grid', gap: '4px' }}>
+              {Object.entries(publishErrors).map(([field, msg]) => {
+                // Map publish field names to the wizard step that owns
+                // that field so the seller can jump straight to the fix.
+                const stepIndex =
+                  ['category', 'subcategory', 'jurisdiction'].includes(field) ? 0 :
+                  ['title', 'pitch', 'tagline', 'description', 'tags'].includes(field) ? 1 :
+                  field === 'tiers' ? 2 :
+                  ['requirements', 'gallery_images', 'faq'].includes(field) ? 3 :
+                  field.startsWith('profile_') ? -1 : -1
+                return (
+                  <li key={field} style={{ fontSize: '13px', color: T.ink, lineHeight: 1.5 }}>
+                    <strong style={{ fontWeight: 700, marginRight: '6px', textTransform: 'capitalize' as const }}>
+                      {field.replace(/_/g, ' ')}:
+                    </strong>
+                    {msg}
+                    {stepIndex >= 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleJumpToStep(stepIndex)}
+                        style={{
+                          marginLeft: '8px',
+                          padding: '1px 8px',
+                          borderRadius: '4px',
+                          background: 'transparent',
+                          border: `1px solid ${T.indigo}40`,
+                          color: T.indigo,
+                          fontSize: '11px', fontWeight: 600,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        Fix ↗
+                      </button>
+                    )}
+                    {field === 'profile_username' && (
+                      <a
+                        href="/dashboard/attorney/intake"
+                        style={{ marginLeft: '8px', color: T.indigo, fontWeight: 600, textDecoration: 'underline', fontSize: '12px' }}
+                      >
+                        Set handle →
+                      </a>
+                    )}
+                    {field === 'profile_strength' && (
+                      <a
+                        href="/dashboard/attorney/intake"
+                        style={{ marginLeft: '8px', color: T.indigo, fontWeight: 600, textDecoration: 'underline', fontSize: '12px' }}
+                      >
+                        Finish intake →
+                      </a>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         )}
       </Card>
