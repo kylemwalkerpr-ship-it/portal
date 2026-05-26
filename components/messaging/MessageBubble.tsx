@@ -44,6 +44,17 @@ export interface MessageBubbleProps {
   avatarColor?: string
   avatarName?: string
   onAvatarClick?: () => void
+  /* Action menu — Forward / Copy / Info / Star / Delete.
+     Each callback receives the message id; the parent owns the
+     side-effect (api call, modal, etc.). Star is already a toggle so
+     it takes the current state. Delete is sender-only; the parent
+     should pass a no-op (or omit the callback) when `mine` is false. */
+  starred?: boolean
+  rawBody?: string                          // plain-text body for Copy
+  onStar?: (msgId: string, next: boolean) => void
+  onDelete?: (msgId: string) => void
+  onForward?: (msgId: string) => void
+  onShowInfo?: (msgId: string) => void
 }
 
 function CheckIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
@@ -95,7 +106,14 @@ export default function MessageBubble({
   avatarColor,
   avatarName,
   onAvatarClick,
+  starred,
+  rawBody,
+  onStar,
+  onDelete,
+  onForward,
+  onShowInfo,
 }: MessageBubbleProps) {
+  const [copiedFlash, setCopiedFlash] = React.useState(false)
   const [showPicker, setShowPicker] = React.useState(false)
   const [pickerPos, setPickerPos] = React.useState({ x: 0, y: 0 })
   const [showGrid, setShowGrid] = React.useState(false)
@@ -217,12 +235,14 @@ export default function MessageBubble({
                 <button type="button" className="bub-emoji-picker-more" onClick={() => setShowGrid(true)}>+</button>
               </div>
               <div className="bub-emoji-picker-sep" />
+              {/* Action row — matches the iOS-style screenshot the user
+                  shared. Each item closes the picker after firing. */}
               <button
                 type="button"
                 className="bub-emoji-picker-action"
                 onClick={() => {
-                  if (replyTo || !body) return
-                  const snippet = String(body).slice(0, 120)
+                  if (replyTo || !body) { setShowPicker(false); return }
+                  const snippet = rawBody || (typeof body === 'string' ? String(body) : '').slice(0, 120)
                   onReplyStart?.(id, snippet, mine ? 'You' : 'Them')
                   setShowPicker(false)
                 }}
@@ -233,6 +253,91 @@ export default function MessageBubble({
                 </svg>
                 Reply
               </button>
+
+              {onForward && (
+                <button
+                  type="button"
+                  className="bub-emoji-picker-action"
+                  onClick={() => { onForward(id); setShowPicker(false) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 17 20 12 15 7" />
+                    <path d="M4 18v-2a8 8 0 0 1 8-8h8" />
+                  </svg>
+                  Forward
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="bub-emoji-picker-action"
+                onClick={async () => {
+                  const text = rawBody || (typeof body === 'string' ? body : '')
+                  if (!text) { setShowPicker(false); return }
+                  try {
+                    await navigator.clipboard.writeText(text)
+                    setCopiedFlash(true)
+                    window.setTimeout(() => { setCopiedFlash(false); setShowPicker(false) }, 800)
+                  } catch {
+                    setShowPicker(false)
+                  }
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                {copiedFlash ? 'Copied' : 'Copy'}
+              </button>
+
+              {onShowInfo && (
+                <button
+                  type="button"
+                  className="bub-emoji-picker-action"
+                  onClick={() => { onShowInfo(id); setShowPicker(false) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  Info
+                </button>
+              )}
+
+              {onStar && (
+                <button
+                  type="button"
+                  className="bub-emoji-picker-action"
+                  onClick={() => { onStar(id, !starred); setShowPicker(false) }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={starred ? '#C4A45A' : 'none'} stroke={starred ? '#C4A45A' : 'currentColor'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  {starred ? 'Unstar' : 'Star'}
+                </button>
+              )}
+
+              {mine && onDelete && (
+                <button
+                  type="button"
+                  className="bub-emoji-picker-action"
+                  style={{ color: '#B22234' }}
+                  onClick={() => {
+                    if (window.confirm('Delete this message? It will show as "deleted" for the other side.')) {
+                      onDelete(id)
+                      setShowPicker(false)
+                    }
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                  </svg>
+                  Delete
+                </button>
+              )}
             </>
           ) : (
             <div className="bub-emoji-picker-grid">

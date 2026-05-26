@@ -600,6 +600,79 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     }
   }
 
+  // ── Message action menu handlers ────────────────────────────────────
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!activeId) return
+    try {
+      const res = await fetch(`/api/messages/conversations/${activeId}/messages/${msgId}`, {
+        method: 'DELETE', credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        const data: any = await res.json().catch(() => ({}))
+        const msg = data?.error?.message || data?.error || 'Could not delete message.'
+        window.alert(typeof msg === 'string' ? msg : 'Could not delete message.')
+        return
+      }
+      loadThread(true)
+      loadList(true)
+    } catch (e: any) {
+      window.alert(e?.message || 'Network error deleting message.')
+    }
+  }
+
+  const handleForwardMessage = (msgId: string) => {
+    // Stage the message body as a pre-filled draft for the next
+    // conversation the user picks. Stored in localStorage so the next
+    // inbox mount can pick it up, and we prompt the user to choose a
+    // conversation from the left list. Minimal viable forward — full
+    // multi-recipient picker can come later.
+    const m = activeMsgs.find((x: any) => x.id === msgId)
+    if (!m) return
+    const body = m.body || (m.attachment_name ? `📎 ${m.attachment_name}` : '')
+    if (!body && !m.attachment_url) {
+      window.alert('Nothing to forward.')
+      return
+    }
+    const forwardText = `Forwarded message:\n${body}`
+    try {
+      window.localStorage.setItem('yousafe.forward.pending', JSON.stringify({
+        body: forwardText,
+        attachment_url: m.attachment_url || null,
+        attachment_name: m.attachment_name || null,
+        ts: Date.now(),
+      }))
+    } catch { /* localStorage unavailable, fall through */ }
+    setDraft(forwardText)
+    window.alert('Forward staged. Select another conversation from the left and the message will be pre-filled in the composer.')
+  }
+
+  const handleShowMessageInfo = (msgId: string) => {
+    const m = activeMsgs.find((x: any) => x.id === msgId)
+    if (!m) return
+    const sentAt = new Date(m.created_at).toLocaleString()
+    const delivered = m.delivered_at ? new Date(m.delivered_at).toLocaleString() : '—'
+    const read = m.read_at ? new Date(m.read_at).toLocaleString() : '—'
+    const sender = m.sender_id === activeConv?.counterpart?.id ? (activeConv?.counterpart?.full_name || 'Them') : 'You'
+    window.alert(
+      `Message info\n\nSender: ${sender}\nSent: ${sentAt}\nDelivered: ${delivered}\nRead: ${read}`,
+    )
+  }
+
+  // On conversation switch: if a forward is staged, drop it into the
+  // composer of the newly-selected conversation.
+  React.useEffect(() => {
+    if (!activeId) return
+    try {
+      const raw = window.localStorage.getItem('yousafe.forward.pending')
+      if (!raw) return
+      const staged = JSON.parse(raw)
+      if (staged?.ts && Date.now() - staged.ts < 60_000) {
+        setDraft(staged.body || '')
+      }
+      window.localStorage.removeItem('yousafe.forward.pending')
+    } catch { /* ignore */ }
+  }, [activeId])
+
   const openMenu = (convId, e) => {
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
@@ -1139,6 +1212,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                 onReplyStart={handleReplyStart}
                 onReplyClick={handleReplyClick}
                 onOpenProfile={(id) => setPreviewSellerId(id)}
+                onDelete={handleDeleteMessage}
+                onForward={handleForwardMessage}
+                onShowInfo={handleShowMessageInfo}
                 viewerRole={role}
               />
             </div>
@@ -1363,6 +1439,9 @@ function ThreadMessage({
   onReplyStart,
   onReplyClick,
   onOpenProfile,
+  onDelete,
+  onForward,
+  onShowInfo,
   viewerRole,
 }) {
   const mine = m.sender_id !== counterpartId
@@ -1446,6 +1525,12 @@ function ThreadMessage({
       avatarName={!mine ? counterpartName : undefined}
       onAvatarClick={!mine && isFirstInGroup ? () => onOpenProfile?.(m.sender_id) : undefined}
       body={renderMessageBody(m)}
+      rawBody={m.body || ''}
+      starred={starred}
+      onStar={onStar ? (msgId, next) => onStar(msgId, next) : undefined}
+      onDelete={mine && onDelete ? (msgId) => onDelete(msgId) : undefined}
+      onForward={onForward ? (msgId) => onForward(msgId) : undefined}
+      onShowInfo={onShowInfo ? (msgId) => onShowInfo(msgId) : undefined}
     />
   )
 }
