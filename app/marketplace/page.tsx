@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
-import { redirect } from 'next/navigation'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
@@ -53,15 +52,15 @@ export default async function Page({
     return <GigDiscoveryPage />
   }
 
-  const auth = await getOptionalPortalUser()
-  // Students may be stored as either 'client' or legacy 'student' in profiles.role
-  // (see app/api/sellers/[id]/route.ts:140 + lib/roleLanes.ts). Accept both so a
-  // student doesn't get bounced market → /dashboard → portal/dashboard.
-  if (auth && auth.role !== 'client' && auth.role !== 'student') {
-    redirect('/dashboard')
-  }
+  // No role-gating on the marketplace landing. Anyone — anon, client,
+  // student, attorney, consultant, admin, support — can browse the public
+  // marketplace. Earlier code redirected non-client/non-student roles to
+  // /dashboard, which broke the common case of a signed-in provider
+  // clicking "Marketplace" in their dashboard nav to see their own
+  // listings or competing services and getting bounced straight back.
+  // Role-specific surfaces (buy flow, listing edit) gate themselves
+  // downstream; the landing itself is public read-only.
+  await getOptionalPortalUser() // touch session for any side effects (no return value used)
 
-  // Unified landing page for guests and clients alike.
-  // PublicMarketplaceLanding renders EstateFooter itself — no second footer here.
   return <PublicMarketplaceLanding country={country} />
 }
