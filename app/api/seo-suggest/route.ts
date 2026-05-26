@@ -40,5 +40,5 @@ export async function POST(req: Request) {
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)
   if (result.ok === false) return fail(result.message, result.status)
-  return ok({ field, value: result.value })
+  return ok({ field, value: result.value, research: result.research })
 }

@@ -4,6 +4,9 @@
 // Keep the prompt + post-processing here so both routes stay in lockstep.
 
 import { getChatProvider } from './chatProvider'
+import { buildSeoResearch, serializeResearch, type SeoResearch } from './seoResearch'
+
+export type { SeoResearch, KeywordSignal } from './seoResearch'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
@@ -30,7 +33,7 @@ export interface SuggestContext {
   faq?: FaqEntry[] | null
 }
 
-export type SuggestSuccess = { ok: true; value: string | string[] | FaqEntry[] }
+export type SuggestSuccess = { ok: true; value: string | string[] | FaqEntry[]; research: SeoResearch }
 export type SuggestFailure = { ok: false; status: number; message: string }
 export type SuggestResult = SuggestSuccess | SuggestFailure
 
@@ -225,9 +228,11 @@ function parseFaq(raw: string): FaqEntry[] {
 
 const SYSTEM_PROMPT = [
   'You are an SEO copywriter for a legal-services marketplace (similar to Fiverr).',
+  'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',
   'You produce concise, professional, conversion-focused copy that complies with the field constraints exactly.',
   'You never invent credentials, case outcomes, prices, or guarantees that were not provided in the context.',
-  'Output ONLY the requested text — no markdown, no labels, no explanations.',
+  'You match the jurisdiction phrasing in the brief exactly (e.g. "USCIS" for US gigs, "Home Office" for UK gigs, "IRCC" for Canada gigs).',
+  'Output ONLY the requested text — no markdown, no labels, no explanations, no headings unless the field requires them.',
 ].join(' ')
 
 export async function draftField(
@@ -244,9 +249,29 @@ export async function draftField(
   }
   const spec = buildFieldSpec(field, context)
   const trimmedHint = (hint || '').trim().slice(0, 400)
-  const userMessage = trimmedHint
-    ? `${spec.prompt}\n\nAdditional guidance from the seller: ${trimmedHint}`
-    : spec.prompt
+  // Always inject the SEO research brief BEFORE the field-specific
+  // prompt so the model treats the keyword list as a constraint, not
+  // an afterthought. The brief is deterministic and grounded — no
+  // hallucinated keywords can sneak in this path.
+  const research = buildSeoResearch({
+    title: context.title,
+    pitch: context.pitch,
+    tagline: context.tagline,
+    description: context.description,
+    seo_title: context.seo_title,
+    seo_description: context.seo_description,
+    category: context.category,
+    jurisdiction: context.jurisdiction,
+    tags: context.tags,
+  })
+  const researchBlock = serializeResearch(research)
+  const userMessage = [
+    researchBlock,
+    '',
+    '## Task',
+    spec.prompt,
+    trimmedHint ? `\nAdditional guidance from the seller: ${trimmedHint}` : '',
+  ].join('\n')
 
   let raw: string
   try {
@@ -259,13 +284,13 @@ export async function draftField(
   if (spec.format === 'list') {
     const tags = parseTags(raw)
     if (!tags.length) return { ok: false, status: 502, message: 'Model returned no usable tags. Try again.' }
-    return { ok: true, value: tags }
+    return { ok: true, value: tags, research }
   }
 
   if (spec.format === 'faq') {
     const entries = parseFaq(raw)
     if (!entries.length) return { ok: false, status: 502, message: 'Model returned no usable Q&A pairs. Try again.' }
-    return { ok: true, value: entries }
+    return { ok: true, value: entries, research }
   }
 
   const cleaned = cleanString(raw)
@@ -273,5 +298,5 @@ export async function draftField(
   const limited = spec.hardLimit && cleaned.length > spec.hardLimit
     ? cleaned.slice(0, spec.hardLimit).replace(/\s+\S*$/, '')
     : cleaned
-  return { ok: true, value: limited }
+  return { ok: true, value: limited, research }
 }

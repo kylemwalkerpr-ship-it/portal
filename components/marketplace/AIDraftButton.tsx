@@ -9,6 +9,17 @@ export type DraftField =
 
 export interface FaqEntry { question: string; answer: string }
 
+interface KeywordSignal {
+  term: string
+  status: 'covered' | 'partial' | 'missing'
+  source: 'category' | 'jurisdiction' | 'intent'
+}
+interface ResearchPayload {
+  priorityKeywords: KeywordSignal[]
+  coveredKeywords: string[]
+  jurisdictionHint: string
+}
+
 export interface DraftContext {
   title?: string | null
   tagline?: string | null
@@ -79,6 +90,10 @@ export default function AIDraftButton({
   const [draftText, setDraftText] = React.useState('')
   const [draftTags, setDraftTags] = React.useState<string[]>([])
   const [draftFaq, setDraftFaq] = React.useState<FaqEntry[]>([])
+  // SEO research the backend grounded this draft in. Surfaced in the
+  // preview so the seller can see WHY the AI chose specific keywords —
+  // makes it visible that the assistant is SEO-led, not hallucinating.
+  const [research, setResearch] = React.useState<ResearchPayload | null>(null)
 
   const panelRef = React.useRef<HTMLDivElement>(null)
   const isTagsField = field === 'tags'
@@ -92,6 +107,7 @@ export default function AIDraftButton({
     setDraftText('')
     setDraftTags([])
     setDraftFaq([])
+    setResearch(null)
   }, [])
 
   React.useEffect(() => {
@@ -121,7 +137,9 @@ export default function AIDraftButton({
         context: getContext(),
         hint: hint || undefined,
       })
-      const value = (data as { value: string | string[] | FaqEntry[] }).value
+      const payload = data as { value: string | string[] | FaqEntry[]; research?: ResearchPayload }
+      const value = payload.value
+      if (payload.research) setResearch(payload.research)
       if (isFaqField && Array.isArray(value)) {
         setDraftFaq(value as FaqEntry[])
       } else if (Array.isArray(value)) {
@@ -170,6 +188,7 @@ export default function AIDraftButton({
     setDraftText('')
     setDraftTags([])
     setDraftFaq([])
+    setResearch(null)
   }
 
   const btnHeight = size === 'compact' ? '24px' : '26px'
@@ -307,6 +326,54 @@ export default function AIDraftButton({
               <p style={{ margin: '0 0 8px', fontSize: '11px', color: T.inkSoft, lineHeight: 1.45 }}>
                 Review before saving. Edit freely — Save drops this into the form. Click <strong>Update Gig</strong> at the bottom of the wizard to persist.
               </p>
+              {research && research.priorityKeywords.length > 0 && (
+                <div style={{
+                  marginBottom: '10px',
+                  padding: '8px 10px',
+                  background: '#FFFFFF',
+                  border: `1px solid ${T.indigo}22`,
+                  borderRadius: '8px',
+                }}>
+                  <div style={{
+                    fontSize: '9px', fontWeight: 700, color: T.indigo,
+                    letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+                    marginBottom: '4px',
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                  }}>
+                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
+                      <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
+                      <path d="M6 3v3l2 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                    SEO research used
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '4px' }}>
+                    {research.priorityKeywords.slice(0, 8).map((kw) => {
+                      const tone = kw.status === 'covered' ? T.moss : kw.status === 'partial' ? '#8B5E0A' : T.indigo
+                      return (
+                        <span
+                          key={kw.term}
+                          title={`${kw.source} keyword — currently ${kw.status} in your gig`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                            padding: '2px 7px', borderRadius: '4px',
+                            fontSize: '10px', fontWeight: 600,
+                            background: `${tone}10`, color: tone,
+                            border: `1px solid ${tone}30`,
+                          }}
+                        >
+                          {kw.term}
+                          {kw.status === 'covered' && <span aria-hidden>✓</span>}
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {research.jurisdictionHint && (
+                    <p style={{ margin: '6px 0 0', fontSize: '10px', color: T.inkSoft, lineHeight: 1.4 }}>
+                      {research.jurisdictionHint}
+                    </p>
+                  )}
+                </div>
+              )}
               {isFaqField ? (
                 <FaqPreview entries={draftFaq} onChange={setDraftFaq} />
               ) : isTagsField ? (
