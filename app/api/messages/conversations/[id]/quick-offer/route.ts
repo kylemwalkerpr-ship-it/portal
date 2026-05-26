@@ -58,12 +58,25 @@ async function ensureInquiryThread(db: any, attorneyProfileId: string, clientPro
     .maybeSingle()
   if (existing?.id) return existing.id
 
-  // Last resort: create a pre-intake inquiry so the offer has somewhere to live.
-  const { data: created } = await db
+  // Last resort: create a pre-intake inquiry so the offer has somewhere to
+  // live. The inquiries table has NOT NULL constraints on email + full_name
+  // + country (mirrors the public intake form), so we hydrate those from the
+  // client's profile before inserting — without this, the insert silently
+  // returns null via .maybeSingle() and the caller raises a 500 with the
+  // confusing "Could not resolve a thread to attach the offer to." message.
+  const { data: clientProfile } = await db
+    .from('profiles')
+    .select('email, full_name, country')
+    .eq('id', clientProfileId)
+    .maybeSingle()
+  const { data: created, error: insertErr } = await db
     .from('inquiries')
     .insert({
       client_profile_id: clientProfileId,
       target_attorney_profile_id: attorneyProfileId,
+      email: clientProfile?.email || `client-${clientProfileId}@yousafe.internal`,
+      full_name: clientProfile?.full_name || 'YouSafe client',
+      country: clientProfile?.country || 'US',
       case_type: 'attorney_chat',
       case_type_label: 'Attorney conversation',
       urgency: 'normal',
@@ -74,6 +87,9 @@ async function ensureInquiryThread(db: any, attorneyProfileId: string, clientPro
     })
     .select('id')
     .maybeSingle()
+  if (insertErr) {
+    console.error('[quick-offer] inquiry fallback insert failed', insertErr.message)
+  }
   return (created as any)?.id || null
 }
 
@@ -139,25 +155,49 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!Number.isInteger(deliveryDays) || deliveryDays < 1) fields.delivery_days = 'Delivery must be 1 day or more.'
   if (Object.keys(fields).length) return fieldFail(fields)
 
+  // Optional gig attachment — when supplied, the offer is logically linked
+  // to a public gig so its acceptance/completion stats can roll up to that
+  // gig's marketplace page. Validate ownership before trusting the value
+  // (defence in depth: an attacker could otherwise point an offer at any
+  // gig and inflate someone else's review/order counts).
+  let attachedGigId: string | null = null
+  const rawGigId = typeof body.gig_id === 'string' ? body.gig_id.trim() : ''
+  if (rawGigId) {
+    const { data: gig } = await auth.db
+      .from('gigs')
+      .select('id, provider_id, status')
+      .eq('id', rawGigId)
+      .maybeSingle()
+    if (!gig || gig.provider_id !== auth.profileId) {
+      return fail('That gig is not yours to attach.', 403)
+    }
+    if (gig.status === 'archived') {
+      return fail('That gig is archived and cannot be attached to new offers.', 409)
+    }
+    attachedGigId = gig.id
+  }
+
   const platformFee = computePlatformFeeCents(price, provider.type, settings)
   const netPayout   = computeNetPayoutCents(price, provider.type, settings)
 
   const chatId = provider.type === 'attorney' ? inquiryId! : conversationId
+  const offerInsert: Record<string, any> = {
+    chat_id:        chatId,
+    sender_id:      auth.profileId,
+    sender_type:    provider.type,
+    recipient_id:   counterpartId,
+    title,
+    description,
+    price,
+    currency:       settings.primary_currency,
+    delivery_days:  deliveryDays,
+    revisions,
+    expires_at:     expiresAt.toISOString(),
+  }
+  if (attachedGigId) offerInsert.gig_id = attachedGigId
   const { data: offer, error } = await auth.db
     .from('offers')
-    .insert({
-      chat_id:        chatId,
-      sender_id:      auth.profileId,
-      sender_type:    provider.type,
-      recipient_id:   counterpartId,
-      title,
-      description,
-      price,
-      currency:       settings.primary_currency,
-      delivery_days:  deliveryDays,
-      revisions,
-      expires_at:     expiresAt.toISOString(),
-    })
+    .insert(offerInsert)
     .select('*')
     .maybeSingle()
   if (error || !offer) return fail(error?.message || 'Could not create offer.', 500)

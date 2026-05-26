@@ -82,6 +82,14 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   // Archived + Starred modal state (phase 2.2)
   const [showArchived, setShowArchived] = React.useState(false)
   const [showStarred, setShowStarred] = React.useState(false)
+
+  // In-chat search + call-request UI state (wired by the chrome buttons in
+  // the conversation header).
+  const [inChatSearchOpen, setInChatSearchOpen] = React.useState(false)
+  const [inChatSearchQ, setInChatSearchQ] = React.useState('')
+  const [callRequestKind, setCallRequestKind] = React.useState<'video' | 'voice' | null>(null)
+  const [callRequestTime, setCallRequestTime] = React.useState('')
+  const [callRequestSubmitting, setCallRequestSubmitting] = React.useState(false)
   const [starredMsgs, setStarredMsgs] = React.useState<any[]>([])
 
   // Status broadcasts (24h ring)
@@ -391,6 +399,41 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       await loadList(true)
     } catch (e: any) { setThreadError(e.message) }
     finally { setSending(false) }
+  }
+
+  // Post a call request as a normal text message so it surfaces in the
+  // counterpart's inbox and email digest. We deliberately don't add a new
+  // message type for this — keeping it as plain text means the existing
+  // safety guard, search index, and notification pipeline all work without
+  // any extra wiring. The composed string is structured enough that we can
+  // upgrade the bubble to a richer UI later if needed.
+  const sendCallRequest = async (kind: 'video' | 'voice', whenIso: string) => {
+    if (!activeId || callRequestSubmitting) return
+    setCallRequestSubmitting(true)
+    setThreadError('')
+    try {
+      const dt = whenIso ? new Date(whenIso) : null
+      const whenLabel = dt && !Number.isNaN(dt.getTime())
+        ? dt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+        : 'a time that works for you'
+      const verb = kind === 'video' ? 'video call' : 'phone call'
+      const text = `📞 ${verb.replace(/^./, c => c.toUpperCase())} request — proposed for ${whenLabel}. Reply with a time that works and I'll confirm the link before we connect.`
+      const r = await fetch(`/api/messages/conversations/${activeId}`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error?.message || 'Could not send call request')
+      setCallRequestKind(null)
+      setCallRequestTime('')
+      await loadThread(true)
+      await loadList(true)
+    } catch (e: any) {
+      setThreadError(e.message)
+    } finally {
+      setCallRequestSubmitting(false)
+    }
   }
 
   const handleReact = async (msgId: string, emoji: string) => {
@@ -1040,19 +1083,39 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       )}
 
       <div className="cv-head-actions">
-        <button className="iconbtn" title="Search in chat" onClick={() => { /* Phase 1 inert */ }}>
+        <button
+          className="iconbtn"
+          title="Search in chat"
+          aria-pressed={inChatSearchOpen}
+          style={inChatSearchOpen ? { background: 'var(--accent-soft)', color: 'var(--accent)' } : undefined}
+          onClick={() => {
+            setInChatSearchOpen(v => {
+              const next = !v
+              if (!next) setInChatSearchQ('')
+              return next
+            })
+          }}
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
         </button>
-        <button className="iconbtn" title="Video call" onClick={() => { /* Phase 1 inert */ }}>
+        <button
+          className="iconbtn"
+          title="Request a video call"
+          onClick={() => { setCallRequestKind('video'); setCallRequestTime('') }}
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="23 7 16 12 23 17 23 7" />
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
         </button>
-        <button className="iconbtn" title="Voice call" onClick={() => { /* Phase 1 inert */ }}>
+        <button
+          className="iconbtn"
+          title="Request a voice call"
+          onClick={() => { setCallRequestKind('voice'); setCallRequestTime('') }}
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
           </svg>
@@ -1166,6 +1229,39 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   ) : (
     <>
       {threadError && <div style={{ padding: '8px 18px', background: 'color-mix(in oklab, var(--brick) 10%, transparent)', color: 'var(--brick)', fontSize: 12 }}>{threadError}</div>}
+      {inChatSearchOpen && (
+        <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--panel-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-soft)', flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            autoFocus
+            value={inChatSearchQ}
+            onChange={(e) => setInChatSearchQ(e.target.value)}
+            placeholder="Search this conversation…"
+            style={{ flex: 1, border: 0, outline: 'none', background: 'transparent', fontSize: 13, color: 'var(--text)' }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--text-soft)' }}>
+            {(() => {
+              if (!inChatSearchQ.trim()) return `${activeMsgs.length} message${activeMsgs.length === 1 ? '' : 's'}`
+              const q = inChatSearchQ.trim().toLowerCase()
+              const n = activeMsgs.filter((m: any) => String(m?.body || '').toLowerCase().includes(q)).length
+              return `${n} match${n === 1 ? '' : 'es'}`
+            })()}
+          </span>
+          <button
+            className="iconbtn"
+            title="Close search"
+            onClick={() => { setInChatSearchOpen(false); setInChatSearchQ('') }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
       {threadLoading && activeMsgs.length === 0 && <div className="cv-empty">Loading thread…</div>}
       {!threadLoading && activeMsgs.length === 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -1176,9 +1272,18 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
           </div>
         </div>
       )}
-      {activeMsgs.map((m, i) => {
-        const prev = activeMsgs[i - 1]
-        const next = activeMsgs[i + 1]
+      {(() => {
+        // When the in-chat search bar is open and has a query, narrow the
+        // visible thread to bubbles whose body matches. We keep grouping
+        // logic intact by computing on the filtered array — grouping is a
+        // visual nicety inside the active view and doesn't need to mirror
+        // the underlying message order across a filter.
+        const visibleMsgs = inChatSearchOpen && inChatSearchQ.trim()
+          ? activeMsgs.filter((m: any) => String(m?.body || '').toLowerCase().includes(inChatSearchQ.trim().toLowerCase()))
+          : activeMsgs
+        return visibleMsgs.map((m: any, i: number) => {
+          const prev = visibleMsgs[i - 1]
+          const next = visibleMsgs[i + 1]
         const mine = m.sender_id !== activeConv?.counterpart?.id
         const prevMine = prev ? prev.sender_id !== activeConv?.counterpart?.id : null
         const nextMine = next ? next.sender_id !== activeConv?.counterpart?.id : null
@@ -1220,7 +1325,8 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
             </div>
           </React.Fragment>
         )
-      })}
+      })
+      })()}
     </>
   )
 
@@ -1355,6 +1461,71 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         open={!!previewSellerId}
         onClose={() => setPreviewSellerId(null)}
       />
+      {callRequestKind && (
+        <div
+          onClick={() => { if (!callRequestSubmitting) setCallRequestKind(null) }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--panel)', borderRadius: 12, padding: 20,
+              maxWidth: 420, width: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontSize: 18, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
+              Request a {callRequestKind === 'video' ? 'video' : 'voice'} call
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.5, marginBottom: 14 }}>
+              Suggest a time and we'll post a call request to the conversation.
+              You can swap to a meeting link once both sides confirm.
+            </div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+              Proposed time
+            </label>
+            <input
+              type="datetime-local"
+              value={callRequestTime}
+              onChange={(e) => setCallRequestTime(e.target.value)}
+              disabled={callRequestSubmitting}
+              style={{
+                width: '100%', padding: '8px 10px', borderRadius: 8,
+                border: '1px solid var(--border)', fontSize: 14,
+                background: 'var(--panel-2)', color: 'var(--text)', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button
+                onClick={() => setCallRequestKind(null)}
+                disabled={callRequestSubmitting}
+                style={{
+                  padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                  background: 'var(--panel-2)', color: 'var(--text)', fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => sendCallRequest(callRequestKind, callRequestTime)}
+                disabled={callRequestSubmitting}
+                style={{
+                  padding: '8px 14px', borderRadius: 8, border: 'none',
+                  background: callRequestSubmitting ? '#94A3B8' : '#0F172A',
+                  color: '#FFF', fontSize: 13, fontWeight: 600,
+                  cursor: callRequestSubmitting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {callRequestSubmitting ? 'Sending…' : 'Send request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS = {
   attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
-  platform_name: 'Yousafe Consultancy',
+  platform_name: 'YouSafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
   primary_currency: 'usd',
   usd_to_cad_rate: 1.37,
@@ -421,7 +421,7 @@ function AdminApp({ onLogout }) {
   const Sidebar = () => (
     <div className="yousafe-sidebar" style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '20px 18px', borderBottom: `1px solid ${C.border}` }}>
-        <a href="https://yousafeconsultancy.com" aria-label="Back to Yousafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+        <a href="https://yousafeconsultancy.com" aria-label="Back to YouSafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
           <span style={{ width: '30px', height: '30px', borderRadius: '8px', background: `linear-gradient(135deg, ${C.cyan}, ${C.cyan}dd)`, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(60,59,110,0.25)' }}>Y</span>
           <div>
             <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em', display: 'block', lineHeight: 1.2 }}>YouSafe</span>

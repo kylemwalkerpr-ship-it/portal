@@ -13,11 +13,35 @@ export async function GET() {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
-  const { data: rows, error: ordersErr } = await ctx.db
-    .from('orders')
-    .select('status, escrow_status, total_amount, attorney_fee, deadline, completed_at, created_at, payout_status')
-    .eq('consultant_id', ctx.profileId)
-  if (ordersErr) return Response.json({ error: ordersErr.message }, { status: 500 })
+  // The orders table schema has shifted a couple of times (attorney_fee was
+  // added by a later migration; some envs have payout_status, others don't).
+  // A 500 from any one missing column blanks out the entire Active Orders
+  // dashboard, so query defensively: try the full shape first, fall back to
+  // the minimal shape if PostgREST complains.
+  let rows: any[] | null = null
+  {
+    const full = await ctx.db
+      .from('orders')
+      .select('status, escrow_status, total_amount, attorney_fee, deadline, completed_at, created_at, payout_status')
+      .eq('consultant_id', ctx.profileId)
+    if (!full.error) {
+      rows = full.data ?? []
+    } else {
+      console.warn('[attorney/orders/stats] full select failed, falling back', full.error.message)
+      const minimal = await ctx.db
+        .from('orders')
+        .select('status, total_amount, deadline, completed_at, created_at')
+        .eq('consultant_id', ctx.profileId)
+      if (minimal.error) {
+        console.error('[attorney/orders/stats] minimal select also failed', minimal.error.message)
+        // Return zeros rather than a 500 — the dashboard tabs handle the
+        // empty state gracefully and the user can still browse.
+        rows = []
+      } else {
+        rows = minimal.data ?? []
+      }
+    }
+  }
 
   const list = rows ?? []
   const now = Date.now()

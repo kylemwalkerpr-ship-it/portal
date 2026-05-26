@@ -11,7 +11,9 @@
  * accepts description, revisions, and expires_in_days alongside the base
  * fields.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+interface GigOption { id: string; title: string }
 
 export interface OfferComposerInlineProps {
   conversationId: string
@@ -40,6 +42,26 @@ export function OfferComposerInline({ conversationId, onSent, onClose }: OfferCo
   const [expanded, setExpanded]           = useState(false)
   const [submitting, setSubmitting]       = useState(false)
   const [error, setError]                 = useState<string | null>(null)
+  const [gigs, setGigs]                   = useState<GigOption[]>([])
+  const [gigId, setGigId]                 = useState<string>('')
+
+  // Load this provider's own gigs once so the user can attach an offer to a
+  // public gig — accepted offers then roll up into the gig's order count and
+  // (eventually) its review average on the marketplace page.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/gigs', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then((d: any) => {
+        if (cancelled) return
+        const rows: any[] = d?.data?.gigs ?? d?.gigs ?? []
+        setGigs(rows
+          .filter(g => g && g.id && g.title && g.status !== 'archived')
+          .map(g => ({ id: g.id, title: g.title })))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,6 +96,7 @@ export function OfferComposerInline({ conversationId, onSent, onClose }: OfferCo
           delivery_days: days,
           revisions: revisionsValue,
           expires_in_days: expiry,
+          gig_id: gigId || undefined,
         }),
       })
       const data: any = await res.json().catch(() => ({}))
@@ -93,6 +116,7 @@ export function OfferComposerInline({ conversationId, onSent, onClose }: OfferCo
       }
       setTitle(''); setDescription(''); setPrice(''); setDeliveryDays('7')
       setRevisions('1'); setUnlimitedRevisions(false); setExpiresInDays('7')
+      setGigId('')
       setExpanded(false)
       onSent?.()
       onClose?.()
@@ -185,6 +209,25 @@ export function OfferComposerInline({ conversationId, onSent, onClose }: OfferCo
       {/* Expanded fields */}
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {gigs.length > 0 && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#475569' }}>
+              <span style={{ fontWeight: 600 }}>Attach to gig (optional)</span>
+              <select
+                value={gigId}
+                onChange={e => setGigId(e.target.value)}
+                disabled={submitting}
+                style={{ ...INPUT_STYLE, width: '100%' }}
+              >
+                <option value="">— No gig (custom offer) —</option>
+                {gigs.map(g => (
+                  <option key={g.id} value={g.id}>{g.title}</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 11, color: '#64748B' }}>
+                Linking to a gig rolls accepted/completed offer stats up onto its public marketplace card.
+              </span>
+            </label>
+          )}
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}

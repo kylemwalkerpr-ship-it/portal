@@ -1,4 +1,4 @@
-/* Yousafe Portal landing — design tokens
+/* YouSafe Portal landing — design tokens
    Mirrors the production palette from app/portal-themes.css and
    components/design/shared.jsx, with a couple of marketplace-flavoured
    additions (gold, brick) made explicit so a global swap is one constant. */

@@ -650,7 +650,7 @@ function ConsultantApp({ onLogout }) {
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            aria-label="Log out and return to Yousafe Consultancy"
+            aria-label="Log out and return to YouSafe Consultancy"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

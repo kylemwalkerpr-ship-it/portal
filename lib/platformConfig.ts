@@ -35,7 +35,7 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
-  platform_name: 'Yousafe Consultancy',
+  platform_name: 'YouSafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
   primary_currency: 'usd' as PrimaryCurrency,
   // Used by the storefront to display prices in the user's chosen currency.

@@ -39,7 +39,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     }
   }
 
-  const [messagesRes, counterpartRes, participantRes] = await Promise.all([
+  const [messagesRes, counterpartRes, participantRes, readsRes] = await Promise.all([
     db.from('conversation_messages')
       .select('id, sender_id, type, body, attachment_url, attachment_name, ref_offer_id, ref_order_id, ref_inquiry_id, reply_to_id, metadata, created_at')
       .eq('conversation_id', id)
@@ -51,7 +51,18 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       .eq('conversation_id', id)
       .eq('profile_id', profileId)
       .maybeSingle(),
+    // Counterpart's read cursor. Used to derive a synthetic per-message
+    // read_at so the bubble's blue-tick render in MessageBubble.tsx works
+    // — conversation_messages itself doesn't store per-row read state.
+    db.from('conversation_reads')
+      .select('last_read_at')
+      .eq('conversation_id', id)
+      .eq('profile_id', counterpartId)
+      .maybeSingle(),
   ])
+
+  const counterpartReadAt: string | null = (readsRes as any)?.data?.last_read_at || null
+  const counterpartReadMs = counterpartReadAt ? new Date(counterpartReadAt).getTime() : 0
 
   // Sidebar context: orders, offers, inquiries this pair has in common
   let sharedOrders: any[] = []
@@ -195,6 +206,21 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     const reactions = reactionMap.get(m.id)
     if (reactions) {
       enriched = { ...enriched, reactions }
+    }
+    // Derive read/delivered timestamps from the counterpart's read cursor.
+    // delivered_at is set as soon as the row exists (we don't track per-row
+    // delivery yet, so created_at is a safe proxy). read_at is set only
+    // when the message predates the counterpart's last_read_at — this is
+    // what flips the bubble's tick from grey to blue.
+    if (m?.sender_id === profileId) {
+      const createdMs = m?.created_at ? new Date(m.created_at).getTime() : 0
+      enriched = {
+        ...enriched,
+        delivered_at: m?.created_at || null,
+        read_at: counterpartReadMs > 0 && createdMs <= counterpartReadMs
+          ? counterpartReadAt
+          : null,
+      }
     }
     return enriched
   })
