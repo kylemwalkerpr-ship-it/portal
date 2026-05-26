@@ -226,14 +226,17 @@ export function DeliveryTime({ selected, onChange }: DeliveryTimeProps) {
 interface FilterSidebarProps {
   categories: FilterOption[]
   providerTypes: FilterOption[]
+  jurisdictions?: FilterOption[]
   selectedCategories: string[]
   selectedProviderTypes: string[]
+  selectedJurisdictions?: string[]
   minPrice: string
   maxPrice: string
   selectedRating: string
   selectedDeliveryTimes: string[]
   onCategoriesChange: (selected: string[]) => void
   onProviderTypesChange: (selected: string[]) => void
+  onJurisdictionsChange?: (selected: string[]) => void
   onPriceChange: (min: string, max: string) => void
   onRatingChange: (rating: string) => void
   onDeliveryTimesChange: (selected: string[]) => void
@@ -245,14 +248,17 @@ interface FilterSidebarProps {
 export function FilterSidebar({
   categories,
   providerTypes,
+  jurisdictions,
   selectedCategories,
   selectedProviderTypes,
+  selectedJurisdictions = [],
   minPrice,
   maxPrice,
   selectedRating,
   selectedDeliveryTimes,
   onCategoriesChange,
   onProviderTypesChange,
+  onJurisdictionsChange,
   onPriceChange,
   onRatingChange,
   onDeliveryTimesChange,
@@ -270,6 +276,15 @@ export function FilterSidebar({
           </button>
         )}
       </div>
+
+      {jurisdictions && onJurisdictionsChange && (
+        <FilterSection
+          title="Jurisdiction"
+          options={jurisdictions}
+          selected={selectedJurisdictions}
+          onChange={onJurisdictionsChange}
+        />
+      )}
 
       <FilterSection
         title="Categories"

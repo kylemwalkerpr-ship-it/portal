@@ -40,14 +40,28 @@ export default async function Page({
     q?: string | string[]
     category?: string | string[]
     sort?: string | string[]
+    jurisdiction?: string | string[]
+    provider_type?: string | string[]
+    min_price?: string | string[]
+    max_price?: string | string[]
+    min_rating?: string | string[]
+    delivery_days?: string | string[]
   }>
 }) {
   const sp = (await searchParams) ?? {}
   const country = parseCountry(sp.country)
 
-  // When search filters are present, render the discovery results page.
-  // GigDiscoveryPage reads useSearchParams() client-side.
-  const hasFilters = Boolean(sp.q || sp.category || sp.sort)
+  // When ANY filter param is present, render the discovery results page.
+  // GigDiscoveryPage reads useSearchParams() client-side and seeds all
+  // filter state from the URL. Previously this gate only checked q/
+  // category/sort, so jurisdiction or provider-type deep links from the
+  // landing page fell through to the unfiltered hero — looked like the
+  // filter wasn't being honoured.
+  const hasFilters = Boolean(
+    sp.q || sp.category || sp.sort ||
+    sp.jurisdiction || sp.provider_type ||
+    sp.min_price || sp.max_price || sp.min_rating || sp.delivery_days,
+  )
   if (hasFilters) {
     return <GigDiscoveryPage />
   }

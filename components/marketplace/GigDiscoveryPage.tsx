@@ -2,7 +2,7 @@
 'use client'
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Card, Btn, Badge, SearchInput } from '../design/shared'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
@@ -180,21 +180,45 @@ interface GigDiscoveryPageProps {
 
 export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageProps) {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const [gigs, setGigs] = React.useState([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [view, setView] = React.useState<'grid' | 'list'>('grid')
-  const [page, setPage] = React.useState(1)
+  const [page, setPage] = React.useState(parseInt(searchParams?.get('page') || '1', 10))
   const [total, setTotal] = React.useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = React.useState(false)
 
-  // Filter state
-  const [selectedCategories, setSelectedCategories] = React.useState<string[]>(categoryId ? [categoryId] : [])
-  const [selectedProviderTypes, setSelectedProviderTypes] = React.useState<string[]>([])
-  const [minPrice, setMinPrice] = React.useState('')
-  const [maxPrice, setMaxPrice] = React.useState('')
-  const [selectedRating, setSelectedRating] = React.useState('')
-  const [selectedDeliveryTimes, setSelectedDeliveryTimes] = React.useState<string[]>([])
+  // Filter state — initial values pulled from URL so links like
+  // /marketplace?category=legal&country=us land with the right filters
+  // pre-applied. Previously these params were silently dropped on mount,
+  // which made every category/jurisdiction link on the landing page
+  // appear broken.
+  const initialCategories = React.useMemo(() => {
+    const fromUrl = searchParams?.getAll('category').filter(Boolean) ?? []
+    if (categoryId && !fromUrl.includes(categoryId)) fromUrl.push(categoryId)
+    return fromUrl
+  }, [searchParams, categoryId])
+
+  const [selectedCategories, setSelectedCategories] = React.useState<string[]>(initialCategories)
+  const [selectedProviderTypes, setSelectedProviderTypes] = React.useState<string[]>(
+    searchParams?.getAll('provider_type').filter(Boolean) ?? [],
+  )
+  const [selectedJurisdictions, setSelectedJurisdictions] = React.useState<string[]>(() => {
+    // Accept both single-value `?country=us` (used by AllGigsDrawer + the
+    // landing) and multi-value `?jurisdiction=us&jurisdiction=uk`.
+    const single = searchParams?.get('country')
+    const multi = searchParams?.getAll('jurisdiction').filter(Boolean) ?? []
+    if (single) multi.push(single.toLowerCase())
+    return Array.from(new Set(multi.filter((c) => ['us', 'uk', 'ca'].includes(c))))
+  })
+  const [minPrice, setMinPrice] = React.useState(searchParams?.get('min_price') || '')
+  const [maxPrice, setMaxPrice] = React.useState(searchParams?.get('max_price') || '')
+  const [selectedRating, setSelectedRating] = React.useState(searchParams?.get('min_rating') || '')
+  const [selectedDeliveryTimes, setSelectedDeliveryTimes] = React.useState<string[]>(
+    searchParams?.getAll('delivery_days').filter(Boolean) ?? [],
+  )
   const [sort, setSort] = React.useState(searchParams?.get('sort') || 'relevance')
   const [searchQuery, setSearchQuery] = React.useState(searchParams?.get('q') || '')
 
@@ -210,30 +234,75 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     { id: 'consultant', label: 'Consultants' },
   ]
 
+  const jurisdictionOptions = [
+    { id: 'us', label: 'United States' },
+    { id: 'uk', label: 'United Kingdom' },
+    { id: 'ca', label: 'Canada' },
+  ]
+
   const hasActiveFilters = Boolean(
     selectedCategories.length > 0 ||
     selectedProviderTypes.length > 0 ||
+    selectedJurisdictions.length > 0 ||
     minPrice ||
     maxPrice ||
     selectedRating ||
     selectedDeliveryTimes.length > 0
   )
 
+  // Build the canonical query string for both the API request AND the
+  // browser URL. Doing this once keeps the two perfectly in sync so a
+  // refresh restores exactly what the user was looking at.
+  const buildQuery = React.useCallback(() => {
+    const params = new URLSearchParams()
+    if (searchQuery.trim()) params.set('q', searchQuery.trim())
+    selectedCategories.forEach(cat => params.append('category', cat))
+    selectedProviderTypes.forEach(type => params.append('provider_type', type))
+    // API uses a single `country` param (one of us|uk|ca). If the user
+    // picks more than one jurisdiction we expose all of them via the
+    // multi-value `jurisdiction` param AND emit the first as `country`
+    // for backend compatibility — the API filters on whichever it sees.
+    if (selectedJurisdictions.length === 1) {
+      params.set('country', selectedJurisdictions[0])
+    } else if (selectedJurisdictions.length > 1) {
+      selectedJurisdictions.forEach((j) => params.append('jurisdiction', j))
+    }
+    if (minPrice) params.set('min_price', minPrice)
+    if (maxPrice) params.set('max_price', maxPrice)
+    if (selectedRating) params.set('min_rating', selectedRating)
+    selectedDeliveryTimes.forEach(time => params.append('delivery_days', time))
+    if (sort && sort !== 'relevance') params.set('sort', sort)
+    return params
+  }, [
+    searchQuery,
+    selectedCategories,
+    selectedProviderTypes,
+    selectedJurisdictions,
+    minPrice,
+    maxPrice,
+    selectedRating,
+    selectedDeliveryTimes,
+    sort,
+  ])
+
+  // Reflect the current filter state in the URL whenever it changes, so
+  // refresh / share / browser back-forward preserve filters.
+  React.useEffect(() => {
+    const qs = buildQuery().toString()
+    const target = qs ? `${pathname}?${qs}` : pathname
+    router.replace(target, { scroll: false })
+  }, [buildQuery, pathname, router])
+
   const loadGigs = React.useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams()
-      if (searchQuery.trim()) params.set('q', searchQuery.trim())
-      selectedCategories.forEach(cat => params.append('category', cat))
-      selectedProviderTypes.forEach(type => params.append('provider_type', type))
-      if (minPrice) params.set('min_price', minPrice)
-      if (maxPrice) params.set('max_price', maxPrice)
-      if (selectedRating) params.set('min_rating', selectedRating)
-      selectedDeliveryTimes.forEach(time => params.append('delivery_days', time))
-      params.set('sort', sort)
+      const params = buildQuery()
       params.set('page', String(page))
       params.set('limit', '20')
+      // 'relevance' default isn't sent in the URL; pass it to the API
+      // explicitly so the backend's default-sort path doesn't shift.
+      if (!params.has('sort')) params.set('sort', sort)
 
       const data = await requestJson(`/api/marketplace/gigs?${params.toString()}`)
       setGigs(data.gigs || [])
@@ -252,13 +321,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
       setLoading(false)
     }
   }, [
-    searchQuery,
-    selectedCategories,
-    selectedProviderTypes,
-    minPrice,
-    maxPrice,
-    selectedRating,
-    selectedDeliveryTimes,
+    buildQuery,
     sort,
     page,
   ])
@@ -275,6 +338,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const handleClearFilters = () => {
     setSelectedCategories([])
     setSelectedProviderTypes([])
+    setSelectedJurisdictions([])
     setMinPrice('')
     setMaxPrice('')
     setSelectedRating('')
@@ -284,11 +348,20 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     setFilterDrawerOpen(false)
   }
 
+  const JURISDICTION_LABELS: Record<string, string> = {
+    us: 'United States',
+    uk: 'United Kingdom',
+    ca: 'Canada',
+  }
+
   const handleRemoveFilter = (id: string) => {
     if (selectedCategories.includes(id)) {
       setSelectedCategories(selectedCategories.filter(c => c !== id))
     } else if (selectedProviderTypes.includes(id)) {
       setSelectedProviderTypes(selectedProviderTypes.filter(t => t !== id))
+    } else if (id.startsWith('jurisdiction_')) {
+      const code = id.replace('jurisdiction_', '')
+      setSelectedJurisdictions(selectedJurisdictions.filter((j) => j !== code))
     } else if (id === 'rating') {
       setSelectedRating('')
     } else if (id.startsWith('delivery_')) {
@@ -305,6 +378,10 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     ...selectedProviderTypes.map(id => ({
       id,
       label: id === 'attorney' ? 'Attorneys' : 'Consultants',
+    })),
+    ...selectedJurisdictions.map(code => ({
+      id: `jurisdiction_${code}`,
+      label: JURISDICTION_LABELS[code] || code.toUpperCase(),
     })),
     ...(selectedRating ? [{ id: 'rating', label: `${selectedRating}+ stars` }] : []),
     ...selectedDeliveryTimes.map(id => ({
@@ -369,14 +446,17 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
             <FilterSidebar
               categories={categoryOptions}
               providerTypes={providerTypeOptions}
+              jurisdictions={jurisdictionOptions}
               selectedCategories={selectedCategories}
               selectedProviderTypes={selectedProviderTypes}
+              selectedJurisdictions={selectedJurisdictions}
               minPrice={minPrice}
               maxPrice={maxPrice}
               selectedRating={selectedRating}
               selectedDeliveryTimes={selectedDeliveryTimes}
-              onCategoriesChange={setSelectedCategories}
-              onProviderTypesChange={setSelectedProviderTypes}
+              onCategoriesChange={(v) => { setSelectedCategories(v); setPage(1) }}
+              onProviderTypesChange={(v) => { setSelectedProviderTypes(v); setPage(1) }}
+              onJurisdictionsChange={(v) => { setSelectedJurisdictions(v); setPage(1) }}
               onPriceChange={(min, max) => {
                 setMinPrice(min)
                 setMaxPrice(max)
@@ -549,14 +629,17 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
           <FilterSidebar
             categories={categoryOptions}
             providerTypes={providerTypeOptions}
+            jurisdictions={jurisdictionOptions}
             selectedCategories={selectedCategories}
             selectedProviderTypes={selectedProviderTypes}
+            selectedJurisdictions={selectedJurisdictions}
             minPrice={minPrice}
             maxPrice={maxPrice}
             selectedRating={selectedRating}
             selectedDeliveryTimes={selectedDeliveryTimes}
             onCategoriesChange={setSelectedCategories}
             onProviderTypesChange={setSelectedProviderTypes}
+            onJurisdictionsChange={setSelectedJurisdictions}
             onPriceChange={(min, max) => {
               setMinPrice(min)
               setMaxPrice(max)
