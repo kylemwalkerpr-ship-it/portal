@@ -14,6 +14,11 @@ type ApplyBody = {
   profile_url?: string
   capacity?: string
   notes?: string
+  // Optional extras the revamped form collects so the post-approval
+  // wizard pre-populates with the same information instead of asking
+  // for it again.
+  timezone?: string
+  headshot_url?: string
 }
 
 // malpractice_insurance kept on the form as an optional field — many
@@ -56,6 +61,8 @@ export async function POST(req: Request) {
     profile_url: clean(body.profile_url, 500),
     capacity: clean(body.capacity, 200),
     notes: clean(body.notes, 4000),
+    timezone: clean(body.timezone, 120),
+    headshot_url: clean(body.headshot_url, 500),
   }
 
   for (const f of REQUIRED_FIELDS) {
@@ -102,6 +109,22 @@ export async function POST(req: Request) {
   }
 
   await db.from('profiles').update({ status: 'pending', full_name: fields.full_name }).eq('id', profile.id)
+
+  // Best-effort: seed the attorneys row with timezone + headshot the
+  // applicant supplied so the post-approval wizard doesn't ask again.
+  // Wrapped in try/catch because the row may not exist yet on some
+  // schemas (it's created on first wizard save) and the headshot_url
+  // column is optional. Failures here don't block the application.
+  if (fields.timezone || fields.headshot_url) {
+    try {
+      const upsert: Record<string, unknown> = { profile_id: profile.id }
+      if (fields.timezone) upsert.timezone = fields.timezone
+      if (fields.headshot_url) upsert.headshot_url = fields.headshot_url
+      await db.from('attorneys').upsert(upsert, { onConflict: 'profile_id' })
+    } catch (e) {
+      console.warn('[attorney/apply] attorneys upsert (timezone/headshot) skipped', (e as any)?.message)
+    }
+  }
 
   return NextResponse.json({ ok: true }, { status: 200 })
 }

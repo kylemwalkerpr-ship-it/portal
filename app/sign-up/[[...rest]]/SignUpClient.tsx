@@ -61,6 +61,19 @@ export default function SignUpClient() {
     }
   }, [])
 
+  // Mirror the resolved lane into sessionStorage BEFORE Clerk takes the
+  // browser over for OAuth. Clerk's `unsafeMetadata.requestedRole` is
+  // dropped on several OAuth roundtrips (most reliably with Google's
+  // first-time consent screen), which is what produced
+  // `/dashboard?lane=student` for users who clicked "Apply as attorney
+  // with Google". The dashboard's lane bridge consumes this on first
+  // load and POSTs /api/profile/sync-lane to promote the profile if the
+  // user hasn't generated any client-side activity yet.
+  useEffect(() => {
+    if (typeof window === 'undefined' || lane === 'client') return
+    try { window.sessionStorage.setItem('ys.requestedLane', lane) } catch {}
+  }, [lane])
+
   if (shouldRedirect) {
     return (
       <div
