@@ -283,6 +283,7 @@ export function FilterSidebar({
           options={jurisdictions}
           selected={selectedJurisdictions}
           onChange={onJurisdictionsChange}
+          showCount
         />
       )}
 
@@ -299,6 +300,7 @@ export function FilterSidebar({
         options={providerTypes}
         selected={selectedProviderTypes}
         onChange={onProviderTypesChange}
+        showCount
       />
 
       <PriceRange min={minPrice} max={maxPrice} onChange={onPriceChange} />

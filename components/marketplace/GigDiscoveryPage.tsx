@@ -9,7 +9,7 @@ import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
 import { GigCard } from './MarketplaceHero'
-import { CATEGORIES, getCategoryById, getCategorySourceLabels } from '@/lib/categories'
+import { CATEGORIES, getCategoryById } from '@/lib/categories'
 import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
@@ -222,22 +222,56 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   const [sort, setSort] = React.useState(searchParams?.get('sort') || 'relevance')
   const [searchQuery, setSearchQuery] = React.useState(searchParams?.get('q') || '')
 
-  // Category options
+  // Real facet counts from /api/marketplace/gig-facets. Counts shrink in
+  // response to currently-active jurisdiction / provider-type / rating
+  // filters so a user picking "United Kingdom" sees the category counts
+  // restricted to UK inventory. Previously the sidebar showed
+  // getCategorySourceLabels(cat.id).length — the number of taxonomy
+  // labels, not real DB inventory — which made every category appear
+  // to have the same fabricated count even when zero gigs existed.
+  const [facets, setFacets] = React.useState<{
+    categoryCounts: Record<string, number>
+    jurisdictionCounts: Record<string, number>
+    providerTypeCounts: Record<string, number>
+    total: number
+  } | null>(null)
+
+  React.useEffect(() => {
+    const params = new URLSearchParams()
+    // Echo the non-category filters so category counts respect them.
+    // Don't pass `category` itself — that would zero out non-selected
+    // categories and defeat the purpose of the facet sidebar.
+    if (selectedJurisdictions.length === 1) params.set('country', selectedJurisdictions[0])
+    selectedProviderTypes.forEach((t) => params.append('provider_type', t))
+    if (selectedRating) params.set('min_rating', selectedRating)
+    const qs = params.toString()
+    requestJson(`/api/marketplace/gig-facets${qs ? `?${qs}` : ''}`)
+      .then((res: any) => {
+        // apiEnvelope shape: { data: {...}, error, meta }
+        if (res?.data) setFacets(res.data)
+      })
+      .catch(() => {
+        // Non-fatal — fall back to label-only options without counts.
+      })
+  }, [selectedJurisdictions, selectedProviderTypes, selectedRating])
+
+  // Category options use real counts when facets are loaded; fall back
+  // to undefined (no count badge) before the first fetch resolves.
   const categoryOptions = CATEGORIES.map(cat => ({
     id: cat.id,
     label: cat.name,
-    count: getCategorySourceLabels(cat.id).length,
+    count: facets?.categoryCounts?.[cat.id],
   }))
 
   const providerTypeOptions = [
-    { id: 'attorney', label: 'Attorneys' },
-    { id: 'consultant', label: 'Consultants' },
+    { id: 'attorney',   label: 'Attorneys',   count: facets?.providerTypeCounts?.attorney },
+    { id: 'consultant', label: 'Consultants', count: facets?.providerTypeCounts?.consultant },
   ]
 
   const jurisdictionOptions = [
-    { id: 'us', label: 'United States' },
-    { id: 'uk', label: 'United Kingdom' },
-    { id: 'ca', label: 'Canada' },
+    { id: 'us', label: 'United States',  count: facets?.jurisdictionCounts?.us },
+    { id: 'uk', label: 'United Kingdom', count: facets?.jurisdictionCounts?.uk },
+    { id: 'ca', label: 'Canada',         count: facets?.jurisdictionCounts?.ca },
   ]
 
   const hasActiveFilters = Boolean(
