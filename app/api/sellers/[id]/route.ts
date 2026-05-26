@@ -132,29 +132,47 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return ok({ seller })
   }
 
-  // ── Client fall-through ──────────────────────────────────────────────
-  const { data: clientProfile, error: clientProfileError } = await db
+  // ── Profile fall-through ─────────────────────────────────────────────
+  // Previously this branch required role IN ('client', 'student') and
+  // 404'd everyone else — producing the "Profile not found" empty
+  // state in the message preview drawer whenever the counterpart was
+  // an unprovisioned attorney/consultant (a profiles row exists but
+  // no attorneys/consultants row yet), an admin, support agent, or
+  // anyone created via an older sign-up path that wrote a different
+  // role string. Widen to ANY profile row, then label it by role.
+  const { data: anyProfile, error: anyProfileError } = await db
     .from('profiles')
     .select('id, full_name, email, avatar_url, country, role, status, created_at')
     .eq('id', id)
-    .in('role', ['client', 'student'])
     .maybeSingle()
 
-  if (clientProfileError || !clientProfile) {
+  if (anyProfileError || !anyProfile) {
     return fail('Seller not found', 404)
   }
 
-  const { count: inquiryCount } = await db
-    .from('inquiries')
-    .select('id', { count: 'exact', head: true })
-    .eq('client_profile_id', clientProfile.id)
+  // Inquiry count is only meaningful for client/student profiles —
+  // skip the query for staff/admin/etc. to keep the response cheap.
+  const isBuyer = ['client', 'student'].includes(String(anyProfile.role || ''))
+  let inquiryCount = 0
+  if (isBuyer) {
+    const { count } = await db
+      .from('inquiries')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_profile_id', anyProfile.id)
+    inquiryCount = count ?? 0
+  }
+
+  // The drawer only renders three branches (client / attorney /
+  // consultant). Collapse anything that isn't a known seller role to
+  // 'client' on the wire so the chip still renders.
+  const wireRole = isBuyer ? 'client' : (String(anyProfile.role || '').trim() || 'client')
 
   const clientSeller = {
-    id: clientProfile.id,
-    profile_id: clientProfile.id,
-    role: 'client',
-    full_name: clientProfile.full_name || clientProfile.email?.split('@')[0] || 'Client',
-    headshot_url: clientProfile.avatar_url,
+    id: anyProfile.id,
+    profile_id: anyProfile.id,
+    role: wireRole,
+    full_name: anyProfile.full_name || anyProfile.email?.split('@')[0] || 'User',
+    headshot_url: anyProfile.avatar_url,
     tagline: null,
     bio: null,
     intro: null,
@@ -170,16 +188,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     profile_url: null,
     timezone: null,
     available: false,
-    member_since: clientProfile.created_at,
+    member_since: anyProfile.created_at,
     rating_count: 0,
     rating_avg: null,
     response_time: null,
     is_online: false,
     total_orders: 0,
     total_gigs: 0,
-    verified: clientProfile.status === 'active',
+    verified: anyProfile.status === 'active',
     level: 'new' as const,
-    inquiry_count: inquiryCount ?? 0,
+    inquiry_count: inquiryCount,
   }
 
   return ok({ seller: clientSeller })

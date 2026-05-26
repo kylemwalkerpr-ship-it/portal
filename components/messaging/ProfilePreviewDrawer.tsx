@@ -122,7 +122,12 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
             <div style={{ textAlign: 'center', padding: 40, color: '#B22234', fontSize: 13 }}>{error}</div>
           )}
           {!loading && !error && !seller && (
-            <div style={{ textAlign: 'center', padding: 40, color: TEXT_SOFT, fontSize: 13 }}>Profile not found.</div>
+            <div style={{ textAlign: 'center', padding: 40, color: TEXT_SOFT, fontSize: 13 }}>
+              <div style={{ marginBottom: 6 }}>Profile details aren&apos;t available right now.</div>
+              <div style={{ fontSize: 12, color: TEXT_SOFT, opacity: 0.8 }}>
+                You can still message this person from the chat — no action needed.
+              </div>
+            </div>
           )}
           {!loading && !error && seller && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

@@ -126,7 +126,7 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
             return (
               <a
                 key={`${gig.slug}-${idx}`}
-                href={fallbackSlugs.has(gig.slug) ? MARKET_HOME : `${MARKET_HOME}/gigs/${gig.slug}`}
+                href={fallbackSlugs.has(gig.slug) ? MARKET_HOME : `${MARKET_HOME}/marketplace/gigs/${gig.slug}`}
                 className="ys-feat-card"
                 style={{
                   display: 'flex',
