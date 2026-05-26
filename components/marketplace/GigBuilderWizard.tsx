@@ -504,6 +504,16 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
             onUpdateFAQ={updateFAQ}
             onRemoveFAQ={removeFAQ}
             onUploadFile={uploadGalleryFile}
+            onPersistGallery={async (next: any[]) => {
+              if (!currentGigId) return
+              try {
+                await fetch(`/api/gigs/${currentGigId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gallery_images: next }),
+                })
+              } catch { /* non-fatal; the next save will resync */ }
+            }}
           />
         )}
 
@@ -921,7 +931,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
   )
 }
 
-function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile }: any) {
+function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile, onPersistGallery }: any) {
   const [imageUrlInput, setImageUrlInput] = React.useState('')
   const [uploading, setUploading] = React.useState(false)
   const [uploadError, setUploadError] = React.useState('')
@@ -979,6 +989,14 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
     const [item] = next.splice(index, 1)
     next.unshift(item)
     onChange('gallery_images', next)
+    // Persist the new cover immediately if this gig is already in the
+    // database. Without this, the "Set as cover" button only reordered
+    // local state — the marketplace card kept showing the old cover
+    // until the user clicked Save / Publish. Fire-and-forget; the
+    // local state is already updated optimistically.
+    if (typeof onPersistGallery === 'function') {
+      onPersistGallery(next)
+    }
   }
 
   const resolveImageUrl = (img: any): string => {

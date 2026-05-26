@@ -47,12 +47,29 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const { data: pub } = auth.db.storage.from('gig-gallery').getPublicUrl(path)
   const publicUrl = pub?.publicUrl || path
   const image = { id: crypto.randomUUID(), url: publicUrl, path, name: safe, size: file.size }
-  const { data: updated, error } = await auth.db
+  const nextGallery = [...gallery, image]
+  // First upload becomes the cover. Subsequent uploads append to the
+  // gallery but don't change the cover unless the user explicitly
+  // reorders via PATCH /api/gigs/[id]. This keeps the "Set as cover"
+  // wizard control authoritative.
+  const updatePayload: Record<string, any> = {
+    gallery_images: nextGallery,
+    updated_at: new Date().toISOString(),
+  }
+  if (nextGallery.length === 1) {
+    updatePayload.cover_image_url = publicUrl
+  }
+  let updateResult = await auth.db
     .from('gigs')
-    .update({ gallery_images: [...gallery, image], updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('id', id)
     .select('*')
     .single()
-  if (error || !updated) return fail(error?.message || 'Could not save gallery image.', 500)
-  return ok({ image, gig: updated }, { status: 201 })
+  // Self-heal if cover_image_url column doesn't exist yet.
+  if (updateResult.error && /column .*cover_image_url/i.test(updateResult.error.message || '')) {
+    const { cover_image_url: _drop, ...rest } = updatePayload
+    updateResult = await auth.db.from('gigs').update(rest).eq('id', id).select('*').single()
+  }
+  if (updateResult.error || !updateResult.data) return fail(updateResult.error?.message || 'Could not save gallery image.', 500)
+  return ok({ image, gig: updateResult.data }, { status: 201 })
 }

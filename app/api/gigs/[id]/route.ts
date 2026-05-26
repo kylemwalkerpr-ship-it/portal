@@ -1,7 +1,24 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { buildSlug } from '@/lib/fiverr'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+
+// Coerce gallery_images into a canonical [{url, ...}] shape and mirror
+// the first entry into cover_image_url so any consumer reading either
+// field sees the cover. Older rows that stored bare URL strings heal
+// at the read boundary too — see app/api/marketplace/gigs/route.ts.
+function shapeGig(gig: any) {
+  if (!gig) return gig
+  const gallery = normalizeGallery(gig.gallery_images)
+  return {
+    ...gig,
+    gallery_images: gallery,
+    cover_image_url: typeof gig.cover_image_url === 'string' && gig.cover_image_url.trim()
+      ? gig.cover_image_url
+      : (gallery[0]?.url ?? null),
+  }
+}
 
 async function loadGig(db: any, id: string) {
   return db.from('gigs').select('*, tiers:gig_tiers(*)').eq('id', id).single()
@@ -19,7 +36,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   if (error || !gig) return fail(error?.message || 'Gig not found.', 404)
   if (auth && !owns(auth, gig) && gig.status !== 'active') return fail('Forbidden.', 403)
   if (!auth && gig.status !== 'active') return fail('Gig not found.', 404)
-  return ok({ gig })
+  return ok({ gig: shapeGig(gig) })
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -45,10 +62,27 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
   if ('tags' in body) payload.tags = Array.isArray(body.tags) ? body.tags.map(String).slice(0, 5) : []
   if ('faq' in body) payload.faq = Array.isArray(body.faq) ? body.faq.slice(0, 10) : []
-  if ('gallery_images' in body) payload.gallery_images = Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 3) : []
+  if ('gallery_images' in body) {
+    const normalized = normalizeGallery(body.gallery_images).slice(0, 3)
+    payload.gallery_images = normalized
+    // Always keep cover_image_url in sync with whichever entry is at
+    // index 0 — that's the contract the "Set as cover" button uses.
+    // If the gallery is cleared, also clear the cover so card grids
+    // don't render a stale image that no longer exists.
+    payload.cover_image_url = resolveCoverUrl({ gallery_images: normalized })
+  }
   if ('slug' in body) payload.slug = buildSlug(String(body.slug || existing.title))
 
-  const { data: gig, error } = await auth.db.from('gigs').update(payload).eq('id', id).select('*, tiers:gig_tiers(*)').single()
+  let updateResult = await auth.db.from('gigs').update(payload).eq('id', id).select('*, tiers:gig_tiers(*)').single()
+  // Self-heal: if the cover_image_url column doesn't exist on this
+  // schema, drop it and retry. The gallery_images write is enough
+  // because the API readers fall back to gallery_images[0]?.url.
+  if (updateResult.error && /column .*cover_image_url/i.test(updateResult.error.message || '')) {
+    const { cover_image_url: _drop, ...rest } = payload
+    updateResult = await auth.db.from('gigs').update(rest).eq('id', id).select('*, tiers:gig_tiers(*)').single()
+  }
+  const gig = updateResult.data
+  const error = updateResult.error
   if (error || !gig) return fail(error?.message || 'Could not update gig.', 500)
 
   if (Array.isArray(body.tiers)) {
@@ -67,7 +101,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (tierError) return fail(tierError.message, 500)
   }
 
-  return ok({ gig })
+  return ok({ gig: shapeGig(gig) })
 }
 
 export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {

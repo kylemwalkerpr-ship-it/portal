@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { buildSlug } from '@/lib/fiverr'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
@@ -175,6 +176,14 @@ export async function POST(req: Request) {
   const jurisdiction = ['us', 'uk', 'ca'].includes(rawJurisdiction) ? rawJurisdiction : null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
 
+  // gallery_images can arrive as strings (older builder code, third-party
+  // imports), {url} objects, or mixed. normalizeGallery coerces every
+  // entry into the canonical {url, name?, path?, size?} shape so every
+  // marketplace renderer's gig.gallery_images[0]?.url access path
+  // resolves correctly. cover_image_url mirrors the first entry so any
+  // consumer that prefers that column (sellers/[id]/gigs, gig detail OG)
+  // gets the right image without a second lookup.
+  const normalizedGallery = normalizeGallery(body.gallery_images).slice(0, 3)
   const insertPayload: Record<string, any> = {
     provider_id: auth.profileId,
     provider_type: auth.role,
@@ -188,7 +197,8 @@ export async function POST(req: Request) {
     description: body.description || '',
     requirements: body.requirements || '',
     faq: Array.isArray(body.faq) ? body.faq.slice(0, 10) : [],
-    gallery_images: Array.isArray(body.gallery_images) ? body.gallery_images.slice(0, 3) : [],
+    gallery_images: normalizedGallery,
+    cover_image_url: resolveCoverUrl({ gallery_images: normalizedGallery }),
     video_url: body.video_url || null,
     status,
     seo_title: body.seo_title || title,

@@ -6,6 +6,7 @@ import {
   normalizeCategory,
 } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
@@ -70,6 +71,8 @@ interface LandingGig {
   providerCountry: string | null
   jx: JxCode | null
   tiers: Array<{ price: number; delivery_days: number | null }>
+  cover_image_url: string | null
+  gallery_images: Array<{ url: string }>
 }
 
 interface CategoryStat {
@@ -226,10 +229,15 @@ async function loadLandingData(): Promise<LandingData> {
   // One fat query: every active gig with provider country + tiers. The
   // marketplace inventory is small enough that pulling it whole on a public
   // landing is cheap, and partitioning happens in memory afterwards.
+  // Include gallery_images + cover_image_url so card components rendered
+  // from this server-side query (HeroCaseFileSlideshow, AllGigsDrawer)
+  // have a cover image to show. Without these columns the public
+  // marketplace landing was rendering text-only cards even when the
+  // gig had a real uploaded cover.
   const inventoryP = db
     .from('gigs')
     .select(
-      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
+      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, cover_image_url, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
@@ -260,6 +268,7 @@ async function loadLandingData(): Promise<LandingData> {
     const gigJx: JxCode | null = ['us', 'uk', 'ca'].includes(String(row.jurisdiction || '').toLowerCase())
       ? (String(row.jurisdiction).toLowerCase() as JxCode)
       : null
+    const gallery = normalizeGallery(row.gallery_images)
     return {
       id: row.id,
       slug: row.slug,
@@ -276,6 +285,8 @@ async function loadLandingData(): Promise<LandingData> {
       providerCountry: country,
       jx: gigJx ?? resolveJurisdiction(country),
       tiers: activeTiers,
+      cover_image_url: resolveCoverUrl(row),
+      gallery_images: gallery,
     }
   })
 
