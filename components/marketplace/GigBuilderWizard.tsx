@@ -144,6 +144,7 @@ const STEPS = [
   { id: 'basics', title: 'Basics', description: 'Title, pitch, and description' },
   { id: 'pricing', title: 'Pricing', description: 'Set up your pricing tiers' },
   { id: 'details', title: 'Details', description: 'FAQ, requirements, and media' },
+  { id: 'seo', title: 'SEO', description: 'Optimize for search visibility' },
   { id: 'review', title: 'Review', description: 'Preview and publish' },
 ]
 
@@ -612,6 +613,14 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
         )}
 
         {currentStep === 4 && (
+          <SEOStep
+            gigData={gigData}
+            errors={errors}
+            onChange={updateGigData}
+          />
+        )}
+
+        {currentStep === 5 && (
           <ReviewStep
             gigData={gigData}
             onEdit={(step) => setCurrentStep(step)}
@@ -1160,7 +1169,6 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 }
 
 function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile, onPersistGallery }: any) {
-  const [showSeoPanel, setShowSeoPanel] = React.useState(false)
   const images = gigData.gallery_images || []
 
   return (
@@ -1305,93 +1313,186 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
         )}
       </div>
 
-      {/* SEO Section */}
+
+    </div>
+  )
+}
+
+function SEOStep({ gigData, errors, onChange }: any) {
+  const [suggestions, setSuggestions] = React.useState<string[] | null>(null)
+  const [suggestionsLoading, setSuggestionsLoading] = React.useState(false)
+  const [apiError, setApiError] = React.useState<string | null>(null)
+
+  // Debounced fetch of SEO suggestions from the seo-meta API
+  React.useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!gigData.title && !gigData.description) return
+      setSuggestionsLoading(true)
+      setApiError(null)
+      try {
+        const res = await fetch('/api/gigs/seo-meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: gigData.title,
+            pitch: gigData.tagline || gigData.pitch,
+            description: gigData.description,
+            tags: gigData.tags,
+            category: gigData.category,
+            jurisdiction: gigData.jurisdiction,
+            seo_title: gigData.seo_title,
+            seo_description: gigData.seo_description,
+          }),
+        })
+        if (res.ok) {
+          const body = await res.json()
+          setSuggestions(body?.data?.suggestions || body?.suggestions || null)
+        }
+      } catch {
+        setApiError('Could not load suggestions.')
+      } finally {
+        setSuggestionsLoading(false)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [gigData.title, gigData.tagline, gigData.pitch, gigData.description, gigData.tags, gigData.category, gigData.jurisdiction, gigData.seo_title, gigData.seo_description])
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px', color: T.ink }}>
+        Search Optimization
+      </h2>
+      <p style={{ fontSize: '14px', color: T.inkMuted, marginBottom: '24px', lineHeight: 1.55 }}>
+        Optimize how your gig appears in search results. A higher SEO score means better visibility
+        when clients browse the marketplace.
+      </p>
+
+      {/* SEO Title field */}
       <div style={formSection}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <label style={formLabel}>
-            SEO Settings
-            <span style={{ fontWeight: 400, color: T.inkMuted, fontSize: '12px', marginLeft: '8px' }}>
-              Control how your gig appears in search engines
-            </span>
-          </label>
-          <Btn
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowSeoPanel(!showSeoPanel)}
-          >
-            {showSeoPanel ? 'Hide SEO preview' : 'SEO Preview & Score'}
-          </Btn>
+        <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
+          SEO Title{' '}
+          <span style={{ fontWeight: 400, color: T.inkMuted }}>
+            (leave blank to use gig title · max 60 chars for best display)
+          </span>
+        </label>
+        <input
+          type="text"
+          value={gigData.seo_title}
+          onChange={e => onChange('seo_title', e.target.value)}
+          placeholder="Custom title for search results"
+          style={inputStyle}
+          maxLength={80}
+        />
+        <div style={formHint}>
+          {(gigData.seo_title || '').length}/80 characters
+          {(gigData.seo_title || '').length > 60 && <span style={{ color: T.brick }}> — Google may truncate titles over 60 chars</span>}
         </div>
+      </div>
 
-        <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
-          <div>
-            <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
-              SEO Title{' '}
-              <span style={{ fontWeight: 400, color: T.inkMuted }}>
-                (leave blank to use gig title · max 60 chars for best display)
-              </span>
-            </label>
-            <input
-              type="text"
-              value={gigData.seo_title}
-              onChange={e => onChange('seo_title', e.target.value)}
-              placeholder="Custom title for search results"
-              style={inputStyle}
-              maxLength={80}
-            />
-            <div style={formHint}>
-              {(gigData.seo_title || '').length}/80 characters
-              {(gigData.seo_title || '').length > 60 && <span style={{ color: T.brick }}> — Google may truncate titles over 60 chars</span>}
-            </div>
-          </div>
-          <div>
-            <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
-              Meta Description{' '}
-              <span style={{ fontWeight: 400, color: T.inkMuted }}>
-                (optimal: 120–160 chars for full search snippet)
-              </span>
-            </label>
-            <textarea
-              value={gigData.seo_description}
-              onChange={e => onChange('seo_description', e.target.value)}
-              placeholder="A compelling meta description that appears in search results below your title"
-              style={{ ...textareaStyle, minHeight: '64px' }}
-              maxLength={300}
-            />
-            <div style={formHint}>
-              {(gigData.seo_description || '').length}/300 characters
-              {(gigData.seo_description || '').length > 0 && (gigData.seo_description || '').length < 120 &&
-                <span style={{ color: T.brick }}> — add {120 - (gigData.seo_description || '').length} more chars for optimal snippet</span>
-              }
-            </div>
-          </div>
+      {/* Meta Description field */}
+      <div style={formSection}>
+        <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
+          Meta Description{' '}
+          <span style={{ fontWeight: 400, color: T.inkMuted }}>
+            (optimal: 120–160 chars for full search snippet)
+          </span>
+        </label>
+        <textarea
+          value={gigData.seo_description}
+          onChange={e => onChange('seo_description', e.target.value)}
+          placeholder="A compelling meta description that appears in search results below your title"
+          style={{ ...textareaStyle, minHeight: '64px' }}
+          maxLength={300}
+        />
+        <div style={formHint}>
+          {(gigData.seo_description || '').length}/300 characters
+          {(gigData.seo_description || '').length > 0 && (gigData.seo_description || '').length < 120 &&
+            <span style={{ color: T.brick }}> — add {120 - (gigData.seo_description || '').length} more chars for optimal snippet</span>
+          }
         </div>
+      </div>
 
-        {showSeoPanel && (
+      {/* Live SEO Analysis */}
+      <div style={{
+        marginTop: '16px',
+        padding: '20px',
+        background: T.vellum,
+        border: `1px solid ${T.rule}`,
+        borderRadius: '12px',
+      }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 700, color: T.ink, marginBottom: '16px' }}>
+          Live SEO Analysis
+        </h3>
+        <SEOPreviewPanel
+          gigData={{
+            title: gigData.title,
+            pitch: gigData.tagline || gigData.pitch,
+            description: gigData.description,
+            tags: gigData.tags,
+            seo_title: gigData.seo_title,
+            seo_description: gigData.seo_description,
+            category: gigData.category,
+            jurisdiction: gigData.jurisdiction,
+          }}
+        />
+      </div>
+
+      {/* AI suggestions */}
+      <div style={formSection}>
+        <div style={{
+          marginTop: '20px',
+          padding: '16px 20px',
+          background: `${T.indigo}06`,
+          borderRadius: '12px',
+          border: `1px solid ${T.indigo}15`,
+        }}>
           <div style={{
-            marginTop: '16px',
-            padding: '20px',
-            background: T.vellum,
-            border: `1px solid ${T.rule}`,
-            borderRadius: '12px',
+            fontSize: '11px',
+            fontWeight: 700,
+            color: T.inkMuted,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            marginBottom: '8px',
           }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 700, color: T.ink, marginBottom: '16px' }}>
-              Live SEO Analysis
-            </h3>
-            <SEOPreviewPanel
-              gigData={{
-                title: gigData.title,
-                pitch: gigData.tagline || gigData.pitch,
-                description: gigData.description,
-                tags: gigData.tags,
-                seo_title: gigData.seo_title,
-                seo_description: gigData.seo_description,
-                category: gigData.category,
-                jurisdiction: gigData.jurisdiction,
-              }}
-            />
+            Optimization Suggestions
           </div>
-        )}
+          {suggestionsLoading && (
+            <div style={{ fontSize: '13px', color: T.inkMuted }}>Analyzing your gig content…</div>
+          )}
+          {apiError && (
+            <div style={{ fontSize: '13px', color: T.brick }}>{apiError}</div>
+          )}
+          {suggestions && suggestions.length > 0 && !suggestionsLoading && (
+            <div style={{ display: 'grid', gap: '6px' }}>
+              {suggestions.map((s, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    gap: '8px',
+                    fontSize: '13px',
+                    color: T.ink,
+                    lineHeight: 1.5,
+                    padding: '4px 0',
+                  }}
+                >
+                  <span style={{ color: T.indigo, flexShrink: 0 }}>→</span>
+                  <span>{s}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {suggestions && suggestions.length === 0 && !suggestionsLoading && (
+            <div style={{ fontSize: '13px', color: T.moss, fontWeight: 600 }}>
+              ✓ Great SEO — no improvement suggestions at this time.
+            </div>
+          )}
+          {!suggestions && !suggestionsLoading && !apiError && (
+            <div style={{ fontSize: '13px', color: T.inkMuted }}>
+              Fill in your gig title and description above to get personalized optimization suggestions.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
