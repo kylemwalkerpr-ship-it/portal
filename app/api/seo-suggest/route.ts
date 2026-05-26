@@ -1,6 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { ALLOWED_FIELDS, draftField, type SuggestContext, type SuggestField } from '@/lib/seoSuggest'
+import { ALLOWED_FIELDS, draftField, type FaqEntry, type SuggestContext, type SuggestField } from '@/lib/seoSuggest'
 
 // Pre-create draft endpoint for the gig builder wizard. Accepts the
 // seller's in-progress context inline so AI drafting works before a
@@ -30,6 +30,12 @@ export async function POST(req: Request) {
     tags: Array.isArray(ctxRaw.tags) ? ctxRaw.tags.filter((t): t is string => typeof t === 'string') : null,
     seo_title: typeof ctxRaw.seo_title === 'string' ? ctxRaw.seo_title : null,
     seo_description: typeof ctxRaw.seo_description === 'string' ? ctxRaw.seo_description : null,
+    faq: Array.isArray(ctxRaw.faq)
+      ? (ctxRaw.faq.filter((f): f is FaqEntry =>
+          !!f && typeof f === 'object' &&
+          typeof (f as Record<string, unknown>).question === 'string' &&
+          typeof (f as Record<string, unknown>).answer === 'string'))
+      : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)

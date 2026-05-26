@@ -32,6 +32,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     tags: gig.tags,
     seo_title: gig.seo_title,
     seo_description: gig.seo_description,
+    faq: Array.isArray(gig.faq) ? gig.faq : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)

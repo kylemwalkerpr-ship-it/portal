@@ -7,11 +7,13 @@ import { getChatProvider } from './chatProvider'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
 
 export const ALLOWED_FIELDS: SuggestField[] = [
-  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements',
+  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq',
 ]
+
+export interface FaqEntry { question: string; answer: string }
 
 export interface SuggestContext {
   title?: string | null
@@ -25,15 +27,16 @@ export interface SuggestContext {
   tags?: string[] | null
   seo_title?: string | null
   seo_description?: string | null
+  faq?: FaqEntry[] | null
 }
 
-export type SuggestSuccess = { ok: true; value: string | string[] }
+export type SuggestSuccess = { ok: true; value: string | string[] | FaqEntry[] }
 export type SuggestFailure = { ok: false; status: number; message: string }
 export type SuggestResult = SuggestSuccess | SuggestFailure
 
 interface FieldSpec {
   prompt: string
-  format: 'string' | 'list'
+  format: 'string' | 'list' | 'faq'
   hardLimit?: number
 }
 
@@ -132,6 +135,25 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           baseContext,
         ].join('\n'),
       }
+    case 'faq':
+      return {
+        format: 'faq',
+        prompt: [
+          'Generate 5 frequently-asked questions a buyer would have for this gig, with concise answers.',
+          'Output format — exactly this shape, no markdown, no numbering:',
+          '',
+          'Q: <question ending with ?>',
+          'A: <answer, 1–3 sentences>',
+          '',
+          'Q: <question>',
+          'A: <answer>',
+          '',
+          'Rules: each Q is under 90 characters. Each A is 1–3 plain-language sentences (no bullets, no headings). Never promise specific outcomes, eligibility, refunds, or timelines that weren\'t in the context. Skip greetings. Skip closers like "Let me know if you have more questions". Return ONLY the Q/A pairs in the format above.',
+          '',
+          'Context:',
+          baseContext,
+        ].join('\n'),
+      }
     case 'requirements':
       return {
         format: 'string', hardLimit: 1200,
@@ -163,6 +185,42 @@ function parseTags(raw: string): string[] {
     .map((t) => t.trim().replace(/^["'`#]+|["'`]+$/g, '').toLowerCase())
     .filter((t) => t.length > 0 && t.length <= 32)
     .slice(0, 5)
+}
+
+// Parse the model's Q: / A: block into structured pairs. We're
+// tolerant of small format drift: bold/markdown markers around the
+// Q/A labels, numeric prefixes, extra blank lines, or "Question:" /
+// "Answer:" alternatives. Anything that doesn't pair cleanly is
+// dropped on the floor rather than failing the whole response.
+function parseFaq(raw: string): FaqEntry[] {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim())
+  const entries: FaqEntry[] = []
+  let pendingQ: string | null = null
+  const qHead = /^(?:\d+[.)]\s*)?[*_]*\s*(?:Q|Question)\s*\d*\s*[:.\-]\s*[*_]*\s*/i
+  const aHead = /^[*_]*\s*(?:A|Answer)\s*\d*\s*[:.\-]\s*[*_]*\s*/i
+  for (const line of lines) {
+    if (!line) continue
+    if (qHead.test(line)) {
+      pendingQ = line.replace(qHead, '').replace(/[*_]+$/g, '').trim()
+    } else if (aHead.test(line) && pendingQ) {
+      const answer = line.replace(aHead, '').replace(/[*_]+$/g, '').trim()
+      if (pendingQ.length >= 4 && answer.length >= 4) {
+        entries.push({
+          question: pendingQ.slice(0, 200),
+          answer: answer.slice(0, 600),
+        })
+      }
+      pendingQ = null
+    } else if (entries.length > 0 && !pendingQ) {
+      // Continuation of the previous answer (multi-line response). Append
+      // to the last entry's answer with a space.
+      const last = entries[entries.length - 1]
+      if (last.answer.length + line.length + 1 <= 600) {
+        last.answer = `${last.answer} ${line}`.trim()
+      }
+    }
+  }
+  return entries.slice(0, 8)
 }
 
 const SYSTEM_PROMPT = [
@@ -202,6 +260,12 @@ export async function draftField(
     const tags = parseTags(raw)
     if (!tags.length) return { ok: false, status: 502, message: 'Model returned no usable tags. Try again.' }
     return { ok: true, value: tags }
+  }
+
+  if (spec.format === 'faq') {
+    const entries = parseFaq(raw)
+    if (!entries.length) return { ok: false, status: 502, message: 'Model returned no usable Q&A pairs. Try again.' }
+    return { ok: true, value: entries }
   }
 
   const cleaned = cleanString(raw)

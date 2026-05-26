@@ -1336,11 +1336,33 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
       </div>
 
       <div style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '8px', flexWrap: 'wrap' as const }}>
           <label style={formLabel}>FAQ</label>
-          <Btn variant="secondary" size="sm" onClick={onAddFAQ}>
-            + Add Question
-          </Btn>
+          <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+            <AIDraftButton
+              field="faq"
+              getContext={() => ({
+                title: gigData.title,
+                tagline: gigData.tagline,
+                pitch: gigData.pitch || gigData.tagline,
+                description: gigData.description,
+                requirements: gigData.requirements,
+                category: gigData.category,
+                subcategory: gigData.subcategory,
+                jurisdiction: gigData.jurisdiction,
+                tags: gigData.tags,
+                seo_title: gigData.seo_title,
+                seo_description: gigData.seo_description,
+                faq: gigData.faq,
+              })}
+              minimalContext={!gigData.title?.trim() && !gigData.category}
+              label="Draft FAQ"
+              onApply={(v) => onChange('faq', Array.isArray(v) ? v : [])}
+            />
+            <Btn variant="secondary" size="sm" onClick={onAddFAQ}>
+              + Add Question
+            </Btn>
+          </div>
         </div>
 
         {gigData.faq.length === 0 ? (

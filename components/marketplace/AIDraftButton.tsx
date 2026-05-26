@@ -5,7 +5,9 @@ import { T, F } from './tokens'
 
 export type DraftField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
+
+export interface FaqEntry { question: string; answer: string }
 
 export interface DraftContext {
   title?: string | null
@@ -19,6 +21,7 @@ export interface DraftContext {
   tags?: string[] | null
   seo_title?: string | null
   seo_description?: string | null
+  faq?: FaqEntry[] | null
 }
 
 interface AIDraftButtonProps {
@@ -29,7 +32,7 @@ interface AIDraftButtonProps {
   // Called only when the seller hits Save on the AI-drafted preview.
   // Until they click Save the field is untouched — keeping the AI
   // suggestion an opt-in change rather than an immediate overwrite.
-  onApply: (value: string | string[]) => void
+  onApply: (value: string | string[] | FaqEntry[]) => void
   label?: string
   size?: 'inline' | 'compact'
   minimalContext?: boolean
@@ -75,9 +78,11 @@ export default function AIDraftButton({
   // before they commit it into the form via Save.
   const [draftText, setDraftText] = React.useState('')
   const [draftTags, setDraftTags] = React.useState<string[]>([])
+  const [draftFaq, setDraftFaq] = React.useState<FaqEntry[]>([])
 
   const panelRef = React.useRef<HTMLDivElement>(null)
   const isTagsField = field === 'tags'
+  const isFaqField = field === 'faq'
 
   const resetAll = React.useCallback(() => {
     setOpen(false)
@@ -86,6 +91,7 @@ export default function AIDraftButton({
     setError(null)
     setDraftText('')
     setDraftTags([])
+    setDraftFaq([])
   }, [])
 
   React.useEffect(() => {
@@ -115,9 +121,14 @@ export default function AIDraftButton({
         context: getContext(),
         hint: hint || undefined,
       })
-      const value = (data as { value: string | string[] }).value
-      if (Array.isArray(value)) setDraftTags(value)
-      else setDraftText(String(value))
+      const value = (data as { value: string | string[] | FaqEntry[] }).value
+      if (isFaqField && Array.isArray(value)) {
+        setDraftFaq(value as FaqEntry[])
+      } else if (Array.isArray(value)) {
+        setDraftTags(value as string[])
+      } else {
+        setDraftText(String(value))
+      }
       setStage('preview')
     } catch (e) {
       const status = (e as Error & { status?: number }).status
@@ -130,7 +141,14 @@ export default function AIDraftButton({
   }
 
   const acceptDraft = () => {
-    if (isTagsField) {
+    if (isFaqField) {
+      const cleaned = draftFaq
+        .map((e) => ({ question: e.question.trim(), answer: e.answer.trim() }))
+        .filter((e) => e.question.length > 0 && e.answer.length > 0)
+        .slice(0, 10)
+      if (!cleaned.length) { setError('Keep at least one complete Q&A before saving.'); return }
+      onApply(cleaned)
+    } else if (isTagsField) {
       const cleaned = draftTags
         .map((t) => t.trim().toLowerCase())
         .filter((t) => t.length > 0 && t.length <= 32)
@@ -151,6 +169,7 @@ export default function AIDraftButton({
     // Keep the hint so the seller can tweak it; clear only the draft.
     setDraftText('')
     setDraftTags([])
+    setDraftFaq([])
   }
 
   const btnHeight = size === 'compact' ? '24px' : '26px'
@@ -193,7 +212,9 @@ export default function AIDraftButton({
             borderRadius: '10px',
             boxShadow: '0 10px 30px rgba(15,23,42,0.14), 0 3px 10px rgba(15,23,42,0.06)',
             padding: '12px',
-            width: stage === 'preview' ? '380px' : '320px',
+            width: stage === 'preview' ? (isFaqField ? '460px' : '380px') : '320px',
+            maxHeight: isFaqField && stage === 'preview' ? '70vh' : 'none',
+            overflowY: isFaqField && stage === 'preview' ? 'auto' : 'visible',
             zIndex: 50,
             fontFamily: F.ui,
           }}
@@ -286,7 +307,9 @@ export default function AIDraftButton({
               <p style={{ margin: '0 0 8px', fontSize: '11px', color: T.inkSoft, lineHeight: 1.45 }}>
                 Review before saving. Edit freely — Save drops this into the form. Click <strong>Update Gig</strong> at the bottom of the wizard to persist.
               </p>
-              {isTagsField ? (
+              {isFaqField ? (
+                <FaqPreview entries={draftFaq} onChange={setDraftFaq} />
+              ) : isTagsField ? (
                 <TagsPreview tags={draftTags} onChange={setDraftTags} />
               ) : (
                 <textarea
@@ -306,10 +329,15 @@ export default function AIDraftButton({
                   }}
                 />
               )}
-              {!isTagsField && (
+              {!isTagsField && !isFaqField && (
                 <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: T.inkSoft }}>
                   <span>AI draft — edit before saving</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums' }}>{draftText.length} chars</span>
+                </div>
+              )}
+              {isFaqField && (
+                <div style={{ marginTop: '6px', fontSize: '10px', color: T.inkSoft }}>
+                  {draftFaq.length} question{draftFaq.length === 1 ? '' : 's'} — edit, remove, or reorder before saving
                 </div>
               )}
               {error && (
@@ -427,6 +455,106 @@ function TagsPreview({ tags, onChange }: { tags: string[]; onChange: (next: stri
             fontFamily: F.ui, fontSize: '12px', color: T.ink,
           }}
         />
+      )}
+    </div>
+  )
+}
+
+function FaqPreview({
+  entries, onChange,
+}: { entries: FaqEntry[]; onChange: (next: FaqEntry[]) => void }) {
+  const setQuestion = (i: number, value: string) => {
+    onChange(entries.map((e, idx) => (idx === i ? { ...e, question: value } : e)))
+  }
+  const setAnswer = (i: number, value: string) => {
+    onChange(entries.map((e, idx) => (idx === i ? { ...e, answer: value } : e)))
+  }
+  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i))
+  const move = (i: number, dir: -1 | 1) => {
+    const next = [...entries]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
+  const addBlank = () => onChange([...entries, { question: '', answer: '' }])
+
+  const card: React.CSSProperties = {
+    padding: '10px 12px',
+    borderRadius: '8px',
+    border: `1px solid ${T.indigo}33`,
+    background: `${T.indigo}05`,
+    marginBottom: '8px',
+  }
+  const label: React.CSSProperties = {
+    fontSize: '10px', fontWeight: 700, color: T.indigo,
+    textTransform: 'uppercase' as const, letterSpacing: '0.06em',
+    marginBottom: '3px', display: 'block',
+  }
+  const input: React.CSSProperties = {
+    width: '100%',
+    padding: '7px 9px',
+    borderRadius: '6px',
+    border: `1px solid ${T.rule}`,
+    background: '#FFFFFF',
+    fontFamily: F.ui, fontSize: '12.5px',
+    color: T.ink, outline: 'none',
+    lineHeight: 1.45,
+  }
+  const iconBtn: React.CSSProperties = {
+    width: '22px', height: '22px',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    background: 'transparent', border: `1px solid ${T.rule}`,
+    borderRadius: '4px', cursor: 'pointer',
+    color: T.inkSoft, padding: 0, fontSize: '12px',
+  }
+  return (
+    <div>
+      {entries.map((entry, i) => (
+        <div key={i} style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '5px' }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: T.indigo, letterSpacing: '0.06em' }}>
+              Q&A {i + 1}
+            </span>
+            <div style={{ display: 'inline-flex', gap: '4px' }}>
+              <button type="button" aria-label="Move up"   onClick={() => move(i, -1)} disabled={i === 0} style={{ ...iconBtn, opacity: i === 0 ? 0.4 : 1 }}>↑</button>
+              <button type="button" aria-label="Move down" onClick={() => move(i, 1)}  disabled={i === entries.length - 1} style={{ ...iconBtn, opacity: i === entries.length - 1 ? 0.4 : 1 }}>↓</button>
+              <button type="button" aria-label="Remove"    onClick={() => remove(i)} style={{ ...iconBtn, color: T.brick, borderColor: `${T.brick}40` }}>×</button>
+            </div>
+          </div>
+          <label style={label}>Question</label>
+          <input
+            type="text"
+            value={entry.question}
+            onChange={(e) => setQuestion(i, e.target.value)}
+            maxLength={200}
+            style={{ ...input, marginBottom: '6px' }}
+          />
+          <label style={label}>Answer</label>
+          <textarea
+            value={entry.answer}
+            onChange={(e) => setAnswer(i, e.target.value)}
+            rows={3}
+            maxLength={600}
+            style={{ ...input, resize: 'vertical' as const }}
+          />
+        </div>
+      ))}
+      {entries.length < 10 && (
+        <button
+          type="button"
+          onClick={addBlank}
+          style={{
+            width: '100%', padding: '8px',
+            borderRadius: '6px', cursor: 'pointer',
+            background: 'transparent', color: T.indigo,
+            border: `1px dashed ${T.indigo}55`,
+            fontSize: '12px', fontWeight: 600,
+            fontFamily: F.ui,
+          }}
+        >
+          + Add empty Q&A
+        </button>
       )}
     </div>
   )
