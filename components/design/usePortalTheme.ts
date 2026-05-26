@@ -4,6 +4,17 @@ import { useEffect, useState } from 'react'
 import { PortalThemeId, DEFAULT_THEME, THEME_IDS } from '@/lib/portalThemes'
 
 const STORAGE_KEY = 'yousafe.portal.theme'
+// Same-tab broadcast channel. The `storage` event doesn't fire in the tab
+// that wrote it, so without a custom event a ThemePicker in settings and
+// the dashboard shell hook (two separate React useState slots) couldn't
+// agree on the current theme. They'd both store correctly but read each
+// other's stale state.
+const SYNC_EVENT = 'yousafe-portal-theme-changed'
+
+function applyAttribute(value: string) {
+  if (typeof document === 'undefined') return
+  document.documentElement.setAttribute('data-portal-theme', value)
+}
 
 export function usePortalTheme(): [PortalThemeId, (next: PortalThemeId) => void] {
   const [theme, setTheme] = useState<PortalThemeId>(DEFAULT_THEME)
@@ -13,7 +24,7 @@ export function usePortalTheme(): [PortalThemeId, (next: PortalThemeId) => void]
     const cached = localStorage.getItem(STORAGE_KEY)
     if (cached && (THEME_IDS as string[]).includes(cached)) {
       setTheme(cached as PortalThemeId)
-      document.documentElement.setAttribute('data-portal-theme', cached)
+      applyAttribute(cached)
     }
     // 2. Reconcile with server in the background.
     fetch('/api/profile/theme', { credentials: 'same-origin' })
@@ -23,16 +34,42 @@ export function usePortalTheme(): [PortalThemeId, (next: PortalThemeId) => void]
         if (server && server !== cached) {
           localStorage.setItem(STORAGE_KEY, server)
           setTheme(server)
-          document.documentElement.setAttribute('data-portal-theme', server)
+          applyAttribute(server)
         }
       })
       .catch(() => {})
+
+    // 3. Listen for same-tab theme changes (custom event) AND cross-tab
+    // changes (storage event). Either updates this hook instance's state
+    // so any code reading the theme value stays consistent.
+    const onSync = (e: Event) => {
+      const next = (e as CustomEvent<PortalThemeId>).detail
+      if (next && (THEME_IDS as string[]).includes(next)) {
+        setTheme(next)
+        applyAttribute(next)
+      }
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return
+      if ((THEME_IDS as string[]).includes(e.newValue)) {
+        setTheme(e.newValue as PortalThemeId)
+        applyAttribute(e.newValue)
+      }
+    }
+    window.addEventListener(SYNC_EVENT, onSync as EventListener)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(SYNC_EVENT, onSync as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   const apply = (next: PortalThemeId) => {
     setTheme(next)
     localStorage.setItem(STORAGE_KEY, next)
-    document.documentElement.setAttribute('data-portal-theme', next)
+    applyAttribute(next)
+    // Notify any other usePortalTheme() instances in this same tab.
+    window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: next }))
     fetch('/api/profile/theme', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

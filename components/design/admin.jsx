@@ -2497,7 +2497,7 @@ function AdminApp({ onLogout }) {
   const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'Gigs', services: 'Catalogue', settings: 'Settings' };
 
   return (
-    <div className="yousafe-dashboard-shell" data-portal-theme={theme} style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+    <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={pages[page] || 'Admin'} />
