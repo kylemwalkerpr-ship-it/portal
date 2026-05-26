@@ -53,6 +53,21 @@ function _legacyRenderBioMarkdown(bio: string) {
   })
 }
 
+// Render a starting-amount as an absolute whole-dollar figure with thousands
+// separators and no cents. Used everywhere the attorney profile shows a
+// "Starting at" / "From" price so a 29900 stored in cents becomes "$299"
+// (not "$299.00" and not "$299.5" if the stored value is odd).
+function formatStartingPrice(cents: number | null | undefined, currency = 'USD'): string {
+  if (cents == null || !Number.isFinite(Number(cents))) return '—'
+  const dollars = Math.round(Number(cents) / 100)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: (currency || 'USD').toUpperCase(),
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(dollars)
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SellerProfile {
@@ -352,7 +367,7 @@ export function SellerGigs({ gigs, loading }: { gigs?: SellerGig[]; loading?: bo
 
                 <div style={gigPriceRow}>
                   <span style={gigPriceLabel}>Starting at</span>
-                  <span style={gigPrice}>${(gig.starting_price / 100).toFixed(0)}</span>
+                  <span style={gigPrice}>{formatStartingPrice(gig.starting_price)}</span>
                 </div>
               </div>
             </Card>

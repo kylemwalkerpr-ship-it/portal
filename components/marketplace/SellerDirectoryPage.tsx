@@ -225,7 +225,9 @@ function SellerCard({ seller }: { seller: SellerProfile }) {
         <div style={cardFooter}>
           <span style={cardRole}>{seller.role === 'attorney' ? 'Attorney' : 'Consultant'}</span>
           {seller.starting_price && (
-            <span style={cardPrice}>From ${(seller.starting_price / 100).toFixed(0)}</span>
+            <span style={cardPrice}>
+              From {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(seller.starting_price / 100))}
+            </span>
           )}
         </div>
       </Card>

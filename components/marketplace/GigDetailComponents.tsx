@@ -79,12 +79,16 @@ interface OrderCTAProps {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function money(cents: number, currency = 'usd') {
+  // Always render whole-dollar figures — the marketplace shows "From $299",
+  // not "From $299.50". Stored values that aren't a round dollar get
+  // rounded to the nearest dollar; this is the established convention
+  // across PublicMarketplaceLanding / AllGigsDrawer / HeroCaseFileSlideshow.
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: String(currency || 'usd').toUpperCase(),
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(Number(cents || 0) / 100)
+    maximumFractionDigits: 0,
+  }).format(Math.round(Number(cents || 0) / 100))
 }
 
 // ── SellerProfileCard ─────────────────────────────────────────────────────────
@@ -383,7 +387,8 @@ export function SimilarGigs({ gigs }: SimilarGigsProps) {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
-    }).format(Number(cents || 0) / 100)
+      maximumFractionDigits: 0,
+    }).format(Math.round(Number(cents || 0) / 100))
   }
 
   const grid: CSSProperties = {

@@ -19,10 +19,8 @@ function accentFor(role: string): string {
 
 function formatPrice(cents: number | null): string | null {
   if (cents == null || !Number.isFinite(cents)) return null
-  const dollars = cents / 100
-  return dollars % 1 === 0
-    ? `$${dollars.toLocaleString()}`
-    : `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const dollars = Math.round(cents / 100)
+  return `$${dollars.toLocaleString()}`
 }
 
 function initials(name: string): string {
