@@ -29,7 +29,7 @@ const PAGE_TITLES = {
   orders: 'Active Orders',
   messages: 'Messages',
   earnings: 'Earnings',
-  gigs: 'Gigs',
+  gigs: 'My Office',
   profile: 'My Profile',
   settings: 'Settings',
 }
@@ -460,7 +460,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
         <NavItem icon="📂" label="My Inquiries" active={page === 'mine'} onClick={() => setPage('mine')} />
         <NavItem icon="📦" label="Active Orders" active={page === 'orders'} onClick={() => setPage('orders')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
-        <NavItem icon="💼" label="Gigs" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
+        <NavItem icon="💼" label="My Office" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
@@ -1105,7 +1105,7 @@ function OverviewPage({ onJump }) {
   return (
     <div style={{ padding: '28px', display: 'grid', gap: '24px', maxWidth: '1080px' }}>
       <div>
-        <div style={eyebrowStyle}>My Office</div>
+        <div style={eyebrowStyle}>Dashboard</div>
         <h2 style={pageTitleStyle}>What's happening today.</h2>
       </div>
 

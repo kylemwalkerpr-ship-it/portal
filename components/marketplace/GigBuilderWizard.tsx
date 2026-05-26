@@ -7,6 +7,8 @@ import { T, F } from './tokens'
 import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
 import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
 import { GigCard } from './MarketplaceHero'
+import GalleryManager from './GalleryManager'
+import SEOPreviewPanel from './SEOPreviewPanel'
 
 const wizardContainer: CSSProperties = {
   maxWidth: '800px',
@@ -1158,112 +1160,8 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
 }
 
 function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile, onPersistGallery }: any) {
-  const [imageUrlInput, setImageUrlInput] = React.useState('')
-  const [uploading, setUploading] = React.useState(false)
-  const [uploadError, setUploadError] = React.useState('')
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [showSeoPanel, setShowSeoPanel] = React.useState(false)
   const images = gigData.gallery_images || []
-  const canAddMore = images.length < 3
-
-  const addImageUrl = () => {
-    const url = imageUrlInput.trim()
-    if (!url || !canAddMore) return
-    // Store as a {url} object so marketplace renderers (which all read
-    // gig.gallery_images[0]?.url) can pick the cover up. Pushing a bare
-    // string instead — which this used to do — left the cover invisible
-    // on every gig card because "https://…"?.url is undefined.
-    onChange('gallery_images', [...images, { url }])
-    setImageUrlInput('')
-  }
-
-  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // Reset the input so picking the same file twice still fires onChange.
-    e.target.value = ''
-
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('Image must be 5 MB or less.')
-      return
-    }
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setUploadError('Use JPG, PNG, or WEBP.')
-      return
-    }
-
-    setUploadError('')
-    setUploading(true)
-
-    // Optimistic preview — show the user's image immediately via a local
-    // blob URL while the upload runs in the background. Without this the
-    // gallery strip stays empty during the (sometimes multi-second)
-    // upload, and the user thinks nothing is happening. We mark the
-    // tile as `pending: true` so the renderer can show a spinner over
-    // it, and swap the URL for the real one once the upload completes.
-    const previewId = `pending-${crypto.randomUUID()}`
-    const previewUrl = URL.createObjectURL(file)
-    const optimisticImage = {
-      id: previewId,
-      url: previewUrl,
-      name: file.name,
-      size: file.size,
-      pending: true as const,
-    }
-    onChange('gallery_images', [...images, optimisticImage])
-
-    try {
-      if (!onUploadFile) throw new Error('Upload is unavailable. Use the URL field instead.')
-      const url = await onUploadFile(file)
-      // Replace the pending tile with the real server-side record.
-      // Functional onChange so we get the freshest gallery_images
-      // (the optimistic update already happened before this resolves).
-      onChange('gallery_images', (prev: any[]) =>
-        (Array.isArray(prev) ? prev : []).map((img: any) =>
-          img?.id === previewId
-            ? { url, name: file.name, size: file.size }
-            : img,
-        ),
-      )
-      // Revoke the blob URL once the server URL is in place so the
-      // browser doesn't hold the file in memory forever.
-      try { URL.revokeObjectURL(previewUrl) } catch {}
-    } catch (err: any) {
-      setUploadError(err?.message || 'Upload failed.')
-      // Roll back the optimistic tile so the user isn't left with a
-      // ghost preview that will never persist.
-      onChange('gallery_images', (prev: any[]) =>
-        (Array.isArray(prev) ? prev : []).filter((img: any) => img?.id !== previewId),
-      )
-      try { URL.revokeObjectURL(previewUrl) } catch {}
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const removeImage = (index: number) => {
-    onChange('gallery_images', images.filter((_: string, i: number) => i !== index))
-  }
-
-  const moveToFirst = (index: number) => {
-    const next = [...images]
-    const [item] = next.splice(index, 1)
-    next.unshift(item)
-    onChange('gallery_images', next)
-    // Persist the new cover immediately if this gig is already in the
-    // database. Without this, the "Set as cover" button only reordered
-    // local state — the marketplace card kept showing the old cover
-    // until the user clicked Save / Publish. Fire-and-forget; the
-    // local state is already updated optimistically.
-    if (typeof onPersistGallery === 'function') {
-      onPersistGallery(next)
-    }
-  }
-
-  const resolveImageUrl = (img: any): string => {
-    if (typeof img === 'string') return img
-    if (img?.url) return img.url
-    return ''
-  }
 
   return (
     <div>
@@ -1293,179 +1191,51 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
           </span>
         </label>
         {errors.gallery_images && <div style={{ ...formError, marginBottom: '8px' }}>{errors.gallery_images}</div>}
-        {uploadError && <div style={{ ...formError, marginBottom: '8px' }}>{uploadError}</div>}
 
-        {/* Upload from device — primary path. */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={handleFilePick}
-          style={{ display: 'none' }}
-          disabled={!canAddMore}
+        <GalleryManager
+          images={images}
+          maxImages={3}
+          uploading={false}
+          onUploadFile={async (file: File) => {
+            if (!onUploadFile) throw new Error('Upload is unavailable')
+            return onUploadFile(file)
+          }}
+          onUploadResized={async (file: File, presetName: string, width: number, height: number) => {
+            // Server-side sharp processing via POST /api/images/resize
+            const form = new FormData()
+            form.append('file', file)
+            form.append('width', String(width))
+            form.append('height', String(height))
+            form.append('preset', presetName)
+            const res = await fetch('/api/images/resize', {
+              method: 'POST',
+              body: form,
+            })
+            if (!res.ok) {
+              const body = await res.json().catch(() => null)
+              throw new Error(body?.error || 'Image resize failed')
+            }
+            const body = await res.json()
+            return body?.data?.url || body?.url
+          }}
+          onAddUrl={(url: string) => {
+            onChange('gallery_images', [...images, { url }])
+          }}
+          onRemove={(index: number) => {
+            onChange('gallery_images', images.filter((_: any, i: number) => i !== index))
+          }}
+          onReorder={(nextOrUpdater: any) => {
+            if (typeof nextOrUpdater === 'function') {
+              onChange('gallery_images', nextOrUpdater)
+            } else {
+              onChange('gallery_images', nextOrUpdater)
+              if (typeof onPersistGallery === 'function') {
+                onPersistGallery(nextOrUpdater)
+              }
+            }
+          }}
+          onPersistGallery={onPersistGallery}
         />
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || !canAddMore}
-            style={{
-              padding: '10px 16px', background: T.indigo, color: '#fff',
-              border: 'none', borderRadius: '10px', fontSize: '13px',
-              fontWeight: 600, cursor: (uploading || !canAddMore) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
-              opacity: (uploading || !canAddMore) ? 0.5 : 1,
-            }}
-          >
-            {uploading ? 'Uploading…' : 'Upload from device'}
-          </button>
-          <span style={{ alignSelf: 'center', fontSize: '12px', color: T.inkMuted }}>
-            JPG, PNG, or WEBP · max 5 MB · {images.length}/3 images
-          </span>
-        </div>
-
-        {/* Fallback: paste a URL */}
-        {canAddMore && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <input
-              type="url"
-              value={imageUrlInput}
-              onChange={e => setImageUrlInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addImageUrl() } }}
-              placeholder="Or paste an image URL: https://…"
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            <button
-              type="button"
-              onClick={addImageUrl}
-              style={{
-                padding: '10px 16px', background: 'transparent', color: T.indigo,
-                border: `1px solid ${T.indigo}`, borderRadius: '10px', fontSize: '13px',
-                fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              Add URL
-            </button>
-          </div>
-        )}
-
-        {images.length > 0 ? (
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {images.map((img: any, i: number) => {
-              const url = resolveImageUrl(img)
-              const isCover = i === 0
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: 'relative', width: '140px',
-                    borderRadius: '10px', overflow: 'hidden',
-                    border: `2px solid ${isCover ? T.indigo : T.rule}`,
-                    background: T.vellum2,
-                    display: 'flex', flexDirection: 'column',
-                  }}
-                >
-                  <div style={{ width: '100%', height: '100px', position: 'relative', overflow: 'hidden' }}>
-                    <img
-                      src={url}
-                      alt={`Gallery ${i + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: img?.pending ? 0.55 : 1, transition: 'opacity 200ms' }}
-                      onError={e => {
-                        // Replace broken image with a clear "couldn't load"
-                        // placeholder so the user sees the issue instead
-                        // of an empty tile. Previously this hid the img
-                        // entirely, which produced the user-reported
-                        // "broken cover image" symptom: a blank tile.
-                        const target = e.target as HTMLImageElement
-                        target.style.display = 'none'
-                        const parent = target.parentElement
-                        if (parent && !parent.querySelector('[data-img-err]')) {
-                          const fallback = document.createElement('div')
-                          fallback.setAttribute('data-img-err', '1')
-                          fallback.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fde2e2;color:#a52a2a;font-size:11px;text-align:center;padding:8px;font-family:inherit;'
-                          fallback.textContent = "Image didn't load. Try removing and re-uploading."
-                          parent.appendChild(fallback)
-                        }
-                      }}
-                    />
-                    {img?.pending && (
-                      <div
-                        style={{
-                          position: 'absolute', inset: 0,
-                          background: 'rgba(15,23,42,0.42)', color: '#fff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em',
-                          textTransform: 'uppercase', gap: '6px',
-                        }}
-                      >
-                        <span style={{
-                          width: '12px', height: '12px', borderRadius: '50%',
-                          border: '2px solid rgba(255,255,255,0.35)',
-                          borderTopColor: '#fff',
-                          animation: 'spin 0.75s linear infinite',
-                        }} />
-                        Uploading…
-                      </div>
-                    )}
-                    {isCover && (
-                      <div
-                        style={{
-                          position: 'absolute', top: '4px', left: '4px',
-                          background: T.indigo, color: '#fff',
-                          fontSize: '10px', fontWeight: 700,
-                          padding: '2px 7px', borderRadius: '4px',
-                          letterSpacing: '0.04em', textTransform: 'uppercase',
-                        }}
-                      >
-                        Cover
-                      </div>
-                    )}
-                    <button
-                      onClick={() => removeImage(i)}
-                      style={{
-                        position: 'absolute', top: '4px', right: '4px',
-                        background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
-                        borderRadius: '50%', width: '22px', height: '22px',
-                        cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div style={{ padding: '6px 8px', background: isCover ? `${T.indigo}08` : T.paper, borderTop: `1px solid ${T.ruleSoft}` }}>
-                    {!isCover && (
-                      <button
-                        type="button"
-                        onClick={() => moveToFirst(i)}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          fontSize: '11px', color: T.indigo, fontWeight: 600,
-                          padding: 0, fontFamily: 'inherit', width: '100%',
-                          textAlign: 'center',
-                        }}
-                      >
-                        Set as cover
-                      </button>
-                    )}
-                    {isCover && (
-                      <span style={{ fontSize: '10px', color: T.indigo, fontWeight: 600, display: 'block', textAlign: 'center', letterSpacing: '0.02em' }}>
-                        Gig cover photo
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div style={{ padding: '24px', textAlign: 'center', color: T.inkMuted, background: T.vellum2, borderRadius: '12px', fontSize: '13px', border: `2px dashed ${T.rule}` }}>
-            <div style={{ fontSize: '28px', marginBottom: '8px' }}>🖼️</div>
-            <p style={{ margin: '0 0 4px', fontWeight: 600, color: T.ink }}>Add your first gallery image</p>
-            <p style={{ margin: 0 }}>Upload a photo from your device or paste an image URL above.</p>
-            <p style={{ margin: '8px 0 0', fontSize: '11px' }}>The first image becomes the cover on your gig card.</p>
-          </div>
-        )}
-        <div style={formHint}>{images.length}/3 images · first image = cover photo on marketplace cards</div>
       </div>
 
       <div style={formSection}>
@@ -1480,31 +1250,6 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
         <div style={formHint}>
           Add a video introduction to showcase your service (YouTube, Vimeo, etc.)
         </div>
-      </div>
-
-      <div style={formSection}>
-        <label style={formLabel}>SEO Title (optional)</label>
-        <input
-          type="text"
-          value={gigData.seo_title}
-          onChange={e => onChange('seo_title', e.target.value)}
-          placeholder="Optimised title for search engines (leave blank to use gig title)"
-          style={inputStyle}
-          maxLength={80}
-        />
-        <div style={formHint}>{(gigData.seo_title || '').length}/80 characters</div>
-      </div>
-
-      <div style={formSection}>
-        <label style={formLabel}>SEO Description (optional)</label>
-        <textarea
-          value={gigData.seo_description}
-          onChange={e => onChange('seo_description', e.target.value)}
-          placeholder="A short meta description for search engines (160 chars recommended)"
-          style={{ ...textareaStyle, minHeight: '80px' }}
-          maxLength={300}
-        />
-        <div style={formHint}>{(gigData.seo_description || '').length}/300 characters</div>
       </div>
 
       <div style={{ marginBottom: '24px' }}>
@@ -1557,6 +1302,95 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
               </Btn>
             </Card>
           ))
+        )}
+      </div>
+
+      {/* SEO Section */}
+      <div style={formSection}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <label style={formLabel}>
+            SEO Settings
+            <span style={{ fontWeight: 400, color: T.inkMuted, fontSize: '12px', marginLeft: '8px' }}>
+              Control how your gig appears in search engines
+            </span>
+          </label>
+          <Btn
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowSeoPanel(!showSeoPanel)}
+          >
+            {showSeoPanel ? 'Hide SEO preview' : 'SEO Preview & Score'}
+          </Btn>
+        </div>
+
+        <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
+              SEO Title{' '}
+              <span style={{ fontWeight: 400, color: T.inkMuted }}>
+                (leave blank to use gig title · max 60 chars for best display)
+              </span>
+            </label>
+            <input
+              type="text"
+              value={gigData.seo_title}
+              onChange={e => onChange('seo_title', e.target.value)}
+              placeholder="Custom title for search results"
+              style={inputStyle}
+              maxLength={80}
+            />
+            <div style={formHint}>
+              {(gigData.seo_title || '').length}/80 characters
+              {(gigData.seo_title || '').length > 60 && <span style={{ color: T.brick }}> — Google may truncate titles over 60 chars</span>}
+            </div>
+          </div>
+          <div>
+            <label style={{ ...formLabel, fontSize: '12px', color: T.inkMuted }}>
+              Meta Description{' '}
+              <span style={{ fontWeight: 400, color: T.inkMuted }}>
+                (optimal: 120–160 chars for full search snippet)
+              </span>
+            </label>
+            <textarea
+              value={gigData.seo_description}
+              onChange={e => onChange('seo_description', e.target.value)}
+              placeholder="A compelling meta description that appears in search results below your title"
+              style={{ ...textareaStyle, minHeight: '64px' }}
+              maxLength={300}
+            />
+            <div style={formHint}>
+              {(gigData.seo_description || '').length}/300 characters
+              {(gigData.seo_description || '').length > 0 && (gigData.seo_description || '').length < 120 &&
+                <span style={{ color: T.brick }}> — add {120 - (gigData.seo_description || '').length} more chars for optimal snippet</span>
+              }
+            </div>
+          </div>
+        </div>
+
+        {showSeoPanel && (
+          <div style={{
+            marginTop: '16px',
+            padding: '20px',
+            background: T.vellum,
+            border: `1px solid ${T.rule}`,
+            borderRadius: '12px',
+          }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 700, color: T.ink, marginBottom: '16px' }}>
+              Live SEO Analysis
+            </h3>
+            <SEOPreviewPanel
+              gigData={{
+                title: gigData.title,
+                pitch: gigData.tagline || gigData.pitch,
+                description: gigData.description,
+                tags: gigData.tags,
+                seo_title: gigData.seo_title,
+                seo_description: gigData.seo_description,
+                category: gigData.category,
+                jurisdiction: gigData.jurisdiction,
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

@@ -3,6 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
+import { computeSEOScore } from '@/lib/seoUtils'
 
 export { C, Btn, Badge, Card, Input, Select, ProgressBar }
 
@@ -1137,6 +1138,42 @@ export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) 
                     <Input label="Tags" value={(selected.tags || []).join(', ')} onChange={v => updateLocalGig({ tags: v.split(',').map(s => s.trim()).filter(Boolean).slice(0, 5) })} hint="Comma-separated, up to five." />
                   </div>
                 </Card>
+                {/* SEO optimization card with live scoring + SERP preview */}
+                <Card style={{ padding: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '14px' }}>
+                    <h2 style={sectionTitle}>SEO & Search Visibility</h2>
+                    {selected.seo_title && selected.seo_description && (
+                      <Badge color="cyan">Custom SEO</Badge>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <Input
+                      label="SEO Title (optional — leave blank to use gig title)"
+                      value={selected.seo_title || ''}
+                      onChange={title => updateLocalGig({ seo_title: title })}
+                      hint={selected.seo_title && selected.seo_title.length > 60 ? 'Google may truncate titles over 60 characters' : 'Optimal: up to 60 chars for full search display'}
+                    />
+                    <label style={labelStyle}>
+                      Meta Description (optional — shown under the title in search results)
+                      <textarea
+                        style={{ ...textareaStyle, minHeight: '64px' }}
+                        value={selected.seo_description || ''}
+                        onChange={e => updateLocalGig({ seo_description: e.target.value })}
+                        placeholder="A compelling summary that appears in Google search snippets — aim for 120–160 characters"
+                      />
+                      <div style={{ color: C.textMuted, fontSize: '11px', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{(selected.seo_description || '').length}/300 characters</span>
+                        {(selected.seo_description || '').length > 0 && (selected.seo_description || '').length < 120 && (
+                          <span style={{ color: C.red }}>Add {120 - (selected.seo_description || '').length} more chars for optimal snippet</span>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                  {/* Live SEO Score + SERP preview from shared utilities */}
+                  <div style={{ marginTop: '16px' }}>
+                    <GigSEOInsights gig={selected} />
+                  </div>
+                </Card>
                 <Card style={{ padding: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '14px' }}>
                     <h2 style={sectionTitle}>Pricing tiers</h2>
@@ -1238,6 +1275,138 @@ function GigBuilderStepOne({ categories, onCreated }) {
           </div>
         </Card>
       </main>
+    </div>
+  )
+}
+
+// SEO insights component used by ProviderGigsPage — wraps computeSEOScore
+// and renders a live score ring + SERP preview + optimization checklist.
+function GigSEOInsights({ gig }) {
+  const [expanded, setExpanded] = React.useState(false)
+
+  const data = React.useMemo(() => {
+    const result = computeSEOScore({
+      title: gig?.title || '',
+      pitch: gig?.pitch || '',
+      description: gig?.description || '',
+      tags: Array.isArray(gig?.tags) ? gig.tags : [],
+      seo_title: gig?.seo_title || '',
+      seo_description: gig?.seo_description || '',
+      category: gig?.category || '',
+      jurisdiction: gig?.jurisdiction || '',
+    })
+    return {
+      score: result.score,
+      checks: result.checks,
+      finalTitle: (gig?.seo_title || gig?.title || ''),
+      metaDesc: (gig?.seo_description || gig?.pitch || ''),
+      passedCount: result.checks.filter(c => c.passed).length,
+      totalCount: result.checks.length,
+    }
+  }, [gig])
+
+  const scoreColor = data.score >= 80 ? C.green : data.score >= 50 ? '#9A7B3B' : C.red
+  const scoreBg = data.score >= 80 ? `${C.green}12` : data.score >= 50 ? '#FFF8E7' : `${C.red}10`
+
+  return (
+    <div style={{ display: 'grid', gap: '12px' }}>
+      {/* Score ring summary */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '16px',
+        padding: '12px 14px', background: scoreBg,
+        borderRadius: '10px', border: `1px solid ${scoreColor}25`,
+      }}>
+        <div style={{ position: 'relative', width: '52px', height: '52px', flexShrink: 0 }}>
+          <svg width="52" height="52" viewBox="0 0 52 52">
+            <circle cx="26" cy="26" r="21" fill="none" stroke="#E2E8F0" strokeWidth="4" />
+            <circle
+              cx="26" cy="26" r="21" fill="none"
+              stroke={scoreColor} strokeWidth="4"
+              strokeDasharray={`${(data.score / 100) * 132} 132`}
+              strokeDashoffset="33" strokeLinecap="round"
+              style={{ transition: 'stroke-dasharray 0.6s ease' }}
+            />
+            <text x="26" y="26" textAnchor="middle" dominantBaseline="central"
+              fill={C.text} fontSize="14" fontWeight="700" fontFamily="system-ui, sans-serif">
+              {data.score}%
+            </text>
+          </svg>
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '14px', color: C.text }}>
+            SEO Score
+          </div>
+          <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>
+            {data.passedCount}/{data.totalCount} checks
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            marginLeft: 'auto', background: 'transparent', border: `1px solid ${C.border}`,
+            borderRadius: '6px', padding: '4px 10px', fontSize: '11px',
+            fontWeight: 700, cursor: 'pointer', color: C.textMuted, fontFamily: 'inherit',
+          }}
+        >
+          {expanded ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+
+      {/* Expanded: SERP preview + checklist */}
+      {expanded && (
+        <>
+          <div style={{
+            padding: '12px 14px', background: '#fff',
+            border: '1px solid #E2E8F0', borderRadius: '10px',
+            fontFamily: 'Arial, sans-serif',
+          }}>
+            <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Google Search Preview
+            </div>
+            <div style={{ fontSize: '11px', color: '#4B5563', marginBottom: '3px' }}>
+              marketplace.yousafeconsultancy.com/marketplace/gigs/{gig?.slug || 'your-gig'}
+            </div>
+            <div style={{
+              fontSize: '18px', color: '#1a0dab', fontWeight: 400,
+              maxWidth: '600px', overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', lineHeight: 1.3, marginBottom: '2px',
+            }}>
+              {data.finalTitle.length > 60 ? `${data.finalTitle.slice(0, 60)}…` : data.finalTitle || 'Gig Title'}
+            </div>
+            <div style={{ fontSize: '12px', color: '#4B5563', lineHeight: 1.58, maxWidth: '600px' }}>
+              {data.metaDesc.length > 160 ? `${data.metaDesc.slice(0, 157)}…` : data.metaDesc || 'Write a compelling meta description to improve click-through.'}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gap: '4px' }}>
+            {data.checks.map(check => (
+              <div key={check.label} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '6px 10px', borderRadius: '6px',
+                background: check.ok ? `${C.green}08` : `${C.red}08`,
+                fontSize: '12px',
+              }}>
+                <span style={{
+                  width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '10px', fontWeight: 700,
+                  background: check.ok ? `${C.green}20` : `${C.red}15`,
+                  color: check.ok ? C.green : C.red,
+                }}>
+                  {check.ok ? '✓' : '!'}
+                </span>
+                <span style={{ flex: 1, color: check.ok ? C.text : C.text, fontWeight: check.ok ? 400 : 600 }}>
+                  {check.label}
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: check.ok ? C.green : C.textMuted }}>
+                  +{check.weight}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

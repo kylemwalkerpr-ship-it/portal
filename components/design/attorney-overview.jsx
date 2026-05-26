@@ -287,7 +287,7 @@ export default function AttorneyOverview({ onJump, displayName }) {
               <QuickActionTile icon="📥"  label="Inquiry queue"   sub={inq.open ? `${inq.open} open` : 'Inbound demand'} onClick={() => onJump('queue')} accent={CYAN} />
               <QuickActionTile icon="📦"  label="Orders"          sub={stats.active ? `${stats.active} active` : 'Engagements'} onClick={() => onJump('orders')} accent={NAVY} />
               <QuickActionTile icon="💬"  label="Messages"        sub={unread > 0 ? `${unread} unread` : 'All caught up'} onClick={() => onJump('messages')} accent={PURPLE} />
-              <QuickActionTile icon="💼"  label="Gigs"            sub="Manage your service slots" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs' }} accent={AMBER} />
+              <QuickActionTile icon="💼"  label="My Office"            sub="Manage your service slots" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs' }} accent={AMBER} />
               <QuickActionTile icon="💸"  label="Earnings"        sub={fmtMoney(stats.transferredLifetime ?? 0) + ' lifetime'} onClick={() => onJump('earnings')} accent={GREEN} />
               <QuickActionTile icon="👤"  label="My Profile"      sub="Polish to win more inquiries" onClick={() => onJump('profile')} accent={NAVY} />
             </div>
