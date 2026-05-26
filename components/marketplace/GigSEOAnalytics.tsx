@@ -353,6 +353,75 @@ export default function GigSEOAnalytics() {
     )
   }
 
+  // ────────────────────────────────────────────────────────────
+  // CSV Export
+  // ────────────────────────────────────────────────────────────
+
+  const exportCSV = React.useCallback(() => {
+    // Build CSV rows
+    const headers = [
+      'Title', 'Status', 'SEO Score', 'Score Label',
+      'Category', 'Jurisdiction',
+      'Title Length OK', 'SEO Title Filled', 'SEO Title ≤60 Chars',
+      'Meta Desc 120-160', 'SEO Desc Filled', 'Pitch OK',
+      'Desc ≥300 Chars', 'Tags OK', 'Category Selected',
+      'Jurisdiction Set', 'Keywords in Title',
+      'Failed Checks (Suggestions)'
+    ]
+
+    const rows = scoredGigs.map(({ gig, score }) => {
+      const checkByName = (partial: string) => {
+        const check = score.checks.find(c => c.label.toLowerCase().includes(partial.toLowerCase()))
+        return check ? (check.passed ? 'PASS' : 'FAIL') : '—'
+      }
+
+      const failed = score.checks
+        .filter(c => !c.passed)
+        .map(c => `${c.label}: ${c.hint}`)
+        .join('; ')
+
+      const row = [
+        gig.title,
+        gig.status,
+        String(score.score),
+        scoreLabel(score.score),
+        gig.category || '—',
+        gig.jurisdiction || '—',
+        checkByName('20'),
+        checkByName('SEO title filled'),
+        checkByName('60'),
+        checkByName('Meta description'),
+        checkByName('SEO description filled'),
+        checkByName('Pitch'),
+        checkByName('300'),
+        checkByName('Tags'),
+        checkByName('Category'),
+        checkByName('Jurisdiction'),
+        checkByName('Keywords'),
+        failed || 'All checks pass',
+      ]
+
+      // Escape CSV fields (wrap in quotes if they contain commas, quotes, or newlines)
+      return row.map(cell => {
+        if (typeof cell !== 'string') cell = String(cell)
+        if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+          return `"${cell.replace(/"/g, '""')}"`
+        }
+        return cell
+      }).join(',')
+    })
+
+    const bom = '\uFEFF' // UTF-8 BOM for Excel compatibility
+    const csv = bom + headers.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `seo-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [scoredGigs])
+
   const passedTotal = scoredGigs.reduce((sum, s) => sum + s.score.checks.filter(c => c.passed).reduce((w, c) => w + c.weight, 0), 0)
   const maxTotal = scoredGigs.length * 100
 
@@ -363,12 +432,24 @@ export default function GigSEOAnalytics() {
         <div style={{ fontSize: '11px', fontWeight: 800, color: INK_SOFT, letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: '4px' }}>
           Analytics
         </div>
-        <h2 style={{ fontFamily: SERIF, fontSize: '30px', fontWeight: 500, color: INK, margin: '0 0 8px', letterSpacing: '-0.012em' }}>
-          SEO Performance
-        </h2>
-        <p style={{ color: INK_SOFT, fontSize: '14px', margin: 0, lineHeight: 1.55 }}>
-          Search optimization scores across all your services. Higher scores mean better visibility in marketplace search results.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontFamily: SERIF, fontSize: '30px', fontWeight: 500, color: INK, margin: '0 0 8px', letterSpacing: '-0.012em' }}>
+              SEO Performance
+            </h2>
+            <p style={{ color: INK_SOFT, fontSize: '14px', margin: 0, lineHeight: 1.55 }}>
+              Search optimization scores across all your services. Higher scores mean better visibility in marketplace search results.
+            </p>
+          </div>
+          <Btn
+            variant="secondary"
+            size="sm"
+            onClick={exportCSV}
+            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            ↓ Export CSV
+          </Btn>
+        </div>
       </div>
 
       {/* Summary cards */}
