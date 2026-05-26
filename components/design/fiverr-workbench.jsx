@@ -54,6 +54,66 @@ const titleStyle = {
 
 const subStyle = { margin: '6px 0 0', color: C.textMuted, fontSize: '14px', lineHeight: 1.6 }
 const sectionTitle = { margin: 0, fontSize: '15px', fontWeight: 800, color: C.text }
+
+// "My Office" premium header — gradient panel + stat strip.
+const premiumHeaderShell = {
+  background: `linear-gradient(135deg, ${C.surface} 0%, ${C.surface2} 100%)`,
+  border: `1px solid ${C.border}`,
+  borderRadius: '16px',
+  padding: '24px 24px 0',
+  marginBottom: '18px',
+  boxShadow: '0 10px 30px -22px rgba(60,59,110,0.35)',
+  overflow: 'hidden',
+}
+const premiumHeaderInner = {
+  display: 'flex', justifyContent: 'space-between', gap: '18px', alignItems: 'flex-start',
+  flexWrap: 'wrap', paddingBottom: '20px',
+}
+const premiumEyebrow = {
+  color: C.cyan, fontSize: '11px', fontWeight: 800,
+  letterSpacing: '0.16em', textTransform: 'uppercase',
+}
+const premiumTitle = {
+  margin: '8px 0 4px', fontFamily: C.serif, fontSize: 'clamp(24px, 3.2vw, 32px)',
+  fontWeight: 600, letterSpacing: '-0.012em', color: C.text, lineHeight: 1.1,
+}
+const premiumSub = {
+  margin: 0, color: C.textMuted, fontSize: '14px', lineHeight: 1.55, maxWidth: '52ch',
+}
+const premiumStatStrip = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+  gap: '0',
+  borderTop: `1px solid ${C.border}`,
+  background: C.surface,
+  margin: '0 -24px',
+  padding: '0 24px',
+}
+const premiumStatCell = {
+  padding: '14px 12px',
+  borderRight: `1px solid ${C.border}`,
+}
+
+// Tab pills — All / Active / Drafts / Bin.
+const tabBarStyle = {
+  display: 'flex', flexWrap: 'wrap', gap: '8px',
+  marginBottom: '16px',
+}
+const tabPillStyle = {
+  display: 'inline-flex', alignItems: 'center', gap: '8px',
+  padding: '8px 16px', borderRadius: '999px',
+  border: `1px solid ${C.border}`, background: C.surface,
+  color: C.textMuted, cursor: 'pointer', fontFamily: 'inherit',
+  fontSize: '13px', fontWeight: 700,
+  transition: 'all 120ms',
+}
+const tabPillActiveStyle = {
+  background: C.text, color: C.surface,
+  borderColor: C.text,
+}
+const tabCountStyle = {
+  fontSize: '11px', fontWeight: 700, opacity: 0.7,
+}
 const labelStyle = { display: 'grid', gap: '6px', color: C.textMuted, fontSize: '12px', fontWeight: 800 }
 const textareaStyle = { width: '100%', minHeight: '96px', resize: 'vertical', boxSizing: 'border-box', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text, fontFamily: 'inherit', fontSize: '14px', lineHeight: 1.5 }
 const inputStyle = { width: '100%', boxSizing: 'border-box', border: `1px solid ${C.border2}`, borderRadius: '10px', padding: '11px 12px', background: C.surface2, color: C.text, fontFamily: 'inherit', fontSize: '14px' }
@@ -111,6 +171,49 @@ function Header({ eyebrow, title, sub, actions }) {
         {sub && <p style={subStyle}>{sub}</p>}
       </div>
       {actions && <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>{actions}</div>}
+    </div>
+  )
+}
+
+// Premium gig-manager header with at-a-glance lifecycle counters.
+// Replaces the plain subtitle string with a 4-stat strip (Active /
+// Drafts / Bin / Slots used) so providers can read the state of their
+// inventory at a glance. Gradient + serif title bring it in line with
+// the rest of the YouSafe "fiverr workbench" surface.
+function PremiumWorkbenchHeader({ gigs, counts, saving, onCreateNew }) {
+  const slotsUsed = gigs.filter(g => ['draft', 'active', 'paused'].includes(g.status)).length
+  return (
+    <div style={premiumHeaderShell}>
+      <div style={premiumHeaderInner}>
+        <div>
+          <div style={premiumEyebrow}>My Office · Gig Manager</div>
+          <h1 style={premiumTitle}>Run your offerings.</h1>
+          <p style={premiumSub}>
+            Fixed-scope services with tiered pricing, publishing checks, and live marketplace visibility.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Back to office</Link>
+          <Btn variant="primary" size="sm" onClick={onCreateNew} disabled={saving || slotsUsed >= 5}>
+            + Create new gig
+          </Btn>
+        </div>
+      </div>
+      <div style={premiumStatStrip}>
+        <PremiumStat label="Active" value={counts.active} accent={C.green} />
+        <PremiumStat label="Drafts" value={counts.drafts} accent={C.cyan} />
+        <PremiumStat label="In bin" value={counts.bin} accent={C.textMuted} />
+        <PremiumStat label="Slots used" value={`${slotsUsed} / 5`} accent={slotsUsed >= 5 ? C.red : C.text} />
+      </div>
+    </div>
+  )
+}
+
+function PremiumStat({ label, value, accent }) {
+  return (
+    <div style={premiumStatCell}>
+      <div style={{ fontSize: '11px', fontWeight: 800, color: C.textMuted, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: '20px', fontWeight: 800, color: accent || C.text, marginTop: '2px', fontFamily: C.serif }}>{value}</div>
     </div>
   )
 }
@@ -711,6 +814,10 @@ export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) 
   const [saving, setSaving] = React.useState(false)
   const [notice, setNotice] = React.useState('')
   const [error, setError] = React.useState('')
+  // Tabs let the provider split the gig list by lifecycle. "All" hides
+  // deleted gigs entirely; "Bin" is the only place deleted gigs show up
+  // and editing is disabled there.
+  const [tab, setTab] = React.useState('all') // 'all' | 'active' | 'drafts' | 'bin'
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -787,6 +894,28 @@ export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) 
     }
   }
 
+  // Restore a deleted gig from the bin back to a draft so the provider
+  // can edit it again. Mirror image of the soft-delete that runs on
+  // archive — clears deleted_at/by server-side via the PATCH payload.
+  const restoreGig = async () => {
+    if (!selected) return
+    setSaving(true)
+    setNotice('')
+    try {
+      const data = await requestJson(`/api/gigs/${selected.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'draft' }),
+      })
+      setGigs(prev => prev.map(g => g.id === selected.id ? data.gig : g))
+      setTab('drafts')
+      setNotice('Gig restored from the bin.')
+    } catch (e) {
+      setNotice(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const transitionGig = async (action) => {
     if (!selected) return
     setSaving(true)
@@ -795,8 +924,14 @@ export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) 
       const url = action === 'archive' ? `/api/gigs/${selected.id}` : `/api/gigs/${selected.id}/${action}`
       const data = await requestJson(url, { method: action === 'archive' ? 'DELETE' : 'PATCH' })
       if (action === 'archive') {
-        setGigs(prev => prev.filter(g => g.id !== selected.id))
-        setSelectedId('')
+        // DELETE soft-deletes (status='deleted') instead of removing
+        // the row. Keep the gig in local state so the user can find
+        // it under the Bin tab and Restore it later — that's what the
+        // "soft delete + bin" UX is built on.
+        setGigs(prev => prev.map(g => g.id === selected.id
+          ? { ...g, status: 'deleted', deleted_at: new Date().toISOString() }
+          : g))
+        setTab('bin')
       } else {
         setGigs(prev => prev.map(g => g.id === selected.id ? { ...g, ...data.gig } : g))
       }
@@ -869,45 +1004,127 @@ export function ProviderGigsPage({ startNew = false, selectedGigId = '' } = {}) 
   if (error) return <ErrorState message={error} onRetry={load} />
   if (startNew) return <GigBuilderStepOne categories={categories} onCreated={(id) => { if (typeof window !== 'undefined') window.location.href = `/dashboard/gigs/${id}/edit` }} />
 
+  // Tab-aware partitioning of the gig list. Default "All" hides deleted
+  // entirely; "Bin" is the only home for them.
+  const counts = {
+    all: gigs.filter(g => g.status !== 'deleted').length,
+    active: gigs.filter(g => g.status === 'active').length,
+    drafts: gigs.filter(g => g.status === 'draft').length,
+    bin: gigs.filter(g => g.status === 'deleted').length,
+  }
+  const tabFilter = (g) => {
+    if (tab === 'all') return g.status !== 'deleted'
+    if (tab === 'active') return g.status === 'active'
+    if (tab === 'drafts') return g.status === 'draft'
+    if (tab === 'bin') return g.status === 'deleted'
+    return true
+  }
+  const visibleGigs = gigs.filter(tabFilter)
+  const visibleSelected = visibleGigs.find(g => g.id === selectedId) ? selected : visibleGigs[0]
+  const effectiveSelectedId = visibleSelected?.id || ''
+  const isDeleted = visibleSelected?.status === 'deleted'
+
   return (
     <div style={pageShell}>
       <main style={inner}>
-        <Header
-          eyebrow="Provider workspace"
-          title="Gig manager."
-          sub={`${gigs.filter(g => ['draft', 'active', 'paused'].includes(g.status)).length} of 5 active slots used. Build fixed-scope services with tiers, publishing checks, and marketplace visibility.`}
-          actions={<><Link href="/dashboard" style={{ color: C.textMuted, fontWeight: 800, textDecoration: 'none', fontSize: '13px' }}>Dashboard</Link><Btn variant="primary" size="sm" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs/new' }} disabled={saving || gigs.length >= 5}>+ Create new gig</Btn></>}
+        <PremiumWorkbenchHeader
+          gigs={gigs}
+          counts={counts}
+          saving={saving}
+          onCreateNew={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs/new' }}
         />
-        {notice && <div style={{ marginBottom: '14px', color: notice.includes('saved') || notice.includes('published') || notice.includes('created') || notice.includes('added') || notice.includes('removed') ? C.green : C.red, fontSize: '13px', fontWeight: 700 }}>{notice}</div>}
+        {/* Status tabs — All / Active / Drafts / Bin. Bin is the only
+            place deleted gigs surface; All explicitly omits them. */}
+        <div className="ys-gigs-tabs" style={tabBarStyle}>
+          {[
+            { id: 'all', label: 'All', count: counts.all },
+            { id: 'active', label: 'Active', count: counts.active },
+            { id: 'drafts', label: 'Drafts', count: counts.drafts },
+            { id: 'bin', label: '🗑 Bin', count: counts.bin },
+          ].map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              style={{
+                ...tabPillStyle,
+                ...(tab === t.id ? tabPillActiveStyle : {}),
+                opacity: t.id === 'bin' && counts.bin === 0 ? 0.55 : 1,
+              }}
+            >
+              {t.label}
+              <span style={tabCountStyle}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+        {notice && <div style={{ marginBottom: '14px', color: notice.includes('saved') || notice.includes('published') || notice.includes('created') || notice.includes('added') || notice.includes('removed') || notice.includes('restored') ? C.green : C.red, fontSize: '13px', fontWeight: 700 }}>{notice}</div>}
         {gigs.length === 0 ? (
           <EmptyState title="You haven't created any gigs yet." body="Create a draft, add a clear scope and tier pricing, then publish it to the marketplace." action={<Btn variant="primary" onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/gigs/new' }}>+ Create new gig</Btn>} />
+        ) : visibleGigs.length === 0 ? (
+          <EmptyState
+            title={tab === 'bin' ? 'Bin is empty.' : `No gigs in “${tab}”.`}
+            body={tab === 'bin' ? 'Deleted gigs land here for 90 days before permanent removal.' : 'Switch tabs to see gigs in other lifecycle states.'}
+          />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)', gap: '16px' }} className="ys-gigs-grid">
             <aside style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
-              {gigs.map(gig => (
-                <button key={gig.id} type="button" onClick={() => setSelectedId(gig.id)} style={{ textAlign: 'left', border: `1px solid ${selectedId === gig.id ? C.cyan : C.border}`, background: selectedId === gig.id ? C.cyanGlow : C.surface, borderRadius: '8px', padding: '12px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
-                    <Badge color={statusColor(gig.status)}>{gig.status}</Badge>
-                    <span style={{ color: C.textMuted, fontSize: '11px' }}>{gig.tiers?.length || 0} tiers</span>
-                  </div>
-                  <div style={{ fontWeight: 900, color: C.text, fontSize: '14px', lineHeight: 1.35 }}>{gig.title}</div>
-                  <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '5px' }}>{gig.category || 'Uncategorized'}</div>
-                </button>
-              ))}
+              {visibleGigs.map(gig => {
+                const inBin = gig.status === 'deleted'
+                return (
+                  <button
+                    key={gig.id}
+                    type="button"
+                    onClick={() => setSelectedId(gig.id)}
+                    style={{
+                      textAlign: 'left',
+                      border: `1px solid ${effectiveSelectedId === gig.id ? C.cyan : C.border}`,
+                      background: effectiveSelectedId === gig.id ? C.cyanGlow : C.surface,
+                      borderRadius: '10px',
+                      padding: '14px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      opacity: inBin ? 0.78 : 1,
+                      boxShadow: effectiveSelectedId === gig.id ? '0 6px 16px -10px rgba(60,59,110,0.35)' : 'none',
+                      transition: 'border-color 120ms, box-shadow 160ms, opacity 160ms',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                      <Badge color={statusColor(gig.status)}>{gig.status}</Badge>
+                      <span style={{ color: C.textMuted, fontSize: '11px' }}>{gig.tiers?.length || 0} tiers</span>
+                    </div>
+                    <div style={{ fontWeight: 900, color: C.text, fontSize: '14px', lineHeight: 1.35 }}>{gig.title}</div>
+                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '5px' }}>{gig.category || 'Uncategorized'}</div>
+                  </button>
+                )
+              })}
             </aside>
             {selected && (
-              <div style={{ display: 'grid', gap: '16px' }}>
+              <div style={{ display: 'grid', gap: '16px', pointerEvents: isDeleted ? 'none' : 'auto', opacity: isDeleted ? 0.55 : 1 }}>
+                {/* When the selected gig is in the bin we mask the
+                    detail area visually + block pointer events so the
+                    user can't edit. The detail-section header below
+                    is the only thing left interactive (Restore CTA). */}
                 <Card style={{ padding: '18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px', pointerEvents: 'auto' }}>
                     <div>
-                      <h2 style={sectionTitle}>Gig details</h2>
-                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>Last updated {compactDate(selected.updated_at)}</div>
+                      <h2 style={sectionTitle}>{isDeleted ? 'Gig in the bin' : 'Gig details'}</h2>
+                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px' }}>
+                        {isDeleted
+                          ? `Deleted ${compactDate(selected.deleted_at || selected.updated_at)} — restore to edit`
+                          : `Last updated ${compactDate(selected.updated_at)}`}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <Btn size="sm" variant="secondary" onClick={saveGig} disabled={saving}>Save</Btn>
-                      {selected.status !== 'active' && <Btn size="sm" variant="success" onClick={() => transitionGig('publish')} disabled={saving}>Publish</Btn>}
-                      {selected.status === 'active' && <Btn size="sm" variant="secondary" onClick={() => transitionGig('pause')} disabled={saving}>Pause</Btn>}
-                      <Btn size="sm" variant="danger" onClick={() => transitionGig('archive')} disabled={saving}>Archive</Btn>
+                      {isDeleted ? (
+                        <Btn size="sm" variant="success" onClick={restoreGig} disabled={saving}>↺ Restore</Btn>
+                      ) : (
+                        <>
+                          <Btn size="sm" variant="secondary" onClick={saveGig} disabled={saving}>Save</Btn>
+                          {selected.status !== 'active' && <Btn size="sm" variant="success" onClick={() => transitionGig('publish')} disabled={saving}>Publish</Btn>}
+                          {selected.status === 'active' && <Btn size="sm" variant="secondary" onClick={() => transitionGig('pause')} disabled={saving}>Pause</Btn>}
+                          <Btn size="sm" variant="danger" onClick={() => transitionGig('archive')} disabled={saving}>🗑 Move to bin</Btn>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: '12px' }} className="ys-two-col">

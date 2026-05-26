@@ -6,6 +6,7 @@ import { Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared
 import { T, F } from './tokens'
 import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
 import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
+import { GigCard } from './MarketplaceHero'
 
 const wizardContainer: CSSProperties = {
   maxWidth: '800px',
@@ -191,6 +192,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
   const [saving, setSaving] = React.useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = React.useState('')
   const [profileReady, setProfileReady] = React.useState(true)
+  const [previewOpen, setPreviewOpen] = React.useState(false)
   const handleReadyChange = React.useCallback((ready: boolean) => setProfileReady(ready), [])
 
   const validateStep = (step: number): boolean => {
@@ -408,8 +410,15 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
     }
   }
 
+  // updateGigData accepts either a direct value OR a functional updater
+  // — the latter is what the gallery upload flow uses so async upload
+  // completions get the freshest gallery_images snapshot when swapping
+  // the optimistic preview tile for the real server URL.
   const updateGigData = (field: string, value: any) => {
-    setGigData(prev => ({ ...prev, [field]: value }))
+    setGigData(prev => {
+      const next = typeof value === 'function' ? (value as (v: any) => any)(prev[field]) : value
+      return { ...prev, [field]: next }
+    })
   }
 
   // Upload a local file into the gig's gallery. Requires a gig row to exist
@@ -617,6 +626,13 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
                 Back
               </Btn>
             )}
+            {/* Preview is always available — even mid-draft. Renders the
+                gig card exactly as it'll show on the marketplace so the
+                provider can sanity-check the cover, title, price and
+                tagline before committing publish. */}
+            <Btn variant="secondary" onClick={() => setPreviewOpen(true)} disabled={saving}>
+              Preview
+            </Btn>
             {/* For an existing gig, an Update button is always available
                 — the user shouldn't have to walk to the final step to
                 commit a typo fix on step 1. For new drafts, Save Draft
@@ -669,6 +685,109 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
           </div>
         )}
       </Card>
+      {previewOpen && (
+        <GigPreviewModal
+          gigData={gigData}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Renders the gig the way it will appear on the public marketplace
+// using the same GigCard component the marketplace grid uses, so the
+// preview is byte-equivalent to what shoppers see post-publish. We
+// shape the wizard's in-flight gigData into the GigCard props with a
+// best-effort coercion (lowest active tier becomes starting_price etc).
+function GigPreviewModal({ gigData, onClose }: { gigData: any; onClose: () => void }) {
+  const activeTiers = (gigData.tiers || []).filter((t: any) => t?.is_active && Number(t.price) > 0)
+  const cheapest = activeTiers.sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
+
+  const gallery = Array.isArray(gigData.gallery_images)
+    ? gigData.gallery_images
+        .map((img: any) => (typeof img === 'string' ? { url: img } : img))
+        .filter((img: any) => img?.url)
+    : []
+
+  const previewGig: any = {
+    id: 'preview',
+    slug: 'preview',
+    title: gigData.title || 'Untitled gig',
+    pitch: gigData.tagline || gigData.pitch || '',
+    starting_price: cheapest ? Number(cheapest.price) : null,
+    avg_rating: 0,
+    review_count: 0,
+    provider: { full_name: 'You', id: 'preview' },
+    provider_id: 'preview',
+    provider_type: gigData.provider_type || 'attorney',
+    gallery_images: gallery,
+  }
+
+  // Keyboard shortcut: Esc closes the modal, matching every other
+  // overlay in the portal.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        zIndex: 1000, padding: '40px 16px 24px', overflowY: 'auto',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: T.paper || '#FBFAF7', borderRadius: '14px',
+          maxWidth: '420px', width: '100%', padding: '0',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          border: `1px solid ${T.rule}`,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          padding: '16px 20px', borderBottom: `1px solid ${T.rule}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: T.vellum2 || '#fff',
+        }}>
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: T.inkMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Marketplace preview
+            </div>
+            <div style={{ fontSize: '13px', color: T.ink, marginTop: '2px' }}>
+              How shoppers will see this gig
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: '20px', lineHeight: 1, color: T.inkMuted, padding: '4px 8px',
+              fontFamily: 'inherit',
+            }}
+          >×</button>
+        </div>
+        <div style={{ padding: '24px', background: T.paper2 || '#F4EFE3' }}>
+          <GigCard gig={previewGig} />
+        </div>
+        <div style={{ padding: '12px 20px 16px', fontSize: '12px', color: T.inkMuted, background: T.vellum2 || '#fff', borderTop: `1px solid ${T.rule}` }}>
+          The detail page mirrors your About copy, FAQ, and tier pricing —
+          publish or update to see the full layout live.
+        </div>
+      </div>
     </div>
   )
 }
@@ -1074,14 +1193,48 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
 
     setUploadError('')
     setUploading(true)
+
+    // Optimistic preview — show the user's image immediately via a local
+    // blob URL while the upload runs in the background. Without this the
+    // gallery strip stays empty during the (sometimes multi-second)
+    // upload, and the user thinks nothing is happening. We mark the
+    // tile as `pending: true` so the renderer can show a spinner over
+    // it, and swap the URL for the real one once the upload completes.
+    const previewId = `pending-${crypto.randomUUID()}`
+    const previewUrl = URL.createObjectURL(file)
+    const optimisticImage = {
+      id: previewId,
+      url: previewUrl,
+      name: file.name,
+      size: file.size,
+      pending: true as const,
+    }
+    onChange('gallery_images', [...images, optimisticImage])
+
     try {
       if (!onUploadFile) throw new Error('Upload is unavailable. Use the URL field instead.')
       const url = await onUploadFile(file)
-      // Same fix as addImageUrl — store as {url} so the marketplace card's
-      // gig.gallery_images[0]?.url access path actually finds the cover.
-      onChange('gallery_images', [...images, { url, name: file.name, size: file.size }])
+      // Replace the pending tile with the real server-side record.
+      // Functional onChange so we get the freshest gallery_images
+      // (the optimistic update already happened before this resolves).
+      onChange('gallery_images', (prev: any[]) =>
+        (Array.isArray(prev) ? prev : []).map((img: any) =>
+          img?.id === previewId
+            ? { url, name: file.name, size: file.size }
+            : img,
+        ),
+      )
+      // Revoke the blob URL once the server URL is in place so the
+      // browser doesn't hold the file in memory forever.
+      try { URL.revokeObjectURL(previewUrl) } catch {}
     } catch (err: any) {
       setUploadError(err?.message || 'Upload failed.')
+      // Roll back the optimistic tile so the user isn't left with a
+      // ghost preview that will never persist.
+      onChange('gallery_images', (prev: any[]) =>
+        (Array.isArray(prev) ? prev : []).filter((img: any) => img?.id !== previewId),
+      )
+      try { URL.revokeObjectURL(previewUrl) } catch {}
     } finally {
       setUploading(false)
     }
@@ -1215,9 +1368,44 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
                     <img
                       src={url}
                       alt={`Gallery ${i + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: img?.pending ? 0.55 : 1, transition: 'opacity 200ms' }}
+                      onError={e => {
+                        // Replace broken image with a clear "couldn't load"
+                        // placeholder so the user sees the issue instead
+                        // of an empty tile. Previously this hid the img
+                        // entirely, which produced the user-reported
+                        // "broken cover image" symptom: a blank tile.
+                        const target = e.target as HTMLImageElement
+                        target.style.display = 'none'
+                        const parent = target.parentElement
+                        if (parent && !parent.querySelector('[data-img-err]')) {
+                          const fallback = document.createElement('div')
+                          fallback.setAttribute('data-img-err', '1')
+                          fallback.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#fde2e2;color:#a52a2a;font-size:11px;text-align:center;padding:8px;font-family:inherit;'
+                          fallback.textContent = "Image didn't load. Try removing and re-uploading."
+                          parent.appendChild(fallback)
+                        }
+                      }}
                     />
+                    {img?.pending && (
+                      <div
+                        style={{
+                          position: 'absolute', inset: 0,
+                          background: 'rgba(15,23,42,0.42)', color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em',
+                          textTransform: 'uppercase', gap: '6px',
+                        }}
+                      >
+                        <span style={{
+                          width: '12px', height: '12px', borderRadius: '50%',
+                          border: '2px solid rgba(255,255,255,0.35)',
+                          borderTopColor: '#fff',
+                          animation: 'spin 0.75s linear infinite',
+                        }} />
+                        Uploading…
+                      </div>
+                    )}
                     {isCover && (
                       <div
                         style={{

@@ -21,9 +21,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { id } = await context.params
-  const { data: gig } = await auth.db.from('gigs').select('provider_id, gallery_images').eq('id', id).single()
+  const { data: gig } = await auth.db.from('gigs').select('provider_id, gallery_images, status').eq('id', id).single()
   if (!gig) return fail('Gig not found.', 404)
   if (gig.provider_id !== auth.profileId && auth.role !== 'admin') return fail('Forbidden.', 403)
+  if (gig.status === 'deleted') return fail('This gig is in the bin. Restore it before adding images.', 409)
   const gallery = Array.isArray(gig.gallery_images) ? gig.gallery_images : []
   if (gallery.length >= 3) return fail('Maximum 3 gallery images.', 409)
 
@@ -35,6 +36,24 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const safe = (file.name || 'gallery').replace(/[^a-zA-Z0-9._-]+/g, '').slice(0, 80)
   const path = `${auth.profileId}/${id}/${crypto.randomUUID()}-${safe}`
+
+  // Ensure the gig-gallery bucket exists AND is marked public before we
+  // upload. The original SQL migration created it with public:false,
+  // which meant getPublicUrl() returned a URL but every <img> fetch
+  // 403'd — preview was broken, marketplace cards showed nothing. This
+  // self-heal flips the bucket public on the first upload after deploy
+  // and is idempotent for every subsequent call.
+  try {
+    const { data: existing } = await auth.db.storage.getBucket('gig-gallery')
+    if (!existing) {
+      await auth.db.storage.createBucket('gig-gallery', { public: true })
+    } else if (!existing.public) {
+      await auth.db.storage.updateBucket('gig-gallery', { public: true })
+    }
+  } catch (e) {
+    console.warn('[gigs/gallery] bucket public-flag self-heal skipped', (e as any)?.message)
+  }
+
   const upload = await auth.db.storage.from('gig-gallery').upload(path, await file.arrayBuffer(), {
     contentType: file.type || 'image/jpeg',
     upsert: false,

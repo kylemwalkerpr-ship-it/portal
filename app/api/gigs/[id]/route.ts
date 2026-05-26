@@ -48,6 +48,18 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (!owns(auth, existing)) return fail('Forbidden.', 403)
 
   const body = await req.json().catch(() => ({}))
+
+  // Deleted gigs are read-only — the only mutation allowed is a
+  // restore (status flips back to draft). Without this guard the bin
+  // would behave like just-another-tab, defeating the soft-delete.
+  if (existing.status === 'deleted') {
+    const isRestoreOnly =
+      body.status === 'draft' &&
+      Object.keys(body).every((k) => k === 'status')
+    if (!isRestoreOnly) {
+      return fail('This gig is in the bin. Restore it before making changes.', 409)
+    }
+  }
   const payload: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of ['title', 'category', 'subcategory', 'pitch', 'tagline', 'description', 'requirements', 'seo_title', 'seo_description', 'video_url']) {
     if (key in body) payload[key] = typeof body[key] === 'string' ? body[key].trim() : body[key]
@@ -59,6 +71,13 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (body.status && ['draft', 'active', 'paused'].includes(body.status)) {
     payload.status = body.status
     if (body.status === 'active' && !existing.published_at) payload.published_at = new Date().toISOString()
+    // Restoring from the bin clears the soft-delete markers so the gig
+    // re-appears in "All" and the deleted_at column doesn't poison
+    // future sort / TTL queries.
+    if (existing.status === 'deleted' && body.status === 'draft') {
+      payload.deleted_at = null
+      payload.deleted_by = null
+    }
   }
   if ('tags' in body) payload.tags = Array.isArray(body.tags) ? body.tags.map(String).slice(0, 5) : []
   if ('faq' in body) payload.faq = Array.isArray(body.faq) ? body.faq.slice(0, 10) : []

@@ -1105,7 +1105,7 @@ function OverviewPage({ onJump }) {
   return (
     <div style={{ padding: '28px', display: 'grid', gap: '24px', maxWidth: '1080px' }}>
       <div>
-        <div style={eyebrowStyle}>Dashboard</div>
+        <div style={eyebrowStyle}>My Office</div>
         <h2 style={pageTitleStyle}>What's happening today.</h2>
       </div>
 

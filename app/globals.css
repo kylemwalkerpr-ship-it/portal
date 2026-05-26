@@ -985,3 +985,11 @@ section[id] {
      the link itself remains. */
   .ys-nav-home svg:last-child { display: none; }
 }
+
+/* Generic spinner keyframe used by the gig wizard's gallery upload
+   pending overlay. Keep it global so future loading indicators can
+   reuse without redefining. */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
