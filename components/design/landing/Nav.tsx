@@ -21,9 +21,16 @@ export default function Nav({ onOpenSignIn }: NavProps) {
 
   return (
     <nav
+      className="ys-portal-nav"
       style={{
         display: 'flex',
         alignItems: 'center',
+        // Desktop: spread items out across the width. Mobile (≤900px) gets
+        // an override in app/globals.css that turns the whole nav into a
+        // single horizontally scrollable strip — brand at the start, CTA
+        // at the end, no fixed elements eating the middle. Justify-start
+        // is correct for the scrollable variant; the desktop view restores
+        // space-between via the media query.
         justifyContent: 'space-between',
         padding: '16px 40px',
         borderBottom: scrolled ? `1px solid ${T.rule}` : '1px solid transparent',

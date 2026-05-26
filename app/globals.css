@@ -894,35 +894,53 @@ section[id] {
 }
 
 /* ── Portal landing top nav — mobile-scroll behaviour ────────────────
-   .ys-nav-links is already inline-styled with overflow-x: auto in
-   components/design/landing/Nav.tsx. Hide its scrollbar entirely (the
-   strip stays swipe-scrollable) and on mobile shrink the row's
-   horizontal padding + collapse the right-side extras so just the
-   brand "Start an inquiry" CTA stays visible. */
-.ys-nav-links {
-  scrollbar-width: none;
-}
+   At <=900px the WHOLE nav row (brand + center links + Start-inquiry
+   CTA) becomes one horizontally-scrollable strip so no element is
+   anchored while the others squeeze. User reported the brand + CTA
+   staying pinned and leaving a too-narrow window for the middle
+   items. The component sets justify-content: space-between for
+   desktop; we override to flex-start here so items pack from the
+   left and scroll together. */
+.ys-nav-links { scrollbar-width: none; }
 .ys-nav-links::-webkit-scrollbar { display: none; }
+.ys-portal-nav { scrollbar-width: none; }
+.ys-portal-nav::-webkit-scrollbar { display: none; }
 
 @media (max-width: 900px) {
-  /* The whole TopNav row */
-  .ys-nav-links + div + .ys-nav-links,
-  nav.ys-nav-links { padding-right: 4px; }
-
-  /* Collapse the language picker + Sign in button on phones — the
-     "Start an inquiry" brand button remains, which routes to a page
-     that exposes both sign-in and sign-up. */
+  /* Turn the entire nav row into a single horizontal scroll strip. */
+  .ys-portal-nav {
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 12px !important;
+    padding: 12px 16px !important;
+    /* Keep the brand visible at scroll position 0 */
+    scroll-padding-inline-start: 16px !important;
+  }
+  .ys-portal-nav > * {
+    flex: 0 0 auto !important;          /* no item shrinks */
+  }
+  /* Center-links no longer needs its own overflow — parent scrolls. */
+  .ys-nav-links {
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+  }
+  /* Right-side extras (language picker + ghost Sign-in) stay hidden;
+     auth surfaces are reachable via the "Start an inquiry" page. */
   .ys-nav-right-extras { display: none !important; }
 }
 
 @media (max-width: 600px) {
-  /* Compact link sizing so 3-4 items are visible without scroll on
-     the most common phone widths. */
+  /* Compact link sizing so several pills fit per viewport-width. */
   .ys-nav-link {
     padding: 6px 10px !important;
     font-size: 12.5px !important;
   }
-  /* Hide the "Home" external-arrow indicator on phones to save
-     ~12px — the link itself remains. */
+  /* Hide the "Home" external-arrow icon on phones to save ~12px —
+     the link itself remains. */
   .ys-nav-home svg:last-child { display: none; }
 }
