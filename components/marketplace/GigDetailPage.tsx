@@ -205,6 +205,14 @@ interface GigDetailPageProps {
 
 export function GigDetailPage({ slug }: GigDetailPageProps) {
   const [gig, setGig] = React.useState<any>(null)
+  // Defer hostname read to after mount so SSR + first client paint
+  // produce the same markup (owner banner hidden). Once mounted we
+  // know whether we're on the portal host vs market subdomain and
+  // can show the banner where appropriate.
+  const [isPortalHost, setIsPortalHost] = React.useState(false)
+  React.useEffect(() => {
+    setIsPortalHost(window.location.hostname === 'portal.yousafeconsultancy.com')
+  }, [])
   const [selectedTierId, setSelectedTierId] = React.useState('')
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -415,7 +423,22 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           </div>
         </div>
 
-        {gig.viewer_is_owner && (
+        {/* Owner preview banner — visible ONLY when ALL of:
+              1. The API returned viewer_is_owner === true (strict
+                 equality; "truthy" leaked the banner once when an
+                 older response shape returned a non-boolean).
+              2. We're on the portal hostname. The market subdomain is
+                 the buyer surface — sellers manage their gigs from the
+                 portal dashboard, so the banner has no business there
+                 and would only confuse anon visitors who saw it
+                 momentarily during render.
+              3. We're running in the browser (window is defined). On
+                 the server side hostname check returns undefined which
+                 would render the banner — guard against the SSR pass.
+            All three are necessary to keep the Edit gig button out of
+            anon hands.
+        */}
+        {gig.viewer_is_owner === true && isPortalHost && (
           <div
             style={{
               display: 'flex',
