@@ -206,10 +206,10 @@ function AttorneyCard({ attorney, onSelect }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${C.border}`, paddingTop: '12px' }}>
           <div>
-            {Number(attorney.starting_price) >= 2500 ? (
+            {Number(attorney.starting_price) > 0 ? (
               <div>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>From</div>
-                <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, fontWeight: 500 }}>${Number(attorney.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, fontWeight: 500 }}>${Number(attorney.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: Number(attorney.starting_price) % 100 === 0 ? 0 : 2 })}</div>
               </div>
             ) : (
               <div style={{ fontSize: '12px', color: C.textMuted }}>Custom quote</div>
@@ -365,17 +365,13 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
             </div>
           </div>
           <div className="ys-attorney-hero-right" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-            {/* Hide the "Starting at" block for placeholder/sentinel
-                values. An attorney who hasn't set a real price will
-                often have starting_price = 100 cents (default seed)
-                or 0 — neither is meaningful to a buyer, and showing
-                "$1" hurts the brand more than showing nothing. The
-                $25 floor matches the cheapest active gig tier
-                allowed by the wizard. */}
-            {Number(a.starting_price) >= 2500 ? (
+            {/* Render the seller's actual starting price (cents → dollars)
+                whenever it's set to anything > $0. Show "Custom-quoted
+                per matter" only when no price is on file at all. */}
+            {Number(a.starting_price) > 0 ? (
               <>
                 <div style={{ fontSize: '11px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Starting at</div>
-                <div className="ys-attorney-hero-price" style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                <div className="ys-attorney-hero-price" style={{ fontFamily: C.serif, fontSize: '32px', color: C.text, fontWeight: 500 }}>${Number(a.starting_price / 100).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: Number(a.starting_price) % 100 === 0 ? 0 : 2 })}</div>
               </>
             ) : (
               <div style={{ color: C.textMuted, fontSize: '13px' }}>Custom-quoted per matter</div>
