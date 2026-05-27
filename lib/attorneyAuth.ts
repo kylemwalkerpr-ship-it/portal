@@ -26,11 +26,20 @@ export async function requireAttorney(): Promise<{ ctx?: AttorneyContext; error?
     return { error: 'Attorney account not active.', status: 403 }
   }
 
+  // .order + .limit + .maybeSingle picks the most recent row even if
+  // multiple attorney rows somehow exist for the same profile_id (legacy
+  // state, partial migrations, repeated self-heal). Without ordering,
+  // maybeSingle errors on >1 row and we'd silently insert a duplicate
+  // every save → "fields keep resetting to blank" because PATCH writes
+  // to a different row than GET reads.
   let { data: attorney } = await db
     .from('attorneys')
     .select('id')
     .eq('profile_id', profile.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
+
 
   // Self-heal: if the profile is active but the attorneys row is missing
   // (manual DB activation that bypassed the approve flow, or a partial

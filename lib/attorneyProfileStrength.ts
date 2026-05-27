@@ -41,12 +41,17 @@ export async function computeAttorneyStrength(
   db: SupabaseClient,
   profileId: string,
 ): Promise<StrengthResult> {
+  // Match the row-selection used by /api/attorney/profile GET +
+  // requireAttorney — most recent attorney row by created_at. Keeps
+  // checklist, editor, and PATCH consistent when duplicates exist.
   const { data: attorney } = await db
     .from('attorneys')
     .select(
       'id, headshot_url, tagline, intro, bio, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone, jurisdictions, practice_areas, available',
     )
     .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   const a: any = attorney || {}

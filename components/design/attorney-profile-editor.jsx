@@ -50,25 +50,31 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || `Could not save change (${res.status}).`)
-      // For application-only fields (bar_number, credential_type), the API
-      // returns attorney:null because the update went to attorney_applications.
-      // Patch local state from the value we sent so the editor shows the
-      // change immediately without a round-trip refetch.
+      // Local state merge. CRITICAL: the value the user just sent is
+      // applied LAST so that a server response with a null/stale column
+      // (e.g. duplicate attorney rows where the SELECT picks a different
+      // row than the UPDATE wrote to) doesn't blank the field the user
+      // just saved. Without this guard the field appeared to "reset to
+      // blank" the moment the PATCH returned. The next page-mount refetch
+      // will reconcile any genuine server-side divergence.
       setData((d) => {
         const next = { ...d }
+        const isApplicationField = field === 'bar_number' || field === 'credential_type'
+        const isUsernameField = field === 'username'
         if (payload?.attorney) {
           next.attorney = { ...(d.attorney || {}), ...payload.attorney }
         } else {
-          // Reflect the just-saved field locally for the application-row case.
           next.attorney = { ...(d.attorney || {}) }
-          if (field !== 'bar_number' && field !== 'credential_type') {
-            next.attorney[field] = value
-          }
         }
-        if (field === 'bar_number' || field === 'credential_type') {
+        // Stamp the just-sent value last for attorney-row fields so it
+        // wins against any null/empty in the server payload.
+        if (!isApplicationField && !isUsernameField) {
+          next.attorney = { ...next.attorney, [field]: value }
+        }
+        if (isApplicationField) {
           next.application = { ...(d.application || {}), [field]: value }
         }
-        if (field === 'username') {
+        if (isUsernameField) {
           next.profile = { ...(d.profile || {}), username: payload?.username ?? value }
         }
         return next

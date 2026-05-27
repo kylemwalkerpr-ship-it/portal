@@ -55,10 +55,17 @@ export async function GET() {
   if (profile.role !== 'attorney') return Response.json({ error: 'Not an attorney account.' }, { status: 403 })
 
   const [attorneyRes, applicationRes, rating] = await Promise.all([
+    // .order + .limit + .maybeSingle so duplicate attorney rows (legacy
+    // state) resolve to the most recent one. Must match the row that
+    // requireAttorney uses for PATCH or the editor's saves write to a
+    // different row than the GET reads, producing the "fields reset
+    // after save" bug.
     db
       .from('attorneys')
       .select('id, jurisdictions, practice_areas, bio, available, application_id, headshot_url, headshot_path, tagline, intro, languages, years_experience, education, specialties, offers_free_consult, consult_booking_url, starting_price, video_intro_url, timezone, created_at')
       .eq('profile_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle(),
     db
       .from('attorney_applications')
