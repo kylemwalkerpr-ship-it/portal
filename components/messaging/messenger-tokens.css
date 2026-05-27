@@ -502,8 +502,8 @@
   position: relative; z-index: 2;
 }
 .yousafe-messenger .bubrow.last { margin-bottom: var(--bub-gap-end); }
-.yousafe-messenger .bubrow.theirs { justify-content: flex-start; padding-right: 60px; }
-.yousafe-messenger .bubrow.mine   { justify-content: flex-end;   padding-left:  60px; }
+.yousafe-messenger .bubrow.theirs { justify-content: flex-start; padding-right: 40px; }
+.yousafe-messenger .bubrow.mine   { justify-content: flex-end;   padding-left:  40px; }
 
 .yousafe-messenger .bub {
   max-width: 65%;

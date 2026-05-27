@@ -225,21 +225,64 @@ function PreviewTab({ strength }) {
   const [error, setError] = React.useState('')
 
   React.useEffect(() => {
+    let cancelled = false
     setLoading(true); setError('')
-    fetch('/api/attorney/profile', { credentials: 'same-origin' })
-      .then(r => r.json().catch(() => ({})).then(d => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => { if (!ok) throw new Error(d?.error || 'Failed'); setData(d) })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
+    ;(async () => {
+      try {
+        const res = await fetch('/api/attorney/profile', { credentials: 'same-origin' })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`)
+        if (!cancelled) setData(body || {})
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Could not load your profile.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   if (loading) return <Card style={{ padding: 20, color: MUTED, fontSize: 13 }}>Loading preview…</Card>
-  if (error) return <Card style={{ padding: 16, background: `${RED}10`, color: RED, fontSize: 13 }}>{error}</Card>
-  if (!data) return null
+  if (error) return (
+    <Card style={{ padding: 16, background: `${RED}10`, color: RED, fontSize: 13, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Couldn't load preview</div>
+      <div>{error}</div>
+      <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>
+        If you're newly approved, save any field in the Editor first to seed your profile, then come back.
+      </div>
+    </Card>
+  )
+  if (!data) return (
+    <Card style={{ padding: 20, color: MUTED, fontSize: 13 }}>
+      Your profile preview will appear here once you save a tagline, intro, or headshot in the Editor.
+    </Card>
+  )
 
   const a = data.attorney || {}
   const profile = data.profile || {}
   const application = data.application || {}
+  // If the attorney row is empty AND there's no tagline/intro/bio yet,
+  // show a guided empty-state instead of a near-blank card that looks
+  // broken. This is the most common cause of "preview is broken" reports
+  // for newly approved attorneys who haven't saved any prose yet.
+  const hasAnyContent =
+    !!(a.headshot_url || a.tagline || a.intro || a.bio || a.jurisdictions || a.practice_areas ||
+       (Array.isArray(a.specialties) && a.specialties.length) ||
+       (Array.isArray(a.languages) && a.languages.length))
+  if (!hasAnyContent) {
+    return (
+      <Card style={{ padding: 24, lineHeight: 1.6 }}>
+        <div style={{ fontFamily: SERIF, fontSize: 20, color: TEXT, marginBottom: 6 }}>
+          Your public profile is empty.
+        </div>
+        <div style={{ color: MUTED, fontSize: 13 }}>
+          Add a headshot, tagline, and intro in the <strong>Editor</strong> tab. Once saved, this preview
+          shows exactly what students see on your marketplace card. The Draft with AI button next to each
+          field can write a first pass for you.
+        </div>
+      </Card>
+    )
+  }
 
   const initial = (profile.full_name || profile.email || '?').trim().charAt(0).toUpperCase()
   const tags = Array.isArray(a.specialties) ? a.specialties : []

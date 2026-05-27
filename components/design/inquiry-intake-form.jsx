@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Btn } from './shared'
 import { COUNTRIES, recommendTier } from '@/lib/intake-questions'
+import InquiryPolishButton from '../profile/InquiryPolishButton'
 
 const DRAFT_KEY = 'yousafe-inquiry-draft-v1'
 
@@ -276,11 +277,22 @@ export default function IntakeForm({ onCancel, onSubmitted, onSaved, defaultEmai
             value={answers[currentQuestion.id]}
             onChange={(v) => setAnswer(currentQuestion.id, v)}
             indexLabel={`${questionIdx + 1} of ${questions.length}`}
+            aiContext={{
+              country: countryConfig?.label || country || null,
+              case_type: caseType?.label || caseTypeId || null,
+            }}
           />
         )}
 
         {phase === 'contact' && (
-          <ContactScreen contact={contact} setContact={setContact} />
+          <ContactScreen
+            contact={contact}
+            setContact={setContact}
+            aiContext={{
+              country: countryConfig?.label || country || null,
+              case_type: caseType?.label || caseTypeId || null,
+            }}
+          />
         )}
 
         {phase === 'review' && (
@@ -390,20 +402,20 @@ function CasePicker({ country, value, onPick }) {
   )
 }
 
-function QuestionScreen({ question, value, onChange, indexLabel }) {
+function QuestionScreen({ question, value, onChange, indexLabel, aiContext }) {
   return (
     <div>
       <div style={{ ...eyebrow, marginBottom: '6px' }}>Question {indexLabel}</div>
       <h3 style={sectionHeading}>{question.label}</h3>
       {question.help && <p style={sectionSub}>{question.help}</p>}
       <div style={{ marginTop: '20px' }}>
-        <QuestionInput question={question} value={value} onChange={onChange} />
+        <QuestionInput question={question} value={value} onChange={onChange} aiContext={aiContext} />
       </div>
     </div>
   )
 }
 
-function QuestionInput({ question, value, onChange }) {
+function QuestionInput({ question, value, onChange, aiContext }) {
   if (question.type === 'select') {
     return (
       <div style={{ display: 'grid', gap: '8px' }}>
@@ -458,13 +470,28 @@ function QuestionInput({ question, value, onChange }) {
 
   if (question.type === 'long_text') {
     return (
-      <textarea
-        rows={6}
-        value={typeof value === 'string' ? value : ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={question.placeholder || 'Your answer...'}
-        style={{ ...inputStyle, resize: 'vertical', minHeight: '140px' }}
-      />
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '6px' }}>
+          <InquiryPolishButton
+            field="case_description"
+            getDraft={() => (typeof value === 'string' ? value : '')}
+            getContext={() => ({
+              country: aiContext?.country || null,
+              case_type: aiContext?.case_type || null,
+              question_label: question.label || null,
+              question_help: question.help || null,
+            })}
+            onApply={(polished) => onChange(polished)}
+          />
+        </div>
+        <textarea
+          rows={6}
+          value={typeof value === 'string' ? value : ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={question.placeholder || 'Your answer...'}
+          style={{ ...inputStyle, resize: 'vertical', minHeight: '140px' }}
+        />
+      </div>
     )
   }
 
@@ -502,7 +529,7 @@ function QuestionInput({ question, value, onChange }) {
   )
 }
 
-function ContactScreen({ contact, setContact }) {
+function ContactScreen({ contact, setContact, aiContext }) {
   const update = (k, v) => setContact((c) => ({ ...c, [k]: v }))
   return (
     <div>
@@ -521,13 +548,28 @@ function ContactScreen({ contact, setContact }) {
       </div>
       <div style={{ marginTop: '12px' }}>
         <Field label="Anything else (optional)">
-          <textarea
-            rows={3}
-            value={contact.notes}
-            onChange={(e) => update('notes', e.target.value)}
-            placeholder="Anything urgent, prior counsel, or context that doesn't fit above."
-            style={{ ...inputStyle, resize: 'vertical' }}
-          />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '6px' }}>
+              <InquiryPolishButton
+                field="notes"
+                getDraft={() => contact.notes || ''}
+                getContext={() => ({
+                  country: aiContext?.country || null,
+                  case_type: aiContext?.case_type || null,
+                  question_label: 'Anything else for the attorney',
+                  question_help: 'Optional context that doesn\'t fit the structured questions.',
+                })}
+                onApply={(polished) => update('notes', polished)}
+              />
+            </div>
+            <textarea
+              rows={3}
+              value={contact.notes}
+              onChange={(e) => update('notes', e.target.value)}
+              placeholder="Anything urgent, prior counsel, or context that doesn't fit above."
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
+          </div>
         </Field>
       </div>
     </div>
