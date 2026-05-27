@@ -8,7 +8,7 @@ import ProfileAIDraftButton from '../profile/ProfileAIDraftButton'
 // Headshot, tagline, intro, bio, languages, years of experience, education,
 // specialties, free-consult flag, starting price, optional video link.
 // Auto-saves field-by-field on blur to keep edits frictionless.
-export default function AttorneyProfileEditor() {
+export default function AttorneyProfileEditor({ onSaved } = {}) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -35,6 +35,9 @@ export default function AttorneyProfileEditor() {
     setData((d) => ({ ...d, attorney: { ...(d.attorney || {}), [field]: value } }))
   }
 
+  // Save now THROWS on failure so callers (AI button) can await the
+  // round-trip and decide whether to close their popover or surface the
+  // error. Returns the merged attorney row on success.
   async function save(field, value) {
     setSaving(true)
     setError('')
@@ -46,19 +49,38 @@ export default function AttorneyProfileEditor() {
         body: JSON.stringify({ [field]: value }),
       })
       const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.error || 'Could not save change.')
-      setData((d) => ({
-        ...d,
-        attorney: { ...(d.attorney || {}), ...(payload?.attorney || {}) },
-        // Username lives on profile, not attorneys — update local profile too.
-        profile: field === 'username'
-          ? { ...(d.profile || {}), username: payload?.username ?? value }
-          : d.profile,
-      }))
+      if (!res.ok) throw new Error(payload?.error || `Could not save change (${res.status}).`)
+      // For application-only fields (bar_number, credential_type), the API
+      // returns attorney:null because the update went to attorney_applications.
+      // Patch local state from the value we sent so the editor shows the
+      // change immediately without a round-trip refetch.
+      setData((d) => {
+        const next = { ...d }
+        if (payload?.attorney) {
+          next.attorney = { ...(d.attorney || {}), ...payload.attorney }
+        } else {
+          // Reflect the just-saved field locally for the application-row case.
+          next.attorney = { ...(d.attorney || {}) }
+          if (field !== 'bar_number' && field !== 'credential_type') {
+            next.attorney[field] = value
+          }
+        }
+        if (field === 'bar_number' || field === 'credential_type') {
+          next.application = { ...(d.application || {}), [field]: value }
+        }
+        if (field === 'username') {
+          next.profile = { ...(d.profile || {}), username: payload?.username ?? value }
+        }
+        return next
+      })
       setSavedFlash('Saved')
       window.setTimeout(() => setSavedFlash(''), 1400)
+      // Notify parent so the strength sidebar refreshes its score.
+      try { onSaved && onSaved() } catch { /* ignore */ }
+      return true
     } catch (e) {
       setError(e.message)
+      throw e
     } finally {
       setSaving(false)
     }
@@ -546,9 +568,20 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
         {aiField && (
           <ProfileAIDraftButton
             field={aiField}
-            onApply={(v) => {
+            onApply={async (v) => {
+              // Optimistic: drop into input first so the user sees the
+              // change instantly. THEN await the PATCH; if it fails the
+              // AI button will surface the error and we'll need to roll
+              // back the draft. The dirty check ensures we never
+              // double-save the same value.
+              const prev = draft
               setDraft(v)
-              onSave(v)
+              try {
+                await onSave(v)
+              } catch (e) {
+                setDraft(prev)
+                throw e
+              }
             }}
           />
         )}
@@ -590,7 +623,11 @@ function TagEditor({ label, help, values, placeholder, onChange, aiField, fieldI
         {aiField && (
           <ProfileAIDraftButton
             field={aiField}
-            onApply={(v) => onChange(Array.isArray(v) ? v : [])}
+            onApply={async (v) => {
+              // onChange wraps a parent save() — return its promise so the
+              // AI popover awaits the PATCH and surfaces failures inline.
+              await onChange(Array.isArray(v) ? v : [])
+            }}
           />
         )}
       </div>

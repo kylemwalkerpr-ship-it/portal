@@ -172,8 +172,10 @@ export default function AttorneyProfile() {
       {tab === 'editor' && (
         <div className="yousafe-mobile-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 18, alignItems: 'flex-start' }}>
           <div style={{ minWidth: 0 }}>
-            {/* The existing editor lives here unchanged */}
-            <AttorneyProfileEditor />
+            {/* Editor calls onSaved after a successful PATCH so the
+                strength sidebar recomputes its score live (each field
+                is worth real strength weight). */}
+            <AttorneyProfileEditor onSaved={() => setRefreshKey((k) => k + 1)} />
           </div>
           <ChecklistSidebar
             strength={strength}

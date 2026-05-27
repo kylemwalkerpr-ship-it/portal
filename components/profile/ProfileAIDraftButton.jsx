@@ -87,20 +87,32 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
     }
   }
 
-  function acceptDraft() {
+  async function acceptDraft() {
+    let valueToApply
     if (isList) {
-      const cleaned = draftList
+      valueToApply = draftList
         .map((t) => String(t || '').trim())
         .filter((t) => t.length > 0 && t.length <= 48)
         .slice(0, 8)
-      if (!cleaned.length) { setError('Add at least one item before saving.'); return }
-      onApply(cleaned)
+      if (!valueToApply.length) { setError('Add at least one item before saving.'); return }
     } else {
-      const cleaned = draftText.trim()
-      if (!cleaned) { setError('Draft is empty — generate again or edit before saving.'); return }
-      onApply(cleaned)
+      valueToApply = draftText.trim()
+      if (!valueToApply) { setError('Draft is empty — generate again or edit before saving.'); return }
     }
-    resetAll()
+    // Await the apply (which awaits the PATCH) so we can show "Saved"
+    // on success or surface the error inline. Without awaiting, a
+    // silent 401 / network failure looked like "the field didn't stick"
+    // because the popover closed and the user got no feedback.
+    setBusy(true)
+    setError('')
+    try {
+      await onApply(valueToApply)
+      resetAll()
+    } catch (e) {
+      setError(e?.message || 'Could not save. Try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   function regenerate() {
@@ -290,14 +302,15 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
                   <button
                     type="button"
                     onClick={acceptDraft}
+                    disabled={busy}
                     style={{
                       padding: '6px 14px', borderRadius: '6px',
-                      background: indigo, color: '#FFFFFF',
+                      background: busy ? C.border : indigo, color: '#FFFFFF',
                       border: 'none', fontSize: '12px', fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: busy ? 'wait' : 'pointer',
                     }}
                   >
-                    Save to field
+                    {busy ? 'Saving…' : 'Save to field'}
                   </button>
                 </div>
               </div>
