@@ -134,7 +134,7 @@ export default function AttorneyProfileEditor() {
 
       {/* Headshot + identity row */}
       <Card>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div id="profile-field-headshot" data-field="headshot" style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', scrollMarginTop: '24px' }}>
           <div style={{ position: 'relative' }}>
             {a.headshot_url ? (
               <img
@@ -203,6 +203,7 @@ export default function AttorneyProfileEditor() {
       <Card>
         <SectionLabel>Public profile handle</SectionLabel>
         <EditableField
+          fieldId="username"
           label="Username (SEO slug)"
           help="REQUIRED before publishing gigs. Becomes your public profile URL (market.yousafeconsultancy.com/providers/<handle>). Keep it short, lowercase, and keyword-rich — e.g. immigration-attorney-ny, or jane-doe-immigration. Lowercase letters, numbers, dashes, underscores only; 3–32 chars; cannot start or end with - or _."
           value={profile.username || ''}
@@ -216,6 +217,7 @@ export default function AttorneyProfileEditor() {
       <Card>
         <SectionLabel>Pitch</SectionLabel>
         <EditableField
+          fieldId="tagline"
           label="Tagline"
           help="One sharp line that shows on your card in search results. Aim for 60–120 characters."
           value={a.tagline}
@@ -225,6 +227,7 @@ export default function AttorneyProfileEditor() {
           aiField="tagline"
         />
         <EditableField
+          fieldId="intro"
           label="Intro / byline"
           help="2–3 sentences that establish credibility and warmth. The first thing students read on your profile."
           value={a.intro}
@@ -240,6 +243,7 @@ export default function AttorneyProfileEditor() {
       <Card>
         <SectionLabel>Long bio</SectionLabel>
         <EditableField
+          fieldId="bio"
           label="About you"
           help="The full story. Background, why you do this work, what kinds of clients you serve best."
           value={a.bio}
@@ -257,12 +261,14 @@ export default function AttorneyProfileEditor() {
         <SectionLabel>Credentials & coverage</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
           <EditableField
+            fieldId="years"
             label="Years of experience"
             type="number"
             value={a.years_experience}
             onSave={(v) => save('years_experience', Number(v) || 0)}
           />
           <EditableField
+            fieldId="starting_price"
             label="Starting price (USD)"
             help="Enter whole dollars (e.g. 250 for $250). Lowest price you'd typically quote — shown as 'starting at $X' on cards."
             type="number"
@@ -278,6 +284,7 @@ export default function AttorneyProfileEditor() {
             }}
           />
           <EditableField
+            fieldId="timezone"
             label="Timezone"
             placeholder="e.g. America/New_York"
             value={a.timezone}
@@ -286,6 +293,7 @@ export default function AttorneyProfileEditor() {
         </div>
         <div style={{ marginTop: '14px' }}>
           <EditableField
+            fieldId="education"
             label="Education"
             help="Schools and degrees, one per line. JD first."
             value={a.education}
@@ -297,6 +305,7 @@ export default function AttorneyProfileEditor() {
         </div>
         <div style={{ marginTop: '14px', display: 'grid', gap: '12px' }}>
           <EditableField
+            fieldId="jurisdictions"
             label="Jurisdictions"
             help="Where you're admitted to practice. Comma-separated."
             value={a.jurisdictions}
@@ -304,6 +313,7 @@ export default function AttorneyProfileEditor() {
             onSave={(v) => save('jurisdictions', v)}
           />
           <EditableField
+            fieldId="practice_areas"
             label="Practice areas"
             help="Top-level practice categories. Comma-separated."
             value={a.practice_areas}
@@ -314,10 +324,41 @@ export default function AttorneyProfileEditor() {
         </div>
       </Card>
 
+      {/* Verified credential — bar / registration number + credential type.
+          Both fields live on attorney_applications (vetted at application
+          time) but the PATCH /api/attorney/profile endpoint accepts edits
+          via { bar_number, credential_type } and writes through to the
+          latest application row. Without these here, the profile-strength
+          checklist points to checks the user can't address. */}
+      <Card>
+        <SectionLabel>Verified credential</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          <EditableField
+            fieldId="credential"
+            label="Credential type"
+            help="e.g. JD (US Attorney), Solicitor (England & Wales), Avocat (France). Shown on your public card."
+            value={application.credential_type || ''}
+            maxLength={120}
+            placeholder="JD · US Attorney"
+            onSave={(v) => save('credential_type', v)}
+          />
+          <EditableField
+            fieldId="bar"
+            label="Bar / registration number"
+            help="Required for a verified listing. Shown on your profile and used in disputes."
+            value={application.bar_number || ''}
+            maxLength={120}
+            placeholder="e.g. NY 1234567"
+            onSave={(v) => save('bar_number', v)}
+          />
+        </div>
+      </Card>
+
       {/* Tags */}
       <Card>
         <SectionLabel>Specialties & languages</SectionLabel>
         <TagEditor
+          fieldId="specialties"
           label="Specialties"
           help="More granular than practice areas — these are the things you're best at."
           values={a.specialties || []}
@@ -327,6 +368,7 @@ export default function AttorneyProfileEditor() {
         />
         <div style={{ height: '14px' }} />
         <TagEditor
+          fieldId="languages"
           label="Languages"
           help="Languages you can advise in fluently."
           values={a.languages || []}
@@ -340,6 +382,7 @@ export default function AttorneyProfileEditor() {
       <Card>
         <SectionLabel>Engagement options</SectionLabel>
         <ToggleRow
+          fieldId="free_consult"
           label="Offer a free 15-minute consult"
           help="Strongly improves click-through. No payment processing fee is charged for the consult itself."
           value={Boolean(a.offers_free_consult)}
@@ -363,6 +406,7 @@ export default function AttorneyProfileEditor() {
           </div>
         )}
         <ToggleRow
+          fieldId="available"
           label="Currently accepting new clients"
           help="Turn off if your queue is full. Profile stays visible but cards show 'Limited'."
           value={a.available !== false}
@@ -370,6 +414,7 @@ export default function AttorneyProfileEditor() {
         />
         <div style={{ marginTop: '12px' }}>
           <EditableField
+            fieldId="video"
             label="Intro video URL (optional)"
             help="A 30-second YouTube or Vimeo link. Public-facing."
             value={a.video_intro_url}
@@ -464,9 +509,10 @@ function SectionLabel({ children }) {
   )
 }
 
-function EditableField({ label, help, value, onSave, multiline, rows = 3, placeholder, type = 'text', maxLength, aiField }) {
+function EditableField({ label, help, value, onSave, multiline, rows = 3, placeholder, type = 'text', maxLength, aiField, fieldId }) {
   const [draft, setDraft] = React.useState(value ?? '')
   const [focused, setFocused] = React.useState(false)
+  const inputRef = React.useRef(null)
   React.useEffect(() => setDraft(value ?? ''), [value])
 
   const dirty = String(draft ?? '') !== String(value ?? '')
@@ -482,6 +528,7 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
     onBlur: () => { setFocused(false); commit() },
     placeholder,
     maxLength,
+    ref: inputRef,
     style: {
       ...inputBase,
       borderColor: focused ? C.cyan : C.border2,
@@ -489,7 +536,11 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
   }
 
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+    <label
+      id={fieldId ? `profile-field-${fieldId}` : undefined}
+      data-field={fieldId || undefined}
+      style={{ display: 'flex', flexDirection: 'column', gap: '6px', scrollMarginTop: '24px' }}
+    >
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <span style={fieldLabelStyle}>{label}</span>
         {aiField && (
@@ -512,7 +563,7 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
   )
 }
 
-function TagEditor({ label, help, values, placeholder, onChange, aiField }) {
+function TagEditor({ label, help, values, placeholder, onChange, aiField, fieldId }) {
   const [draft, setDraft] = React.useState('')
   function addFromDraft() {
     const v = draft.trim()
@@ -529,7 +580,11 @@ function TagEditor({ label, help, values, placeholder, onChange, aiField }) {
     onChange(values.filter((v) => v !== tag))
   }
   return (
-    <div>
+    <div
+      id={fieldId ? `profile-field-${fieldId}` : undefined}
+      data-field={fieldId || undefined}
+      style={{ scrollMarginTop: '24px' }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <span style={fieldLabelStyle}>{label}</span>
         {aiField && (
@@ -588,9 +643,13 @@ function TagEditor({ label, help, values, placeholder, onChange, aiField }) {
   )
 }
 
-function ToggleRow({ label, help, value, onChange }) {
+function ToggleRow({ label, help, value, onChange, fieldId }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}`, gap: '12px' }}>
+    <div
+      id={fieldId ? `profile-field-${fieldId}` : undefined}
+      data-field={fieldId || undefined}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}`, gap: '12px', scrollMarginTop: '24px' }}
+    >
       <div style={{ flex: 1 }}>
         <div style={{ color: C.text, fontSize: '14px', fontWeight: 600 }}>{label}</div>
         {help && <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '2px' }}>{help}</div>}

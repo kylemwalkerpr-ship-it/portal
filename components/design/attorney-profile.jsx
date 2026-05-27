@@ -74,6 +74,37 @@ export default function AttorneyProfile() {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
+  // Force any focused input to blur (which commits pending drafts via
+  // EditableField's onBlur handler) before switching tabs or running an
+  // action that re-fetches. Without this, the user can type into a field
+  // and lose the value if they click "Public preview" or "Refresh score"
+  // before tabbing away from the input — reads as "fields keep resetting".
+  const commitPendingEdits = React.useCallback(() => {
+    if (typeof document === 'undefined') return
+    const el = document.activeElement
+    if (el && typeof el.blur === 'function') el.blur()
+  }, [])
+
+  const switchTab = React.useCallback((id) => {
+    commitPendingEdits()
+    setTab(id)
+  }, [commitPendingEdits])
+
+  // ChecklistSidebar row click → flip to Editor, then scroll the matching
+  // field into view and focus its first input. The two-step requestAF gives
+  // React a frame to mount the editor before we try to find the element.
+  const jumpToField = React.useCallback((checkId) => {
+    commitPendingEdits()
+    setTab('editor')
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.getElementById(`profile-field-${checkId}`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const inputEl = el.querySelector('input, textarea, button')
+      if (inputEl && typeof inputEl.focus === 'function') inputEl.focus()
+    }))
+  }, [commitPendingEdits])
+
   return (
     <div style={{ padding: '24px 28px 60px', display: 'flex', flexDirection: 'column', gap: 18, fontFamily: SANS, background: BG, minHeight: '100vh' }}>
       {/* Header */}
@@ -85,7 +116,13 @@ export default function AttorneyProfile() {
             Treat this like a Fiverr seller profile. A sharper profile wins more inquiries — aim for Gold or Platinum.
           </div>
         </div>
-        <Btn variant="ghost" size="sm" onClick={() => setRefreshKey(k => k + 1)}>↻ Refresh score</Btn>
+        <Btn
+          variant="ghost"
+          size="sm"
+          onClick={() => { commitPendingEdits(); setRefreshKey(k => k + 1) }}
+        >
+          ↻ Refresh score
+        </Btn>
       </div>
 
       {/* Strength card */}
@@ -120,7 +157,7 @@ export default function AttorneyProfile() {
         {TABS.map(t => {
           const active = tab === t.id
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
+            <button key={t.id} onClick={() => switchTab(t.id)} style={{
               padding: '9px 16px', fontSize: 13, fontFamily: SANS, fontWeight: active ? 700 : 500,
               border: 'none', background: 'transparent',
               borderBottom: `2px solid ${active ? CYAN : 'transparent'}`,
@@ -138,7 +175,11 @@ export default function AttorneyProfile() {
             {/* The existing editor lives here unchanged */}
             <AttorneyProfileEditor />
           </div>
-          <ChecklistSidebar strength={strength} onJumpToTab={() => setTab('editor')} />
+          <ChecklistSidebar
+            strength={strength}
+            onJumpToTab={() => switchTab('editor')}
+            onJumpToField={jumpToField}
+          />
         </div>
       )}
 
@@ -219,10 +260,15 @@ function StrengthCard({ strength, loading, error, onToggleAvailable }) {
   )
 }
 
-function ChecklistSidebar({ strength, onJumpToTab }) {
+function ChecklistSidebar({ strength, onJumpToTab, onJumpToField }) {
   if (!strength) return null
   const remaining = (strength.checks || []).filter(c => !c.done)
   const completed = (strength.checks || []).filter(c => c.done)
+
+  const handleRowClick = (checkId) => {
+    if (onJumpToField) onJumpToField(checkId)
+    else onJumpToTab?.()
+  }
 
   return (
     <aside style={{ position: 'sticky', top: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -242,13 +288,28 @@ function ChecklistSidebar({ strength, onJumpToTab }) {
             </div>
           ) : (
             remaining.slice(0, 6).map(c => (
-              <div key={c.id} style={{ padding: '10px 0', borderBottom: `1px solid ${BORDER2}` }}>
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => handleRowClick(c.id)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '10px 0', borderBottom: `1px solid ${BORDER2}`,
+                  background: 'transparent', border: 'none', borderRadius: 4,
+                  cursor: 'pointer', transition: 'background .12s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = `${CYAN}08` }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{c.label}</div>
                   <span style={{ fontSize: 10, fontWeight: 700, color: AMBER, fontFamily: MONO, flexShrink: 0 }}>+{c.weight}</span>
                 </div>
                 {c.hint && <div style={{ fontSize: 11, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{c.hint}</div>}
-              </div>
+                <div style={{ fontSize: 11, color: CYAN, marginTop: 6, fontWeight: 600 }}>
+                  Jump to field →
+                </div>
+              </button>
             ))
           )}
         </div>
