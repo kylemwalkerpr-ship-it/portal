@@ -1,5 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
-import { buildSlug } from '@/lib/fiverr'
+import { buildUniqueSlug } from '@/lib/fiverr'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -169,7 +169,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 80) : 'Untitled service'
-  const slug = `${buildSlug(title)}-${crypto.randomUUID().slice(0, 8)}`
+  const slug = await buildUniqueSlug(db, title)
   const status = 'draft' // new gigs always start as draft; use /publish to activate
   const category = String(body.category || body.subcategory || '').trim() || null
   const subcategory = String(body.subcategory || '').trim() || null

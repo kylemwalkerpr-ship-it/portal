@@ -106,3 +106,25 @@ export function buildSlug(input: string): string {
   slug = slug.replace(/^-+|-+$/g, '')
   return slug || crypto.randomUUID()
 }
+
+// First writer gets the clean slug; collisions get -2, -3, …
+// Hex fallback only kicks in after 999 numeric collisions (effectively never).
+export async function buildUniqueSlug(
+  db: { from: (table: string) => any },
+  title: string,
+): Promise<string> {
+  const base = buildSlug(title)
+  const { data } = await db
+    .from('gigs')
+    .select('slug')
+    .like('slug', `${base}%`)
+
+  const taken = new Set<string>((data ?? []).map((r: { slug: string }) => r.slug))
+  if (!taken.has(base)) return base
+
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}-${i}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return `${base}-${crypto.randomUUID().slice(0, 6)}`
+}
