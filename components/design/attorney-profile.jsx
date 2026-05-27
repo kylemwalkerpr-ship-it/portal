@@ -89,7 +89,31 @@ export default function AttorneyProfile() {
       </div>
 
       {/* Strength card */}
-      <StrengthCard strength={strength} loading={loading} error={error} />
+      <StrengthCard
+        strength={strength}
+        loading={loading}
+        error={error}
+        onToggleAvailable={async () => {
+          if (!strength) return
+          const next = !strength.available
+          // Optimistic update so the badge flips instantly; rolls back
+          // if the PATCH fails. The full refresh hits at the end to
+          // recompute score (Availability is a 2-pt strength signal).
+          setStrength((s) => (s ? { ...s, available: next } : s))
+          try {
+            const res = await fetch('/api/attorney/profile', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ available: next }),
+            })
+            if (!res.ok) throw new Error('Could not update availability.')
+            setRefreshKey((k) => k + 1)
+          } catch {
+            setStrength((s) => (s ? { ...s, available: !next } : s))
+          }
+        }}
+      />
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${BORDER}`, marginBottom: -2 }}>
@@ -123,7 +147,7 @@ export default function AttorneyProfile() {
   )
 }
 
-function StrengthCard({ strength, loading, error }) {
+function StrengthCard({ strength, loading, error, onToggleAvailable }) {
   if (loading) return <Card style={{ padding: 20, color: MUTED, fontSize: 13 }}>Calculating profile strength…</Card>
   if (error) return <Card style={{ padding: 16, background: `${RED}10`, color: RED, fontSize: 13 }}>{error}</Card>
   if (!strength) return null
@@ -167,9 +191,18 @@ function StrengthCard({ strength, loading, error }) {
                 <span style={{ color: '#f5b400' }}>★</span> {strength.rating.avg} ({strength.rating.count} review{strength.rating.count === 1 ? '' : 's'})
               </span>
             )}
-            {strength.available
-              ? <Badge color="green" style={{ fontSize: 10 }}>Available</Badge>
-              : <Badge color="gray"  style={{ fontSize: 10 }}>Paused</Badge>}
+            <button
+              type="button"
+              onClick={onToggleAvailable}
+              title={strength.available ? 'Click to pause new inquiries' : 'Click to resume accepting new inquiries'}
+              style={{
+                cursor: 'pointer', border: 'none', background: 'transparent', padding: 0,
+              }}
+            >
+              {strength.available
+                ? <Badge color="green" style={{ fontSize: 10 }}>Available</Badge>
+                : <Badge color="gray"  style={{ fontSize: 10 }}>Paused · tap to resume</Badge>}
+            </button>
           </div>
           <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 600, color: TEXT, marginBottom: 2 }}>{tier.sub}</div>
           <div style={{ fontSize: 12, color: MUTED, fontFamily: MONO }}>
@@ -280,28 +313,11 @@ function PreviewTab({ strength }) {
   const a = data.attorney || {}
   const profile = data.profile || {}
   const application = data.application || {}
-  // If the attorney row is empty AND there's no tagline/intro/bio yet,
-  // show a guided empty-state instead of a near-blank card that looks
-  // broken. This is the most common cause of "preview is broken" reports
-  // for newly approved attorneys who haven't saved any prose yet.
-  const hasAnyContent =
-    !!(a.headshot_url || a.tagline || a.intro || a.bio || a.jurisdictions || a.practice_areas ||
-       (Array.isArray(a.specialties) && a.specialties.length) ||
-       (Array.isArray(a.languages) && a.languages.length))
-  if (!hasAnyContent) {
-    return (
-      <Card style={{ padding: 24, lineHeight: 1.6 }}>
-        <div style={{ fontFamily: SERIF, fontSize: 20, color: TEXT, marginBottom: 6 }}>
-          Your public profile is empty.
-        </div>
-        <div style={{ color: MUTED, fontSize: 13 }}>
-          Add a headshot, tagline, and intro in the <strong>Editor</strong> tab. Once saved, this preview
-          shows exactly what students see on your marketplace card. The Draft with AI button next to each
-          field can write a first pass for you.
-        </div>
-      </Card>
-    )
-  }
+  // Inner section guards (the `&&` blocks below) already hide individual
+  // empty fields, so even a profile with only a name and credential type
+  // renders a meaningful card. The previous hasAnyContent early-return
+  // false-positived on populated attorneys whose `data.attorney` shape
+  // wasn't quite what the check expected.
 
   const initial = (profile.full_name || profile.email || '?').trim().charAt(0).toUpperCase()
   const tags = Array.isArray(a.specialties) ? a.specialties : []

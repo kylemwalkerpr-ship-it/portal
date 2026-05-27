@@ -77,7 +77,7 @@ export async function computeAttorneyStrength(
   const checks: StrengthCheck[] = [
     { id: 'name',           label: 'Full name on profile',                weight: 4,  done: hasText(profile?.full_name) },
     { id: 'username',       label: 'SEO-friendly profile handle',         weight: 10, done: hasText(username, 2), hint: 'Used in your public profile URL — keep it short, lowercase, and keyword-rich (e.g. immigration-attorney-ny).' },
-    { id: 'headshot',       label: 'Professional headshot',               weight: 10, done: hasText(a.headshot_url), hint: 'Profiles with a photo win 6× more engagements.' },
+    { id: 'headshot',       label: 'Professional profile photo',          weight: 10, done: hasText(a.headshot_url), hint: 'Profiles with a photo win 6× more engagements.' },
     { id: 'tagline',        label: 'Compelling tagline (≥40 chars)',      weight: 8,  done: hasText(a.tagline, 40) },
     { id: 'intro',          label: 'Intro / byline (≥100 chars)',         weight: 8,  done: hasText(a.intro, 100) },
     { id: 'bio',            label: 'Long bio (≥300 chars)',               weight: 10, done: hasText(a.bio, 300), hint: 'Long bios convert higher than short ones — students want context.' },

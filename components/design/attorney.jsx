@@ -400,7 +400,7 @@ function TopBar({ title, notifications, readCount, onMarkAllRead, onClearRead, o
           onLogout={onLogout}
           items={[
             { label: 'My profile', icon: '👤', action: () => onNavigate?.('profile') },
-            { label: uploadingHeadshot ? 'Uploading photo…' : (headshotUrl ? 'Change photo' : 'Upload headshot'), icon: '🖼️', action: () => onChangeHeadshot?.() },
+            { label: uploadingHeadshot ? 'Uploading photo…' : (headshotUrl ? 'Change photo' : 'Upload profile photo'), icon: '🖼️', action: () => onChangeHeadshot?.() },
             { label: 'Earnings', icon: '💰', action: () => onNavigate?.('earnings') },
             { label: 'Messages', icon: '💬', action: () => onNavigate?.('messages') },
             { label: 'Settings', icon: '⚙️', action: () => onNavigate?.('settings') },

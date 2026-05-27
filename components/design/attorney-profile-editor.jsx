@@ -76,7 +76,7 @@ export default function AttorneyProfileEditor() {
       if (!res.ok) throw new Error(payload?.error || 'Upload failed.')
       patchLocal('headshot_url', payload.headshot_url)
       patchLocal('headshot_path', payload.headshot_path)
-      setSavedFlash('Headshot updated')
+      setSavedFlash('Profile photo updated')
       window.setTimeout(() => setSavedFlash(''), 1400)
     } catch (e) {
       setError(e.message)
@@ -86,7 +86,7 @@ export default function AttorneyProfileEditor() {
   }
 
   async function removeHeadshot() {
-    if (!confirm('Remove your headshot?')) return
+    if (!confirm('Remove your profile photo?')) return
     setUploading(true)
     setError('')
     try {
@@ -120,7 +120,7 @@ export default function AttorneyProfileEditor() {
           <div style={eyebrowStyle}>Your public profile</div>
           <h2 style={pageTitle}>How students see you.</h2>
           <p style={pageSub}>
-            Treat this like a Fiverr seller profile. A clear headshot, a sharp tagline, and concrete
+            Treat this like a Fiverr seller profile. A clear profile photo, a sharp tagline, and concrete
             specialties dramatically improve your conversion when students compare offers.
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function AttorneyProfileEditor() {
             {a.headshot_url ? (
               <img
                 src={a.headshot_url}
-                alt={profile.full_name || 'Headshot'}
+                alt={profile.full_name || 'Profile photo'}
                 style={{ width: '112px', height: '112px', borderRadius: '50%', objectFit: 'cover', border: `3px solid ${C.surface}` }}
               />
             ) : (
@@ -188,7 +188,7 @@ export default function AttorneyProfileEditor() {
               style={{ display: 'none' }}
             />
             <Btn variant="primary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-              {uploading ? 'Uploading…' : a.headshot_url ? 'Change headshot' : 'Upload headshot'}
+              {uploading ? 'Uploading…' : a.headshot_url ? 'Change profile photo' : 'Upload profile photo'}
             </Btn>
             {a.headshot_url && (
               <Btn variant="ghost" size="sm" onClick={removeHeadshot} disabled={uploading}>
