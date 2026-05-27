@@ -91,8 +91,13 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
       return {
         format: 'string', hardLimit: 60,
         prompt: [
-          'Write a Google search-result title (≤60 characters) for this service.',
-          'Requirements: front-load the primary keyword, separate brand or qualifier with " — ", no emoji, no trailing punctuation, no quotes.',
+          'Write a Google search-result title (50–60 characters) for this service.',
+          'Requirements:',
+          '- Lead with the primary keyword from the priority list (verbatim or near-verbatim) — it must appear in the first 30 characters.',
+          '- Include the jurisdiction abbreviation (US / UK / Canada) when the brief lists one.',
+          '- Separate brand or qualifier with " — " (em dash + spaces).',
+          '- NEVER start with "I will", "We will", or any pronoun + verb preamble. This is a Google title, not a marketplace gig title.',
+          '- No emoji, no trailing punctuation, no quotes.',
           'Return ONLY the title text.',
           '',
           'Context:',
@@ -103,8 +108,12 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
       return {
         format: 'string', hardLimit: 160,
         prompt: [
-          'Write a meta description (search snippet) of exactly 130–155 characters.',
-          'Requirements: lead with what the buyer gets, include one concrete deliverable or proof point, end with no trailing ellipsis or quotation marks.',
+          'Write a meta description (search snippet) of 140–155 characters.',
+          'Requirements:',
+          '- The primary keyword from the priority list appears in the first 60 characters.',
+          '- The jurisdiction (USCIS / Home Office / IRCC, or the abbreviation US / UK / Canada) appears once.',
+          '- One concrete deliverable or proof point named (e.g. "drafted by a licensed immigration attorney", "filed in 5 business days", "covers RFE responses").',
+          '- Ends with a soft CTA fragment ("Start today.", "Get a quote.", "Book a consult."). No trailing ellipsis or quotation marks.',
           'Return ONLY the description text, single paragraph, no labels.',
           '',
           'Context:',
@@ -128,13 +137,17 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
       return {
         format: 'string', hardLimit: 2400,
         prompt: [
-          'Write a long-form gig description, 400–700 words, plain prose, no markdown headings.',
+          'Write a long-form gig description, 500–700 words, plain prose, no markdown headings.',
+          'SEO placement rules (non-negotiable):',
+          '- Primary keyword from the priority list appears in the FIRST sentence of paragraph 1.',
+          '- Jurisdiction (USCIS / Home Office / IRCC, or US / UK / Canada) appears in paragraph 1 and paragraph 3.',
+          '- 2–3 secondary priority keywords woven naturally across paragraphs 2–4 (max one occurrence per keyword per 100 words; no stuffing).',
           'Structure:',
-          '1) One opening paragraph naming the buyer and outcome.',
-          '2) "What you get" paragraph listing the concrete deliverables in prose (no bullets).',
-          '3) "How it works" paragraph describing the process and timeline.',
-          '4) "Who it\'s for" paragraph naming the ideal client and the cases this is NOT for.',
-          'No emoji. No markdown bullets. No promotional fluff. Return ONLY the description prose.',
+          '1) Opening paragraph (60–100 words): name the buyer, the outcome, and the primary keyword. Match the buyer\'s search intent — not "I will help…" but "If you are filing an X / facing a Y…".',
+          '2) "What you get" paragraph (100–150 words): concrete deliverables in prose, no bullets.',
+          '3) "How it works" paragraph (100–150 words): process, timeline, what the buyer does at each step.',
+          '4) "Who it\'s for" paragraph (100–150 words): ideal client + cases this is NOT for. Honest scoping helps qualified-lead quality and reduces refunds.',
+          'No emoji. No markdown bullets. No promotional fluff ("amazing", "guaranteed", "world-class"). No outcome promises. Return ONLY the description prose.',
           '',
           'Context:',
           baseContext,
@@ -145,7 +158,12 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
         format: 'list', hardLimit: 5,
         prompt: [
           'Suggest 5 marketplace search tags for this service.',
-          'Requirements: lowercase, 1–3 words each, no punctuation other than spaces, no emoji, no hashtags.',
+          'Tag mix (aim for this distribution across the 5 tags):',
+          '- 1 head term — the primary keyword from the priority list (e.g. "asylum application").',
+          '- 2 long-tail variants — primary keyword + intent or document modifier (e.g. "asylum application help", "i-589 form drafting").',
+          '- 1 jurisdiction-tagged variant — primary keyword + jurisdiction (e.g. "us asylum filing", "uk spouse visa").',
+          '- 1 related secondary keyword pulled from the priority list (do NOT invent — must appear in the brief).',
+          'Format: lowercase, 1–3 words each, no punctuation other than spaces, no emoji, no hashtags.',
           'Return ONLY the tags, comma-separated on a single line. No labels, no quotes.',
           '',
           'Context:',
@@ -157,6 +175,11 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
         format: 'faq',
         prompt: [
           'Generate 5 frequently-asked questions a buyer would have for this gig, with concise answers.',
+          'SEO requirements (these FAQs feed FAQPage schema for rich snippets — they must read as standalone answers):',
+          '- Each question is phrased like a real Google search: starts with "How", "Can", "Do", "What", "When", "Is", or "Will".',
+          '- At least 2 questions include the jurisdiction (US / UK / Canada or USCIS / Home Office / IRCC).',
+          '- At least 2 questions include a priority keyword from the brief (verbatim or close variant).',
+          '- Each answer is a self-contained snippet: opens with the answer (no "Yes, but…" hedging), no "see above", no pronoun back-references to earlier Q/A.',
           'Output format — exactly this shape, no markdown, no numbering:',
           '',
           'Q: <question ending with ?>',
@@ -313,6 +336,21 @@ const SYSTEM_PROMPT = [
   'Output ONLY the requested text — no markdown, no labels, no explanations, no headings unless the field requires them.',
 ].join(' ')
 
+// Field-agnostic SEO craft rules. Injected after the research brief
+// (which supplies the keywords) and before the per-field task (which
+// supplies the shape). Order matters: research → playbook → task means
+// the model has the words, the rules of engagement, then the spec.
+const SEO_PLAYBOOK = [
+  '## SEO craft rules — apply to every draft',
+  '1. Primary keyword = the first entry in the priority list above. Use it verbatim where it fits; use a close variant elsewhere. Place it in the first 60 characters of any prose field.',
+  '2. Match search intent, not seller phrasing. Buyers type "draft I-589 asylum application", not "I will help you draft". For seo_title, description, and FAQ questions, lead with the buyer\'s phrasing — the public title field is the only place "I will…" belongs.',
+  '3. Jurisdiction modifier is non-negotiable. If the brief lists a jurisdiction, the abbreviation OR full name appears in: seo_title, seo_description, opening paragraph of description, and ≥2 FAQ entries.',
+  '4. Semantic density without stuffing. Across description + FAQ, place 2–3 secondary priority keywords in natural sentences. Cap at one occurrence per ~100 words per term.',
+  '5. FAQ entries are FAQ-schema fodder. Each question must be phrasable as a real Google search ("how long…", "can I…", "do I need…", "what happens if…"). Each answer must read as a standalone snippet — no "see above", no pronoun back-references.',
+  '6. CTR phrasing. seo_title and seo_description should feel like a direct answer to the buyer\'s query — concrete deliverable + jurisdiction beats clever wordplay every time.',
+  '7. Length floors. Long-form description targets 500–700 words; seo_description targets 140–155 chars; FAQ targets 5+ entries. Shorter = thinner = lower ranking.',
+].join('\n')
+
 export async function draftField(
   field: SuggestField,
   context: SuggestContext,
@@ -345,6 +383,8 @@ export async function draftField(
   const researchBlock = serializeResearch(research)
   const userMessage = [
     researchBlock,
+    '',
+    SEO_PLAYBOOK,
     '',
     '## Task',
     spec.prompt,
