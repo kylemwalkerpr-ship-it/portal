@@ -5,6 +5,7 @@ function dollarsFromCents(cents: unknown) {
 }
 
 export async function GET() {
+  try {
   const auth = await getCurrentConsultant()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
@@ -126,4 +127,9 @@ export async function GET() {
     orders,
     earningsByDay: days,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[consultant/data] unhandled error:', err)
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
