@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import { C, Btn } from './shared'
+import ProfileAIDraftButton from '../profile/ProfileAIDraftButton'
 
 // Editable Fiverr-style profile builder for the signed-in attorney.
 // Headshot, tagline, intro, bio, languages, years of experience, education,
@@ -221,6 +222,7 @@ export default function AttorneyProfileEditor() {
           maxLength={160}
           placeholder="e.g. F-1 reinstatement specialist · 200+ approvals · responses within an hour"
           onSave={(v) => save('tagline', v)}
+          aiField="tagline"
         />
         <EditableField
           label="Intro / byline"
@@ -230,6 +232,7 @@ export default function AttorneyProfileEditor() {
           multiline
           placeholder="I help international students reinstate their F-1 status fast. After 12 years and 200+ approved cases, I know exactly what USCIS wants to see — and what to leave out."
           onSave={(v) => save('intro', v)}
+          aiField="intro"
         />
       </Card>
 
@@ -245,6 +248,7 @@ export default function AttorneyProfileEditor() {
           rows={8}
           placeholder="Open with a paragraph about your practice. Then write a second paragraph about who your ideal client is, and a third about how you work."
           onSave={(v) => save('bio', v)}
+          aiField="bio"
         />
       </Card>
 
@@ -305,6 +309,7 @@ export default function AttorneyProfileEditor() {
             value={a.practice_areas}
             placeholder="Immigration, Family, Housing"
             onSave={(v) => save('practice_areas', v)}
+            aiField="practice_areas"
           />
         </div>
       </Card>
@@ -318,6 +323,7 @@ export default function AttorneyProfileEditor() {
           values={a.specialties || []}
           placeholder="Add a specialty…"
           onChange={(arr) => save('specialties', arr)}
+          aiField="specialties"
         />
         <div style={{ height: '14px' }} />
         <TagEditor
@@ -326,6 +332,7 @@ export default function AttorneyProfileEditor() {
           values={a.languages || []}
           placeholder="Add a language…"
           onChange={(arr) => save('languages', arr)}
+          aiField="languages"
         />
       </Card>
 
@@ -457,7 +464,7 @@ function SectionLabel({ children }) {
   )
 }
 
-function EditableField({ label, help, value, onSave, multiline, rows = 3, placeholder, type = 'text', maxLength }) {
+function EditableField({ label, help, value, onSave, multiline, rows = 3, placeholder, type = 'text', maxLength, aiField }) {
   const [draft, setDraft] = React.useState(value ?? '')
   const [focused, setFocused] = React.useState(false)
   React.useEffect(() => setDraft(value ?? ''), [value])
@@ -483,7 +490,18 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
 
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <span style={fieldLabelStyle}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <span style={fieldLabelStyle}>{label}</span>
+        {aiField && (
+          <ProfileAIDraftButton
+            field={aiField}
+            onApply={(v) => {
+              setDraft(v)
+              onSave(v)
+            }}
+          />
+        )}
+      </span>
       {multiline ? (
         <textarea rows={rows} {...inputProps} style={{ ...inputProps.style, resize: 'vertical' }} />
       ) : (
@@ -494,7 +512,7 @@ function EditableField({ label, help, value, onSave, multiline, rows = 3, placeh
   )
 }
 
-function TagEditor({ label, help, values, placeholder, onChange }) {
+function TagEditor({ label, help, values, placeholder, onChange, aiField }) {
   const [draft, setDraft] = React.useState('')
   function addFromDraft() {
     const v = draft.trim()
@@ -512,7 +530,15 @@ function TagEditor({ label, help, values, placeholder, onChange }) {
   }
   return (
     <div>
-      <span style={fieldLabelStyle}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <span style={fieldLabelStyle}>{label}</span>
+        {aiField && (
+          <ProfileAIDraftButton
+            field={aiField}
+            onApply={(v) => onChange(Array.isArray(v) ? v : [])}
+          />
+        )}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '8px 0 10px' }}>
         {values.length === 0 && <span style={{ color: C.textDim, fontSize: '13px' }}>No {label.toLowerCase()} added yet.</span>}
         {values.map((v) => (

@@ -10,6 +10,7 @@ import DashboardGuide from './DashboardGuide'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
 import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
+import ProfileAIDraftButton from '../profile/ProfileAIDraftButton'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -1564,7 +1565,13 @@ function ConsultantApp({ onLogout }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <Input label="First and last name" value={profileName} onChange={setProfileName} placeholder="First Last" />
           <Input label="Email" type="email" value={profileEmail} onChange={setProfileEmail} placeholder="Email address" />
-          <Input label="Bio" value={profileBio} onChange={setProfileBio} placeholder="Short profile summary" />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: C.text }}>Bio</span>
+              <ProfileAIDraftButton field="bio" onApply={(v) => setProfileBio(String(v || ''))} />
+            </div>
+            <Input label="" value={profileBio} onChange={setProfileBio} placeholder="Short profile summary" />
+          </div>
 
           {/* Free consult toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
