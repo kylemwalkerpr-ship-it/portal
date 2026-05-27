@@ -273,7 +273,6 @@ export function TwoFactorCard() {
           <input
             type="text"
             inputMode="numeric"
-            pattern="[0-9]*"
             maxLength={8}
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}

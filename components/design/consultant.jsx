@@ -9,6 +9,7 @@ import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import DashboardGuide from './DashboardGuide'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
+import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -83,6 +84,32 @@ function EarningsChart({ days }) {
   );
 }
 
+// Consultant-specific quick reply templates for the message composer.
+// Modeled after the attorney QUICK_REPLIES but adapted for the consultant
+// context (education consulting, study abroad, visa advisory).
+const CONSULTANT_QUICK_REPLIES = [
+  {
+    label: 'Intro & next steps',
+    body:
+      'Hello — thanks for placing your order. I’ve reviewed the details and I’m ready to get started.\n\nHere’s what I’ll need from you:\n1. Any supporting documents (transcripts, acceptance letters, financial proofs)\n2. Your preferred timeline for submission\n3. Specific questions or concerns you’d like addressed\n\nReply here or upload files using the paperclip button below.',
+  },
+  {
+    label: 'Documents needed',
+    body:
+      'Could you upload the following so I can proceed with your order?\n\n• Valid passport / government-issued ID\n• Academic transcripts and certificates\n• Proof of English proficiency (if applicable)\n• Visa / immigration correspondence (if any)\n• Any previous applications or submissions\n\nUse the paperclip in the composer to attach files.',
+  },
+  {
+    label: 'Timeline & delivery',
+    body:
+      'Thanks for your patience. Here’s where things stand:\n\n• Current progress is reflected in the progress bar above.\n• I’ll update you at each stage of the work.\n• The estimated delivery date is shown on the order card.\n• If anything changes on your end, just let me know.\n\nI’ll notify you as soon as the deliverable is ready for review.',
+  },
+  {
+    label: 'Out of scope',
+    body:
+      'Thank you for reaching out. After reviewing your request, this specific item falls outside the scope of our current service agreement.\n\nI can still proceed with the original scope we agreed on. If you need something different, feel free to describe what you’re looking for and I can check if I’m able to help.',
+  },
+]
+
 function ConsultantApp({ onLogout }) {
   const [theme, applyTheme] = usePortalTheme()
   const initialPage = React.useMemo(() => {
@@ -114,6 +141,10 @@ function ConsultantApp({ onLogout }) {
   const [offersFreeConsult, setOffersFreeConsult] = React.useState(false);
   const [consultBookingUrl, setConsultBookingUrl] = React.useState('');
   const [gigUsage, setGigUsage] = React.useState({ used: 0, limit: 5 });
+  // Unread inbox badge — fetched from the unified /api/messages/unread like the attorney
+  // and student dashboards use. Fed into the Messages nav item so consultants see live
+  // unread counts rather than a generic notification badge.
+  const [unreadMessages, setUnreadMessages] = React.useState(0);
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
   const [available, setAvailable] = React.useState(true);
   const [notifPrefs, setNotifPrefs] = React.useState({ orders: true, messages: true, payments: true });
@@ -131,6 +162,9 @@ function ConsultantApp({ onLogout }) {
   const fileInputRef = React.useRef(null);
   const messageFileInputRef = React.useRef(null);
   const avatarInputRef = React.useRef(null);
+  const headshotInputRef = React.useRef(null);
+  const [uploadingHeadshot, setUploadingHeadshot] = React.useState(false);
+  const [privPrefs, setPrivPrefs] = React.useState({ show_full_name: true, share_email_with_clients: false, allow_analytics: true, marketing_emails: false });
 
   React.useEffect(() => {
     if (selectedOrder) setOrderDetailProgress(Number(selectedOrder.progress) || 0);
@@ -195,6 +229,19 @@ function ConsultantApp({ onLogout }) {
       .finally(() => setLoading(false));
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    const pull = () => {
+      fetch('/api/messages/unread', { credentials: 'same-origin' })
+        .then(r => r.json().catch(() => ({})))
+        .then(d => { if (!cancelled) setUnreadMessages(Number(d?.unread || 0)); })
+        .catch(() => null);
+    };
+    pull();
+    const id = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 30_000);
+    return () => { cancelled = true; clearInterval(id); }
+  }, []);
+
   const persistConsultantPrefs = async patch => {
     try {
       const res = await fetch('/api/consultant/profile', {
@@ -242,6 +289,24 @@ function ConsultantApp({ onLogout }) {
     } finally {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const uploadHeadshot = async file => {
+    if (!file) return;
+    setUploadingHeadshot(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/consultant/profile/avatar', { method: 'POST', credentials: 'same-origin', body: form });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || 'Upload failed');
+      setProfileAvatarUrl(data.avatar_url || '');
+    } catch (e) {
+      setActionNotice(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadingHeadshot(false);
+      if (headshotInputRef.current) headshotInputRef.current.value = '';
     }
   };
 
@@ -651,7 +716,7 @@ function ConsultantApp({ onLogout }) {
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="📦" label="Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={newOrders > 0 ? `${newOrders} new` : null} />
         <NavItem icon="👥" label="Clients" active={page === 'clients'} onClick={() => setPage('clients')} />
-        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); }} badge={notifications.length > 0 ? `${notifications.length} new` : null} />
+        <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => { setPage('messages'); }} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="💼" label="My Office" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <NavItem icon="📊" label="SEO Analytics" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/seo-analytics'} onClick={() => goToRoute('/dashboard/seo-analytics')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
@@ -767,8 +832,10 @@ function ConsultantApp({ onLogout }) {
           onLogout={onLogout}
           items={[
             { label: 'Profile settings', icon: '⚙️', action: () => setPage('settings') },
-            { label: 'Orders', icon: '📦', action: () => setPage('orders') },
+            { label: uploadingHeadshot ? 'Uploading photo…' : (profileAvatarUrl ? 'Change photo' : 'Upload headshot'), icon: '🖼️', action: () => headshotInputRef.current?.click() },
+            { label: 'Earnings', icon: '💰', action: () => setPage('earnings') },
             { label: 'Messages', icon: '💬', action: () => setPage('messages') },
+            { label: 'Orders', icon: '📦', action: () => setPage('orders') },
             { label: 'Payout setup', icon: '🏦', action: () => setPage('connect') },
           ]}
         />
@@ -1112,16 +1179,45 @@ function ConsultantApp({ onLogout }) {
                   </>
                 }
                 composer={
-                  <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
-                    <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
-                    <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
-                    <AutoGrowInput
-                      value={msgInput}
-                      onChange={setMsgInput}
-                      onSubmit={sendMessage}
-                      placeholder="Message student…"
-                    />
-                    <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
+                  <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: '4px' }}>
+                        Quick replies
+                      </span>
+                      {CONSULTANT_QUICK_REPLIES.map(t => (
+                        <button
+                          key={t.label}
+                          type="button"
+                          onClick={() => {
+                            setMsgInput(prev => prev ? `${prev.replace(/\n+$/, '')}\n\n${t.body}` : t.body);
+                          }}
+                          style={{
+                            border: `1px solid ${C.border}`,
+                            background: C.surface2,
+                            color: C.textMuted,
+                            borderRadius: '999px',
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                      <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => sendMessage(e.target.files?.[0])} />
+                      <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
+                      <AutoGrowInput
+                        value={msgInput}
+                        onChange={setMsgInput}
+                        onSubmit={sendMessage}
+                        placeholder="Message student…"
+                      />
+                      <Btn variant="primary" size="sm" onClick={sendMessage}>Send</Btn>
+                    </div>
                   </div>
                 }
               />
@@ -1406,6 +1502,43 @@ function ConsultantApp({ onLogout }) {
   );
 
   // ── SETTINGS ──
+  const [privDirty, setPrivDirty] = React.useState(false)
+  const [privSaving, setPrivSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    fetch('/api/consultant/profile', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(data => {
+        if (data?.privacy_prefs) setPrivPrefs({ ...data.privacy_prefs })
+      })
+      .catch(() => {})
+  }, [])
+
+  const savePrivacy = async () => {
+    setPrivSaving(true)
+    try {
+      const r = await fetch('/api/consultant/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ privacy_prefs: privPrefs }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || 'Save failed')
+      setPrivDirty(false)
+      setActionNotice('Privacy preferences saved.')
+    } catch (e) {
+      setActionNotice(e.message)
+    } finally {
+      setPrivSaving(false)
+    }
+  }
+
+  const togglePriv = (key) => {
+    setPrivPrefs(p => ({ ...p, [key]: !p[key] }))
+    setPrivDirty(true)
+  }
+
   const Settings = () => (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '640px' }}>
       <h2 style={{ fontSize: '20px', fontWeight: 800 }}>Settings</h2>
@@ -1433,10 +1566,7 @@ function ConsultantApp({ onLogout }) {
           <Input label="Email" type="email" value={profileEmail} onChange={setProfileEmail} placeholder="Email address" />
           <Input label="Bio" value={profileBio} onChange={setProfileBio} placeholder="Short profile summary" />
 
-          {/* Free consult toggle — when on, students see a "Free 15-min
-              consult" badge on the public card. When the URL below is
-              also set, the badge becomes a clickable Calendly/Cal.com
-              link. Without the URL, the badge stays informational. */}
+          {/* Free consult toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 600 }}>Offer a free 15-minute consult</div>
@@ -1450,9 +1580,7 @@ function ConsultantApp({ onLogout }) {
             </button>
           </div>
 
-          {/* Booking URL — only shown when the toggle above is on.
-              Hides cleanly via short-circuit so consultants who don't
-              offer consults don't see a field they can't use. */}
+          {/* Booking URL — only shown when the toggle above is on */}
           {offersFreeConsult && (
             <div style={{ padding: '4px 0' }}>
               <Input
@@ -1482,6 +1610,36 @@ function ConsultantApp({ onLogout }) {
           <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={saveProfile}>Save changes</Btn>
         </div>
       </Card>
+
+      {/* Privacy card — mirrors the attorney settings privacy_prefs pattern */}
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Privacy</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {[
+            { key: 'show_full_name', label: 'Show full name on public profile', sub: 'When off, clients see only your initials.' },
+            { key: 'share_email_with_clients', label: 'Share email with clients', sub: 'Required for order channels.' },
+            { key: 'allow_analytics', label: 'Allow product analytics', sub: 'Helps us tune search and ranking for your specialty.' },
+            { key: 'marketing_emails', label: 'Marketing emails', sub: 'Occasional updates about new features and partnerships.' },
+          ].map(({ key, label, sub }) => (
+            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: C.text }}>{label}</div>
+                <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>{sub}</div>
+              </div>
+              <button onClick={() => togglePriv(key)} style={{
+                width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+                background: privPrefs[key] ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}>
+                <div style={{ position: 'absolute', top: '3px', left: privPrefs[key] ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start', marginTop: '16px' }} disabled={privSaving || !privDirty} onClick={savePrivacy}>
+          {privSaving ? 'Saving…' : privDirty ? 'Save privacy preferences' : 'Saved'}
+        </Btn>
+      </Card>
+
       <Card>
         <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '20px' }}>Appearance</div>
         <div style={{ fontSize: '13px', color: C.textMuted, marginBottom: '16px' }}>
@@ -1503,12 +1661,15 @@ function ConsultantApp({ onLogout }) {
           </div>
         ))}
       </Card>
+
+      {/* Phone verification — same inline card used by attorney and student settings */}
+      <PhoneVerificationCard />
     </div>
   );
 
-
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
+      <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
       {Sidebar()}
       <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {TopBar({ title: { dashboard: 'My Office', orders: 'Orders', clients: 'Clients', messages: 'Messages', earnings: 'Earnings', connect: 'Payout Setup', settings: 'Settings', 'order-detail': 'Order Details' }[page] || 'My Office' })}
@@ -1528,7 +1689,16 @@ function ConsultantApp({ onLogout }) {
             {page === 'clients' && Clients()}
             {page === 'messages' && (
               <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <UnifiedInbox />
+                <UnifiedInbox
+                  canSendOffer
+                  defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
+                  onThreadChange={(id) => {
+                    if (typeof window === 'undefined') return
+                    const url = new URL(window.location.href)
+                    if (id) url.searchParams.set('thread', id); else url.searchParams.delete('thread')
+                    window.history.replaceState({}, '', url.toString())
+                  }}
+                />
               </div>
             )}
             {page === 'earnings' && Earnings()}

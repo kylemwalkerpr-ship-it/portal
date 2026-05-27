@@ -48,9 +48,16 @@ export async function GET() {
 
   const { data: profileRow } = await db
     .from('profiles')
-    .select('id, email, full_name, status, username, intake_last_step')
+    .select('id, email, full_name, status, username, intake_last_step, privacy_prefs')
     .eq('id', profile.id)
     .single()
+
+  const DEFAULT_PRIVACY = {
+    show_full_name: true,
+    share_email_with_clients: false,
+    allow_analytics: true,
+    marketing_emails: false,
+  }
 
   return Response.json({
     profile: {
@@ -61,6 +68,7 @@ export async function GET() {
       username: profileRow?.username ?? null,
       intake_last_step: profileRow?.intake_last_step ?? 0,
     },
+    privacy_prefs: { ...DEFAULT_PRIVACY, ...((profileRow as any)?.privacy_prefs || {}) },
     consultant: full ?? null,
   })
 }
@@ -125,6 +133,17 @@ export async function PATCH(req: Request) {
     consultantPayload.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
   }
   if (body.notif_prefs && typeof body.notif_prefs === 'object') consultantPayload.notif_prefs = body.notif_prefs
+
+  /* ── profiles-level privacy prefs ── */
+  if (body.privacy_prefs && typeof body.privacy_prefs === 'object') {
+    const DEFAULT_PRIVACY = {
+      show_full_name: true,
+      share_email_with_clients: false,
+      allow_analytics: true,
+      marketing_emails: false,
+    }
+    profilePayload.privacy_prefs = { ...DEFAULT_PRIVACY, ...body.privacy_prefs }
+  }
 
   for (const [k, max] of Object.entries(RICH_TEXT)) {
     if (k in body) consultantPayload[k] = cleanText((body as any)[k], max)

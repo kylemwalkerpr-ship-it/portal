@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "test": "jest",
+    "lint": "next lint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "build": "next build --webpack && opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare deploy"
@@ -19,10 +22,14 @@
     "react-easy-crop": "^5.5.7"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@playwright/test": "^1.60.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.0",
     "@types/react": "^19.0.0",
     "@types/supertest": "^6.0.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
     "jest": "^30.2.0",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.5",
