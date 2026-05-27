@@ -201,28 +201,31 @@ test.describe('Consultant dashboard Settings (auth required)', () => {
 
 test.describe('Consultant Settings component verification', () => {
 
-  test('privacy toggles are defined in the consultant component', () => {
-    // This test verifies the component file contains the expected
-    // privacy toggle structure by checking the source file.
+  test('privacy toggles are defined in the consultant-settings sub-component', () => {
+    // This test verifies the consultant-settings sub-component file
+    // contains the expected privacy toggle structure.
     // It runs without a browser.
     const fs = require('fs')
-    const source = fs.readFileSync('components/design/consultant.jsx', 'utf8')
 
-    // Verify privacy-related code exists
-    expect(source).toContain('privPrefs')
-    expect(source).toContain('privDirty')
-    expect(source).toContain('savePrivacy')
-    expect(source).toContain('togglePriv')
+    // Check the parent still manages privPrefs/privDirty state
+    const parentSrc = fs.readFileSync('components/design/consultant.jsx', 'utf8')
+    expect(parentSrc).toContain('privPrefs')
+    expect(parentSrc).toContain('privDirty')
 
-    // Verify PhoneVerificationCard import
-    expect(source).toContain('PhoneVerificationCard')
-    expect(source).toContain("from '@/components/PhoneVerificationCard'")
+    // Check the sub-component has the privacy toggle logic
+    const settingsSrc = fs.readFileSync('components/design/consultant-settings.jsx', 'utf8')
+    expect(settingsSrc).toContain('savePrivacy')
+    expect(settingsSrc).toContain('togglePriv')
 
-    // Verify the privacy toggle labels exist
-    expect(source).toContain('show_full_name')
-    expect(source).toContain('share_email_with_clients')
-    expect(source).toContain('allow_analytics')
-    expect(source).toContain('marketing_emails')
+    // Verify PhoneVerificationCard import is in the settings sub-component
+    expect(settingsSrc).toContain('PhoneVerificationCard')
+    expect(settingsSrc).toContain("from '@/components/PhoneVerificationCard'")
+
+    // Verify the privacy toggle labels exist in the sub-component
+    expect(settingsSrc).toContain('show_full_name')
+    expect(settingsSrc).toContain('share_email_with_clients')
+    expect(settingsSrc).toContain('allow_analytics')
+    expect(settingsSrc).toContain('marketing_emails')
   })
 
   test('UnifiedInbox has canSendOffer config', () => {

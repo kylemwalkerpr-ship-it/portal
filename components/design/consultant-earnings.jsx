@@ -9,7 +9,7 @@ import { C, Btn, Badge, Card, StatCard } from './shared'
  * the Earnings + Payout Setup pages.
  */
 
-export default function ConsultantEarnings({ orders, connectStatus, monthEarnings, totalEarnings, onRefresh }) {
+export default function ConsultantEarnings({ orders, connectStatus, monthEarnings, totalEarnings, onNavigate }) {
   const completed = orders.filter(o => o.status === 'completed');
   const transferredCents = completed.reduce((a, o) => a + (o.payoutStatus === 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
   const pendingCents = completed.reduce((a, o) => a + (o.payoutStatus !== 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
@@ -50,7 +50,7 @@ export default function ConsultantEarnings({ orders, connectStatus, monthEarning
               View payout dashboard
             </Btn>
           ) : (
-            <Btn variant="primary" size="md" onClick={() => onRefresh?.('connect')}>Set up payouts</Btn>
+            <Btn variant="primary" size="md" onClick={() => onNavigate?.('connect')}>Set up payouts</Btn>
           )}
         </div>
       </div>
