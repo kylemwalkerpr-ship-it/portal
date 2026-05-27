@@ -50,6 +50,7 @@ const isPublicRoute = createRouteMatcher([
 // the portal's redirect-to-sign-in response (which has no CORS headers)
 // breaks the fetch with "Preflight response is not successful".
 const ALLOWED_CROSS_ORIGINS = new Set([
+  'https://portal.yousafeconsultancy.com',
   'https://market.yousafeconsultancy.com',
   'https://yousafeconsultancy.com',
   'https://www.yousafeconsultancy.com',
@@ -158,13 +159,30 @@ export default clerkMiddleware(
     const lang = resolveLanguage(req)
 
     // ── CORS preflight ───────────────────────────────────────────────────
-    // OPTIONS to any API path from an allowed cross-origin gets a 204
-    // with the right Access-Control-* headers. Without this the browser
-    // never even sends the real request because the preflight fails.
-    if (req.method === 'OPTIONS' && pathname.startsWith('/api/')) {
-      const origin = req.headers.get('origin') || ''
-      if (ALLOWED_CROSS_ORIGINS.has(origin)) {
-        return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
+    // OPTIONS from an allowed cross-origin gets a 204 with the right
+    // Access-Control-* headers. Covers:
+    //   • /api/*           — JSON endpoints (most common case)
+    //   • /gigs/*          — public gig HTML pages. Some clients (third-party
+    //                        embed widgets, share-card preview pulls,
+    //                        cached service-worker fetches from prior
+    //                        deployments) fetch them with credentials,
+    //                        which triggers a preflight. Without OPTIONS
+    //                        coverage the preflight 400s and the user
+    //                        sees a console error storm even though the
+    //                        page itself loaded fine via normal navigation.
+    //   • /providers/*     — public seller profile pages, same rationale.
+    //   • /marketplace/*   — legacy /marketplace-prefixed URLs.
+    if (req.method === 'OPTIONS') {
+      const isCorsablePath =
+        pathname.startsWith('/api/') ||
+        pathname.startsWith('/gigs/') ||
+        pathname.startsWith('/providers/') ||
+        pathname.startsWith('/marketplace/')
+      if (isCorsablePath) {
+        const origin = req.headers.get('origin') || ''
+        if (ALLOWED_CROSS_ORIGINS.has(origin)) {
+          return new NextResponse(null, { status: 204, headers: corsHeadersFor(req) })
+        }
       }
     }
 

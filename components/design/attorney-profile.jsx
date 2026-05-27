@@ -40,15 +40,34 @@ export default function AttorneyProfile() {
   const [refreshKey, setRefreshKey] = React.useState(0)
 
   React.useEffect(() => {
+    let cancelled = false
     setLoading(true); setError('')
-    fetch('/api/attorney/profile/strength', { credentials: 'same-origin' })
-      .then(r => r.json().catch(() => ({})).then(d => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => { if (!ok) throw new Error(d?.error || 'Failed'); setStrength(d) })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false))
+    ;(async () => {
+      try {
+        const res = await fetch('/api/attorney/profile/strength', { credentials: 'same-origin' })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          // Session-expiry 401s are routine on visibility refetches and
+          // shouldn't paint an angry red error card while the previous
+          // strength score is still on screen. Keep the prior state,
+          // skip the error UI, and let the next user action route them
+          // through sign-in cleanly. Other failures still surface.
+          if (res.status === 401 && refreshKey > 0) return
+          throw new Error(body?.error || `Request failed (${res.status})`)
+        }
+        if (!cancelled) setStrength(body)
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Failed')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [refreshKey])
 
-  // Re-fetch strength when the page becomes visible again (after edits)
+  // Re-fetch strength when the page becomes visible again (after edits).
+  // The 401-on-expired-session swallow above keeps this silent when the
+  // user comes back to a long-idle tab.
   React.useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') setRefreshKey(k => k + 1) }
     document.addEventListener('visibilitychange', onVis)
