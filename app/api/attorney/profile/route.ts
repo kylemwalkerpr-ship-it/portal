@@ -239,6 +239,43 @@ export async function PATCH(req: Request) {
         .update(applicationWrite)
         .eq('id', app.id)
       if (appErr) return Response.json({ error: appErr.message }, { status: 500 })
+    } else {
+      // Self-heal: the seller is an active attorney without an application
+      // row (manual DB activation, legacy state, or admin-granted role).
+      // Previously the PATCH silently skipped the write here — the field
+      // showed "Saved" locally but the value had nowhere to live, so a
+      // tab switch / refresh reverted it to blank. Create a shell row
+      // pre-approved (the seller already has an active attorney record)
+      // with the just-sent values and empty strings for the other NOT NULL
+      // columns. Subsequent PATCHes will hit the update branch above.
+      const nowIso = new Date().toISOString()
+      const { data: created, error: createErr } = await ctx.db
+        .from('attorney_applications')
+        .insert({
+          profile_id: ctx.profileId,
+          email: ctx.email,
+          full_name: ctx.fullName || ctx.email,
+          credential_type: applicationWrite.credential_type ?? '',
+          bar_number: applicationWrite.bar_number ?? '',
+          jurisdictions: '',
+          practice_areas: '',
+          malpractice_insurance: '',
+          profile_url: '',
+          capacity: '',
+          status: 'approved',
+          decided_at: nowIso,
+        })
+        .select('id')
+        .single()
+      if (createErr) return Response.json({ error: createErr.message }, { status: 500 })
+      // Link the attorneys row to the new application so downstream joins
+      // (public sellers list, admin queue) resolve it.
+      if (created?.id) {
+        await ctx.db
+          .from('attorneys')
+          .update({ application_id: created.id })
+          .eq('id', ctx.attorneyId)
+      }
     }
   }
 
