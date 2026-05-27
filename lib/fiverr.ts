@@ -80,9 +80,14 @@ export function normalizeRevision(value: unknown) {
  * Uniqueness is handled by the caller — gig creation appends a short hash
  * suffix, profile usernames are checked unique at write time.
  */
+// Articles, prepositions, conjunctions — zero SEO signal.
+// Pronouns + modal verbs strip the "I will / you can / we help …" Fiverr
+// preamble so the keyword leads the slug instead of being buried.
 const STOP_WORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'of', 'for', 'to', 'in', 'on', 'at',
   'by', 'with', 'is', 'are', 'be', 'was', 'were',
+  'i', 'you', 'we', 'my', 'your', 'our',
+  'will', 'can', 'do', 'help', 'get',
 ])
 
 export function buildSlug(input: string): string {
