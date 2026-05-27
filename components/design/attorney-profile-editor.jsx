@@ -16,6 +16,12 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
   const [savedFlash, setSavedFlash] = React.useState('')
   const [uploading, setUploading] = React.useState(false)
   const fileInputRef = React.useRef(null)
+  // Track in-flight saves so the "Save profile" button at the bottom
+  // of the editor can WAIT for them to complete before flashing
+  // success — without this it raced a refetch against the blur-
+  // triggered PATCHes and the refetch GET would clobber the local
+  // state with pre-save data, making fields appear to reset on click.
+  const pendingSavesRef = React.useRef(new Set())
 
   React.useEffect(() => {
     fetch('/api/attorney/profile', { credentials: 'same-origin' })
@@ -37,8 +43,12 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
 
   // Save now THROWS on failure so callers (AI button) can await the
   // round-trip and decide whether to close their popover or surface the
-  // error. Returns the merged attorney row on success.
+  // error. Returns true on success.
   async function save(field, value) {
+    // Mark this save as in-flight so the "Save profile" bottom button
+    // can wait on it instead of racing a refetch against it.
+    const saveToken = Symbol(field)
+    pendingSavesRef.current.add(saveToken)
     setSaving(true)
     setError('')
     try {
@@ -88,6 +98,7 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
       setError(e.message)
       throw e
     } finally {
+      pendingSavesRef.current.delete(saveToken)
       setSaving(false)
     }
   }
@@ -454,11 +465,16 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
 
       {/* Explicit save bar. Fields already auto-save on blur, but the
           button gives users a single, deliberate action so they can
-          confirm everything is committed before leaving the page. It
-          dispatches a `submit` event that bubbles to whatever input
-          currently has focus — that forces any unblurred draft to
-          commit via EditableField's onBlur path — and then re-fetches
-          the canonical profile so the displayed values match the DB. */}
+          confirm everything is committed before leaving the page.
+          Behaviour:
+            1. Blur the focused input so any unblurred draft commits via
+               EditableField's onBlur → save() PATCH path.
+            2. WAIT for all in-flight saves to settle (pendingSavesRef).
+               Without this we used to fire a parallel GET that would
+               race the blur-triggered PATCHes and clobber the local
+               state with pre-save data ("fields reset to blank when I
+               click Save profile"). The local state is canonical after
+               every save resolves, so no refetch is needed. */}
       <div
         style={{
           position: 'sticky', bottom: 0, marginTop: '12px',
@@ -475,24 +491,27 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
             type="button"
             disabled={saving}
             onClick={async () => {
-              // Force any focused input to blur so its draft commits via
-              // EditableField's onBlur handler before we re-fetch.
+              setError('')
+              // 1) Blur the active input — synchronously fires onBlur on
+              //    EditableField, which (if dirty) calls save(...) and
+              //    registers a token in pendingSavesRef.
               const el = typeof document !== 'undefined' ? document.activeElement : null
               if (el && typeof (el).blur === 'function') (el).blur()
-              setSaving(true)
-              setError('')
-              try {
-                const res = await fetch('/api/attorney/profile', { credentials: 'same-origin' })
-                const payload = await res.json().catch(() => null)
-                if (!res.ok) throw new Error(payload?.error || 'Could not refresh profile.')
-                setData(payload)
-                setSavedFlash('Profile saved')
-                window.setTimeout(() => setSavedFlash(''), 1600)
-              } catch (e) {
-                setError(e.message)
-              } finally {
-                setSaving(false)
+              // 2) Give React/microtasks one tick so the blur-triggered
+              //    save() handlers actually start and register their tokens.
+              await new Promise((resolve) => setTimeout(resolve, 0))
+              // 3) Poll until every in-flight save has resolved. Bail
+              //    after a generous timeout so the UI never deadlocks on
+              //    a stuck network request.
+              const start = Date.now()
+              while (pendingSavesRef.current.size > 0 && Date.now() - start < 8000) {
+                await new Promise((resolve) => setTimeout(resolve, 80))
               }
+              setSavedFlash('Profile saved')
+              window.setTimeout(() => setSavedFlash(''), 1600)
+              // 4) Tell the parent so the strength sidebar recomputes
+              //    against the latest persisted state.
+              try { onSaved && onSaved() } catch { /* ignore */ }
             }}
           >
             {saving ? 'Saving…' : 'Save profile'}
