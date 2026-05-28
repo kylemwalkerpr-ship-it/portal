@@ -28,6 +28,7 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
   const [stage, setStage] = React.useState('input')
   const [hint, setHint] = React.useState('')
   const [busy, setBusy] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState('')
   const [draftText, setDraftText] = React.useState('')
   const [draftList, setDraftList] = React.useState([])
@@ -103,7 +104,7 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
     // on success or surface the error inline. Without awaiting, a
     // silent 401 / network failure looked like "the field didn't stick"
     // because the popover closed and the user got no feedback.
-    setBusy(true)
+    setSaving(true)
     setError('')
     try {
       await onApply(valueToApply)
@@ -111,15 +112,19 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
     } catch (e) {
       setError(e?.message || 'Could not save. Try again.')
     } finally {
-      setBusy(false)
+      setSaving(false)
     }
   }
 
+  // Regenerate re-runs the AI with the same hint and replaces the current
+  // draft in place — it stays on the preview stage. Previously it dumped
+  // the user back to the hint-input stage, which read as "the draft
+  // vanished / the popover closed" instead of producing a fresh draft.
   function regenerate() {
-    setStage('input')
     setError('')
     setDraftText('')
     setDraftList([])
+    runGenerate()
   }
 
   const indigo = C.cyan
@@ -277,24 +282,30 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
                 <button
                   type="button"
                   onClick={regenerate}
+                  disabled={busy || saving}
                   style={{
                     padding: '6px 12px', borderRadius: '6px',
                     background: 'transparent', color: indigo,
                     border: `1px solid ${indigo}55`,
-                    fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                    fontSize: '12px', fontWeight: 600,
+                    cursor: busy || saving ? 'wait' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
                   }}
                 >
-                  Regenerate
+                  {SPARKLE}
+                  {busy ? 'Regenerating…' : 'Regenerate'}
                 </button>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
                     onClick={resetAll}
+                    disabled={busy || saving}
                     style={{
                       padding: '6px 12px', borderRadius: '6px',
                       background: 'transparent', color: C.textMuted,
                       border: `1px solid ${C.border2}`,
-                      fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                      fontSize: '12px', fontWeight: 600,
+                      cursor: busy || saving ? 'wait' : 'pointer',
                     }}
                   >
                     Cancel
@@ -302,15 +313,15 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
                   <button
                     type="button"
                     onClick={acceptDraft}
-                    disabled={busy}
+                    disabled={busy || saving}
                     style={{
                       padding: '6px 14px', borderRadius: '6px',
-                      background: busy ? C.border : indigo, color: '#FFFFFF',
+                      background: busy || saving ? C.border : indigo, color: '#FFFFFF',
                       border: 'none', fontSize: '12px', fontWeight: 700,
-                      cursor: busy ? 'wait' : 'pointer',
+                      cursor: busy || saving ? 'wait' : 'pointer',
                     }}
                   >
-                    {busy ? 'Saving…' : 'Save to field'}
+                    {saving ? 'Saving…' : 'Save to field'}
                   </button>
                 </div>
               </div>
