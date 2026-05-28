@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -41,6 +42,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     let application = null
+    let credentialType: string | null = null
     if (role === 'attorney') {
       const { data: appData } = await db
         .from('attorney_applications')
@@ -51,6 +53,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         .limit(1)
         .maybeSingle()
       application = appData
+      // Editable credential off the attorneys row wins over the application.
+      const credential = await resolveAttorneyCredential(db, profileId)
+      credentialType = credential.credential_type || (appData?.credential_type ?? null)
     }
 
     const ratingsTable = role === 'attorney' ? 'attorney_ratings' : 'consultant_ratings'
@@ -110,7 +115,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       practice_areas: provider.practice_areas,
       specialties: provider.specialties,
       languages: provider.languages,
-      credential_type: application?.credential_type,
+      credential_type: credentialType ?? application?.credential_type,
       years_experience: provider.years_experience,
       starting_price: provider.starting_price,
       offers_free_consult: provider.offers_free_consult,

@@ -401,7 +401,7 @@ function PreviewTab({ strength }) {
                 {profile.full_name || profile.email}
               </div>
               <div style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>
-                {application.credential_type || 'Attorney'}
+                {a.credential_type || application.credential_type || 'Attorney'}
                 {a.years_experience ? ` · ${a.years_experience} yrs experience` : ''}
                 {a.timezone ? ` · ${a.timezone}` : ''}
               </div>

@@ -11,6 +11,7 @@
  * 78%, the publish gate sees 78%.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveAttorneyCredential } from './attorneyCredential'
 
 export interface StrengthCheck {
   id: string
@@ -63,14 +64,11 @@ export async function computeAttorneyStrength(
     .eq('id', profileId)
     .single()
 
-  const { data: appRow } = await db
-    .from('attorney_applications')
-    .select('credential_type, bar_number, malpractice_insurance')
-    .eq('profile_id', profileId)
-    .eq('status', 'approved')
-    .order('decided_at', { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle()
+  // credential_type + bar_number resolve via the shared helper (editable
+  // attorneys columns first, approved application as fallback) so this
+  // checklist clears the moment the editor saves — previously it only read
+  // the approved application and never reflected an edit.
+  const credential = await resolveAttorneyCredential(db, profileId)
 
   const ratingsRes = attorneyId
     ? await db.from('attorney_ratings').select('stars').eq('attorney_id', attorneyId)
@@ -95,8 +93,8 @@ export async function computeAttorneyStrength(
     { id: 'education',      label: 'Education on file',                   weight: 4,  done: hasText(a.education) },
     { id: 'timezone',       label: 'Timezone set',                        weight: 2,  done: hasText(a.timezone) },
     { id: 'video',          label: 'Video introduction',                  weight: 4,  done: hasText(a.video_intro_url), hint: 'Optional but high-impact — students watch before booking.' },
-    { id: 'bar',            label: 'Bar / registration number',           weight: 6,  done: hasText(appRow?.bar_number), hint: 'Required for verified listing.' },
-    { id: 'credential',     label: 'Credential type recorded',            weight: 3,  done: hasText(appRow?.credential_type) },
+    { id: 'bar',            label: 'Bar / registration number',           weight: 6,  done: hasText(credential.bar_number), hint: 'Required for verified listing.' },
+    { id: 'credential',     label: 'Credential type recorded',            weight: 3,  done: hasText(credential.credential_type) },
     { id: 'free_consult',   label: 'Free consultation toggle decided',    weight: 2,  done: typeof a.offers_free_consult === 'boolean' },
     { id: 'available',      label: 'Availability set to accepting work',  weight: 2,  done: a.available !== false },
   ]
@@ -124,8 +122,8 @@ export async function computeAttorneyStrength(
     completed: checks.filter((c) => c.done).length,
     total: checks.length,
     ratings: ratingsAgg,
-    credential_type: (appRow?.credential_type as string | null) ?? null,
-    bar_number: (appRow?.bar_number as string | null) ?? null,
+    credential_type: credential.credential_type,
+    bar_number: credential.bar_number,
     username,
     available: a.available !== false,
   }

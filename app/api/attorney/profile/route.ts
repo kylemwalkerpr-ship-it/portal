@@ -1,6 +1,7 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 
 const ENRICHED_FIELDS = [
   'tagline',
@@ -18,6 +19,8 @@ const ENRICHED_FIELDS = [
   'jurisdictions',
   'practice_areas',
   'available',
+  'credential_type',
+  'bar_number',
 ] as const
 
 type EditablePayload = Partial<Record<(typeof ENRICHED_FIELDS)[number], unknown>>
@@ -77,6 +80,15 @@ export async function GET() {
     attorneyRatingAggregate(db, profile.id),
   ])
 
+  // credential_type + bar_number resolve to a single value (editable
+  // attorneys columns, falling back to the approved application) so the
+  // editor reads exactly what PATCH writes. Merged onto the attorney
+  // object — the editor reads them from there.
+  const credential = await resolveAttorneyCredential(db, profile.id)
+  const attorneyData = attorneyRes.data
+    ? { ...attorneyRes.data, ...credential }
+    : attorneyRes.data ?? null
+
   return Response.json({
     profile: {
       id: profile.id,
@@ -86,7 +98,7 @@ export async function GET() {
       username: (profile as any).username ?? null,
       intake_last_step: (profile as any).intake_last_step ?? 0,
     },
-    attorney: attorneyRes.data ?? null,
+    attorney: attorneyData,
     application: applicationRes.data ?? null,
     rating,
   })
@@ -133,6 +145,12 @@ export async function PATCH(req: Request) {
     update.consult_booking_url = raw && /^https?:\/\//i.test(raw) ? raw : null
   }
   if ('available' in body) update.available = Boolean(body.available)
+  // credential_type + bar_number now live on the attorneys row (the editable
+  // copy). attorney_applications stays the immutable vetting record. Written
+  // here via the same attorneys update as every other profile field, so the
+  // existing missing-column self-heal below covers the pre-migration case.
+  if ('credential_type' in body) update.credential_type = clean((body as any).credential_type, 120)
+  if ('bar_number' in body) update.bar_number = clean((body as any).bar_number, 120)
 
   if ('years_experience' in body) {
     const n = Number(body.years_experience)
@@ -163,14 +181,6 @@ export async function PATCH(req: Request) {
     }
   }
 
-  // bar_number + credential_type live on attorney_applications (the source of
-  // truth for credential vetting). Attorneys edit these from the intake
-  // wizard. Write to the most recent approved application.
-  let applicationWrite: { bar_number?: string | null; credential_type?: string | null } = {}
-  if ('bar_number' in body) applicationWrite.bar_number = clean((body as any).bar_number, 120)
-  if ('credential_type' in body) applicationWrite.credential_type = clean((body as any).credential_type, 120)
-  const wantsAppWrite = Object.keys(applicationWrite).length > 0
-
   // intake_last_step lives on profiles — saved after every wizard step so
   // re-opening the wizard resumes on the correct step.
   let lastStepWrite: number | undefined
@@ -182,7 +192,6 @@ export async function PATCH(req: Request) {
   if (
     Object.keys(update).length === 0 &&
     usernameWrite === undefined &&
-    !wantsAppWrite &&
     lastStepWrite === undefined
   ) {
     return Response.json({ error: 'Nothing to update.' }, { status: 400 })
@@ -223,60 +232,6 @@ export async function PATCH(req: Request) {
       }
     }
     if (profErr) return Response.json({ error: profErr.message }, { status: 500 })
-  }
-
-  if (wantsAppWrite) {
-    const { data: app } = await ctx.db
-      .from('attorney_applications')
-      .select('id')
-      .eq('profile_id', ctx.profileId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (app?.id) {
-      const { error: appErr } = await ctx.db
-        .from('attorney_applications')
-        .update(applicationWrite)
-        .eq('id', app.id)
-      if (appErr) return Response.json({ error: appErr.message }, { status: 500 })
-    } else {
-      // Self-heal: the seller is an active attorney without an application
-      // row (manual DB activation, legacy state, or admin-granted role).
-      // Previously the PATCH silently skipped the write here — the field
-      // showed "Saved" locally but the value had nowhere to live, so a
-      // tab switch / refresh reverted it to blank. Create a shell row
-      // pre-approved (the seller already has an active attorney record)
-      // with the just-sent values and empty strings for the other NOT NULL
-      // columns. Subsequent PATCHes will hit the update branch above.
-      const nowIso = new Date().toISOString()
-      const { data: created, error: createErr } = await ctx.db
-        .from('attorney_applications')
-        .insert({
-          profile_id: ctx.profileId,
-          email: ctx.email,
-          full_name: ctx.fullName || ctx.email,
-          credential_type: applicationWrite.credential_type ?? '',
-          bar_number: applicationWrite.bar_number ?? '',
-          jurisdictions: '',
-          practice_areas: '',
-          malpractice_insurance: '',
-          profile_url: '',
-          capacity: '',
-          status: 'approved',
-          decided_at: nowIso,
-        })
-        .select('id')
-        .single()
-      if (createErr) return Response.json({ error: createErr.message }, { status: 500 })
-      // Link the attorneys row to the new application so downstream joins
-      // (public sellers list, admin queue) resolve it.
-      if (created?.id) {
-        await ctx.db
-          .from('attorneys')
-          .update({ application_id: created.id })
-          .eq('id', ctx.attorneyId)
-      }
-    }
   }
 
   let attorney: any = null

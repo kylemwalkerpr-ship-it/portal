@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
 
 export async function GET() {
   const db = createSupabaseAdminClient()
@@ -40,6 +41,8 @@ export async function GET() {
     .eq('status', 'approved')
 
   const appByProfile = new Map((attorneyApps || []).map((a: any) => [a.profile_id, a]))
+  // Editable credential off the attorneys row wins over the application copy.
+  const credentialByProfile = await fetchAttorneyCredentialColumnsBatch(db, attorneyProfileIds)
 
   // Get ratings for all providers
   const attorneyIds = (attorneys || []).map((a: any) => a.id)
@@ -116,7 +119,7 @@ export async function GET() {
       practice_areas: attorney.practice_areas,
       specialties: attorney.specialties,
       languages: attorney.languages,
-      credential_type: app?.credential_type,
+      credential_type: credentialByProfile.get(attorney.profile_id)?.credential_type || app?.credential_type || null,
       years_experience: attorney.years_experience,
       starting_price: attorney.starting_price,
       offers_free_consult: attorney.offers_free_consult,

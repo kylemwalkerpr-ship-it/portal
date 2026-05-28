@@ -69,23 +69,20 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
       // will reconcile any genuine server-side divergence.
       setData((d) => {
         const next = { ...d }
-        const isApplicationField = field === 'bar_number' || field === 'credential_type'
         const isUsernameField = field === 'username'
         if (payload?.attorney) {
           next.attorney = { ...(d.attorney || {}), ...payload.attorney }
         } else {
           next.attorney = { ...(d.attorney || {}) }
         }
-        // Stamp the just-sent value last for attorney-row fields so it
-        // wins against any null/empty in the server payload.
-        if (!isApplicationField && !isUsernameField) {
-          next.attorney = { ...next.attorney, [field]: value }
-        }
-        if (isApplicationField) {
-          next.application = { ...(d.application || {}), [field]: value }
-        }
+        // Stamp the just-sent value last so it wins against any null/stale
+        // column in the server payload. credential_type + bar_number live
+        // on the attorneys row now, so they follow the same path as every
+        // other field — no special-casing.
         if (isUsernameField) {
           next.profile = { ...(d.profile || {}), username: payload?.username ?? value }
+        } else {
+          next.attorney = { ...next.attorney, [field]: value }
         }
         return next
       })
@@ -206,7 +203,7 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
               {profile.full_name || profile.email}
             </div>
             <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '2px' }}>
-              {application.credential_type || 'Attorney'}
+              {a.credential_type || application.credential_type || 'Attorney'}
               {a.years_experience ? ` · ${a.years_experience} yrs experience` : ''}
             </div>
             <div style={{ marginTop: '10px', fontSize: '13px', color: C.textMuted }}>
@@ -364,11 +361,11 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
       </Card>
 
       {/* Verified credential — bar / registration number + credential type.
-          Both fields live on attorney_applications (vetted at application
-          time) but the PATCH /api/attorney/profile endpoint accepts edits
-          via { bar_number, credential_type } and writes through to the
-          latest application row. Without these here, the profile-strength
-          checklist points to checks the user can't address. */}
+          These are the editable display copy stored on the attorneys row
+          (single source per profile); attorney_applications keeps the
+          immutable vetting record. Read prefers the attorneys value and
+          falls back to the application so existing verified attorneys still
+          see their credential before the backfill runs. */}
       <Card>
         <SectionLabel>Verified credential</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
@@ -376,7 +373,7 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
             fieldId="credential"
             label="Credential type"
             help="e.g. JD (US Attorney), Solicitor (England & Wales), Avocat (France). Shown on your public card."
-            value={application.credential_type || ''}
+            value={a.credential_type ?? application.credential_type ?? ''}
             maxLength={120}
             placeholder="JD · US Attorney"
             onSave={(v) => save('credential_type', v)}
@@ -385,7 +382,7 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
             fieldId="bar"
             label="Bar / registration number"
             help="Required for a verified listing. Shown on your profile and used in disputes."
-            value={application.bar_number || ''}
+            value={a.bar_number ?? application.bar_number ?? ''}
             maxLength={120}
             placeholder="e.g. NY 1234567"
             onSave={(v) => save('bar_number', v)}

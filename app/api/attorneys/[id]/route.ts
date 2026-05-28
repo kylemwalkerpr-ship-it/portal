@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 
 // Public profile detail for one attorney. Returns the full enriched profile,
 // the latest reviews (anonymised), and a one-line "responds within X" stat.
@@ -73,6 +74,9 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const ratingCount = ratings.length
   const ratingAvg = ratingCount === 0 ? null : Number((ratings.reduce((s, r) => s + Number(r.stars), 0) / ratingCount).toFixed(2))
 
+  // Editable credential off the attorneys row wins over the application copy.
+  const credential = await resolveAttorneyCredential(db, attorney.profile_id)
+
   return Response.json({
     attorney: {
       id: attorney.id,
@@ -86,7 +90,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
       specialties: attorney.specialties,
       languages: attorney.languages,
       education: attorney.education,
-      credential_type: application?.credential_type || null,
+      credential_type: credential.credential_type || application?.credential_type || null,
       years_experience: attorney.years_experience,
       starting_price: attorney.starting_price,
       offers_free_consult: attorney.offers_free_consult ?? false,

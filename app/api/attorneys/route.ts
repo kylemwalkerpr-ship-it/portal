@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
 
 type AttorneyRow = {
   id: string
@@ -62,6 +63,9 @@ export async function GET() {
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]))
   const applicationByProfile = new Map((applications ?? []).map((a) => [a.profile_id ?? '', a]))
+  // Editable credential lives on the attorneys row; prefer it over the
+  // application's vetting copy so public cards reflect profile edits.
+  const credentialByProfile = await fetchAttorneyCredentialColumnsBatch(db, profileIds)
 
   const ratingByAttorney = new Map<string, { count: number; sum: number }>()
   for (const r of ratings ?? []) {
@@ -88,7 +92,7 @@ export async function GET() {
         practice_areas: a.practice_areas,
         specialties: a.specialties,
         languages: a.languages,
-        credential_type: application?.credential_type || null,
+        credential_type: credentialByProfile.get(a.profile_id)?.credential_type || application?.credential_type || null,
         years_experience: a.years_experience,
         starting_price: a.starting_price,
         offers_free_consult: a.offers_free_consult ?? false,

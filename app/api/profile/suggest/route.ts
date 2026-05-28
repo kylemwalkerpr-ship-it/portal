@@ -1,5 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 import {
   ALLOWED_PROFILE_FIELDS,
   draftProfileField,
@@ -41,17 +42,12 @@ export async function POST(req: Request) {
     .eq('profile_id', profileId)
     .maybeSingle()
 
-  // Attorneys carry their credential type on the application row.
+  // Attorneys: credential_type is the editable attorneys-row value (falling
+  // back to the approved application) so AI drafts reflect the latest edit.
   let credentialType: string | null = null
   if (role === 'attorney') {
-    const { data: app } = await db
-      .from('attorney_applications')
-      .select('credential_type')
-      .eq('profile_id', profileId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    credentialType = (app?.credential_type as string | null) ?? null
+    const credential = await resolveAttorneyCredential(db, profileId)
+    credentialType = credential.credential_type
   }
 
   const ctx: ProfileContext = {

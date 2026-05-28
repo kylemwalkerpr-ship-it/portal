@@ -21,6 +21,7 @@
  * Self-heals if any newer column is missing.
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
 
 const SORT_COLUMN_MAP: Record<string, { col: string; asc: boolean }> = {
   rating:      { col: 'created_at',      asc: false }, // sorted by rating in JS post-hydration
@@ -106,6 +107,8 @@ export async function GET(req: Request) {
 
   const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]))
   const applicationByProfile = new Map((applications ?? []).map((a: any) => [a.profile_id ?? '', a]))
+  // Editable credential off the attorneys row wins over the application copy.
+  const credentialByProfile = await fetchAttorneyCredentialColumnsBatch(db, profileIds)
   const ratingByAttorney = new Map<string, { count: number; sum: number }>()
   for (const r of ratings ?? []) {
     const cur = ratingByAttorney.get((r as any).attorney_id) ?? { count: 0, sum: 0 }
@@ -132,7 +135,7 @@ export async function GET(req: Request) {
         practice_areas:    a.practice_areas,
         specialties:       a.specialties,
         languages:         a.languages,
-        credential_type:   application?.credential_type || null,
+        credential_type:   credentialByProfile.get(a.profile_id)?.credential_type || application?.credential_type || null,
         years_experience:  a.years_experience,
         starting_price:    a.starting_price,
         offers_free_consult: a.offers_free_consult ?? false,
