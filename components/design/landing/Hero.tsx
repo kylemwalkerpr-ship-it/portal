@@ -54,6 +54,11 @@ export default function Hero({ onSignup }: HeroProps) {
         if (e.isIntersecting) {
           a.preload = 'auto'
           if (b) b.preload = 'auto'
+          // Force the muted DOM *property* (the JSX `muted` attribute does not
+          // reliably set it) so the browser allows muted autoplay instead of
+          // blocking play() and overlaying a native play button on the poster.
+          a.muted = true; a.defaultMuted = true
+          if (b) { b.muted = true; b.defaultMuted = true }
           a.play?.().catch(() => {})
           b?.play?.().catch(() => {})
           io.disconnect()
@@ -297,7 +302,7 @@ export default function Hero({ onSignup }: HeroProps) {
                 loop
                 playsInline
                 preload="none"
-                onLoadedData={() => markReady('a')}
+                onLoadedData={(e) => { e.currentTarget.muted = true; markReady('a') }}
                 aria-hidden="true"
                 style={{
                   ...videoBaseStyle,
@@ -314,7 +319,7 @@ export default function Hero({ onSignup }: HeroProps) {
                 loop
                 playsInline
                 preload="none"
-                onLoadedData={() => markReady('b')}
+                onLoadedData={(e) => { e.currentTarget.muted = true; markReady('b') }}
                 aria-hidden="true"
                 style={{
                   ...videoBaseStyle,
