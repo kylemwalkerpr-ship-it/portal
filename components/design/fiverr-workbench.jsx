@@ -1448,11 +1448,72 @@ function TierEditor({ tier, onSave, onDelete, disabled }) {
   )
 }
 
+// Admin KPI strip — six tiles derived from /api/admin/orders/stats. Always
+// renders (even at 0 / 0 / 0 / 0%) so the admin can see the platform is
+// alive and not just confronting a blank kanban. Tile order is intentional:
+// money on the left (revenue, escrow held, refunds), operational risk in the
+// middle (late deliveries, completion rate), and AOV on the right.
+function AdminKpiStrip({ stats, orderCount }) {
+  // Server-side totals come from ALL orders, not the filtered view — that
+  // way the strip is the source of truth for platform health.
+  const attyGross = Number(stats?.by_provider_type?.attorney?.gross ?? 0)
+  const consGross = Number(stats?.by_provider_type?.consultant?.gross ?? 0)
+  const gross = attyGross + consGross
+  const escrowHeld = Number(stats?.escrow_held_total ?? 0) // optional field; tolerated when absent
+  const refundsTotal = Number(stats?.refund_stats?.total ?? 0)
+  const refundsCount = Number(stats?.refund_stats?.count ?? 0)
+  const lateCount = Number(stats?.late_delivery_count ?? 0)
+  const completionRate = Number(stats?.completion_rate ?? 0)
+  const aov = Number(stats?.avg_order_value ?? 0)
+
+  // `total_amount` and `gross` from the stats endpoint already use dollar
+  // units (rows.total_amount summed directly), so multiply by 100 before
+  // passing to money() which expects cents.
+  const moneyDollars = (d) => money(Math.round(Number(d || 0) * 100))
+
+  const tiles = [
+    { label: 'Lifetime revenue', value: moneyDollars(gross), sub: `${orderCount} orders` },
+    { label: 'In escrow', value: escrowHeld > 0 ? moneyDollars(escrowHeld) : '—', sub: 'Held funds' },
+    { label: 'Refunds', value: moneyDollars(refundsTotal), sub: `${refundsCount} order${refundsCount === 1 ? '' : 's'}`, danger: refundsCount > 0 },
+    { label: 'Late deliveries', value: String(lateCount), sub: lateCount === 0 ? 'All on time' : 'Past deadline', danger: lateCount > 0 },
+    { label: 'Completion rate', value: `${Math.round(completionRate * 100)}%`, sub: 'Completed vs cancelled' },
+    { label: 'Avg order value', value: moneyDollars(aov), sub: 'Across all orders' },
+    { label: 'Attorney gross', value: moneyDollars(attyGross), sub: `${stats?.by_provider_type?.attorney?.count ?? 0} orders` },
+    { label: 'Consultant gross', value: moneyDollars(consGross), sub: `${stats?.by_provider_type?.consultant?.count ?? 0} orders` },
+  ]
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          style={{
+            background: t.danger ? '#2a1010' : C.surface2,
+            border: `1px solid ${t.danger ? C.red : C.border}`,
+            borderRadius: '10px',
+            padding: '12px 14px',
+          }}
+        >
+          <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
+            {t.label}
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: t.danger ? '#fecaca' : C.text, lineHeight: 1.1 }}>
+            {t.value}
+          </div>
+          <div style={{ color: C.textMuted, fontSize: '11px', marginTop: '4px' }}>{t.sub}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function OrderKanbanPage({ adminOnly = false }) {
   const [profile, setProfile] = React.useState(null)
   const [orders, setOrders] = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [filter, setFilter] = React.useState('all')
+  const [search, setSearch] = React.useState('')
+  const [stats, setStats] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -1466,8 +1527,17 @@ export function OrderKanbanPage({ adminOnly = false }) {
       if (adminOnly && role !== 'admin') throw new Error('Admin access is required.')
       setProfile(profileData.profile)
       const endpoint = role === 'admin' ? '/api/admin/data' : role === 'attorney' ? '/api/attorney/data' : role === 'consultant' ? '/api/consultant/data' : '/api/student/data'
-      const data = await requestJson(endpoint)
+      // Admin gets stats in parallel so the KPI strip lights up at the same
+      // time the kanban does. Stats failures degrade silently — the kanban
+      // is the primary surface, KPIs are additive.
+      const [data, statsPayload] = await Promise.all([
+        requestJson(endpoint),
+        role === 'admin'
+          ? requestJson('/api/admin/orders/stats').catch(() => null)
+          : Promise.resolve(null),
+      ])
       setOrders(shapeOrders(data, role))
+      setStats(statsPayload?.data ?? statsPayload ?? null)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -1492,9 +1562,21 @@ export function OrderKanbanPage({ adminOnly = false }) {
   if (error) return <ErrorState message={error} onRetry={load} />
 
   const role = profile?.role || 'client'
-  const visibleOrders = filter === 'all' ? orders : orders.filter(o => o.providerType === filter || o.status === filter)
+  const tabFiltered = filter === 'all' ? orders : orders.filter(o => o.providerType === filter || o.status === filter)
+  const q = search.trim().toLowerCase()
+  const visibleOrders = q
+    ? tabFiltered.filter(o =>
+        String(o.id || '').toLowerCase().includes(q) ||
+        String(o.orderNumber || '').toLowerCase().includes(q) ||
+        String(o.title || '').toLowerCase().includes(q) ||
+        String(o.clientName || '').toLowerCase().includes(q) ||
+        String(o.clientEmail || '').toLowerCase().includes(q) ||
+        String(o.providerName || '').toLowerCase().includes(q),
+      )
+    : tabFiltered
   const totalValue = visibleOrders.reduce((sum, o) => sum + Number(o.amountCents || 0), 0)
   const columns = ORDER_COLUMNS.map(col => ({ ...col, orders: visibleOrders.filter(o => col.statuses.includes(String(o.status || '').toLowerCase())) }))
+  const isAdmin = role === 'admin'
 
   return (
     <div style={pageShell}>
@@ -1510,7 +1592,68 @@ export function OrderKanbanPage({ adminOnly = false }) {
             <button key={item} type="button" onClick={() => setFilter(item)} style={{ border: `1px solid ${filter === item ? C.cyan : C.border2}`, background: filter === item ? C.cyanGlow : C.surface, color: C.text, borderRadius: '999px', padding: '7px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}>{item}</button>
           ))}
         </div>
+
+        {/* Admin-only KPI strip + search. Stats are computed server-side over
+            ALL orders (not just the current tab/search) so the admin always
+            sees the real platform totals; the kanban below reflects the
+            filter. KPI tiles degrade gracefully to 0 / dash when stats are
+            absent (e.g. brand-new install with no orders). */}
+        {isAdmin && (
+          <AdminKpiStrip stats={stats} orderCount={orders.length} />
+        )}
+
+        {/* Late-delivery red banner — only visible when there's actually
+            something to act on. Counts come from /admin/orders/stats. */}
+        {isAdmin && stats?.late_delivery_count > 0 && (
+          <div style={{ background: '#3a1010', border: `1px solid ${C.red}`, color: '#fecaca', borderRadius: '10px', padding: '12px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 800 }}>
+              {stats.late_delivery_count} order{stats.late_delivery_count === 1 ? '' : 's'} past delivery deadline. These need admin attention.
+            </span>
+            <button type="button" onClick={() => setFilter('all')} style={{ border: `1px solid ${C.red}`, background: 'transparent', color: '#fecaca', borderRadius: '999px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Show all
+            </button>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '14px' }}>
+            <input
+              type="search"
+              placeholder="Search by order #, ID, client name, email, or service"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ flex: 1, minWidth: 0, border: `1px solid ${C.border2}`, background: C.surface, color: C.text, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', fontFamily: 'inherit' }}
+            />
+            {search && (
+              <button type="button" onClick={() => setSearch('')} style={{ border: `1px solid ${C.border2}`, background: C.surface, color: C.textMuted, borderRadius: '10px', padding: '10px 14px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         {notice && <div style={{ color: notice.includes('updated') ? C.green : C.red, fontSize: '13px', fontWeight: 800, marginBottom: '12px' }}>{notice}</div>}
+
+        {/* Friendly empty state — beats five blank kanban columns when there
+            are genuinely zero orders to triage. Search misses get a tighter
+            message so the admin knows it's a query problem, not a data one. */}
+        {visibleOrders.length === 0 && !loading && (
+          <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '28px', textAlign: 'center', marginBottom: '14px' }}>
+            <div style={{ fontWeight: 900, fontSize: '15px', marginBottom: '6px' }}>
+              {orders.length === 0
+                ? (isAdmin ? 'No orders on the platform yet.' : 'No orders yet.')
+                : 'No orders match this filter.'}
+            </div>
+            <div style={{ color: C.textMuted, fontSize: '13px', lineHeight: 1.55, maxWidth: '520px', margin: '0 auto' }}>
+              {orders.length === 0 && isAdmin
+                ? 'When students place their first order, it appears here with full status, escrow, and audit controls.'
+                : orders.length === 0
+                  ? 'When you receive new orders they will appear in the pipeline.'
+                  : 'Try clearing the search box or switching back to the All tab.'}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(220px, 1fr))', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
           {columns.map(col => (
             <section key={col.id} style={{ minWidth: '220px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px' }}>
@@ -1558,10 +1701,12 @@ function shapeOrders(data, role) {
       const cents = Number(o.amount_paid || o.net_payout) ? amount : Math.round(amount * 100)
       return {
         id: o.id,
+        orderNumber: o.order_number || null,
         title: service?.title || o.service_title || o.title || 'Marketplace order',
         status: o.status === 'queued' ? 'pending' : o.status || 'pending',
         escrowStatus: o.escrow_status || 'held',
         clientName: client?.full_name || client?.email || 'Student',
+        clientEmail: client?.email || null,
         providerName: provider?.full_name || provider?.email || 'Provider',
         providerType: o.attorney_id ? 'attorney' : 'consultant',
         amountCents: cents,

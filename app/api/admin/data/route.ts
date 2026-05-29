@@ -24,7 +24,12 @@ export async function GET() {
 
   let [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes]: any[] = await Promise.all([
     db.from('profiles').select('id, full_name, email, role, country, status, created_at').order('created_at', { ascending: false }),
-    db.from('orders').select('id, client_id, consultant_id, total_amount, escrow_status, payout_released_at, status, created_at, service_title').order('created_at', { ascending: false }),
+    // orders.service_title was removed; the kanban derives the title from
+    // order_items → services. Selecting it first and retrying on the error
+    // wasted a round-trip every load. Also surface attorney_id, amount_paid,
+    // delivery_deadline, progress, and order_number so the command-center UI
+    // shows the same data it has on /admin/escrow.
+    db.from('orders').select('id, order_number, client_id, consultant_id, attorney_id, total_amount, amount_paid, escrow_status, payout_released_at, status, created_at, delivery_deadline, progress').order('created_at', { ascending: false }),
     db.from('order_items').select('order_id, service_id, subtotal'),
     db
       .from('services')
@@ -39,7 +44,9 @@ export async function GET() {
   if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
     profilesRes = await db.from('profiles').select('id, full_name, email, role, status, created_at').order('created_at', { ascending: false })
   }
-  if (ordersRes.error && /column .*service_title/i.test(ordersRes.error.message)) {
+  // Belt-and-braces fallback if any of the new columns aren't present in a
+  // partially-migrated environment — degrade rather than 500 the dashboard.
+  if (ordersRes.error && /column .* does not exist/i.test(ordersRes.error.message)) {
     ordersRes = await db.from('orders').select('id, client_id, consultant_id, total_amount, escrow_status, payout_released_at, status, created_at').order('created_at', { ascending: false })
   }
   if (servicesRes.error && /column .*vertical/i.test(servicesRes.error.message)) {
