@@ -993,3 +993,24 @@ section[id] {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Hero video backdrop: kill native play UI ──────────────────────────────
+   When autoplay is blocked by browser-level settings (Low Power Mode, iOS
+   Lockdown, per-site "Never Auto-Play"), Safari/Chrome still draw their
+   start-playback overlay (the big ▶) on top of MUTED background videos.
+   The hero video layers are purely decorative — readers must never see a
+   play affordance on them. Scoped to .ys-bg-video so other videos (real
+   testimonials etc.) keep their normal controls. */
+.ys-bg-video {
+  pointer-events: none !important;
+}
+.ys-bg-video::-webkit-media-controls,
+.ys-bg-video::-webkit-media-controls-enclosure,
+.ys-bg-video::-webkit-media-controls-panel,
+.ys-bg-video::-webkit-media-controls-play-button,
+.ys-bg-video::-webkit-media-controls-start-playback-button,
+.ys-bg-video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+}

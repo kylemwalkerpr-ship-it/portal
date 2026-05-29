@@ -297,11 +297,16 @@ export default function Hero({ onSignup }: HeroProps) {
             <>
               <video
                 ref={videoARef}
+                className="ys-bg-video"
                 poster={A_POSTER}
                 muted
                 loop
                 playsInline
                 preload="none"
+                controls={false}
+                disablePictureInPicture
+                controlsList="nofullscreen nodownload noremoteplayback noplaybackrate"
+                tabIndex={-1}
                 onLoadedData={(e) => { e.currentTarget.muted = true; markReady('a') }}
                 aria-hidden="true"
                 style={{
@@ -314,11 +319,16 @@ export default function Hero({ onSignup }: HeroProps) {
               </video>
               <video
                 ref={videoBRef}
+                className="ys-bg-video"
                 poster={B_POSTER}
                 muted
                 loop
                 playsInline
                 preload="none"
+                controls={false}
+                disablePictureInPicture
+                controlsList="nofullscreen nodownload noremoteplayback noplaybackrate"
+                tabIndex={-1}
                 onLoadedData={(e) => { e.currentTarget.muted = true; markReady('b') }}
                 aria-hidden="true"
                 style={{
