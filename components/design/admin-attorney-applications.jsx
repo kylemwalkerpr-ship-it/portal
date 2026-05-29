@@ -183,25 +183,24 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending }) {
             </div>
           </Section>
 
-          {/* Credentials */}
-          <Section title="Credentials">
-            <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <Field label="Credential type"   value={application.credential_type} />
-              <Field label="Bar / roll number" value={application.bar_number || '—'} />
-              <Field label="Jurisdictions"     value={application.jurisdictions} multiline />
-              <Field label="Practice areas"    value={application.practice_areas} multiline />
-              <Field label="Capacity"          value={application.capacity} />
-              <Field label="Profile URL"       value={application.profile_url} link />
-              <Field label="Malpractice / PI"  value={application.malpractice_insurance} multiline span="1 / span 2" />
+          {/* Full application — single-column Google-form-style sheet so every
+              answer renders in full (no two-column clipping). Lists every field
+              the applicant submitted, in form order, for complete review. */}
+          <Section title="Application">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr' }}>
+              <FormRow label="Full name"                value={application.full_name} first />
+              <FormRow label="Email"                    value={application.email} link={application.email ? `mailto:${application.email}` : undefined} />
+              <FormRow label="Phone"                    value={application.phone} />
+              <FormRow label="Credential type"          value={application.credential_type} />
+              <FormRow label="Bar / roll number"        value={application.bar_number} />
+              <FormRow label="Jurisdictions admitted"   value={application.jurisdictions} />
+              <FormRow label="Practice areas"           value={application.practice_areas} />
+              <FormRow label="Capacity / availability"  value={application.capacity} />
+              <FormRow label="Professional indemnity / malpractice insurance" value={application.malpractice_insurance} />
+              <FormRow label="Public profile / website" value={application.profile_url} link={application.profile_url} />
+              <FormRow label="Anything else we should know" value={application.notes} />
             </div>
           </Section>
-
-          {/* Notes from applicant */}
-          {application.notes && (
-            <Section title="Notes from applicant">
-              <div style={{ padding: '14px 18px', whiteSpace: 'pre-wrap', fontSize: 13, color: TEXT, lineHeight: 1.6 }}>{application.notes}</div>
-            </Section>
-          )}
 
           {/* Decision audit */}
           {application.status !== 'pending' && (
@@ -266,6 +265,24 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending }) {
           )}
         </div>
       </aside>
+    </div>
+  )
+}
+
+// Google-form-style row: question label + full answer, hairline-divided,
+// full-width so long answers wrap instead of clipping. Empty answers show "—".
+function FormRow({ label, value, link, first }) {
+  const has = value != null && String(value).trim() !== ''
+  return (
+    <div style={{ padding: '14px 18px', borderTop: first ? 'none' : `1px solid ${BORDER2}` }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: DIM, marginBottom: 6, fontFamily: MONO }}>{label}</div>
+      {!has ? (
+        <div style={{ fontSize: 14, color: DIM }}>—</div>
+      ) : link ? (
+        <a href={link} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: CYAN, lineHeight: 1.6, wordBreak: 'break-word' }}>{value}</a>
+      ) : (
+        <div style={{ fontSize: 14, color: TEXT, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{value}</div>
+      )}
     </div>
   )
 }
