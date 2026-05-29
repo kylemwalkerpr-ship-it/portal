@@ -59,14 +59,30 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
     }
   }, [open, resetAll])
 
-  async function runGenerate() {
+  // Snapshot the current preview so Regenerate can send it as previousValue
+  // and the prompt can ask for a distinct alternative — without it the
+  // request bytes are identical and the LLM (low temperature) returns the
+  // same text.
+  function currentDraftSnapshot() {
+    if (isList && draftList?.length) return draftList.join(', ')
+    if (draftText) return draftText
+    return undefined
+  }
+
+  async function runGenerate(opts = {}) {
     setBusy(true); setError('')
     try {
       const res = await fetch('/api/profile/suggest', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field, hint: hint || undefined }),
+        body: JSON.stringify({
+          field,
+          hint: hint || undefined,
+          // Only send previousValue on an explicit regenerate, never on the
+          // first draft (there's nothing to vary against).
+          previousValue: opts.regenerate ? currentDraftSnapshot() : undefined,
+        }),
       })
       const payload = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -116,15 +132,13 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
     }
   }
 
-  // Regenerate re-runs the AI with the same hint and replaces the current
-  // draft in place — it stays on the preview stage. Previously it dumped
-  // the user back to the hint-input stage, which read as "the draft
-  // vanished / the popover closed" instead of producing a fresh draft.
+  // Regenerate re-runs the AI with the previous draft sent as previousValue,
+  // so the server prompt tells the LLM to produce a DISTINCT alternative —
+  // different angle, opening, structure, word choices. Without this the
+  // server prompt was byte-identical and the model returned the same text.
   function regenerate() {
     setError('')
-    setDraftText('')
-    setDraftList([])
-    runGenerate()
+    runGenerate({ regenerate: true })
   }
 
   const indigo = C.cyan

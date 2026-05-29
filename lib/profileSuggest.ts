@@ -58,6 +58,10 @@ export interface ProfileContext {
   tagline?: string | null
   intro?: string | null
   bio?: string | null
+  // Regeneration support: when the caller wants a new draft (not the same
+  // text again), it sends the previous output so the prompt can instruct
+  // the model to produce a distinct alternative.
+  previousValue?: string | null
 }
 
 export type ProfileSuggestSuccess = {
@@ -291,11 +295,37 @@ export async function draftProfileField(
   }
   const spec = buildFieldSpec(field, context)
   const trimmedHint = (hint || '').trim().slice(0, 400)
+  // Regeneration support — see lib/seoSuggest for the same pattern. When the
+  // caller sends the previous draft, we instruct the model to produce a
+  // DISTINCT alternative (different angle/opening/word choices). Plus a
+  // per-call style cue that varies seeds so two identical requests don't
+  // return the same bytes at temperature 0.4.
+  const previousValue = context.previousValue
+  const previousBlock = typeof previousValue === 'string' && previousValue.trim()
+    ? [
+        '',
+        '## Previous draft (do NOT repeat)',
+        previousValue.trim().slice(0, 1500),
+        '',
+        'Produce a DISTINCT alternative. Vary the opening sentence/structure, the angle, and the word choices. The new draft must read as a meaningfully different option — not a paraphrase.',
+      ].join('\n')
+    : ''
+  const STYLE_CUES = [
+    'lead with the buyer-facing outcome, not the seller',
+    'open with a specific document, deadline, or proof point',
+    'open with the audience this is for',
+    'lead with credentials or evidence of experience',
+    'open with a concrete result this seller has delivered',
+  ]
+  const styleCue = STYLE_CUES[Math.floor(Math.random() * STYLE_CUES.length)]
   const userMessage = [
+    `## Style cue for this draft\nFor this specific draft, ${styleCue}.`,
+    '',
     '## Task',
     spec.prompt,
     trimmedHint ? `\nAdditional guidance from the seller: ${trimmedHint}` : '',
-  ].join('\n')
+    previousBlock,
+  ].filter(Boolean).join('\n')
 
   let raw: string
   try {

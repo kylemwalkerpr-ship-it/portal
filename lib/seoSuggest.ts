@@ -61,6 +61,11 @@ export interface SuggestContext {
   // can keep value ladders clean (basic doesn't promise standard's perks).
   tier?: TierSummary | null
   otherTiers?: TierSummary[] | null
+  // Regeneration support. When the caller wants a NEW draft (not the same
+  // text again), it sends the previous output here so the prompt can
+  // instruct the model to produce a distinct alternative. The model is
+  // told to vary the opening, angle, structure, and word choices.
+  previousValue?: string | null
 }
 
 export type SuggestSuccess = { ok: true; value: string | string[] | FaqEntry[]; research: SeoResearch }
@@ -453,6 +458,30 @@ export async function draftField(
   }
   const spec = buildFieldSpec(field, context)
   const trimmedHint = (hint || '').trim().slice(0, 400)
+  // Regeneration support: when the caller sends the previous draft text we
+  // tell the model to produce a DISTINCT alternative — different angle,
+  // opening, structure, word choices. Plus a per-call style cue so even
+  // without a previousValue two identical calls produce different output
+  // (temperature is low; without variance two clicks return the same text).
+  const previousValue = context.previousValue
+  const previousBlock = typeof previousValue === 'string' && previousValue.trim()
+    ? [
+        '',
+        '## Previous draft (do NOT repeat)',
+        previousValue.trim().slice(0, 1500),
+        '',
+        'Produce a DISTINCT alternative. Specifically vary: the opening sentence/structure, the angle taken, the word choices, and which secondary keywords you weave in. The new draft must read as a meaningfully different option — not a paraphrase.',
+      ].join('\n')
+    : ''
+  const STYLE_CUES = [
+    'lead with a buyer outcome, not the seller',
+    'open with a concrete document or form name',
+    'open with a question the buyer would type into Google',
+    'open with a timing or deadline detail',
+    'lead with the strongest credential or proof point',
+    'open with the audience this is for',
+  ]
+  const styleCue = STYLE_CUES[Math.floor(Math.random() * STYLE_CUES.length)]
   const role: SuggestRole = context.role === 'consultant' ? 'consultant' : 'attorney'
   // Always inject the SEO research brief BEFORE the field-specific
   // prompt so the model treats the keyword list as a constraint, not
@@ -478,10 +507,13 @@ export async function draftField(
     '',
     SEO_PLAYBOOK,
     '',
+    `## Style cue for this draft\nFor this specific draft, ${styleCue}.`,
+    '',
     '## Task',
     spec.prompt,
     trimmedHint ? `\nAdditional guidance from the seller: ${trimmedHint}` : '',
-  ].join('\n')
+    previousBlock,
+  ].filter(Boolean).join('\n')
 
   let raw: string
   try {

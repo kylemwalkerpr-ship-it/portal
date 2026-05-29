@@ -33,6 +33,11 @@ export async function POST(req: Request) {
     return fail(`Field "${field}" is not AI-editable for this account.`, 400)
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
+  // Regeneration: button sends the previous draft so the prompt can ask for
+  // a distinct alternative instead of returning the same text again.
+  const previousValue = typeof body.previousValue === 'string'
+    ? String(body.previousValue).slice(0, 4000)
+    : null
 
   // Load profile + seller-table row to ground the prompt. The seller can't
   // override jurisdictions/years/credentials from the client.
@@ -76,6 +81,7 @@ export async function POST(req: Request) {
     tagline: (seller?.tagline as string | null) ?? null,
     intro: (seller?.intro as string | null) ?? null,
     bio: (seller?.bio as string | null) ?? null,
+    previousValue,
   }
 
   const result = await draftProfileField(field, ctx, hint)

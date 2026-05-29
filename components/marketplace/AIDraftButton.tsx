@@ -148,7 +148,21 @@ export default function AIDraftButton({
     }
   }, [open, resetAll])
 
-  const runGenerate = async () => {
+  // Snapshot of the current preview so Regenerate can tell the server to
+  // produce a DISTINCT alternative. Without this the prompt is byte-
+  // identical and the LLM (temperature 0.4) returns the same text.
+  const currentDraftSnapshot = (): string | undefined => {
+    if (isFaqField && draftFaq.length) {
+      return draftFaq.map(e => `Q: ${e.question}\nA: ${e.answer}`).join('\n\n')
+    }
+    if ((isTagsField || isFeaturesField) && draftTags.length) {
+      return draftTags.join(', ')
+    }
+    if (draftText) return draftText
+    return undefined
+  }
+
+  const runGenerate = async (opts: { regenerate?: boolean } = {}) => {
     setBusy(true); setError(null)
     try {
       const data = await postJson('/api/seo-suggest', {
@@ -156,6 +170,9 @@ export default function AIDraftButton({
         role,
         context: getContext(),
         hint: hint || undefined,
+        // Only send the previous value when this is an explicit regeneration;
+        // first-time generations have nothing to dedup against.
+        previousValue: opts.regenerate ? currentDraftSnapshot() : undefined,
       })
       const payload = data as { value: string | string[] | FaqEntry[]; research?: ResearchPayload }
       const value = payload.value
@@ -208,14 +225,14 @@ export default function AIDraftButton({
     resetAll()
   }
 
+  // Re-fire the draft against the API with the CURRENT draft sent as
+  // `previousValue`, so the server prompt asks the LLM to vary the output.
+  // The previous implementation just reset the popover back to the input
+  // screen (no API call), which is why "Regenerate" appeared to do nothing
+  // and the second draft read identically to the first.
   const regenerate = () => {
-    setStage('input')
     setError(null)
-    // Keep the hint so the seller can tweak it; clear only the draft.
-    setDraftText('')
-    setDraftTags([])
-    setDraftFaq([])
-    setResearch(null)
+    void runGenerate({ regenerate: true })
   }
 
   const btnHeight = size === 'compact' ? '24px' : '26px'

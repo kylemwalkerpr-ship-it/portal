@@ -65,6 +65,11 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
           .filter((o: unknown) => o && typeof o === 'object')
           .map((o: unknown) => sanitizeTier(o as Record<string, unknown>))
       : null,
+    // Regeneration: previous draft, so the prompt can request a distinct
+    // alternative instead of returning the same text at temperature 0.4.
+    previousValue: typeof body.previousValue === 'string'
+      ? String(body.previousValue).slice(0, 4000)
+      : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)

@@ -73,6 +73,11 @@ export async function POST(req: Request) {
           .filter((o) => o && typeof o === 'object')
           .map((o) => sanitizeTier(o as Record<string, unknown>))
       : null,
+    // Regeneration: when the seller clicks Regenerate, the button sends the
+    // previous draft so the prompt can ask for a distinct alternative.
+    previousValue: typeof (body as { previousValue?: unknown }).previousValue === 'string'
+      ? String((body as { previousValue?: string }).previousValue).slice(0, 4000)
+      : null,
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
   const result = await draftField(field, suggestCtx, hint)
