@@ -12,7 +12,7 @@ export async function GET() {
 
   const ordersRes = await db
     .from('orders')
-    .select('id, order_number, consultant_id, status, requirements, created_at, deadline, progress, total_amount, payout_status, escrow_status, terms_accepted_at, refund_policy_accepted_at')
+    .select('id, order_number, consultant_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, payout_status, escrow_status, terms_accepted_at, refund_policy_accepted_at')
     .eq('client_id', profile.id)
     .order('created_at', { ascending: false })
 

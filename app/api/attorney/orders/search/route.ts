@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 
   let qb = ctx.db
     .from('orders')
-    .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, offer_id, payout_status, requirements', { count: 'exact' })
+    .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline:delivery_deadline, created_at, completed_at, source_offer_id, offer_id, payout_status, requirements', { count: 'exact' })
     .eq('consultant_id', ctx.profileId)
     .order(sort, { ascending: dir, nullsFirst: false })
     .range((page - 1) * pageSize, page * pageSize - 1)

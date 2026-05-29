@@ -19,7 +19,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   // Load order with ownership check.
   let { data: order, error } = await db
     .from('orders')
-    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline, progress, total_amount, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at')
+    .select('id, order_number, client_id, consultant_id, attorney_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, payout_status, escrow_status, escrow_amount, escrow_released_amount, escrow_refunded_amount, auto_release_eligible_at, terms_accepted_at, refund_policy_accepted_at')
     .eq('id', id)
     .single()
   if (error && /column .* does not exist/i.test(error.message || '')) {

@@ -10,7 +10,9 @@ export async function GET() {
   const [ordersRes, openInquiriesRes, mineInquiriesRes, ratingsRes, attorneyRes] = await Promise.all([
     ctx.db
       .from('orders')
-      .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status')
+      // Column was renamed in DB to `delivery_deadline` — alias it back to
+      // `deadline` so the existing client + return shape stays unchanged.
+      .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline:delivery_deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status')
       .eq('consultant_id', ctx.profileId)
       .not('source_offer_id', 'is', null)
       .order('created_at', { ascending: false }),

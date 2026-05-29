@@ -22,7 +22,7 @@ export async function GET() {
   {
     const full = await ctx.db
       .from('orders')
-      .select('status, escrow_status, total_amount, attorney_fee, deadline, completed_at, created_at, payout_status')
+      .select('status, escrow_status, total_amount, attorney_fee, deadline:delivery_deadline, completed_at, created_at, payout_status')
       .eq('consultant_id', ctx.profileId)
     if (!full.error) {
       rows = full.data ?? []
@@ -30,7 +30,7 @@ export async function GET() {
       console.warn('[attorney/orders/stats] full select failed, falling back', full.error.message)
       const minimal = await ctx.db
         .from('orders')
-        .select('status, total_amount, deadline, completed_at, created_at')
+        .select('status, total_amount, deadline:delivery_deadline, completed_at, created_at')
         .eq('consultant_id', ctx.profileId)
       if (minimal.error) {
         console.error('[attorney/orders/stats] minimal select also failed', minimal.error.message)

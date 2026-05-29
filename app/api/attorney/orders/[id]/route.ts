@@ -8,7 +8,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
 
   const { data: order } = await ctx.db
     .from('orders')
-    .select('id, client_id, consultant_id, status, escrow_status, total_amount, attorney_fee, platform_fee, requirements, progress, deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status, order_number')
+    .select('id, client_id, consultant_id, status, escrow_status, total_amount, attorney_fee, platform_fee, requirements, progress, deadline:delivery_deadline, created_at, completed_at, source_offer_id, source_inquiry_id, offer_id, payout_status, order_number')
     .eq('id', id)
     .single()
   if (!order) return Response.json({ error: 'Order not found.' }, { status: 404 })

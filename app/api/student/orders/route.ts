@@ -45,11 +45,15 @@ export async function GET(req: Request) {
     refunded:  ['refunded'],
   }
 
+  // Column was renamed in DB to `delivery_deadline` — alias it back to
+  // `deadline` so the existing client + return shape stays unchanged.
+  // The sort-by-deadline option must use the real DB column name.
+  const sortColumn = sort === 'deadline' ? 'delivery_deadline' : sort
   let qb = db
     .from('orders')
-    .select('id, order_number, consultant_id, status, requirements, created_at, deadline, progress, total_amount, payout_status, escrow_status, terms_accepted_at, refund_policy_accepted_at', { count: 'exact' })
+    .select('id, order_number, consultant_id, status, requirements, created_at, deadline:delivery_deadline, progress, total_amount, payout_status, escrow_status, terms_accepted_at, refund_policy_accepted_at', { count: 'exact' })
     .eq('client_id', profile.id)
-    .order(sort, { ascending: dir })
+    .order(sortColumn, { ascending: dir })
     .range((page - 1) * pageSize, page * pageSize - 1)
 
   if (statusParam !== 'all') {

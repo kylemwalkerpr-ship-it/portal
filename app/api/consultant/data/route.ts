@@ -13,7 +13,9 @@ export async function GET() {
 
   const ordersRes = await db
     .from('orders')
-    .select('id, order_number, client_id, status, requirements, created_at, updated_at, completed_at, deadline, progress, total_amount, consultant_payout_amount, payout_status')
+    // Column was renamed in DB to `delivery_deadline` — alias it back to
+    // `deadline` so the existing client + return shape stays unchanged.
+    .select('id, order_number, client_id, status, requirements, created_at, updated_at, completed_at, deadline:delivery_deadline, progress, total_amount, consultant_payout_amount, payout_status')
     .eq('consultant_id', profile.id)
     .order('created_at', { ascending: false })
 

@@ -16,7 +16,7 @@ export async function GET() {
   const [ordersRes, attorneyRes, ratingsRes, openInqRes, myMsgRes, myOfferRes] = await Promise.all([
     ctx.db
       .from('orders')
-      .select('id, order_number, client_id, status, escrow_status, payout_status, total_amount, attorney_fee, deadline, completed_at, created_at, progress, source_offer_id, offer_id, requirements')
+      .select('id, order_number, client_id, status, escrow_status, payout_status, total_amount, attorney_fee, deadline:delivery_deadline, completed_at, created_at, progress, source_offer_id, offer_id, requirements')
       .eq('consultant_id', ctx.profileId),
     ctx.db
       .from('attorneys')

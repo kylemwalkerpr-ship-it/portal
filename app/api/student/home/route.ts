@@ -27,7 +27,9 @@ export async function GET() {
   // ── Orders ─────────────────────────────────────────────────────────────
   let { data: orderRows, error: ordersErr } = await db
     .from('orders')
-    .select('id, order_number, status, requirements, total_amount, escrow_status, escrow_amount, progress, deadline, consultant_id, created_at')
+    // Column was renamed in DB to `delivery_deadline` — alias it back to
+    // `deadline` so the existing client + return shape stays unchanged.
+    .select('id, order_number, status, requirements, total_amount, escrow_status, escrow_amount, progress, deadline:delivery_deadline, consultant_id, created_at')
     .eq('client_id', profile.id)
     .order('created_at', { ascending: false })
     .limit(200)
