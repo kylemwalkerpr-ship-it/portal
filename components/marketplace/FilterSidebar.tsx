@@ -47,12 +47,21 @@ const checkboxInput: CSSProperties = {
 
 const rangeStyle: CSSProperties = {
   display: 'flex',
-  gap: '8px',
+  gap: '10px',
   alignItems: 'center',
+  // Stay snug to the label even inside the wide mobile filter sheet — Min/Max
+  // shouldn't span ~500px each just because the parent does.
+  flexWrap: 'wrap',
 }
 
 const rangeInput: CSSProperties = {
-  flex: 1,
+  // Fixed-width number inputs so they don't balloon in wide containers
+  // (mobile filter sheet, modal). Compact, finger-tappable, consistent across
+  // surfaces — and `box-sizing: border-box` keeps padding inside the cap.
+  width: '120px',
+  minWidth: 0,
+  flex: '0 0 auto',
+  boxSizing: 'border-box',
   padding: '8px 12px',
   border: `1px solid ${T.ruleSoft}`,
   borderRadius: '8px',
