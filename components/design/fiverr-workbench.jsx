@@ -1453,7 +1453,7 @@ function TierEditor({ tier, onSave, onDelete, disabled }) {
 // alive and not just confronting a blank kanban. Tile order is intentional:
 // money on the left (revenue, escrow held, refunds), operational risk in the
 // middle (late deliveries, completion rate), and AOV on the right.
-function AdminKpiStrip({ stats, orderCount }) {
+function AdminKpiStrip({ stats, orderCount, onKpiClick, kpiFilter }) {
   // Server-side totals come from ALL orders, not the filtered view — that
   // way the strip is the source of truth for platform health.
   const attyGross = Number(stats?.by_provider_type?.attorney?.gross ?? 0)
@@ -1471,38 +1471,59 @@ function AdminKpiStrip({ stats, orderCount }) {
   // passing to money() which expects cents.
   const moneyDollars = (d) => money(Math.round(Number(d || 0) * 100))
 
+  // `kpi` is the filter key this tile applies when clicked; absence means
+  // the tile is informational only (click does nothing, cursor stays default).
+  // Tiles that filter: refunds, late, escrow, attorney/consultant gross.
+  // Tiles that don't: lifetime revenue, completion rate, avg order value.
   const tiles = [
     { label: 'Lifetime revenue', value: moneyDollars(gross), sub: `${orderCount} orders` },
-    { label: 'In escrow', value: escrowHeld > 0 ? moneyDollars(escrowHeld) : '—', sub: 'Held funds' },
-    { label: 'Refunds', value: moneyDollars(refundsTotal), sub: `${refundsCount} order${refundsCount === 1 ? '' : 's'}`, danger: refundsCount > 0 },
-    { label: 'Late deliveries', value: String(lateCount), sub: lateCount === 0 ? 'All on time' : 'Past deadline', danger: lateCount > 0 },
+    { label: 'In escrow', value: escrowHeld > 0 ? moneyDollars(escrowHeld) : '—', sub: 'Held funds', kpi: escrowHeld > 0 ? 'escrow' : null },
+    { label: 'Refunds', value: moneyDollars(refundsTotal), sub: `${refundsCount} order${refundsCount === 1 ? '' : 's'}`, danger: refundsCount > 0, kpi: refundsCount > 0 ? 'refunds' : null },
+    { label: 'Late deliveries', value: String(lateCount), sub: lateCount === 0 ? 'All on time' : 'Past deadline', danger: lateCount > 0, kpi: lateCount > 0 ? 'late' : null },
     { label: 'Completion rate', value: `${Math.round(completionRate * 100)}%`, sub: 'Completed vs cancelled' },
     { label: 'Avg order value', value: moneyDollars(aov), sub: 'Across all orders' },
-    { label: 'Attorney gross', value: moneyDollars(attyGross), sub: `${stats?.by_provider_type?.attorney?.count ?? 0} orders` },
-    { label: 'Consultant gross', value: moneyDollars(consGross), sub: `${stats?.by_provider_type?.consultant?.count ?? 0} orders` },
+    { label: 'Attorney gross', value: moneyDollars(attyGross), sub: `${stats?.by_provider_type?.attorney?.count ?? 0} orders`, kpi: (stats?.by_provider_type?.attorney?.count ?? 0) > 0 ? 'attorney' : null },
+    { label: 'Consultant gross', value: moneyDollars(consGross), sub: `${stats?.by_provider_type?.consultant?.count ?? 0} orders`, kpi: (stats?.by_provider_type?.consultant?.count ?? 0) > 0 ? 'consultant' : null },
   ]
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '14px' }}>
-      {tiles.map((t) => (
-        <div
-          key={t.label}
-          style={{
-            background: t.danger ? '#2a1010' : C.surface2,
-            border: `1px solid ${t.danger ? C.red : C.border}`,
-            borderRadius: '10px',
-            padding: '12px 14px',
-          }}
-        >
-          <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
-            {t.label}
-          </div>
-          <div style={{ fontSize: '20px', fontWeight: 900, color: t.danger ? '#fecaca' : C.text, lineHeight: 1.1 }}>
-            {t.value}
-          </div>
-          <div style={{ color: C.textMuted, fontSize: '11px', marginTop: '4px' }}>{t.sub}</div>
-        </div>
-      ))}
+      {tiles.map((t) => {
+        const isActive = !!t.kpi && t.kpi === kpiFilter
+        const isClickable = !!t.kpi && typeof onKpiClick === 'function'
+        const Tag = isClickable ? 'button' : 'div'
+        return (
+          <Tag
+            key={t.label}
+            type={isClickable ? 'button' : undefined}
+            onClick={isClickable ? () => onKpiClick(isActive ? null : t.kpi) : undefined}
+            aria-pressed={isClickable ? isActive : undefined}
+            title={isClickable ? (isActive ? 'Clear filter' : `Filter to ${t.label.toLowerCase()}`) : undefined}
+            style={{
+              all: 'unset',
+              boxSizing: 'border-box',
+              display: 'block',
+              background: t.danger ? '#2a1010' : isActive ? C.cyanGlow : C.surface2,
+              border: `1px solid ${isActive ? C.cyan : t.danger ? C.red : C.border}`,
+              borderRadius: '10px',
+              padding: '12px 14px',
+              cursor: isClickable ? 'pointer' : 'default',
+              transition: 'border-color 120ms ease, background 120ms ease',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              color: 'inherit',
+            }}
+          >
+            <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
+              {t.label}
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 900, color: t.danger ? '#fecaca' : C.text, lineHeight: 1.1 }}>
+              {t.value}
+            </div>
+            <div style={{ color: C.textMuted, fontSize: '11px', marginTop: '4px' }}>{t.sub}</div>
+          </Tag>
+        )
+      })}
     </div>
   )
 }
@@ -1512,6 +1533,12 @@ export function OrderKanbanPage({ adminOnly = false }) {
   const [orders, setOrders] = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [filter, setFilter] = React.useState('all')
+  // KPI-driven filter (refunds | late | escrow | attorney | consultant).
+  // Click a KPI tile to apply; null = no KPI filter active.
+  const [kpiFilter, setKpiFilter] = React.useState(null)
+  // Focused kanban column — when set, only that column is rendered (Fiverr-
+  // style drill-down). null = full 5-column board.
+  const [focusCol, setFocusCol] = React.useState(null)
   const [search, setSearch] = React.useState('')
   const [stats, setStats] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
@@ -1562,10 +1589,48 @@ export function OrderKanbanPage({ adminOnly = false }) {
   if (error) return <ErrorState message={error} onRetry={load} />
 
   const role = profile?.role || 'client'
-  const tabFiltered = filter === 'all' ? orders : orders.filter(o => o.providerType === filter || o.status === filter)
+  const isAdmin = role === 'admin'
+
+  // Predicate helpers used by the click-driven filters from the KPI strip.
+  // `late` mirrors the server-side rule in /admin/orders/stats: past
+  // delivery_deadline AND not in a terminal status.
+  const TERMINAL = ['completed', 'released', 'paid', 'cancelled', 'refunded']
+  const isLate = (o) => {
+    if (!o.deadline) return false
+    const t = new Date(o.deadline).getTime()
+    if (!Number.isFinite(t)) return false
+    return t < Date.now() && !TERMINAL.includes(String(o.status || '').toLowerCase())
+  }
+  const isRefundOrCancel = (o) => ['refunded', 'cancelled', 'declined'].includes(String(o.status || '').toLowerCase())
+  const isEscrowHeld = (o) => String(o.escrowStatus || '').toLowerCase() === 'held'
+
+  // Tab filter (existing) + KPI-driven filter (new). Combined, then search
+  // narrows the kanban view further. KPI strip stays platform-wide so it
+  // never reflects the current narrow view.
+  const tabFiltered = filter === 'all'
+    ? orders
+    : orders.filter(o => o.providerType === filter || o.status === filter)
+  const kpiFiltered = !kpiFilter
+    ? tabFiltered
+    : tabFiltered.filter(o =>
+        kpiFilter === 'refunds' ? isRefundOrCancel(o)
+        : kpiFilter === 'late' ? isLate(o)
+        : kpiFilter === 'escrow' ? isEscrowHeld(o)
+        : kpiFilter === 'attorney' ? o.providerType === 'attorney'
+        : kpiFilter === 'consultant' ? o.providerType === 'consultant'
+        : true,
+      )
+  // Column focus — click a column header to drill into just that pipeline
+  // stage; the four other columns hide and the focused one expands.
+  const columnFiltered = !focusCol
+    ? kpiFiltered
+    : kpiFiltered.filter(o => {
+        const col = ORDER_COLUMNS.find(c => c.id === focusCol)
+        return col?.statuses.includes(String(o.status || '').toLowerCase())
+      })
   const q = search.trim().toLowerCase()
   const visibleOrders = q
-    ? tabFiltered.filter(o =>
+    ? columnFiltered.filter(o =>
         String(o.id || '').toLowerCase().includes(q) ||
         String(o.orderNumber || '').toLowerCase().includes(q) ||
         String(o.title || '').toLowerCase().includes(q) ||
@@ -1573,10 +1638,10 @@ export function OrderKanbanPage({ adminOnly = false }) {
         String(o.clientEmail || '').toLowerCase().includes(q) ||
         String(o.providerName || '').toLowerCase().includes(q),
       )
-    : tabFiltered
+    : columnFiltered
   const totalValue = visibleOrders.reduce((sum, o) => sum + Number(o.amountCents || 0), 0)
-  const columns = ORDER_COLUMNS.map(col => ({ ...col, orders: visibleOrders.filter(o => col.statuses.includes(String(o.status || '').toLowerCase())) }))
-  const isAdmin = role === 'admin'
+  const allColumns = ORDER_COLUMNS.map(col => ({ ...col, orders: visibleOrders.filter(o => col.statuses.includes(String(o.status || '').toLowerCase())) }))
+  const columns = focusCol ? allColumns.filter(c => c.id === focusCol) : allColumns
 
   return (
     <div style={pageShell}>
@@ -1599,7 +1664,7 @@ export function OrderKanbanPage({ adminOnly = false }) {
             filter. KPI tiles degrade gracefully to 0 / dash when stats are
             absent (e.g. brand-new install with no orders). */}
         {isAdmin && (
-          <AdminKpiStrip stats={stats} orderCount={orders.length} />
+          <AdminKpiStrip stats={stats} orderCount={orders.length} kpiFilter={kpiFilter} onKpiClick={setKpiFilter} />
         )}
 
         {/* Late-delivery red banner — only visible when there's actually
@@ -1609,9 +1674,35 @@ export function OrderKanbanPage({ adminOnly = false }) {
             <span style={{ fontSize: '13px', fontWeight: 800 }}>
               {stats.late_delivery_count} order{stats.late_delivery_count === 1 ? '' : 's'} past delivery deadline. These need admin attention.
             </span>
-            <button type="button" onClick={() => setFilter('all')} style={{ border: `1px solid ${C.red}`, background: 'transparent', color: '#fecaca', borderRadius: '999px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Show all
+            <button type="button" onClick={() => { setKpiFilter('late'); setFocusCol(null) }} style={{ border: `1px solid ${C.red}`, background: 'transparent', color: '#fecaca', borderRadius: '999px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              View late orders →
             </button>
+          </div>
+        )}
+
+        {/* Active filter chip row — shows what's narrowing the kanban right
+            now and lets the admin clear in one click. Beats the user having
+            to remember which tile they hit. */}
+        {isAdmin && (kpiFilter || focusCol) && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <span style={{ color: C.textMuted, fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Filter</span>
+            {kpiFilter && (
+              <button type="button" onClick={() => setKpiFilter(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', border: `1px solid ${C.cyan}`, background: C.cyanGlow, color: C.text, borderRadius: '999px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {kpiFilter === 'refunds' ? 'Refunds'
+                  : kpiFilter === 'late' ? 'Late deliveries'
+                  : kpiFilter === 'escrow' ? 'In escrow'
+                  : kpiFilter === 'attorney' ? 'Attorney orders'
+                  : kpiFilter === 'consultant' ? 'Consultant orders'
+                  : kpiFilter}
+                <span aria-hidden style={{ opacity: 0.7 }}>✕</span>
+              </button>
+            )}
+            {focusCol && (
+              <button type="button" onClick={() => setFocusCol(null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', border: `1px solid ${C.cyan}`, background: C.cyanGlow, color: C.text, borderRadius: '999px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Column: {ORDER_COLUMNS.find(c => c.id === focusCol)?.label ?? focusCol}
+                <span aria-hidden style={{ opacity: 0.7 }}>✕</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -1654,32 +1745,95 @@ export function OrderKanbanPage({ adminOnly = false }) {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(220px, 1fr))', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
-          {columns.map(col => (
-            <section key={col.id} style={{ minWidth: '220px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
-                <div style={{ fontWeight: 900, fontSize: '13px' }}>{col.label}</div>
-                <Badge color={col.color}>{col.orders.length}</Badge>
-              </div>
-              <div style={{ display: 'grid', gap: '10px' }}>
-                {col.orders.map(order => (
-                  <button key={order.id} type="button" onClick={() => setSelected(order)} style={{ textAlign: 'left', border: `1px solid ${C.border}`, background: C.surface, borderRadius: '8px', padding: '12px', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
-                      <Badge color={statusColor(order.status)}>{order.status}</Badge>
-                      <span style={{ color: C.textMuted, fontSize: '11px' }}>{order.providerType || role}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: focusCol ? '1fr' : 'repeat(5, minmax(220px, 1fr))', gap: '12px', overflowX: 'auto', paddingBottom: '8px' }}>
+          {columns.map(col => {
+            const isFocused = focusCol === col.id
+            const headerClickable = isAdmin && (col.orders.length > 0 || isFocused)
+            return (
+              <section key={col.id} style={{ minWidth: '220px', background: C.surface2, border: `1px solid ${isFocused ? C.cyan : C.border}`, borderRadius: '8px', padding: '10px' }}>
+                {/* Click the column header to drill into just that stage —
+                    Fiverr-style focus. Click again (or the chip ✕) to clear. */}
+                <button
+                  type="button"
+                  onClick={headerClickable ? () => setFocusCol(isFocused ? null : col.id) : undefined}
+                  disabled={!headerClickable}
+                  title={headerClickable ? (isFocused ? 'Show all columns' : `Focus ${col.label}`) : undefined}
+                  style={{
+                    all: 'unset',
+                    boxSizing: 'border-box',
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    alignItems: 'center',
+                    marginBottom: '10px',
+                    cursor: headerClickable ? 'pointer' : 'default',
+                    fontFamily: 'inherit',
+                    color: 'inherit',
+                  }}
+                >
+                  <span style={{ fontWeight: 900, fontSize: '13px' }}>{col.label}</span>
+                  <Badge color={col.color}>{col.orders.length}</Badge>
+                </button>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {col.orders.map(order => (
+                    // Card is a div (not a button) so we can embed real anchor
+                    // tags for clickable provider/client links without nesting
+                    // interactive elements (which would break a11y and click).
+                    <div
+                      key={order.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelected(order)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(order) } }}
+                      style={{ textAlign: 'left', border: `1px solid ${C.border}`, background: C.surface, borderRadius: '8px', padding: '12px', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                        <Badge color={statusColor(order.status)}>{order.status}</Badge>
+                        {/* Click provider-type chip → filter to that role. */}
+                        {isAdmin && (order.providerType === 'attorney' || order.providerType === 'consultant') ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setKpiFilter(order.providerType) }}
+                            title={`Filter to ${order.providerType} orders`}
+                            style={{ all: 'unset', cursor: 'pointer', color: C.textMuted, fontSize: '11px', textDecoration: 'underline dotted', textUnderlineOffset: '2px' }}
+                          >
+                            {order.providerType}
+                          </button>
+                        ) : (
+                          <span style={{ color: C.textMuted, fontSize: '11px' }}>{order.providerType || role}</span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 900, fontSize: '14px', lineHeight: 1.35 }}>
+                        {order.orderNumber ? <span style={{ color: C.textMuted, fontWeight: 700 }}>#{order.orderNumber} · </span> : null}
+                        {order.title}
+                      </div>
+                      <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '6px' }}>
+                        <span>{order.clientName}</span>
+                        {order.providerName ? <> → {order.providerProfileId ? (
+                          <Link
+                            href={`/marketplace/providers/${order.providerProfileId}`}
+                            target="_blank"
+                            rel="noopener"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open provider profile in a new tab"
+                            style={{ color: C.text, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                          >
+                            {order.providerName}
+                          </Link>
+                        ) : order.providerName}</> : null}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: C.textMuted, fontSize: '11px', marginTop: '10px' }}>
+                        <span>{compactDate(order.createdAt)}</span>
+                        <span>{money(order.amountCents)}</span>
+                      </div>
+                      <ProgressBar value={Math.min(100, Math.max(0, Number(order.progress || 0)))} style={{ marginTop: '10px' }} />
                     </div>
-                    <div style={{ fontWeight: 900, fontSize: '14px', lineHeight: 1.35 }}>{order.title}</div>
-                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '6px' }}>{order.clientName} {order.providerName ? `→ ${order.providerName}` : ''}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: C.textMuted, fontSize: '11px', marginTop: '10px' }}>
-                      <span>{compactDate(order.createdAt)}</span>
-                      <span>{money(order.amountCents)}</span>
-                    </div>
-                    <ProgressBar value={Math.min(100, Math.max(0, Number(order.progress || 0)))} style={{ marginTop: '10px' }} />
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </div>
       </main>
       {selected && <OrderDrawer order={selected} role={role} onClose={() => setSelected(null)} onAdminUpdate={adminUpdate} />}
@@ -1705,8 +1859,10 @@ function shapeOrders(data, role) {
         title: service?.title || o.service_title || o.title || 'Marketplace order',
         status: o.status === 'queued' ? 'pending' : o.status || 'pending',
         escrowStatus: o.escrow_status || 'held',
+        clientId: o.client_id || null,
         clientName: client?.full_name || client?.email || 'Student',
         clientEmail: client?.email || null,
+        providerProfileId: o.consultant_id || o.attorney_profile_id || null,
         providerName: provider?.full_name || provider?.email || 'Provider',
         providerType: o.attorney_id ? 'attorney' : 'consultant',
         amountCents: cents,
