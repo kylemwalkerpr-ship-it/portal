@@ -211,7 +211,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
       if (!gigData.category) newErrors.category = 'Please select a category'
       if (!gigData.subcategory) newErrors.subcategory = 'Please select a subcategory'
       if (!['us', 'uk', 'ca'].includes(gigData.jurisdiction)) {
-        newErrors.jurisdiction = 'Pick the jurisdiction this brief serves'
+        newErrors.jurisdiction = role === 'consultant' ? 'Pick the country your clients are in' : 'Pick the jurisdiction this brief serves'
       }
     }
 
@@ -941,19 +941,21 @@ function CategoryStep({ gigData, errors, onChange, role }: any) {
       )}
 
       <div style={formSection}>
-        <label style={formLabel}>Jurisdiction *</label>
+        <label style={formLabel}>{role === 'consultant' ? 'Country / region' : 'Jurisdiction'} *</label>
         <select
           value={gigData.jurisdiction}
           onChange={e => onChange('jurisdiction', e.target.value)}
           style={selectStyle}
         >
-          <option value="">Select where this brief is licensed to serve</option>
+          <option value="">{role === 'consultant' ? 'Select the country your clients are in' : 'Select where this brief is licensed to serve'}</option>
           <option value="us">United States</option>
           <option value="uk">United Kingdom</option>
           <option value="ca">Canada</option>
         </select>
         <p style={{ fontSize: '12px', color: T.inkMuted, margin: '6px 0 0' }}>
-          Required. Clients filter the marketplace by jurisdiction — gigs without one are hidden from the country browse.
+          {role === 'consultant'
+            ? 'Required. Clients browse the marketplace by country — services without one are hidden from country browse.'
+            : 'Required. Clients filter the marketplace by jurisdiction — gigs without one are hidden from the country browse.'}
         </p>
         {errors.jurisdiction && <div style={formError}>{errors.jurisdiction}</div>}
       </div>

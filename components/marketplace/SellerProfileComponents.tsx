@@ -73,12 +73,15 @@ function formatStartingPrice(cents: number | null | undefined, currency = 'USD')
 export interface SellerProfile {
   id: string
   full_name: string
+  role?: 'attorney' | 'consultant' | string | null
   headshot_url?: string | null
   tagline?: string | null
   bio?: string | null
   intro?: string | null
   jurisdictions?: string | null
   practice_areas?: string | null
+  subjects?: string | null
+  industries?: string | null
   specialties?: string[] | null
   languages?: string[] | null
   credential_type?: string | null
@@ -259,18 +262,36 @@ export function SellerAbout({ seller }: { seller: SellerProfile }) {
           </div>
         )}
 
-        {seller.jurisdictions && (
-          <div style={aboutItem}>
-            <span style={aboutLabel}>Jurisdictions</span>
-            <span style={aboutValue}>{seller.jurisdictions}</span>
-          </div>
-        )}
-
-        {seller.practice_areas && (
-          <div style={aboutItem}>
-            <span style={aboutLabel}>Practice Areas</span>
-            <span style={aboutValue}>{seller.practice_areas}</span>
-          </div>
+        {seller.role === 'consultant' ? (
+          <>
+            {(seller.subjects || seller.jurisdictions) && (
+              <div style={aboutItem}>
+                <span style={aboutLabel}>Subjects</span>
+                <span style={aboutValue}>{seller.subjects ?? seller.jurisdictions}</span>
+              </div>
+            )}
+            {(seller.industries || seller.practice_areas) && (
+              <div style={aboutItem}>
+                <span style={aboutLabel}>Industries</span>
+                <span style={aboutValue}>{seller.industries ?? seller.practice_areas}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {seller.jurisdictions && (
+              <div style={aboutItem}>
+                <span style={aboutLabel}>Jurisdictions</span>
+                <span style={aboutValue}>{seller.jurisdictions}</span>
+              </div>
+            )}
+            {seller.practice_areas && (
+              <div style={aboutItem}>
+                <span style={aboutLabel}>Practice Areas</span>
+                <span style={aboutValue}>{seller.practice_areas}</span>
+              </div>
+            )}
+          </>
         )}
 
         {seller.offers_free_consult && (

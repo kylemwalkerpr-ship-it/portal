@@ -38,7 +38,7 @@ const ROLES: Role[] = [
   {
     id: 'attorney',
     label: 'Attorney',
-    blurb: 'Review intake inquiries, message clients, send custom offers and manage payouts.',
+    blurb: 'Licensed legal practice — review intake inquiries, message clients, send custom offers and manage payouts.',
     Icon: Scale,
     accent: T.brick,
     accentSoft: 'rgba(178,34,52,0.08)',
@@ -49,7 +49,7 @@ const ROLES: Role[] = [
   {
     id: 'consultant',
     label: 'Consultant',
-    blurb: 'Manage assigned students, deliverables, escrow releases and your profile.',
+    blurb: 'Non-legal expertise — academic, career, business, settlement and mentorship. Build a profile, list services, manage deliverables and payouts.',
     Icon: Briefcase,
     accent: T.moss,
     accentSoft: 'rgba(95,107,58,0.10)',

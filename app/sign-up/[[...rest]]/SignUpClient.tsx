@@ -107,7 +107,7 @@ export default function SignUpClient() {
     <AuthShell
       eyebrow="Create your secure account"
       title="Start inside the right YouSafe lane."
-      body="Create the account type that matches your work: student/client, consultant, or attorney. That keeps your dashboard, messages, files, escrow, and payouts routed correctly."
+      body="Create the account type that matches your work: student/client, consultant (non-legal: academic, career, business, settlement, mentorship), or attorney (licensed legal practice). That keeps your dashboard, messages, files, escrow, and payouts routed correctly."
       laneLabel={laneLabel}
       previousUrl={previousUrl}
     >
