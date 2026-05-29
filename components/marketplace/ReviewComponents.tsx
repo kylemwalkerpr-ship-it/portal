@@ -404,9 +404,15 @@ interface ReviewFiltersProps {
   onFilterChange: (filters: any) => void
   sort: string
   onSortChange: (sort: string) => void
+  // Real aggregate for THIS gig/seller (computed server-side over all ratings,
+  // independent of the active filters). Defaults represent the no-reviews state.
+  average?: number
+  total?: number
+  breakdown?: { 5: number; 4: number; 3: number; 2: number; 1: number }
 }
 
-export function ReviewFilters({ filters, onFilterChange, sort, onSortChange }: ReviewFiltersProps) {
+export function ReviewFilters({ filters, onFilterChange, sort, onSortChange, average = 0, total = 0, breakdown = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } }: ReviewFiltersProps) {
+  const starGlyphs = (n: number) => '★★★★★'.slice(0, Math.round(n)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(n))
   const handleRatingChange = (rating: number) => {
     if (filters.minRating === rating) {
       onFilterChange({ ...filters, minRating: undefined })
@@ -425,16 +431,22 @@ export function ReviewFilters({ filters, onFilterChange, sort, onSortChange }: R
 
   return (
     <div style={sidebarStyle}>
-      <div style={ratingSummary}>
-        <div style={ratingHeader}>
-          <div style={ratingBig}>4.8</div>
-          <div style={ratingMeta}>
-            <div style={ratingStars}>★★★★★</div>
-            <div style={ratingCount}>Based on 128 reviews</div>
+      {total > 0 ? (
+        <div style={ratingSummary}>
+          <div style={ratingHeader}>
+            <div style={ratingBig}>{average.toFixed(1)}</div>
+            <div style={ratingMeta}>
+              <div style={ratingStars}>{starGlyphs(average)}</div>
+              <div style={ratingCount}>Based on {total} review{total === 1 ? '' : 's'}</div>
+            </div>
           </div>
+          <RatingBreakdown breakdown={breakdown} total={total} />
         </div>
-        <RatingBreakdown breakdown={{ 5: 98, 4: 20, 3: 6, 2: 3, 1: 1 }} total={128} />
-      </div>
+      ) : (
+        <div style={ratingSummary}>
+          <div style={ratingCount}>No reviews yet</div>
+        </div>
+      )}
 
       <div style={filterSection}>
         <h3 style={filterTitle}>Filters</h3>
@@ -710,6 +722,11 @@ export function ReviewsSection({
   showFilters = true,
 }: ReviewsSectionProps) {
   const [reviews, setReviews] = React.useState<ReviewCardProps['review'][]>([])
+  const [summary, setSummary] = React.useState<{ average: number; total: number; breakdown: { 5: number; 4: number; 3: number; 2: number; 1: number } }>({
+    average: 0,
+    total: 0,
+    breakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+  })
   const [loading, setLoading] = React.useState(true)
   const [filters, setFilters] = React.useState({
     minRating: undefined as number | undefined,
@@ -735,6 +752,11 @@ export function ReviewsSection({
 
       if (data.data) {
         setReviews(data.data.reviews || [])
+        setSummary({
+          average: Number(data.data.average_rating) || 0,
+          total: Number(data.data.total_reviews) || 0,
+          breakdown: data.data.rating_breakdown || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        })
       }
     } catch (error) {
       console.error('Failed to load reviews:', error)
@@ -792,6 +814,9 @@ export function ReviewsSection({
             onFilterChange={setFilters}
             sort={sort}
             onSortChange={setSort}
+            average={summary.average}
+            total={summary.total}
+            breakdown={summary.breakdown}
           />
         </div>
       )}
