@@ -1,14 +1,14 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Avatar, UserMenu, StatusBadge, PayoutBadge, NavItem } from './shared'
+import { C, Btn, Badge, Card, Avatar, UserMenu, StatusBadge, NavItem } from './shared'
 import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import ConsultantOverview from './consultant-overview'
 import ConsultantOrders, { OrderDetail } from './consultant-orders'
-import ConsultantEarnings, { ConsultantConnectSetup } from './consultant-earnings'
+import ConsultantEarnings from './consultant-earnings'
 import ConsultantSettings from './consultant-settings'
 import ConsultantProfile from './consultant-profile'
 import { usePortalTheme } from './usePortalTheme'
@@ -29,7 +29,7 @@ function ConsultantApp({ onLogout }) {
     if (typeof window === 'undefined') return 'overview';
     const params = new URLSearchParams(window.location.search);
     const goto = params.get('goto') || params.get('page');
-    const allowed = ['overview','orders','messages','earnings','connect','profile','settings'];
+    const allowed = ['overview','orders','messages','earnings','profile','settings'];
     return allowed.includes(goto) ? goto : 'overview';
   }, []);
   const [page, setPage] = React.useState(initialPage);
@@ -55,7 +55,6 @@ function ConsultantApp({ onLogout }) {
   const [available, setAvailable] = React.useState(true);
   const [notifPrefs, setNotifPrefs] = React.useState({ orders: true, messages: true, payments: true });
   const [autoWithdraw, setAutoWithdraw] = React.useState(false);
-  const [connectStatus, setConnectStatus] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
   const [orderFilter, setOrderFilter] = React.useState('all');
@@ -83,19 +82,13 @@ function ConsultantApp({ onLogout }) {
 
   const refreshConsultantData = React.useCallback(() => {
     setLoading(true);
-    return Promise.all([
-      fetch('/api/consultant/data').then(async r => {
+    return fetch('/api/consultant/data')
+      .then(async r => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Unable to load consultant data');
         return data;
-      }),
-      fetch('/api/connect/status').then(async r => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'Unable to load Connect status');
-        return data;
-      }),
-    ])
-      .then(([data, status]) => {
+      })
+      .then((data) => {
         setOrders(data.orders ?? []);
         setEarningsByDay(data.earningsByDay ?? []);
         setProfileName(data.consultant?.name || '');
@@ -107,7 +100,6 @@ function ConsultantApp({ onLogout }) {
         setConsultBookingUrl(String(data.consultant?.consult_booking_url || data.consultant?.consultBookingUrl || ''));
         setNotifPrefs(data.consultant?.notifPrefs || { orders: true, messages: true, payments: true });
         setAutoWithdraw(Boolean(data.consultant?.autoWithdraw));
-        setConnectStatus(status);
         const newOrderNotifs = (data.orders ?? [])
           .filter(o => o.status === 'new' || o.status === 'pending')
           .map(o => ({
@@ -368,40 +360,6 @@ function ConsultantApp({ onLogout }) {
       setOrderFiles(prev => prev.filter(f => f.id !== fileId));
     } catch (e) {
       setActionNotice(e.message);
-    }
-  };
-
-  const [connectBusy, setConnectBusy] = React.useState(false);
-
-  const startConnectOnboarding = async () => {
-    setConnectBusy(true);
-    setActionNotice('');
-    try {
-      const res = await fetch('/api/connect/onboard', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || `Unable to start onboarding (HTTP ${res.status})`);
-      }
-      window.location.href = data.url;
-    } catch (e) {
-      setActionNotice(e.message);
-      setConnectBusy(false);
-    }
-  };
-
-  const openConnectDashboard = async () => {
-    setConnectBusy(true);
-    setActionNotice('');
-    try {
-      const res = await fetch('/api/connect/dashboard-link', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || `Unable to open payout dashboard (HTTP ${res.status})`);
-      }
-      window.location.href = data.url;
-    } catch (e) {
-      setActionNotice(e.message);
-      setConnectBusy(false);
     }
   };
 
@@ -738,7 +696,6 @@ function ConsultantApp({ onLogout }) {
             { label: 'Earnings', icon: '💰', action: () => setPage('earnings') },
             { label: 'Messages', icon: '💬', action: () => setPage('messages') },
             { label: 'Orders', icon: '📦', action: () => setPage('orders') },
-            { label: 'Payout setup', icon: '🏦', action: () => setPage('connect') },
           ]}
         />
       </div>
@@ -820,20 +777,9 @@ function ConsultantApp({ onLogout }) {
             {page === 'earnings' && (
               <ConsultantEarnings
                 orders={orders}
-                connectStatus={connectStatus}
                 monthEarnings={monthEarnings}
                 totalEarnings={totalEarnings}
                 onNavigate={setPage}
-              />
-            )}
-            {page === 'connect' && (
-              <ConsultantConnectSetup
-                connectStatus={connectStatus}
-                onRefresh={refreshConsultantData}
-                connectBusy={connectBusy}
-                setPage={setPage}
-                startConnectOnboarding={startConnectOnboarding}
-                openConnectDashboard={openConnectDashboard}
               />
             )}
             {page === 'profile' && <ConsultantProfile />}

@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { C, Btn, Badge, Card, StatCard } from './shared'
+import { C, Badge, Card, StatCard } from './shared'
 
 /**
  * Consultant → Earnings (mirrors AttorneyEarnings pattern).
@@ -9,7 +9,7 @@ import { C, Btn, Badge, Card, StatCard } from './shared'
  * the Earnings + Payout Setup pages.
  */
 
-export default function ConsultantEarnings({ orders, connectStatus, monthEarnings, totalEarnings, onNavigate }) {
+export default function ConsultantEarnings({ orders, monthEarnings, totalEarnings }) {
   const completed = orders.filter(o => o.status === 'completed');
   const transferredCents = completed.reduce((a, o) => a + (o.payoutStatus === 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
   const pendingCents = completed.reduce((a, o) => a + (o.payoutStatus !== 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
@@ -39,19 +39,10 @@ export default function ConsultantEarnings({ orders, connectStatus, monthEarning
       <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0d2060 100%)`, borderRadius: '20px', padding: '28px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, right: 0, width: '6px', height: '100%', background: C.cyan }} />
         <div style={{ position: 'absolute', top: 0, right: '6px', width: '6px', height: '100%', background: '#fff', opacity: 0.15 }} />
-        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Transferred to your bank</div>
+        <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Paid out</div>
         <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>${transferredDollars}</div>
-        <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', marginBottom: '20px' }}>
-          Payouts move to your connected bank automatically when orders are completed and approved by the student.
-        </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {connectStatus?.onboarded ? (
-            <Btn variant="primary" size="md" onClick={() => window.location.href = '/dashboard/consultant/connect'}>
-              View payout dashboard
-            </Btn>
-          ) : (
-            <Btn variant="primary" size="md" onClick={() => onNavigate?.('connect')}>Set up payouts</Btn>
-          )}
+        <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px' }}>
+          Payouts are released by YouSafe once an order is completed and approved by the student. No setup needed.
         </div>
       </div>
 
@@ -104,51 +95,6 @@ export default function ConsultantEarnings({ orders, connectStatus, monthEarning
             Your payout history will populate once your delivery is approved.
           </div>
         )}
-      </Card>
-    </div>
-  );
-}
-
-// ── Connect/Payout Setup page ──────────────────────────────────────────
-export function ConsultantConnectSetup({ connectStatus, onRefresh, connectBusy, setPage, startConnectOnboarding, openConnectDashboard }) {
-  return (
-    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '720px' }}>
-      <div>
-        <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Payout Setup</h2>
-        <p style={{ color: C.textMuted, fontSize: '14px' }}>Connect your bank account with our payment processor to receive automatic payouts when services are completed.</p>
-      </div>
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '260px' }}>
-            <div style={{ fontWeight: 800, fontSize: '16px', marginBottom: '8px' }}>
-              {connectStatus?.onboarded ? 'Your payout account is connected' : 'Connect your bank account'}
-            </div>
-            <div style={{ color: C.textMuted, fontSize: '14px', lineHeight: 1.7 }}>
-              {connectStatus?.onboarded
-                ? 'You will receive payouts automatically when orders are completed and approved.'
-                : 'Our processor securely collects and verifies your bank details. YouSafe never stores your bank account information.'}
-            </div>
-          </div>
-          <Badge color={connectStatus?.onboarded ? 'green' : 'orange'}>
-            {connectStatus?.onboarded ? 'Connected' : 'Not connected'}
-          </Badge>
-        </div>
-        <div style={{ height: '1px', background: C.border, margin: '20px 0' }} />
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {connectStatus?.onboarded ? (
-            <Btn variant="primary" onClick={openConnectDashboard} disabled={connectBusy}>
-              {connectBusy ? 'Opening…' : 'View Payout Dashboard'}
-            </Btn>
-          ) : (
-            <Btn variant="primary" onClick={startConnectOnboarding} disabled={connectBusy}>
-              {connectBusy ? 'Redirecting…' : 'Connect Bank Account'}
-            </Btn>
-          )}
-          <Btn variant="secondary" onClick={onRefresh} disabled={connectBusy}>Refresh Status</Btn>
-        </div>
-        <div style={{ marginTop: '16px', color: C.textMuted, fontSize: '13px' }}>
-          Charges enabled: {connectStatus?.chargesEnabled ? 'Yes' : 'No'} · Payouts enabled: {connectStatus?.payoutsEnabled ? 'Yes' : 'No'}
-        </div>
       </Card>
     </div>
   );

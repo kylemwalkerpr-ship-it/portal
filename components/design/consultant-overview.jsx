@@ -85,25 +85,18 @@ export default function ConsultantOverview({ onJump, profileName }) {
   const [error, setError] = React.useState(null);
   const [gigs, setGigs] = React.useState([]);
   const [gigsLoading, setGigsLoading] = React.useState(true);
-  const [connectStatus, setConnectStatus] = React.useState(null);
   const [available, setAvailable] = React.useState(true);
 
   const load = React.useCallback(() => {
     setLoading(true); setError(null);
-    Promise.all([
-      fetch('/api/consultant/data', { credentials: 'same-origin' }).then(async r => {
+    fetch('/api/consultant/data', { credentials: 'same-origin' })
+      .then(async r => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || 'Unable to load consultant data');
         return d;
-      }),
-      fetch('/api/connect/status', { credentials: 'same-origin' }).then(async r => {
-        const d = await r.json().catch(() => ({}));
-        return r.ok ? d : null;
-      }).catch(() => null),
-    ])
-      .then(([d, cs]) => {
+      })
+      .then((d) => {
         setData(d);
-        setConnectStatus(cs);
         if (typeof d.consultant?.available === 'boolean') setAvailable(d.consultant.available);
       })
       .catch(e => setError(e.message))
@@ -203,17 +196,6 @@ export default function ConsultantOverview({ onJump, profileName }) {
       )}
 
       <DashboardGuide role="consultant" />
-
-      {/* Payout setup banner */}
-      {!loading && !connectStatus?.onboarded && (
-        <div style={{ background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: '14px', padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '240px' }}>
-            <div style={{ fontWeight: 700, color: C.orange, fontSize: '15px' }}>Connect your bank account to receive payouts</div>
-            <div style={{ color: C.textMuted, fontSize: '13px', marginTop: '4px' }}>Payout setup is required before completed services can be paid out automatically.</div>
-          </div>
-          <Btn variant="primary" size="sm" onClick={() => onJump?.('connect')}>Set up payouts</Btn>
-        </div>
-      )}
 
       {/* New order alert */}
       {!loading && newOrders > 0 && (
