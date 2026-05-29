@@ -45,7 +45,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .from('gigs')
       .select('slug, updated_at')
       .eq('status', 'active')
-      .limit(500)
+      // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
+      // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
+      // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
+      // while gig + provider volume is still well below the limit.
+      .limit(5000)
 
     for (const gig of gigs ?? []) {
       if (!gig.slug) continue
@@ -60,7 +64,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const { data: attorneys } = await db
       .from('attorneys')
       .select('id, created_at')
-      .limit(500)
+      // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
+      // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
+      // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
+      // while gig + provider volume is still well below the limit.
+      .limit(5000)
 
     for (const a of attorneys ?? []) {
       entries.push({
@@ -74,7 +82,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const { data: consultants } = await db
       .from('consultants')
       .select('id, created_at')
-      .limit(500)
+      // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
+      // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
+      // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
+      // while gig + provider volume is still well below the limit.
+      .limit(5000)
 
     for (const c of consultants ?? []) {
       entries.push({
