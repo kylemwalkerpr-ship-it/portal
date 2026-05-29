@@ -1,6 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { ALLOWED_FIELDS, draftField, type SuggestContext, type SuggestField, type TierSummary } from '@/lib/seoSuggest'
+import { allowedFieldsForRole, draftField, type SuggestContext, type SuggestField, type SuggestRole, type TierSummary } from '@/lib/seoSuggest'
 
 function sanitizeTier(raw: Record<string, unknown>): TierSummary {
   const t: TierSummary = {}
@@ -31,9 +31,20 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const body = await req.json().catch(() => ({}))
   const field = String(body.field || '') as SuggestField
-  if (!ALLOWED_FIELDS.includes(field)) return fail(`Field "${field}" is not AI-editable.`, 400)
+
+  // Role drives prompt vocabulary + per-role allow-list. Prefer the gig's
+  // own provider_type (so admin-edited gigs get the gig's role, not the
+  // admin's), falling back to the auth'd role.
+  const role: SuggestRole =
+    gig.provider_type === 'consultant' ? 'consultant'
+    : gig.provider_type === 'attorney' ? 'attorney'
+    : auth.role === 'consultant' ? 'consultant' : 'attorney'
+  if (!allowedFieldsForRole(role).includes(field)) {
+    return fail(`Field "${field}" is not AI-editable for this account.`, 400)
+  }
 
   const suggestCtx: SuggestContext = {
+    role,
     title: gig.title,
     tagline: gig.tagline,
     pitch: gig.pitch,

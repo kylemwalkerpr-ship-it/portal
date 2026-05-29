@@ -1,6 +1,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { ALLOWED_FIELDS, draftField, type FaqEntry, type SuggestContext, type SuggestField, type TierSummary } from '@/lib/seoSuggest'
+import { allowedFieldsForRole, draftField, type FaqEntry, type SuggestContext, type SuggestField, type SuggestRole, type TierSummary } from '@/lib/seoSuggest'
 
 // Coerce a JSON tier object from the wizard into our typed shape.
 // Numbers come through as `number` already in JSON, but Object.values
@@ -32,10 +32,22 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const field = String(body.field || '') as SuggestField
-  if (!ALLOWED_FIELDS.includes(field)) return fail(`Field "${field}" is not AI-editable.`, 400)
+
+  // Resolve role: trust the auth'd role; admin can pass role in the body to
+  // draft on a seller's behalf, defaulting to attorney. Drives role-aware
+  // prompts, jurisdiction-vocabulary anchors, and per-role allow-list.
+  const bodyRole = typeof (body as { role?: unknown }).role === 'string' ? String((body as { role?: string }).role) : null
+  const role: SuggestRole =
+    auth.role === 'consultant' ? 'consultant'
+    : auth.role === 'attorney' ? 'attorney'
+    : bodyRole === 'consultant' ? 'consultant' : 'attorney'
+  if (!allowedFieldsForRole(role).includes(field)) {
+    return fail(`Field "${field}" is not AI-editable for this account.`, 400)
+  }
 
   const ctxRaw = (body.context && typeof body.context === 'object') ? body.context as Record<string, unknown> : {}
   const suggestCtx: SuggestContext = {
+    role,
     title: typeof ctxRaw.title === 'string' ? ctxRaw.title : null,
     tagline: typeof ctxRaw.tagline === 'string' ? ctxRaw.tagline : null,
     pitch: typeof ctxRaw.pitch === 'string' ? ctxRaw.pitch : null,

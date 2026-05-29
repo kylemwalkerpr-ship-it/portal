@@ -16,6 +16,15 @@ export const ALLOWED_FIELDS: SuggestField[] = [
   'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq', 'tier_features',
 ]
 
+// Per-role allow-list. All fields apply to both roles today, but the wrapper
+// is the boundary that lets us split future role-specific fields cleanly —
+// the same pattern that saved us when an attorney requested a consultant-only
+// profile field. Both routes enforce this against the auth'd role.
+export type SuggestRole = 'attorney' | 'consultant'
+export function allowedFieldsForRole(_role: SuggestRole): SuggestField[] {
+  return ALLOWED_FIELDS
+}
+
 export interface TierSummary {
   tier?: 'basic' | 'standard' | 'premium' | string
   title?: string
@@ -28,6 +37,13 @@ export interface TierSummary {
 export interface FaqEntry { question: string; answer: string }
 
 export interface SuggestContext {
+  // Seller role drives prompt language. Attorney prompts retain
+  // jurisdiction/USCIS/Home Office/IRCC anchors; consultant prompts swap to
+  // neutral country/region + professional-services framing so consultants
+  // can't be pushed into drafting legal-coded copy for fields their gig
+  // can't legally ship. Default 'attorney' for backward compatibility with
+  // callers that pre-date the role split.
+  role?: SuggestRole | null
   title?: string | null
   tagline?: string | null
   pitch?: string | null
@@ -57,35 +73,79 @@ interface FieldSpec {
   hardLimit?: number
 }
 
+function isConsultant(ctx: SuggestContext): boolean {
+  return ctx.role === 'consultant'
+}
+
 function buildBaseContext(ctx: SuggestContext): string {
   const title = String(ctx.title || '')
   const category = String(ctx.category || '')
+  const subcategory = String(ctx.subcategory || '')
   const jurisdiction = String(ctx.jurisdiction || '')
   const pitch = String(ctx.pitch || ctx.tagline || '')
   const description = String(ctx.description || '')
+  const consultant = isConsultant(ctx)
+  // Surface the seller's whole gig surface — tags, FAQ snapshot, and tier
+  // pricing/delivery — so the model has every CTR signal it needs. Tier
+  // pricing in particular drives "from $X · Y-day delivery" snippets that
+  // feed both the SEO description prose AND the Offer/AggregateOffer schema
+  // emitted on the public page.
+  const tags = Array.isArray(ctx.tags) ? ctx.tags.filter(t => typeof t === 'string' && t.trim()) : []
+  const faq = Array.isArray(ctx.faq) ? ctx.faq.filter(f => f?.question && f?.answer) : []
+  const tiers = Array.isArray(ctx.otherTiers)
+    ? [...(ctx.tier ? [ctx.tier] : []), ...ctx.otherTiers]
+    : (ctx.tier ? [ctx.tier] : [])
+  const activeTiers = tiers.filter(t => typeof t?.price === 'number' && (t!.price as number) > 0)
+  const tierSummary = activeTiers
+    .map(t => {
+      const label = String(t.tier || t.title || 'tier')
+      const price = typeof t.price === 'number' ? `$${(t.price / 100).toFixed(2)}` : '—'
+      const days = typeof t.delivery_days === 'number' && t.delivery_days > 0 ? `${t.delivery_days}d delivery` : ''
+      const revs = typeof t.revisions === 'number' && t.revisions > 0 ? `${t.revisions} revisions` : ''
+      return [label, price, days, revs].filter(Boolean).join(' · ')
+    })
+    .join(' | ')
   return [
+    `Seller role: ${consultant ? 'Non-legal consultant (professional-services marketplace)' : 'Licensed attorney (legal-services marketplace)'}`,
     `Service title: ${title || '(none yet)'}`,
-    category ? `Category: ${category}` : '',
-    jurisdiction ? `Jurisdiction: ${jurisdiction.toUpperCase()}` : '',
+    category ? `Category: ${category}${subcategory ? ` / ${subcategory}` : ''}` : '',
+    jurisdiction
+      ? (consultant ? `Country / region served: ${jurisdiction.toUpperCase()}` : `Jurisdiction: ${jurisdiction.toUpperCase()}`)
+      : '',
     pitch ? `Existing pitch: ${pitch}` : '',
+    tags.length ? `Existing tags: ${tags.join(', ')}` : '',
+    tierSummary ? `Pricing tiers: ${tierSummary}` : '',
+    faq.length ? `Existing FAQ topics: ${faq.slice(0, 5).map(f => f.question).join(' | ')}` : '',
     description ? `Existing long description: ${description.slice(0, 600)}` : '',
   ].filter(Boolean).join('\n')
 }
 
 function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
   const baseContext = buildBaseContext(ctx)
+  const consultant = isConsultant(ctx)
+  // Role-aware vocabulary anchors used across multiple field prompts.
+  const marketplaceLabel = consultant ? 'Fiverr-style professional-services marketplace' : 'Fiverr-style legal-services marketplace'
+  const regionAnchor = consultant
+    ? 'When the brief lists a country/region (US / UK / Canada), include it verbatim — do NOT add legal-system anchors like USCIS / Home Office / IRCC for a consultant gig.'
+    : 'When the brief lists a jurisdiction, use the precise legal-system anchor it implies (USCIS / Home Office / IRCC) plus the abbreviation (US / UK / Canada).'
+  const proofExamples = consultant
+    ? '"delivered by a verified consultant", "completed in 5 business days", "covers application strategy and editorial review"'
+    : '"drafted by a licensed immigration attorney", "filed in 5 business days", "covers RFE responses"'
   switch (field) {
     case 'title':
       return {
         format: 'string', hardLimit: 80,
         prompt: [
-          'Write a single-line gig title for a Fiverr-style legal/immigration marketplace.',
+          `Write a single-line gig title for a ${marketplaceLabel}.`,
           'Requirements: 50–75 characters, starts with "I will", action-led, includes a service noun, plain language. Do NOT include emoji, quotation marks, hashtags, or trailing punctuation.',
+          consultant
+            ? 'Do not imply legal practice ("attorney", "lawyer", "law firm", "legal counsel") — this is a consultant gig, not a licensed legal service.'
+            : '',
           'Return ONLY the title text, no labels, no markdown, no preamble.',
           '',
           'Context:',
           baseContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
     case 'seo_title':
       return {
@@ -94,15 +154,16 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Write a Google search-result title (50–60 characters) for this service.',
           'Requirements:',
           '- Lead with the primary keyword from the priority list (verbatim or near-verbatim) — it must appear in the first 30 characters.',
-          '- Include the jurisdiction abbreviation (US / UK / Canada) when the brief lists one.',
+          '- Include the country/jurisdiction abbreviation (US / UK / Canada) when the brief lists one.',
           '- Separate brand or qualifier with " — " (em dash + spaces).',
           '- NEVER start with "I will", "We will", or any pronoun + verb preamble. This is a Google title, not a marketplace gig title.',
           '- No emoji, no trailing punctuation, no quotes.',
+          consultant ? '- Do not imply legal practice ("attorney", "lawyer", "law firm").' : '',
           'Return ONLY the title text.',
           '',
           'Context:',
           baseContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
     case 'seo_description':
       return {
@@ -111,14 +172,16 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Write a meta description (search snippet) of 140–155 characters.',
           'Requirements:',
           '- The primary keyword from the priority list appears in the first 60 characters.',
-          '- The jurisdiction (USCIS / Home Office / IRCC, or the abbreviation US / UK / Canada) appears once.',
-          '- One concrete deliverable or proof point named (e.g. "drafted by a licensed immigration attorney", "filed in 5 business days", "covers RFE responses").',
+          regionAnchor,
+          `- One concrete deliverable or proof point named (e.g. ${proofExamples}).`,
+          '- If the brief lists a pricing tier (e.g. "from $99 · 5-day delivery"), include the starting price or delivery promise — it lifts CTR and feeds the Offer schema.',
           '- Ends with a soft CTA fragment ("Start today.", "Get a quote.", "Book a consult."). No trailing ellipsis or quotation marks.',
+          consultant ? '- Do not imply legal advice or representation; this is a non-legal consulting service.' : '',
           'Return ONLY the description text, single paragraph, no labels.',
           '',
           'Context:',
           baseContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
     case 'pitch':
     case 'tagline':
@@ -140,14 +203,20 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Write a long-form gig description, 500–700 words, plain prose, no markdown headings.',
           'SEO placement rules (non-negotiable):',
           '- Primary keyword from the priority list appears in the FIRST sentence of paragraph 1.',
-          '- Jurisdiction (USCIS / Home Office / IRCC, or US / UK / Canada) appears in paragraph 1 and paragraph 3.',
+          consultant
+            ? '- The country / region (US / UK / Canada) the seller works in appears in paragraph 1 and paragraph 3. Do NOT use legal-system anchors (USCIS / Home Office / IRCC) — this is a non-legal consulting gig.'
+            : '- Jurisdiction (USCIS / Home Office / IRCC, or US / UK / Canada) appears in paragraph 1 and paragraph 3.',
           '- 2–3 secondary priority keywords woven naturally across paragraphs 2–4 (max one occurrence per keyword per 100 words; no stuffing).',
           'Structure:',
-          '1) Opening paragraph (60–100 words): name the buyer, the outcome, and the primary keyword. Match the buyer\'s search intent — not "I will help…" but "If you are filing an X / facing a Y…".',
+          consultant
+            ? '1) Opening paragraph (60–100 words): name the buyer, the outcome, and the primary keyword. Match the buyer\'s search intent — not "I will help…" but "If you are applying to / planning a / preparing for…".'
+            : '1) Opening paragraph (60–100 words): name the buyer, the outcome, and the primary keyword. Match the buyer\'s search intent — not "I will help…" but "If you are filing an X / facing a Y…".',
           '2) "What you get" paragraph (100–150 words): concrete deliverables in prose, no bullets.',
           '3) "How it works" paragraph (100–150 words): process, timeline, what the buyer does at each step.',
           '4) "Who it\'s for" paragraph (100–150 words): ideal client + cases this is NOT for. Honest scoping helps qualified-lead quality and reduces refunds.',
-          'No emoji. No markdown bullets. No promotional fluff ("amazing", "guaranteed", "world-class"). No outcome promises. Return ONLY the description prose.',
+          consultant
+            ? 'No emoji. No markdown bullets. No promotional fluff ("amazing", "guaranteed", "world-class"). No legal-advice or representation language ("I represent…", "your case", "filing on your behalf") — this is a consulting/document-prep gig, not a legal service. No outcome promises. Return ONLY the description prose.'
+            : 'No emoji. No markdown bullets. No promotional fluff ("amazing", "guaranteed", "world-class"). No outcome promises. Return ONLY the description prose.',
           '',
           'Context:',
           baseContext,
@@ -177,9 +246,14 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           'Generate 5 frequently-asked questions a buyer would have for this gig, with concise answers.',
           'SEO requirements (these FAQs feed FAQPage schema for rich snippets — they must read as standalone answers):',
           '- Each question is phrased like a real Google search: starts with "How", "Can", "Do", "What", "When", "Is", or "Will".',
-          '- At least 2 questions include the jurisdiction (US / UK / Canada or USCIS / Home Office / IRCC).',
+          consultant
+            ? '- At least 2 questions include the country/region (US / UK / Canada) the seller works in. Do NOT use legal-system anchors (USCIS / Home Office / IRCC) — this is a non-legal consulting gig.'
+            : '- At least 2 questions include the jurisdiction (US / UK / Canada or USCIS / Home Office / IRCC).',
           '- At least 2 questions include a priority keyword from the brief (verbatim or close variant).',
           '- Each answer is a self-contained snippet: opens with the answer (no "Yes, but…" hedging), no "see above", no pronoun back-references to earlier Q/A.',
+          consultant
+            ? '- Do not give legal advice or imply legal representation; if a buyer should consult a licensed attorney, say so plainly.'
+            : '',
           'Output format — exactly this shape, no markdown, no numbering:',
           '',
           'Q: <question ending with ?>',
@@ -251,11 +325,15 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
       return {
         format: 'string', hardLimit: 1200,
         prompt: [
-          'Write a "what we need from the client to begin" requirements list for this legal/immigration gig.',
+          consultant
+            ? 'Write a "what we need from the client to begin" requirements list for this professional-services gig.'
+            : 'Write a "what we need from the client to begin" requirements list for this legal/immigration gig.',
           'Format: 4–8 short bullet items, each on its own line, each starting with "- " (hyphen + space).',
           'Each bullet is one concrete document, fact, or decision the seller needs before they can start work.',
           'Plain language. No emoji. No headings. No closing paragraph. Do NOT promise outcomes, timelines, or eligibility.',
-          'Examples of good bullets: "- Current visa status and date of last entry", "- Form I-20 (front and back)", "- Description of the events that led to the SEVIS termination".',
+          consultant
+            ? 'Examples of good bullets: "- Target programs and application deadlines", "- Current draft of your statement of purpose (if any)", "- Transcript / CV / portfolio links".'
+            : 'Examples of good bullets: "- Current visa status and date of last entry", "- Form I-20 (front and back)", "- Description of the events that led to the SEVIS termination".',
           'Return ONLY the bullet list.',
           '',
           'Context:',
@@ -327,14 +405,24 @@ function parseFaq(raw: string): FaqEntry[] {
   return entries.slice(0, 8)
 }
 
-const SYSTEM_PROMPT = [
-  'You are an SEO copywriter for a legal-services marketplace (similar to Fiverr).',
-  'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',
-  'You produce concise, professional, conversion-focused copy that complies with the field constraints exactly.',
-  'You never invent credentials, case outcomes, prices, or guarantees that were not provided in the context.',
-  'You match the jurisdiction phrasing in the brief exactly (e.g. "USCIS" for US gigs, "Home Office" for UK gigs, "IRCC" for Canada gigs).',
-  'Output ONLY the requested text — no markdown, no labels, no explanations, no headings unless the field requires them.',
-].join(' ')
+function buildSystemPrompt(role: SuggestRole): string {
+  const consultant = role === 'consultant'
+  return [
+    consultant
+      ? 'You are an SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for verified consultants, not licensed legal practitioners.'
+      : 'You are an SEO copywriter for a legal-services marketplace (similar to Fiverr).',
+    'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',
+    'You produce concise, professional, conversion-focused copy that complies with the field constraints exactly.',
+    'You never invent credentials, case outcomes, prices, or guarantees that were not provided in the context.',
+    consultant
+      ? 'You match the country/region phrasing in the brief exactly (US / UK / Canada). You do NOT use legal-system anchors like "USCIS", "Home Office", or "IRCC" — those imply legal practice, which a consultant gig cannot ship.'
+      : 'You match the jurisdiction phrasing in the brief exactly (e.g. "USCIS" for US gigs, "Home Office" for UK gigs, "IRCC" for Canada gigs).',
+    consultant
+      ? 'You never imply legal advice or representation. If a buyer needs a licensed attorney, say so plainly.'
+      : '',
+    'Output ONLY the requested text — no markdown, no labels, no explanations, no headings unless the field requires them.',
+  ].filter(Boolean).join(' ')
+}
 
 // Field-agnostic SEO craft rules. Injected after the research brief
 // (which supplies the keywords) and before the per-field task (which
@@ -365,11 +453,15 @@ export async function draftField(
   }
   const spec = buildFieldSpec(field, context)
   const trimmedHint = (hint || '').trim().slice(0, 400)
+  const role: SuggestRole = context.role === 'consultant' ? 'consultant' : 'attorney'
   // Always inject the SEO research brief BEFORE the field-specific
   // prompt so the model treats the keyword list as a constraint, not
   // an afterthought. The brief is deterministic and grounded — no
-  // hallucinated keywords can sneak in this path.
+  // hallucinated keywords can sneak in this path. Role is passed through
+  // so the research layer can pick role-appropriate intent modifiers
+  // (attorney/lawyer for legal gigs; specialist/advisor/coach for consultants).
   const research = buildSeoResearch({
+    role,
     title: context.title,
     pitch: context.pitch,
     tagline: context.tagline,
@@ -393,7 +485,7 @@ export async function draftField(
 
   let raw: string
   try {
-    raw = await provider.reply(SYSTEM_PROMPT, [{ role: 'user', content: userMessage }])
+    raw = await provider.reply(buildSystemPrompt(role), [{ role: 'user', content: userMessage }])
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, status: 502, message: `AI suggestion failed: ${msg}` }

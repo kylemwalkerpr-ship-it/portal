@@ -37,9 +37,17 @@ const JURISDICTION_KEYWORDS: Record<Exclude<Jurisdiction, ''>, string[]> = {
 
 // Generic buyer-intent prefixes that work across categories. Sellers
 // who frame their title with one of these tend to rank for
-// long-tail searches that convert ("immigration lawyer near me",
-// "best F-1 reinstatement service", etc.).
-const INTENT_MODIFIERS = ['lawyer', 'attorney', 'help', 'service', 'consultation', 'review', 'application', 'expert', 'professional', 'online']
+// long-tail searches that convert. Role-aware: "lawyer"/"attorney" boost
+// legal gigs; consultant gigs prefer "specialist"/"advisor"/"coach" because
+// using legal-practice terms in a non-legal gig title is both misleading and
+// kills CTR (buyers searching "MBA admissions lawyer" are not real intent).
+const INTENT_MODIFIERS_ATTORNEY = ['lawyer', 'attorney', 'help', 'service', 'consultation', 'review', 'application', 'expert', 'professional', 'online']
+const INTENT_MODIFIERS_CONSULTANT = ['specialist', 'advisor', 'coach', 'consultant', 'help', 'service', 'review', 'expert', 'professional', 'online']
+
+export type ResearchRole = 'attorney' | 'consultant'
+function intentModifiersForRole(role: ResearchRole): string[] {
+  return role === 'consultant' ? INTENT_MODIFIERS_CONSULTANT : INTENT_MODIFIERS_ATTORNEY
+}
 
 export interface KeywordSignal {
   term: string
@@ -77,6 +85,9 @@ interface ResearchInputs {
   category?: string | null
   jurisdiction?: string | null
   tags?: string[] | null
+  // Role drives intent-modifier selection + jurisdiction-vocabulary framing.
+  // Defaults to 'attorney' for backward compat with pre-role-split callers.
+  role?: ResearchRole | null
 }
 
 function lower(s: unknown): string {
@@ -100,9 +111,10 @@ export function buildSeoResearch(inputs: ResearchInputs): SeoResearch {
 
   // Curated category bank — comes from the same source as the UI
   // chips, keeping the model and the visible chips in lockstep.
+  const role: ResearchRole = inputs.role === 'consultant' ? 'consultant' : 'attorney'
   const categoryTerms = getKeywordsForCategory(category)
   const jxTerms = isValidJx ? JURISDICTION_KEYWORDS[jx] : []
-  const intentTerms = INTENT_MODIFIERS
+  const intentTerms = intentModifiersForRole(role)
 
   // Build signals, deduped (lowercase), tagged with their source.
   const seen = new Set<string>()
@@ -136,14 +148,23 @@ export function buildSeoResearch(inputs: ResearchInputs): SeoResearch {
   const coveredKeywords = signals.filter((s) => s.status === 'covered').map((s) => s.term)
 
   // Jurisdiction-specific phrasing guidance, picked from the live
-  // jurisdiction term set (no fabricated geographic advice).
+  // jurisdiction term set (no fabricated geographic advice). Role-aware:
+  // attorney gigs use the legal-system anchors (USCIS / Home Office / IRCC);
+  // consultant gigs MUST stay neutral on country/region so they don't imply
+  // legal advice or representation.
   let jurisdictionHint = ''
   if (jx === 'us') {
-    jurisdictionHint = 'This is a US gig. Use precise US-immigration vocabulary: "USCIS" (not "immigration office"), the relevant form code (I-130, I-485, I-765, etc.) when applicable, and "green card" / "naturalization" rather than generic "residency".'
+    jurisdictionHint = role === 'consultant'
+      ? 'This is a US-market gig. Use "United States" or "US" plainly; do NOT use USCIS / I-130 / I-485 / green-card / naturalization vocabulary — those imply licensed legal practice. Reference the country and the service category instead.'
+      : 'This is a US gig. Use precise US-immigration vocabulary: "USCIS" (not "immigration office"), the relevant form code (I-130, I-485, I-765, etc.) when applicable, and "green card" / "naturalization" rather than generic "residency".'
   } else if (jx === 'uk') {
-    jurisdictionHint = 'This is a UK gig. Use precise UK terminology: "Home Office" (not "UK government"), "ILR" / "indefinite leave to remain", "spouse visa" / "skilled worker visa" instead of generic phrasing. For tenancy gigs, reference "Section 21" / "tenancy notice".'
+    jurisdictionHint = role === 'consultant'
+      ? 'This is a UK-market gig. Use "United Kingdom" or "UK" plainly; do NOT use Home Office / ILR / spouse-visa / skilled-worker-visa vocabulary — those imply licensed legal practice. Reference the country and the service category instead.'
+      : 'This is a UK gig. Use precise UK terminology: "Home Office" (not "UK government"), "ILR" / "indefinite leave to remain", "spouse visa" / "skilled worker visa" instead of generic phrasing. For tenancy gigs, reference "Section 21" / "tenancy notice".'
   } else if (jx === 'ca') {
-    jurisdictionHint = 'This is a Canada gig. Use precise Canadian terminology: "IRCC" (not "Canadian immigration"), the relevant program name ("Express Entry", "PNP", "PGWP"), and CRS / NOC when applicable.'
+    jurisdictionHint = role === 'consultant'
+      ? 'This is a Canada-market gig. Use "Canada" or "CA" plainly; do NOT use IRCC / Express Entry / PNP / PGWP vocabulary — those imply licensed immigration practice. Reference the country and the service category instead.'
+      : 'This is a Canada gig. Use precise Canadian terminology: "IRCC" (not "Canadian immigration"), the relevant program name ("Express Entry", "PNP", "PGWP"), and CRS / NOC when applicable.'
   }
 
   const rules = [

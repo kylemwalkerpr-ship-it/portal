@@ -1048,6 +1048,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
         <div style={labelRow}>
           <label style={inlineLabel}>Gig Title * <span style={{ fontWeight: 400, color: T.inkMuted }}>(20–80 chars)</span></label>
           <AIDraftButton
+            role={role}
             field="title"
             getContext={getContext}
             minimalContext={minimalContext}
@@ -1072,6 +1073,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
         <div style={labelRow}>
           <label style={inlineLabel}>Tagline / Pitch * <span style={{ fontWeight: 400, color: T.inkMuted }}>(40–160 chars)</span></label>
           <AIDraftButton
+            role={role}
             field="tagline"
             getContext={getContext}
             minimalContext={minimalContext}
@@ -1095,6 +1097,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
         <div style={labelRow}>
           <label style={inlineLabel}>Detailed Description * <span style={{ fontWeight: 400, color: T.inkMuted }}>(300–2500 chars)</span></label>
           <AIDraftButton
+            role={role}
             field="description"
             getContext={getContext}
             minimalContext={minimalContext}
@@ -1120,6 +1123,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
         <div style={labelRow}>
           <label style={inlineLabel}>Tags * <span style={{ fontWeight: 400, color: T.inkMuted }}>(3–5 tags)</span></label>
           <AIDraftButton
+            role={role}
             field="tags"
             getContext={getContext}
             minimalContext={minimalContext}
@@ -1292,6 +1296,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
               <label style={{ ...formLabel, marginBottom: 0 }}>Features (one per line)</label>
               <AIDraftButton
+            role={role}
                 field="tier_features"
                 getContext={() => ({
                   title: gigData.title,
@@ -1362,6 +1367,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
           <label style={{ ...formLabel, marginBottom: 0 }}>Client Requirements *</label>
           <AIDraftButton
+            role={role}
             field="requirements"
             getContext={() => ({
               title: gigData.title,
@@ -1467,6 +1473,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
           <label style={formLabel}>FAQ</label>
           <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
             <AIDraftButton
+            role={role}
               field="faq"
               getContext={() => ({
                 title: gigData.title,
@@ -1601,6 +1608,7 @@ function SEOStep({ gigData, errors, onChange }: any) {
             </span>
           </label>
           <AIDraftButton
+            role={role}
             field="seo_title"
             getContext={() => ({
               title: gigData.title,
@@ -1642,6 +1650,7 @@ function SEOStep({ gigData, errors, onChange }: any) {
             </span>
           </label>
           <AIDraftButton
+            role={role}
             field="seo_description"
             getContext={() => ({
               title: gigData.title,

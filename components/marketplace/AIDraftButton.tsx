@@ -55,6 +55,12 @@ interface AIDraftButtonProps {
   // Until they click Save the field is untouched — keeping the AI
   // suggestion an opt-in change rather than an immediate overwrite.
   onApply: (value: string | string[] | FaqEntry[]) => void
+  // Seller role — drives role-aware prompts on the server (attorney keeps
+  // jurisdiction / USCIS / Home Office / IRCC anchors; consultant gets neutral
+  // country/region + non-legal phrasing). The route also resolves from auth as
+  // a safety net, but passing role explicitly avoids stale prompts when admins
+  // edit on behalf of a seller.
+  role?: 'attorney' | 'consultant'
   label?: string
   size?: 'inline' | 'compact'
   minimalContext?: boolean
@@ -87,6 +93,7 @@ type Stage = 'input' | 'preview'
 
 export default function AIDraftButton({
   field, getContext, onApply,
+  role = 'attorney',
   label = 'Draft with AI',
   size = 'inline',
   minimalContext = false,
@@ -146,6 +153,7 @@ export default function AIDraftButton({
     try {
       const data = await postJson('/api/seo-suggest', {
         field,
+        role,
         context: getContext(),
         hint: hint || undefined,
       })

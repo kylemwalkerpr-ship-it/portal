@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { buildGigJsonLd } from '@/lib/gigJsonLd'
+import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 
 /**
  * Defensive per-page SEO. Gig detail is auth-walled and noindex today, so
@@ -28,6 +31,32 @@ async function checkSlugRedirect(slug: string): Promise<string | null> {
   }
 }
 
+// React cache() dedupes the same call inside one request, so generateMetadata
+// and Page share a single Supabase round-trip per visit instead of doubling up.
+// We cast through `any` because PostgREST's inferred type for a SELECT this
+// wide (with two joined relations) is a union that omits fields it can't
+// statically prove are present — the established pattern in this repo.
+const loadGigForSeo = cache(async (slug: string): Promise<any | null> => {
+  try {
+    const db = createSupabaseAdminClient()
+    const { data: gig } = await db
+      .from('gigs')
+      .select(
+        // Everything the JSON-LD builder needs: identifiers, copy, pricing
+        // signals, gallery, FAQ, jurisdiction, plus the tier + provider joins.
+        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, starting_price, gallery_images, faq, provider_id, provider_type, ' +
+          'tiers:gig_tiers(tier, title, description, price, delivery_days, revisions, is_active), ' +
+          'provider:profiles!gigs_provider_id_fkey(id, full_name, username)',
+      )
+      .eq('slug', slug)
+      .eq('status', 'active')
+      .maybeSingle()
+    return gig as any
+  } catch {
+    return null
+  }
+})
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   try {
@@ -45,13 +74,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       }
     }
 
-    const db = createSupabaseAdminClient()
-    const { data: gig } = await db
-      .from('gigs')
-      .select('title, description, gallery_images, seo_title, seo_description')
-      .eq('slug', slug)
-      .eq('status', 'active')
-      .maybeSingle()
+    const gig = await loadGigForSeo(slug)
 
     if (!gig) {
       return { title: 'Gig | YouSafe', robots: { index: false } }
@@ -60,7 +83,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const title = `${gig.seo_title || gig.title} | YouSafe`
     const description = (gig.seo_description || gig.description || '').toString().slice(0, 155)
     const cover = Array.isArray(gig.gallery_images) && gig.gallery_images.length
-      ? (gig.gallery_images[0]?.url || gig.gallery_images[0])
+      ? ((gig.gallery_images[0] as { url?: string })?.url || (gig.gallery_images[0] as unknown as string))
       : undefined
     const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
 
@@ -94,5 +117,61 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     redirect(`/marketplace/gigs/${redirected}`)
   }
 
-  return <GigDetailPage slug={slug} />
+  // Build the JSON-LD graph for this gig. Failure here must never break the
+  // page render — emit nothing rather than a broken script.
+  let jsonLd: object | null = null
+  try {
+    const gig = await loadGigForSeo(slug)
+    if (gig) {
+      const [canonicalUrl, marketplaceBaseUrl] = await Promise.all([
+        getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`),
+        getMarketplaceBaseUrl(),
+      ])
+      const category = gig.category ? getCategoryById(gig.category as CategoryId) : undefined
+      const subcategory = gig.subcategory && gig.category
+        ? getSubcategoryById(gig.category as CategoryId, gig.subcategory as SubcategoryId)
+        : undefined
+      jsonLd = buildGigJsonLd({
+        gig: {
+          id: gig.id,
+          slug: gig.slug,
+          title: gig.title,
+          description: gig.description,
+          seo_title: gig.seo_title,
+          seo_description: gig.seo_description,
+          category: gig.category,
+          subcategory: gig.subcategory,
+          jurisdiction: gig.jurisdiction,
+          avg_rating: gig.avg_rating,
+          review_count: gig.review_count,
+          order_count: gig.order_count,
+          starting_price: gig.starting_price,
+          gallery_images: gig.gallery_images as Array<{ url?: string } | string> | null,
+          faq: gig.faq as Array<{ question: string; answer: string }> | null,
+          provider_type: gig.provider_type,
+        },
+        tiers: Array.isArray(gig.tiers) ? (gig.tiers as Array<{
+          tier?: string | null; title?: string | null; description?: string | null;
+          price?: number | null; delivery_days?: number | null; revisions?: number | null; is_active?: boolean | null
+        }>) : [],
+        provider: Array.isArray(gig.provider) ? (gig.provider[0] ?? null) : (gig.provider as { id: string; full_name?: string | null; username?: string | null } | null),
+        canonicalUrl,
+        marketplaceBaseUrl,
+        categoryLabel: category?.name ?? null,
+        subcategoryLabel: subcategory?.name ?? null,
+      })
+    }
+  } catch { /* JSON-LD is opportunistic — never block the page. */ }
+
+  return (
+    <>
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+      <GigDetailPage slug={slug} />
+    </>
+  )
 }
