@@ -12,6 +12,7 @@
 export type CategoryId = string
 export type SubcategoryId = string
 export type Vertical = 'study-abroad' | 'legal' | 'business' | 'career' | 'settlement' | 'general'
+export type Role = 'attorney' | 'consultant'
 
 export interface Category {
   id: CategoryId
@@ -22,6 +23,7 @@ export interface Category {
   subcategories: Subcategory[]
   popular: boolean
   order: number
+  permittedRoles: Role[]
   sourceLabels?: string[]
   sourceCount?: number
 }
@@ -33,6 +35,7 @@ export interface Subcategory {
   keywords: string[]
   popular: boolean
   order: number
+  permittedRoles?: Role[]
 }
 
 /**
@@ -48,6 +51,7 @@ export const CATEGORIES: Category[] = [
     vertical: 'study-abroad',
     popular: true,
     order: 1,
+    permittedRoles: ['attorney'],
     subcategories: [
       {
         id: 'study-permits',
@@ -107,6 +111,7 @@ export const CATEGORIES: Category[] = [
     vertical: 'study-abroad',
     popular: true,
     order: 2,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'university-admissions',
@@ -119,7 +124,7 @@ export const CATEGORIES: Category[] = [
       {
         id: 'graduate-school',
         name: 'Graduate School',
-        description: 'Master\'s, PhD, and graduate program applications',
+        description: "Master's, PhD, and graduate program applications",
         keywords: ['masters', 'phd', 'graduate', 'research', 'thesis'],
         popular: false,
         order: 2,
@@ -151,13 +156,66 @@ export const CATEGORIES: Category[] = [
     ],
   },
   {
+    id: 'academic-writing',
+    name: 'Academic Writing & Application Support',
+    description: 'Application essays, SOPs, scholarship essays, research writing, and editing',
+    icon: '✍️',
+    vertical: 'study-abroad',
+    popular: true,
+    order: 3,
+    permittedRoles: ['attorney', 'consultant'],
+    subcategories: [
+      {
+        id: 'application-essays',
+        name: 'Application Essays',
+        description: 'College application essays and personal statements',
+        keywords: ['application essay', 'college essay', 'personal statement', 'common app', 'admissions essay'],
+        popular: true,
+        order: 1,
+      },
+      {
+        id: 'sop-writing',
+        name: 'SOP Writing',
+        description: 'Statement of purpose and SOP drafting for graduate and professional programs',
+        keywords: ['sop', 'statement of purpose', 'letter of intent', 'program rationale', 'study plan'],
+        popular: true,
+        order: 2,
+      },
+      {
+        id: 'scholarship-essays',
+        name: 'Scholarship Essays',
+        description: 'Scholarship application essays and merit-statement writing',
+        keywords: ['scholarship essay', 'merit essay', 'funding statement', 'grant essay', 'award essay'],
+        popular: false,
+        order: 3,
+      },
+      {
+        id: 'research-writing',
+        name: 'Research Writing',
+        description: 'Research papers, theses, dissertations, and academic manuscripts',
+        keywords: ['research paper', 'thesis', 'dissertation', 'academic paper', 'manuscript'],
+        popular: false,
+        order: 4,
+      },
+      {
+        id: 'proofreading-editing',
+        name: 'Proofreading & Editing',
+        description: 'Copy-editing, proofreading, and language polishing for academic and professional documents',
+        keywords: ['proofreading', 'copy-editing', 'editing', 'language polishing', 'grammar review'],
+        popular: false,
+        order: 5,
+      },
+    ],
+  },
+  {
     id: 'legal',
     name: 'Legal Services',
     description: 'Document preparation, legal review, and attorney services',
     icon: '⚖️',
     vertical: 'legal',
     popular: true,
-    order: 3,
+    order: 4,
+    permittedRoles: ['attorney'],
     subcategories: [
       {
         id: 'document-prep',
@@ -208,7 +266,8 @@ export const CATEGORIES: Category[] = [
     icon: '🏠',
     vertical: 'settlement',
     popular: true,
-    order: 4,
+    order: 5,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'housing',
@@ -259,7 +318,8 @@ export const CATEGORIES: Category[] = [
     icon: '💼',
     vertical: 'career',
     popular: true,
-    order: 5,
+    order: 6,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'resume-cv',
@@ -310,7 +370,8 @@ export const CATEGORIES: Category[] = [
     icon: '📊',
     vertical: 'business',
     popular: false,
-    order: 6,
+    order: 7,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'business-consulting',
@@ -361,7 +422,8 @@ export const CATEGORIES: Category[] = [
     icon: '📜',
     vertical: 'general',
     popular: false,
-    order: 7,
+    order: 8,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'credential-assessment',
@@ -396,7 +458,8 @@ export const CATEGORIES: Category[] = [
     icon: '🤝',
     vertical: 'general',
     popular: false,
-    order: 8,
+    order: 9,
+    permittedRoles: ['attorney', 'consultant'],
     subcategories: [
       {
         id: 'student-mentorship',
@@ -482,6 +545,46 @@ export function getAllSubcategories(): Subcategory[] {
 }
 
 /**
+ * Return only categories (and their subcategories) permitted for a given role.
+ * Subcategories inherit the parent category's permittedRoles unless overridden.
+ */
+export function getCategoriesForRole(role: Role): Category[] {
+  return CATEGORIES.filter(cat => cat.permittedRoles.includes(role)).map(cat => ({
+    ...cat,
+    subcategories: cat.subcategories.filter(
+      sub => (sub.permittedRoles ?? cat.permittedRoles).includes(role)
+    ),
+  }))
+}
+
+/**
+ * Check whether a top-level category is permitted for a role.
+ */
+export function isCategoryAllowedForRole(categoryId: CategoryId, role: Role): boolean {
+  const cat = getCategoryById(categoryId)
+  if (!cat) return false
+  return cat.permittedRoles.includes(role)
+}
+
+/**
+ * Check whether a subcategory (or top-level category) is permitted for a role.
+ * Accepts either a subcategory id or a top-level category id.
+ */
+export function isSubcategoryAllowedForRole(subcategoryId: SubcategoryId, role: Role): boolean {
+  // First check if it's a top-level category
+  const cat = getCategoryById(subcategoryId)
+  if (cat) return cat.permittedRoles.includes(role)
+
+  // Otherwise look it up as a subcategory
+  const parent = getCategoryBySubcategoryId(subcategoryId)
+  if (!parent) return false
+  const sub = parent.subcategories.find(s => s.id === subcategoryId)
+  if (!sub) return false
+  const effectiveRoles = sub.permittedRoles ?? parent.permittedRoles
+  return effectiveRoles.includes(role)
+}
+
+/**
  * Category provenance pulled from the existing portal/service catalogue,
  * legal service seeds, and public consultancy service pages. This lets the
  * marketplace use one normalized taxonomy while still matching legacy service
@@ -542,6 +645,46 @@ export const CATEGORY_SOURCE_LABELS: Record<CategoryId, string[]> = {
     'University Admission Basic',
     'University Admission Comprehensive',
     'University Admission Elite',
+  ],
+  'academic-writing': [
+    'Academic Writing & Application Support',
+    'Application Essay Services',
+    'SOP Writing',
+    'Statement of Purpose',
+    'Scholarship Essay Writing',
+    'Research Paper Writing',
+    'Thesis Editing',
+    'Proofreading & Copy-editing',
+  ],
+  'application-essays': [
+    'Application Essay Services',
+    'College Application Essay',
+    'Personal Statement Writing',
+    'Common App Essay',
+  ],
+  'sop-writing': [
+    'SOP Writing',
+    'Statement of Purpose',
+    'Letter of Intent',
+    'Study Plan Writing',
+  ],
+  'scholarship-essays': [
+    'Scholarship Essay Writing',
+    'Merit Essay',
+    'Funding Statement',
+    'Grant Essay',
+  ],
+  'research-writing': [
+    'Research Paper Writing',
+    'Thesis Writing',
+    'Dissertation Support',
+    'Academic Manuscript',
+  ],
+  'proofreading-editing': [
+    'Proofreading & Copy-editing',
+    'Language Polishing',
+    'Grammar Review',
+    'Document Editing',
   ],
   legal: ['Legal Consulting', 'Legal Services', 'Attorney Engagement'],
   'document-prep': [
