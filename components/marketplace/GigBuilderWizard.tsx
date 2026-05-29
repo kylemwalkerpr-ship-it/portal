@@ -4,7 +4,7 @@ import React from 'react'
 import type { CSSProperties } from 'react'
 import { Card, Btn, Input, Textarea, Badge, ProgressBar } from '../design/shared'
 import { T, F } from './tokens'
-import { CATEGORIES, getCategoryById, getCategorySourceLabels, getSubcategoryById } from '@/lib/categories'
+import { getCategoriesForRole, getCategoryById, getCategorySourceLabels, getSubcategoryById, type Role } from '@/lib/categories'
 import { ProfileCompletenessBanner } from './ProfileCompletenessBanner'
 import { GigCard } from './MarketplaceHero'
 import GalleryManager from './GalleryManager'
@@ -165,9 +165,10 @@ interface GigBuilderWizardProps {
   existingGig?: any
   onComplete?: (gigId: string) => void
   onCancel?: () => void
+  role: Role
 }
 
-export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: GigBuilderWizardProps) {
+export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, role }: GigBuilderWizardProps) {
   const [currentStep, setCurrentStep] = React.useState(0)
   const persistedDraft = loadPersistedDraft(existingGig)
   const [gigData, setGigData] = React.useState({
@@ -583,6 +584,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel }: G
             gigData={gigData}
             errors={errors}
             onChange={updateGigData}
+            role={role}
           />
         )}
 
@@ -885,7 +887,8 @@ function GigPreviewModal({ gigData, onClose }: { gigData: any; onClose: () => vo
   )
 }
 
-function CategoryStep({ gigData, errors, onChange }: any) {
+function CategoryStep({ gigData, errors, onChange, role }: any) {
+  const roleCategories = getCategoriesForRole(role)
   const selectedCategory = getCategoryById(gigData.category)
   const selectedSubcategory = selectedCategory && gigData.subcategory
     ? getSubcategoryById(selectedCategory.id, gigData.subcategory)
@@ -909,7 +912,7 @@ function CategoryStep({ gigData, errors, onChange }: any) {
           style={selectStyle}
         >
           <option value="">Select a category</option>
-          {CATEGORIES.map(cat => (
+          {roleCategories.map(cat => (
             <option key={cat.id} value={cat.id}>
               {cat.icon} {cat.name}
             </option>

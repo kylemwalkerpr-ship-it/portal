@@ -28,7 +28,7 @@ export default async function Page() {
 
   return (
     <SellerShell title="New Service" subtitle="Set up your service with clear scope and pricing">
-      <GigBuilderWizardNew />
+      <GigBuilderWizardNew role={auth.role as 'attorney' | 'consultant'} />
     </SellerShell>
   )
 }

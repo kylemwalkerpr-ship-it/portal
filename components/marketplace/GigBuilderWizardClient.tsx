@@ -27,9 +27,10 @@ async function requestJson(url: string, options: RequestInit = {}) {
 
 interface GigBuilderWizardClientProps {
   gigId: string
+  role: 'attorney' | 'consultant'
 }
 
-export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
+export function GigBuilderWizardClient({ gigId, role }: GigBuilderWizardClientProps) {
   const router = useRouter()
   const [gig, setGig] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
@@ -109,6 +110,7 @@ export function GigBuilderWizardClient({ gigId }: GigBuilderWizardClientProps) {
   return (
     <GigBuilderWizard
       gigId={gigId}
+      role={role}
       existingGig={gig}
       onComplete={handleComplete}
       onCancel={handleCancel}

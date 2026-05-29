@@ -11,7 +11,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { id } = await params
   return (
     <SellerShell title="Edit Service" subtitle="Update your service details and pricing">
-      <GigBuilderWizardClient gigId={id} />
+      <GigBuilderWizardClient gigId={id} role={auth.role as 'attorney' | 'consultant'} />
     </SellerShell>
   )
 }

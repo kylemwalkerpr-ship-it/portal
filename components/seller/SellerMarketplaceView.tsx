@@ -2,6 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
+import { getCategoriesForRole, type Role } from '@/lib/categories'
 
 const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
@@ -28,16 +29,7 @@ interface MarketplaceGig {
   provider?: { full_name?: string; email?: string; username?: string | null }
 }
 
-const CATEGORY_FILTERS = [
-  { id: '', label: 'All' },
-  { id: 'immigration', label: 'Immigration' },
-  { id: 'legal', label: 'Legal' },
-  { id: 'education', label: 'Education' },
-  { id: 'settlement', label: 'Settlement' },
-  { id: 'career', label: 'Career' },
-  { id: 'business', label: 'Business' },
-  { id: 'credentials', label: 'Credentials' },
-]
+
 
 const SORTS = [
   { id: 'rank_score', label: 'Trending' },
@@ -102,6 +94,13 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
   const [sort, setSort] = React.useState<SortKey>('rank_score')
   const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
   const [includeOwn, setIncludeOwn] = React.useState(false)
+
+  const categoryFilters = React.useMemo(() => {
+    const all = [{ id: '', label: 'All' }]
+    const roleForFilter: Role = viewerRole === 'admin' ? 'attorney' : viewerRole
+    const roleCats = getCategoriesForRole(roleForFilter)
+    return [...all, ...roleCats.map((cat) => ({ id: cat.id, label: cat.name }))]
+  }, [viewerRole])
 
   // Debounce search input → query so we don't hit the API on every keystroke.
   React.useEffect(() => {
@@ -326,7 +325,7 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
 
         {/* Category pills */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' as const }}>
-          {CATEGORY_FILTERS.map((c) => {
+          {categoryFilters.map((c) => {
             const isActive = category === c.id
             return (
               <button
