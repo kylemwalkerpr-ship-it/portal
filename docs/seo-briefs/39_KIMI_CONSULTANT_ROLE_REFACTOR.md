@@ -88,10 +88,43 @@ Migration file `supabase/consultant_role_refactor.sql`:
 - `lib/consultantProfileStrength.ts`: re-point checks at `industries`/`subjects` instead of `practice_areas`/`jurisdictions` (read-with-fallback for legacy).
 - `lib/profileSuggest.ts:65`: change the consultant Role line to **"Non-legal consultant — academic, career, business, education, settlement"**. Update the rest of the prompt template to never instruct the model to write legal copy for consultants.
 
-### Phase 6 — Sign-up positioning + nav cleanup
-- `app/sign-up/[[...rest]]/SignUpClient.tsx`: clarify the consultant lane copy — **"Consultant (non-legal: academic, career, business, settlement, mentorship)"** and separately **"Attorney (licensed legal practice)"**. No other functional change.
-- Consultant dashboard navigation: confirm no "Legal …" surface is exposed (audit `components/dashboard/*` and any consultant-specific renderers). Remove or hide as needed. (List any you find — do not delete cross-role components blindly.)
-- ✋
+### Phase 6 — Public read-path fix + sign-up positioning + nav/vocabulary cleanup
+> DETAILED 2026-05-29 (supersedes the original stub). Phase 5 shipped in `ca4cf8d`. During Phase 5 review Claude found and fixed a persistence gap: `/api/consultant/profile` PATCH whitelist (`RICH_TEXT`) and GET SELECT did not include `subjects`/`industries`, so wizard saves were silently dropped. That fix is already committed — do NOT redo it. Phase 6 closes the remaining consultant surfaces that still render legacy legal vocabulary.
+>
+> **Scope discipline — VERIFIED, do not widen:** the providers directory (`/api/attorneys/search` → `components/marketplace/MarketplaceProvidersIndex.tsx` at `/marketplace/providers`) is **attorney-only** (it queries the `attorneys` table exclusively and never reads consultants). Its `jurisdictions`/`practice_areas` facets are CORRECT for attorneys — **leave it untouched.** Likewise `app/api/consultants/[id]/route.ts` already selects neither legacy nor geo columns — no change. The consultant public-profile leak is ONLY in the two files in 6A.
+
+**6A — Public read-path fix (consultant public profile shows blank subjects/industries).**
+The public seller profile is served by `GET /api/sellers/[id]` → `SellerProfilePage` → `SellerProfileComponents.tsx`. It works for both roles. The API does `select('*')` from `consultants` (so `subjects`/`industries` are present on `provider`) but the response payload only maps the legacy pair, and the component only renders the legacy pair. A consultant who fills subjects/industries (post-`ca4cf8d`) therefore shows blank here.
+
+- `app/api/sellers/[id]/route.ts` — in the seller payload object (currently maps `jurisdictions: provider.jurisdictions,` / `practice_areas: provider.practice_areas,`), add immediately after those two lines:
+  ```ts
+  subjects: provider.subjects ?? null,
+  industries: provider.industries ?? null,
+  ```
+  Also in the profile fall-through stub further down (the block that sets `jurisdictions: null, practice_areas: null,`), add `subjects: null, industries: null,` so the shape is consistent.
+- `components/marketplace/SellerProfileComponents.tsx`:
+  - Extend the `SellerProfile` interface (the block starting `export interface SellerProfile {`) with:
+    ```ts
+    role?: 'attorney' | 'consultant' | string | null
+    subjects?: string | null
+    industries?: string | null
+    ```
+  - In `SellerAbout`, make the two `aboutItem` blocks role-aware. For a consultant (`seller.role === 'consultant'`) render **Subjects** = `seller.subjects ?? seller.jurisdictions` and **Industries** = `seller.industries ?? seller.practice_areas`. For everyone else keep the existing **Jurisdictions** / **Practice Areas** blocks exactly as-is. Read-with-fallback so existing consultants (whose data is still in the legacy columns via the Phase 4 backfill) keep rendering. Do not duplicate both label sets for the same role.
+
+**6B — Sign-up positioning (consultant = non-legal; attorney = legal).**
+- `components/design/landing/MemberAccessBand.tsx` — the `ROLES` array. The consultant entry's `blurb` is currently operational ("Manage assigned students, deliverables, escrow releases and your profile."). Reposition it to state WHAT a consultant offers so applicants self-select correctly, e.g.: **"Non-legal expertise — academic, career, business, settlement and mentorship. Build a profile, list services, manage deliverables and payouts."** Tighten the attorney `blurb` to make the legal distinction explicit (e.g. lead with "Licensed legal practice —"). Keep `signUpHref`/`signInHref`/`signUpLabel`/icons/accents unchanged.
+- `app/sign-up/[[...rest]]/SignUpClient.tsx` — the `AuthShell` `body` prop (line ~110) currently reads "...student/client, consultant, or attorney...". Clarify parenthetically: **consultant (non-legal: academic, career, business, settlement, mentorship)** vs **attorney (licensed legal practice)**. No functional/routing change — copy only.
+
+**6C — Nav / vocabulary cleanup (consultant-facing legal vocabulary that survived Phase 5).**
+- `components/marketplace/GigBuilderWizard.tsx` — the gig "Jurisdiction *" field (`<label>Jurisdiction *</label>`, placeholder "Select where this brief is licensed to serve", help text "Clients filter the marketplace by jurisdiction — gigs without one are hidden from the country browse."). The country selector (us/uk/ca) stays — it powers the country browse for ALL gigs — but the *vocabulary* is attorney-coded. Make the label + placeholder + help text **role-aware** using the `role` prop already passed into the wizard (`role` is in scope; `CategoryStep` receives it). For `role === 'consultant'`: label **"Country / region *"**, placeholder **"Select the country your clients are in"**, help **"Required. Clients browse the marketplace by country — services without one are hidden from country browse."** For attorneys keep the current legal wording. Do NOT rename the `gigData.jurisdiction` field/key or the DB column — label-layer only.
+- Consultant dashboard navigation audit: grep consultant-specific dashboard renderers for any "Legal"/"Jurisdiction"/"Practice area" label exposed to consultants. List anything found in your handoff; do NOT delete cross-role components blindly — relabel role-aware or hide for consultants only. (If nothing is found, say so explicitly — that is a valid result.)
+
+**Gates for Phase 6 (you run these; paste output):**
+- `npx tsc --noEmit` clean.
+- `npm run build` passes.
+- 1-line UI note: on a consultant's public profile (`/sellers/<consultant-profile-id>` or `/marketplace/providers/<consultant-id>`), the About panel shows **Subjects/Industries**, not Jurisdictions/Practice Areas; on an attorney's it still shows Jurisdictions/Practice Areas.
+- Confirm the providers directory (`/marketplace/providers`) was NOT touched.
+- ✋ STOP for Claude review before Phase 7.
 
 ### Phase 7 — Verification gates (machine-checked, ALL must pass)
 Run and paste output for each:
