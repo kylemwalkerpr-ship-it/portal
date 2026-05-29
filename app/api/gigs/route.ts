@@ -3,6 +3,7 @@ import { buildUniqueSlug } from '@/lib/fiverr'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
@@ -173,6 +174,18 @@ export async function POST(req: Request) {
   const status = 'draft' // new gigs always start as draft; use /publish to activate
   const category = String(body.category || body.subcategory || '').trim() || null
   const subcategory = String(body.subcategory || '').trim() || null
+
+  // Category gate: legal categories require Bar vetting on attorneys /
+  // attorney_applications, which consultants do not have.
+  if (auth.role === 'consultant') {
+    if (category && !isCategoryAllowedForRole(category, 'consultant') && !isSubcategoryAllowedForRole(category, 'consultant')) {
+      return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+    }
+    if (subcategory && !isSubcategoryAllowedForRole(subcategory, 'consultant')) {
+      return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+    }
+  }
+
   const rawJurisdiction = String(body.jurisdiction || '').trim().toLowerCase()
   const jurisdiction = ['us', 'uk', 'ca'].includes(rawJurisdiction) ? rawJurisdiction : null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []

@@ -3,6 +3,7 @@ import { buildSlug } from '@/lib/fiverr'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { requirePortalUser, getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
 
 // Coerce gallery_images into a canonical [{url, ...}] shape and mirror
 // the first entry into cover_image_url so any consumer reading either
@@ -48,6 +49,23 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (!owns(auth, existing)) return fail('Forbidden.', 403)
 
   const body = await req.json().catch(() => ({}))
+
+  // Category gate: legal categories require Bar vetting on attorneys /
+  // attorney_applications, which consultants do not have.
+  if (auth.role === 'consultant') {
+    if ('category' in body) {
+      const cat = typeof body.category === 'string' ? body.category.trim() : ''
+      if (cat && !isCategoryAllowedForRole(cat, 'consultant') && !isSubcategoryAllowedForRole(cat, 'consultant')) {
+        return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+      }
+    }
+    if ('subcategory' in body) {
+      const sub = typeof body.subcategory === 'string' ? body.subcategory.trim() : ''
+      if (sub && !isSubcategoryAllowedForRole(sub, 'consultant')) {
+        return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+      }
+    }
+  }
 
   // Deleted gigs are read-only — the only mutation allowed is a
   // restore (status flips back to draft). Without this guard the bin

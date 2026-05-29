@@ -2,6 +2,7 @@ import { ok, fail, fieldFail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
+import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
 
 export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
@@ -19,6 +20,17 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   const isAdmin = auth.role === 'admin'
   const isOwner = gig.provider_id === auth.profileId && gig.provider_type === auth.role
   if (!isAdmin && !isOwner) return fail('Forbidden.', 403)
+
+  // Category gate: legal categories require Bar vetting on attorneys /
+  // attorney_applications, which consultants do not have.
+  if (auth.role === 'consultant') {
+    if (gig.category && !isCategoryAllowedForRole(gig.category, 'consultant') && !isSubcategoryAllowedForRole(gig.category, 'consultant')) {
+      return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+    }
+    if (gig.subcategory && !isSubcategoryAllowedForRole(gig.subcategory, 'consultant')) {
+      return fail('This category is restricted to attorneys. Choose a non-legal category from your gig builder.', 403)
+    }
+  }
 
   // Allow publish/re-publish from any non-active, non-deleted state.
   // suspended → owner re-publishing after admin clears the suspension
