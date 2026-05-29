@@ -114,7 +114,7 @@ async function attorneyRatingAggregate(db: ReturnType<typeof createSupabaseAdmin
 }
 
 export async function PATCH(req: Request) {
-  const { ctx, error, status } = await requireAttorney()
+  const { ctx, error, status } = await requireAttorney({ allowInactive: true })
   if (!ctx) return Response.json({ error }, { status })
 
   let body: EditablePayload

@@ -5,7 +5,7 @@ const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 export async function POST(req: Request) {
-  const { ctx, error, status } = await requireAttorney()
+  const { ctx, error, status } = await requireAttorney({ allowInactive: true })
   if (!ctx) return Response.json({ error }, { status })
 
   let form: FormData
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE() {
-  const { ctx, error, status } = await requireAttorney()
+  const { ctx, error, status } = await requireAttorney({ allowInactive: true })
   if (!ctx) return Response.json({ error }, { status })
 
   const { data: existing } = await ctx.db

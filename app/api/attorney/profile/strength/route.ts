@@ -8,7 +8,7 @@ import { requireAttorney } from '@/lib/attorneyAuth'
 import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorneyProfileStrength'
 
 export async function GET() {
-  const { ctx, error, status } = await requireAttorney()
+  const { ctx, error, status } = await requireAttorney({ allowInactive: true })
   if (!ctx) return Response.json({ error }, { status })
 
   const result = await computeAttorneyStrength(ctx.db, ctx.profileId)

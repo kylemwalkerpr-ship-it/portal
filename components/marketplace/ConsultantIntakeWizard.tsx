@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import ProfileAIDraftButton from '@/components/profile/ProfileAIDraftButton'
 
 type Strength = {
   score: number
@@ -367,12 +368,14 @@ function PhotoStep({ form, setField, onUpload, uploading }: { form: Form; setFie
         <input type="text" value={form.tagline} onChange={(e) => setField('tagline', e.target.value)} maxLength={160}
           placeholder="MBA admissions strategist · 200+ clients · top-10 placements" style={inputStyle} />
         <CharCount n={form.tagline.length} min={40} max={160} />
+        <ProfileAIDraftButton field="tagline" onApply={(v) => setField('tagline', String(v))} />
       </Field>
       <Field label="Intro" required help="2–3 sentences. First thing students read.">
         <textarea value={form.intro} onChange={(e) => setField('intro', e.target.value)} maxLength={600} rows={4}
           placeholder="I help applicants craft compelling SOPs and scholarship essays for top graduate programs. With 8 years in EdTech admissions, I know what committees actually read for — and how to make your story stand out."
           style={{ ...inputStyle, resize: 'vertical' }} />
         <CharCount n={form.intro.length} min={100} max={600} />
+        <ProfileAIDraftButton field="intro" onApply={(v) => setField('intro', String(v))} />
       </Field>
     </div>
   )
@@ -385,6 +388,7 @@ function AboutStep({ form, setField, timezones }: { form: Form; setField: any; t
         <textarea value={form.bio} onChange={(e) => setField('bio', e.target.value)} maxLength={4000} rows={8}
           style={{ ...inputStyle, resize: 'vertical' }} />
         <CharCount n={form.bio.length} min={300} max={4000} />
+        <ProfileAIDraftButton field="bio" onApply={(v) => setField('bio', String(v))} />
       </Field>
       <Field label="Education / training" help="Schools, degrees, or relevant certifications (e.g. Certified Resume Writer, TESOL, PMP).">
         <textarea value={form.education} onChange={(e) => setField('education', e.target.value)} maxLength={1200} rows={3}
@@ -406,10 +410,12 @@ function CoverageStep({ form, setField, toggleArr }: { form: Form; setField: any
       <Field label="Subjects you teach / advise on" required help="Comma-separated. What topics do you cover? e.g. 'MBA admissions, STEM SOPs, scholarship essays'.">
         <input type="text" value={form.subjects} onChange={(e) => setField('subjects', e.target.value)}
           placeholder="MBA admissions, STEM SOPs, scholarship essays" style={inputStyle} />
+        <ProfileAIDraftButton field="subjects" onApply={(v) => setField('subjects', String(v))} />
       </Field>
       <Field label="Industries / sectors" required help="Plain English. What industries or sectors you serve.">
         <input type="text" value={form.industries} onChange={(e) => setField('industries', e.target.value)}
           placeholder="Higher education, EdTech, career services" style={inputStyle} />
+        <ProfileAIDraftButton field="industries" onApply={(v) => setField('industries', String(v))} />
       </Field>
       <Field label="Specialties (3+ tags)" required help="These power marketplace search filters.">
         <ChipPicker all={SPECIALTY_SUGGESTIONS} selected={form.specialties} onToggle={(v) => toggleArr('specialties', v)} />

@@ -49,6 +49,10 @@ export async function findConsultantForProfile(
       .from('consultants')
       .select('*')
       .eq(attempt.column, attempt.value)
+      // Order + limit so duplicate rows resolve to the newest (the write
+      // target) and maybeSingle doesn't error on >1 row.
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
     if (data) return data
   }

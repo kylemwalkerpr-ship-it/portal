@@ -2,7 +2,7 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { resolveAttorneyCredential } from '@/lib/attorneyCredential'
 import {
-  ALLOWED_PROFILE_FIELDS,
+  allowedFieldsForRole,
   draftProfileField,
   type ProfileContext,
   type ProfileField,
@@ -27,8 +27,10 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const field = String(body.field || '') as ProfileField
-  if (!ALLOWED_PROFILE_FIELDS.includes(field)) {
-    return fail(`Field "${field}" is not AI-editable.`, 400)
+  // Enforce the per-ROLE allow-list, not just the global one, so a role can
+  // never draft an off-role field (e.g. an attorney requesting `subjects`).
+  if (!allowedFieldsForRole(role).includes(field)) {
+    return fail(`Field "${field}" is not AI-editable for this account.`, 400)
   }
   const hint = typeof body.hint === 'string' ? body.hint : ''
 

@@ -9,7 +9,13 @@ export type AttorneyContext = {
   fullName: string | null
 }
 
-export async function requireAttorney(): Promise<{ ctx?: AttorneyContext; error?: string; status?: number }> {
+// `allowInactive` lets an attorney edit their OWN profile (draft mode) before
+// their account is approved/active. Use it ONLY for self-profile routes
+// (profile read/write, headshot, strength). Money/client actions (earnings,
+// orders, inquiries) must keep the default active gate.
+export async function requireAttorney(
+  opts: { allowInactive?: boolean } = {},
+): Promise<{ ctx?: AttorneyContext; error?: string; status?: number }> {
   const userId = await getClerkUserId()
   if (!userId) return { error: 'Unauthenticated.', status: 401 }
 
@@ -22,7 +28,10 @@ export async function requireAttorney(): Promise<{ ctx?: AttorneyContext; error?
     .single()
 
   if (!profile) return { error: 'Profile not found.', status: 404 }
-  if (profile.role !== 'attorney' || profile.status !== 'active') {
+  if (profile.role !== 'attorney') {
+    return { error: 'Not an attorney account.', status: 403 }
+  }
+  if (!opts.allowInactive && profile.status !== 'active') {
     return { error: 'Attorney account not active.', status: 403 }
   }
 
@@ -66,10 +75,24 @@ export async function requireAttorney(): Promise<{ ctx?: AttorneyContext; error?
       .single()
 
     if (createErr || !created) {
-      console.error('[attorneyAuth] self-heal failed', createErr?.message)
-      return { error: 'Attorney record missing.', status: 404 }
+      // A concurrent self-heal may have won the race and inserted the row
+      // first, tripping the unique(profile_id) constraint. Re-read the
+      // existing row instead of failing.
+      const { data: existing } = await db
+        .from('attorneys')
+        .select('id')
+        .eq('profile_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!existing) {
+        console.error('[attorneyAuth] self-heal failed', createErr?.message)
+        return { error: 'Attorney record missing.', status: 404 }
+      }
+      attorney = existing
+    } else {
+      attorney = created
     }
-    attorney = created
   }
 
   return {

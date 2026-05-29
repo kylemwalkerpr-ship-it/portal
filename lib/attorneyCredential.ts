@@ -31,6 +31,10 @@ export async function fetchAttorneyCredentialColumns(
     .from('attorneys')
     .select('credential_type, bar_number')
     .eq('profile_id', profileId)
+    // Order + limit so this resolves the SAME (newest) row the write path
+    // targets, and so maybeSingle doesn't error on duplicate rows.
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
   if (error) return { credential_type: null, bar_number: null }
   return {

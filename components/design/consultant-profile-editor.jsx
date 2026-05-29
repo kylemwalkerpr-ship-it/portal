@@ -290,6 +290,7 @@ export default function ConsultantProfileEditor() {
             value={c.subjects ?? ''}
             placeholder="MBA admissions, STEM SOPs, scholarship essays"
             onSave={(v) => save('subjects', v)}
+            aiField="subjects"
           />
           <EditableField
             label="Industries / sectors"
@@ -297,6 +298,7 @@ export default function ConsultantProfileEditor() {
             value={c.industries ?? ''}
             placeholder="Higher education, EdTech, career services"
             onSave={(v) => save('industries', v)}
+            aiField="industries"
           />
         </div>
       </Card>

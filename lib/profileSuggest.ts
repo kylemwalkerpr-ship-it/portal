@@ -28,6 +28,19 @@ export const ALLOWED_PROFILE_FIELDS: ProfileField[] = [
   'tagline', 'intro', 'bio', 'specialties', 'practice_areas', 'subjects', 'industries', 'languages',
 ]
 
+// Per-role allow-lists. The shared fields are common; the role-divergent
+// fields (attorney: practice_areas; consultant: subjects/industries) must NOT
+// be draftable cross-role — an attorney requesting `subjects` (a column its
+// table lacks) would otherwise get a prompt grounded on nothing, for a field
+// its editor/PATCH can't even save.
+const SHARED_PROFILE_FIELDS: ProfileField[] = ['tagline', 'intro', 'bio', 'specialties', 'languages']
+export const ATTORNEY_PROFILE_FIELDS: ProfileField[] = [...SHARED_PROFILE_FIELDS, 'practice_areas']
+export const CONSULTANT_PROFILE_FIELDS: ProfileField[] = [...SHARED_PROFILE_FIELDS, 'subjects', 'industries']
+
+export function allowedFieldsForRole(role: 'attorney' | 'consultant'): ProfileField[] {
+  return role === 'attorney' ? ATTORNEY_PROFILE_FIELDS : CONSULTANT_PROFILE_FIELDS
+}
+
 export type ProfileRole = 'attorney' | 'consultant'
 
 export interface ProfileContext {

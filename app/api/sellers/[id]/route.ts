@@ -17,8 +17,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const [byAttorneyId, byConsultantId, byAttorneyProfileId, byConsultantProfileId] = await Promise.all([
     db.from('attorneys').select('*').eq('id', id).maybeSingle(),
     db.from('consultants').select('*').eq('id', id).maybeSingle(),
-    db.from('attorneys').select('*').eq('profile_id', id).maybeSingle(),
-    db.from('consultants').select('*').eq('profile_id', id).maybeSingle(),
+    // Order + limit so a duplicate seller row for one profile_id resolves to
+    // the SAME (newest) row the editor's write path targets. Without this the
+    // public profile could read a stale/different row → "saved content doesn't
+    // stick in the public view."
+    db.from('attorneys').select('*').eq('profile_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    db.from('consultants').select('*').eq('profile_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ])
 
   const attorney  = byAttorneyId.data  || byAttorneyProfileId.data
