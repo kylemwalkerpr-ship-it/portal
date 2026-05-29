@@ -3,6 +3,7 @@
  * Counters for the queue tabs + summary tiles.
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
 
 export async function GET() {
   const { ctx, error, status } = await requireAttorney()
@@ -19,12 +20,15 @@ export async function GET() {
   ])
   const myPendingOffers = (myOffers ?? []).filter((o: any) => !o.status || o.status === 'pending' || o.status === 'active').length
 
-  // Pull open queue + targeted in one shot
-  const { data: openRows, error: openErr } = await ctx.db
-    .from('inquiries')
-    .select('id, status, urgency, target_attorney_profile_id, created_at')
-    .in('status', ['open', 'engaged', 'claimed'])
-    .neq('source', 'portal_attorney_chat')
+  // Pull open queue + targeted in one shot. Canonical open-queue filter
+  // (see lib/attorneyInquiries) keeps these stats aligned with the queue view.
+  const acceptedInquiryIds = await getAcceptedInquiryIds(ctx.db)
+  const { data: openRows, error: openErr } = await applyOpenQueueFilter(
+    ctx.db
+      .from('inquiries')
+      .select('id, status, urgency, target_attorney_profile_id, created_at'),
+    acceptedInquiryIds,
+  )
   if (openErr && /relation .* does not exist/i.test(openErr.message || '')) {
     return Response.json({ stats: {}, schema_pending: true })
   }

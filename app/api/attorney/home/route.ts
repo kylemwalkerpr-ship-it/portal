@@ -5,6 +5,7 @@
  * so the page renders in a single round trip.
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
 
 const ACTIVE = ['active', 'in_progress']
 const REVIEW = ['review', 'under_review']
@@ -13,6 +14,9 @@ export async function GET() {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
+  // Canonical open-queue filter so the home view's counts match what the
+  // attorney sees when they click through to the queue (no phantom notifications).
+  const acceptedInquiryIds = await getAcceptedInquiryIds(ctx.db)
   const [ordersRes, attorneyRes, ratingsRes, openInqRes, myMsgRes, myOfferRes] = await Promise.all([
     ctx.db
       .from('orders')
@@ -24,11 +28,12 @@ export async function GET() {
       .eq('id', ctx.attorneyId)
       .single(),
     ctx.db.from('attorney_ratings').select('stars').eq('attorney_id', ctx.attorneyId),
-    ctx.db
-      .from('inquiries')
-      .select('id, status, urgency, target_attorney_profile_id, created_at')
-      .in('status', ['open', 'engaged', 'claimed'])
-      .neq('source', 'portal_attorney_chat'),
+    applyOpenQueueFilter(
+      ctx.db
+        .from('inquiries')
+        .select('id, status, urgency, target_attorney_profile_id, created_at'),
+      acceptedInquiryIds,
+    ),
     ctx.db.from('inquiry_messages').select('inquiry_id').eq('sender_profile_id', ctx.profileId).eq('sender_role', 'attorney'),
     ctx.db.from('attorney_offers').select('inquiry_id, status').eq('attorney_id', ctx.attorneyId),
   ])

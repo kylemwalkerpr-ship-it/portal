@@ -1,4 +1,5 @@
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
 
 // Aggregate dashboard data for the attorney's overview + active orders +
 // earnings views. Mirrors /api/consultant/data shape so the UI patterns line
@@ -7,6 +8,10 @@ export async function GET() {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
+  // Use the canonical open-queue filter so this count matches what the
+  // attorney sees when they click through to the queue. Without this we
+  // ship phantom "N briefs in queue" notifications.
+  const acceptedInquiryIds = await getAcceptedInquiryIds(ctx.db)
   const [ordersRes, openInquiriesRes, mineInquiriesRes, ratingsRes, attorneyRes] = await Promise.all([
     ctx.db
       .from('orders')
@@ -16,10 +21,10 @@ export async function GET() {
       .eq('consultant_id', ctx.profileId)
       .not('source_offer_id', 'is', null)
       .order('created_at', { ascending: false }),
-    ctx.db
-      .from('inquiries')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['open', 'engaged', 'claimed']),
+    applyOpenQueueFilter(
+      ctx.db.from('inquiries').select('id', { count: 'exact', head: true }),
+      acceptedInquiryIds,
+    ),
     ctx.db
       .from('inquiry_messages')
       .select('inquiry_id')

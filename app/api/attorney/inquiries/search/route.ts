@@ -19,6 +19,7 @@
  *   page, page_size   — default 25, max 100
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
 
 const URGENCY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
@@ -63,7 +64,9 @@ export async function GET(req: Request) {
   } else if (view === 'targeted') {
     qb = qb.eq('target_attorney_profile_id', ctx.profileId)
   } else {
-    qb = qb.in('status', ['open', 'engaged', 'claimed'])
+    // Canonical open-queue filter so search results match the queue.
+    const acceptedInquiryIds = await getAcceptedInquiryIds(ctx.db)
+    qb = applyOpenQueueFilter(qb, acceptedInquiryIds)
   }
 
   if (country)   qb = qb.ilike('country', `%${country}%`)
