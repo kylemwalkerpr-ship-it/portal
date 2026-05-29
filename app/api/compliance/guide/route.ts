@@ -43,15 +43,15 @@ const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
   },
   application: {
     attorney: 'Attorney application status — the seller submitted an application that an admin reviews manually. Explain that "Pending admin review" means a human is checking the materials, typical turnaround 1–3 business days. If "Not started", direct them to /dashboard/attorney/intake.',
-    consultant: 'Consultant application status — same as attorney but reviewed against ICCRC / OISC / equivalent body verification. If "Not started", direct them to /dashboard/consultant/intake.',
+    consultant: 'Consultant application status — the seller submitted an application that an admin reviews manually, checking their stated credentials and experience. Explain that "Pending admin review" means a human is verifying the materials, typical turnaround 1–3 business days. If "Not started", direct them to /dashboard/consultant/intake.',
   },
   credential_type: {
     attorney: 'Credential type — the legal-services category the attorney is admitted to practice in: J.D. (US bar admission), barrister/solicitor (UK), advocate (CA). Explain the difference and that the seller picks the ONE they hold. Do NOT recommend a specific value.',
-    consultant: 'Credential type — the regulatory body that certifies the consultant: ICCRC (Canada), OISC (UK), IMM (immigration mentorship), Notary Public (US), etc. Explain that the seller must pick the body they\'re actually registered with. Do NOT recommend a specific value.',
+    consultant: 'Credential type — professional certification, degree, or affiliation that establishes credibility (e.g. MBA, certified career coach, licensed teacher, notary public). Explain that the seller must pick credentials they actually hold. Do NOT recommend a specific value.',
   },
   bar_number: {
     attorney: 'Bar / roll number — a unique identifier issued by the bar association the attorney is admitted to. Explain where it lives on their bar admission card / membership letter, and that public lookup tools vary by jurisdiction ("search <jurisdiction> attorney lookup" or "<state> bar attorney search"). Do NOT generate a number, do NOT guess what their lookup URL is. If they don\'t have one yet, point them to the bar association in their jurisdiction.',
-    consultant: 'Membership / registration number — issued by their regulatory body. For ICCRC it\'s an "R-number" on the membership card. For OISC it\'s a registration code. Explain where it usually appears on their certificate / annual renewal, and that the public registers (e.g. college-ic.ca, oisc.gov.uk) can confirm it. Do NOT generate a number.',
+    consultant: 'Membership / certification number — issued by their credentialing body, university, or professional association. Explain where it usually appears on their certificate or renewal letter. Do NOT generate a number.',
   },
   malpractice: {
     attorney: 'Malpractice / professional liability insurance — required disclosure. Explain that the seller needs the carrier name + policy number + coverage limits, all from their declarations page. The disclosure is for verification only; YouSafe does not publish the details to buyers. Do NOT generate a carrier or policy number.',
@@ -59,7 +59,7 @@ const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
   },
   jurisdictions: {
     attorney: 'Jurisdictions — the bars / courts the attorney is admitted to practice in. Must match the bar admissions on file; listing a jurisdiction they\'re NOT admitted to is unauthorized practice of law and a grounds for removal. Direct them to set this on /dashboard/profile. Do NOT recommend specific jurisdictions.',
-    consultant: 'Jurisdictions — the countries / regions the consultant is registered to serve. For ICCRC: Canada-wide. For OISC: the UK. Explain that listing one they\'re NOT registered for is a violation. Do NOT recommend specific jurisdictions.',
+    consultant: 'Countries / regions — where the consultant primarily works with clients. For example: United States, Canada, United Kingdom. Explain that they should only list regions they actually serve. Do NOT recommend specific countries.',
   },
   payout: {
     attorney: 'Payout setup — currently manual via admin. Explain that earnings are released through admin once an order is approved by the buyer; no bank details are needed today. Future Stripe Connect integration will let them self-manage. Do NOT promise dates.',
