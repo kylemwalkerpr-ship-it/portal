@@ -36,11 +36,20 @@ export async function POST(req: Request) {
   // override jurisdictions/years/credentials from the client.
   const { db, profile, profileId } = auth
   const sellerTable = role === 'attorney' ? 'attorneys' : 'consultants'
-  const { data: seller } = await db
+  // Role-aware column list: attorneys carry jurisdictions/practice_areas;
+  // consultants carry subjects/industries. The two tables do NOT share these
+  // columns, so a single SELECT naming all four 500s on whichever table lacks
+  // the pair it doesn't own.
+  const baseCols = 'tagline, intro, bio, languages, years_experience, education, specialties'
+  const roleCols = role === 'attorney' ? 'jurisdictions, practice_areas' : 'subjects, industries'
+  const { data: sellerRow } = await db
     .from(sellerTable)
-    .select('tagline, intro, bio, languages, years_experience, education, specialties, subjects, industries, jurisdictions, practice_areas')
+    .select(`${baseCols}, ${roleCols}`)
     .eq('profile_id', profileId)
     .maybeSingle()
+  // The role-aware select makes PostgREST infer a union row type that omits
+  // whichever column pair this role doesn't own; read through a loose view.
+  const seller = sellerRow as Record<string, any> | null
 
   // Attorneys: credential_type is the editable attorneys-row value (falling
   // back to the approved application) so AI drafts reflect the latest edit.
@@ -55,8 +64,8 @@ export async function POST(req: Request) {
     full_name: (profile.full_name as string | null) ?? null,
     credential_type: credentialType,
     years_experience: typeof seller?.years_experience === 'number' ? seller.years_experience : null,
-    subjects: (seller?.subjects as string | null) ?? (seller?.jurisdictions as string | null) ?? null,
-    industries: (seller?.industries as string | null) ?? (seller?.practice_areas as string | null) ?? null,
+    subjects: (seller?.subjects as string | null) ?? null,
+    industries: (seller?.industries as string | null) ?? null,
     jurisdictions: (seller?.jurisdictions as string | null) ?? null,
     practice_areas: (seller?.practice_areas as string | null) ?? null,
     specialties: Array.isArray(seller?.specialties) ? (seller.specialties as string[]) : null,

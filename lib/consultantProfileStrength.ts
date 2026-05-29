@@ -39,7 +39,7 @@ export async function computeConsultantStrength(
   const { data: consultant } = await db
     .from('consultants')
     .select(
-      'id, headshot_url, tagline, intro, bio, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone, subjects, industries, jurisdictions, practice_areas, available',
+      'id, headshot_url, tagline, intro, bio, languages, years_experience, education, specialties, offers_free_consult, starting_price, video_intro_url, timezone, subjects, industries, available',
     )
     .eq('profile_id', profileId)
     .maybeSingle()
@@ -63,8 +63,8 @@ export async function computeConsultantStrength(
     { id: 'bio',            label: 'Long bio (≥300 chars)',               weight: 12, done: hasText(c.bio, 300), hint: 'Long bios convert higher — students want context on how you work.' },
     { id: 'years',          label: 'Years of experience set',             weight: 4,  done: Number(c.years_experience || 0) > 0 },
     { id: 'starting_price', label: 'Starting price set',                  weight: 6,  done: Number(c.starting_price || 0) > 0 },
-    { id: 'subjects',       label: 'Subjects listed',                     weight: 8,  done: hasText(c.subjects ?? c.jurisdictions) },
-    { id: 'industries',     label: 'Industries listed',                   weight: 8,  done: hasText(c.industries ?? c.practice_areas) },
+    { id: 'subjects',       label: 'Subjects listed',                     weight: 8,  done: hasText(c.subjects) },
+    { id: 'industries',     label: 'Industries listed',                   weight: 8,  done: hasText(c.industries) },
     { id: 'specialties',    label: 'Specialties (3+ tags)',               weight: 6,  done: hasArr(c.specialties) && (c.specialties as any[]).length >= 3 },
     { id: 'languages',      label: 'Languages listed',                    weight: 3,  done: hasArr(c.languages) },
     { id: 'education',      label: 'Education / training on file',        weight: 3,  done: hasText(c.education) },

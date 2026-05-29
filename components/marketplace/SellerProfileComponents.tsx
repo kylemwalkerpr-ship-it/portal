@@ -264,16 +264,16 @@ export function SellerAbout({ seller }: { seller: SellerProfile }) {
 
         {seller.role === 'consultant' ? (
           <>
-            {(seller.subjects || seller.jurisdictions) && (
+            {seller.subjects && (
               <div style={aboutItem}>
                 <span style={aboutLabel}>Subjects</span>
-                <span style={aboutValue}>{seller.subjects ?? seller.jurisdictions}</span>
+                <span style={aboutValue}>{seller.subjects}</span>
               </div>
             )}
-            {(seller.industries || seller.practice_areas) && (
+            {seller.industries && (
               <div style={aboutItem}>
                 <span style={aboutLabel}>Industries</span>
-                <span style={aboutValue}>{seller.industries ?? seller.practice_areas}</span>
+                <span style={aboutValue}>{seller.industries}</span>
               </div>
             )}
           </>

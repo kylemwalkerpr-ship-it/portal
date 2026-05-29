@@ -7,8 +7,6 @@ const RICH_TEXT: Record<string, number> = {
   education: 1200,
   subjects: 500,
   industries: 500,
-  jurisdictions: 500,
-  practice_areas: 500,
   video_intro_url: 500,
   timezone: 80,
 }
@@ -43,7 +41,7 @@ export async function GET() {
   const { data: full } = await db
     .from('consultants')
     .select(
-      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, subjects, industries, jurisdictions, practice_areas, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url',
+      'id, profile_id, bio, available, headshot_url, headshot_path, tagline, intro, subjects, industries, specialties, languages, education, timezone, years_experience, starting_price, offers_free_consult, consult_booking_url, video_intro_url',
     )
     .eq('id', consultant.id)
     .maybeSingle()

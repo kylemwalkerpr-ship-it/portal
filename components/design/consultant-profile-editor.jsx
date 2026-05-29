@@ -287,14 +287,14 @@ export default function ConsultantProfileEditor() {
           <EditableField
             label="Subjects you teach / advise on"
             help="What topics do you cover? Comma-separated."
-            value={c.subjects ?? c.jurisdictions ?? ''}
+            value={c.subjects ?? ''}
             placeholder="MBA admissions, STEM SOPs, scholarship essays"
             onSave={(v) => save('subjects', v)}
           />
           <EditableField
             label="Industries / sectors"
             help="What industries or sectors you serve."
-            value={c.industries ?? c.practice_areas ?? ''}
+            value={c.industries ?? ''}
             placeholder="Higher education, EdTech, career services"
             onSave={(v) => save('industries', v)}
           />
