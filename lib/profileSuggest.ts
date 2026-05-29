@@ -20,10 +20,12 @@ export type ProfileField =
   | 'bio'
   | 'specialties'
   | 'practice_areas'
+  | 'subjects'
+  | 'industries'
   | 'languages'
 
 export const ALLOWED_PROFILE_FIELDS: ProfileField[] = [
-  'tagline', 'intro', 'bio', 'specialties', 'practice_areas', 'languages',
+  'tagline', 'intro', 'bio', 'specialties', 'practice_areas', 'subjects', 'industries', 'languages',
 ]
 
 export type ProfileRole = 'attorney' | 'consultant'
@@ -33,6 +35,8 @@ export interface ProfileContext {
   full_name?: string | null
   credential_type?: string | null
   years_experience?: number | null
+  subjects?: string | null
+  industries?: string | null
   jurisdictions?: string | null
   practice_areas?: string | null
   specialties?: string[] | null
@@ -62,14 +66,19 @@ interface ProfileFieldSpec {
 
 function buildBaseContext(ctx: ProfileContext): string {
   const lines: string[] = []
-  lines.push(`Role: ${ctx.role === 'attorney' ? 'Licensed attorney' : 'Immigration / legal consultant'}`)
+  lines.push(`Role: ${ctx.role === 'attorney' ? 'Licensed attorney' : 'Non-legal consultant — academic, career, business, education, settlement'}`)
   if (ctx.full_name) lines.push(`Display name: ${ctx.full_name}`)
   if (ctx.credential_type) lines.push(`Credential: ${ctx.credential_type}`)
   if (typeof ctx.years_experience === 'number' && ctx.years_experience > 0) {
     lines.push(`Years of experience: ${ctx.years_experience}`)
   }
-  if (ctx.jurisdictions) lines.push(`Jurisdictions admitted: ${ctx.jurisdictions}`)
-  if (ctx.practice_areas) lines.push(`Practice areas: ${ctx.practice_areas}`)
+  if (ctx.role === 'attorney') {
+    if (ctx.jurisdictions) lines.push(`Jurisdictions admitted: ${ctx.jurisdictions}`)
+    if (ctx.practice_areas) lines.push(`Practice areas: ${ctx.practice_areas}`)
+  } else {
+    if (ctx.subjects) lines.push(`Subjects: ${ctx.subjects}`)
+    if (ctx.industries) lines.push(`Industries: ${ctx.industries}`)
+  }
   if (ctx.specialties && ctx.specialties.length) lines.push(`Specialties: ${ctx.specialties.join(', ')}`)
   if (ctx.languages && ctx.languages.length) lines.push(`Languages: ${ctx.languages.join(', ')}`)
   if (ctx.education) lines.push(`Education: ${ctx.education}`)
@@ -90,8 +99,8 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           `Write a single-line tagline for a ${roleLabel}'s public marketplace profile.`,
           'Requirements:',
           '- 60–120 characters. One sharp line that fits on a search-results card.',
-          '- Lead with the buyer-facing outcome or specialty (e.g. "F-1 reinstatement specialist" or "UK spouse visa attorney"), not a generic title.',
-          '- If the context lists years of experience or jurisdictions, you MAY mention them — do not invent any.',
+          '- Lead with the buyer-facing outcome or specialty (e.g. "MBA admissions strategist" or "Career-pivot coach for mid-level professionals"), not a generic title.',
+          '- If the context lists years of experience, subjects, or industries, you MAY mention them — do not invent any.',
           '- Use first person ONLY if the seller already does in their existing tagline / intro; otherwise stay neutral.',
           '- No emoji, no quotation marks, no hashtags, no outcome guarantees, no specific case-count claims unless they appear in the context.',
           'Return ONLY the tagline text, single line.',
@@ -108,8 +117,8 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           'Requirements:',
           '- Establishes credibility and warmth in the first sentence.',
           '- Names the typical client and the outcome the seller delivers.',
-          '- May reference the seller\'s years of experience or jurisdictions from the context — DO NOT invent any.',
-          '- First person ("I help…", "I represent…") is fine and preferred when no contrary signal exists.',
+          '- May reference the seller\'s years of experience, subjects, or industries from the context — DO NOT invent any.',
+          '- First person ("I help…", "I guide…") is fine and preferred when no contrary signal exists.',
           '- No outcome promises ("guaranteed", "100%"), no specific case counts unless they appear in the context.',
           '- No emoji, no quotation marks, no markdown.',
           'Return ONLY the intro prose.',
@@ -118,29 +127,37 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           base,
         ].join('\n'),
       }
-    case 'bio':
+    case 'bio': {
+      const isAttorney = ctx.role === 'attorney'
       return {
         format: 'string', hardLimit: 4000,
         prompt: [
           `Write a long-form bio (300–500 words) for a ${roleLabel}'s public profile.`,
           'Structure: 3 paragraphs, plain prose, no markdown headings or bullets.',
-          '1) Opening paragraph: who they are and what kind of cases they take. Lead with the buyer-facing outcome.',
+          isAttorney
+            ? '1) Opening paragraph: who they are and what kind of cases they take. Lead with the buyer-facing outcome.'
+            : '1) Opening paragraph: who they are and what kind of work they do. Lead with the buyer-facing outcome.',
           '2) Middle paragraph: how they work — process, communication style, what to expect from an engagement.',
-          '3) Closing paragraph: who they serve best, and (optionally) cases they\'re NOT the right fit for. Honest scoping helps qualified-lead quality.',
+          isAttorney
+            ? '3) Closing paragraph: who they serve best, and (optionally) cases they\'re NOT the right fit for. Honest scoping helps qualified-lead quality.'
+            : '3) Closing paragraph: who they serve best, and (optionally) projects they\'re NOT the right fit for. Honest scoping helps qualified-lead quality.',
           'SEO discipline:',
-          '- Include the seller\'s practice area keywords from the context naturally in paragraph 1.',
-          '- If the context lists jurisdictions, name at least one in paragraph 1.',
+          isAttorney
+            ? '- Include the seller\'s practice area keywords from the context naturally in paragraph 1.'
+            : '- Include the seller\'s subject and industry keywords from the context naturally in paragraph 1.',
+          isAttorney ? '- If the context lists jurisdictions, name at least one in paragraph 1.' : '',
           'Hard limits:',
           '- NEVER invent bar numbers, registration IDs, license numbers, malpractice insurance details, or specific case counts.',
           '- NEVER claim or imply guaranteed outcomes.',
-          '- NEVER list jurisdictions the context doesn\'t mention.',
+          isAttorney ? '- NEVER list jurisdictions the context doesn\'t mention.' : '',
           '- First person preferred; no AI-assistant disclaimers.',
           'Return ONLY the bio prose.',
           '',
           'Context:',
           base,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
+    }
     case 'specialties':
       return {
         format: 'list', hardLimit: 8,
@@ -149,8 +166,8 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           'Tags are more granular than practice areas — they\'re the specific things this seller is best at.',
           'Format: each tag is 1–4 words, sentence-case or title-case (consistent across the set), no emoji, no punctuation other than spaces and hyphens.',
           'Source discipline:',
-          '- Pull specialty ideas from the seller\'s practice_areas, jurisdictions, and existing prose in the context.',
-          '- Do not invent specialties the context doesn\'t support. If practice_areas is "Immigration", reasonable tags include "F-1 reinstatement", "H-1B RFE response", "Asylum applications" — but not "Family law" or "Criminal defense".',
+          '- Pull specialty ideas from the seller\'s subjects, industries, and existing prose in the context.',
+          '- Do not invent specialties the context doesn\'t support. If subjects are "MBA admissions, STEM SOPs", reasonable tags include "MBA admissions", "STEM SOPs", "Scholarship essays" — but not "Family law" or "Criminal defense".',
           'Return ONLY the tags, comma-separated on a single line.',
           '',
           'Context:',
@@ -173,12 +190,42 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           base,
         ].join('\n'),
       }
+    case 'subjects':
+      return {
+        format: 'string', hardLimit: 240,
+        prompt: [
+          `Suggest the subjects / topics this ${roleLabel} teaches or advises on.`,
+          'Format: 2–5 subjects, comma-separated on a single line.',
+          'These should be the topics a buyer would search by (e.g. "MBA admissions, STEM SOPs, Scholarship essays"). Each entry is 1–4 words, title case.',
+          'Source discipline:',
+          '- Only suggest subjects the context supports. If the seller lists "MBA admissions" and no other signals, suggest "MBA admissions" — not "Tax preparation" or "Criminal defense".',
+          'Return ONLY the comma-separated list.',
+          '',
+          'Context:',
+          base,
+        ].join('\n'),
+      }
+    case 'industries':
+      return {
+        format: 'string', hardLimit: 240,
+        prompt: [
+          `Suggest the industries / sectors this ${roleLabel} serves.`,
+          'Format: 2–5 industries, comma-separated on a single line.',
+          'These should be the sectors a buyer would scan a directory by (e.g. "Higher education, Tech startups, Non-profits"). Each entry is 1–3 words, title case.',
+          'Source discipline:',
+          '- Only suggest industries the context supports. If the seller mentions "tech" and no other signals, suggest "Tech" — not "Healthcare" or "Real estate".',
+          'Return ONLY the comma-separated list.',
+          '',
+          'Context:',
+          base,
+        ].join('\n'),
+      }
     case 'languages':
       return {
         format: 'list', hardLimit: 6,
         prompt: [
           'Suggest spoken languages this seller can advise in — ONLY pull from the context.',
-          'If the context already lists languages, return them deduplicated. If languages is empty, return just "English" (most likely default for a US/UK/Canada legal-services seller).',
+          'If the context already lists languages, return them deduplicated. If languages is empty, return just "English" (most likely default for a US/UK/Canada seller).',
           'Format: each language is 1–2 words (e.g. "English", "Spanish", "Mandarin Chinese"). Title case. Comma-separated on a single line.',
           'NEVER invent a language the seller didn\'t mention.',
           'Return ONLY the comma-separated list.',
@@ -206,8 +253,8 @@ function parseList(raw: string, maxItems: number): string[] {
 }
 
 const SYSTEM_PROMPT = [
-  'You are a profile-copy assistant for a legal-services marketplace.',
-  'You help attorneys and consultants write the prose on their public seller profile — tagline, intro, bio, specialties, practice areas.',
+  'You are a profile-copy assistant for a professional-services marketplace.',
+  'You help attorneys and consultants write the prose on their public seller profile — tagline, intro, bio, specialties, practice areas, subjects, and industries.',
   'You ONLY work with facts already in the user message context. You NEVER invent: bar numbers, registration numbers, license IDs, malpractice policy numbers, specific case counts, jurisdictions the seller isn\'t admitted in, languages the seller hasn\'t listed, or years of experience that weren\'t provided.',
   'You NEVER promise outcomes (no "guaranteed", "100% approval", "always win"). You write professional, concrete, buyer-facing copy.',
   'You match the seller\'s voice if a tone signal exists in their existing tagline/intro/bio; otherwise default to first-person, plain, professional language.',

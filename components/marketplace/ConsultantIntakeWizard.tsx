@@ -19,8 +19,8 @@ type Form = {
   tagline: string
   intro: string
   bio: string
-  jurisdictions: string
-  practice_areas: string
+  subjects: string
+  industries: string
   specialties: string[]
   languages: string[]
   education: string
@@ -35,7 +35,7 @@ type Form = {
 const empty: Form = {
   username: '', full_name: '', headshot_url: null,
   tagline: '', intro: '', bio: '',
-  jurisdictions: '', practice_areas: '',
+  subjects: '', industries: '',
   specialties: [], languages: [],
   education: '', timezone: '',
   years_experience: '', starting_price: '',
@@ -59,10 +59,11 @@ const TIMEZONE_OPTIONS = [
   'Australia/Sydney',
 ]
 const SPECIALTY_SUGGESTIONS = [
-  'F-1 / Study permit', 'OPT / PGWP', 'Express Entry', 'PNP',
-  'UK Student Route', 'UK Graduate Route', 'Canada Study Permit', 'Canada Spousal',
-  'University admissions', 'SOP review', 'CV / resume', 'Scholarship strategy',
-  'Career coaching', 'Interview prep', 'Settlement planning', 'Banking & finance',
+  'MBA admissions', 'STEM SOPs', 'Scholarship essays', 'Resume writing',
+  'Career pivot', 'Copy-editing', 'Business plan review', 'Tax filings',
+  'Brand strategy', 'Language tutoring', 'Settlement orientation',
+  'University admissions', 'Interview prep', 'Thesis editing',
+  'Grant writing', 'LinkedIn optimization', 'Credential evaluation', 'Life coaching',
 ]
 const LANGUAGE_SUGGESTIONS = ['English', 'Spanish', 'French', 'Mandarin', 'Hindi', 'Arabic', 'Portuguese', 'German', 'Korean', 'Tagalog']
 
@@ -102,8 +103,8 @@ export function ConsultantIntakeWizard() {
           tagline: c.tagline || '',
           intro: c.intro || '',
           bio: c.bio || '',
-          jurisdictions: c.jurisdictions || '',
-          practice_areas: c.practice_areas || '',
+          subjects: c.subjects ?? c.jurisdictions ?? '',
+          industries: c.industries ?? c.practice_areas ?? '',
           specialties: Array.isArray(c.specialties) ? c.specialties : [],
           languages: Array.isArray(c.languages) ? c.languages : [],
           education: c.education || '',
@@ -301,8 +302,8 @@ function stepPayload(step: number, f: Form): Record<string, unknown> {
     case 1: return { tagline: f.tagline, intro: f.intro }
     case 2: return { bio: f.bio, education: f.education, timezone: f.timezone }
     case 3: return {
-      jurisdictions: f.jurisdictions,
-      practice_areas: f.practice_areas,
+      subjects: f.subjects,
+      industries: f.industries,
       specialties: f.specialties,
       languages: f.languages,
     }
@@ -328,7 +329,7 @@ function HandleStep({ form, setField }: { form: Form; setField: any }) {
       <Field
         label="Your SEO-friendly profile handle"
         required
-        help="Becomes your public profile URL: market.yousafeconsultancy.com/providers/<handle>. Keep it short, lowercase, and keyword-rich — e.g. study-permit-consultant-tor, admissions-mentor-uk. Lowercase letters, numbers, dashes, underscores; 3–32 chars."
+        help="Becomes your public profile URL: market.yousafeconsultancy.com/providers/<handle>. Keep it short, lowercase, and keyword-rich — e.g. admissions-mentor-uk, career-coach-toronto, sop-editor-london. Lowercase letters, numbers, dashes, underscores; 3–32 chars."
       >
         <input
           type="text"
@@ -364,12 +365,12 @@ function PhotoStep({ form, setField, onUpload, uploading }: { form: Form; setFie
       </Field>
       <Field label="Tagline" required help="One sharp line. Aim for 60–120 characters.">
         <input type="text" value={form.tagline} onChange={(e) => setField('tagline', e.target.value)} maxLength={160}
-          placeholder="Study-permit specialist · 300+ approvals · IRCC-current" style={inputStyle} />
+          placeholder="MBA admissions strategist · 200+ clients · top-10 placements" style={inputStyle} />
         <CharCount n={form.tagline.length} min={40} max={160} />
       </Field>
       <Field label="Intro" required help="2–3 sentences. First thing students read.">
         <textarea value={form.intro} onChange={(e) => setField('intro', e.target.value)} maxLength={600} rows={4}
-          placeholder="I help international students secure Canadian study permits and PGWPs. 8 years, 300+ approvals — I'll walk you through what IRCC actually wants to see."
+          placeholder="I help applicants craft compelling SOPs and scholarship essays for top graduate programs. With 8 years in EdTech admissions, I know what committees actually read for — and how to make your story stand out."
           style={{ ...inputStyle, resize: 'vertical' }} />
         <CharCount n={form.intro.length} min={100} max={600} />
       </Field>
@@ -385,7 +386,7 @@ function AboutStep({ form, setField, timezones }: { form: Form; setField: any; t
           style={{ ...inputStyle, resize: 'vertical' }} />
         <CharCount n={form.bio.length} min={300} max={4000} />
       </Field>
-      <Field label="Education / training" help="School, degree, or your regulator registration (e.g. RCIC R5xxxxx, OISC L2).">
+      <Field label="Education / training" help="Schools, degrees, or relevant certifications (e.g. Certified Resume Writer, TESOL, PMP).">
         <textarea value={form.education} onChange={(e) => setField('education', e.target.value)} maxLength={1200} rows={3}
           style={{ ...inputStyle, resize: 'vertical' }} />
       </Field>
@@ -402,13 +403,13 @@ function AboutStep({ form, setField, timezones }: { form: Form; setField: any; t
 function CoverageStep({ form, setField, toggleArr }: { form: Form; setField: any; toggleArr: any }) {
   return (
     <div style={fieldStack}>
-      <Field label="Jurisdictions" required help="Comma-separated. Where can you serve clients? e.g. 'Canada', 'UK · England & Wales'.">
-        <input type="text" value={form.jurisdictions} onChange={(e) => setField('jurisdictions', e.target.value)}
-          placeholder="Canada · Ontario, BC" style={inputStyle} />
+      <Field label="Subjects you teach / advise on" required help="Comma-separated. What topics do you cover? e.g. 'MBA admissions, STEM SOPs, scholarship essays'.">
+        <input type="text" value={form.subjects} onChange={(e) => setField('subjects', e.target.value)}
+          placeholder="MBA admissions, STEM SOPs, scholarship essays" style={inputStyle} />
       </Field>
-      <Field label="Service areas" required help="Plain English. What kinds of services you offer.">
-        <input type="text" value={form.practice_areas} onChange={(e) => setField('practice_areas', e.target.value)}
-          placeholder="Study permit · PGWP · Admissions · SOP review" style={inputStyle} />
+      <Field label="Industries / sectors" required help="Plain English. What industries or sectors you serve.">
+        <input type="text" value={form.industries} onChange={(e) => setField('industries', e.target.value)}
+          placeholder="Higher education, EdTech, career services" style={inputStyle} />
       </Field>
       <Field label="Specialties (3+ tags)" required help="These power marketplace search filters.">
         <ChipPicker all={SPECIALTY_SUGGESTIONS} selected={form.specialties} onToggle={(v) => toggleArr('specialties', v)} />
@@ -482,7 +483,7 @@ function ReviewStep({ form, strength, ready, threshold }: { form: Form; strength
         <SummaryCard label="Headshot" value={form.headshot_url ? '✓ uploaded' : '—'} />
         <SummaryCard label="Tagline" value={form.tagline ? `${form.tagline.length} chars` : '—'} />
         <SummaryCard label="Bio" value={form.bio ? `${form.bio.length} chars` : '—'} />
-        <SummaryCard label="Jurisdictions" value={form.jurisdictions || '—'} />
+        <SummaryCard label="Subjects" value={form.subjects || '—'} />
         <SummaryCard label="Specialties" value={form.specialties.length ? `${form.specialties.length} tags` : '—'} />
         <SummaryCard label="Languages" value={form.languages.length ? form.languages.join(', ') : 'English only'} />
         <SummaryCard label="Years" value={form.years_experience !== '' ? String(form.years_experience) : '—'} />

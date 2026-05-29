@@ -212,7 +212,7 @@ export default function ConsultantProfileEditor() {
           help="One sharp line that shows on your card in search results. Aim for 60–120 characters."
           value={c.tagline}
           maxLength={160}
-          placeholder="e.g. F-1 reinstatement specialist · 200+ approvals · responses within an hour"
+          placeholder="e.g. MBA admissions strategist · 150+ offers · responses within an hour"
           onSave={(v) => save('tagline', v)}
           aiField="tagline"
         />
@@ -222,7 +222,7 @@ export default function ConsultantProfileEditor() {
           value={c.intro}
           maxLength={600}
           multiline
-          placeholder="I help international students navigate the US immigration system. After 12 years and 200+ approved cases, I know exactly what USCIS wants — and what to leave out."
+          placeholder="I help international students craft compelling applications for top MBA programs. After 8 years and 150+ admissions, I know exactly what admissions committees look for — and what to leave out."
           onSave={(v) => save('intro', v)}
           aiField="intro"
         />
@@ -281,6 +281,22 @@ export default function ConsultantProfileEditor() {
             rows={3}
             placeholder="BA, University of Cambridge, 2012\nMA, London School of Economics, 2014"
             onSave={(v) => save('education', v)}
+          />
+        </div>
+        <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          <EditableField
+            label="Subjects you teach / advise on"
+            help="What topics do you cover? Comma-separated."
+            value={c.subjects ?? c.jurisdictions ?? ''}
+            placeholder="MBA admissions, STEM SOPs, scholarship essays"
+            onSave={(v) => save('subjects', v)}
+          />
+          <EditableField
+            label="Industries / sectors"
+            help="What industries or sectors you serve."
+            value={c.industries ?? c.practice_areas ?? ''}
+            placeholder="Higher education, EdTech, career services"
+            onSave={(v) => save('industries', v)}
           />
         </div>
       </Card>

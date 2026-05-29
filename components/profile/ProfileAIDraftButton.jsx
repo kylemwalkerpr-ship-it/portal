@@ -185,13 +185,13 @@ export default function ProfileAIDraftButton({ field, onApply, label = 'Draft wi
           {stage === 'input' && (
             <>
               <p style={{ margin: '0 0 8px', fontSize: '11px', color: C.textMuted, lineHeight: 1.45 }}>
-                The AI uses your saved profile context — credentials, jurisdictions, years, and existing prose.
+                The AI uses your saved profile context — credentials, years, and existing prose.
                 It will not invent identifiers, case counts, or outcome promises.
               </p>
               <textarea
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
-                placeholder="Optional hint — e.g. mention F-1 reinstatement focus, warm tone, mention 12 yrs at Big Law"
+                placeholder="Optional hint — e.g. warm tone, mention years of experience, highlight a specific specialty"
                 rows={2}
                 style={{
                   width: '100%',

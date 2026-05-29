@@ -982,7 +982,7 @@ function CategoryStep({ gigData, errors, onChange, role }: any) {
             Recommended positioning
           </div>
           <p style={{ fontSize: '13px', color: T.inkMuted, margin: 0 }}>
-            Lead with a concrete outcome for {selectedSubcategory.name.toLowerCase()}, then separate document prep, advisory time, and attorney review into tiers.
+            Lead with a concrete outcome for {selectedSubcategory.name.toLowerCase()}, then separate document prep, advisory time, and specialist review into tiers.
           </p>
         </div>
       )}

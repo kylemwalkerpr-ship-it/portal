@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   const sellerTable = role === 'attorney' ? 'attorneys' : 'consultants'
   const { data: seller } = await db
     .from(sellerTable)
-    .select('tagline, intro, bio, languages, years_experience, education, specialties, jurisdictions, practice_areas')
+    .select('tagline, intro, bio, languages, years_experience, education, specialties, subjects, industries, jurisdictions, practice_areas')
     .eq('profile_id', profileId)
     .maybeSingle()
 
@@ -55,6 +55,8 @@ export async function POST(req: Request) {
     full_name: (profile.full_name as string | null) ?? null,
     credential_type: credentialType,
     years_experience: typeof seller?.years_experience === 'number' ? seller.years_experience : null,
+    subjects: (seller?.subjects as string | null) ?? (seller?.jurisdictions as string | null) ?? null,
+    industries: (seller?.industries as string | null) ?? (seller?.practice_areas as string | null) ?? null,
     jurisdictions: (seller?.jurisdictions as string | null) ?? null,
     practice_areas: (seller?.practice_areas as string | null) ?? null,
     specialties: Array.isArray(seller?.specialties) ? (seller.specialties as string[]) : null,
