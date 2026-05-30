@@ -502,8 +502,16 @@
   position: relative; z-index: 2;
 }
 .yousafe-messenger .bubrow.last { margin-bottom: var(--bub-gap-end); }
-.yousafe-messenger .bubrow.theirs { justify-content: flex-start; padding-right: 40px; }
-.yousafe-messenger .bubrow.mine   { justify-content: flex-end;   padding-left:  40px; }
+/* Asymmetric padding so bubbles always sit inset from BOTH pane edges:
+   - .theirs needs ≥40px on the right (avatar / balance space) and a small
+     buffer on the left so the bubble's left edge doesn't kiss the chat pane.
+   - .mine needs the same — 40px on the left, a small buffer on the right.
+   Without the buffer on the pane-adjacent side, wide bubbles like the
+   custom-offer card (maxWidth: 75% inline override) and inquiry cards
+   extended visually under the Articles drawer tab on the right edge,
+   exactly the "extends past the pane border" symptom in the screenshot. */
+.yousafe-messenger .bubrow.theirs { justify-content: flex-start; padding-left: 12px;  padding-right: 40px; }
+.yousafe-messenger .bubrow.mine   { justify-content: flex-end;   padding-left: 40px;  padding-right: 12px; }
 
 .yousafe-messenger .bub {
   max-width: 65%;
