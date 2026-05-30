@@ -351,7 +351,38 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                     <div style={{ fontWeight: 600 }}>Saved card</div>
                     <div style={{ fontSize: 12, color: MUTED }}>
                       {savedCards.length === 0
-                        ? <span>No saved cards yet — <a href="/student?goto=billing" style={{ color: CYAN, textDecoration: 'underline' }}>add one from billing</a></span>
+                        ? (
+                            <span>
+                              No saved cards yet —{' '}
+                              {/* Anchor tags inside a <button> are swallowed by the browser
+                                  (interactive children aren't allowed inside button). Use a
+                                  span + click handler: stop propagation so the parent radio
+                                  button doesn't toggle, dispatch yousafe-navigate so the
+                                  StudentApp host switches tabs, fall back to a hard nav. */}
+                              <span
+                                role="link"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  onClose()
+                                  if (typeof window !== 'undefined') {
+                                    window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'billing' } }))
+                                    // Hard-nav fallback if no handler picks up the event
+                                    // (e.g. modal opened outside the student dashboard).
+                                    setTimeout(() => {
+                                      if (!window.location.search.includes('goto=billing')) {
+                                        window.location.assign('/student?goto=billing')
+                                      }
+                                    }, 50)
+                                  }
+                                }}
+                                style={{ color: CYAN, textDecoration: 'underline', cursor: 'pointer' }}
+                              >
+                                add one from billing
+                              </span>
+                            </span>
+                          )
                         : selectedCard ? cardLabel(selectedCard) : 'Choose a saved card'
                       }
                     </div>
@@ -435,12 +466,23 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                     </div>
                   )}
                 </div>
-                <a
-                  href="/student?goto=billing"
-                  style={{ display: 'block', textAlign: 'center', padding: '12px', borderRadius: 10, background: NAVY, color: '#fff', fontSize: 15, fontWeight: 700, textDecoration: 'none' }}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'billing' } }))
+                      setTimeout(() => {
+                        if (!window.location.search.includes('goto=billing')) {
+                          window.location.assign('/student?goto=billing')
+                        }
+                      }, 50)
+                    }
+                  }}
+                  style={{ display: 'block', width: '100%', textAlign: 'center', padding: '12px', borderRadius: 10, background: NAVY, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: 'pointer' }}
                 >
                   + Top up wallet
-                </a>
+                </button>
               </div>
             )}
 
