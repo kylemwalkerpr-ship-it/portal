@@ -68,7 +68,12 @@ function corsHeadersFor(req: Request): Record<string, string> {
     headers['Access-Control-Allow-Origin'] = origin
     headers['Access-Control-Allow-Credentials'] = 'true'
     headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, PUT, DELETE, OPTIONS'
-    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    // Whitelist Next.js RSC navigation headers — without these, cross-subdomain
+    // <Link> prefetch / soft-navigation fails preflight with
+    // "Request header field rsc is not allowed by Access-Control-Allow-Headers"
+    // and the browser falls back to a hard navigation (or fails outright on
+    // server-component reads). Affects portal ↔ market most often.
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Url'
     headers['Access-Control-Max-Age'] = '86400'
   }
   return headers

@@ -104,6 +104,17 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   onTokenRef.current = onToken
   onErrorRef.current = onError
 
+  // NMI Collect.js: track per-field validity from validationCallback so we can
+  // reject tokenize() with a friendly message when the user clicks Pay before
+  // filling fields. Without this, Collect.js validates synchronously, skips
+  // its main callback, and leaks an unhandled "e.token" rejection.
+  const nmiFieldValidityRef = useRef<{ ccnumber: boolean; ccexp: boolean; cvv: boolean }>({
+    ccnumber: false,
+    ccexp: false,
+    cvv: false,
+  })
+  const nmiLastValidationMsgRef = useRef<string | null>(null)
+
   // Authorize.net controlled state — unused for NMI but cheap to maintain.
   const [cardNumber, setCardNumber] = useState('')
   const [exp, setExp] = useState('') // "MM / YY"
@@ -176,6 +187,15 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             ccexp: { placeholder: 'MM / YY', selector: `#${fieldIds.exp}` },
             cvv: { placeholder: 'CVV', selector: `#${fieldIds.cvv}` },
           },
+          // Per-field validity callback. Collect.js fires this on blur /
+          // input change. We mirror the state into a ref so tokenize() can
+          // gate startPaymentRequest before the SDK throws internally.
+          validationCallback: (fieldName: string, valid: boolean, message: string) => {
+            if (fieldName === 'ccnumber' || fieldName === 'ccexp' || fieldName === 'cvv') {
+              nmiFieldValidityRef.current[fieldName] = valid
+            }
+            if (!valid && message) nmiLastValidationMsgRef.current = message
+          },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           callback: (response: any) => {
             const pending = pendingResolveRef.current
@@ -194,7 +214,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
                 pending.resolve()
               }
             } else {
-              const msg = response?.message || 'Card tokenization failed'
+              const msg = response?.message || nmiLastValidationMsgRef.current || 'Card tokenization failed'
               reportError(msg)
             }
           },
@@ -237,6 +257,31 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           pendingResolveRef.current = { resolve, reject }
 
           if (cfg.provider === 'nmi') {
+            // Pre-flight: Collect.js's startPaymentRequest silently bails
+            // (no callback) on invalid fields and leaks an unhandled "e.token"
+            // rejection from its own promise chain. Validate here so the user
+            // sees a friendly message instead of a frozen "Processing..."
+            // button.
+            const validity = nmiFieldValidityRef.current
+            if (!validity.ccnumber || !validity.ccexp || !validity.cvv) {
+              pendingResolveRef.current = null
+              const missing: string[] = []
+              if (!validity.ccnumber) missing.push('card number')
+              if (!validity.ccexp) missing.push('expiry')
+              if (!validity.cvv) missing.push('CVV')
+              const m = nmiLastValidationMsgRef.current || `Enter your ${missing.join(', ')}`
+              reportError(m)
+              return reject(new Error(m))
+            }
+            // Swallow Collect.js's internal unhandled rejection
+            // ("e.token") if the SDK still bails after our preflight (e.g.
+            // browser refused to read the iframe at the last moment).
+            const onUnhandled = (ev: PromiseRejectionEvent) => {
+              const msg = String(ev.reason?.message || ev.reason || '')
+              if (msg.includes("'e.token'") || msg.includes('e.token')) ev.preventDefault()
+            }
+            window.addEventListener('unhandledrejection', onUnhandled, { once: true })
+            setTimeout(() => window.removeEventListener('unhandledrejection', onUnhandled), 5000)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ;(window as any).CollectJS?.startPaymentRequest()
             return
