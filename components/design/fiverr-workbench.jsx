@@ -4,6 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import { C, Btn, Badge, Card, Input, Select, ProgressBar } from './shared'
 import { computeSEOScore } from '@/lib/seoUtils'
+import CardFields from '@/components/payments/CardFields'
 
 export { C, Btn, Badge, Card, Input, Select, ProgressBar }
 
@@ -514,8 +515,9 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [newCardToken, setNewCardToken] = React.useState(null)
-  const [nmiReady, setNmiReady] = React.useState(false)
-  const [nmiError, setNmiError] = React.useState(null)
+  const [cardError, setCardError] = React.useState(null)
+  const cardFieldsRef = React.useRef(null)
+  const lastTokenRef = React.useRef(null)
   const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = React.useState(false)
 
   const providerType = String(gig.provider_type || '').toLowerCase() === 'attorney' ? 'attorney' : 'consultant'
@@ -534,44 +536,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
   const priceDollars = totalCents / 100
   const canUseWallet = walletBalance !== null && walletBalance >= priceDollars
   const selectedCard = cards.find(card => card.id === selectedCardId)
-
-  const initNmi = async () => {
-    if (nmiReady) return
-    setNmiError(null)
-    try {
-      const cfg = await requestJson('/api/payments/config')
-      if (!cfg.scriptUrl) { setNmiError('Payment config unavailable'); return }
-      const configure = () => {
-        const CollectJS = window.CollectJS
-        if (!CollectJS) { setNmiError('Payment tokenization library not available'); return }
-        CollectJS.configure({
-          variant: 'inline',
-          fields: {
-            ccnumber: { placeholder: 'Card number', selector: '#nmi-gig-card-number' },
-            ccexp:    { placeholder: 'MM / YY',     selector: '#nmi-gig-card-expiry' },
-            cvv:      { placeholder: 'CVV',         selector: '#nmi-gig-card-cvv' },
-          },
-          callback: (response) => {
-            if (response.token) { setNewCardToken(response.token); setNmiError(null) }
-            else { setNmiError(response.message || 'Card tokenization failed') }
-          },
-        })
-        setNmiReady(true)
-      }
-      if (window.CollectJS || document.querySelector(`script[src="${cfg.scriptUrl}"]`)) {
-        configure(); return
-      }
-      const script = document.createElement('script')
-      script.src = cfg.scriptUrl
-      script.async = true
-      script.dataset.tokenizationKey = cfg.tokenizationKey || ''
-      script.onload = configure
-      script.onerror = () => setNmiError('Failed to load payment tokenization library')
-      document.body.appendChild(script)
-    } catch (e) {
-      setNmiError(e?.message || 'Failed to initialise card fields')
-    }
-  }
 
   React.useEffect(() => {
     fetch('/api/wallet/balance')
@@ -605,9 +569,6 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
     }
     setPayMethod(selected)
     setHasSetDefaultPayMethod(true)
-    if (selected === 'new_card') {
-      initNmi()
-    }
   }, [walletBalance, cards, totalCents, hasSetDefaultPayMethod])
 
   const pay = async () => {
@@ -620,20 +581,25 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
       setError('Choose a saved card first.')
       return
     }
-    if (payMethod === 'new_card' && !newCardToken) {
-      setError('Tokenize your card first using the secure form above.')
-      return
-    }
     setBusy(true)
     setError('')
+    setCardError(null)
     try {
+      // For new-card flow, tokenize at click-time so the user sees one button.
+      let result = newCardToken ? lastTokenRef.current : null
+      if (payMethod === 'new_card' && !result) {
+        if (!cardFieldsRef.current) throw new Error('Card fields not ready')
+        await cardFieldsRef.current.tokenize()
+        result = lastTokenRef.current
+        if (!result) throw new Error('Tokenization did not return a token')
+      }
       const body = {
         sourceType: 'gig',
         sourceId: gig.id,
         tierId: tier.id,
         paymentMethod: payMethod,
         ...(payMethod === 'saved_card' && { paymentMethodId: selectedCardId }),
-        ...(payMethod === 'new_card'   && { token: newCardToken }),
+        ...(payMethod === 'new_card'   && { token: result.token, gateway: result.gateway }),
       }
       const payload = await requestJson('/api/checkout/order', {
         method: 'POST',
@@ -731,33 +697,22 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
           {/* New card */}
           <CheckoutButton
             active={payMethod === 'new_card'}
-            onClick={() => { setPayMethod('new_card'); initNmi() }}
+            onClick={() => { setPayMethod('new_card') }}
             title="New card"
             detail="Enter card details securely"
           />
           {payMethod === 'new_card' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {nmiError && (
+              {cardError && (
                 <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '8px' }}>
-                  {nmiError}
+                  {cardError}
                 </div>
               )}
-              <div id="nmi-gig-card-number" style={{ padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <div id="nmi-gig-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
-                <div id="nmi-gig-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#fff', borderRadius: '8px', border: `1px solid ${C.border}`, minHeight: '42px' }} />
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!nmiReady) { setNmiError('Payment fields are not ready — please wait a moment.'); return }
-                  window.CollectJS.startPaymentRequest()
-                }}
-                disabled={!nmiReady}
-                style={{ padding: '9px 16px', borderRadius: '8px', background: C.surface2, border: `1px solid ${C.border}`, fontSize: '13px', cursor: nmiReady ? 'pointer' : 'not-allowed', color: C.text }}
-              >
-                {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
-              </button>
+              <CardFields
+                ref={cardFieldsRef}
+                onError={setCardError}
+                onToken={(result) => { lastTokenRef.current = result; setNewCardToken(result.token); setCardError(null) }}
+              />
             </div>
           )}
 
@@ -772,19 +727,16 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
             disabled={
               busy ||
               (payMethod === 'wallet'     && !canUseWallet) ||
-              (payMethod === 'saved_card' && !selectedCardId) ||
-              (payMethod === 'new_card'   && !newCardToken)
+              (payMethod === 'saved_card' && !selectedCardId)
             }
           >
             {busy ? 'Processing...' : payMethod === 'wallet'
               ? `Pay ${money(totalCents)} from wallet`
               : payMethod === 'saved_card' && selectedCard
               ? `Pay ${money(totalCents)} with ${(selectedCard.brand || 'CARD').toUpperCase()} ••••${selectedCard.last4}`
-              : payMethod === 'new_card' && newCardToken
+              : payMethod === 'new_card'
               ? `Pay ${money(totalCents)} with new card`
-              : payMethod === 'saved_card'
-              ? 'Choose a saved card'
-              : 'Tokenize your card first'}
+              : 'Choose a saved card'}
           </Btn>
           <p style={{ color: C.textDim, fontSize: '11px', lineHeight: 1.5, textAlign: 'center', margin: '4px 0 0' }}>
             By placing this order you agree to the{' '}

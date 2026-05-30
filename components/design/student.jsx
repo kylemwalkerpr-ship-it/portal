@@ -18,6 +18,7 @@ import StudentOrders from './student-orders'
 import StudentOrderDetail from './student-order-detail'
 import StudentBilling from './student-billing'
 import StudentDocuments from './student-documents'
+import CardFields from '@/components/payments/CardFields'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -594,20 +595,18 @@ function EscrowApprovalCard({ order }) {
   );
 }
 
-// ─── NMI Payment Method Component ─────────────────────────────────────────
+// ─── Payment Method Component (gateway-agnostic) ──────────────────────────
 function NmiPaymentSection() {
   const [cards, setCards] = React.useState([]);
   const [selectedCardId, setSelectedCardId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [addingCard, setAddingCard] = React.useState(false);
-  const [nmiReady, setNmiReady] = React.useState(false);
-  const [nmiErr, setNmiErr] = React.useState(null);
+  const [cardErr, setCardErr] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState(null);
-  const [payConfig, setPayConfig] = React.useState(null);
 
-  const collectJsInitRef = React.useRef(false);
+  const cardFieldsRef = React.useRef(null);
 
   const fetchCards = async () => {
     setLoading(true);
@@ -625,103 +624,31 @@ function NmiPaymentSection() {
 
   React.useEffect(() => { fetchCards(); }, []);
 
-  const loadNmiConfig = async () => {
-    try {
-      const res = await fetch('/api/payments/config', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Could not load payment config');
-      const cfg = await res.json();
-      setPayConfig(cfg);
-      return cfg;
-    } catch (err) {
-      setNmiErr(err.message || 'Failed to load payment config');
-      return null;
-    }
-  };
-
-  const initCollectJs = (cfg) => {
-    if (typeof window === 'undefined') return;
-    const CollectJS = window.CollectJS;
-    if (!CollectJS) {
-      setNmiErr('Payment tokenization library not available');
-      return;
-    }
-    try {
-      CollectJS.configure({
-        variant: 'inline',
-        fields: {
-          ccnumber: { placeholder: 'Card number', selector: '#nmi-add-card-number' },
-          ccexp: { placeholder: 'MM / YY', selector: '#nmi-add-card-expiry' },
-          cvv: { placeholder: 'CVV', selector: '#nmi-add-card-cvv' },
-        },
-        callback: (response) => {
-          if (response.token) {
-            handleToken(response.token, response.card);
-          } else {
-            setErrorMsg(response.message || 'Card tokenization failed');
-            setSaving(false);
-          }
-        },
-      });
-      setNmiReady(true);
-    } catch (err) {
-      setNmiErr(err.message || 'Failed to initialise card fields');
-    }
-  };
-
-  const handleAddCard = async () => {
+  const handleAddCard = () => {
     setErrorMsg(null);
-    setNmiErr(null);
+    setCardErr(null);
     setAddingCard(true);
-
-    if (collectJsInitRef.current) {
-      setNmiReady(true);
-      return;
-    }
-
-    const cfg = payConfig || (await loadNmiConfig());
-    if (!cfg || cfg.mode !== 'inline-token') {
-      setNmiErr('Inline card tokenization is not available.');
-      return;
-    }
-
-    const scriptUrl = cfg.scriptUrl;
-    if (!scriptUrl) {
-      setNmiErr('Payment script URL missing');
-      return;
-    }
-
-    if (document.querySelector(`script[src="${scriptUrl}"]`)) {
-      collectJsInitRef.current = true;
-      initCollectJs(cfg);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = scriptUrl;
-    script.async = true;
-    script.dataset.tokenizationKey = cfg.tokenizationKey || '';
-    script.onload = () => {
-      collectJsInitRef.current = true;
-      initCollectJs(cfg);
-    };
-    script.onerror = () => {
-      setNmiErr('Failed to load payment tokenization library');
-    };
-    document.body.appendChild(script);
   };
 
-  const handleToken = async (token, card) => {
-    setSaving(true); setErrorMsg(null);
+  const handleSaveCard = async () => {
+    if (!cardFieldsRef.current) { setCardErr('Card fields not ready'); return; }
+    setSaving(true); setErrorMsg(null); setCardErr(null);
     try {
+      // CardFields.tokenize() fires the gateway SDK; onTokenRef captures the
+      // result into a local for the API call (state setters are async).
+      await cardFieldsRef.current.tokenize();
+      const result = lastTokenRef.current;
+      if (!result) throw new Error('Tokenization did not return a token');
       const res = await fetch('/api/wallet/payment-methods', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token,
-          brand: card?.brand,
-          last4: card?.last4,
-          exp_month: card?.exp_month,
-          exp_year: card?.exp_year,
+          token: result.token,
+          gateway: result.gateway,
+          brand: result.brand,
+          last4: result.last4,
+          exp_month: result.expMonth ? Number(result.expMonth) : undefined,
+          exp_year: result.expYear ? Number(result.expYear) : undefined,
         }),
       });
       let body;
@@ -731,9 +658,11 @@ function NmiPaymentSection() {
       await fetchCards();
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
-      setErrorMsg(e.message);
+      setErrorMsg(e.message || 'Failed to save card');
     } finally { setSaving(false); }
   };
+
+  const lastTokenRef = React.useRef(null);
 
   const handleRemove = async (cardId) => {
     try {
@@ -759,13 +688,12 @@ function NmiPaymentSection() {
   return (
     <Card>
       <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Payment Methods</div>
-      <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>nmi</span>
-        Secured by NMI Collect.js — we never store card details directly.
+      <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '20px' }}>
+        Card details are tokenized on your device — YouSafe never stores them directly.
       </div>
       {saved && <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: C.green, marginBottom: '14px' }}>✓ Card saved securely</div>}
       {errorMsg && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {errorMsg}</div>}
-      {nmiErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {nmiErr}</div>}
+      {cardErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '14px' }}>⚠ {cardErr}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
         {loading ? (
           <div style={{ color: C.textMuted, fontSize: '13px', padding: '8px 0' }}>Loading saved cards…</div>
@@ -796,32 +724,22 @@ function NmiPaymentSection() {
         <Btn variant="secondary" size="sm" onClick={handleAddCard}>+ Add new card</Btn>
       ) : (
         <div style={{ background: '#F9FAFB', borderRadius: '14px', padding: '20px', border: '1px solid #E5E7EB' }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Add payment method</span>
-            <span style={{ background: C.cyan, color: '#fff', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>powered by NMI</span>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#6B7280', marginBottom: '16px' }}>Add payment method</div>
+          <div style={{ marginBottom: '16px' }}>
+            <CardFields
+              ref={cardFieldsRef}
+              onError={setCardErr}
+              onToken={(result) => { lastTokenRef.current = result; setCardErr(null); }}
+            />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-            <div id="nmi-add-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div id="nmi-add-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-              <div id="nmi-add-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-            </div>
-          </div>
-          {!nmiReady && (
-            <div style={{ fontSize: '13px', color: '#9CA3AF', marginBottom: '16px' }}>Loading payment fields…</div>
-          )}
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginBottom: '16px' }}>
-            🔒 Your card is encrypted and tokenized by NMI. YouSafe never sees your full card number.
+            🔒 Your card is encrypted and tokenized before it leaves your device. YouSafe never sees your full card number.
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <Btn variant="primary" size="sm" onClick={() => {
-              if (!nmiReady) { setErrorMsg('Payment fields are not ready — please wait a moment.'); return; }
-              setSaving(true); setErrorMsg(null);
-              window.CollectJS.startPaymentRequest();
-            }} disabled={saving || !nmiReady}>
-              {saving ? 'Saving…' : !nmiReady ? 'Loading…' : 'Save card securely'}
+            <Btn variant="primary" size="sm" onClick={handleSaveCard} disabled={saving}>
+              {saving ? 'Saving…' : 'Save card securely'}
             </Btn>
-            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); setNmiErr(null); }}>Cancel</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => { setAddingCard(false); setErrorMsg(null); setCardErr(null); }}>Cancel</Btn>
           </div>
         </div>
       )}
@@ -2143,8 +2061,9 @@ function StudentApp({ onLogout, userId, userName }) {
     const [paying, setPaying] = React.useState(false);
     const [payError, setPayError] = React.useState(null);
     const [newCardToken, setNewCardToken] = React.useState(null);
-    const [checkoutNmiReady, setCheckoutNmiReady] = React.useState(false);
-    const [checkoutNmiErr, setCheckoutNmiErr] = React.useState(null);
+    const [checkoutCardErr, setCheckoutCardErr] = React.useState(null);
+    const checkoutCardFieldsRef = React.useRef(null);
+    const checkoutLastTokenRef = React.useRef(null);
     const categories = ['All', ...Array.from(new Set(services.map(s => s.category || 'General')))];
     // Catalogue search + sort + recently-viewed (added in Section 10 polish)
     const [searchQ, setSearchQ] = React.useState('');
@@ -2343,12 +2262,18 @@ function StudentApp({ onLogout, userId, userName }) {
       };
 
       const handleNewCardPay = async () => {
-        if (!newCardToken) {
-          setPayError('Tokenize your card first using the secure form above.');
-          return;
-        }
-        setPaying(true); setPayError(null);
+        setPaying(true); setPayError(null); setCheckoutCardErr(null);
         try {
+          // Tokenize at click-time so the user only sees one button. The
+          // CardFields ref drives the gateway SDK; checkoutLastTokenRef
+          // captures the freshest result for the API call.
+          let result = newCardToken ? checkoutLastTokenRef.current : null;
+          if (!result) {
+            if (!checkoutCardFieldsRef.current) throw new Error('Card fields not ready');
+            await checkoutCardFieldsRef.current.tokenize();
+            result = checkoutLastTokenRef.current;
+            if (!result) throw new Error('Tokenization did not return a token');
+          }
           const item = cartIsTemplate
             ? { slug: cart.slug || cart.id, quantity: 1 }
             : { serviceId: cart.id, quantity: 1 };
@@ -2356,7 +2281,8 @@ function StudentApp({ onLogout, userId, userName }) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              token: newCardToken,
+              token: result.token,
+              gateway: result.gateway,
               items: [item],
             }),
           });
@@ -2370,58 +2296,6 @@ function StudentApp({ onLogout, userId, userName }) {
         } catch (e) {
           setPayError(e.message);
         } finally { setPaying(false); }
-      };
-
-      const initCheckoutCollectJs = async () => {
-        if (checkoutNmiReady) return;
-        setCheckoutNmiErr(null);
-        if (typeof window === 'undefined') return;
-        try {
-          const cfgRes = await fetch('/api/payments/config');
-          const cfg = await cfgRes.json().catch(() => ({}));
-          if (!cfgRes.ok || !cfg.scriptUrl) {
-            setCheckoutNmiErr('Payment config unavailable');
-            return;
-          }
-          const scriptUrl = cfg.scriptUrl;
-          const configure = () => {
-            const CollectJS = window.CollectJS;
-            if (!CollectJS) {
-              setCheckoutNmiErr('Payment tokenization library not available');
-              return;
-            }
-            CollectJS.configure({
-              variant: 'inline',
-              fields: {
-                ccnumber: { placeholder: 'Card number', selector: '#nmi-checkout-card-number' },
-                ccexp: { placeholder: 'MM / YY', selector: '#nmi-checkout-card-expiry' },
-                cvv: { placeholder: 'CVV', selector: '#nmi-checkout-card-cvv' },
-              },
-              callback: (response) => {
-                if (response.token) {
-                  setNewCardToken(response.token);
-                  setCheckoutNmiErr(null);
-                } else {
-                  setCheckoutNmiErr(response.message || 'Card tokenization failed');
-                }
-              },
-            });
-            setCheckoutNmiReady(true);
-          };
-          if (window.CollectJS || document.querySelector(`script[src="${scriptUrl}"]`)) {
-            configure();
-            return;
-          }
-          const script = document.createElement('script');
-          script.src = scriptUrl;
-          script.async = true;
-          script.dataset.tokenizationKey = cfg.tokenizationKey || '';
-          script.onload = configure;
-          script.onerror = () => setCheckoutNmiErr('Failed to load payment tokenization library');
-          document.body.appendChild(script);
-        } catch (err) {
-          setCheckoutNmiErr(err.message || 'Failed to initialise card fields');
-        }
       };
 
       return (
@@ -2522,7 +2396,7 @@ function StudentApp({ onLogout, userId, userName }) {
             )}
             {/* New card option */}
             <div
-              onClick={() => { setPayMethod('new_card'); initCheckoutCollectJs(); }}
+              onClick={() => { setPayMethod('new_card'); }}
               style={{
                 padding: '14px', borderRadius: '12px', border: `2px solid ${payMethod === 'new_card' ? C.cyan : C.border}`,
                 background: payMethod === 'new_card' ? `${C.cyan}10` : C.surface2,
@@ -2541,17 +2415,12 @@ function StudentApp({ onLogout, userId, userName }) {
             </div>
             {payMethod === 'new_card' && (
               <div style={{ margin: '-2px 0 10px 0' }}>
-                {checkoutNmiErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '10px' }}>⚠ {checkoutNmiErr}</div>}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px' }}>
-                  <div id="nmi-checkout-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <div id="nmi-checkout-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-                    <div id="nmi-checkout-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: '8px', border: '1px solid #D1D5DB', minHeight: '42px' }} />
-                  </div>
-                </div>
-                <Btn variant="secondary" size="sm" onClick={() => { if (!checkoutNmiReady) { setCheckoutNmiErr('Payment fields are not ready — please wait a moment.'); return; } window.CollectJS.startPaymentRequest(); }} disabled={!checkoutNmiReady}>
-                  {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
-                </Btn>
+                {checkoutCardErr && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', color: '#EF4444', marginBottom: '10px' }}>⚠ {checkoutCardErr}</div>}
+                <CardFields
+                  ref={checkoutCardFieldsRef}
+                  onError={setCheckoutCardErr}
+                  onToken={(result) => { checkoutLastTokenRef.current = result; setNewCardToken(result.token); setCheckoutCardErr(null); }}
+                />
               </div>
             )}
 
@@ -2592,8 +2461,8 @@ function StudentApp({ onLogout, userId, userName }) {
               {paying ? 'Processing…' : selectedCard ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with •••• ${selectedCard.last4}` : 'Choose a saved card'}
             </Btn>
           ) : (
-            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying || !newCardToken}>
-              {paying ? 'Processing…' : newCardToken ? `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card` : 'Tokenize your card first'}
+            <Btn variant="primary" fullWidth size="lg" onClick={handleNewCardPay} disabled={paying}>
+              {paying ? 'Processing…' : `Pay ${formatMoney(displayPriceNum, effectiveDisplayCurrency)} with new card`}
             </Btn>
           )}
           <p style={{ fontSize: '11px', color: C.textDim, textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>

@@ -5,9 +5,11 @@
  * 3-method payment flow for accepting a custom offer:
  *   1. Wallet balance
  *   2. Saved card (vault charge)
- *   3. New card (Collect.js inline tokenization)
+ *   3. New card (gateway-agnostic tokenization via CardFields — NMI Collect.js
+ *      or Authorize.net Accept.js depending on /api/payments/config).
  */
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import CardFields, { type CardFieldsHandle, type CardTokenResult } from '@/components/payments/CardFields'
 
 const NAVY = '#0F172A'
 const GOLD = '#9A7B3B'
@@ -84,9 +86,12 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
   const [payMethod, setPayMethod] = useState<'wallet' | 'saved_card' | 'new_card'>('wallet')
   const [savedCards, setSavedCards] = useState<SavedCard[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string>('')
-  const [newCardToken, setNewCardToken] = useState<string | null>(null)
-  const [nmiReady, setNmiReady] = useState(false)
-  const [nmiError, setNmiError] = useState<string | null>(null)
+  const [newCardToken, setNewCardToken] = useState<CardTokenResult | null>(null)
+  const [cardError, setCardError] = useState<string | null>(null)
+  const cardFieldsRef = useRef<CardFieldsHandle>(null)
+  // setState is async; capture the freshest tokenization result so handlePay
+  // can POST it in the same tick the user clicked.
+  const latestTokenRef = useRef<CardTokenResult | null>(null)
 
   // Reset state when modal opens
   useEffect(() => {
@@ -100,8 +105,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
     setSavedCards([])
     setSelectedCardId('')
     setNewCardToken(null)
-    setNmiReady(false)
-    setNmiError(null)
+    setCardError(null)
 
     let cancelled = false
     ;(async () => {
@@ -155,65 +159,39 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
     return () => { cancelled = true }
   }, [open, offerId])
 
-  // Collect.js init for new card branch
-  const initNmi = useCallback(async () => {
-    if (nmiReady) return
-    setNmiError(null)
-    if (typeof window === 'undefined') return
-    try {
-      const cfgRes = await fetch('/api/payments/config')
-      const cfg = await cfgRes.json().catch(() => ({}))
-      if (!cfgRes.ok || !cfg.scriptUrl) {
-        setNmiError('Payment config unavailable')
-        return
-      }
-      const scriptUrl = cfg.scriptUrl
-      const configure = () => {
-        const CollectJS = (window as any).CollectJS
-        if (!CollectJS) { setNmiError('Payment tokenization library not available'); return }
-        CollectJS.configure({
-          variant: 'inline',
-          fields: {
-            ccnumber: { placeholder: 'Card number', selector: '#nmi-offer-card-number' },
-            ccexp:    { placeholder: 'MM / YY',     selector: '#nmi-offer-card-expiry' },
-            cvv:      { placeholder: 'CVV',         selector: '#nmi-offer-card-cvv' },
-          },
-          callback: (response: any) => {
-            if (response.token) {
-              setNewCardToken(response.token)
-              setNmiError(null)
-            } else {
-              setNmiError(response.message || 'Card tokenization failed')
-            }
-          },
-        })
-        setNmiReady(true)
-      }
-      if ((window as any).CollectJS || document.querySelector(`script[src="${scriptUrl}"]`)) {
-        configure()
-        return
-      }
-      const script = document.createElement('script')
-      script.src = scriptUrl
-      script.async = true
-      script.dataset.tokenizationKey = cfg.tokenizationKey || ''
-      script.onload = configure
-      script.onerror = () => setNmiError('Failed to load payment tokenization library')
-      document.body.appendChild(script)
-    } catch (e: any) {
-      setNmiError(e?.message || 'Failed to initialise card fields')
-    }
-  }, [nmiReady])
-
   const handlePay = async () => {
     if (!meta?.breakdown || submitting) return
     setSubmitting(true)
     setError(null)
+
+    // New-card path: tokenize at click-time so the user only sees one button.
+    // CardFields.tokenize() resolves after onToken (we capture into newCardToken).
+    // We read the freshly-tokenized result via a local variable too because
+    // setState is async and we want to POST in the same tick.
+    let tokenResult: CardTokenResult | null = newCardToken
+    if (payMethod === 'new_card' && !tokenResult) {
+      try {
+        await cardFieldsRef.current?.tokenize()
+        // After tokenize resolves, onToken has fired and updated state. The
+        // ref-bound callback also stashes the latest result here.
+        tokenResult = latestTokenRef.current
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Card tokenization failed')
+        setSubmitting(false)
+        return
+      }
+      if (!tokenResult) {
+        setError('Card tokenization did not return a token')
+        setSubmitting(false)
+        return
+      }
+    }
+
     try {
       const body =
         payMethod === 'wallet'      ? { paymentMethod: 'wallet' } :
         payMethod === 'saved_card'  ? { paymentMethod: 'saved_card', paymentMethodId: selectedCardId } :
-                                      { paymentMethod: 'new_card', token: newCardToken }
+                                      { paymentMethod: 'new_card', token: tokenResult!.token, gateway: tokenResult!.gateway }
 
       const res = await fetch(`/api/offers/${offerId}/accept`, {
         method: 'POST',
@@ -264,12 +242,10 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
         payLabel = `Pay ${formatMoney(totalCents, currency)} with ${(selectedCard?.brand || 'CARD').toUpperCase()} ••••${selectedCard?.last4 || ''}`
       }
     } else {
-      if (!newCardToken) {
-        payLabel = 'Tokenize your card first'
-        payDisabled = true
-      } else {
-        payLabel = `Pay ${formatMoney(totalCents, currency)} with new card`
-      }
+      // New-card flow: tokenization is folded into handlePay (one-click pay),
+      // so the button is always enabled. CardFields.tokenize() surfaces any
+      // validation / SDK errors via setCardError.
+      payLabel = `Pay ${formatMoney(totalCents, currency)} with new card`
     }
   }
 
@@ -406,7 +382,7 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                 type="button"
                 role="radio"
                 aria-checked={payMethod === 'new_card'}
-                onClick={() => { setPayMethod('new_card'); initNmi(); }}
+                onClick={() => { setPayMethod('new_card') }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '14px', borderRadius: 12,
                   border: `2px solid ${payMethod === 'new_card' ? NAVY : BORDER}`,
@@ -420,42 +396,30 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                   <span style={{ fontSize: 20 }}>💳</span>
                   <div>
                     <div style={{ fontWeight: 600 }}>New card</div>
-                    <div style={{ fontSize: 12, color: MUTED }}>Enter card details securely with Collect.js</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Enter card details — tokenized securely before submission</div>
                   </div>
                 </div>
                 {payMethod === 'new_card' && <span style={{ color: NAVY, fontWeight: 700 }}>✓</span>}
               </button>
 
-              {/* New card inline fields */}
+              {/* New card inline fields (gateway-agnostic) */}
               {payMethod === 'new_card' && (
                 <div style={{ margin: '-2px 0 0 0' }}>
-                  {nmiError && (
+                  {cardError && (
                     <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#EF4444', marginBottom: 10 }}>
-                      {nmiError}
+                      {cardError}
                     </div>
                   )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
-                    <div id="nmi-offer-card-number" style={{ width: '100%', padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <div id="nmi-offer-card-expiry" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
-                      <div id="nmi-offer-card-cvv" style={{ flex: 1, padding: '10px 14px', background: '#ffffff', borderRadius: 8, border: `1px solid ${BORDER2}`, minHeight: 42 }} />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!nmiReady) { setNmiError('Payment fields are not ready — please wait a moment.'); return }
-                      ;(window as any).CollectJS?.startPaymentRequest()
+                  <CardFields
+                    ref={cardFieldsRef}
+                    fieldStyle={{ border: `1px solid ${BORDER2}` }}
+                    onError={setCardError}
+                    onToken={(result) => {
+                      latestTokenRef.current = result
+                      setNewCardToken(result)
+                      setCardError(null)
                     }}
-                    disabled={!nmiReady}
-                    style={{
-                      padding: '10px 18px', borderRadius: 8, border: 'none',
-                      background: newCardToken ? GREEN : nmiReady ? NAVY : BORDER,
-                      color: '#fff', fontSize: 13, fontWeight: 600, cursor: nmiReady ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    {newCardToken ? 'Card tokenized ✓' : 'Tokenize card securely'}
-                  </button>
+                  />
                 </div>
               )}
             </div>
