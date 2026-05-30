@@ -347,7 +347,11 @@ export default function AIDraftButton({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={runGenerate}
+                  // Wrap so React's MouseEvent doesn't satisfy runGenerate's
+                  // new { regenerate?: boolean } first arg — the bare
+                  // onClick={runGenerate} form passed the event through and
+                  // failed type-check on CI.
+                  onClick={() => { void runGenerate() }}
                   style={{
                     padding: '6px 14px', borderRadius: '6px',
                     background: busy ? T.rule : T.indigo, color: '#FFFFFF',
