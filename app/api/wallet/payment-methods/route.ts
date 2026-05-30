@@ -46,12 +46,21 @@ export async function POST(req: Request) {
   }
 
   try {
-    const card = await addCard(auth.profile.id, token, {
-      brand: typeof body.brand === 'string' ? body.brand : undefined,
-      last4: typeof body.last4 === 'string' ? body.last4 : undefined,
-      expMonth: typeof body.exp_month === 'number' ? body.exp_month : undefined,
-      expYear: typeof body.exp_year === 'number' ? body.exp_year : undefined,
-    })
+    // Accept optional `gateway` so callers can pin a vault to a specific
+    // provider (e.g. the wallet topup re-uses the gateway it just charged).
+    // Omit → platform default via getDefaultGatewayId() in addCard.
+    const gateway = typeof body.gateway === 'string' ? body.gateway : undefined
+    const card = await addCard(
+      auth.profile.id,
+      token,
+      {
+        brand: typeof body.brand === 'string' ? body.brand : undefined,
+        last4: typeof body.last4 === 'string' ? body.last4 : undefined,
+        expMonth: typeof body.exp_month === 'number' ? body.exp_month : undefined,
+        expYear: typeof body.exp_year === 'number' ? body.exp_year : undefined,
+      },
+      gateway,
+    )
     return Response.json({
       card: {
         id: card.id,

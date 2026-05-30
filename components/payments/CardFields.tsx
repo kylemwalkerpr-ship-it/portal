@@ -232,6 +232,10 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
               }
             } else {
               const msg = response?.message || nmiLastValidationMsgRef.current || 'Card tokenization failed'
+              if (pending) {
+                pendingResolveRef.current = null
+                pending.reject(new Error(msg))
+              }
               reportError(msg)
             }
           },
@@ -380,7 +384,17 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
                     pending.resolve()
                   }
                 } else {
-                  const msg = response?.messages?.message?.[0]?.text || 'Tokenization failed'
+                  // Pull ALL error messages — Authorize.net often returns a
+                  // list (e.g. "E_WC_05: card number invalid" + "E_WC_15: zip
+                  // missing"). Showing just the first hides what's wrong.
+                  const errs = response?.messages?.message
+                  const msg = Array.isArray(errs) && errs.length
+                    ? errs.map((m: { code?: string; text?: string }) => m.text).filter(Boolean).join('; ')
+                    : 'Tokenization failed'
+                  if (pending) {
+                    pendingResolveRef.current = null
+                    pending.reject(new Error(msg))
+                  }
                   reportError(msg)
                 }
               },

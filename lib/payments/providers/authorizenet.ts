@@ -117,7 +117,10 @@ interface TransactionResponse {
 
 function readMessage(messages?: AuthnetResultCode['message']): string {
   if (!messages || messages.length === 0) return ''
-  return messages.map((m) => m.text).join('; ')
+  // Include the code in parens so server logs are debuggable — Authorize.net
+  // returns terse texts ("A duplicate of <id> was approved") that only
+  // mean something when paired with the code (E00027 vs E00040 etc.).
+  return messages.map((m) => `${m.text}${m.code ? ` (${m.code})` : ''}`).join('; ')
 }
 
 function readTxMessage(tr: TransactionResponse): string {
@@ -265,6 +268,14 @@ export const authorizenetProvider: PaymentProvider = {
     // "<profileId>:<paymentProfileId>" in `vaultId` so chargeVaulted /
     // deleteVaultedCard can split them back out.
     const opaque = parseToken(req.token)
+    // validationMode 'none' = no test transaction. Authorize.net's
+    // 'liveMode' fires a real $0.00/$0.01 auth+void against the card, which
+    // (a) shows up on the cardholder's statement as a small ghost charge
+    //     some banks notify on, and
+    // (b) fails for many merchant accounts that aren't enabled for $0 auth.
+    // Accept.js already validated card data client-side and the dispatchData
+    // call returns an opaque token only on success — that's enough proof for
+    // us to vault.
     const payload = {
       createCustomerProfileRequest: {
         merchantAuthentication: merchantAuth(),
@@ -276,7 +287,7 @@ export const authorizenetProvider: PaymentProvider = {
             payment: { opaqueData: opaque },
           },
         },
-        validationMode: isProduction() ? 'liveMode' : 'testMode',
+        validationMode: 'none',
       },
     }
     let r: any
