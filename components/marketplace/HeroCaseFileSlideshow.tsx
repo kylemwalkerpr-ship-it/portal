@@ -22,6 +22,9 @@ export interface HeroSlide {
   id: string
   title: string
   providerName: string
+  // Resolved seller headshot (attorneys.headshot_url or consultants.headshot_url).
+  // Null falls back to initials in the same gradient circle.
+  providerHeadshot: string | null
   provider_type: 'attorney' | 'consultant' | null
   providerCountry: string | null
   jx: string | null
@@ -191,9 +194,21 @@ export default function HeroCaseFileSlideshow({
           </div>
           <h3>{slide.title}</h3>
           <div className="attorney">
-            <div className="avatar" style={{ background: `linear-gradient(135deg, ${INDIGO}, ${INDIGO_DEEP})` }}>
-              {initialsOf(slide.providerName)}
-            </div>
+            {slide.providerHeadshot ? (
+              // Real headshot. The existing .avatar CSS rule handles size
+              // and circle clipping; object-fit:cover prevents distortion.
+              <img
+                className="avatar"
+                src={slide.providerHeadshot}
+                alt={slide.providerName}
+                loading="lazy"
+                style={{ objectFit: 'cover' }}
+              />
+            ) : (
+              <div className="avatar" style={{ background: `linear-gradient(135deg, ${INDIGO}, ${INDIGO_DEEP})` }}>
+                {initialsOf(slide.providerName)}
+              </div>
+            )}
             <div className="attorney-name">
               <b>{slide.providerName}</b>
               <span>{slide.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>

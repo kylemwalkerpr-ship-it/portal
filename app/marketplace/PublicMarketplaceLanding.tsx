@@ -69,6 +69,11 @@ interface LandingGig {
   delivery_days: number | null
   providerName: string
   providerCountry: string | null
+  // Resolved headshot from the seller-specific table (attorneys.headshot_url
+  // or consultants.headshot_url). profiles.avatar_url is rarely populated
+  // for verified sellers, so the cards previously fell through to initials
+  // even when the seller had uploaded a real photo on their profile.
+  providerHeadshot: string | null
   jx: JxCode | null
   tiers: Array<{ price: number; delivery_days: number | null }>
   cover_image_url: string | null
@@ -237,7 +242,11 @@ async function loadLandingData(): Promise<LandingData> {
   const inventoryP = db
     .from('gigs')
     .select(
-      'id, slug, title, category, provider_type, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
+      // provider_id is needed so we can join headshots from the seller-
+      // specific tables (attorneys / consultants) below — profiles.avatar_url
+      // is rarely set for verified sellers, so without that follow-up
+      // query every gig card falls through to initials.
+      'id, slug, title, category, provider_type, provider_id, jurisdiction, avg_rating, review_count, rank_score, order_count, gallery_images, tiers:gig_tiers(price, delivery_days, is_active), provider:profiles!gigs_provider_id_fkey(full_name, country)',
     )
     .eq('status', 'active')
     .order('rank_score', { ascending: false })
@@ -255,6 +264,28 @@ async function loadLandingData(): Promise<LandingData> {
     .limit(3)
 
   const [inventoryRes, reviewsRes] = await Promise.all([inventoryP, reviewsP])
+
+  // Batch-fetch headshots from the seller-specific tables. Each profile_id
+  // is unique per attorney/consultant row (we added unique(profile_id) in
+  // an earlier migration), so the two queries return at most one row per
+  // provider. We index by profile_id so the gig-map below resolves in O(1)
+  // regardless of how many gigs a single seller owns.
+  const providerIds = Array.from(
+    new Set(((inventoryRes.data ?? []) as any[]).map((r) => r.provider_id).filter(Boolean)),
+  )
+  const headshotByProfileId = new Map<string, string>()
+  if (providerIds.length > 0) {
+    const [attyHeadshots, consHeadshots] = await Promise.all([
+      db.from('attorneys').select('profile_id, headshot_url').in('profile_id', providerIds),
+      db.from('consultants').select('profile_id, headshot_url').in('profile_id', providerIds),
+    ])
+    for (const row of (attyHeadshots.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+      if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+    }
+    for (const row of (consHeadshots.data ?? []) as Array<{ profile_id: string; headshot_url: string | null }>) {
+      if (row.headshot_url) headshotByProfileId.set(row.profile_id, row.headshot_url)
+    }
+  }
 
   const allGigs: LandingGig[] = ((inventoryRes.data ?? []) as any[]).map((row) => {
     const activeTiers = (row.tiers ?? [])
@@ -283,6 +314,7 @@ async function loadLandingData(): Promise<LandingData> {
       delivery_days: cheapest ? cheapest.delivery_days : null,
       providerName: row.provider?.full_name ?? 'YouSafe provider',
       providerCountry: country,
+      providerHeadshot: headshotByProfileId.get(row.provider_id) ?? null,
       jx: gigJx ?? resolveJurisdiction(country),
       tiers: activeTiers,
       cover_image_url: resolveCoverUrl(row),
@@ -890,6 +922,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         id: s.caseFile.id,
         title: s.caseFile.title,
         providerName: s.caseFile.providerName,
+        providerHeadshot: s.caseFile.providerHeadshot,
         provider_type: s.caseFile.provider_type,
         providerCountry: s.caseFile.providerCountry,
         jx: s.caseFile.jx,
@@ -905,6 +938,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         id: data.slices.all.caseFile.id,
         title: data.slices.all.caseFile.title,
         providerName: data.slices.all.caseFile.providerName,
+        providerHeadshot: data.slices.all.caseFile.providerHeadshot,
         provider_type: data.slices.all.caseFile.provider_type,
         providerCountry: data.slices.all.caseFile.providerCountry,
         jx: data.slices.all.caseFile.jx,
@@ -1043,7 +1077,23 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                     </div>
                     <div className="body">
                       <div className="seller">
-                        <span className="av" style={{ background: avatarBgFor(g.provider_type) }}>{initialsOf(g.providerName)}</span>
+                        {g.providerHeadshot ? (
+                          // Real headshot. `next/image` would be ideal but
+                          // this surface already uses plain <img> elsewhere
+                          // (PNG flag tiles, gig covers) so we stay
+                          // consistent. The CSS .av rule already sets
+                          // size/circle clipping; object-fit:cover prevents
+                          // the photo from squashing into the 36px circle.
+                          <img
+                            className="av"
+                            src={g.providerHeadshot}
+                            alt={g.providerName}
+                            loading="lazy"
+                            style={{ objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <span className="av" style={{ background: avatarBgFor(g.provider_type) }}>{initialsOf(g.providerName)}</span>
+                        )}
                         <span className="info">
                           <b>{g.providerName}</b>
                           <span>{g.provider_type === 'attorney' ? 'Licensed attorney' : 'Regulated consultant'}</span>
