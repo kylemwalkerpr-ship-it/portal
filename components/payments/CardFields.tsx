@@ -68,6 +68,7 @@ interface PaymentConfig {
   scriptUrl: string
   tokenizationKey?: string
   publicKey?: string
+  apiLoginId?: string
   variant?: 'lightbox' | 'inline'
   defaultGateway?: string
   availableGateways?: string[]
@@ -355,13 +356,7 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
               {
                 authData: {
                   clientKey: cfg.publicKey || cfg.tokenizationKey,
-                  // apiLoginID is intentionally NOT sent from the server —
-                  // Accept.js will refuse without it, so we rely on the
-                  // Authorize.net account's "Hosted Form API only" config
-                  // where dispatch reads it from the publicClientKey-bound
-                  // merchant. If your account requires it explicitly, set
-                  // NEXT_PUBLIC_AUTHORIZENET_LOGIN_ID and we'll pass it.
-                  apiLoginID: process.env.NEXT_PUBLIC_AUTHORIZENET_LOGIN_ID,
+                  apiLoginID: cfg.apiLoginId,
                 },
                 cardData: { cardNumber: digits, month, year, cardCode: cvv },
               },

@@ -159,6 +159,10 @@ export const authorizenetProvider: PaymentProvider = {
       // The client surface inspects `provider` and renders accordingly.
       variant: 'inline',
       publicKey: process.env.AUTHORIZENET_PUBLIC_CLIENT_KEY || '',
+      // Accept.js needs the API login id alongside the public client key —
+      // browser-safe per Authorize.net (the private piece is the transaction
+      // key + signature key, which never leave the Worker).
+      apiLoginId: process.env.AUTHORIZENET_LOGIN_ID || '',
     }
   },
 

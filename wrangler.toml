@@ -24,7 +24,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi
 # key (client-safe by design — used in the browser). The private
 # NMI_SECURITY_KEY is NOT here — it is an encrypted Worker secret set with
 # `wrangler secret put NMI_SECURITY_KEY`.
-PAYMENT_PROVIDER = "nmi"
+PAYMENT_PROVIDER = "authorizenet"
 NMI_TOKENIZATION_KEY = "H4p48s-f4v55B-8Km4eJ-8yR74U"
 # Reseller-issued white-label gateway host — both Collect.js and the Payment
 # API live here. NMI's default secure.nmi.com would reject our merchant
@@ -48,7 +48,7 @@ NMI_COLLECT_VARIANT = "lightbox"
 # Public values below are safe in this file (the public client key is used in
 # the browser by Accept.js — same shape as NMI_TOKENIZATION_KEY).
 AUTHORIZENET_PUBLIC_CLIENT_KEY = "84fvNs62h75DMVvGwg4vw95s3bLeHjg6wDNtx99uZrPeJGTvScP7btKVnM3LgKW6"
-AUTHORIZENET_ENVIRONMENT = "sandbox"
+AUTHORIZENET_ENVIRONMENT = "production"
 # 'accept-js' = embedded card fields tokenize client-side via Accept.js (matches
 # NMI Collect.js inline UX). 'accept-hosted' would redirect to Authorize.net's
 # hosted payment page — out of scope for the current integration.

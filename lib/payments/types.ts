@@ -118,6 +118,11 @@ export interface PublicClientConfig {
   variant?: 'lightbox' | 'inline'
   /** hosted-redirect: a publishable/client token. */
   publicKey?: string
+  /** Authorize.net Accept.js requires both the public client key AND the
+   *  API login id in the browser dispatch payload. The login id is
+   *  browser-safe per Authorize.net's threat model — it's paired with the
+   *  public client key, with no PCI scope on its own. */
+  apiLoginId?: string
 }
 
 /**
