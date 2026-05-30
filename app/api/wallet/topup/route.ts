@@ -7,7 +7,7 @@
  * On successful charge → wallet.credit() with reference = NMI transaction_id.
  */
 import { getCurrentStudent } from '@/lib/student'
-import { getPaymentProvider } from '@/lib/payments'
+import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { credit, getOrCreateWallet } from '@/lib/wallet'
 import { addCard } from '@/lib/payment-methods'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -28,9 +28,9 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Amount must be an integer of at least 100 cents (USD 1.00)' }, { status: 400 })
   }
 
-  const provider = getPaymentProvider()
   const profile = auth.profile
   const customer = { id: profile.id, email: profile.email, name: profile.full_name }
+  const newCardGateway = (typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()).toLowerCase()
 
   try {
     let chargeResult
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       const db = createSupabaseAdminClient()
       const { data: cardRow, error: cardErr } = await db
         .from('student_payment_methods')
-        .select('vault_id')
+        .select('vault_id, gateway')
         .eq('id', body.cardId)
         .eq('profile_id', profile.id)
         .single()
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         return Response.json({ error: 'Card not found' }, { status: 404 })
       }
 
+      const provider = getPaymentProvider(cardRow.gateway)
       chargeResult = await provider.chargeVaulted({
         vaultId: cardRow.vault_id,
         amountCents,
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
 
     // ── New card token path ─────────────────────────────────────────────────
     else if (typeof body.token === 'string' && body.token) {
+      const provider = getPaymentProvider(newCardGateway)
       chargeResult = await provider.charge({
         token: body.token,
         amountCents,
@@ -69,15 +71,22 @@ export async function POST(req: Request) {
         metadata: { source: 'wallet_topup', profile_id: profile.id },
       })
 
-      // Optionally vault the card for future use
+      // Optionally vault the card for future use — pin to the same gateway
+      // we just charged through so the saved card and the in-flight token
+      // share an issuer.
       if (body.saveCard === true && provider.supportsVault) {
         try {
-          await addCard(profile.id, body.token, {
-            brand: typeof body.brand === 'string' ? body.brand : undefined,
-            last4: typeof body.last4 === 'string' ? body.last4 : undefined,
-            expMonth: typeof body.exp_month === 'number' ? body.exp_month : undefined,
-            expYear: typeof body.exp_year === 'number' ? body.exp_year : undefined,
-          })
+          await addCard(
+            profile.id,
+            body.token,
+            {
+              brand: typeof body.brand === 'string' ? body.brand : undefined,
+              last4: typeof body.last4 === 'string' ? body.last4 : undefined,
+              expMonth: typeof body.exp_month === 'number' ? body.exp_month : undefined,
+              expYear: typeof body.exp_year === 'number' ? body.exp_year : undefined,
+            },
+            newCardGateway,
+          )
         } catch (vaultErr) {
           // Non-fatal: the top-up succeeded, card vaulting is a convenience
           console.warn('[wallet/topup] vaultCard failed after charge:', vaultErr)

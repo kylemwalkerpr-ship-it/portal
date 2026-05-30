@@ -4,12 +4,16 @@
  */
 
 import { createSupabaseAdminClient } from './supabase'
-import { getPaymentProvider } from './payments'
+import { getDefaultGatewayId, getPaymentProvider } from './payments'
 
 export type SavedCard = {
   id: string
   profile_id: string
   vault_id: string
+  /** Gateway this card was vaulted in. Charges + deletes route by this field
+   *  — vault tokens are NOT portable between gateways (NMI customer-vault id
+   *  vs Authorize.net "customerProfileId:paymentProfileId"). */
+  gateway: string
   brand: string | null
   last4: string
   exp_month: number | null
@@ -35,11 +39,15 @@ export async function listCards(profileId: string): Promise<SavedCard[]> {
 export async function addCard(
   profileId: string,
   token: string,
-  cardDisplay?: { brand?: string; last4?: string; expMonth?: number; expYear?: number }
+  cardDisplay?: { brand?: string; last4?: string; expMonth?: number; expYear?: number },
+  gateway?: string,
 ): Promise<SavedCard> {
-  const provider = getPaymentProvider()
+  // New cards vault on the platform default unless the caller pins a
+  // specific gateway (e.g. an admin tool migrating a customer).
+  const gatewayId = (gateway || getDefaultGatewayId()).toLowerCase()
+  const provider = getPaymentProvider(gatewayId)
   if (!provider.supportsVault) {
-    throw new Error('Current payment provider does not support card vaulting')
+    throw new Error(`Payment provider "${gatewayId}" does not support card vaulting`)
   }
 
   // The payment abstraction's CustomerInfo wants email; fetch it from the
@@ -76,6 +84,7 @@ export async function addCard(
     .insert({
       profile_id: profileId,
       vault_id: vaultRes.vaultId,
+      gateway: gatewayId,
       brand: cardDisplay?.brand ?? vaultRes.cardDisplay?.brand ?? null,
       last4: cardDisplay?.last4 ?? vaultRes.cardDisplay?.last4 ?? '****',
       exp_month: cardDisplay?.expMonth ?? (vaultRes.cardDisplay?.expMonth ? Number(vaultRes.cardDisplay.expMonth) : null),
@@ -96,22 +105,25 @@ export async function addCard(
 }
 
 export async function removeCard(profileId: string, cardId: string): Promise<void> {
-  // Verify ownership and get vault_id
+  // Verify ownership and read vault_id + the gateway that issued it.
+  // Routing by the stored gateway is critical — NMI vault ids and
+  // Authorize.net "customerProfileId:paymentProfileId" strings are not
+  // interchangeable, and calling the wrong adapter would silently fail.
   const { data, error } = await db()
     .from('student_payment_methods')
-    .select('vault_id')
+    .select('vault_id, gateway')
     .eq('id', cardId)
     .eq('profile_id', profileId)
     .single()
 
   if (error || !data) throw new Error('Card not found')
 
-  const provider = getPaymentProvider()
+  const provider = getPaymentProvider(data.gateway)
   if (provider.supportsVault) {
     try {
       await provider.deleteVaultedCard(data.vault_id)
     } catch (e) {
-      // Log but continue — NMI vault record may already be gone
+      // Log but continue — vault record may already be gone on the gateway side
       console.warn('[payment-methods] deleteVaultedCard failed:', e)
     }
   }

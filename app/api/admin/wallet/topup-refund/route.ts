@@ -6,7 +6,7 @@
 
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
-import { getPaymentProvider } from '@/lib/payments'
+import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { debit } from '@/lib/wallet'
 
 async function requireAdmin() {
@@ -95,9 +95,15 @@ export async function POST(req: Request) {
     )
   }
 
-  // 3. Card-refund path: NMI first, then debit wallet
+  // 3. Card-refund path: gateway refund first, then debit wallet.
+  // Admin passes the gateway the top-up ran through (matches the orders /
+  // wallet_transactions record). Falls back to the platform default when
+  // omitted — appropriate for the single-gateway era preserved by the
+  // 'gateway' column default. Refunds MUST go through the original gateway:
+  // an Authorize.net transaction id can't be refunded via the NMI API.
   if (!outOfBand) {
-    const provider = getPaymentProvider()
+    const refundGateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+    const provider = getPaymentProvider(refundGateway)
     const refundResult = await provider.refund(originalNmiTxId, amountCents)
 
     if (!refundResult.ok) {

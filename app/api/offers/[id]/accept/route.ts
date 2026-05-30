@@ -4,7 +4,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
-import { getPaymentProvider } from '@/lib/payments'
+import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { listCards } from '@/lib/payment-methods'
 
 async function handler(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -130,14 +130,14 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
 
     const { data: cardRow, error: cardErr } = await auth.db
       .from('student_payment_methods')
-      .select('id, vault_id')
+      .select('id, vault_id, gateway')
       .eq('id', paymentMethodId)
       .eq('profile_id', auth.profileId)
       .single()
 
     if (cardErr || !cardRow) return fail('Card not found', 404)
 
-    const provider = getPaymentProvider()
+    const provider = getPaymentProvider(cardRow.gateway)
     const profile = auth.profile
     const customer = {
       email: profile.email || '',
@@ -213,7 +213,8 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     const token = String(body?.token || '')
     if (!token) return fail('Card token is required for new card payment.', 400)
 
-    const provider = getPaymentProvider()
+    const gateway = typeof body?.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+    const provider = getPaymentProvider(gateway)
     const profile = auth.profile
     const customer = {
       email: profile.email || '',

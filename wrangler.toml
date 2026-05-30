@@ -34,6 +34,26 @@ NMI_GATEWAY_HOST = "paykings.transactiongateway.com"
 # no card fields on our page). 'inline' for embedded iframe fields.
 NMI_COLLECT_VARIANT = "lightbox"
 
+# ── Authorize.net (via Kurv Pay merchant) ─────────────────────────────────
+# Second gateway running ALONGSIDE NMI. Per-card and per-order routing is
+# stored on the `gateway` column added in supabase/payments_add_gateway_column.sql.
+# Existing NMI-vaulted cards stay on NMI; new cards default to whichever
+# gateway PAYMENT_PROVIDER points at (or the platform_settings override).
+#
+# Worker secrets (NOT in this file — set with `wrangler secret put <NAME>`):
+#   AUTHORIZENET_LOGIN_ID         — API login id from the Authorize.net merchant portal.
+#   AUTHORIZENET_TRANSACTION_KEY  — API transaction key (private, server-only).
+#   AUTHORIZENET_SIGNATURE_KEY    — HMAC-SHA512 webhook signature key.
+#
+# Public values below are safe in this file (the public client key is used in
+# the browser by Accept.js — same shape as NMI_TOKENIZATION_KEY).
+AUTHORIZENET_PUBLIC_CLIENT_KEY = "84fvNs62h75DMVvGwg4vw95s3bLeHjg6wDNtx99uZrPeJGTvScP7btKVnM3LgKW6"
+AUTHORIZENET_ENVIRONMENT = "sandbox"
+# 'accept-js' = embedded card fields tokenize client-side via Accept.js (matches
+# NMI Collect.js inline UX). 'accept-hosted' would redirect to Authorize.net's
+# hosted payment page — out of scope for the current integration.
+AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
+
 # Resend transactional email key. Used for attorney application decision emails.
 # Set with: npx wrangler secret put RESEND_API_KEY
 # Sender domain (yousafeconsultancy.com) is already verified in Resend.

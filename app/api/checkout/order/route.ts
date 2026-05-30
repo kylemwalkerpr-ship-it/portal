@@ -3,7 +3,7 @@ import { createPaidOrder, resolveCheckoutItem, type CheckoutSourceType } from '@
 import { requirePortalUser } from '@/lib/portalAuth'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
-import { getPaymentProvider } from '@/lib/payments'
+import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 
 const VALID_SOURCE_TYPES = new Set(['unified_offer', 'attorney_offer', 'consultant_offer', 'gig'])
 
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       // Look up student_payment_methods row scoped to auth.profileId
       const { data: cardRow, error: cardErr } = await auth.db
         .from('student_payment_methods')
-        .select('vault_id')
+        .select('vault_id, gateway')
         .eq('id', paymentMethodId)
         .eq('profile_id', auth.profileId)
         .single()
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 
       const email = auth.profile.email || ''
       const name = auth.profile.full_name || ''
-      const provider = getPaymentProvider()
+      const provider = getPaymentProvider(cardRow.gateway)
 
       let result
       try {
@@ -106,7 +106,8 @@ export async function POST(req: Request) {
 
       const email = auth.profile.email || ''
       const name = auth.profile.full_name || ''
-      const provider = getPaymentProvider()
+      const gateway = typeof body.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
+      const provider = getPaymentProvider(gateway)
 
       let result
       try {

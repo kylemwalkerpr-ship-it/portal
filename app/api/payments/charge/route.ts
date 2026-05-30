@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getPaymentProvider } from '@/lib/payments'
+import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { TEMPLATE_PACKS, getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
@@ -20,6 +20,11 @@ import { randomUUID } from 'crypto'
 interface ChargeBody {
   token?: string
   paymentMethodId?: string
+  /** Gateway the client tokenized against. For new-card charges we must
+   *  charge through the SAME gateway that produced the token — Accept.js
+   *  tokens won't work on NMI and vice versa. Saved-card charges ignore this
+   *  and use the gateway pinned on the stored payment method. */
+  gateway?: string
   items: Array<{ slug?: string; serviceId?: string; quantity?: number }>
   customer?: { email?: string; name?: string }
   saveCard?: boolean
@@ -122,8 +127,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Charge ────────────────────────────────────────────────────────────────
-  const provider = getPaymentProvider()
+  // Gateway dispatch:
+  //   - Saved card: use the gateway pinned on the stored card (vault tokens
+  //     are not portable across gateways).
+  //   - New card: use the gateway the client tokenized against, falling back
+  //     to the platform default.
   const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  let chargeGateway = (body.gateway || getDefaultGatewayId()).toLowerCase()
 
   let result
   try {
@@ -131,7 +141,7 @@ export async function POST(request: NextRequest) {
       // Saved card path
       const { data: cardRow, error: cardErr } = await db
         .from('student_payment_methods')
-        .select('vault_id')
+        .select('vault_id, gateway')
         .eq('id', body.paymentMethodId)
         .eq('profile_id', profile.id)
         .single()
@@ -140,6 +150,8 @@ export async function POST(request: NextRequest) {
         return Response.json({ ok: false, message: 'Card not found' }, { status: 404 })
       }
 
+      chargeGateway = (cardRow.gateway || chargeGateway).toLowerCase()
+      const provider = getPaymentProvider(chargeGateway)
       result = await provider.chargeVaulted({
         vaultId: cardRow.vault_id,
         amountCents,
@@ -149,6 +161,7 @@ export async function POST(request: NextRequest) {
       })
     } else if (typeof body.token === 'string' && body.token) {
       // New card token path
+      const provider = getPaymentProvider(chargeGateway)
       result = await provider.charge({
         token: body.token,
         amountCents,
@@ -190,6 +203,7 @@ export async function POST(request: NextRequest) {
         slugs: templateItems.map((i) => i.slug!),
         amount_cents: templateItems.reduce((sum, i) => sum + i.unitAmountCents * i.quantity, 0),
         transaction_id: result.transactionId,
+        gateway: chargeGateway,
         status: 'paid',
       })
     }
@@ -205,6 +219,7 @@ export async function POST(request: NextRequest) {
         currency: 'usd',
         payment_method: 'card',
         transaction_id: result.transactionId,
+        gateway: chargeGateway,
         created_at: new Date().toISOString(),
       })
       if (orderErr) {

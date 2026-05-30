@@ -10,29 +10,39 @@
 import type { PaymentProvider } from './types'
 import { nmiProvider } from './providers/nmi'
 import { manualProvider } from './providers/manual'
+import { authorizenetProvider } from './providers/authorizenet'
 
 export * from './types'
 
 const PROVIDERS: Record<string, PaymentProvider> = {
   nmi: nmiProvider,
+  authorizenet: authorizenetProvider,
   manual: manualProvider,
 }
 
 const DEFAULT_PROVIDER = 'nmi'
 
 /**
- * The active payment provider, chosen by the `PAYMENT_PROVIDER` env var.
- * This is the ONLY function commerce code should use to reach a gateway.
+ * Resolve a payment provider by id. Pass an explicit id to dispatch by the
+ * gateway recorded on a stored card / order (`student_payment_methods.gateway`,
+ * `orders.gateway`). Omit to fall back to the platform default — read from
+ * `PAYMENT_PROVIDER` so we don't have to redeploy to change the new-card
+ * default once both gateways are wired.
  */
-export function getPaymentProvider(): PaymentProvider {
-  const id = (process.env.PAYMENT_PROVIDER || DEFAULT_PROVIDER).toLowerCase()
+export function getPaymentProvider(gatewayId?: string | null): PaymentProvider {
+  const id = (gatewayId || process.env.PAYMENT_PROVIDER || DEFAULT_PROVIDER).toLowerCase()
   const provider = PROVIDERS[id]
   if (!provider) {
     throw new Error(
-      `Unknown PAYMENT_PROVIDER "${id}". Registered: ${Object.keys(PROVIDERS).join(', ')}.`,
+      `Unknown payment provider "${id}". Registered: ${Object.keys(PROVIDERS).join(', ')}.`,
     )
   }
   return provider
+}
+
+/** The platform default gateway id — used when a flow has no per-record pinning. */
+export function getDefaultGatewayId(): string {
+  return (process.env.PAYMENT_PROVIDER || DEFAULT_PROVIDER).toLowerCase()
 }
 
 /** Ids of every registered adapter — useful for admin tooling and tests. */
