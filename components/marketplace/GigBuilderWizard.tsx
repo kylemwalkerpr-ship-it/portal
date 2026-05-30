@@ -264,7 +264,9 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
     if (target === currentStep) return
     if (isExistingGig || target < currentStep) {
       // Backward navigation always allowed; forward navigation on an
-      // existing gig also allowed (record is already saved).
+      // existing gig also allowed (record is already saved). Clear any
+      // stale validation errors so the destination step isn't already red.
+      setErrors({})
       setCurrentStep(target)
       return
     }
@@ -279,15 +281,29 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
   }
 
   const handleNext = () => {
+    if (currentStep >= STEPS.length - 1) return
+    // Existing gigs already have a saved row — the seller can freely jump
+    // through stages to tweak anything, just like the step pills allow.
+    // Without this exception, Next blocks the moment a gig was saved before
+    // a stricter validation rule (e.g. tagline ≥40 chars, ≥1 gallery image,
+    // ≥3 tags) shipped, even though the step pills above let the user past
+    // the same gate. Publish still re-validates via /api/gigs/[id]/publish
+    // so this doesn't allow a bad gig to go live.
+    if (isExistingGig) {
+      setErrors({})
+      setCurrentStep(currentStep + 1)
+      return
+    }
     if (validateStep(currentStep)) {
-      if (currentStep < STEPS.length - 1) {
-        setCurrentStep(currentStep + 1)
-      }
+      setCurrentStep(currentStep + 1)
     }
   }
 
   const handleBack = () => {
     if (currentStep > 0) {
+      // Clear validation errors when moving backward — they belong to the
+      // step the user is leaving, not the one they're arriving at.
+      setErrors({})
       setCurrentStep(currentStep - 1)
     }
   }
