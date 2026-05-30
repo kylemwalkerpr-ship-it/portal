@@ -609,6 +609,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
             gigData={gigData}
             errors={errors}
             onChange={updateGigData}
+            role={role}
           />
         )}
 
@@ -618,6 +619,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
             errors={errors}
             onChange={updateGigData}
             onTierChange={updateTier}
+            role={role}
           />
         )}
 
@@ -640,6 +642,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
                 })
               } catch { /* non-fatal; the next save will resync */ }
             }}
+            role={role}
           />
         )}
 
@@ -648,6 +651,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
             gigData={gigData}
             errors={errors}
             onChange={updateGigData}
+            role={role}
           />
         )}
 
@@ -1015,7 +1019,7 @@ function CategoryStep({ gigData, errors, onChange, role }: any) {
   )
 }
 
-function BasicsStep({ gigData, errors, onChange }: any) {
+function BasicsStep({ gigData, errors, onChange, role }: any) {
   const [tagInput, setTagInput] = React.useState('')
 
   // Latest-context closure — re-created every render, so AI Draft
@@ -1203,7 +1207,7 @@ function BasicsStep({ gigData, errors, onChange }: any) {
   )
 }
 
-function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
+function PricingStep({ gigData, errors, onChange, onTierChange, role }: any) {
   const TIER_NAMES = {
     basic: 'Basic',
     standard: 'Standard',
@@ -1370,7 +1374,7 @@ function PricingStep({ gigData, errors, onChange, onTierChange }: any) {
   )
 }
 
-function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile, onPersistGallery }: any) {
+function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, onRemoveFAQ, onUploadFile, onPersistGallery, role }: any) {
   const images = gigData.gallery_images || []
 
   return (
@@ -1565,7 +1569,7 @@ function DetailsStep({ gigData, errors = {}, onChange, onAddFAQ, onUpdateFAQ, on
   )
 }
 
-function SEOStep({ gigData, errors, onChange }: any) {
+function SEOStep({ gigData, errors, onChange, role }: any) {
   const [suggestions, setSuggestions] = React.useState<string[] | null>(null)
   const [suggestionsLoading, setSuggestionsLoading] = React.useState(false)
   const [apiError, setApiError] = React.useState<string | null>(null)
