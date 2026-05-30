@@ -27,11 +27,19 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     return fail('Gig not found.', 404)
   }
 
-  // Get provider stats
-  const [{ data: providerGigs }, { data: providerReviews }] = await Promise.all([
+  // Get provider stats + headshot. The headshot lives on the seller-
+  // specific table (attorneys.headshot_url for attorney gigs,
+  // consultants.headshot_url for consultant gigs) because profiles.avatar_url
+  // is almost always NULL for verified sellers — the profile editor writes
+  // the upload to the seller table. Without this look-up the gig detail
+  // sidebar fell through to initials even when the seller had a photo.
+  const providerSellerTable = gig.provider_type === 'consultant' ? 'consultants' : 'attorneys'
+  const [{ data: providerGigs }, { data: providerReviews }, providerHeadshotRes] = await Promise.all([
     db.from('gigs').select('id, avg_rating, review_count, order_count').eq('provider_id', gig.provider_id).eq('status', 'active'),
     db.from('gig_reviews').select('rating').eq('provider_id', gig.provider_id),
+    db.from(providerSellerTable).select('headshot_url').eq('profile_id', gig.provider_id).maybeSingle(),
   ])
+  const provider_headshot_url = (providerHeadshotRes?.data as { headshot_url?: string | null } | null)?.headshot_url || null
 
   // Calculate provider stats
   const providerStats = {
@@ -82,6 +90,7 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
       provider_order_count: providerStats.order_count,
       provider_response_time: providerStats.response_time,
       provider_is_online: providerStats.is_online,
+      provider_headshot_url,
       similar_gigs: normalizedSimilar,
       // Owner flag so the client can render edit affordances on the
       // public marketplace page without leaking the check to anonymous

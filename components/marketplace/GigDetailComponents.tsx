@@ -20,6 +20,9 @@ interface SellerProfileCardProps {
     order_count?: number
     response_time?: string | null
     is_online?: boolean
+    // Resolved seller headshot from attorneys.headshot_url or
+    // consultants.headshot_url. Null falls back to the initials Avatar.
+    headshot_url?: string | null
   }
   onViewProfile?: () => void
   onMessage?: () => void
@@ -206,7 +209,7 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
   return (
     <Card style={cardStyle}>
       <div style={headerStyle}>
-        <Avatar name={seller.full_name || '?'} size={48} />
+        <Avatar name={seller.full_name || '?'} src={seller.headshot_url || undefined} size={48} />
         <div>
           <p style={nameStyle}>{seller.full_name || 'Provider'}</p>
           <p style={roleStyle}>

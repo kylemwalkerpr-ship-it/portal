@@ -576,6 +576,7 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
                 order_count: gig.provider_order_count,
                 response_time: gig.provider_response_time,
                 is_online: gig.provider_is_online,
+                headshot_url: gig.provider_headshot_url || null,
               }}
               onViewProfile={() => {
                 // Prefer the SEO-friendly username when the provider has set
