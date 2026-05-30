@@ -54,12 +54,36 @@ jobs:
       # Worker secrets (RESEND_API_KEY, CLERK_SECRET_KEY,
       # SUPABASE_SERVICE_ROLE_KEY, NMI_SECURITY_KEY) live on the worker itself,
       # set once via `wrangler versions secret put`. CI does not push them.
-      - name: Deploy via OpenNext to Cloudflare
+      # Cloudflare's Workers API sporadically returns [code: 10013]
+      # ("unknown error") on the assets-upload-session endpoint during peak
+      # hours — the deploy is idempotent, so a bounded retry recovers
+      # without manual `gh run rerun --failed` intervention. Three attempts
+      # with 30s + 60s back-off; if all three fail the step fails red so we
+      # never silently mask a real deploy break.
+      - name: Deploy via OpenNext to Cloudflare (with transient-failure retry)
         if: github.event_name != 'pull_request'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            echo "::group::Deploy attempt $attempt"
+            npm run deploy
+            rc=$?
+            echo "::endgroup::"
+            if [ $rc -eq 0 ]; then
+              echo "Deploy succeeded on attempt $attempt."
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              wait_sec=$((attempt * 30))
+              echo "::warning::Deploy attempt $attempt failed (rc=$rc, likely transient Cloudflare API error). Retrying in ${wait_sec}s."
+              sleep $wait_sec
+            fi
+          done
+          echo "::error::All 3 deploy attempts failed."
+          exit 1
 
       # AI provider keys for the SEO assistant + chat widget. Pushed
       # idempotently after each deploy so rotating a key in GitHub repo
