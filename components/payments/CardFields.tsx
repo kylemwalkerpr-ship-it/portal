@@ -22,11 +22,16 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useId,
   useMemo,
   useRef,
   useState,
 } from 'react'
+
+// Monotonic instance counter — gives us stable, simple IDs that don't depend
+// on useId()'s colon-prefixed format. Collect.js querySelector + iframe
+// mounting works reliably with `cf_n_number` but flakes with the underscored
+// useId output (`cf__r3__number`).
+let __cardFieldsInstanceCounter = 0
 
 export interface CardFieldsHandle {
   /** Trigger tokenization. Parent calls this from its pay button. Returns a
@@ -95,7 +100,11 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
   { gateway, onToken, onError, fieldClassName, fieldStyle },
   ref,
 ) {
-  const instanceId = useId().replace(/:/g, '_')
+  // Stable per-instance id allocated once on mount. Re-used by all 3 field
+  // selectors so the same Collect.js configure() call can find them.
+  const instanceIdRef = useRef<number | null>(null)
+  if (instanceIdRef.current === null) instanceIdRef.current = ++__cardFieldsInstanceCounter
+  const instanceId = `n${instanceIdRef.current}`
   const [cfg, setCfg] = useState<PaymentConfig | null>(null)
   const [sdkReady, setSdkReady] = useState(false)
   const [error, setErrorState] = useState<string | null>(null)
@@ -180,6 +189,13 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
           reportError('Collect.js loaded but global missing')
           return
         }
+        // Verify our 3 field divs are actually in the DOM before configure.
+        // Collect.js silently no-ops on missing selectors → empty placeholders.
+        const slots = [fieldIds.number, fieldIds.exp, fieldIds.cvv].map((id) => document.getElementById(id))
+        if (slots.some((el) => !el)) {
+          reportError('Card field containers not mounted yet')
+          return
+        }
         CollectJS.configure({
           variant: 'inline',
           fields: {
@@ -219,7 +235,30 @@ const CardFields = forwardRef<CardFieldsHandle, CardFieldsProps>(function CardFi
             }
           },
         })
-        setSdkReady(true)
+        // Verify Collect.js actually mounted iframes into our placeholders.
+        // The script's configure() is fire-and-forget — if anything goes
+        // wrong (selectors changed, prior configure left stale state) it
+        // silently does nothing and the user sees empty boxes. Re-configure
+        // once after a short delay if no iframes appeared.
+        const verifyAndMaybeRetry = (attempt: number) => {
+          if (cancelled) return
+          const mounted = slots.every((el) => el && el.querySelector('iframe'))
+          if (mounted) {
+            setSdkReady(true)
+            return
+          }
+          if (attempt >= 2) {
+            reportError('Card fields failed to mount. Reload the page and try again.')
+            return
+          }
+          try { CollectJS.configure({ variant: 'inline', fields: {
+            ccnumber: { placeholder: 'Card number', selector: `#${fieldIds.number}` },
+            ccexp: { placeholder: 'MM / YY', selector: `#${fieldIds.exp}` },
+            cvv: { placeholder: 'CVV', selector: `#${fieldIds.cvv}` },
+          } }) } catch { /* swallow — handled by retry */ }
+          setTimeout(() => verifyAndMaybeRetry(attempt + 1), 600)
+        }
+        setTimeout(() => verifyAndMaybeRetry(0), 250)
       })
       .catch((e) => reportError(e instanceof Error ? e.message : 'Failed to load Collect.js'))
     return () => { cancelled = true }
