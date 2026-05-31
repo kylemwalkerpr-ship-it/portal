@@ -31,12 +31,22 @@ async function checkSlugRedirect(slug: string): Promise<string | null> {
   }
 }
 
+// Slug → readable title. Capped to fit the " | YouSafe Marketplace" suffix
+// (23 chars) within Google's ~60-char title-budget — so the words portion
+// is capped at 37 chars, and we trim on a word boundary when we hit it.
 function titleFromSlug(slug: string): string {
-  return slug
+  const MAX_WORDS_LEN = 37
+  const words = slug
     .split('-')
     .filter(Boolean)
-    .map((word) => word.length <= 3 ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
+    .map((word) => (word.length <= 3 ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)))
+  let out = ''
+  for (const w of words) {
+    const next = out ? `${out} ${w}` : w
+    if (next.length > MAX_WORDS_LEN) break
+    out = next
+  }
+  return out || words[0] || 'Service'
 }
 
 // React cache() dedupes the same call inside one request, so generateMetadata
@@ -85,9 +95,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const gig = await loadGigForSeo(slug)
 
     if (!gig) {
+      // Always emit a self-canonical even on the noindex fallback. Without
+      // alternates.canonical, Next.js falls back to root layout's metadata
+      // (which canonicalises to portal home) — Ahrefs flagged that as
+      // "non-canonical" on every draft / missing gig URL.
+      const fallbackCanonical = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
       return {
         title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
         description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
+        alternates: { canonical: fallbackCanonical },
         robots: { index: false, follow: true },
       }
     }
@@ -114,9 +130,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       robots: { index: true, follow: true },
     }
   } catch {
+    const fallbackCanonical = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
     return {
       title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
       description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
+      alternates: { canonical: fallbackCanonical },
       robots: { index: false, follow: true },
     }
   }

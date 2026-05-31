@@ -346,8 +346,7 @@ export default function Hero({ onSignup }: HeroProps) {
           {!videoEnabled && (
             <img
               src={A_POSTER}
-              alt=""
-              aria-hidden="true"
+              alt="International student reviewing visa documents at a laptop"
               style={{
                 position: 'absolute',
                 inset: 0,

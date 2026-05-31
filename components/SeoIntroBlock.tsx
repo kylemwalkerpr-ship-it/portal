@@ -56,7 +56,7 @@ export async function SeoIntroBlock({
             {tEyebrow}
           </div>
         )}
-        <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 600, color: '#1A1F2E', margin: '0 0 10px', letterSpacing: '-.012em', lineHeight: 1.1 }}>{tTitle}</h1>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 600, color: '#1A1F2E', margin: '0 0 10px', letterSpacing: '-.012em', lineHeight: 1.1 }}>{tTitle}</h2>
         <p style={{ fontSize: 16, color: '#5C6070', lineHeight: 1.6, margin: 0, maxWidth: 720 }}>{tDesc}</p>
       </header>
     )
@@ -78,7 +78,7 @@ export async function SeoIntroBlock({
             {tEyebrow}
           </div>
         )}
-        <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05 }}>{tTitle}</h1>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05 }}>{tTitle}</h2>
         <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.78)', lineHeight: 1.6, margin: 0, maxWidth: 720 }}>{tDesc}</p>
       </div>
     </header>

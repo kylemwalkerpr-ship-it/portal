@@ -497,6 +497,25 @@ export function getCategoryById(id: CategoryId): Category | undefined {
   return CATEGORIES.find(cat => cat.id === id)
 }
 
+/**
+ * Find a top-level category OR a subcategory by id. Returns the
+ * top-level category plus a non-null `subcategory` when the lookup id
+ * was a subcategory. Used by the /categories/[id] route which receives
+ * both top-level and subcategory ids in caseworks-emitted inbound links.
+ * Without this, subcategory ids would fall through to a soft redirect.
+ */
+export function resolveCategoryOrSubcategory(
+  id: CategoryId
+): { category: Category; subcategory: Subcategory | null } | null {
+  const direct = CATEGORIES.find(cat => cat.id === id)
+  if (direct) return { category: direct, subcategory: null }
+  for (const cat of CATEGORIES) {
+    const sub = cat.subcategories.find(s => s.id === id)
+    if (sub) return { category: cat, subcategory: sub }
+  }
+  return null
+}
+
 export function getSubcategoryById(
   categoryId: CategoryId,
   subcategoryId: SubcategoryId

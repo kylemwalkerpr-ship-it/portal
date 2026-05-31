@@ -1069,7 +1069,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                     <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
                       {g.cover_image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img className="plate-img" src={g.cover_image_url} alt="" loading="lazy" />
+                        <img className="plate-img" src={g.cover_image_url} alt={`${g.title || 'Service'} — preview`} loading="lazy" />
                       ) : (
                         <span className="plate-glyph">{glyphFor(g)}</span>
                       )}

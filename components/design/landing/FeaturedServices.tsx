@@ -150,7 +150,7 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                   {gig.coverUrl ? (
                     <img
                       src={gig.coverUrl}
-                      alt=""
+                      alt={`${gig.title} — preview by ${gig.providerName || 'YouSafe provider'}`}
                       loading="lazy"
                       style={{
                         position: 'absolute',
@@ -175,7 +175,7 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                     >
                       <img
                         src={gig.providerAvatarUrl}
-                        alt=""
+                        alt={`${gig.providerName || 'YouSafe provider'} avatar`}
                         loading="lazy"
                         style={{
                           width: 96,
@@ -310,7 +310,7 @@ export default function FeaturedServices({ gigs }: FeaturedServicesProps) {
                     {gig.providerAvatarUrl ? (
                       <img
                         src={gig.providerAvatarUrl}
-                        alt=""
+                        alt={`${gig.providerName || 'YouSafe provider'} avatar`}
                         loading="lazy"
                         style={{
                           width: 32,
