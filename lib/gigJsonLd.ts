@@ -183,14 +183,14 @@ export function buildGigJsonLd(input: GigJsonLdInput): object {
 
   // ── BreadcrumbList ───────────────────────────────────────────────────
   const breadcrumbItems: Array<{ '@type': 'ListItem'; position: number; name: string; item: string }> = [
-    { '@type': 'ListItem', position: 1, name: 'Marketplace', item: `${marketplaceBaseUrl}/marketplace/` },
+    { '@type': 'ListItem', position: 1, name: 'Marketplace', item: `${marketplaceBaseUrl}/` },
   ]
   if (gig.category && categoryLabel) {
     breadcrumbItems.push({
       '@type': 'ListItem',
       position: breadcrumbItems.length + 1,
       name: categoryLabel,
-      item: `${marketplaceBaseUrl}/marketplace/categories/${gig.category}/`,
+      item: `${marketplaceBaseUrl}/categories/${gig.category}`,
     })
   }
   breadcrumbItems.push({

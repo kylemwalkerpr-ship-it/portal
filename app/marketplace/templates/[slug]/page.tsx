@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { TEMPLATE_PACKS, getTemplatePack } from '@/lib/template-packs'
-import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export const dynamic = 'force-static'
 
@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!pack) return {}
   const title = `${pack.name} — $${pack.price_usd}`.slice(0, 60)
   const description = pack.short_description.slice(0, 160)
-  const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/templates/${slug}/`)
+  const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/templates/${slug}/`)
   return {
     title,
     description,
@@ -30,8 +30,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     },
   }
 }
-
-const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
 const C = {
   bg: '#F7F8FA',
@@ -57,13 +55,13 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
     '@type': 'Product',
     name: pack.name,
     description: pack.short_description,
-    image: `${PORTAL_URL}/og-image.png`,
+    image: 'https://market.yousafeconsultancy.com/og-image.png',
     offers: {
       '@type': 'Offer',
       price: pack.price_usd.toFixed(2),
       priceCurrency: 'USD',
       availability: 'https://schema.org/InStock',
-      url: `${PORTAL_URL}/marketplace/templates/${slug}/`,
+      url: getMarketplaceCanonicalUrl(`/marketplace/templates/${slug}/`),
     },
   }
 

@@ -1,21 +1,16 @@
 import type { MetadataRoute } from 'next'
-import { headers } from 'next/headers'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
-const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const h = await headers()
-  const host = h.get('host')?.split(':')[0] || PORTAL_HOST
-  const isMarket = host === MARKET_HOST
-  const base = `https://${isMarket ? MARKET_HOST : PORTAL_HOST}`
+  const base = `https://${MARKET_HOST}`
 
-  // Strip trailing slash because the host 308-redirects `/foo/` → `/foo`.
-  // Sitemaps must contain the canonical (final-destination) URL only.
+  // Strip /marketplace and trailing slashes because the market host rewrites
+  // clean paths internally and redirects /marketplace-prefixed URLs.
   const mp = (path: string) => {
-    const stripped = isMarket ? path.replace(/^\/marketplace/, '') : path
+    const stripped = path.replace(/^\/marketplace/, '') || '/'
     if (stripped === '' || stripped === '/') return '/'
     return stripped.replace(/\/$/, '')
   }
@@ -63,7 +58,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const { data: attorneys } = await db
       .from('attorneys')
-      .select('id, created_at')
+      .select('id, created_at, profiles!attorneys_profile_id_fkey(username)')
       // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
       // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
       // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
@@ -71,8 +66,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .limit(5000)
 
     for (const a of attorneys ?? []) {
+      const profile = Array.isArray((a as any).profiles) ? (a as any).profiles[0] : (a as any).profiles
+      const token = profile?.username || a.id
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${a.id}`)}`,
+        url: `${base}${mp(`/marketplace/providers/${token}`)}`,
         lastModified: a.created_at ? new Date(a.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,
@@ -81,7 +78,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const { data: consultants } = await db
       .from('consultants')
-      .select('id, created_at')
+      .select('id, created_at, profiles!consultants_profile_id_fkey(username)')
       // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
       // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
       // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
@@ -89,8 +86,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .limit(5000)
 
     for (const c of consultants ?? []) {
+      const profile = Array.isArray((c as any).profiles) ? (c as any).profiles[0] : (c as any).profiles
+      const token = profile?.username || c.id
       entries.push({
-        url: `${base}${mp(`/marketplace/providers/${c.id}`)}`,
+        url: `${base}${mp(`/marketplace/providers/${token}`)}`,
         lastModified: c.created_at ? new Date(c.created_at) : new Date(),
         changeFrequency: 'weekly',
         priority: 0.5,

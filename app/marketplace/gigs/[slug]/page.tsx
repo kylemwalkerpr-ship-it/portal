@@ -31,6 +31,14 @@ async function checkSlugRedirect(slug: string): Promise<string | null> {
   }
 }
 
+function titleFromSlug(slug: string): string {
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((word) => word.length <= 3 ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 // React cache() dedupes the same call inside one request, so generateMetadata
 // and Page share a single Supabase round-trip per visit instead of doubling up.
 // We cast through `any` because PostgREST's inferred type for a SELECT this
@@ -66,7 +74,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       // Return metadata for the canonical location — the actual 301
       // redirect happens in the Page component below, but crawlers that
       // only follow og:url will end up at the right place.
-      const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/gigs/${redirected}/`)
+      const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${redirected}/`)
       return {
         title: 'Gig | YouSafe',
         robots: { index: true, follow: true },
@@ -77,7 +85,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const gig = await loadGigForSeo(slug)
 
     if (!gig) {
-      return { title: 'Gig | YouSafe', robots: { index: false } }
+      return {
+        title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
+        description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
+        robots: { index: false, follow: true },
+      }
     }
 
     const title = `${gig.seo_title || gig.title} | YouSafe`
@@ -85,7 +97,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     const cover = Array.isArray(gig.gallery_images) && gig.gallery_images.length
       ? ((gig.gallery_images[0] as { url?: string })?.url || (gig.gallery_images[0] as unknown as string))
       : undefined
-    const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+    const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
 
     return {
       title,
@@ -102,7 +114,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       robots: { index: true, follow: true },
     }
   } catch {
-    return { title: 'Gig | YouSafe', robots: { index: false } }
+    return {
+      title: `${titleFromSlug(slug)} | YouSafe Marketplace`,
+      description: 'Browse this YouSafe Marketplace service, compare provider scope, delivery details, and request help through secure checkout.',
+      robots: { index: false, follow: true },
+    }
   }
 }
 
@@ -123,10 +139,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   try {
     const gig = await loadGigForSeo(slug)
     if (gig) {
-      const [canonicalUrl, marketplaceBaseUrl] = await Promise.all([
-        getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`),
-        getMarketplaceBaseUrl(),
-      ])
+      const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
+      const marketplaceBaseUrl = getMarketplaceBaseUrl()
       const category = gig.category ? getCategoryById(gig.category as CategoryId) : undefined
       const subcategory = gig.subcategory && gig.category
         ? getSubcategoryById(gig.category as CategoryId, gig.subcategory as SubcategoryId)

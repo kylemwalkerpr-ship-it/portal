@@ -17,11 +17,17 @@ import {
   type SellerGig,
 } from './SellerProfileComponents'
 
-export function SellerProfilePage({ sellerId }: { sellerId: string }) {
-  const [seller, setSeller] = React.useState<SellerProfile | null>(null)
+export function SellerProfilePage({
+  sellerId,
+  initialSeller = null,
+}: {
+  sellerId: string
+  initialSeller?: Pick<SellerProfile, 'id' | 'full_name'> | null
+}) {
+  const [seller, setSeller] = React.useState<SellerProfile | null>(initialSeller as SellerProfile | null)
   const [gigs, setGigs] = React.useState<SellerGig[]>([])
   const [reviews, setReviews] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const [loading, setLoading] = React.useState(!initialSeller)
   const [error, setError] = React.useState('')
   const [activeTab, setActiveTab] = React.useState<'about' | 'gigs' | 'reviews'>('about')
   const [chatOpen, setChatOpen] = React.useState(false)
@@ -37,7 +43,7 @@ export function SellerProfilePage({ sellerId }: { sellerId: string }) {
 
   React.useEffect(() => {
     async function loadSellerData() {
-      setLoading(true)
+      setLoading(!initialSeller)
       setError('')
 
       try {

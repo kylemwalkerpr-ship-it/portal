@@ -88,7 +88,7 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
 
   const { data: profile } = await db
     .from('profiles')
-    .select('id, status')
+    .select('id, status, full_name, username')
     .eq('id', profileId)
     .single()
   if (!profile || profile.status !== 'active') notFound()
@@ -97,5 +97,13 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
   // /api/sellers/[id] (which accepts profile_id, attorneys.id, or consultants.id).
   // It is the canonical, editorial-tokenised seller profile used everywhere; the
   // 69-line ProviderProfileView stub that used to live here has been deleted.
-  return <SellerProfilePage sellerId={profileId} />
+  return (
+    <SellerProfilePage
+      sellerId={profileId}
+      initialSeller={{
+        id: profile.id,
+        full_name: profile.full_name || 'YouSafe provider',
+      }}
+    />
+  )
 }
