@@ -2,15 +2,43 @@
  * POST /api/admin/escrow/[id]/release
  * Admin force-release escrow for an order. Releases provider earnings.
  * Body: { reason?: string }
+ *
+ * Auth: either (a) an admin Clerk session OR (b) `Authorization: Bearer <PORTAL_SERVICE_TOKEN>`
+ * for service-to-service calls from the support-saas dispute triage flow
+ * (split / release decisions). The service-token path uses
+ * SUPPORT_SAAS_SYSTEM_PROFILE_ID for actor attribution. Mirrors the
+ * dual-auth pattern on the parallel /api/admin/escrow/[id]/refund endpoint.
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { releaseEarningsForOrder } from '@/lib/earnings'
+import { createSupabaseAdminClient } from '@/lib/supabase'
+
+async function authViaServiceToken(req: Request) {
+  const header = req.headers.get('authorization') || ''
+  const m = header.match(/^Bearer\s+(.+)$/i)
+  const provided = m?.[1]
+  const expected = process.env.PORTAL_SERVICE_TOKEN
+  if (!provided || !expected) return null
+  if (provided !== expected) return null
+  const profileId = process.env.SUPPORT_SAAS_SYSTEM_PROFILE_ID || null
+  if (!profileId) return null
+  return { db: createSupabaseAdminClient(), profileId }
+}
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
-  const { db, profileId } = auth
+  const serviceAuth = await authViaServiceToken(req)
+  let db: ReturnType<typeof createSupabaseAdminClient>
+  let profileId: string
+  if (serviceAuth) {
+    db = serviceAuth.db
+    profileId = serviceAuth.profileId
+  } else {
+    const auth = await requireAdminUser()
+    if ('error' in auth) return fail(auth.error, auth.status)
+    db = auth.db
+    profileId = auth.profileId
+  }
 
   const { id: orderId } = await params
   if (!orderId) return fail('Order id is required.', 400)
