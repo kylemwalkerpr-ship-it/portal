@@ -1,7 +1,12 @@
 import { getCurrentConsultant } from '@/lib/consultant'
 
 const BUCKET = 'consultant-avatars'
-const MAX_BYTES = 5 * 1024 * 1024
+// Phone photos from modern cameras are often 8–12 MB raw. 5 MB rejected
+// real consultants in the wild — bumped to 15 MB. Client-side resize on
+// the consultant settings form trims most uploads below 1 MB before they
+// even reach this route, but raw uploads from older surfaces still need
+// the headroom.
+const MAX_BYTES = 15 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 async function updateAvatar(db: any, consultantId: string, url: string, path: string) {

@@ -3,6 +3,7 @@
 import React from 'react'
 import { C, Btn } from './shared'
 import ProfileAIDraftButton from '../profile/ProfileAIDraftButton'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 /**
  * Consultant profile editor — mirrors AttorneyProfileEditor but uses
@@ -72,8 +73,9 @@ export default function ConsultantProfileEditor() {
     setUploading(true)
     setError('')
     try {
+      const resized = await resizeAvatarFile(file)
       const form = new FormData()
-      form.append('file', file)
+      form.append('file', resized)
       const res = await fetch('/api/consultant/profile/avatar', { method: 'POST', credentials: 'same-origin', body: form })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Upload failed.')

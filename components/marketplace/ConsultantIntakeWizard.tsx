@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import ProfileAIDraftButton from '@/components/profile/ProfileAIDraftButton'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 type Strength = {
   score: number
@@ -158,8 +159,9 @@ export function ConsultantIntakeWizard() {
     setUploading(true)
     setError('')
     try {
+      const resized = await resizeAvatarFile(file)
       const data = new FormData()
-      data.append('file', file)
+      data.append('file', resized)
       const res = await fetch('/api/consultant/profile/avatar', {
         method: 'POST',
         credentials: 'same-origin',

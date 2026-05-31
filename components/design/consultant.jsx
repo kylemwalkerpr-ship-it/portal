@@ -12,6 +12,7 @@ import ConsultantEarnings from './consultant-earnings'
 import ConsultantSettings from './consultant-settings'
 import ConsultantProfile from './consultant-profile'
 import { usePortalTheme } from './usePortalTheme'
+import { resizeAvatarFile } from '@/lib/imageResize'
 
 const PAGE_TITLES = {
   overview: 'Overview',
@@ -174,8 +175,9 @@ function ConsultantApp({ onLogout }) {
     if (!file) return;
     setUploadingAvatar(true);
     try {
+      const resized = await resizeAvatarFile(file);
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', resized);
       const res = await fetch('/api/consultant/profile/avatar', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
@@ -193,8 +195,9 @@ function ConsultantApp({ onLogout }) {
     if (!file) return;
     setUploadingHeadshot(true);
     try {
+      const resized = await resizeAvatarFile(file);
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', resized);
       const res = await fetch('/api/consultant/profile/avatar', { method: 'POST', credentials: 'same-origin', body: form });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Upload failed');
