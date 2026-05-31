@@ -1,16 +1,48 @@
 /**
  * POST /api/admin/escrow/[id]/refund
  * Admin refund of escrow funds. Wallet-paid orders → wallet credit for buyer.
- * Body: { amount?: number (full if omitted), reason: string }
+ * Body: { amount?: number (dollars, full if omitted), amountCents?: number, reason: string }
+ *
+ * Auth: either (a) an admin Clerk session OR (b) `Authorization: Bearer <PORTAL_SERVICE_TOKEN>`
+ * for service-to-service calls from the support-saas dashboard. The service-
+ * token path uses a synthetic admin profile so wallet credits + audit rows
+ * still attribute the action — set SUPPORT_SAAS_SYSTEM_PROFILE_ID to the
+ * profile id we want to attribute service-token refunds to (typically a
+ * dedicated 'system-support' admin account).
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { credit } from '@/lib/wallet'
+import { createSupabaseAdminClient } from '@/lib/supabase'
+
+async function authViaServiceToken(req: Request) {
+  const header = req.headers.get('authorization') || ''
+  const m = header.match(/^Bearer\s+(.+)$/i)
+  const provided = m?.[1]
+  const expected = process.env.PORTAL_SERVICE_TOKEN
+  if (!provided || !expected) return null
+  if (provided !== expected) return null
+  const profileId = process.env.SUPPORT_SAAS_SYSTEM_PROFILE_ID || null
+  if (!profileId) return null
+  return { db: createSupabaseAdminClient(), profileId }
+}
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) return fail(auth.error, auth.status)
-  const { db, profileId } = auth
+  // Prefer service-token auth when the header is present; otherwise fall
+  // back to admin Clerk session. The service-token path is what
+  // yousafe-saas /api/support/orders/[id]/refund calls into.
+  const serviceAuth = await authViaServiceToken(req)
+  let db: ReturnType<typeof createSupabaseAdminClient>
+  let profileId: string
+  if (serviceAuth) {
+    db = serviceAuth.db
+    profileId = serviceAuth.profileId
+  } else {
+    const auth = await requireAdminUser()
+    if ('error' in auth) return fail(auth.error, auth.status)
+    db = auth.db
+    profileId = auth.profileId
+  }
 
   const { id: orderId } = await params
   if (!orderId) return fail('Order id is required.', 400)
@@ -35,7 +67,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const currentEscrow = Number(order.escrow_amount || 0)
-  const requestedAmount = body.amount !== undefined ? Number(body.amount) : currentEscrow
+  // Accept either `amount` (dollars, legacy admin UI) or `amountCents`
+  // (saas service path). amountCents wins if both present — it's the more
+  // precise representation and matches the gateway-side unit.
+  const requestedAmount =
+    body.amountCents !== undefined && Number.isFinite(Number(body.amountCents))
+      ? Number(body.amountCents) / 100
+      : body.amount !== undefined
+        ? Number(body.amount)
+        : currentEscrow
 
   if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
     return fail('Refund amount must be positive.', 422)
