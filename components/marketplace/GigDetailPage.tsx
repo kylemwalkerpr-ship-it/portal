@@ -384,9 +384,25 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   }
 
   if (!gig) {
+    // Derive a readable headline from the slug so crawlers (this surface is
+    // noindex but still flagged by Ahrefs for "missing h1") have a real
+    // <h1> at the top of the empty-state page. Matches the slug→title
+    // helper used by generateMetadata in app/marketplace/gigs/[slug]/page.tsx.
+    const words = (slug || 'Service')
+      .split('-')
+      .filter(Boolean)
+      .map((w) => (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    const derivedTitle = words.join(' ') || 'Service'
     return (
       <div style={pageShell}>
         <main style={inner}>
+          {/* Off-screen h1 so SEO/accessibility tools see a heading even
+              though the page itself shows "Gig not found" as the dominant
+              copy. We don't want to mislead a human visitor with a slug-
+              derived headline when the gig is genuinely gone. */}
+          <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>
+            {derivedTitle}
+          </h1>
           <EmptyState
             title="Gig not found"
             body="This service may have been removed or is no longer available."
