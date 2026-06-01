@@ -235,7 +235,11 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
         </div>
       </Card>
 
-      {/* Public profile handle (SEO) */}
+      {/* Public profile handle (SEO).
+          aiField="username" mounts the existing ProfileAIDraftButton via
+          EditableField — same component used for tagline/intro/bio. The
+          server-side draftProfileField grounds the slug on the attorney's
+          jurisdictions + practice areas + specialties. */}
       <Card>
         <SectionLabel>Public profile handle</SectionLabel>
         <EditableField
@@ -246,6 +250,7 @@ export default function AttorneyProfileEditor({ onSaved } = {}) {
           maxLength={32}
           placeholder="immigration-attorney-ny"
           onSave={(v) => save('username', String(v || '').toLowerCase().trim())}
+          aiField="username"
         />
       </Card>
 

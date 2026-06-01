@@ -88,10 +88,31 @@ export default function DashboardClient({ role, status, userName, userId, expect
     // middleware: the cookie was still valid when `/` loaded, so middleware
     // redirected back to /dashboard and the user appeared stuck. Delegating
     // to Clerk's own redirect serializes cookie-clear → navigation.
-    signOut({ redirectUrl: PORTAL_URL }).catch(() => {
-      // If Clerk fails before navigating, force the bounce ourselves.
+    //
+    // BUT: Clerk's signOut() occasionally stalls without ever resolving or
+    // rejecting (intermittent — usually mid-deploy or when Clerk's
+    // backend is slow). When that happens, .catch never fires and the user
+    // is stranded on the dashboard with no feedback. A 3-second watchdog
+    // forces a hard navigation in that scenario; the promise then resolves
+    // into a navigated-away tab so the late resolution is harmless.
+    const watchdog = window.setTimeout(() => {
       window.location.replace(PORTAL_URL)
-    })
+    }, 3000)
+
+    signOut({ redirectUrl: PORTAL_URL })
+      .catch(() => {
+        // If Clerk rejects before navigating, force the bounce ourselves.
+        window.location.replace(PORTAL_URL)
+      })
+      // Clear the watchdog if signOut resolves normally — Clerk will
+      // navigate, but if it doesn't (e.g. an empty redirectUrl edge case)
+      // we still want to fall through to the timeout.
+      .finally(() => {
+        // Don't clear the timeout — let it fire as a last-resort if
+        // Clerk resolved without actually navigating. The page is about
+        // to unload in either case; a redundant replace() is a no-op.
+        void watchdog
+      })
   }, [signOut])
 
   if (errorState) {
@@ -114,6 +135,9 @@ export default function DashboardClient({ role, status, userName, userId, expect
   if (expectedRole && role !== expectedRole) {
     const handleSwitchRoute = () => {
       const target = signInForLane(expectedRole)
+      // Same watchdog pattern as handleLogout above — guards against
+      // Clerk's signOut stalling without resolving.
+      window.setTimeout(() => { window.location.replace(target) }, 3000)
       signOut({ redirectUrl: target }).catch(() => {
         window.location.replace(target)
       })

@@ -193,7 +193,12 @@ export default function ConsultantProfileEditor() {
         </div>
       </Card>
 
-      {/* Public profile handle (SEO) */}
+      {/* Public profile handle (SEO).
+          aiField="username" mounts the existing ProfileAIDraftButton via
+          EditableField — same component used for tagline/intro/bio. The
+          server-side draftProfileField now grounds the slug on the
+          consultant's subjects + specialties (see lib/profileSuggest.ts)
+          and the normalizer guarantees the result fits the SEO regex. */}
       <Card>
         <SectionLabel>Public profile handle</SectionLabel>
         <EditableField
@@ -203,6 +208,7 @@ export default function ConsultantProfileEditor() {
           maxLength={32}
           placeholder="education-consultant-london"
           onSave={(v) => save('username', String(v || '').toLowerCase().trim())}
+          aiField="username"
         />
       </Card>
 
