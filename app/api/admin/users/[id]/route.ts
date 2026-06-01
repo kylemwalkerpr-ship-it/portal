@@ -137,11 +137,92 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
     return Response.json({ error: 'Admins cannot delete their own account' }, { status: 400 })
   }
 
-  if (!['consultant', 'support', 'attorney'].includes(target.role)) {
-    return Response.json(
-      { error: 'Only consultant, attorney, and support staff accounts can be deleted here' },
-      { status: 403 }
-    )
+  // All non-self roles are deletable — client, consultant, attorney, support
+  // and other admins. The role gate that used to restrict to
+  // consultant/attorney/support is gone so admins can fully manage every
+  // account except their own.
+  if (!['client', 'consultant', 'support', 'attorney', 'admin'].includes(target.role)) {
+    return Response.json({ error: `Unsupported role: ${target.role}` }, { status: 400 })
+  }
+
+  // ── Pre-flight refund check (client role only). ──
+  // orders.client_id has ON DELETE CASCADE, so deleting a student profile
+  // wipes every one of their orders along with the linked escrow_events,
+  // order_status_history, etc. That's the right behaviour for a fully
+  // erased user — but only AFTER any open escrow is settled. Without this
+  // gate an admin could accidentally vaporize a paying customer's
+  // in-flight purchase and the seller never sees the funds.
+  //
+  // We block on two specific conditions:
+  //   1. Any order with escrow_amount > 0 in a non-final escrow_status.
+  //      The admin must run /api/admin/escrow/[id]/refund (full or partial)
+  //      or release the funds to the seller before this delete can proceed.
+  //   2. Any positive wallet balance. The admin must run
+  //      /api/admin/wallet/topup-refund on the relevant top-ups (or mark
+  //      them out-of-band) before delete.
+  //
+  // The response surfaces exactly which order ids + the wallet amount the
+  // admin needs to handle so the UI can list them with one-click links.
+  if (target.role === 'client') {
+    const [{ data: openEscrow }, { data: wallet }] = await Promise.all([
+      auth.db
+        .from('orders')
+        .select('id, escrow_amount, escrow_status, total_amount')
+        .eq('client_id', id)
+        .in('escrow_status', ['held', 'partial_released', 'frozen'])
+        .gt('escrow_amount', 0),
+      auth.db
+        .from('student_wallets')
+        .select('balance_cents')
+        .eq('profile_id', id)
+        .maybeSingle(),
+    ])
+
+    const blockers: Array<{ kind: string; detail: string; orders?: string[]; balanceCents?: number }> = []
+    if (openEscrow && openEscrow.length > 0) {
+      const totalOpenCents = openEscrow.reduce(
+        (sum: number, o: { escrow_amount: number | string | null }) => sum + Math.round(Number(o.escrow_amount || 0) * 100),
+        0,
+      )
+      blockers.push({
+        kind: 'open_escrow',
+        detail: `${openEscrow.length} order(s) with $${(totalOpenCents / 100).toFixed(2)} in escrow. Refund or release before deleting.`,
+        orders: openEscrow.map((o: { id: string }) => o.id),
+      })
+    }
+    if (wallet && wallet.balance_cents > 0) {
+      blockers.push({
+        kind: 'positive_wallet_balance',
+        detail: `Wallet has $${(wallet.balance_cents / 100).toFixed(2)} unrefunded. Process a wallet refund (most recent top-up) before deleting.`,
+        balanceCents: wallet.balance_cents,
+      })
+    }
+    if (blockers.length > 0) {
+      return Response.json(
+        {
+          error: 'Refunds required before this account can be deleted.',
+          blockers,
+          hint:
+            'Use the escrow refund + wallet topup-refund admin endpoints to settle the listed items, then retry the delete.',
+        },
+        { status: 409 },
+      )
+    }
+  }
+
+  // Last guard before the cascade runs: cancel any other admin's pending
+  // sessions by clearing their Clerk user FIRST when we're about to delete
+  // an admin, so an in-flight admin action elsewhere can't race. For
+  // non-admin targets we keep the Clerk delete at the end (Supabase is
+  // the truth) — see step 14.
+  if (target.role === 'admin' && target.clerk_user_id) {
+    try {
+      const { clerkClient } = await import('@clerk/nextjs/server')
+      const client = await clerkClient()
+      await client.users.deleteUser(target.clerk_user_id)
+    } catch (clerkErr) {
+      console.warn('[admin/users DELETE] pre-cascade clerk delete failed:', clerkErr)
+    }
   }
 
   // ── 1. Detach order-history references — keep the orders rows for

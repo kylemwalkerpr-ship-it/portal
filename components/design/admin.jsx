@@ -386,14 +386,38 @@ function AdminApp({ onLogout }) {
   };
 
   const deleteUser = async user => {
-    if (!['consultant', 'support', 'attorney'].includes(user.role)) {
-      setActionNotice('Only consultant, attorney and support staff accounts can be deleted here.');
+    // All non-self roles are deletable. The server-side handler enforces
+    // "no self-delete" and surfaces a 409 with `blockers` when a student
+    // has open escrow or wallet funds that must be refunded first.
+    const roleLabel = user.role === 'client' ? 'student' : user.role;
+    if (!confirm(`Delete ${user.name}? This permanently removes the ${roleLabel} account, cancels their Clerk login, and purges every record across the marketplace. This cannot be undone.`)) return;
+
+    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 409 && Array.isArray(data.blockers) && data.blockers.length > 0) {
+      // Render the actionable refund checklist so the admin knows exactly
+      // what to settle before re-attempting. The 409 path lists every
+      // blocking order id + the wallet balance the API surfaced.
+      const lines = data.blockers.map(b => {
+        if (b.kind === 'open_escrow') {
+          const ids = (b.orders || []).map(o => o.slice(0, 8)).join(', ');
+          return `• Open escrow: ${b.detail}\n   Order ids: ${ids}`;
+        }
+        if (b.kind === 'positive_wallet_balance') {
+          return `• Wallet balance: ${b.detail}`;
+        }
+        return `• ${b.detail || b.kind}`;
+      }).join('\n');
+      setActionNotice(`Cannot delete ${user.name} yet:\n${lines}\n\nProcess refunds via the Escrow + Wallet admin tools, then retry.`);
       return;
     }
-    if (!confirm(`Delete ${user.name}? This permanently removes the ${user.role} account and cannot be undone.`)) return;
-    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'User delete failed');
+
+    if (!res.ok) {
+      setActionNotice(data.error || 'User delete failed');
+      return;
+    }
+
     setSelectedUser(null);
     setActionNotice(`${user.name} was deleted.`);
     refreshAdminData();
@@ -961,7 +985,7 @@ function AdminApp({ onLogout }) {
                             {u.status === 'active' ? 'Suspend' : 'Activate'}
                           </Btn>
                         )}
-                        {['consultant', 'support'].includes(u.role) && !isCurrentAdmin(u) && (
+                        {!isCurrentAdmin(u) && (
                           <Btn variant="danger" size="sm" onClick={() => deleteUser(u)}>Delete</Btn>
                         )}
                       </div>
@@ -1072,7 +1096,7 @@ function AdminApp({ onLogout }) {
                   {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
                 </Btn>
               )}
-              {['consultant', 'support'].includes(selectedUser.role) && !isCurrentAdmin(selectedUser) && (
+              {!isCurrentAdmin(selectedUser) && (
                 <Btn variant="danger" size="sm" onClick={() => deleteUser(selectedUser)}>Delete user</Btn>
               )}
               <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Close</Btn>
