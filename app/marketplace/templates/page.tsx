@@ -1,14 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
-import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'Document Template Packs — Immigration & Study'
   const description =
     'Self-serve digital template packs for US and Canada student visas, work permits, visitor visas, and refusal recovery. Instant download after purchase.'
-  const baseUrl = await getMarketplaceBaseUrl()
-  const canonicalUrl = await getMarketplaceCanonicalUrl('/marketplace/templates/')
+  const canonicalUrl = getMarketplaceCanonicalUrl('/marketplace/templates/')
   return {
     title,
     description,

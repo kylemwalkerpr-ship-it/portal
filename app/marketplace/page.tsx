@@ -2,14 +2,13 @@ import type { Metadata } from 'next'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
-import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
+import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
     'Browse vetted US, UK and Canada immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
-  const baseUrl = await getMarketplaceBaseUrl()
-  const canonicalUrl = await getMarketplaceCanonicalUrl('/marketplace/')
+  const canonicalUrl = getMarketplaceCanonicalUrl('/marketplace/')
   return {
     title,
     description,

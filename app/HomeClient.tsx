@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import dynamic from 'next/dynamic'
 import Nav from '@/components/design/landing/Nav'
 import Hero from '@/components/design/landing/Hero'
 import FeaturedServices from '@/components/design/landing/FeaturedServices'
@@ -9,9 +10,18 @@ import HowItWorks from '@/components/design/landing/HowItWorks'
 import FeaturedProviders from '@/components/design/landing/FeaturedProviders'
 import FAQ from '@/components/design/landing/FAQ'
 import FinalCTA from '@/components/design/landing/FinalCTA'
-import MemberSignInModal from '@/components/design/landing/MemberSignInModal'
 import type { FeaturedGig } from '@/components/design/landing/data/featured-services'
 import type { FeaturedProvider } from '@/components/design/landing/data/featured-providers'
+
+// MemberSignInModal is invisible until the user clicks the Sign In button.
+// Eager-loading it pulled the Clerk sign-in UI bundle (~80 kB gzipped) into
+// the initial chunk for every market subdomain visitor — drove the slow-JS
+// load time Ahrefs flagged. Code-split lets the chunk arrive only when
+// signInOpen flips true.
+const MemberSignInModal = dynamic(
+  () => import('@/components/design/landing/MemberSignInModal').then((m) => m.default ?? m),
+  { ssr: false, loading: () => null },
+)
 
 interface HomeClientProps {
   gigs: FeaturedGig[]

@@ -64,7 +64,7 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
 
   const name = profile?.full_name || 'Provider'
   const canonicalToken = profile?.username || id
-  const canonicalUrl = await getMarketplaceCanonicalUrl(`/marketplace/providers/${canonicalToken}/`)
+  const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/providers/${canonicalToken}/`)
   return {
     title: `${name} | YouSafe Marketplace`,
     description: `Browse services by ${name} on YouSafe Marketplace.`,
