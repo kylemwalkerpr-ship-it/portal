@@ -53,7 +53,7 @@ export const metadata = {
   metadataBase: new URL('https://portal.yousafeconsultancy.com'),
   title: 'YouSafe Portal — Study & Legal Services',
   description:
-    'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK and Canada legal document review — students, attorneys, consultants and admins, in one secure portal.',
+    'YouSafe members portal — study-abroad consulting + US / UK / Canada legal document review. Students, attorneys, consultants and admins in one secure portal.',
   // Portal is a members area — keep it OUT of Google. The marketing surfaces
   // (yousafeconsultancy.com landing, usa.*, ca.*, checkout.*, legal.*) carry
   // the SEO weight. Per-page generateMetadata can opt back in for any future

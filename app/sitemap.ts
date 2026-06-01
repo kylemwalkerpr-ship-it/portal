@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
+import { CATEGORIES } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 const MARKET_HOST = 'market.yousafeconsultancy.com'
@@ -21,6 +22,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}${mp('/marketplace/providers/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
     { url: `${base}${mp('/marketplace/categories/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.6 },
   ]
+
+  // Emit one entry per top-level category AND per subcategory (the
+  // /marketplace/categories/[categoryId] route now resolves both — see
+  // lib/categories.ts/resolveCategoryOrSubcategory). Ahrefs flagged
+  // /categories/work-permits, /categories/family-sponsorship,
+  // /categories/study-permits and /categories/citizenship as "pages to
+  // submit" because they had inbound links but weren't enumerated here.
+  for (const cat of CATEGORIES) {
+    entries.push({
+      url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    })
+    for (const sub of cat.subcategories) {
+      entries.push({
+        url: `${base}${mp(`/marketplace/categories/${sub.id}/`)}`,
+        lastModified: new Date(),
+        changeFrequency: 'weekly',
+        priority: 0.55,
+      })
+    }
+  }
 
   for (const pack of TEMPLATE_PACKS) {
     entries.push({
