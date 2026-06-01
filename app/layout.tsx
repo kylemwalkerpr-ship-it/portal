@@ -1,7 +1,6 @@
 import './globals.css'
 import './portal-themes.css'
 import type { Viewport } from 'next'
-import Script from 'next/script'
 import { Inter, Cormorant_Garamond, Lora, IBM_Plex_Mono } from 'next/font/google'
 import { ClerkProvider } from '@clerk/nextjs'
 import { headers } from 'next/headers'
@@ -106,12 +105,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={lang} dir={dir} className={`${inter.variable} ${cormorant.variable} ${lora.variable} ${plexMono.variable}`}>
       <head>
-        {/* Warm the TLS handshake for third-party origins we'll fetch later
-            (AdSense + Clerk SDK). Both are deferred until idle/interaction,
-            but starting the connection now removes ~100ms from their
-            eventual load — measurable on the market subdomain's slow-JS
-            rows in Ahrefs. */}
-        <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="anonymous" />
+        {/* Warm the TLS handshake for the Clerk SDK origin — the script
+            itself is async, but preconnect shaves ~100ms off the eventual
+            fetch on cold visits. */}
         <link rel="preconnect" href="https://clerk.portal.yousafeconsultancy.com" crossOrigin="anonymous" />
         {/* hreflang removed pending per-locale URL routes */}
       </head>
@@ -133,15 +129,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ChatWidget />
           </TranslationProvider>
         </ClerkProvider>
-        {/* AdSense moved to lazyOnload so it doesn't compete with the
-            critical render path. The ad slots themselves render after
-            user interaction or once the browser idles, which is the
-            correct timing for monetisation script anyway. */}
-        <Script
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7367546228282360"
-          strategy="lazyOnload"
-          crossOrigin="anonymous"
-        />
       </body>
     </html>
   )
