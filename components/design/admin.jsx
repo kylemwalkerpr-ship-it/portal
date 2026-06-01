@@ -752,6 +752,135 @@ function AdminApp({ onLogout }) {
     );
     const allSelected = pagedUsers.length > 0 && selectedRows.size === pagedUsers.length;
 
+    const [bulkBusy, setBulkBusy] = React.useState(false);
+
+    // Resolve selected rows from the source `users` array so the bulk
+    // handlers see the full user object (role, status, current-admin flag),
+    // not just an id from `pagedUsers` which loses identity after a sort.
+    const selectedUsers = React.useMemo(
+      () => users.filter(u => selectedRows.has(u.id)),
+      [users, selectedRows],
+    );
+
+    /**
+     * Fan-out a PATCH or DELETE across every selected user, with a hard cap
+     * of 5 in-flight at a time. Returns { succeeded, skipped, results } so
+     * the caller can flash a single summary instead of N toasts. The
+     * existing server-side handlers (lib/admin/users/[id]) already guard
+     * against self-mutation and the refund-blocker on student deletes —
+     * we just relay any 409 reason verbatim into the per-row result.
+     */
+    const fanOut = async (targets, runOne) => {
+      const CONCURRENCY = 5;
+      const queue = [...targets];
+      const results = [];
+      const workers = Array(Math.min(CONCURRENCY, queue.length)).fill(0).map(async () => {
+        while (queue.length) {
+          const item = queue.shift();
+          try {
+            const r = await runOne(item);
+            results.push({ id: item.id, name: item.name, ok: !!r.ok, reason: r.reason });
+          } catch (e) {
+            results.push({ id: item.id, name: item.name, ok: false, reason: e?.message || 'failed' });
+          }
+        }
+      });
+      await Promise.all(workers);
+      const succeeded = results.filter(r => r.ok).length;
+      return { succeeded, skipped: results.length - succeeded, results };
+    };
+
+    const bulkUpdateStatus = async status => {
+      const verb = status === 'active' ? 'activate' : status === 'suspended' ? 'suspend' : status;
+      const candidates = selectedUsers.filter(u => !isCurrentAdmin(u) && u.status !== status);
+      if (candidates.length === 0) {
+        setActionNotice(`Nothing to ${verb} — selection has no eligible users.`);
+        return;
+      }
+      if (!confirm(`${verb[0].toUpperCase() + verb.slice(1)} ${candidates.length} user${candidates.length === 1 ? '' : 's'}?`)) return;
+      setBulkBusy(true);
+      const { succeeded, skipped, results } = await fanOut(candidates, async u => {
+        const res = await fetch(`/api/admin/users/${u.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        if (res.ok) return { ok: true };
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, reason: body.error || `HTTP ${res.status}` };
+      });
+      setBulkBusy(false);
+      setSelectedRows(new Set());
+      const fails = results.filter(r => !r.ok).slice(0, 3).map(r => `${r.name}: ${r.reason}`).join('; ');
+      setActionNotice(
+        `${verb[0].toUpperCase() + verb.slice(1)}d ${succeeded}/${candidates.length}.${skipped > 0 ? ` ${skipped} failed${fails ? ' — ' + fails : ''}.` : ''}`,
+      );
+      refreshAdminData();
+    };
+
+    const bulkApprove = async () => {
+      // Approval is only meaningful for pending consultant / support /
+      // attorney accounts. Quietly skip rows that don't match — admins
+      // routinely select across role mixes and we don't want to error.
+      const candidates = selectedUsers.filter(
+        u => !isCurrentAdmin(u) && u.status === 'pending' && ['consultant', 'support', 'attorney'].includes(u.role),
+      );
+      if (candidates.length === 0) {
+        setActionNotice('Nothing to approve — selection has no pending consultant / support / attorney accounts.');
+        return;
+      }
+      if (!confirm(`Approve ${candidates.length} pending application${candidates.length === 1 ? '' : 's'}?`)) return;
+      setBulkBusy(true);
+      const { succeeded, skipped, results } = await fanOut(candidates, async u => {
+        const res = await fetch(`/api/admin/users/${u.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'active' }),
+        });
+        if (res.ok) return { ok: true };
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, reason: body.error || `HTTP ${res.status}` };
+      });
+      setBulkBusy(false);
+      setSelectedRows(new Set());
+      const fails = results.filter(r => !r.ok).slice(0, 3).map(r => `${r.name}: ${r.reason}`).join('; ');
+      setActionNotice(`Approved ${succeeded}/${candidates.length}.${skipped > 0 ? ` ${skipped} failed${fails ? ' — ' + fails : ''}.` : ''}`);
+      refreshAdminData();
+    };
+
+    const bulkDelete = async () => {
+      const candidates = selectedUsers.filter(u => !isCurrentAdmin(u));
+      if (candidates.length === 0) {
+        setActionNotice('Nothing to delete — your own account is excluded.');
+        return;
+      }
+      if (!confirm(`Permanently delete ${candidates.length} user${candidates.length === 1 ? '' : 's'}? This nukes their Clerk login + cascades every linked record across the marketplace. Students with open escrow or wallet balance will be skipped — refund those first.`)) return;
+      setBulkBusy(true);
+      const { succeeded, skipped, results } = await fanOut(candidates, async u => {
+        const res = await fetch(`/api/admin/users/${u.id}`, { method: 'DELETE' });
+        if (res.ok) return { ok: true };
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409 && Array.isArray(body.blockers) && body.blockers.length > 0) {
+          // Surface the first blocker reason inline so the admin sees why
+          // each student couldn't be deleted without expanding a panel.
+          return { ok: false, reason: body.blockers[0].detail || 'refunds required first' };
+        }
+        return { ok: false, reason: body.error || `HTTP ${res.status}` };
+      });
+      setBulkBusy(false);
+      setSelectedRows(new Set());
+      const fails = results.filter(r => !r.ok).slice(0, 3).map(r => `${r.name}: ${r.reason}`).join('; ');
+      setActionNotice(`Deleted ${succeeded}/${candidates.length}.${skipped > 0 ? ` ${skipped} skipped${fails ? ' — ' + fails : ''}.` : ''}`);
+      refreshAdminData();
+    };
+
+    const bulkClear = () => setSelectedRows(new Set());
+
+    const eligibleApprove   = selectedUsers.filter(u => !isCurrentAdmin(u) && u.status === 'pending' && ['consultant', 'support', 'attorney'].includes(u.role)).length;
+    const eligibleActivate  = selectedUsers.filter(u => !isCurrentAdmin(u) && u.status !== 'active').length;
+    const eligibleSuspend   = selectedUsers.filter(u => !isCurrentAdmin(u) && u.status === 'active').length;
+    const eligibleDelete    = selectedUsers.filter(u => !isCurrentAdmin(u)).length;
+
     const SortIcon = ({ col }) => {
       if (sortCol !== col) return <span style={{ opacity: 0.25, fontSize: '10px', marginLeft: '4px' }}>⇅</span>;
       return <span style={{ fontSize: '10px', marginLeft: '4px', color: '#C4A45A' }}>{sortDir === 'asc' ? '▲' : '▼'}</span>;
@@ -863,6 +992,40 @@ function AdminApp({ onLogout }) {
           {selectedRows.size > 0 && <span style={{ marginLeft: '8px', color: C.cyan, fontWeight: 700 }}>· {selectedRows.size} selected</span>}
         </span>
       </div>
+
+      {/* Bulk action bar — appears when ≥1 row is selected. Counts on each
+          button reflect eligibility after the server-side guards (no
+          self-mutation, role-appropriate state transitions). Buttons stay
+          enabled at 0-eligible so the admin gets a clear "nothing to do"
+          notice rather than a silently dead button. */}
+      {selectedRows.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+          padding: '10px 14px', marginBottom: '14px',
+          background: `${C.cyan}10`, border: `1px solid ${C.cyan}40`,
+          borderRadius: '12px',
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: C.cyan, marginRight: '4px' }}>
+            {selectedRows.size} selected
+          </span>
+          <Btn variant="success" size="sm" onClick={bulkApprove} disabled={bulkBusy}>
+            Approve{eligibleApprove > 0 ? ` (${eligibleApprove})` : ''}
+          </Btn>
+          <Btn variant="success" size="sm" onClick={() => bulkUpdateStatus('active')} disabled={bulkBusy}>
+            Activate{eligibleActivate > 0 ? ` (${eligibleActivate})` : ''}
+          </Btn>
+          <Btn variant="danger" size="sm" onClick={() => bulkUpdateStatus('suspended')} disabled={bulkBusy}>
+            Suspend{eligibleSuspend > 0 ? ` (${eligibleSuspend})` : ''}
+          </Btn>
+          <Btn variant="danger" size="sm" onClick={bulkDelete} disabled={bulkBusy}>
+            Delete{eligibleDelete > 0 ? ` (${eligibleDelete})` : ''}
+          </Btn>
+          <Btn variant="ghost" size="sm" onClick={bulkClear} disabled={bulkBusy}>Clear</Btn>
+          {bulkBusy && (
+            <span style={{ fontSize: '12px', color: C.textMuted, marginLeft: 'auto' }}>Working…</span>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
