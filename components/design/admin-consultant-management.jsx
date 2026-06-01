@@ -429,7 +429,13 @@ function Field({ label, value, multiline, link, span }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
+import AdminRoleUsersTable from './admin-role-users-table'
+
 export default function AdminConsultantManagement() {
+  // 'apps' = the review queue + lifecycle drawer (default — preserves deep
+  // links). 'users' = role-scoped consultant table with bulk + per-row
+  // actions, mirroring the Users tab UX inside the management surface.
+  const [view, setView] = React.useState('apps')
   const [tab, setTab] = React.useState('queue') // queue | triage | decided | analytics
   const [apps, setApps] = React.useState([])
   const [total, setTotal] = React.useState(0)
@@ -570,21 +576,52 @@ export default function AdminConsultantManagement() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
+  // View toggle pill — shared shape with the rest of the module.
+  const ViewPill = ({ id, label }) => (
+    <button type="button" onClick={() => setView(id)}
+      style={{
+        padding: '8px 16px', borderRadius: 999, fontSize: 13, fontFamily: SANS,
+        border: `1px solid ${view === id ? NAVY : BORDER}`,
+        background: view === id ? NAVY : SURFACE,
+        color: view === id ? '#fff' : TEXT,
+        fontWeight: 700, cursor: 'pointer',
+      }}>{label}</button>
+  )
+
   return (
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, fontFamily: SANS, background: BG, minHeight: '100vh' }}>
-      {/* Header */}
+      {/* Header — always visible. The Applications | Users toggle sits in
+          the top-right next to the refresh button. */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>Panel · Review queue</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>
+            Panel · {view === 'apps' ? 'Review queue' : 'Live consultants'}
+          </div>
           <h1 style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 600, color: TEXT, margin: 0, letterSpacing: '-.018em' }}>Consultant Management</h1>
-          {stats && (
+          {stats && view === 'apps' && (
             <div style={{ fontSize: 12, color: MUTED, marginTop: 6, fontFamily: MONO }}>
               {fmtN(stats.pending)} pending · {fmtN(stats.aged_pending)} aged · {fmtN(stats.high_risk_pending)} high-risk · {fmtPct(stats.approval_rate_pct)} approval rate (90d)
             </div>
           )}
         </div>
-        <button onClick={load} style={{ padding: '6px 14px', border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: MONO }}>↻ refresh</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ViewPill id="apps"  label="Applications" />
+          <ViewPill id="users" label="Users" />
+          {view === 'apps' && (
+            <button onClick={load} style={{ padding: '6px 14px', border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: MONO }}>↻ refresh</button>
+          )}
+        </div>
       </div>
+
+      {/* Live users view: short-circuit the rest of the application surface
+          and render the role-scoped table. */}
+      {view === 'users' && (
+        <div style={{ margin: '0 -24px' }}>
+          <AdminRoleUsersTable role="consultant" />
+        </div>
+      )}
+
+      {view === 'apps' && <>
 
       {/* Stat tiles */}
       {stats && (
@@ -769,6 +806,7 @@ export default function AdminConsultantManagement() {
           onLifecycleChanged={() => { load() }}
         />
       )}
+      </>}
     </div>
   )
 }
