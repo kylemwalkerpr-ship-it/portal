@@ -457,8 +457,9 @@ function AdminApp({ onLogout }) {
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
-        <NavItem icon="⚖️" label="Attorney Management" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
-        <NavItem icon="🧭" label="Consultant Management" active={page === 'consultant-applications'} onClick={() => setPage('consultant-applications')} />
+        {/* Attorney + Consultant Management moved into My Office as tabs.
+            Sidebar shows a combined pending-app badge so admins still see
+            the count without an extra nav item. */}
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🗂️" label="Order Kanban" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/orders'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/orders' }} />
         <NavItem icon="🎫" label="Support Tickets" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/tickets'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/tickets' }} />
@@ -467,7 +468,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
-        <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} />
+        <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
@@ -2520,7 +2521,7 @@ function AdminApp({ onLogout }) {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Management', 'consultant-applications': 'Consultant Management', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2538,18 +2539,78 @@ function AdminApp({ onLogout }) {
           )}
           {page === 'dashboard' && <AdminDashboard onNav={setPage} />}
           {page === 'users' && <Users />}
-          {page === 'attorney-applications' && <AdminAttorneyApplications />}
-          {page === 'consultant-applications' && <AdminConsultantManagement />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'escrow' && <AdminEscrow />}
           {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
-          {page === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
+          {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * My Office — top-level admin home for everything the super-admin owns or
+ * vets. Three tabs:
+ *   Gigs                  — the platform-owned gig catalogue (the old My Office)
+ *   Attorney Management   — the attorney application/approval/lifecycle queue
+ *   Consultant Management — the consultant application/approval/lifecycle queue
+ *
+ * Tab state is held locally; the parent admin shell still uses `page === 'gigs'`
+ * to mount this component, which keeps the sidebar's active highlight + page
+ * title behaviour intact. Deep-links to /dashboard/admin/attorney-applications/
+ * and /dashboard/admin/consultant-applications/ continue to work as standalone
+ * pages because their `app/dashboard/admin/<slug>/page.tsx` files mount the
+ * same UI components directly.
+ */
+function MyOffice({ formatPrimary, attorneyBadge }) {
+  const [tab, setTab] = React.useState('gigs');
+  const tabs = [
+    { id: 'gigs',         label: 'Gigs',                  icon: '⭐' },
+    { id: 'attorneys',    label: 'Attorney Management',   icon: '⚖️', badge: attorneyBadge || null },
+    { id: 'consultants',  label: 'Consultant Management', icon: '🧭' },
+  ];
+  const tabBtn = (active) => ({
+    display: 'inline-flex', alignItems: 'center', gap: '8px',
+    padding: '9px 14px',
+    borderRadius: '999px',
+    border: `1px solid ${active ? C.cyan : C.border}`,
+    background: active ? C.cyan : C.surface,
+    color: active ? '#fff' : C.text,
+    fontWeight: 700, fontSize: '13px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  });
+  return (
+    <div>
+      <div style={{
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
+        padding: '20px 28px 4px',
+      }}>
+        {tabs.map((t) => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)} style={tabBtn(tab === t.id)}>
+            <span aria-hidden="true">{t.icon}</span>
+            <span>{t.label}</span>
+            {t.badge != null && t.badge > 0 && (
+              <span style={{
+                minWidth: 18, height: 18, padding: '0 6px', borderRadius: 9,
+                background: tab === t.id ? 'rgba(255,255,255,0.18)' : C.red,
+                color: '#fff', fontSize: 11, fontWeight: 700,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              }}>{t.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div>
+        {tab === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
+        {tab === 'attorneys' && <AdminAttorneyApplications />}
+        {tab === 'consultants' && <AdminConsultantManagement />}
       </div>
     </div>
   );
