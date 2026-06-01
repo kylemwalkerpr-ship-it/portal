@@ -23,9 +23,10 @@ export type ProfileField =
   | 'subjects'
   | 'industries'
   | 'languages'
+  | 'username'
 
 export const ALLOWED_PROFILE_FIELDS: ProfileField[] = [
-  'tagline', 'intro', 'bio', 'specialties', 'practice_areas', 'subjects', 'industries', 'languages',
+  'tagline', 'intro', 'bio', 'specialties', 'practice_areas', 'subjects', 'industries', 'languages', 'username',
 ]
 
 // Per-role allow-lists. The shared fields are common; the role-divergent
@@ -33,7 +34,11 @@ export const ALLOWED_PROFILE_FIELDS: ProfileField[] = [
 // be draftable cross-role — an attorney requesting `subjects` (a column its
 // table lacks) would otherwise get a prompt grounded on nothing, for a field
 // its editor/PATCH can't even save.
-const SHARED_PROFILE_FIELDS: ProfileField[] = ['tagline', 'intro', 'bio', 'specialties', 'languages']
+//
+// `username` is the public profile handle (market.yousafeconsultancy.com/
+// providers/<handle>). Both roles need it; the AI grounds the suggestion on
+// whatever role-specific signal the seller has already entered.
+const SHARED_PROFILE_FIELDS: ProfileField[] = ['tagline', 'intro', 'bio', 'specialties', 'languages', 'username']
 export const ATTORNEY_PROFILE_FIELDS: ProfileField[] = [...SHARED_PROFILE_FIELDS, 'practice_areas']
 export const CONSULTANT_PROFILE_FIELDS: ProfileField[] = [...SHARED_PROFILE_FIELDS, 'subjects', 'industries']
 
@@ -251,7 +256,53 @@ function buildFieldSpec(field: ProfileField, ctx: ProfileContext): ProfileFieldS
           base,
         ].join('\n'),
       }
+    case 'username':
+      return {
+        format: 'string', hardLimit: 32,
+        prompt: [
+          `Suggest a single SEO-friendly profile handle (slug) for this ${roleLabel}.`,
+          'The handle becomes the public profile URL: market.yousafeconsultancy.com/providers/<handle>.',
+          'Requirements:',
+          '- 3 to 32 characters total. Aim for 18–28 — long enough to be specific, short enough to remember.',
+          '- Lowercase letters, digits, and hyphens only. NEVER use underscores, spaces, dots, or non-ASCII characters.',
+          '- Must start AND end with a lowercase letter or digit (never a hyphen).',
+          '- Two or three words separated by single hyphens. Word order: SPECIALTY-then-LOCATION (e.g. "mba-admissions-toronto", "sop-editor-london"), or SPECIALTY-then-ROLE (e.g. "career-pivot-coach").',
+          '- Pull keywords from the seller\'s subjects/practice areas/specialties — do NOT invent unrelated terms. If the context lists "MBA admissions" and "Toronto" the handle MUST reflect at least one of those.',
+          '- Do NOT use the seller\'s full personal name as the entire handle. A first name is okay as a suffix (e.g. "tax-mentor-amina") but never the whole slug — buyers search by topic, not by who they don\'t know yet.',
+          '- No filler words: skip "the", "and", "of", "best", "top", "expert", "pro".',
+          'Return ONLY the slug — no quotes, no leading slash, no explanation.',
+          '',
+          'Context:',
+          base,
+        ].join('\n'),
+      }
   }
+}
+
+/**
+ * Force a model-suggested slug into the strict handle shape the wizard's
+ * regex requires (/^[a-z0-9](?:[a-z0-9_-]{1,30}[a-z0-9])$/). Drops any
+ * stray punctuation, collapses runs of hyphens, lowercases everything,
+ * strips leading/trailing hyphens, and truncates at 32 chars. Returns
+ * null if nothing usable remains.
+ */
+function normalizeUsername(raw: string): string | null {
+  let s = raw.trim().toLowerCase()
+  // Strip wrapping quotes / backticks / brackets
+  s = s.replace(/^["'`\[\(<]+|["'`\]\)>]+$/g, '')
+  // Replace any non-allowed char with a hyphen
+  s = s.replace(/[^a-z0-9-]+/g, '-')
+  // Collapse runs of hyphens
+  s = s.replace(/-+/g, '-')
+  // Trim leading/trailing hyphens
+  s = s.replace(/^-+|-+$/g, '')
+  // Enforce 3–32 length
+  if (s.length < 3) return null
+  if (s.length > 32) {
+    s = s.slice(0, 32).replace(/-+$/, '')
+    if (s.length < 3) return null
+  }
+  return s
 }
 
 function cleanString(raw: string): string {
@@ -345,6 +396,18 @@ export async function draftProfileField(
 
   const cleaned = cleanString(raw)
   if (!cleaned) return { ok: false, status: 502, message: 'Model returned empty output. Try again.' }
+
+  // Username has its own strict shape (slug format, 3–32 chars, no
+  // underscores/spaces) — apply the dedicated normalizer instead of the
+  // generic truncate-on-whitespace pass used by prose fields.
+  if (field === 'username') {
+    const slug = normalizeUsername(cleaned)
+    if (!slug) {
+      return { ok: false, status: 502, message: 'Model returned an unusable handle. Try again.' }
+    }
+    return { ok: true, value: slug }
+  }
+
   const limited = spec.hardLimit && cleaned.length > spec.hardLimit
     ? cleaned.slice(0, spec.hardLimit).replace(/\s+\S*$/, '')
     : cleaned

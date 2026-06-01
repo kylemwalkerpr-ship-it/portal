@@ -177,20 +177,27 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           <GlobalLanguageBar />
         </div>
 
-        <div className="ys-nav-right-extras">
-          <Btn variant="ghost" size="sm" onClick={onOpenSignIn}>
-            Sign in
-          </Btn>
-        </div>
+        {/* Sign-in promoted from a tertiary ghost button to a primary "My
+            Account" CTA — matches the "members area" framing the rest of
+            the landing uses and gives returning users a single dominant
+            action on the nav. The Clerk modal still opens via the same
+            onOpenSignIn handler; only the label + variant changed. */}
         <Btn
           variant="brand"
+          size="sm"
+          onClick={onOpenSignIn}
+        >
+          My Account
+          <Arrow size={14} stroke={2} />
+        </Btn>
+        <Btn
+          variant="ghost"
           size="sm"
           onClick={() => {
             window.location.href = 'https://portal.yousafeconsultancy.com/sign-up/student'
           }}
         >
           Start an inquiry
-          <Arrow size={14} stroke={2} />
         </Btn>
       </div>
     </nav>

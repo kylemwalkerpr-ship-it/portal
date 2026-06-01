@@ -344,6 +344,17 @@ function HandleStep({ form, setField }: { form: Form; setField: any }) {
         label="Your SEO-friendly profile handle"
         required
         help="Becomes your public profile URL: market.yousafeconsultancy.com/providers/<handle>. Keep it short, lowercase, and keyword-rich — e.g. admissions-mentor-uk, career-coach-toronto, sop-editor-london. Lowercase letters, numbers, dashes, underscores; 3–32 chars."
+        right={
+          // AI suggest — same component used on bio/tagline/intro elsewhere.
+          // The server-side draftProfileField now grounds the slug on the
+          // seller's subjects + specialties + name (see lib/profileSuggest.ts)
+          // and the normalizer guarantees the result fits the handle regex.
+          <ProfileAIDraftButton
+            field="username"
+            label="Suggest with AI"
+            onApply={(v) => setField('username', String(v || '').toLowerCase().trim())}
+          />
+        }
       >
         <input
           type="text"
@@ -522,16 +533,24 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function Field({ label, help, required, children }: { label: string; help?: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, help, required, children, right }: { label: string; help?: string; required?: boolean; children: React.ReactNode; right?: React.ReactNode }) {
+  // `right` is an optional slot for an inline-end action — currently used by
+  // HandleStep to dock the ProfileAIDraftButton next to the label. We use
+  // <div> instead of <label> so the right slot's interactive children don't
+  // get hijacked by the surrounding label's click target.
+  const TagName: 'label' | 'div' = right ? 'div' : 'label'
   return (
-    <label style={{ display: 'block' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-        <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, color: '#0F172A' }}>{label}</span>
-        {required && <span style={{ color: '#B22234', fontSize: 13, fontWeight: 700 }}>*</span>}
+    <TagName style={{ display: 'block' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 13.5, color: '#0F172A' }}>{label}</span>
+          {required && <span style={{ color: '#B22234', fontSize: 13, fontWeight: 700 }}>*</span>}
+        </div>
+        {right}
       </div>
       {help && <p style={{ margin: '0 0 8px', fontSize: 12.5, color: '#64748B', lineHeight: 1.5 }}>{help}</p>}
       {children}
-    </label>
+    </TagName>
   )
 }
 function CharCount({ n, min, max }: { n: number; min: number; max: number }) {
