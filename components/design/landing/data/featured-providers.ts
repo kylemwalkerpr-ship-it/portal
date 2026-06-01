@@ -63,10 +63,17 @@ export const getFeaturedProviders = unstable_cache(async (): Promise<FeaturedPro
 
     if (allProfileIds.length === 0) return FALLBACK_PROVIDERS
 
+    // Defence-in-depth: only surface providers whose profile is currently
+    // active. The admin DELETE handler also cascade-deletes the attorneys /
+    // consultants row, but if a future code path lands a suspended profile
+    // without the cascade (or this cache holds stale data after a partial
+    // failure), filtering by profile.status here guarantees the home pages
+    // never advertise a removed or banned provider.
     const { data: profiles } = await db
       .from('profiles')
-      .select('id, full_name, email, country')
+      .select('id, full_name, email, country, status')
       .in('id', allProfileIds)
+      .eq('status', 'active')
 
     const { data: gigs } = await db
       .from('gigs')
@@ -136,4 +143,4 @@ export const getFeaturedProviders = unstable_cache(async (): Promise<FeaturedPro
   } catch {
     return FALLBACK_PROVIDERS
   }
-}, ['landing-featured-providers'], { revalidate: 600 })
+}, ['landing-featured-providers'], { revalidate: 600, tags: ['landing-featured-providers'] })
