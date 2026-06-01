@@ -377,7 +377,10 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                                     // (e.g. modal opened outside the student dashboard).
                                     setTimeout(() => {
                                       if (!window.location.search.includes('goto=billing')) {
-                                        window.location.assign('/student?goto=billing')
+                                        // /student does not exist as a page route — the
+                                        // student dashboard lives at /dashboard (which
+                                        // mounts StudentApp and reads ?goto= internally).
+                                        window.location.assign('/dashboard?goto=billing')
                                       }
                                     }, 50)
                                   }
@@ -479,7 +482,8 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                       window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'billing' } }))
                       setTimeout(() => {
                         if (!window.location.search.includes('goto=billing')) {
-                          window.location.assign('/student?goto=billing')
+                          // /student does not exist — student dashboard is at /dashboard.
+                          window.location.assign('/dashboard?goto=billing')
                         }
                       }, 50)
                     }
