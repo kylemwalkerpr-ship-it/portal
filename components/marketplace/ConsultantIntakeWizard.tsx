@@ -281,6 +281,17 @@ export function ConsultantIntakeWizard() {
                 style={primaryBtn}
                 onClick={async () => {
                   await saveStep(step)
+                  // Submit the formal application row so the admin review queue
+                  // sees this consultant. Best-effort — even on failure we still
+                  // route the user forward; the admin can re-pull from /sync.
+                  try {
+                    await fetch('/api/consultant/intake/submit', {
+                      method: 'POST',
+                      credentials: 'same-origin',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({}),
+                    })
+                  } catch {}
                   router.push(ready ? '/dashboard/gigs/new' : '/dashboard?goto=settings')
                 }}
                 disabled={saving}

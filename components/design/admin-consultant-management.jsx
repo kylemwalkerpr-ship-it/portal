@@ -2,10 +2,10 @@
 import React from 'react'
 
 /**
- * Admin → Attorney Applications (Fiverr-scale review queue).
+ * Admin → Consultant Management (Fiverr-scale review queue).
  *
  * Server-side paginated, full-text searchable, multi-filter, bulk-actionable.
- * Mirrors the structure of admin-gigs / admin-orders / admin-escrow.
+ * Mirror of admin-consultant-applications adapted for the consultant lane.
  *
  * Tabs:
  *   • Queue       — pending applications, sortable + bulk approve/decline
@@ -40,11 +40,11 @@ const STATUS_STYLES = {
 }
 
 const RISK_FLAG_LABELS = {
-  no_bar_number:            'No bar / roll number',
+  no_registration_number:   'No registration number',
   no_insurance:             'No insurance disclosed',
   free_email:               'Free-mail address',
   missing_jurisdictions:    'No jurisdictions',
-  missing_practice_areas:   'No practice areas',
+  missing_specialties:      'No specialties',
   suspicious_profile_url:   'Suspicious profile URL',
 }
 
@@ -133,7 +133,7 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
   React.useEffect(() => {
     if (!application?.id) return
     setEventsLoading(true)
-    fetch(`/api/admin/attorney-applications/${application.id}/events`, { credentials: 'same-origin' })
+    fetch(`/api/admin/consultant-applications/${application.id}/events`, { credentials: 'same-origin' })
       .then(r => r.json().catch(() => ({})))
       .then(d => setEvents(d.events || []))
       .catch(() => setEvents([]))
@@ -143,7 +143,7 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
   React.useEffect(() => {
     if (!application?.id || application.status !== 'approved') { setImpact(null); return }
     setImpactLoading(true)
-    fetch(`/api/admin/attorney-applications/${application.id}/impact`, { credentials: 'same-origin' })
+    fetch(`/api/admin/consultant-applications/${application.id}/impact`, { credentials: 'same-origin' })
       .then(r => r.json().catch(() => ({})))
       .then(d => setImpact(d.impact || null))
       .catch(() => setImpact(null))
@@ -161,17 +161,17 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Update failed')
-      flashLifecycle('ok', `Attorney ${targetStatus === 'suspended' ? 'suspended' : 'reactivated'}.`)
+      flashLifecycle('ok', `Consultant ${targetStatus === 'suspended' ? 'suspended' : 'reactivated'}.`)
       onLifecycleChanged && onLifecycleChanged()
     } catch (e) { flashLifecycle('err', e.message) }
     finally { setLifecyclePending(false) }
   }
 
   async function revokeApproval() {
-    if (!window.confirm('Revoke this attorney’s approval? Their gigs will be paused, profile suspended, and a revocation email sent.')) return
+    if (!window.confirm('Revoke this consultant’s approval? Their gigs will be paused, profile suspended, and a revocation email sent.')) return
     setLifecyclePending(true)
     try {
-      const r = await fetch(`/api/admin/attorney-applications/${application.id}/revoke`, {
+      const r = await fetch(`/api/admin/consultant-applications/${application.id}/revoke`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: notes || undefined }),
@@ -187,7 +187,7 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
 
   async function deleteUser() {
     if (!application?.profile_id) { flashLifecycle('err', 'No linked profile.'); return }
-    if (!window.confirm('Permanently delete this attorney’s user account? This cascades through gigs and related records and cannot be undone.')) return
+    if (!window.confirm('Permanently delete this consultant’s user account? This cascades through gigs and related records and cannot be undone.')) return
     setLifecyclePending(true)
     try {
       const r = await fetch(`/api/admin/users/${application.profile_id}`, {
@@ -263,12 +263,12 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
               <FormRow label="Full name"                value={application.full_name} first />
               <FormRow label="Email"                    value={application.email} link={application.email ? `mailto:${application.email}` : undefined} />
               <FormRow label="Phone"                    value={application.phone} />
-              <FormRow label="Credential type"          value={application.credential_type} />
-              <FormRow label="Bar / roll number"        value={application.bar_number} />
-              <FormRow label="Jurisdictions admitted"   value={application.jurisdictions} />
-              <FormRow label="Practice areas"           value={application.practice_areas} />
+              <FormRow label="Consultant type"          value={application.consultant_type} />
+              <FormRow label="Registration number"      value={application.registration_number} />
+              <FormRow label="Jurisdictions"            value={application.jurisdictions} />
+              <FormRow label="Specialties"              value={Array.isArray(application.specialties) ? application.specialties.join(', ') : application.specialties} />
               <FormRow label="Capacity / availability"  value={application.capacity} />
-              <FormRow label="Professional indemnity / malpractice insurance" value={application.malpractice_insurance} />
+              <FormRow label="Professional indemnity / E&O insurance" value={application.malpractice_insurance} />
               <FormRow label="Public profile / website" value={application.profile_url} link={application.profile_url} />
               <FormRow label="Anything else we should know" value={application.notes} />
             </div>
@@ -285,7 +285,7 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
             </Section>
           )}
 
-          {/* Lifecycle controls — appear only for approved attorneys. */}
+          {/* Lifecycle controls — appear only for approved consultants. */}
           {application.status === 'approved' && (
             <Section title="Lifecycle">
               <div style={{ padding: '14px 18px', display: 'grid', gap: 12 }}>
@@ -429,7 +429,7 @@ function Field({ label, value, multiline, link, span }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function AdminAttorneyApplications() {
+export default function AdminConsultantManagement() {
   const [tab, setTab] = React.useState('queue') // queue | triage | decided | analytics
   const [apps, setApps] = React.useState([])
   const [total, setTotal] = React.useState(0)
@@ -474,7 +474,7 @@ export default function AdminAttorneyApplications() {
       params.set('sort', sortCol)
       params.set('dir', sortDir)
       if (debouncedQ) params.set('q', debouncedQ)
-      if (credentialFilter) params.set('credential', credentialFilter)
+      if (credentialFilter) params.set('consultant_type', credentialFilter)
       if (priorityFilter) params.set('priority', priorityFilter)
       if (minRisk > 0) params.set('min_risk', String(minRisk))
       if (agedOnly) params.set('aged_only', 'true')
@@ -483,7 +483,7 @@ export default function AdminAttorneyApplications() {
         // since the API doesn't take a "not equal" status. Workaround: ask the
         // server for all, then drop pending here.
       }
-      const r = await fetch(`/api/admin/attorney-applications?${params}`, { credentials: 'same-origin' })
+      const r = await fetch(`/api/admin/consultant-applications?${params}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error?.message || d?.error || 'Failed to load')
       let list = d.applications || []
@@ -499,7 +499,7 @@ export default function AdminAttorneyApplications() {
 
   // Stats — load lazily for the analytics tab + once on mount for header tiles
   React.useEffect(() => {
-    fetch('/api/admin/attorney-applications/stats', { credentials: 'same-origin' })
+    fetch('/api/admin/consultant-applications/stats', { credentials: 'same-origin' })
       .then(r => r.json().catch(() => ({})))
       .then(d => setStats(d?.stats || null))
       .catch(() => null)
@@ -525,7 +525,7 @@ export default function AdminAttorneyApplications() {
     if (!selectedIds.size) return
     setDecisionPending(true)
     try {
-      const r = await fetch('/api/admin/attorney-applications/bulk', {
+      const r = await fetch('/api/admin/consultant-applications/bulk', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [...selectedIds], action, notes }),
@@ -544,7 +544,7 @@ export default function AdminAttorneyApplications() {
     try {
       // For approve/decline use the existing single-row endpoint (sends email etc.).
       if (action === 'approve' || action === 'decline') {
-        const r = await fetch(`/api/admin/attorney-applications/${id}`, {
+        const r = await fetch(`/api/admin/consultant-applications/${id}`, {
           method: 'PATCH', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action, notes }),
@@ -576,7 +576,7 @@ export default function AdminAttorneyApplications() {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: GOLD, textTransform: 'uppercase', fontFamily: MONO, marginBottom: 4 }}>Panel · Review queue</div>
-          <h1 style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 600, color: TEXT, margin: 0, letterSpacing: '-.018em' }}>Attorney Management</h1>
+          <h1 style={{ fontFamily: SERIF, fontSize: 32, fontWeight: 600, color: TEXT, margin: 0, letterSpacing: '-.018em' }}>Consultant Management</h1>
           {stats && (
             <div style={{ fontSize: 12, color: MUTED, marginTop: 6, fontFamily: MONO }}>
               {fmtN(stats.pending)} pending · {fmtN(stats.aged_pending)} aged · {fmtN(stats.high_risk_pending)} high-risk · {fmtPct(stats.approval_rate_pct)} approval rate (90d)
@@ -647,15 +647,14 @@ export default function AdminAttorneyApplications() {
               <input
                 value={searchQ}
                 onChange={e => setSearchQ(e.target.value)}
-                placeholder="Search name, email, bar #…"
+                placeholder="Search name, email, registration #…"
                 style={{ padding: '6px 12px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: SANS, width: 220, color: TEXT, background: SURFACE }}
               />
               <select value={credentialFilter} onChange={e => { setCredentialFilter(e.target.value); setPage(1) }} style={{ padding: '6px 8px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, background: SURFACE, color: TEXT }}>
-                <option value="">All credentials</option>
-                <option value="attorney">Attorney</option>
-                <option value="consultant">Consultant (RCIC/RICC)</option>
-                <option value="paralegal">Paralegal</option>
-                <option value="other">Other</option>
+                <option value="">All types</option>
+                <option value="individual">Individual</option>
+                <option value="firm">Firm</option>
+                <option value="student">Student</option>
               </select>
               <select value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value); setPage(1) }} style={{ padding: '6px 8px', fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 6, background: SURFACE, color: TEXT }}>
                 <option value="">All priorities</option>
@@ -697,7 +696,7 @@ export default function AdminAttorneyApplications() {
                   </Th>
                   <Th onClick={() => onSort('full_name')}>Applicant{sortArrow('full_name')}</Th>
                   <Th onClick={() => onSort('created_at')}>Submitted{sortArrow('created_at')}</Th>
-                  <Th>Credentials</Th>
+                  <Th>Type</Th>
                   <Th onClick={() => onSort('risk_score')}>Risk{sortArrow('risk_score')}</Th>
                   <Th onClick={() => onSort('priority')}>Priority{sortArrow('priority')}</Th>
                   <Th onClick={() => onSort('status')}>Status{sortArrow('status')}</Th>
@@ -728,7 +727,7 @@ export default function AdminAttorneyApplications() {
                       <div style={{ fontSize: 10, color: DIM, fontFamily: MONO }}>{fmtDate(a.created_at)}</div>
                     </Td>
                     <Td>
-                      <div style={{ fontSize: 12, color: TEXT }}>{a.credential_type || '—'}</div>
+                      <div style={{ fontSize: 12, color: TEXT }}>{a.consultant_type || '—'}</div>
                       <div style={{ fontSize: 11, color: MUTED }}>{a.jurisdictions || '—'}</div>
                     </Td>
                     <Td>

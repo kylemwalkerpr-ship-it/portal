@@ -10,6 +10,7 @@ import AdminOrders from './admin-orders'
 import AdminEscrow from './admin-escrow'
 import AdminDashboard from './admin-dashboard'
 import AdminAttorneyApplications from './admin-attorney-applications'
+import AdminConsultantManagement from './admin-consultant-management'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
 import { LanguageSelector } from '../language-selector'
@@ -456,7 +457,8 @@ function AdminApp({ onLogout }) {
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
-        <NavItem icon="⚖️" label="Attorney Applications" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
+        <NavItem icon="⚖️" label="Attorney Management" active={page === 'attorney-applications'} onClick={() => setPage('attorney-applications')} badge={pendingAttorneyApps.length || null} />
+        <NavItem icon="🧭" label="Consultant Management" active={page === 'consultant-applications'} onClick={() => setPage('consultant-applications')} />
         <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🗂️" label="Order Kanban" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/orders'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/orders' }} />
         <NavItem icon="🎫" label="Support Tickets" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/tickets'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/tickets' }} />
@@ -2518,7 +2520,7 @@ function AdminApp({ onLogout }) {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Applications', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', 'attorney-applications': 'Attorney Management', 'consultant-applications': 'Consultant Management', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2537,6 +2539,7 @@ function AdminApp({ onLogout }) {
           {page === 'dashboard' && <AdminDashboard onNav={setPage} />}
           {page === 'users' && <Users />}
           {page === 'attorney-applications' && <AdminAttorneyApplications />}
+          {page === 'consultant-applications' && <AdminConsultantManagement />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'escrow' && <AdminEscrow />}

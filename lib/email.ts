@@ -64,6 +64,37 @@ export function attorneyDeclineEmail(fullName: string): { subject: string; html:
   }
 }
 
+export function consultantApprovalEmail(fullName: string): { subject: string; html: string } {
+  const greeting = fullName ? `Hello ${escapeHtml(fullName)},` : 'Hello,'
+  return {
+    subject: 'Your YouSafe consultant application is approved',
+    html: `
+<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111;">
+  <p>${greeting}</p>
+  <p>Your application to join the YouSafe consultant panel has been approved. You can now sign in, publish your profile, and start taking work:</p>
+  <p><a href="https://portal.yousafeconsultancy.com/dashboard">portal.yousafeconsultancy.com/dashboard</a></p>
+  <p>Welcome aboard.</p>
+  <p>— YouSafe Consultancy</p>
+</body></html>`.trim(),
+  }
+}
+
+export function consultantDeclineEmail(fullName: string): { subject: string; html: string } {
+  const greeting = fullName ? `Hello ${escapeHtml(fullName)},` : 'Hello,'
+  return {
+    subject: 'Update on your YouSafe consultant application',
+    html: `
+<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111;">
+  <p>${greeting}</p>
+  <p>Thank you for applying to join the YouSafe consultant panel. After review, we are unable to accept your application at this time.</p>
+  <p>If you believe this is in error or would like to discuss, contact <a href="mailto:support@yousafeconsultancy.com">support@yousafeconsultancy.com</a>.</p>
+  <p>— YouSafe Consultancy</p>
+</body></html>`.trim(),
+  }
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
