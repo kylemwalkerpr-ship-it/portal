@@ -328,19 +328,24 @@ export function OfferPaymentModal({ offerId, open, onClose, onPaid }: OfferPayme
                 {payMethod === 'wallet' && <span style={{ color: NAVY, fontWeight: 700 }}>✓</span>}
               </button>
 
-              {/* Saved card option */}
+              {/* Saved card option.
+                  IMPORTANT: do NOT use the disabled attribute when savedCards
+                  is empty. The inner "add one from billing" link span needs to
+                  receive click events; browsers silently swallow pointer events
+                  on every descendant of a `disabled` button. Use aria-disabled
+                  for assistive tech + the onClick guard for selection. */}
               <button
                 type="button"
                 role="radio"
                 aria-checked={payMethod === 'saved_card'}
+                aria-disabled={savedCards.length === 0}
                 onClick={() => savedCards.length > 0 && setPayMethod('saved_card')}
-                disabled={savedCards.length === 0}
                 style={{
                   width: '100%', textAlign: 'left', padding: '14px', borderRadius: 12,
                   border: `2px solid ${payMethod === 'saved_card' ? NAVY : BORDER}`,
                   background: payMethod === 'saved_card' ? `${NAVY}10` : SURFACE2,
-                  cursor: savedCards.length > 0 ? 'pointer' : 'not-allowed',
-                  opacity: savedCards.length > 0 ? 1 : 0.55,
+                  cursor: savedCards.length > 0 ? 'pointer' : 'default',
+                  opacity: savedCards.length > 0 ? 1 : 0.7,
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   fontFamily: SANS, fontSize: 14, color: TEXT,
                 }}
