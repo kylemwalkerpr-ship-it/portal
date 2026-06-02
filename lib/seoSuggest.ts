@@ -4,7 +4,9 @@
 // Keep the prompt + post-processing here so both routes stay in lockstep.
 
 import { getChatProvider } from './chatProvider'
-import { buildSeoResearch, serializeResearch, type SeoResearch } from './seoResearch'
+import { buildSeoResearchAsync, serializeResearch, type SeoResearch } from './seoResearch'
+import { getCategoryById, getCategoryBySubcategoryId, getSubcategoryById } from './categories'
+import { getStrategyDirectivesBlock } from './seoKnowledgeBase'
 
 export type { SeoResearch, KeywordSignal } from './seoResearch'
 
@@ -82,7 +84,7 @@ function isConsultant(ctx: SuggestContext): boolean {
   return ctx.role === 'consultant'
 }
 
-function buildBaseContext(ctx: SuggestContext): string {
+function buildBaseContext(ctx: SuggestContext, field?: SuggestField): string {
   const title = String(ctx.title || '')
   const category = String(ctx.category || '')
   const subcategory = String(ctx.subcategory || '')
@@ -90,6 +92,32 @@ function buildBaseContext(ctx: SuggestContext): string {
   const pitch = String(ctx.pitch || ctx.tagline || '')
   const description = String(ctx.description || '')
   const consultant = isConsultant(ctx)
+
+  // Resolve the taxonomy node the seller picked so the prompt carries
+  // a real category brief — name, scope, curated keyword chips — not
+  // just an opaque slug. This is what keeps the AI draft coherent
+  // across title, pitch, tags, SEO meta, FAQ, and long description.
+  const subNode = subcategory
+    ? (getSubcategoryById(category, subcategory) ?? (() => {
+        const parent = getCategoryBySubcategoryId(subcategory)
+        return parent ? getSubcategoryById(parent.id, subcategory) : undefined
+      })())
+    : undefined
+  const catNode = getCategoryById(category)
+    ?? (subNode ? getCategoryBySubcategoryId(subcategory) : undefined)
+  const anchorKeywords = subNode?.keywords?.length
+    ? subNode.keywords
+    : catNode
+      ? Array.from(new Set(catNode.subcategories.flatMap((s) => s.keywords))).slice(0, 12)
+      : []
+  const categoryBrief = (() => {
+    if (!catNode && !subNode) return ''
+    const lines: string[] = []
+    if (catNode) lines.push(`- Category: ${catNode.name} — ${catNode.description}`)
+    if (subNode) lines.push(`- Subcategory: ${subNode.name} — ${subNode.description}`)
+    if (anchorKeywords.length) lines.push(`- Anchor keywords (use only these — do not invent): ${anchorKeywords.join(', ')}`)
+    return ['### Category brief (taxonomy scope)', ...lines].join('\n')
+  })()
   // Surface the seller's whole gig surface — tags, FAQ snapshot, and tier
   // pricing/delivery — so the model has every CTR signal it needs. Tier
   // pricing in particular drives "from $X · Y-day delivery" snippets that
@@ -110,23 +138,88 @@ function buildBaseContext(ctx: SuggestContext): string {
       return [label, price, days, revs].filter(Boolean).join(' · ')
     })
     .join(' | ')
+  // Primary tier = the cheapest active tier. Its price + delivery becomes
+  // the locked "from $X · Yd" anchor every field has to respect — without
+  // this, the SEO description might quote one price, the FAQ another, and
+  // the long description a third, breaking the listing's coherence.
+  const primaryTier = activeTiers.slice().sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0]
+  const primaryAnchor = primaryTier
+    ? `from $${((primaryTier.price as number) / 100).toFixed(0)}${typeof primaryTier.delivery_days === 'number' && primaryTier.delivery_days > 0 ? ` · ${primaryTier.delivery_days}-day delivery` : ''}`
+    : ''
+
+  // === GIG SPINE ===
+  // Locked identity that holds across every field draft in this listing.
+  // The LLM must treat all fields as ONE coherent service description —
+  // not independent prompts. Spine first, drafted-already second,
+  // taxonomy brief third — that order is deliberate: identity → memory
+  // → scope. Same order every call, so the model anchors the same way
+  // whether the seller is drafting field 1 or field 9.
+  const spineLines: string[] = [
+    `- Role: ${consultant ? 'Non-legal consultant (professional-services marketplace — Fiverr-style)' : 'Licensed attorney (legal-services marketplace — Fiverr-style)'}`,
+  ]
+  if (catNode) spineLines.push(`- Service line: ${catNode.name}${subNode ? ` → ${subNode.name}` : ''}`)
+  if (jurisdiction) {
+    spineLines.push(consultant
+      ? `- Country / region served: ${jurisdiction.toUpperCase()} (no legal-system anchors)`
+      : `- Jurisdiction: ${jurisdiction.toUpperCase()}`)
+  }
+  if (anchorKeywords.length) {
+    spineLines.push(`- Locked vocabulary (use these; do NOT introduce out-of-scope terms): ${anchorKeywords.join(', ')}`)
+  }
+  if (primaryAnchor) spineLines.push(`- Locked pricing anchor (must be consistent across every field): ${primaryAnchor}`)
+  spineLines.push('- Voice: one consultant, one service, one buyer — write as if every field is a paragraph of the same sales page. Do NOT introduce a different audience, deliverable, jurisdiction, price, or angle than what already appears in this spine or the already-drafted fields below.')
+
+  // === ALREADY DRAFTED ===
+  // What the seller already has in the form. The model must REINFORCE
+  // these, not contradict them — same voice, same claims, same buyer.
+  // Empty lines are suppressed so the model isn't told a field "exists"
+  // when it doesn't, which would invite hallucinated reinforcement.
+  const draftedLines: string[] = []
+  if (title) draftedLines.push(`- Title: ${title}`)
+  if (pitch) draftedLines.push(`- Pitch / tagline: ${pitch}`)
+  if (tags.length) draftedLines.push(`- Tags: ${tags.join(', ')}`)
+  if (tierSummary) draftedLines.push(`- Pricing tiers: ${tierSummary}`)
+  if (ctx.seo_title) draftedLines.push(`- SEO title: ${ctx.seo_title}`)
+  if (ctx.seo_description) draftedLines.push(`- SEO description: ${ctx.seo_description}`)
+  if (faq.length) draftedLines.push(`- FAQ topics: ${faq.slice(0, 5).map(f => f.question).join(' | ')}`)
+  if (description) draftedLines.push(`- Long description excerpt: ${description.slice(0, 600)}`)
+  const alreadyDrafted = draftedLines.length
+    ? ['### Already drafted (reinforce — do NOT contradict)', ...draftedLines].join('\n')
+    : '### Already drafted\n- (nothing yet — your draft sets the spine; subsequent fields will be anchored to it)'
+
+  // === SITEWIDE SEO DIRECTIVES ===
+  // Distilled from /SEO strategies/SEO_STRATEGY_Q3_2026.md via
+  // lib/seoKnowledgeBase.ts. Surfaces the quarterly strategic
+  // keywords (cluster-aligned to the gig's category × jurisdiction),
+  // the banned-phrase list, the field-appropriate structural
+  // requirements (5-question test for descriptions, FAQ snippet
+  // rules, etc.), and the freshness directive. Injected on every
+  // call so the model self-censors and self-structures at generation
+  // time rather than relying on a post-hoc audit.
+  const strategyDirectives = (category && jurisdiction && field)
+    ? getStrategyDirectivesBlock({
+        field,
+        category,
+        subcategory,
+        jurisdiction,
+        role: consultant ? 'consultant' : 'attorney',
+      })
+    : ''
+
   return [
-    `Seller role: ${consultant ? 'Non-legal consultant (professional-services marketplace)' : 'Licensed attorney (legal-services marketplace)'}`,
-    `Service title: ${title || '(none yet)'}`,
-    category ? `Category: ${category}${subcategory ? ` / ${subcategory}` : ''}` : '',
-    jurisdiction
-      ? (consultant ? `Country / region served: ${jurisdiction.toUpperCase()}` : `Jurisdiction: ${jurisdiction.toUpperCase()}`)
-      : '',
-    pitch ? `Existing pitch: ${pitch}` : '',
-    tags.length ? `Existing tags: ${tags.join(', ')}` : '',
-    tierSummary ? `Pricing tiers: ${tierSummary}` : '',
-    faq.length ? `Existing FAQ topics: ${faq.slice(0, 5).map(f => f.question).join(' | ')}` : '',
-    description ? `Existing long description: ${description.slice(0, 600)}` : '',
+    '### Gig spine (locked across ALL fields)',
+    ...spineLines,
+    '',
+    alreadyDrafted,
+    '',
+    categoryBrief,
+    categoryBrief && strategyDirectives ? '' : '',
+    strategyDirectives,
   ].filter(Boolean).join('\n')
 }
 
 function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
-  const baseContext = buildBaseContext(ctx)
+  const baseContext = buildBaseContext(ctx, field)
   const consultant = isConsultant(ctx)
   // Role-aware vocabulary anchors used across multiple field prompts.
   const marketplaceLabel = consultant ? 'Fiverr-style professional-services marketplace' : 'Fiverr-style legal-services marketplace'
@@ -417,6 +510,7 @@ function buildSystemPrompt(role: SuggestRole): string {
       ? 'You are an SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for verified consultants, not licensed legal practitioners.'
       : 'You are an SEO copywriter for a legal-services marketplace (similar to Fiverr).',
     'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',
+    'COHERENCE: You are NOT drafting a standalone field. Every call you receive is ONE field of a multi-field gig listing (title, pitch, tags, SEO title, SEO description, long description, tier features, FAQ). The user message will include a "Gig spine" block (locked identity: role, service line, jurisdiction, vocabulary, pricing anchor) and an "Already drafted" block (what the seller has filled so far). Treat the gig as one continuous service description — your draft must reinforce, not contradict, the spine and the already-drafted fields. Do not introduce a new buyer, a new deliverable, a new jurisdiction, a new price, or a new angle.',
     'You produce concise, professional, conversion-focused copy that complies with the field constraints exactly.',
     'You never invent credentials, case outcomes, prices, or guarantees that were not provided in the context.',
     consultant
@@ -435,6 +529,7 @@ function buildSystemPrompt(role: SuggestRole): string {
 // the model has the words, the rules of engagement, then the spec.
 const SEO_PLAYBOOK = [
   '## SEO craft rules — apply to every draft',
+  '0. Coherence with the spine and already-drafted fields is mandatory. Before you write, mentally scan the "Gig spine" and "Already drafted" blocks above. The buyer, the deliverable, the jurisdiction, the price anchor, and the voice MUST match. If a tier price ($X) is given, your prose may not quote a different price. If the title names a specific document or form, your draft must reference the same one. If the spine sets a country, do not switch to a different country. Reinforce, do not riff.',
   '1. Primary keyword = the first entry in the priority list above. Use it verbatim where it fits; use a close variant elsewhere. Place it in the first 60 characters of any prose field.',
   '2. Match search intent, not seller phrasing. Buyers type "draft I-589 asylum application", not "I will help you draft". For seo_title, description, and FAQ questions, lead with the buyer\'s phrasing — the public title field is the only place "I will…" belongs.',
   '3. Jurisdiction modifier is non-negotiable. If the brief lists a jurisdiction, the abbreviation OR full name appears in: seo_title, seo_description, opening paragraph of description, and ≥2 FAQ entries.',
@@ -489,7 +584,11 @@ export async function draftField(
   // hallucinated keywords can sneak in this path. Role is passed through
   // so the research layer can pick role-appropriate intent modifiers
   // (attorney/lawyer for legal gigs; specialist/advisor/coach for consultants).
-  const research = buildSeoResearch({
+  // Async variant queries Google Search Console for live keyword
+  // signals (28-day impressions for this category × jurisdiction).
+  // When GSC creds aren't on the workspace it returns the same shape
+  // the sync builder produces — every caller stays safe.
+  const research = await buildSeoResearchAsync({
     role,
     title: context.title,
     pitch: context.pitch,
@@ -498,6 +597,7 @@ export async function draftField(
     seo_title: context.seo_title,
     seo_description: context.seo_description,
     category: context.category,
+    subcategory: context.subcategory,
     jurisdiction: context.jurisdiction,
     tags: context.tags,
   })

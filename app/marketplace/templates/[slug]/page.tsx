@@ -154,6 +154,14 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
         </div>
         <Link
           href={`/marketplace/cart?add=${pack.slug}`}
+          // rel=nofollow stops crawlers from discovering the
+          // /cart?add=<slug> URL. Cart actions are correctly noindex'd
+          // server-side (auth-walled, no SEO value), but Ahrefs was
+          // following the link from every template page and flagging
+          // 16 cart URLs as "noindex-page" — telling crawlers to skip
+          // the action link removes them from the audit entirely
+          // without losing buyer-side functionality.
+          rel="nofollow"
           style={{
             padding: '12px 28px',
             borderRadius: '8px',

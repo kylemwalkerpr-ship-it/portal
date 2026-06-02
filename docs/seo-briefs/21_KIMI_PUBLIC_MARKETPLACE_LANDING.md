@@ -7,7 +7,7 @@
 
 ## 0. WHAT THIS DELIVERS
 
-Today `portal.yousafeconsultancy.com/marketplace` is fully auth-gated — every visitor sees an instant redirect to `/sign-in/student`. That is **zero SEO surface for the only commerce-bearing page in the estate**, and it turns the marketplace-CTA traffic we routed in brief 20 into a hard sign-in wall.
+Today `market.yousafeconsultancy.com` is fully auth-gated — every visitor sees an instant redirect to `/sign-in/student`. That is **zero SEO surface for the only commerce-bearing page in the estate**, and it turns the marketplace-CTA traffic we routed in brief 20 into a hard sign-in wall.
 
 This brief installs a public-facing **marketplace landing page** that:
 - Serves UNAUTHENTICATED visitors at `/marketplace` with a real, indexable, keyword-targeted SEO page. Existing authenticated `client` users still see the existing `MarketplacePage` exactly as before.
@@ -111,7 +111,7 @@ The portal sitemap is currently `[]` (brief 12 — "no indexable URLs"). That's 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: 'https://portal.yousafeconsultancy.com/marketplace/',
+      url: 'https://market.yousafeconsultancy.com/',
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.8,
@@ -149,7 +149,7 @@ Update the comment block too: *"Includes portal because the marketplace landing 
 - `<PublicMarketplaceLanding>` is server-only. No `'use client'`.
 - H1 count on the rendered landing = 1. H2 count ≥ 6.
 - Every internal CTA href contains `source=marketing` AND `return_to=/marketplace`.
-- Sitemap returns exactly one URL: `https://portal.yousafeconsultancy.com/marketplace/`.
+- Sitemap returns exactly one URL: `https://market.yousafeconsultancy.com/`.
 - Apex sitemap-index now lists 6 sub-sitemaps (5 + portal).
 - House-style banned-word scan clean across all new prose.
 - Title ≤60 chars; meta-description 140–160 chars.
@@ -165,7 +165,7 @@ pnpm build >/dev/null 2>&1 && pnpm build >/dev/null 2>&1; echo "portal build: $?
 # Files present:
 test -f app/marketplace/PublicMarketplaceLanding.tsx && echo "landing component: ok"
 # Sitemap shows the one URL:
-grep -c "portal.yousafeconsultancy.com/marketplace" .next/server/app/sitemap.xml.body 2>/dev/null \
+grep -c "market.yousafeconsultancy.com" .next/server/app/sitemap.xml.body 2>/dev/null \
   || grep -c "/marketplace/" app/sitemap.ts
 
 # yousafe-consultancy

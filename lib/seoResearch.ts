@@ -22,17 +22,39 @@
 // SeoResearch shape produced here.
 
 import { getKeywordsForCategory } from './seoUtils'
+import { getCategoryById, getCategoryBySubcategoryId, getSubcategoryById } from './categories'
+import { getStrategicKeywordsForGig } from './seoKnowledgeBase'
+import { fetchGscKeywordSignals, type LiveKeywordSignal } from './gscKeywordSignals'
 
 export type Jurisdiction = 'us' | 'uk' | 'ca' | ''
 
-// Jurisdiction-specific high-intent terms. These are the queries
-// buyers actually type when they know which country they need help
-// in — sellers MUST surface for at least one in the title/seo_title
-// or they're invisible to the most valuable searches in that market.
-const JURISDICTION_KEYWORDS: Record<Exclude<Jurisdiction, ''>, string[]> = {
+// Jurisdiction-specific high-intent terms — ROLE-SPLIT.
+//
+// Attorney briefs surface the legal-system anchors buyers actually type
+// when they need licensed practice (USCIS / Home Office / IRCC + form
+// codes). Consultant briefs MUST NOT surface those — using "USCIS" or
+// "I-485" in a non-legal consultant gig is both legally risky and SEO-
+// dilutive (it drowns out the consultant's actual category vocabulary).
+// Consultants instead get plain country tags that keep the gig
+// discoverable on country browse without implying legal practice.
+//
+// This was the silent bug behind "AI suggests legal doc-prep keywords
+// for consultant gigs": the immigration-legal jurisdiction list was
+// sorted first in the priority ranking, so it crowded out the
+// subcategory-specific terms (university admissions, SOPs, resumes,
+// settlement, etc.) regardless of which category the consultant picked.
+const JURISDICTION_KEYWORDS_ATTORNEY: Record<Exclude<Jurisdiction, ''>, string[]> = {
   us: ['USCIS', 'green card', 'I-130', 'I-485', 'I-765', 'H-1B', 'F-1 visa', 'OPT', 'naturalization', 'EAD'],
   uk: ['Home Office', 'ILR', 'spouse visa', 'skilled worker visa', 'BRP', 'indefinite leave to remain', 'UKVI', 'Section 21', 'tenancy notice'],
   ca: ['IRCC', 'express entry', 'PR card', 'CRS score', 'study permit', 'PGWP', 'PNP', 'LMIA', 'work permit Canada'],
+}
+const JURISDICTION_KEYWORDS_CONSULTANT: Record<Exclude<Jurisdiction, ''>, string[]> = {
+  us: ['United States', 'US-based', 'US clients'],
+  uk: ['United Kingdom', 'UK-based', 'UK clients'],
+  ca: ['Canada', 'Canada-based', 'Canadian clients'],
+}
+function jurisdictionTermsForRole(role: ResearchRole, jx: Exclude<Jurisdiction, ''>): string[] {
+  return role === 'consultant' ? JURISDICTION_KEYWORDS_CONSULTANT[jx] : JURISDICTION_KEYWORDS_ATTORNEY[jx]
 }
 
 // Generic buyer-intent prefixes that work across categories. Sellers
@@ -57,7 +79,12 @@ export interface KeywordSignal {
   //   'missing'  — not present anywhere
   status: 'covered' | 'partial' | 'missing'
   // Where the term came from so the model can credit it accurately.
-  source: 'category' | 'jurisdiction' | 'intent'
+  //   'live'        — Google Search Console real impressions (highest signal)
+  //   'strategic'   — Q3 2026 strategy doc target keywords (SEO-team curated)
+  //   'category'    — taxonomy-anchored subcategory / category keywords
+  //   'jurisdiction'— country / legal-system anchor terms
+  //   'intent'      — generic buyer-intent modifiers (lowest signal)
+  source: 'live' | 'strategic' | 'category' | 'jurisdiction' | 'intent'
 }
 
 export interface SeoResearch {
@@ -83,6 +110,11 @@ interface ResearchInputs {
   seo_title?: string | null
   seo_description?: string | null
   category?: string | null
+  // Subcategory id (e.g. 'sop-writing', 'study-permits'). When provided,
+  // pulls the curated per-subcategory keyword list from lib/categories.ts
+  // as the highest-priority 'category' source — this is what keeps the
+  // AI draft anchored to whichever taxonomy node the seller picked.
+  subcategory?: string | null
   jurisdiction?: string | null
   tags?: string[] | null
   // Role drives intent-modifier selection + jurisdiction-vocabulary framing.
@@ -104,17 +136,63 @@ function statusFor(term: string, inputs: ResearchInputs): KeywordSignal['status'
   return 'missing'
 }
 
-export function buildSeoResearch(inputs: ResearchInputs): SeoResearch {
+export function buildSeoResearch(
+  inputs: ResearchInputs,
+  // Optional live signals from Google Search Console — when present,
+  // these outrank all static keyword sources because they reflect REAL
+  // buyer queries with REAL impressions on this site. Populated by
+  // buildSeoResearchAsync(); the sync entry point keeps this null for
+  // backward compat with deterministic callers (tests, batch scripts).
+  liveSignals?: LiveKeywordSignal[] | null,
+): SeoResearch {
   const category = String(inputs.category || '').trim().toLowerCase()
+  const subcategory = String(inputs.subcategory || '').trim().toLowerCase()
   const jx = (String(inputs.jurisdiction || '').trim().toLowerCase()) as Jurisdiction
   const isValidJx = jx === 'us' || jx === 'uk' || jx === 'ca'
 
   // Curated category bank — comes from the same source as the UI
   // chips, keeping the model and the visible chips in lockstep.
   const role: ResearchRole = inputs.role === 'consultant' ? 'consultant' : 'attorney'
-  const categoryTerms = getKeywordsForCategory(category)
-  const jxTerms = isValidJx ? JURISDICTION_KEYWORDS[jx] : []
+
+  // Taxonomy-anchored keywords (lib/categories.ts) take priority over the
+  // legacy substring-matched bank in seoUtils — they are the exact terms
+  // tied to the selected taxonomy node, so the AI draft stays coherent
+  // with the chip the seller actually picked.
+  const taxonomySub = subcategory
+    ? (getSubcategoryById(category, subcategory) ?? (() => {
+        const parent = getCategoryBySubcategoryId(subcategory)
+        return parent ? getSubcategoryById(parent.id, subcategory) : undefined
+      })())
+    : undefined
+  const taxonomyCat = getCategoryById(category)
+    ?? (taxonomySub ? getCategoryBySubcategoryId(subcategory) : undefined)
+
+  const subcategoryTerms = taxonomySub?.keywords ?? []
+  const taxonomyCategoryTerms = taxonomyCat
+    ? Array.from(new Set(taxonomyCat.subcategories.flatMap((s) => s.keywords))).slice(0, 12)
+    : []
+  // Fall back to the curated substring bank only when the taxonomy has
+  // no match (legacy free-text categories).
+  const fallbackCategoryTerms = (subcategoryTerms.length === 0 && taxonomyCategoryTerms.length === 0)
+    ? getKeywordsForCategory(category || subcategory)
+    : []
+  const categoryTerms = [...subcategoryTerms, ...taxonomyCategoryTerms, ...fallbackCategoryTerms]
+
+  const jxTerms = isValidJx ? jurisdictionTermsForRole(role, jx) : []
   const intentTerms = intentModifiersForRole(role)
+
+  // Strategic keywords from the Q3 2026 plan (lib/seoKnowledgeBase.ts).
+  // Cluster-aligned to the gig's category + jurisdiction. Empty when
+  // the gig sits outside any tracked cluster (e.g. settlement in US,
+  // which the strategy doc doesn't prioritize this quarter).
+  const strategicTerms = isValidJx && category
+    ? getStrategicKeywordsForGig({ category, subcategory, jurisdiction: jx, role }).map((kw) => kw.term)
+    : []
+
+  // Live GSC keywords — REAL buyer queries with REAL impressions in
+  // the last 28 days. Pre-filtered + ranked by the caller; we trust
+  // the order and place them at the top.
+  const liveTerms = (liveSignals ?? []).map((s) => s.term).filter(Boolean)
 
   // Build signals, deduped (lowercase), tagged with their source.
   const seen = new Set<string>()
@@ -125,16 +203,33 @@ export function buildSeoResearch(inputs: ResearchInputs): SeoResearch {
     seen.add(key)
     signals.push({ term, status: statusFor(term, inputs), source })
   }
-  // Order matters — jurisdiction first (highest converting), then
-  // category-specific, then generic intent modifiers as fillers.
-  for (const t of jxTerms) push(t, 'jurisdiction')
-  for (const t of categoryTerms) push(t, 'category')
+  // Push order = importance order. Live GSC always wins (impression
+  // truth). Then strategy-doc keywords (SEO-team curated quarterly
+  // targets). Then taxonomy category / jurisdiction depending on role,
+  // then generic intent modifiers as filler.
+  for (const t of liveTerms) push(t, 'live')
+  for (const t of strategicTerms) push(t, 'strategic')
+  if (role === 'consultant') {
+    for (const t of categoryTerms) push(t, 'category')
+    for (const t of jxTerms) push(t, 'jurisdiction')
+  } else {
+    for (const t of jxTerms) push(t, 'jurisdiction')
+    for (const t of categoryTerms) push(t, 'category')
+  }
   for (const t of intentTerms) push(t, 'intent')
 
   // Priority list = missing > partial > covered, then sort by source
-  // weight (jurisdiction first), then alphabetical for stability.
-  const sourceWeight = (s: KeywordSignal['source']) =>
-    s === 'jurisdiction' ? 0 : s === 'category' ? 1 : 2
+  // weight, then alphabetical for stability. Source weight is role-
+  // aware so the ranking matches the role's actual intent ladder.
+  // Live > strategic > role-specific (category/jurisdiction) > intent.
+  const sourceWeight = (s: KeywordSignal['source']) => {
+    if (s === 'live') return -2
+    if (s === 'strategic') return -1
+    if (role === 'consultant') {
+      return s === 'category' ? 0 : s === 'jurisdiction' ? 1 : 2
+    }
+    return s === 'jurisdiction' ? 0 : s === 'category' ? 1 : 2
+  }
   const statusWeight = (s: KeywordSignal['status']) =>
     s === 'missing' ? 0 : s === 'partial' ? 1 : 2
 
@@ -177,6 +272,21 @@ export function buildSeoResearch(inputs: ResearchInputs): SeoResearch {
   ]
 
   return { priorityKeywords, coveredKeywords, jurisdictionHint, rules }
+}
+
+// Async variant — tries Google Search Console for live keyword signals,
+// then delegates to the sync builder with those signals injected. GSC
+// is a progressive enhancement: when creds are missing or the call
+// fails, this returns the same result the sync builder would, so it's
+// always safe to call from the API route.
+export async function buildSeoResearchAsync(inputs: ResearchInputs): Promise<SeoResearch> {
+  const category = String(inputs.category || '').trim().toLowerCase()
+  const jx = (String(inputs.jurisdiction || '').trim().toLowerCase()) as Jurisdiction
+  let liveSignals: LiveKeywordSignal[] | null = null
+  if (category && (jx === 'us' || jx === 'uk' || jx === 'ca')) {
+    liveSignals = await fetchGscKeywordSignals({ category, jurisdiction: jx })
+  }
+  return buildSeoResearch(inputs, liveSignals)
 }
 
 // Compact serialization of the research brief for inclusion in the

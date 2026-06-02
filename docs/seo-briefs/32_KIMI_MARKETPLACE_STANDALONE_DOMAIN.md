@@ -172,7 +172,7 @@ Post-deploy (Claude runs):
 - `market.yousafeconsultancy.com/` → 200, renders the marketplace landing.
 - `market.yousafeconsultancy.com/gigs/<slug>`, `/providers/<id>`,
   `/categories`, `/templates`, `/cart` → 200.
-- `portal.yousafeconsultancy.com/marketplace` → 301 → `market.../`.
+- `market.yousafeconsultancy.com` → 301 → `market.../`.
 - Marketplace pages render for signed-in users (no "We hit a snag").
 - `/favicon.ico` → 200.
 

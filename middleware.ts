@@ -212,9 +212,22 @@ export default clerkMiddleware(
       if (pathname.startsWith('/api/') || pathname.startsWith('/_next/')) {
         // pass through
       } else if (pathname.startsWith('/marketplace')) {
-        // Canonicalise: /marketplace/xyz → /xyz on the market domain
+        // Internal Link emissions in the marketplace components carry
+        // the `/marketplace` prefix because that's the on-disk Next.js
+        // route. Previously this branch returned a 301 to the clean
+        // form (`/marketplace/categories/foo` → `/categories/foo`),
+        // which made Ahrefs flag every market page as "page-has-links
+        // to 3xx redirects" — buyers also paid a redirect-hop latency
+        // cost on every category click. We now rewrite (200) to the
+        // prefixed form internally instead. The page-level metadata
+        // already emits `alternates.canonical` pointing at the clean
+        // form, so Google still treats the clean URL as canonical and
+        // consolidates link equity there. External callers typing the
+        // prefixed URL by hand also get a 200 + canonical hint, same
+        // outcome without the 301 leak Ahrefs flagged.
         const cleanPath = pathname.slice('/marketplace'.length) || '/'
-        return NextResponse.redirect(new URL(cleanPath + search, req.url), { status: 301 })
+        const rewrite = new URL(`/marketplace${cleanPath}${search}`, req.url)
+        return withPathHeaders(NextResponse.rewrite(rewrite), cleanPath, search, lang)
       } else if (
         // Portal-only surfaces should never live on the market host. A Clerk
         // redirect, a stale link, or a typed URL otherwise lands on a rewrite

@@ -24,9 +24,9 @@ export const ESTATE_FOOTER_COLUMNS: FooterColumn[] = [
   {
     heading: 'Marketplace',
     links: [
-      { label: 'Browse the marketplace', href: 'https://portal.yousafeconsultancy.com/marketplace' },
-      { label: 'Find a consultant', href: 'https://portal.yousafeconsultancy.com/marketplace' },
-      { label: 'Find an attorney', href: 'https://portal.yousafeconsultancy.com/marketplace' },
+      { label: 'Browse the marketplace', href: 'https://market.yousafeconsultancy.com' },
+      { label: 'Find a consultant', href: 'https://market.yousafeconsultancy.com' },
+      { label: 'Find an attorney', href: 'https://market.yousafeconsultancy.com' },
       { label: 'Open the portal', href: 'https://portal.yousafeconsultancy.com/' },
       { label: 'For attorneys & consultants', href: 'https://legal.yousafeconsultancy.com/attorneys/' },
     ],

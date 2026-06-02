@@ -17,6 +17,14 @@ binding = "ASSETS"
 [vars]
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_live_Y2xlcmsucG9ydGFsLnlvdXNhZmVjb25zdWx0YW5jeS5jb20k"
 CLERK_AUTHORIZED_PARTIES = "https://portal.yousafeconsultancy.com,https://market.yousafeconsultancy.com"
+# Pin the clerk-js SDK to an exact patch so the browser loads it from
+# /npm/@clerk/clerk-js@6.12.1/... directly. Without this, Clerk falls
+# back to the major-version alias /npm/@clerk/clerk-js@6/... which
+# returns 307 → 6.12.1 and gets every page flagged in Ahrefs as
+# "page-has-redirected-JS" (~11.5k rows on the 2026-06-01 audit, ~71%
+# of total issue volume). Bump this when upgrading @clerk/nextjs; the
+# package.json lockfile is the source of truth for the right value.
+NEXT_PUBLIC_CLERK_JS_VERSION = "6.12.1"
 NEXT_PUBLIC_SUPABASE_URL = "https://krggzrxxnqfsbbklatxl.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyZ2d6cnh4bnFmc2Jia2xhdHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NDQyMzAsImV4cCI6MjA5MzEyMDIzMH0.AUNTc5D6aMnVC0orz-XA1W4ABkok_LWCWBjCaoAK4LE"
 # Payment provider abstraction (lib/payments). PAYMENT_PROVIDER selects the

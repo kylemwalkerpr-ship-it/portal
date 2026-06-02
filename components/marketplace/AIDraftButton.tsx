@@ -21,7 +21,7 @@ export interface FaqEntry { question: string; answer: string }
 interface KeywordSignal {
   term: string
   status: 'covered' | 'partial' | 'missing'
-  source: 'category' | 'jurisdiction' | 'intent'
+  source: 'live' | 'strategic' | 'category' | 'jurisdiction' | 'intent'
 }
 interface ResearchPayload {
   priorityKeywords: KeywordSignal[]

@@ -231,7 +231,7 @@ echo "=== public pages (expect all 200) ==="
 for p in / /categories /providers /providers/<some-existing-id> \
          /gigs/<some-existing-slug> /templates /cart; do
   code=$(curl -s -o /dev/null -w "%{http_code}" \
-    "https://portal.yousafeconsultancy.com/marketplace$p")
+    "https://market.yousafeconsultancy.com$p")
   echo "  $code  $p"
 done
 
