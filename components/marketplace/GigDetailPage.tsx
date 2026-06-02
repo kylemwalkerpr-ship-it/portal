@@ -364,9 +364,22 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
   }
 
   if (loading) {
+    // SSR pass renders this branch (loading=true on initial render),
+    // so the H1 here is what crawlers see. Derive a heading from the
+    // slug as a placeholder; once data arrives, this whole subtree is
+    // replaced by the real gig render which has its own visible <h1>.
+    // Single H1 per page is preserved either way — never two at once.
+    const placeholderWords = (slug || 'Service')
+      .split('-')
+      .filter(Boolean)
+      .map((w) => (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    const placeholderTitle = placeholderWords.join(' ') || 'Service'
     return (
       <div style={pageShell}>
         <main style={inner}>
+          <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>
+            {placeholderTitle}
+          </h1>
           <LoadingState label="Loading gig details..." />
         </main>
       </div>
