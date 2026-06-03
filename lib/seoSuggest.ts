@@ -7,6 +7,13 @@ import { getChatProvider } from './chatProvider'
 import { buildSeoResearchAsync, serializeResearch, type SeoResearch } from './seoResearch'
 import { getCategoryById, getCategoryBySubcategoryId, getSubcategoryById } from './categories'
 import { getStrategyDirectivesBlock } from './seoKnowledgeBase'
+import {
+  VOICE_PLAYBOOK,
+  KEYWORD_WEAVING_PLAYBOOK,
+  getBannedAiTellsBlock,
+  getFieldToneScaffold,
+  type FieldName,
+} from './seoVoice'
 
 export type { SeoResearch, KeywordSignal } from './seoResearch'
 
@@ -507,8 +514,9 @@ function buildSystemPrompt(role: SuggestRole): string {
   const consultant = role === 'consultant'
   return [
     consultant
-      ? 'You are an SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for verified consultants, not licensed legal practitioners.'
-      : 'You are an SEO copywriter for a legal-services marketplace (similar to Fiverr).',
+      ? 'You are a senior SEO copywriter for a professional-services marketplace (similar to Fiverr) covering academic, career, business, settlement, and mentorship consulting. You write for verified consultants, not licensed legal practitioners.'
+      : 'You are a senior SEO copywriter for a legal-services marketplace (similar to Fiverr).',
+    'WRITING IDENTITY: You write like a practitioner with 10+ years in the niche, not a generic AI. Concrete nouns, specific numbers, named entities (real schools, real document names, real form codes, real programs). Active voice. Varied sentence rhythm. Contractions where natural. Second-person bias when addressing the buyer. You read as a person, not a thesaurus parade.',
     'You are SEO-led — every draft you produce is grounded in the SEO research brief the user message includes. You do NOT invent keywords, search-volume claims, or trend statements. You only work with the priority keywords and rules in the brief.',
     'COHERENCE: You are NOT drafting a standalone field. Every call you receive is ONE field of a multi-field gig listing (title, pitch, tags, SEO title, SEO description, long description, tier features, FAQ). The user message will include a "Gig spine" block (locked identity: role, service line, jurisdiction, vocabulary, pricing anchor) and an "Already drafted" block (what the seller has filled so far). Treat the gig as one continuous service description — your draft must reinforce, not contradict, the spine and the already-drafted fields. Do not introduce a new buyer, a new deliverable, a new jurisdiction, a new price, or a new angle.',
     'You produce concise, professional, conversion-focused copy that complies with the field constraints exactly.',
@@ -602,10 +610,29 @@ export async function draftField(
     tags: context.tags,
   })
   const researchBlock = serializeResearch(research)
+  // Voice + craft layer: HOW the model writes. Four blocks injected
+  // between the SEO research (what keywords) and the field task (what
+  // shape). Order is intentional:
+  //   - SEO_PLAYBOOK: keyword discipline (placement, density, intent)
+  //   - VOICE_PLAYBOOK: sentence rhythm, active voice, show-don't-tell
+  //   - KEYWORD_WEAVING_PLAYBOOK: senior-SEO-engineer integration rules
+  //   - BANNED_AI_TELLS: hard exclude list of the obvious AI defaults
+  //   - FIELD_TONE_SCAFFOLD: per-field register + worked example
+  // Each layer constrains a different axis; together they give the
+  // model the same scaffolding a senior practitioner would apply.
+  const fieldToneScaffold = getFieldToneScaffold(field as FieldName, role)
   const userMessage = [
     researchBlock,
     '',
     SEO_PLAYBOOK,
+    '',
+    VOICE_PLAYBOOK,
+    '',
+    KEYWORD_WEAVING_PLAYBOOK,
+    '',
+    getBannedAiTellsBlock(),
+    '',
+    fieldToneScaffold,
     '',
     `## Style cue for this draft\nFor this specific draft, ${styleCue}.`,
     '',
