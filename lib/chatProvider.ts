@@ -12,16 +12,28 @@
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string }
 
+export interface ChatReplyOptions {
+  // Per-call output ceiling. Defaults to 600 (covers titles, pitches,
+  // SEO meta, tier features, tier descriptions, requirements, tags).
+  // FAQ + long-form description need 1500-2000 because the prompts
+  // ask for 8-10 Q+A pairs / 500-700 word prose and 600 tokens chops
+  // them off mid-output. Callers know their per-field budget; this
+  // option threads it through without bloating defaults.
+  maxOutputTokens?: number
+}
+
 export interface ChatProvider {
   name: string
-  reply: (system: string, history: ChatTurn[]) => Promise<string>
+  reply: (system: string, history: ChatTurn[], options?: ChatReplyOptions) => Promise<string>
 }
+
+const DEFAULT_MAX_TOKENS = 600
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const GEMINI_MODEL = 'gemini-2.5-flash'
 
 function buildGroq(apiKey: string): ChatProvider {
-  const callOnce = async (system: string, history: ChatTurn[]) => {
+  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -31,7 +43,7 @@ function buildGroq(apiKey: string): ChatProvider {
         body: JSON.stringify({
           model: GROQ_MODEL,
           temperature: 0.4,
-          max_tokens: 600,
+          max_tokens: options?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
           messages: [
             { role: 'system', content: system },
             ...history.map(t => ({ role: t.role, content: t.content })),
@@ -54,12 +66,12 @@ function buildGroq(apiKey: string): ChatProvider {
     name: 'groq',
     // Wrap in withRetry so transient 429 rate-limits get a 1.5s
     // backoff retry before the chain falls through to Gemini.
-    reply: (system, history) => withRetry('groq', () => callOnce(system, history)),
+    reply: (system, history, options) => withRetry('groq', () => callOnce(system, history, options)),
   }
 }
 
 function buildGemini(apiKey: string): ChatProvider {
-  const callOnce = async (system: string, history: ChatTurn[]) => {
+  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
     // Send key in the x-goog-api-key header instead of the query
     // string. This is Google's recommended placement (avoids the
     // key appearing in proxy/edge access logs) AND sidesteps any
@@ -81,7 +93,7 @@ function buildGemini(apiKey: string): ChatProvider {
         contents,
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 600,
+          maxOutputTokens: options?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
         },
       }),
     })
@@ -108,7 +120,7 @@ function buildGemini(apiKey: string): ChatProvider {
     // UNAVAILABLE status) gets a 1.5s backoff retry before the chain
     // falls through to Groq. Google's own docs say to retry on
     // UNAVAILABLE — this implements that recommendation.
-    reply: (system, history) => withRetry('gemini', () => callOnce(system, history)),
+    reply: (system, history, options) => withRetry('gemini', () => callOnce(system, history, options)),
   }
 }
 
@@ -147,10 +159,10 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
 function chain(primary: ChatProvider, fallback: ChatProvider): ChatProvider {
   return {
     name: `${primary.name}+${fallback.name}`,
-    async reply(system, history) {
+    async reply(system, history, options) {
       let primaryErr: Error | null = null
       try {
-        return await primary.reply(system, history)
+        return await primary.reply(system, history, options)
       } catch (e) {
         primaryErr = e instanceof Error ? e : new Error(String(e))
         const msg = primaryErr.message
@@ -164,7 +176,7 @@ function chain(primary: ChatProvider, fallback: ChatProvider): ChatProvider {
         console.warn(`[chatProvider] ${primary.name} failed (${msg.slice(0, 160)}); falling back to ${fallback.name}`)
       }
       try {
-        return await fallback.reply(system, history)
+        return await fallback.reply(system, history, options)
       } catch (e) {
         const fallbackMsg = e instanceof Error ? e.message : String(e)
         const primaryMsg = primaryErr ? primaryErr.message : '(no primary error)'

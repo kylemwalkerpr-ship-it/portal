@@ -823,9 +823,37 @@ export async function draftField(
     previousBlock,
   ].filter(Boolean).join('\n')
 
+  // Per-field output budget. Default (600 tokens, ~450 words) covers
+  // titles, pitches, SEO meta, tier features, tier descriptions,
+  // requirements, and tags — every field that targets short or list
+  // output. FAQ asks for 8-10 Q+A pairs with 2-4 sentence answers
+  // where the first sentence is 40-60 words; that's 800-1500 tokens
+  // of output. Long-form description targets 500-700 words ≈ 650-900
+  // tokens. Both hit the prior 600-token ceiling and got chopped off
+  // mid-output — which is why "Draft FAQ" sometimes shipped only 1
+  // question instead of the requested 8-10.
+  const FIELD_OUTPUT_BUDGET: Record<SuggestField, number> = {
+    title: 600,
+    seo_title: 600,
+    seo_description: 600,
+    pitch: 600,
+    tagline: 600,
+    description: 2000,
+    tags: 600,
+    requirements: 800,
+    faq: 2200,
+    tier_features: 600,
+    tier_description: 600,
+  }
+  const maxOutputTokens = FIELD_OUTPUT_BUDGET[field] ?? 600
+
   let raw: string
   try {
-    raw = await provider.reply(buildSystemPrompt(role), [{ role: 'user', content: userMessage }])
+    raw = await provider.reply(
+      buildSystemPrompt(role),
+      [{ role: 'user', content: userMessage }],
+      { maxOutputTokens },
+    )
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { ok: false, status: 502, message: `AI suggestion failed: ${msg}` }
