@@ -744,9 +744,9 @@ const STUDENT_CARDS = [
   {
     accent: '#A4243B',
     eyebrow: 'Choose well',
-    title: 'Compare attorneys side by side.',
-    body: 'Browse the panel by jurisdiction and specialty. You can engage multiple attorneys on one inquiry and pick the best offer.',
-    cta: 'Find an attorney →',
+    title: 'Compare specialists side by side.',
+    body: 'Browse consultants and attorneys by jurisdiction, subject, and specialty. Engage multiple on one inquiry and pick the best offer.',
+    cta: 'Find your specialist →',
     onClick: () => window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'attorneys' } })),
   },
   {

@@ -279,10 +279,21 @@ export function getChatProvider(): ChatProvider | null {
   const groqKey = (process.env.GROQ_API_KEY || '').trim()
   const geminiKey = ((process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) || '').trim()
   const cfAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
-  const cfApiToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim()
+  // CLOUDFLARE_AI_TOKEN is a SCOPED token with only Workers AI : Read
+  // permission. CLOUDFLARE_API_TOKEN (the deploy token) does NOT have
+  // Workers AI scope and returns 401 "Authentication error" code 10000
+  // when used against the AI REST endpoint. We prefer the scoped token
+  // and fall back to the deploy token only if it's explicitly opted
+  // into via the scoped slot (so a misconfigured deploy token doesn't
+  // silently break the AI chain).
+  const cfAiToken = (
+    process.env.CLOUDFLARE_AI_TOKEN ||
+    process.env.CLOUDFLARE_WORKERS_AI_TOKEN ||
+    ''
+  ).trim()
   const groq = groqKey ? buildGroq(groqKey) : null
   const gemini = geminiKey ? buildGemini(geminiKey) : null
-  const cloudflare = cfAccountId && cfApiToken ? buildCloudflareAI(cfAccountId, cfApiToken) : null
+  const cloudflare = cfAccountId && cfAiToken ? buildCloudflareAI(cfAccountId, cfAiToken) : null
 
   // Build the chain from whichever providers are configured. Order:
   // Groq (fastest) → Gemini (largest free quota) → Cloudflare AI

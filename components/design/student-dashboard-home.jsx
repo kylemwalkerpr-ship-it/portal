@@ -216,7 +216,7 @@ export default function StudentDashboardHome({ userName, onNavigate, onOpenOrder
               </div>
               <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 <Btn variant="primary" size="sm" onClick={() => onNavigate?.('services')}>Browse services</Btn>
-                <Btn variant="secondary" size="sm" onClick={() => onNavigate?.('attorneys')}>Find an attorney</Btn>
+                <Btn variant="secondary" size="sm" onClick={() => onNavigate?.('attorneys')}>Find Your Specialist</Btn>
               </div>
             </Card>
           )}
@@ -225,7 +225,7 @@ export default function StudentDashboardHome({ userName, onNavigate, onOpenOrder
           <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <SectionHeader eyebrow="Shortcuts" title="Quick actions" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-              <QuickActionTile icon="⚖️"  label="Find an attorney" sub="Browse the legal panel"     onClick={() => onNavigate?.('attorneys')} accent={PURPLE} />
+              <QuickActionTile icon="🎯"  label="Find Your Specialist" sub="Consultants + attorneys" onClick={() => onNavigate?.('attorneys')} accent={PURPLE} />
               <QuickActionTile icon="🛒"  label="Services"          sub="Catalogue and templates"   onClick={() => onNavigate?.('services')}  accent={CYAN} />
               <QuickActionTile icon="📥"  label="New inquiry"       sub="Describe your case"        onClick={() => onNavigate?.('inquiries')} accent={AMBER} />
               <QuickActionTile icon="📋"  label="Documents"         sub="Files shared with consultants" onClick={() => onNavigate?.('documents')} accent={NAVY} />

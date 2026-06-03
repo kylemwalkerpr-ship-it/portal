@@ -554,7 +554,7 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           '- Group similar items together (documents first, then deadlines/dates, then preferences/decisions).',
           '- Bullets read in the order a seller would actually ask for them in an intake conversation.',
           '',
-          'FORMAT: 5–9 short bullet items, each on its own line, each starting with "- " (hyphen + space).',
+          'FORMAT: STRICT bullet list. Minimum 4 bullets, maximum 9. EACH bullet on its own line, EACH starting with "- " (hyphen + space) — no other characters at the start of the line, no numbered lists, no asterisks, no Unicode bullets. Blank lines between bullets are fine; anything else gets stripped.',
           'EACH BULLET STRUCTURE:',
           '- Lead with the specific document/data point a seller can verify on arrival ("Your current SOP draft (any length)", "Form I-20 — both sides", "The school name and program code", "Your target submission date").',
           '- Add a brief clarifier in parentheses only when needed for disambiguation ("(front and back)", "(any length)", "(if any)", "(in PDF or Word)").',

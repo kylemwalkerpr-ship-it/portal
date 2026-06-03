@@ -18,7 +18,9 @@ export default function FindAttorney() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [query, setQuery] = React.useState('')
-  const [roleFilter, setRoleFilter] = React.useState('all') // 'all' | 'attorney' | 'consultant'
+  // Default tab: 'consultant' (most students browse non-legal services first;
+  // legal matters tend to be sought out explicitly). Two tabs only — no "All".
+  const [roleFilter, setRoleFilter] = React.useState('consultant') // 'consultant' | 'attorney'
   const [openProvider, setOpenProvider] = React.useState(null) // { id, role }
   const [intakeFor, setIntakeFor] = React.useState(null) // { id, name, role } when student opens intake
 
@@ -92,18 +94,23 @@ export default function FindAttorney() {
       <div style={{ marginBottom: '20px' }}>
         <div style={eyebrow}>Verified panel</div>
         <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: C.text, margin: '4px 0', letterSpacing: '-0.012em' }}>
-          Find a consultant or attorney.
+          Find Your Specialist.
         </h2>
         <p style={{ color: C.textMuted, fontSize: '14px', margin: 0, maxWidth: '640px' }}>
-          Verified panel of consultants, attorneys, solicitors, and Canadian lawyers. Filter by role
-          or browse all — pick someone whose jurisdiction, subject, or specialty matches your need.
+          Verified panel of consultants and licensed attorneys. Pick the tab that matches your need —
+          consultants for academic, career, business, and settlement guidance; attorneys for legal
+          and immigration matters.
         </p>
       </div>
 
-      {/* Role toggle — three-button segmented control */}
+      {/* Role tabs — two-tab segmented control. No "All" option per
+          product spec: students should explicitly choose whether they
+          need legal counsel (attorney) vs non-legal advisory
+          (consultant). Conflating the two on the same screen blurred
+          the licensure boundary. */}
       <div
         role="tablist"
-        aria-label="Filter providers by role"
+        aria-label="Choose specialist type"
         style={{
           display: 'inline-flex',
           padding: '4px',
@@ -115,9 +122,8 @@ export default function FindAttorney() {
         }}
       >
         {[
-          { key: 'all', label: 'All', count: counts.total },
-          { key: 'attorney', label: 'Attorneys', count: counts.attorneys },
           { key: 'consultant', label: 'Consultants', count: counts.consultants },
+          { key: 'attorney', label: 'Attorneys', count: counts.attorneys },
         ].map((opt) => {
           const active = roleFilter === opt.key
           return (

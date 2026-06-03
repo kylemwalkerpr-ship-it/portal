@@ -1594,7 +1594,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="🏬" label="Marketplace" active={typeof window !== 'undefined' && window.location.pathname === '/marketplace'} onClick={() => goToRoute('/marketplace')} />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Services & Templates" active={page === 'services'} onClick={() => setPage('services')} />
-        <NavItem icon="⚖️" label="Find an Attorney" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
+        <NavItem icon="🎯" label="Find Your Specialist" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
@@ -1722,7 +1722,7 @@ function StudentApp({ onLogout, userId, userName }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
           {[
-            { icon: '⚖️', label: 'Find an attorney', sub: 'Browse the legal panel', action: () => setPage('attorneys') },
+            { icon: '🎯', label: 'Find Your Specialist', sub: 'Consultants + attorneys panel', action: () => setPage('attorneys') },
             { icon: '🛒', label: 'Services & templates', sub: 'Catalogue and digital templates', action: () => setPage('services') },
             { icon: '🏬', label: 'Marketplace', sub: 'Browse all gigs & services', action: () => goToRoute('/marketplace') },
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
