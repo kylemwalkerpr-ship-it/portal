@@ -81,18 +81,33 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
 ]
 
 // Map a taxonomy category + jurisdiction to the relevant strategy
-// cluster(s). A consultant offering "Academic Writing → SOP Writing"
-// for the US is adjacent to the F-1/OPT cluster (their buyer is most
-// likely a prospective F-1 student), so we surface the F-1 month-1
-// keywords as supporting context — without forcing the consultant to
-// use legal-system terms (the role-aware jurisdiction split in
-// seoResearch.ts handles that part).
+// cluster(s). The mapping is ROLE-AWARE because the same category
+// means different things for attorneys vs consultants:
 //
-// The mapping is by (category top-level id) × (jurisdiction). When
-// either side is unknown, we return no clusters and the strategy
-// signals collapse to an empty list — the prompt is still grounded by
-// taxonomy keywords and the playbook rules.
-const CATEGORY_TO_CLUSTERS: Record<string, Partial<Record<Exclude<Jurisdiction, ''>, Cluster[]>>> = {
+//   ATTORNEY: a "legal" or "immigration" gig genuinely sells the
+//   policy outcome the strategy cluster targets. Broad mapping is
+//   correct — an attorney offering education-category services for
+//   the US is doing student-visa work, which is the F-1/OPT cluster.
+//
+//   CONSULTANT: an "academic-writing" or "education" gig is selling
+//   SOPs, essays, admissions support — NOT immigration policy
+//   guidance. Surfacing the F-1/OPT cluster's policy keywords (STEM
+//   OPT employer monitoring, F-1 duration of status, SEVIS) on a
+//   non-legal academic-writing gig drowns out the actual subcategory
+//   vocabulary (SOP, personal statement, scholarship essay) and
+//   produces incoherent titles. So consultant mapping is tight:
+//   only categories where the buyer intent genuinely overlaps with
+//   the strategy cluster (settlement+UK tenancy is the one clean
+//   overlap; everything else gets none and falls back to taxonomy
+//   keywords alone).
+//
+// When the lookup returns no clusters, the strategy signals collapse
+// to an empty list and the prompt is still fully grounded by
+// taxonomy keywords + the playbook rules.
+
+type ClusterMap = Record<string, Partial<Record<Exclude<Jurisdiction, ''>, Cluster[]>>>
+
+const CATEGORY_TO_CLUSTERS_ATTORNEY: ClusterMap = {
   immigration:        { us: ['us-f1-opt', 'us-work', 'us-pr'], uk: ['uk-work'],     ca: ['canada-sp-pgwp', 'canada-pr'] },
   education:          { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
   'academic-writing': { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
@@ -102,6 +117,14 @@ const CATEGORY_TO_CLUSTERS: Record<string, Partial<Record<Exclude<Jurisdiction, 
   business:           { us: ['us-work'],                       uk: ['uk-work'],     ca: ['canada-pr'] },
   credentials:        { us: ['us-work'],                       uk: ['uk-work'],     ca: ['canada-pr'] },
   mentorship:         { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
+}
+
+const CATEGORY_TO_CLUSTERS_CONSULTANT: ClusterMap = {
+  // Only the categories where consultant buyer-intent genuinely
+  // overlaps with a strategy cluster. Settlement+UK = tenancy law,
+  // which the housing-help consultant directly serves. Everything
+  // else: no strategic keywords, let taxonomy lead.
+  settlement: { us: [], uk: ['uk-tenancy'], ca: [] },
 }
 
 export interface GetStrategicKeywordsOpts {
@@ -122,7 +145,8 @@ export function getStrategicKeywordsForGig(opts: GetStrategicKeywordsOpts): Stra
   const jx = (String(opts.jurisdiction || '').trim().toLowerCase()) as Exclude<Jurisdiction, ''>
   const cat = String(opts.category || '').trim().toLowerCase()
   if (jx !== 'us' && jx !== 'uk' && jx !== 'ca') return []
-  const clusters = CATEGORY_TO_CLUSTERS[cat]?.[jx] ?? []
+  const clusterMap = opts.role === 'consultant' ? CATEGORY_TO_CLUSTERS_CONSULTANT : CATEGORY_TO_CLUSTERS_ATTORNEY
+  const clusters = clusterMap[cat]?.[jx] ?? []
   if (clusters.length === 0) return []
   const clusterSet = new Set(clusters)
   const surfaceFilter = opts.role === 'consultant' ? new Set(['marketplace', 'either']) : new Set(['marketplace', 'canonical', 'either'])

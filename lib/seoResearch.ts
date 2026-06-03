@@ -221,14 +221,37 @@ export function buildSeoResearch(
   // Priority list = missing > partial > covered, then sort by source
   // weight, then alphabetical for stability. Source weight is role-
   // aware so the ranking matches the role's actual intent ladder.
-  // Live > strategic > role-specific (category/jurisdiction) > intent.
+  //
+  // Live always wins (real impression truth).
+  //
+  // For ATTORNEYS the ladder is:
+  //   live > strategic > jurisdiction > category > intent
+  // — strategic outranks jurisdiction because the Q3 plan keywords
+  // ARE policy-specific (USCIS forms, IRCC programs, Home Office
+  // updates) and that's the highest-converting query layer.
+  //
+  // For CONSULTANTS the ladder is:
+  //   live > category > strategic > jurisdiction > intent
+  // — category (subcategory keywords like SOP, scholarship essay,
+  // university admissions) wins because the gig isn't selling the
+  // legal-policy outcome the strategy doc is built around. Strategic
+  // is supporting context, not the lead. Without this swap the
+  // model leads with phrases like "STEM OPT employer monitoring
+  // site visit 2026" on an academic-writing gig — exactly the
+  // category-incoherence bug we already fixed once at the
+  // jurisdiction layer.
   const sourceWeight = (s: KeywordSignal['source']) => {
-    if (s === 'live') return -2
-    if (s === 'strategic') return -1
+    if (s === 'live') return -3
     if (role === 'consultant') {
-      return s === 'category' ? 0 : s === 'jurisdiction' ? 1 : 2
+      if (s === 'category') return -2
+      if (s === 'strategic') return -1
+      if (s === 'jurisdiction') return 0
+      return 1
     }
-    return s === 'jurisdiction' ? 0 : s === 'category' ? 1 : 2
+    if (s === 'strategic') return -2
+    if (s === 'jurisdiction') return -1
+    if (s === 'category') return 0
+    return 1
   }
   const statusWeight = (s: KeywordSignal['status']) =>
     s === 'missing' ? 0 : s === 'partial' ? 1 : 2
