@@ -32,6 +32,15 @@ export type Cluster =
   | 'canada-pr'    // Express Entry + family
   | 'us-pr'        // EB-2 NIW after OPT
   | 'compare'      // Cross-country comparison content
+  | 'academic-writing-essay'
+                   // Commercial-intent academic-writing keywords —
+                   // competitor-mapped (essaypro.com et al). Not in the
+                   // Q3 strategy doc because the canonical-content plan
+                   // is legal/immigration-focused; this cluster
+                   // augments it for the consultant marketplace surface
+                   // where academic-writing gigs need essay-service
+                   // commercial-intent vocabulary to rank against
+                   // established competitors.
 
 export interface StrategicKeyword {
   // The exact phrase to surface in priority lists. Verbatim from the
@@ -78,6 +87,39 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'EB-2 NIW green card STEM OPT students 2026',            cluster: 'us-pr',          intent: 'informational', surface: 'either',      month: 3 },
   { term: 'Canada study permit financial proof GIC vs bank statement 2026', cluster: 'canada-sp-pgwp', intent: 'commercial', surface: 'either', month: 3 },
   { term: 'F-1 visa interview questions Lagos Mumbai Nairobi London 2026', cluster: 'us-f1-opt', intent: 'informational', surface: 'canonical', month: 3 },
+  // --- Academic-writing-essay cluster ---
+  // Competitor-derived (essaypro.com and adjacent essay-service
+  // marketplaces). All commercial-intent, surface=marketplace, month
+  // tagged as 1 so they're always in scope regardless of the
+  // quarterly-month filter. Intentionally EXCLUDES academically-
+  // dishonest terms ("write my essay", "buy essay online", "cheap
+  // essay writing service") — Google's helpful-content updates
+  // penalize sites ranking for those, and YouSafe consultants
+  // deliver editing / coaching / review, not finished papers.
+  { term: 'personal statement help',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'college essay help',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'admissions essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay editing service',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay proofreading',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic editing service',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay review service',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'common app essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'supplemental essay help',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'scholarship essay help',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'sop writing service',                     cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'statement of purpose help',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'graduate school personal statement',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'med school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'law school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba essay help',                          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'thesis editing service',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'dissertation editing',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'research paper review',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic writing coach',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'admissions consultant',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'college application essay coach',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ivy league essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay structure help',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
 ]
 
 // Map a taxonomy category + jurisdiction to the relevant strategy
@@ -120,10 +162,35 @@ const CATEGORY_TO_CLUSTERS_ATTORNEY: ClusterMap = {
 }
 
 const CATEGORY_TO_CLUSTERS_CONSULTANT: ClusterMap = {
-  // Only the categories where consultant buyer-intent genuinely
-  // overlaps with a strategy cluster. Settlement+UK = tenancy law,
-  // which the housing-help consultant directly serves. Everything
-  // else: no strategic keywords, let taxonomy lead.
+  // Categories where consultant buyer-intent genuinely overlaps with
+  // a strategy cluster. The mapping is intentionally tighter than the
+  // attorney side because consultant gigs ARE NOT selling the
+  // policy outcomes the immigration clusters target.
+  //
+  // - academic-writing + education: the academic-writing-essay
+  //   cluster (competitor-mapped against essaypro.com and adjacent
+  //   essay-service marketplaces). Commercial-intent vocabulary the
+  //   consultant marketplace surface needs to compete in this niche.
+  //   Applies to ALL three jurisdictions since admissions essay
+  //   help, SOP writing, etc. are universal services.
+  // - settlement + UK: uk-tenancy housing-law cluster, which the
+  //   housing-help consultant directly serves.
+  // - everything else: no strategic keywords; taxonomy leads alone.
+  'academic-writing': {
+    us: ['academic-writing-essay'],
+    uk: ['academic-writing-essay'],
+    ca: ['academic-writing-essay'],
+  },
+  education: {
+    us: ['academic-writing-essay'],
+    uk: ['academic-writing-essay'],
+    ca: ['academic-writing-essay'],
+  },
+  mentorship: {
+    us: ['academic-writing-essay'],
+    uk: ['academic-writing-essay'],
+    ca: ['academic-writing-essay'],
+  },
   settlement: { us: [], uk: ['uk-tenancy'], ca: [] },
 }
 
@@ -144,20 +211,67 @@ export interface GetStrategicKeywordsOpts {
 export function getStrategicKeywordsForGig(opts: GetStrategicKeywordsOpts): StrategicKeyword[] {
   const jx = (String(opts.jurisdiction || '').trim().toLowerCase()) as Exclude<Jurisdiction, ''>
   const cat = String(opts.category || '').trim().toLowerCase()
+  const sub = String(opts.subcategory || '').trim().toLowerCase()
   if (jx !== 'us' && jx !== 'uk' && jx !== 'ca') return []
   const clusterMap = opts.role === 'consultant' ? CATEGORY_TO_CLUSTERS_CONSULTANT : CATEGORY_TO_CLUSTERS_ATTORNEY
   const clusters = clusterMap[cat]?.[jx] ?? []
   if (clusters.length === 0) return []
   const clusterSet = new Set(clusters)
   const surfaceFilter = opts.role === 'consultant' ? new Set(['marketplace', 'either']) : new Set(['marketplace', 'canonical', 'either'])
+
+  // Subcategory-affinity boosting. When the seller picked a specific
+  // subcategory (e.g. sop-writing, scholarship-essays, application-
+  // essays), prefer strategic keywords whose term contains one of
+  // the subcategory's anchor tokens. Without this the slice(0, N) cap
+  // picks generic cluster keywords ("personal statement help" wins
+  // every time) and SOP-specific gigs miss the SOP-specific
+  // commercial-intent terms ("sop writing service", "statement of
+  // purpose help") that would actually compete for the seller's
+  // narrowest audience.
+  const subTokens = subcategoryAffinityTokens(sub)
+  const affinityScore = (term: string): number => {
+    if (!subTokens.length) return 0
+    const lower = term.toLowerCase()
+    let score = 0
+    for (const tok of subTokens) {
+      if (lower.includes(tok)) score -= 1 // lower = ranked earlier
+    }
+    return score
+  }
+
   return STRATEGIC_KEYWORDS
     .filter((kw) => clusterSet.has(kw.cluster))
     .filter((kw) => surfaceFilter.has(kw.surface))
     .filter((kw) => (opts.month ? kw.month === opts.month : true))
+    // Sort by affinity (subcategory-aligned first), then preserve
+    // original declaration order via stable sort.
+    .map((kw, i) => ({ kw, ord: i, aff: affinityScore(kw.term) }))
+    .sort((a, b) => a.aff - b.aff || a.ord - b.ord)
+    .map((x) => x.kw)
     // Cap at 6 so we don't crowd out taxonomy-anchored category terms.
     // Strategy keywords are *supporting* signals — the gig's own
     // subcategory keywords must still win the primary slot.
     .slice(0, 6)
+}
+
+// Tokens that, when present in a strategic keyword's term, signal
+// affinity for the seller's chosen subcategory. Hand-curated per
+// subcategory id from lib/categories.ts — kept compact so the
+// affinity boost is precise, not broad.
+function subcategoryAffinityTokens(subcategoryId: string): string[] {
+  switch (subcategoryId) {
+    case 'sop-writing':           return ['sop', 'statement of purpose', 'graduate school', 'study plan']
+    case 'scholarship-essays':    return ['scholarship', 'merit', 'funding']
+    case 'application-essays':    return ['college essay', 'common app', 'supplemental', 'admissions essay', 'personal statement']
+    case 'research-writing':      return ['research paper', 'thesis', 'dissertation', 'manuscript']
+    case 'proofreading-editing':  return ['editing', 'proofreading', 'review']
+    case 'university-admissions': return ['college essay', 'common app', 'admissions', 'personal statement', 'ivy']
+    case 'graduate-school':       return ['graduate', 'phd', 'mba', 'med school', 'law school', 'thesis']
+    case 'scholarships':          return ['scholarship', 'funding', 'merit']
+    case 'student-mentorship':    return ['admissions', 'coach', 'consultant']
+    case 'housing':               return ['tenancy', 'rent', 'housing', 'deposit', 'section 21']
+    default:                       return []
+  }
 }
 
 // Banned phrases — §6 of the strategy doc. If any of these appear in a
