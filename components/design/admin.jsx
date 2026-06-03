@@ -2,6 +2,7 @@
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import AdminFinancials from './admin-financials'
+import AdminWallets from './admin-wallets'
 import AdminGigsManager from './admin-gigs'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import AdminAnalyticsPro from './admin-analytics'
@@ -468,6 +469,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
+        <NavItem icon="👛" label="Wallets" active={page === 'wallets'} onClick={() => setPage('wallets')} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
@@ -2708,6 +2710,7 @@ function AdminApp({ onLogout }) {
           {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
+          {page === 'wallets' && <AdminWallets />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}
