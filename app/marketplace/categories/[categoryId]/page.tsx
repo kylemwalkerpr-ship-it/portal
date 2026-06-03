@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { CaseworksReadMoreRail } from '@/components/marketplace/CaseworksReadMoreRail'
 import { notFound } from 'next/navigation'
@@ -91,6 +92,22 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   }
   const caseworksItemList = getCaseworksItemListJsonLd(filterId)
 
+  // Sibling subcategories for the "Browse related" rail. When the
+  // current page is a top-level category, this lists all its
+  // subcategories (so the category page hands inlinks to children).
+  // When the current page IS a subcategory, this lists its siblings
+  // under the same parent (so the subcategory pages stop being
+  // orphans + start having real outlinks instead of just JSON-LD).
+  //
+  // 2026-06-02 audit caught 39 orphan + 32 no-outlinks rows because
+  // subcategory pages emitted only JSON-LD breadcrumbs (script tags)
+  // and a client-rendered GigDiscoveryPage that was empty for low-
+  // gig subcategories. Ahrefs counts HTML anchors, not JSON-LD —
+  // so an empty subcategory page emitted zero internal links.
+  const siblingSubcategories = subcategory
+    ? category.subcategories.filter((s) => s.id !== subcategory.id)
+    : category.subcategories
+
   return (
     <>
       <script
@@ -103,7 +120,77 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(caseworksItemList) }}
         />
       )}
+      {/* HTML breadcrumb — Ahrefs counts these anchors as internal
+          inlinks/outlinks. The JSON-LD breadcrumb above feeds the
+          rich-snippet rail; this nav feeds the link graph. */}
+      <nav
+        aria-label="Breadcrumb"
+        className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-4 text-sm"
+      >
+        <ol style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', listStyle: 'none', margin: 0, padding: 0 }}>
+          <li><Link href="/" style={{ color: 'inherit', textDecoration: 'none' }}>Marketplace</Link></li>
+          <li aria-hidden>/</li>
+          <li><Link href="/categories" style={{ color: 'inherit', textDecoration: 'underline' }}>Categories</Link></li>
+          {subcategory && (
+            <>
+              <li aria-hidden>/</li>
+              <li><Link href={`/categories/${category.id}`} style={{ color: 'inherit', textDecoration: 'underline' }}>{category.name}</Link></li>
+            </>
+          )}
+          <li aria-hidden>/</li>
+          <li aria-current="page" style={{ fontWeight: 600 }}>{displayName}</li>
+        </ol>
+      </nav>
       <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
+      {/* Sibling-subcategories rail — gives this page real outlinks
+          (HTML anchors, not JSON-LD) AND gives every sibling page a
+          fresh inlink from this page. Clears the orphan + no-
+          outlinks flags from the 2026-06-02 audit in one shot. */}
+      {siblingSubcategories.length > 0 && (
+        <section
+          aria-label={subcategory ? `Related ${category.name} services` : `${category.name} subcategories`}
+          className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 mt-12"
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>
+            {subcategory ? `Related ${category.name} services` : `Browse ${category.name} subcategories`}
+          </h2>
+          <ul
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '10px',
+              listStyle: 'none',
+              padding: 0,
+              margin: 0,
+            }}
+          >
+            {siblingSubcategories.map((s) => (
+              <li key={s.id}>
+                <Link
+                  href={`/categories/${s.id}`}
+                  style={{
+                    display: 'block',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    background: 'rgba(0,0,0,0.02)',
+                    color: 'inherit',
+                    textDecoration: 'none',
+                    fontWeight: 500,
+                  }}
+                >
+                  {s.name}
+                  {s.description && (
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 400, opacity: 0.7, marginTop: '2px' }}>
+                      {s.description}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
         <CaseworksReadMoreRail categoryId={category.id} />
       </div>

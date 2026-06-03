@@ -110,6 +110,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             fetch on cold visits. */}
         <link rel="preconnect" href="https://clerk.portal.yousafeconsultancy.com" crossOrigin="anonymous" />
         {/* hreflang removed pending per-locale URL routes */}
+        {/* Stale-chunk handler. After a deploy, the build's hashed JS
+            chunks rotate but users + crawlers may hold cached HTML
+            referencing the OLD hashes. OpenNext serves 404 for chunks
+            not in the current build's asset manifest — Ahrefs flags
+            these as "page-has-broken-JS" (80+ pages on the last
+            audit) and users get a white-screen render. This handler
+            catches both the runtime ChunkLoadError and the script-
+            load failure event, then force-reloads ONCE per session
+            (10-second cooldown prevents reload loops on persistent
+            errors). The reload pulls the new HTML referencing the
+            current build's chunk hashes — same UX as a manual
+            Cmd-Shift-R after a deploy, but automatic. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var K='yousafe:chunk-reload';function r(){try{var t=Number(sessionStorage.getItem(K)||0);if(Date.now()-t<10000)return;sessionStorage.setItem(K,String(Date.now()));location.reload()}catch(e){location.reload()}}window.addEventListener('error',function(e){var t=e&&e.target;var isScript=t&&t.tagName==='SCRIPT'&&typeof t.src==='string'&&t.src.indexOf('/_next/static/chunks/')>-1;var isChunkErr=e&&(e.message&&(/Loading chunk/.test(e.message)||/ChunkLoadError/.test(e.message))||(e.error&&e.error.name==='ChunkLoadError'));if(isScript||isChunkErr)r()},true);window.addEventListener('unhandledrejection',function(e){var msg=e&&e.reason&&(e.reason.message||String(e.reason));if(msg&&(/Loading chunk/.test(msg)||/ChunkLoadError/.test(msg)))r()})})();`,
+          }}
+        />
       </head>
       {/* overflowX: 'clip' — `hidden` here turns body into a scroll container,
           which silently breaks position: sticky on the landing nav and every

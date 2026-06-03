@@ -62,8 +62,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const { data: gigs } = await db
       .from('gigs')
-      .select('slug, updated_at')
+      .select('slug, updated_at, provider_id, profiles!gigs_provider_id_fkey(id)')
       .eq('status', 'active')
+      .not('provider_id', 'is', null)
       // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
       // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
       // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
@@ -72,6 +73,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const gig of gigs ?? []) {
       if (!gig.slug) continue
+      // Provider join must resolve — the gig page filters by
+      // status='active' AND the provider profile must exist, so the
+      // sitemap mirrors that to prevent §5.5 violations (noindex
+      // pages in the sitemap). 3 inactive-provider gigs leaked into
+      // the 2026-06-02 audit because the original query didn't
+      // verify the provider join.
+      const provider = Array.isArray((gig as any).profiles) ? (gig as any).profiles[0] : (gig as any).profiles
+      if (!provider?.id) continue
       entries.push({
         url: `${base}${mp(`/marketplace/gigs/${gig.slug}`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : new Date(),
