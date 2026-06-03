@@ -41,6 +41,28 @@ export type Cluster =
                    // where academic-writing gigs need essay-service
                    // commercial-intent vocabulary to rank against
                    // established competitors.
+  | 'career-services'
+                   // Competitor-mapped: LinkedIn Premium, Resume.com,
+                   // TopResume, ResumeGenius, ZipJob, TopInterview,
+                   // MyPerfectResume, Career.io. Resume + LinkedIn +
+                   // cover-letter + interview-prep + job-search-coach
+                   // commercial-intent vocabulary.
+  | 'business-formation'
+                   // Competitor-mapped: LegalZoom, ZenBusiness,
+                   // Incfile (now Bizee), Northwest Registered Agent,
+                   // Rocket Lawyer, Stripe Atlas, Tailor Brands, Inc
+                   // Authority. LLC/S-corp/C-corp formation +
+                   // registered agent + EIN + compliance vocabulary.
+  | 'credential-evaluation'
+                   // Competitor-mapped: WES, ECE, IQAS, ICAS, ICES,
+                   // SpanTran, Josef Silny, Foreign Credits, AERC.
+                   // Foreign degree / transcript evaluation + license
+                   // recognition vocabulary.
+  | 'mentorship-coaching'
+                   // Competitor-mapped: MentorCruise, Pathrise,
+                   // Springboard, ADPList, Codementor, GrowthMentor.
+                   // 1-on-1 mentor / coding mentor / career coach
+                   // commercial-intent vocabulary.
 
 export interface StrategicKeyword {
   // The exact phrase to surface in priority lists. Verbatim from the
@@ -250,6 +272,238 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'esl personal statement help',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'study abroad application essay',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'visa interview essay prep',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // ===================================================================
+  // --- Career-services cluster ---
+  // LinkedIn Premium, Resume.com, TopResume, ResumeGenius, ZipJob,
+  // TopInterview, MyPerfectResume, Career.io, Find My Profession.
+  // All commercial intent, surface=marketplace, month=1.
+  // ===================================================================
+
+  // -- Resume writing (TopResume, ResumeGenius, ZipJob, MyPerfectResume) --
+  { term: 'professional resume writing service',     cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'resume writing service',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'executive resume writing',                cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ats resume optimization',                 cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ats friendly resume',                     cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'resume editing service',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'resume review service',                   cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'resume rewrite service',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'federal resume writing',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'tech resume writing',                     cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'engineering resume writing',              cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'finance resume writing',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'healthcare resume writing',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'sales resume writing',                    cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'cv writing service',                      cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic cv writing',                     cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'military to civilian resume',             cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'entry level resume writing',              cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'career change resume writing',            cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- LinkedIn (LinkedIn Premium, TopResume LinkedIn, Find My Profession) --
+  { term: 'linkedin profile optimization',           cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin profile writing service',        cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin headline writing',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin summary writing',                cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin profile makeover',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin all-star profile',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin seo optimization',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'linkedin recruiter optimization',         cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'personal branding linkedin',              cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'executive linkedin profile',              cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Cover letters (TopResume, ResumeGenius) --
+  { term: 'cover letter writing service',            cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'cover letter editing',                    cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'custom cover letter writing',             cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'cover letter coach',                      cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Interview prep (TopInterview, Pramp, IGotAnOffer) --
+  { term: 'interview coaching',                      cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mock interview practice',                 cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'behavioral interview prep',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'technical interview prep',                cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'case interview coaching',                 cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'consulting interview prep',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'finance interview prep',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'product manager interview prep',          cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'system design interview prep',            cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'coding interview prep',                   cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Job search / career coaching (Career.io, FindMyProfession) --
+  { term: 'job search strategy coach',               cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'career change coach',                     cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'executive career coach',                  cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'career transition coaching',              cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'career pivot coaching',                   cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'salary negotiation coach',                cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'job application coach',                   cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'networking coach',                        cluster: 'career-services', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // ===================================================================
+  // --- Business-formation cluster ---
+  // LegalZoom, ZenBusiness, Incfile/Bizee, Northwest Registered Agent,
+  // Rocket Lawyer, Stripe Atlas, Tailor Brands, Inc Authority,
+  // MyCorporation, FormSwift. All commercial intent, surface=
+  // marketplace, month=1.
+  // ===================================================================
+
+  // -- Entity formation (LegalZoom, ZenBusiness, Bizee, Northwest) --
+  { term: 'llc formation service',                   cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'llc formation help',                      cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'form an llc online',                      cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'single-member llc formation',             cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'multi-member llc formation',              cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'form a corporation online',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 's-corp formation',                        cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'c-corp formation',                        cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'nonprofit incorporation',                 cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'delaware llc formation',                  cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'wyoming llc formation',                   cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'nevada llc formation',                    cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'form a business online',                  cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Registered agent (Northwest, Bizee, LegalZoom) --
+  { term: 'registered agent service',                cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'virtual registered agent',                cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'commercial registered agent',             cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Compliance / EIN / filings (LegalZoom, Bizee) --
+  { term: 'ein application help',                    cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'federal tax id application',              cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business license application',            cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'dba filing service',                      cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'annual report filing',                    cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'boi report filing',                       cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'operating agreement drafting',            cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'corporate bylaws drafting',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'shareholder agreement drafting',          cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'llc operating agreement template',        cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Business setup peripherals (Tailor Brands, ZenBusiness) --
+  { term: 'business name search',                    cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'dba name registration',                   cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business address service',                cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'virtual business address',                cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business mailing address',                cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business formation package',              cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'foreign llc qualification',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'llc dissolution service',                 cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Tax / accounting (FreshBooks, 1-800Accountant, Bench) --
+  { term: 'small business tax filing',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'llc tax filing',                          cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 's-corp tax filing',                       cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'quarterly tax filing help',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'estimated tax payment help',              cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'bookkeeping service for llc',             cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Startup / consulting angle (Stripe Atlas, founder consulting) --
+  { term: 'startup formation consultant',            cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'small business consultant',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'e-commerce business setup',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'amazon fba business setup',               cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business plan writing service',           cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'grant writing service',                   cluster: 'business-formation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // ===================================================================
+  // --- Credential-evaluation cluster ---
+  // WES, ECE, IQAS, ICAS, ICES, SpanTran, Josef Silny, Foreign
+  // Credits, AERC, ECFMG. All commercial intent, surface=marketplace,
+  // month=1.
+  // ===================================================================
+
+  // -- Core credential evaluation (WES, ECE, IQAS, ICAS) --
+  { term: 'foreign credential evaluation',           cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'wes credential evaluation',               cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'wes evaluation help',                     cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'wes application help',                    cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ece credential evaluation',               cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'iqas credential evaluation',              cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'icas credential evaluation',              cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ices credential evaluation',              cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'spantran evaluation',                     cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'credential evaluation usa',               cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'credential evaluation canada',            cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'credential evaluation uk',                cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Degree / transcript evaluation --
+  { term: 'degree equivalency evaluation',           cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'transcript evaluation service',           cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'course-by-course evaluation',             cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'document-by-document evaluation',         cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'transcript translation',                  cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'diploma evaluation',                      cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic credential assessment',          cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'education verification service',          cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'degree verification service',             cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Licensing / certification (ECFMG, FCCS, NCEES, NCLEX) --
+  { term: 'professional license recognition',        cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'nurse licensing usa',                     cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'engineer licensing usa',                  cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'pe licensing usa',                        cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'teacher licensing usa',                   cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ecfmg certification help',                cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'usmle preparation help',                  cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'nclex preparation help',                  cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'foreign degree recognition',              cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'foreign diploma recognition',             cluster: 'credential-evaluation', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // ===================================================================
+  // --- Mentorship-coaching cluster ---
+  // MentorCruise, Pathrise, Springboard, ADPList, Codementor,
+  // GrowthMentor, BetterUp, Coach.me. All commercial intent,
+  // surface=marketplace, month=1.
+  // ===================================================================
+
+  // -- General mentor matching (MentorCruise, ADPList, GrowthMentor) --
+  { term: '1-on-1 mentorship',                       cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'find a mentor online',                    cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'career mentor',                           cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mentorship program',                      cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'expert mentor matching',                  cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Tech mentorship (Codementor, MentorCruise tech, Pathrise) --
+  { term: 'coding mentor',                           cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'software engineer mentor',                cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'web development mentor',                  cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'data science mentor',                     cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'machine learning mentor',                 cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'python mentor',                           cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'javascript mentor',                       cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'react mentor',                            cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'senior dev mentor',                       cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'engineering manager mentor',              cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Product / design (ADPList core niche) --
+  { term: 'product manager mentor',                  cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ux design mentor',                        cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ui design mentor',                        cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'product designer mentor',                 cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Business / startup (GrowthMentor, MicroAcquire mentors) --
+  { term: 'startup mentor',                          cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'founder mentor',                          cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'entrepreneur coach',                      cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'business mentorship',                     cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'growth marketing mentor',                 cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Academic mentorship --
+  { term: 'academic mentor',                         cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'phd mentor',                              cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'research mentor',                         cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'thesis mentor',                           cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Life coaching (BetterUp, Coach.me) --
+  { term: 'life coach online',                       cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'accountability coach',                    cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'personal development coach',              cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mindset coach',                           cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'goal-setting coach',                      cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'executive coach',                         cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'leadership coach',                        cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
 ]
 
 // Map a taxonomy category + jurisdiction to the relevant strategy
@@ -280,48 +534,52 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
 type ClusterMap = Record<string, Partial<Record<Exclude<Jurisdiction, ''>, Cluster[]>>>
 
 const CATEGORY_TO_CLUSTERS_ATTORNEY: ClusterMap = {
+  // Attorneys keep the broad immigration-policy cluster mapping
+  // because they ARE selling the legal/policy outcome the clusters
+  // target. Layered ON TOP of that: the commercial-intent clusters
+  // (career-services, business-formation, credential-evaluation,
+  // mentorship-coaching) so an attorney offering resume review,
+  // LLC formation, WES help, or mentorship still gets the
+  // competitor-mapped commercial vocabulary on top of the
+  // legal-anchor vocabulary.
   immigration:        { us: ['us-f1-opt', 'us-work', 'us-pr'], uk: ['uk-work'],     ca: ['canada-sp-pgwp', 'canada-pr'] },
-  education:          { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
-  'academic-writing': { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
-  legal:              { us: ['us-f1-opt', 'us-work', 'us-pr'], uk: ['uk-tenancy', 'uk-work'], ca: ['canada-sp-pgwp', 'canada-pr'] },
+  education:          { us: ['us-f1-opt', 'academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['canada-sp-pgwp', 'academic-writing-essay'] },
+  'academic-writing': { us: ['us-f1-opt', 'academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['canada-sp-pgwp', 'academic-writing-essay'] },
+  legal:              { us: ['us-f1-opt', 'us-work', 'us-pr', 'business-formation'], uk: ['uk-tenancy', 'uk-work', 'business-formation'], ca: ['canada-sp-pgwp', 'canada-pr', 'business-formation'] },
   settlement:         { us: [],                                uk: ['uk-tenancy'],  ca: [] },
-  career:             { us: ['us-f1-opt', 'us-work'],          uk: ['uk-work'],     ca: ['canada-pr'] },
-  business:           { us: ['us-work'],                       uk: ['uk-work'],     ca: ['canada-pr'] },
-  credentials:        { us: ['us-work'],                       uk: ['uk-work'],     ca: ['canada-pr'] },
-  mentorship:         { us: ['us-f1-opt'],                     uk: [],              ca: ['canada-sp-pgwp'] },
+  career:             { us: ['us-f1-opt', 'us-work', 'career-services'], uk: ['uk-work', 'career-services'], ca: ['canada-pr', 'career-services'] },
+  business:           { us: ['us-work', 'business-formation'], uk: ['uk-work', 'business-formation'], ca: ['canada-pr', 'business-formation'] },
+  credentials:        { us: ['us-work', 'credential-evaluation'], uk: ['uk-work', 'credential-evaluation'], ca: ['canada-pr', 'credential-evaluation'] },
+  mentorship:         { us: ['us-f1-opt', 'mentorship-coaching'], uk: ['mentorship-coaching'], ca: ['canada-sp-pgwp', 'mentorship-coaching'] },
 }
 
 const CATEGORY_TO_CLUSTERS_CONSULTANT: ClusterMap = {
-  // Categories where consultant buyer-intent genuinely overlaps with
-  // a strategy cluster. The mapping is intentionally tighter than the
-  // attorney side because consultant gigs ARE NOT selling the
-  // policy outcomes the immigration clusters target.
+  // Consultant mapping uses ONLY commercial-intent competitor clusters
+  // — never the immigration-policy clusters. Consultants are not
+  // selling policy outcomes; their value prop is the service itself
+  // (essay editing, LLC formation, WES help, resume rewrite, etc.).
+  // Surfacing immigration-policy strategic keywords on a non-legal
+  // consultant gig misdirects the AI and produces incoherent drafts
+  // (see commit history: "STEM OPT employer monitoring site visit
+  // 2026" appearing on an academic-writing gig was exactly this bug).
   //
-  // - academic-writing + education: the academic-writing-essay
-  //   cluster (competitor-mapped against essaypro.com and adjacent
-  //   essay-service marketplaces). Commercial-intent vocabulary the
-  //   consultant marketplace surface needs to compete in this niche.
-  //   Applies to ALL three jurisdictions since admissions essay
-  //   help, SOP writing, etc. are universal services.
-  // - settlement + UK: uk-tenancy housing-law cluster, which the
-  //   housing-help consultant directly serves.
-  // - everything else: no strategic keywords; taxonomy leads alone.
-  'academic-writing': {
-    us: ['academic-writing-essay'],
-    uk: ['academic-writing-essay'],
-    ca: ['academic-writing-essay'],
-  },
-  education: {
-    us: ['academic-writing-essay'],
-    uk: ['academic-writing-essay'],
-    ca: ['academic-writing-essay'],
-  },
-  mentorship: {
-    us: ['academic-writing-essay'],
-    uk: ['academic-writing-essay'],
-    ca: ['academic-writing-essay'],
-  },
-  settlement: { us: [], uk: ['uk-tenancy'], ca: [] },
+  // Each category maps to the cluster(s) that match the seller's
+  // actual deliverable. The subcategory-affinity boosting in
+  // getStrategicKeywordsForGig routes the narrowest slice of each
+  // cluster to the specific subcategory the seller picked.
+  'academic-writing': { us: ['academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['academic-writing-essay'] },
+  education:          { us: ['academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['academic-writing-essay'] },
+  career:             { us: ['career-services'],        uk: ['career-services'],        ca: ['career-services'] },
+  business:           { us: ['business-formation'],     uk: ['business-formation'],     ca: ['business-formation'] },
+  credentials:        { us: ['credential-evaluation'],  uk: ['credential-evaluation'],  ca: ['credential-evaluation'] },
+  // Mentorship gets BOTH the academic-writing cluster (for student-
+  // facing mentorship gigs — SAT/SOP/admissions) AND the mentorship-
+  // coaching cluster (for tech/product/business mentor gigs). The
+  // subcategory-affinity router picks the right slice based on
+  // whether the seller picked student-mentorship vs professional-
+  // coaching vs life-coaching.
+  mentorship:         { us: ['mentorship-coaching', 'academic-writing-essay'], uk: ['mentorship-coaching', 'academic-writing-essay'], ca: ['mentorship-coaching', 'academic-writing-essay'] },
+  settlement:         { us: [], uk: ['uk-tenancy'], ca: [] },
 }
 
 export interface GetStrategicKeywordsOpts {
@@ -448,9 +706,96 @@ function subcategoryAffinityTokens(subcategoryId: string): string[] {
     case 'student-mentorship':    return [
       'admissions', 'coach', 'coaching', 'consultant',
       'admissions strategy', 'application timeline', 'school selection',
+      'academic mentor', 'phd mentor', 'thesis mentor',
     ]
     case 'professional-coaching': return [
       'mba', 'med school', 'law school', 'professional', 'admissions coach',
+      'career mentor', 'startup mentor', 'founder mentor',
+      'engineering manager mentor', 'senior dev mentor',
+      'product manager mentor', 'ux design mentor',
+      'coding mentor', 'software engineer mentor', 'data science mentor',
+      'machine learning mentor', 'growth marketing mentor',
+      'executive coach', 'leadership coach',
+    ]
+    case 'life-coaching':         return [
+      'life coach', 'accountability coach', 'personal development coach',
+      'mindset coach', 'goal-setting coach',
+    ]
+    // --- Career Development subcategories ---
+    case 'resume-cv':             return [
+      'resume', 'cv', 'ats', 'rewrite', 'editing',
+      'professional resume', 'executive resume', 'federal resume',
+      'tech resume', 'engineering resume', 'finance resume',
+      'healthcare resume', 'sales resume', 'academic cv',
+      'military to civilian', 'entry level resume', 'career change resume',
+    ]
+    case 'linkedin':              return [
+      'linkedin', 'headline', 'summary', 'profile makeover',
+      'all-star', 'recruiter optimization', 'personal branding',
+      'executive linkedin',
+    ]
+    case 'job-search':            return [
+      'cover letter', 'interview coaching', 'mock interview',
+      'behavioral interview', 'technical interview',
+      'case interview', 'consulting interview', 'finance interview',
+      'product manager interview', 'system design interview',
+      'coding interview', 'job search strategy', 'job application coach',
+      'networking coach', 'salary negotiation',
+    ]
+    case 'career-coaching':       return [
+      'career coach', 'career change coach', 'executive career coach',
+      'career transition', 'career pivot', 'salary negotiation',
+      'leadership coach', 'executive coach',
+    ]
+    case 'internships':           return [
+      'entry level', 'internship', 'cover letter', 'interview coaching',
+      'mock interview', 'resume', 'networking coach',
+    ]
+    // --- Business Services subcategories ---
+    case 'business-consulting':   return [
+      'startup formation consultant', 'small business consultant',
+      'e-commerce business setup', 'amazon fba',
+      'business plan writing', 'business formation',
+    ]
+    case 'business-formation':    return [
+      'llc formation', 'form an llc', 'corporation', 's-corp', 'c-corp',
+      'nonprofit incorporation', 'delaware llc', 'wyoming llc',
+      'nevada llc', 'registered agent', 'operating agreement',
+      'corporate bylaws', 'shareholder agreement',
+      'business name search', 'dba', 'ein', 'business license',
+      'foreign llc qualification',
+    ]
+    case 'marketing':             return [
+      'growth marketing', 'personal branding', 'linkedin', 'seo optimization',
+    ]
+    case 'finance-accounting':    return [
+      'bookkeeping', 'small business tax', 'llc tax', 's-corp tax',
+      'quarterly tax', 'estimated tax', 'finance interview',
+    ]
+    case 'grant-writing':         return [
+      'grant writing', 'fulbright', 'rhodes', 'chevening',
+      'commonwealth', 'funding statement', 'merit',
+    ]
+    case 'tax-advisory':          return [
+      'small business tax', 'llc tax', 's-corp tax',
+      'quarterly tax', 'estimated tax filing',
+    ]
+    // --- Credentials & Assessment subcategories ---
+    case 'credential-assessment': return [
+      'foreign credential evaluation', 'wes', 'ece', 'iqas', 'icas',
+      'ices', 'spantran', 'degree equivalency', 'transcript evaluation',
+      'course-by-course', 'document-by-document', 'diploma evaluation',
+      'academic credential assessment',
+    ]
+    case 'license-certification': return [
+      'professional license recognition', 'nurse licensing',
+      'engineer licensing', 'pe licensing', 'teacher licensing',
+      'ecfmg', 'usmle', 'nclex',
+    ]
+    case 'education-verification': return [
+      'education verification', 'degree verification',
+      'transcript translation', 'foreign degree recognition',
+      'foreign diploma recognition',
     ]
     // --- Settlement & Integration subcategories ---
     case 'housing':               return [
