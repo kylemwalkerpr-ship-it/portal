@@ -239,10 +239,16 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
   switch (field) {
     case 'title':
       return {
-        format: 'string', hardLimit: 80,
+        format: 'string', hardLimit: 78,
         prompt: [
           `Write a single-line gig title for a ${marketplaceLabel}.`,
-          'Requirements: 50–75 characters, starts with "I will", action-led, includes a service noun, plain language. Do NOT include emoji, quotation marks, hashtags, or trailing punctuation.',
+          'HARD RULES (the title MUST be complete and self-contained — no mid-sentence cuts):',
+          '- 55–75 characters TOTAL. Count them as you write.',
+          '- Starts with "I will".',
+          '- Ends with a NOUN, a NOUN PHRASE, or a complete prepositional phrase ("for US college applications", "in 72 hours", "for graduate-school applicants"). NEVER ends with a preposition ("of", "for", "to", "in", "with", "from", "as"), a conjunction ("and", "or", "but"), or an article ("a", "an", "the").',
+          '- Reads as a complete sentence even without a period. If you cut at the character limit, the title would still make grammatical sense.',
+          '- Action-led, names one service noun, plain language. No emoji, no quotation marks, no hashtags, no trailing punctuation.',
+          'CHECK BEFORE RETURNING: re-read your title silently. Does the last word complete the thought? If the last word is "of", "and", "for", "to", "the", or any other dangling word, you have written too long — REWRITE the title shorter so the last word is a noun or a complete phrase.',
           consultant
             ? 'Do not imply legal practice ("attorney", "lawyer", "law firm", "legal counsel") — this is a consultant gig, not a licensed legal service.'
             : '',
@@ -348,30 +354,51 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
       return {
         format: 'faq',
         prompt: [
-          'Generate 5 frequently-asked questions a buyer would have for this gig, with concise answers.',
-          'SEO requirements (these FAQs feed FAQPage schema for rich snippets — they must read as standalone answers):',
-          '- Each question is phrased like a real Google search: starts with "How", "Can", "Do", "What", "When", "Is", or "Will".',
+          'Generate 8–10 frequently-asked questions a buyer would have BEFORE booking this gig, with comprehensive answers. These FAQs feed FAQPage schema for rich snippets — they must read as a coherent buyer-decision sequence, not random unrelated questions.',
+          '',
+          'INTENT-DIVERSITY REQUIREMENT (you MUST cover all 6 of these decision categories — that\'s what separates a real FAQ from a disjointed list):',
+          '  1. SCOPE: "What exactly do you do?" / "What\'s included?" / "What document types do you handle?" — buyer learning the deliverable boundaries',
+          '  2. PROCESS: "How does it work?" / "What\'s the process?" / "How many rounds of edits?" — buyer understanding the workflow',
+          '  3. TIMING: "How long does it take?" / "Can you do a rush turnaround?" — buyer matching to their deadline',
+          '  4. PRICING / VALUE: "How much does it cost?" / "What if I need more revisions?" — buyer evaluating fit-to-budget',
+          '  5. ELIGIBILITY: "Can you help with [specific situation]?" / "Do you work with [audience]?" — buyer checking self-applicability',
+          '  6. PROOF / RISK: "What\'s your background?" / "What if I\'m not satisfied?" / "Have you worked on [school/program] before?" — buyer reducing risk',
+          'Distribute the 8–10 questions across these 6 categories. NO two questions in the same category should ask the same underlying thing. NO unrelated/random questions outside these categories.',
+          '',
+          'EACH QUESTION must:',
+          '- Read like a real Google search query a buyer would type. Starts with "How", "Can", "Do", "What", "When", "Is", "Will", "Are", "How much", "How long".',
+          '- Tie directly to the gig\'s actual scope (the category brief + already-drafted spine above). No questions about unrelated services. No questions the seller can\'t answer.',
+          '- Be under 95 characters.',
           consultant
-            ? '- At least 2 questions include the country/region (US / UK / Canada) the seller works in. Do NOT use legal-system anchors (USCIS / Home Office / IRCC) — this is a non-legal consulting gig.'
-            : '- At least 2 questions include the jurisdiction (US / UK / Canada or USCIS / Home Office / IRCC).',
-          '- At least 2 questions include a priority keyword from the brief (verbatim or close variant).',
-          '- Each answer is a self-contained snippet: opens with the answer (no "Yes, but…" hedging), no "see above", no pronoun back-references to earlier Q/A.',
+            ? '- Across the 8–10 questions, at least 2 reference the country/region (US / UK / Canada). Do NOT use legal-system anchors (USCIS / Home Office / IRCC) — non-legal consulting gig.'
+            : '- Across the 8–10 questions, at least 2 reference the jurisdiction (US / UK / Canada or USCIS / Home Office / IRCC).',
+          '- Across the 8–10 questions, at least 3 weave in priority keywords from the SEO brief (verbatim or close variant).',
+          '',
+          'EACH ANSWER must:',
+          '- Be a standalone featured-snippet candidate. First sentence is 40–60 words and answers the question directly (no "Yes, but…", no "Great question!", no "It depends." opener — open with the substantive answer).',
+          '- Read independently of every other Q/A pair. No "see above", no pronoun back-references ("as mentioned"), no "in addition to what I said".',
+          '- End with a concrete next step where natural (a document name, a controlling source, a specific CTA — "Send me the school name and I\'ll quote a turnaround").',
+          '- Be 2–4 plain-language sentences total. No bullets, no headings, no markdown.',
+          '- Never promise outcomes, refunds, eligibility, or timelines that weren\'t in the gig context.',
           consultant
-            ? '- Do not give legal advice or imply legal representation; if a buyer should consult a licensed attorney, say so plainly.'
+            ? '- Do not give legal advice or imply legal representation; if the buyer needs a licensed attorney, say so plainly.'
             : '',
-          'Output format — exactly this shape, no markdown, no numbering:',
+          '',
+          'Output format — exactly this shape, no markdown, no numbering, no Q1/Q2 labels:',
           '',
           'Q: <question ending with ?>',
-          'A: <answer, 1–3 sentences>',
+          'A: <answer, 2–4 sentences>',
           '',
           'Q: <question>',
           'A: <answer>',
           '',
-          'Rules: each Q is under 90 characters. Each A is 1–3 plain-language sentences (no bullets, no headings). Never promise specific outcomes, eligibility, refunds, or timelines that weren\'t in the context. Skip greetings. Skip closers like "Let me know if you have more questions". Return ONLY the Q/A pairs in the format above.',
+          '(repeat 8–10 times, one blank line between pairs)',
+          '',
+          'Skip greetings. Skip closers like "Let me know if you have more questions". Return ONLY the Q/A pairs.',
           '',
           'Context:',
           baseContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
     case 'tier_features': {
       const t = ctx.tier ?? {}
@@ -433,19 +460,83 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
           consultant
             ? 'Write a "what we need from the client to begin" requirements list for this professional-services gig.'
             : 'Write a "what we need from the client to begin" requirements list for this legal/immigration gig.',
-          'Format: 4–8 short bullet items, each on its own line, each starting with "- " (hyphen + space).',
-          'Each bullet is one concrete document, fact, or decision the seller needs before they can start work.',
-          'Plain language. No emoji. No headings. No closing paragraph. Do NOT promise outcomes, timelines, or eligibility.',
+          '',
+          'COHERENCE REQUIREMENT — these must read as a real intake checklist tied directly to THIS specific gig (see the category brief + already-drafted spine above), NOT a generic list of asks:',
+          '- Every bullet is something the seller CAN\'T START WITHOUT. If the gig could begin without the item, don\'t list it.',
+          '- Every bullet is tied to the specific deliverable. An SOP-editing gig asks for the draft + the school + the word limit + the deadline. A LLC-formation gig asks for the entity name + state + member info + business purpose. Do NOT list generic "any relevant information you want to share" or "background details".',
+          '- Group similar items together (documents first, then deadlines/dates, then preferences/decisions).',
+          '- Bullets read in the order a seller would actually ask for them in an intake conversation.',
+          '',
+          'FORMAT: 5–9 short bullet items, each on its own line, each starting with "- " (hyphen + space).',
+          'EACH BULLET STRUCTURE:',
+          '- Lead with the specific document/data point a seller can verify on arrival ("Your current SOP draft (any length)", "Form I-20 — both sides", "The school name and program code", "Your target submission date").',
+          '- Add a brief clarifier in parentheses only when needed for disambiguation ("(front and back)", "(any length)", "(if any)", "(in PDF or Word)").',
+          '- Plain language. Active voice (you are asking the buyer for X, not "X will be required"). No emoji. No headings. No closing paragraph. ≤ 100 chars per bullet.',
+          '',
+          'INTENT-DIVERSITY CHECK — across the 5–9 bullets, cover at minimum:',
+          '  • Source material (the buyer\'s draft, current document, existing application materials)',
+          '  • Specific identifiers (school name + program, jurisdiction, applicant role, entity name)',
+          '  • Deadline / timeline (the buyer\'s submission date or required turnaround)',
+          '  • Scope decisions (which schools, which programs, how many rounds, tier choice)',
+          '- Optionally a proof item (transcripts, CV, portfolio links) when the gig needs them.',
+          '',
+          'Do NOT promise outcomes, timelines, eligibility, or refunds.',
           consultant
-            ? 'Examples of good bullets: "- Target programs and application deadlines", "- Current draft of your statement of purpose (if any)", "- Transcript / CV / portfolio links".'
-            : 'Examples of good bullets: "- Current visa status and date of last entry", "- Form I-20 (front and back)", "- Description of the events that led to the SEVIS termination".',
+            ? 'Good bullets for a consultant gig: "- Your current SOP or personal statement draft (any length)", "- The school name(s) and program(s) you\'re applying to", "- The application deadline (or your target submission date)", "- Your CV / résumé or LinkedIn link", "- A short note on what aspects you most want feedback on".'
+            : 'Good bullets for an attorney gig: "- Current visa status and date of last entry to the US", "- Form I-20 (front and back) and most recent I-94", "- The specific event(s) that led to the issue we\'re responding to (dates, brief summary)", "- Your target USCIS submission date".',
+          '',
           'Return ONLY the bullet list.',
           '',
           'Context:',
           baseContext,
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
       }
   }
+}
+
+// Words that should never end a short surface field (title / pitch /
+// seo_title / seo_description). When the hardLimit slice in draftField
+// trims a partial word, the new last word can still be a preposition,
+// conjunction, or article — which leaves the title reading as a half-
+// thought ("...statement of purpose and letter of"). We keep peeling
+// back tokens until the last word is a real content word, or we run
+// out of characters. Lowercase for case-insensitive matching; the
+// comparison normalizes punctuation first.
+const DANGLING_END_WORDS = new Set([
+  // Prepositions
+  'of', 'for', 'to', 'in', 'on', 'at', 'with', 'by', 'from', 'as',
+  'into', 'onto', 'over', 'under', 'about', 'against', 'between',
+  'through', 'after', 'before', 'during', 'without', 'within',
+  // Conjunctions
+  'and', 'or', 'but', 'nor', 'so', 'yet', 'because', 'although',
+  'though', 'while', 'whereas',
+  // Articles + determiners
+  'a', 'an', 'the', 'my', 'your', 'our', 'their', 'his', 'her',
+  // Misc connective words that also read as dangling
+  'that', 'which', 'who', 'whom', 'when', 'where', 'why', 'how',
+  'than', 'then', 'plus',
+])
+
+// Strips trailing dangling words from a sliced string until the last
+// word is a content word OR the string would become too short. Used
+// as a belt-and-suspenders guard for surface fields that have a
+// hardLimit slice — without this, slicing at the limit can leave the
+// output ending mid-thought.
+function trimDanglingEnd(s: string, minLength = 30): string {
+  let result = s.trim()
+  // Strip trailing punctuation first so " of," matches as "of".
+  for (let i = 0; i < 8; i += 1) {
+    const trimmed = result.replace(/[\s,;:.\-—]+$/g, '')
+    if (trimmed.length < minLength) return result
+    const lastSpace = trimmed.lastIndexOf(' ')
+    if (lastSpace < 0) return trimmed
+    const lastWord = trimmed.slice(lastSpace + 1).toLowerCase().replace(/[^a-z']/g, '')
+    if (!DANGLING_END_WORDS.has(lastWord)) {
+      return trimmed
+    }
+    result = trimmed.slice(0, lastSpace)
+  }
+  return result.trim()
 }
 
 function cleanString(raw: string): string {
@@ -507,7 +598,10 @@ function parseFaq(raw: string): FaqEntry[] {
       }
     }
   }
-  return entries.slice(0, 8)
+  // Cap at 10 — matches the intent-diversity FAQ prompt that asks for
+  // 8-10 questions across 6 buyer-decision categories. Above 10, the
+  // FAQ schema starts feeling exhaustive rather than scannable.
+  return entries.slice(0, 10)
 }
 
 function buildSystemPrompt(role: SuggestRole): string {
@@ -670,8 +764,26 @@ export async function draftField(
 
   const cleaned = cleanString(raw)
   if (!cleaned) return { ok: false, status: 502, message: 'Model returned empty output. Try again.' }
-  const limited = spec.hardLimit && cleaned.length > spec.hardLimit
+  // Surface-field truncation pipeline:
+  //   1. If over hardLimit, slice at the limit and drop the partial word
+  //      (the existing behavior).
+  //   2. THEN trim any trailing dangling word (preposition, conjunction,
+  //      article, determiner) so the field doesn't read as a half-thought
+  //      like "...statement of purpose and letter of". This is the fix
+  //      for the title-cuts-mid-sentence bug. Only applied to short
+  //      surface fields where the hardLimit is small enough that
+  //      dangling-ends are a real problem (title 78, seo_title 60,
+  //      seo_description 160, pitch 160).
+  let limited = spec.hardLimit && cleaned.length > spec.hardLimit
     ? cleaned.slice(0, spec.hardLimit).replace(/\s+\S*$/, '')
     : cleaned
+  if (spec.hardLimit && spec.hardLimit <= 200 && field !== 'description') {
+    // minLength = ~40% of hardLimit so we don't over-trim a short
+    // title down to nothing if the model wrote nothing but dangling
+    // words. Below that floor we accept the dangling end rather than
+    // ship an absurdly short field.
+    const floor = Math.max(20, Math.floor(spec.hardLimit * 0.4))
+    limited = trimDanglingEnd(limited, floor)
+  }
   return { ok: true, value: limited, research }
 }

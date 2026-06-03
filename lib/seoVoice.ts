@@ -210,10 +210,12 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
     case 'faq':
       return [
         '### Voice — FAQ',
-        'Each entry is a snippet candidate. The question is phrased exactly as a buyer would type it into Google ("how long does SOP editing take", "do you guarantee admission", "can you edit my essay in 24 hours"). The answer\'s FIRST SENTENCE is a 40-60 word standalone definition or direct response — that\'s what Google pulls into a featured-snippet box.',
-        'Do NOT open answers with "Yes," or "No," or "Great question!" — open with the substantive answer.',
-        'Each answer ends with a concrete next step (a document name, a controlling source, a CTA). No "rest assured", no "feel free to reach out".',
-        'Minimum 5 entries. Mix question types: how-long, what-do-I-get, how-much, can-you, do-you. Avoid all-yes-or-no questions.',
+        '8-10 entries that read as a COHERENT buyer-decision sequence, not random unrelated questions. Each must tie directly to this specific gig\'s scope (per the spine + category brief above).',
+        'INTENT COVERAGE — distribute across these 6 categories: (1) scope/deliverables, (2) process/workflow, (3) timing/turnaround, (4) pricing/value, (5) eligibility/audience, (6) proof/risk. No two questions in the same category should ask the same underlying thing.',
+        'Each question is phrased exactly as a buyer would type it into Google ("how long does SOP editing take", "what schools have you worked with", "can you edit my essay in 24 hours"). Under 95 chars per question.',
+        'Each answer is a featured-snippet candidate. The FIRST SENTENCE is 40-60 words and answers the question directly — that\'s what Google pulls into a PAA box.',
+        'Do NOT open answers with "Yes," or "No," or "Great question!" — open with the substantive answer. Do NOT pronoun-reference earlier Q/A ("as mentioned", "see above").',
+        'Each answer ends with a concrete next step where natural (a document name, a controlling source, a CTA). 2-4 sentences total per answer. No "rest assured", no "feel free to reach out".',
       ].join('\n')
     case 'tier_features':
       return [
@@ -230,7 +232,11 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
     case 'requirements':
       return [
         '### Voice — REQUIREMENTS',
-        'What the seller needs from the buyer to start. Imperative, concrete, numbered or bulleted in the underlying prose. "Your current essay draft (any length)." "The school name + word limit." "Your target submission date." Skip generic asks ("any relevant information").',
+        'Intake-checklist register. 5-9 bullets, each one a thing the seller CAN\'T START WITHOUT. Reads in the order a seller would actually ask in an intake conversation: source materials → identifiers → deadlines → scope decisions → optional proof items.',
+        'Every bullet ties to THIS gig\'s specific deliverable — SOP editing asks for the draft + the school + the word limit; LLC formation asks for the entity name + state + members. Skip generic asks ("any relevant information you want to share").',
+        'Lead each bullet with the specific document or data point a seller can verify on arrival. Active voice (you\'re asking the buyer for X, not "X will be required"). ≤ 100 chars per bullet.',
+        'Pattern that works: "- Your current SOP draft (any length, in PDF or Word)" / "- The school name + program code" / "- Your target submission date"',
+        'Pattern that does NOT work: "- Background information" / "- Any relevant details" / "- Information about your goals" — vague, no concrete thing to verify.',
       ].join('\n')
     default:
       return ''
