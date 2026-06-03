@@ -19,10 +19,12 @@ export type { SeoResearch, KeywordSignal } from './seoResearch'
 
 export type SuggestField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq' | 'tier_features'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
+  | 'tier_features' | 'tier_description'
 
 export const ALLOWED_FIELDS: SuggestField[] = [
-  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq', 'tier_features',
+  'title', 'seo_title', 'seo_description', 'pitch', 'tagline', 'description', 'tags', 'requirements', 'faq',
+  'tier_features', 'tier_description',
 ]
 
 // Per-role allow-list. All fields apply to both roles today, but the wrapper
@@ -415,42 +417,127 @@ function buildFieldSpec(field: SuggestField, ctx: SuggestContext): FieldSpec {
               const ofeats = Array.isArray(o.features) && o.features.length
                 ? o.features.slice(0, 5).join('; ')
                 : '(none yet)'
-              return `- ${olabel} @ ${oprice}: ${ofeats}`
+              const orevs = typeof o.revisions === 'number' ? `${o.revisions} revisions` : '? revisions'
+              const odays = typeof o.delivery_days === 'number' ? `${o.delivery_days}d` : '?d'
+              return `- ${olabel} @ ${oprice} (${odays}, ${orevs}): ${ofeats}`
             })
             .join('\n')
         : '(no other tiers configured)'
 
-      // Tier-specific guidance: basic = entry point, standard = best-value
-      // middle, premium = premium scope. We tell the model exactly how
-      // to scale the bullet list so the value ladder reads cleanly.
+      // Tier-specific guidance with EXPLICIT differentiation rules. The
+      // value ladder must add 1-2 NEW benefits at each tier-up step —
+      // never just "more of the same". Standard inclusions (plagiarism
+      // report, AI-content scan, title page, formatting check) appear
+      // across ALL tiers, but premium-only perks (rush turnaround, 1-on-1
+      // call, re-submission support) appear only at their gated tier.
       const tierGuidance =
         tierLabel.toLowerCase().includes('basic') || tierLabel.toLowerCase().includes('starter')
-          ? 'This is the BASIC tier. Cover the minimum viable deliverable — 3–5 narrow, concrete bullets. No premium-tier perks (no rush delivery, no unlimited revisions, no add-ons).'
+          ? 'This is the BASIC tier — entry point. 3–5 bullets covering the minimum viable deliverable + the 2-3 standard inclusions every buyer expects (originality / AI-content report, basic formatting check, 1 revision round within 7 days of delivery). NO premium perks (no rush turnaround, no 1-on-1 call, no re-submission support).'
           : tierLabel.toLowerCase().includes('premium') || tierLabel.toLowerCase().includes('pro')
-            ? 'This is the PREMIUM tier. 5–7 bullets covering the full scope. Include EVERYTHING from basic + standard, plus 2–3 premium differentiators (e.g. faster turnaround, more revisions, follow-up call, document re-submission if denied).'
-            : 'This is the STANDARD / middle tier. 4–6 bullets. Strict superset of basic with 1–2 added perks. Must clearly be more than basic but less than premium.'
+            ? 'This is the PREMIUM tier — top of the ladder. 5–7 bullets that are a STRICT SUPERSET of standard + 2–3 premium-only differentiators. The premium differentiators MUST be tier-up perks the buyer cannot get at standard (e.g. priority turnaround, 1-on-1 strategy call, free re-submission if rejected, broader scope cap, dedicated post-delivery window). Standard inclusions still appear with the better bounds appropriate to premium (e.g. "3 revision rounds within 21 days" rather than "1 round within 7").'
+            : 'This is the STANDARD / middle tier — the best-value choice. 4–6 bullets that are a STRICT SUPERSET of basic + 1–2 standard-only perks (typically: more revision rounds within a longer window, citation list or bibliography, rush-turnaround option). Must clearly be more than basic but less than premium.'
 
       return {
         format: 'list', hardLimit: 7,
         prompt: [
-          'Draft the "what\'s included" feature bullets for a gig pricing tier.',
+          'Draft the "what\'s included" feature bullets for a gig pricing tier on a Fiverr-style marketplace.',
           '',
           `Tier being drafted: ${tierLabel} (${dollars}, ${days}, ${revs})`,
           '',
-          `Other tiers on this gig (do NOT duplicate their bullets; keep value ladder intact):`,
+          'Other tiers on this gig (you MUST differentiate from these — never duplicate their bullets; the value ladder must add 1–2 NEW concrete benefits at each tier-up step):',
           ladder,
           '',
           tierGuidance,
           '',
+          'STANDARD INCLUSIONS — bake these into EVERY tier with tier-appropriate bounds (these are EssayPro-style trust value-adds buyers expect to see; the BOUNDS are what prevent the gig from becoming an open-ended loop):',
+          consultant
+            ? '  • Originality / AI-content scan ("plagiarism + AI-detection report with delivery"). Always free, one report per order.'
+            : '  • Document quality check ("USCIS-style form review for completeness before filing"). Always free, one pass per order.',
+          consultant
+            ? '  • Format check appropriate to the deliverable (APA / MLA / Chicago / Harvard for academic; ATS-friendly format for resume; LinkedIn-character-cap check for LinkedIn). Always free, one final-format pass per order.'
+            : '  • Filing-cover-letter draft included with submission package. Always free, one pass per order.',
+          '  • REVISION POLICY — this is the loop guard. Every revision line MUST be bounded by BOTH a count AND a window. Never "unlimited revisions" without a time cap (that\'s the loop hole that creates endless rework). Tier-up adds either MORE rounds, a LONGER window, or both — never the same bound at a higher price.',
+          '       Basic: 1 revision round within 7 days of delivery',
+          '       Standard: 2 revision rounds within 14 days of delivery',
+          '       Premium: 3 revision rounds within 21 days of delivery + 1 follow-up office-hours email if a single concern surfaces post-window',
+          '',
+          'PREMIUM-ONLY DIFFERENTIATORS — only appear in premium tier bullets (never in basic or standard):',
+          '  • Priority turnaround (rush delivery option faster than the listed delivery_days)',
+          '  • 1-on-1 strategy / kickoff call (15–30 min, scheduled in advance)',
+          '  • Broader scope cap (e.g. longer max word count, more documents, additional school)',
+          consultant
+            ? '  • Post-delivery touchpoint (one 15-min check-in call within the revision window)'
+            : '  • Re-submission / RFE-response support if the initial filing draws a request',
+          '',
           'Output rules:',
-          '- Return ONLY the bullets, one per line, no hyphens / dashes / numbers / bullets characters — just the text.',
-          '- Each line is 3–8 words. Action-led ("Document review and feedback"). Title case OR sentence case, consistent.',
-          '- Plain language. No emoji. No promotional fluff ("amazing", "fast"). No outcome promises ("guaranteed approval").',
-          '- Each bullet must be a concrete deliverable, not a feeling.',
+          '- Return ONLY the bullets, one per line, no hyphens / dashes / numbers / bullet characters — just the text.',
+          '- Each line is 4–12 words. Action-led ("Document review with structural feedback"). Concrete deliverable, not a feeling.',
+          '- Revision bullets ALWAYS include both count + window ("2 revision rounds within 14 days").',
+          '- Plain language. No emoji. No promotional fluff ("amazing", "fast", "premium"). No outcome promises ("guaranteed approval", "100% acceptance").',
+          '- Each bullet must be a concrete deliverable a buyer can verify on arrival.',
           '',
           'Context (the broader gig):',
           baseContext,
         ].join('\n'),
+      }
+    }
+    case 'tier_description': {
+      const t = ctx.tier ?? {}
+      const tierLabel = String(t.tier || t.title || 'this tier')
+      const dollars = typeof t.price === 'number' && t.price > 0 ? `$${(t.price / 100).toFixed(2)}` : 'unset'
+      const days = typeof t.delivery_days === 'number' && t.delivery_days > 0 ? `${t.delivery_days} days` : 'unset'
+      const others = (ctx.otherTiers ?? []).filter((o) => o && (o.title || o.tier))
+      const ladder = others.length
+        ? others
+            .map((o) => {
+              const olabel = o.tier || o.title || 'tier'
+              const oprice = typeof o.price === 'number' && o.price > 0 ? `$${(o.price / 100).toFixed(2)}` : '—'
+              const odesc = (o as { description?: string }).description?.trim() || '(no description yet)'
+              return `- ${olabel} @ ${oprice}: ${odesc.slice(0, 200)}`
+            })
+            .join('\n')
+        : '(no other tiers configured)'
+      const isBasic = tierLabel.toLowerCase().includes('basic') || tierLabel.toLowerCase().includes('starter')
+      const isPremium = tierLabel.toLowerCase().includes('premium') || tierLabel.toLowerCase().includes('pro')
+
+      const tierAngle = isBasic
+        ? 'BASIC tier description. Position as "the right starting point for [buyer in specific situation]". Name the ONE core deliverable. Mention that essential trust inclusions (originality report, format check, one revision round within 7 days) come at every tier. Do NOT mention premium-only perks.'
+        : isPremium
+          ? 'PREMIUM tier description. Lead with WHO this is for ("the right choice when [specific stakes]"). Name the 2–3 premium differentiators that justify the price (priority turnaround, 1-on-1 call, broader scope cap, more revision rounds within a longer window, post-delivery touchpoint). Explicitly contrast: "Adds X, Y, Z over Standard" so the upgrade rationale is clear.'
+          : 'STANDARD tier description. Position as "the best-value choice for [the typical buyer]". Name what this tier adds over basic in concrete terms (more revision rounds within a longer window, citation list, optional rush turnaround). Briefly preview that premium adds further perks for higher-stakes situations.'
+
+      return {
+        format: 'string', hardLimit: 320,
+        prompt: [
+          'Write a buyer-facing description for a gig pricing tier on a Fiverr-style marketplace.',
+          '',
+          `Tier being drafted: ${tierLabel} (${dollars}, ${days})`,
+          '',
+          'Other tiers on this gig (the value ladder MUST be visible — each tier-up step adds 1-2 concrete benefits over the lower tier):',
+          ladder,
+          '',
+          tierAngle,
+          '',
+          'LOOP GUARD — when describing what\'s included, never imply unbounded revisions / unlimited rework / endless edits. Revision language must always carry both a count and a time bound (e.g. "2 revision rounds within 14 days of delivery", "Free revisions for 21 days after delivery, up to 3 rounds"). This is what keeps the gig sustainable; it\'s also what a senior practitioner would actually offer.',
+          '',
+          'FORMAT:',
+          '- 2–4 short sentences, 180–300 chars total.',
+          '- Sentence 1: who this tier is for (buyer + specific situation).',
+          '- Sentence 2: what they get (1–2 concrete deliverables; the rest is in the features list — do NOT enumerate all features).',
+          '- Sentence 3 (if used): the BOUND on revisions / scope / turnaround appropriate to this tier.',
+          '- Sentence 4 (premium only): the one concrete reason to upgrade from standard.',
+          '- Plain language. No emoji. No promotional fluff. No outcome promises.',
+          '- Voice: second-person ("you\'ll get") for the buyer-facing parts. Active. Specific. No throat-clearing.',
+          '',
+          consultant
+            ? 'Do not imply legal practice ("attorney review", "legal opinion") — consultant gig.'
+            : 'Use precise legal-system anchors (USCIS / Home Office / IRCC + form codes) where the deliverable warrants.',
+          '',
+          'Return ONLY the description text, no labels, no markdown, no preamble.',
+          '',
+          'Context (the broader gig):',
+          baseContext,
+        ].filter(Boolean).join('\n'),
       }
     }
     case 'requirements':

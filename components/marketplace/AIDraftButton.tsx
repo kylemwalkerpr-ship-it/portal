@@ -5,7 +5,8 @@ import { T, F } from './tokens'
 
 export type DraftField =
   | 'title' | 'seo_title' | 'seo_description'
-  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq' | 'tier_features'
+  | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements' | 'faq'
+  | 'tier_features' | 'tier_description'
 
 export interface TierSummary {
   tier?: 'basic' | 'standard' | 'premium' | string
@@ -433,7 +434,7 @@ export default function AIDraftButton({
                   value={draftText}
                   onChange={(e) => setDraftText(e.target.value)}
                   autoFocus
-                  rows={field === 'description' ? 10 : field === 'seo_description' || field === 'pitch' || field === 'tagline' ? 4 : 2}
+                  rows={field === 'description' ? 10 : field === 'seo_description' || field === 'pitch' || field === 'tagline' || field === 'tier_description' ? 4 : 2}
                   style={{
                     width: '100%',
                     padding: '10px 12px',

@@ -1276,13 +1276,59 @@ function PricingStep({ gigData, errors, onChange, onTierChange, role }: any) {
           </div>
 
           <div style={{ marginBottom: '16px' }}>
-            <label style={formLabel}>Tier Description</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+              <label style={{ ...formLabel, marginBottom: 0 }}>Tier Description</label>
+              <AIDraftButton
+                role={role}
+                field="tier_description"
+                getContext={() => ({
+                  title: gigData.title,
+                  tagline: gigData.tagline,
+                  pitch: gigData.pitch || gigData.tagline,
+                  description: gigData.description,
+                  requirements: gigData.requirements,
+                  category: gigData.category,
+                  subcategory: gigData.subcategory,
+                  jurisdiction: gigData.jurisdiction,
+                  tags: gigData.tags,
+                  seo_title: gigData.seo_title,
+                  seo_description: gigData.seo_description,
+                  tier: {
+                    tier: tier.tier,
+                    title: tier.title,
+                    description: tier.description,
+                    price: tier.price,
+                    delivery_days: tier.delivery_days,
+                    revisions: tier.revisions,
+                    features: tier.features,
+                  },
+                  otherTiers: gigData.tiers
+                    .filter((_: unknown, i: number) => i !== index)
+                    .map((o: { tier?: string; title?: string; description?: string; price?: number; delivery_days?: number; revisions?: number; features?: string[] }) => ({
+                      tier: o.tier,
+                      title: o.title,
+                      description: o.description,
+                      price: o.price,
+                      delivery_days: o.delivery_days,
+                      revisions: o.revisions,
+                      features: o.features,
+                    })),
+                })}
+                minimalContext={!gigData.title?.trim()}
+                label={`Draft ${String(tier.tier || 'tier')} description`}
+                size="compact"
+                onApply={(v) => onTierChange(index, 'description', typeof v === 'string' ? v : '')}
+              />
+            </div>
             <textarea
               value={tier.description || ''}
               onChange={e => onTierChange(index, 'description', e.target.value)}
-              placeholder="What's included in this tier?"
+              placeholder="Who this tier is for + 1-2 concrete deliverables + the bound (e.g. 2 revision rounds within 14 days)."
               style={{ ...textareaStyle, minHeight: '72px' }}
             />
+            <div style={formHint}>
+              Position the buyer (who is this tier for?) and name 1-2 concrete deliverables. Higher tiers should clearly add 1-2 benefits over the lower tier. AI draft enforces the value ladder + revision bounds.
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -1306,9 +1352,12 @@ function PricingStep({ gigData, errors, onChange, onTierChange, role }: any) {
                 onChange={e => onTierChange(index, 'revisions', parseInt(e.target.value) || 0)}
                 placeholder="1"
                 min="0"
+                max="10"
                 style={inputStyle}
               />
-              <div style={formHint}>Enter 999 for unlimited</div>
+              <div style={formHint}>
+                {`Bound your revisions. Suggested: Basic 1 / Standard 2 / Premium 3 rounds. "Unlimited" creates an endless rework loop — cap by count AND describe the time window in the tier description (e.g. "within 14 days of delivery").`}
+              </div>
             </div>
           </div>
 

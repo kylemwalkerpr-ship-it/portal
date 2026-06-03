@@ -161,7 +161,7 @@ export const KEYWORD_WEAVING_PLAYBOOK = [
 export type FieldName =
   | 'title' | 'seo_title' | 'seo_description'
   | 'pitch' | 'tagline' | 'description' | 'tags' | 'requirements'
-  | 'faq' | 'tier_features'
+  | 'faq' | 'tier_features' | 'tier_description'
 
 export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consultant'): string {
   switch (field) {
@@ -220,9 +220,20 @@ export function getFieldToneScaffold(field: FieldName, role: 'attorney' | 'consu
     case 'tier_features':
       return [
         '### Voice — TIER FEATURES',
-        'Imperative deliverables list. Each bullet is what the buyer LITERALLY GETS in that tier. ≤ 120 chars per bullet. Specific count or scope per bullet. No adjective stacks.',
-        'Pattern that works: "Two structural-edit rounds on essays up to 650 words" / "One 30-minute follow-up call to walk through edits" / "Final proofread + word-count + formatting check"',
-        'Pattern that does NOT work: "Comprehensive editing" / "Personalized feedback" / "Quality assurance" — abstract claims, no deliverable, banned adjectives.',
+        'Imperative deliverables list. Each bullet is what the buyer LITERALLY GETS in that tier — verifiable on arrival. ≤ 120 chars per bullet. Specific count, scope, or bound per bullet. No adjective stacks.',
+        'TIER LADDER: each tier-up step must add 1–2 NEW concrete benefits over the lower tier. The bullets show the upgrade rationale at a glance.',
+        'LOOP GUARD: any revision bullet MUST carry both a COUNT and a TIME WINDOW. "2 revision rounds within 14 days of delivery" — not "unlimited revisions". Tier-up means more rounds, longer window, or both.',
+        'Pattern that works: "Two structural-edit rounds within 14 days" / "30-minute kickoff call before edits begin" / "Originality + AI-content report with delivery" / "Citation list in your required style"',
+        'Pattern that does NOT work: "Comprehensive editing" / "Personalized feedback" / "Unlimited revisions" / "Quality assurance" — abstract claims, banned adjective, loop-risk, or no deliverable.',
+      ].join('\n')
+    case 'tier_description':
+      return [
+        '### Voice — TIER DESCRIPTION',
+        'Buyer-facing positioning for a single pricing tier. 2–4 short sentences, 180–300 chars total. Sentence 1 names WHO this tier is for (buyer + situation). Sentence 2 names WHAT they get (1–2 concrete deliverables, not all of them). Sentence 3 names the BOUND (revisions, scope, or turnaround appropriate to this tier).',
+        'TIER LADDER VISIBILITY: each tier-up description should make the upgrade rationale obvious. Standard explicitly references "more than basic". Premium explicitly references "adds X / Y / Z over standard".',
+        'LOOP GUARD: revision language must always carry both COUNT and TIME WINDOW ("2 revision rounds within 14 days of delivery"). Never "unlimited revisions" without a bound — that\'s the gig-becomes-endless-rework hole.',
+        'Pattern that works (Standard): "The best-value choice for applicants with a working draft who want a senior editor\'s eye. You\'ll get two structural-edit rounds within 14 days, a final proofread, and an originality report. Step up to Premium for priority turnaround and a 30-minute strategy call."',
+        'Pattern that does NOT work: "Comprehensive editing tailored to your unique needs. Unlimited revisions until you\'re 100% satisfied. Get the premium experience." — banned adjective, loop-risk, no specifics, generic platitude.',
       ].join('\n')
     case 'tags':
       return [
