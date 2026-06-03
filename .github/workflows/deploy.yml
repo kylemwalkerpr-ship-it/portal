@@ -98,6 +98,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GSC_OAUTH_CLIENT_ID: ${{ secrets.GSC_OAUTH_CLIENT_ID }}
+          GSC_OAUTH_CLIENT_SECRET: ${{ secrets.GSC_OAUTH_CLIENT_SECRET }}
+          GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
         run: |
           if [ -n "$GROQ_API_KEY" ]; then
             printf '%s' "$GROQ_API_KEY" | npx wrangler secret put GROQ_API_KEY
@@ -109,3 +113,16 @@ jobs:
           else
             echo "GEMINI_API_KEY not set in repo secrets — skipping"
           fi
+          # GSC live-keyword signals (lib/gscKeywordSignals.ts). All four
+          # must be set for the live path to activate; the module returns
+          # null and falls back to static keywords if any are missing.
+          # Skipping silently keeps the deploy green when GSC isn't yet
+          # provisioned.
+          for v in GSC_OAUTH_CLIENT_ID GSC_OAUTH_CLIENT_SECRET GSC_OAUTH_REFRESH_TOKEN GSC_SITE_URL; do
+            val=$(eval echo "\$$v")
+            if [ -n "$val" ]; then
+              printf '%s' "$val" | npx wrangler secret put "$v"
+            else
+              echo "$v not set in repo secrets — skipping"
+            fi
+          done

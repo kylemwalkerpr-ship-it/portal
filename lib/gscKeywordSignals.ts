@@ -11,19 +11,33 @@
 // for JWT signing + plain fetch for the REST call. No googleapis dep
 // (that package is Node-only and ~12MB; doesn't fit on the edge).
 //
-// Activation requires TWO repo secrets — see
-// `[[reference_oauth_credentials]]` memory for where these live:
-//   GSC_SERVICE_ACCOUNT_JSON  — JSON key for a service account with
-//                               "Restricted" or "Owner" role on each
-//                               Search Console property the gig-draft
-//                               path should query.
+// Two auth modes are supported — the module auto-detects which env
+// vars are configured and dispatches accordingly. ONE of these
+// credential bundles is required, plus GSC_SITE_URL:
+//
+// Mode A — OAuth refresh token (works for personal-Gmail-owned
+// properties; this is the working path for yousafeconsultancy.com):
+//   GSC_OAUTH_REFRESH_TOKEN   — long-lived refresh token tied to the
+//                               property-owner Google account, scoped
+//                               to webmasters.readonly.
+//   GSC_OAUTH_CLIENT_ID       — OAuth 2.0 Web client ID from the
+//                               yousafe-gsc-reader Cloud project.
+//   GSC_OAUTH_CLIENT_SECRET   — paired client secret.
+//
+// Mode B — Service account JWT (works for Google Workspace properties
+// or URL-prefix properties that accept service accounts):
+//   GSC_SERVICE_ACCOUNT_JSON  — JSON key with "Restricted" or "Owner"
+//                               role on each Search Console property.
+//
+// Common to both modes:
 //   GSC_SITE_URL              — the canonical property URL, e.g.
 //                               "sc-domain:yousafeconsultancy.com" or
 //                               "https://yousafeconsultancy.com/".
-// When either env var is missing this module exports a no-op that
-// returns null — the downstream code (lib/seoResearch.ts) treats null
-// as "no live signals available" and falls back to the static path.
-// That's the "flip the env var and it just works" contract.
+//
+// When neither credential bundle is set OR GSC_SITE_URL is missing,
+// this module returns null — the downstream code (lib/seoResearch.ts)
+// treats null as "no live signals" and falls back to the static path.
+// That's the "flip the env vars and it just works" contract.
 //
 // Caching: results are cached in a module-level Map for 24 hours per
 // (category × jurisdiction) key. GSC quota is generous (~1200 req/min)
@@ -95,8 +109,38 @@ interface ServiceAccount {
   token_uri?: string
 }
 
-// Sign a service-account JWT for the metadata.googleapis.com webmasters
-// scope. Returns the access_token string the REST call uses as Bearer.
+// --- Mode A: OAuth refresh-token exchange ---------------------------
+// Exchanges a long-lived refresh token for a short-lived access token
+// at Google's OAuth endpoint. The refresh token was minted by the
+// property owner (kylemwalker.pr@gmail.com) via the OAuth Playground;
+// the resulting access tokens carry that owner's GSC permissions.
+async function getAccessTokenFromRefreshToken(
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`GSC refresh-token exchange failed (${res.status}): ${text.slice(0, 200)}`)
+  }
+  const json = await res.json() as { access_token?: string }
+  if (!json.access_token) throw new Error('GSC refresh-token exchange missing access_token')
+  return json.access_token
+}
+
+// --- Mode B: Service-account JWT signing ----------------------------
+// Sign a service-account JWT for the webmasters.readonly scope.
+// Returns the access_token string the REST call uses as Bearer.
 async function getAccessToken(sa: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const claim = {
@@ -146,18 +190,30 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
 export async function fetchGscKeywordSignals(
   opts: FetchGscKeywordSignalsOpts,
 ): Promise<LiveKeywordSignal[] | null> {
-  const saJson = process.env.GSC_SERVICE_ACCOUNT_JSON
   const siteUrl = process.env.GSC_SITE_URL
-  if (!saJson || !siteUrl) return null
+  if (!siteUrl) return null
   if (!opts.category || !opts.jurisdiction) return null
+
+  // Detect which auth mode is configured. OAuth refresh-token has
+  // higher priority because it's the working path for personal-Gmail
+  // properties (Search Console refuses service-account emails on
+  // those). SA JWT is the fallback for future Workspace setups.
+  const refreshToken = process.env.GSC_OAUTH_REFRESH_TOKEN
+  const oauthClientId = process.env.GSC_OAUTH_CLIENT_ID
+  const oauthClientSecret = process.env.GSC_OAUTH_CLIENT_SECRET
+  const saJson = process.env.GSC_SERVICE_ACCOUNT_JSON
+  const hasOAuth = refreshToken && oauthClientId && oauthClientSecret
+  const hasSA = !!saJson
+  if (!hasOAuth && !hasSA) return null
 
   const key = cacheKey(opts.category, opts.jurisdiction)
   const cached = CACHE.get(key)
   if (cached && cached.expiresAt > Date.now()) return cached.signals
 
   try {
-    const sa = JSON.parse(saJson) as ServiceAccount
-    const accessToken = await getAccessToken(sa)
+    const accessToken = hasOAuth
+      ? await getAccessTokenFromRefreshToken(refreshToken, oauthClientId, oauthClientSecret)
+      : await getAccessToken(JSON.parse(saJson as string) as ServiceAccount)
 
     // 28-day window matches GSC default.
     const endDate = new Date().toISOString().slice(0, 10)
