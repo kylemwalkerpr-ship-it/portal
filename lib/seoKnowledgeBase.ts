@@ -443,6 +443,40 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'gap year admission essay',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
   { term: 'homeschool college application essay',    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
 
+  // -- Residency niche (the "Residency Play" — high-value, lower
+  //    generalist competition than college-essay space) --
+  { term: 'residency personal statement editing',    cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'residency application essay help',        cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'eras personal statement editing',         cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'eras application essay coach',            cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'residency match application help',        cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'fellowship personal statement editing',   cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+
+  // -- LSI entities for admissions-niche topical depth --
+  // These read as informational queries but their PRIMARY job is to
+  // signal entity coverage in description / FAQ prose. The AI uses
+  // them to drop the named entities (AdCom, narrative arc, tone and
+  // voice) that admissions-essay buyers recognize.
+  { term: 'admissions committee perspective on essays', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'narrative arc personal statement',        cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'tone and voice personal statement',       cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'show dont tell admissions essay',         cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Year-tagged variants (freshness signal — Google ranks "X 2026"
+  //    above generic "X" for current-year searches; per strategy doc §5.7) --
+  { term: 'common app essay examples 2026',          cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'best admissions essay editing services 2026', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'best mba essay editing services 2026',    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+
+  // -- Trust + EEAT-positioning keywords --
+  // Bake the trust-signal patterns into the keyword bank so they
+  // surface as priority signals when buyers are in the "evaluating
+  // multiple services" stage. Phrasing is competitor-mapped from how
+  // EssayEdge / EssayPro position their trust panels.
+  { term: 'admissions essay editor with ivy league credentials', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'confidential admissions essay editing',   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'admissions essay editor portfolio',       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
   // ===================================================================
   // --- Career-services cluster ---
   // LinkedIn Premium, Resume.com, TopResume, ResumeGenius, ZipJob,
@@ -1055,6 +1089,15 @@ function subcategoryAffinityTokens(subcategoryId: string): string[] {
       'best admissions essay editing service', 'free consultation admissions essay',
       'extracurricular activities list for college apps',
       'college application timeline for seniors', 'college interview questions prep',
+      // LSI / topical-depth entities (AdCom recognition signals).
+      'admissions committee', 'adcom', 'narrative arc', 'tone and voice',
+      'show dont tell',
+      // Year-tagged freshness variants.
+      'common app essay examples 2026', 'best admissions essay editing services 2026',
+      // Trust-signal patterns.
+      'admissions essay editor with ivy league credentials',
+      'confidential admissions essay editing',
+      'admissions essay editor portfolio',
     ]
     case 'graduate-school':       return [
       'graduate', 'grad school', 'phd', 'mba', 'med school', 'medical school',
@@ -1074,6 +1117,21 @@ function subcategoryAffinityTokens(subcategoryId: string): string[] {
       'mba interview preparation service', 'mba application timeline planner',
       'law school interview coaching', 'medical school interview preparation',
       'graduate school essay editing service reviews',
+      // Residency-niche additions (the "Residency Play" — higher
+      // transactional value, lower generalist competition).
+      'residency personal statement', 'eras', 'residency application',
+      'residency match', 'fellowship personal statement',
+      'residency personal statement editing', 'residency application essay help',
+      'eras personal statement editing', 'eras application essay coach',
+      'fellowship personal statement editing',
+      // LSI / topical-depth entities (AdCom recognition signals).
+      'admissions committee', 'adcom', 'narrative arc', 'tone and voice',
+      'show dont tell',
+      // Year-tagged freshness variants.
+      'best mba essay editing services 2026',
+      // Trust-signal patterns.
+      'admissions essay editor with ivy league credentials',
+      'admissions essay editor portfolio',
     ]
     case 'scholarships':          return [
       'scholarship', 'funding', 'merit', 'fulbright', 'rhodes',
@@ -1306,6 +1364,53 @@ export const LENGTH_GATES = {
   seoDescription:      { min: 140, max: 155, unit: 'chars' as const, note: 'SEO description: 140–155 chars. Anything above 155 truncates with an ellipsis.' },
 } as const
 
+// Niche-authority + trust-signal positioning plays. Curated from
+// competitor analysis of EssayPro, EssayEdge, TopAdmit + admissions-
+// niche search-trend research. Surfaced in the strategy directives
+// block so the AI applies the positioning rules — not just the
+// keywords. The keywords get a gig found; the positioning gets the
+// gig BOOKED against established competitors.
+export function getNicheAuthorityPlays(category: string, subcategory: string): string[] {
+  const cat = (category || '').toLowerCase()
+  const sub = (subcategory || '').toLowerCase()
+  const isAcademicWriting = cat === 'academic-writing' || cat === 'education' || cat === 'mentorship'
+  if (!isAcademicWriting) return []
+
+  const plays: string[] = []
+
+  // 1. Niche-authority play — pick the strongest niche and lead with
+  // it instead of competing on generalist "college essay help" terms.
+  if (sub === 'sop-writing' || sub === 'graduate-school' || sub === 'university-admissions') {
+    plays.push(
+      'NICHE-AUTHORITY POSITIONING: When the gig serves a specialty admissions niche (Residency / ERAS, MBA, Med School, Law School, PhD), LEAD with that niche in the title + pitch + first paragraph of description. Specialty niches have higher transactional value AND less generalist-competitor pressure than the broad "college essay help" space dominated by essay mills.',
+    )
+  }
+
+  // 2. Alternative-strategy positioning — when the gig is a clear
+  // quality / price upgrade over a named competitor, weave it in.
+  plays.push(
+    'ALTERNATIVE-COMPETITOR POSITIONING: When the gig genuinely offers higher quality, faster turnaround, or specialty expertise vs an established competitor (EssayPro, EssayEdge, TopAdmit, Crimson, Ivy Coach, Accepted), the description and FAQ can weave in "an alternative to [Competitor]" framing where it reads naturally. Buyers searching for alternatives have already evaluated one option and want a better fit — they are highly qualified leads.',
+  )
+
+  // 3. LSI / entity-depth signal — admissions-niche AdComs recognize
+  // specific entities that essay-mill content doesn't use. Surfacing
+  // them is a topical-depth signal Google reads.
+  plays.push(
+    'ADMISSIONS-NICHE LSI ENTITIES: Drop the entities admissions committees and serious applicants recognize: "admissions committee" or "AdCom", "narrative arc", "tone and voice", "show don\'t tell", "specificity over abstraction", "throughline". One named entity per 100-150 words of prose. These are topical-relevance signals Google reads as expertise — essay-mill content doesn\'t use them, so surfacing them differentiates a serious editor from a paper mill.',
+  )
+
+  // 4. Trust signals for the sensitive-data / high-stakes niche.
+  // Concrete proof patterns, not abstract claims.
+  plays.push(
+    'TRUST SIGNALS (sensitive personal data + high-stakes outcomes): Lead with concrete proof, not abstract claims. Three trust patterns the established players use that you should match:',
+    '  • EDITOR CREDENTIALS BY INSTITUTION TYPE: name the type of school/program the editor trained at ("Editors with degrees from top-30 US programs", "Former admissions readers", "Ivy League editorial team"). Specific enough to read as proof, not so specific that it overclaims.',
+    '  • BEFORE/AFTER OFFER: explicitly offer to share anonymized before-and-after snippets on request. This is what makes the "is this real editing or surface polish" question answer itself.',
+    '  • CONFIDENTIALITY POLICY: explicit one-line confidentiality language ("Your draft is reviewed only by your assigned editor and never used as a sample without your written permission"). Buyers compare confidentiality language directly across services; absence reads as risk.',
+  )
+
+  return plays
+}
+
 // Freshness directive from §5.7. Surfaced in every prompt so the model
 // embeds the current policy year inline rather than reaching for
 // "recently" / "last year" hedges.
@@ -1371,6 +1476,16 @@ export function getStrategyDirectivesBlock(opts: StrategyDirectivesOpts): string
   if (structure) lines.push(structure)
 
   lines.push(getFreshnessDirective())
+
+  // Niche-authority + trust-signal positioning plays. Only emitted
+  // for academic-writing / education / mentorship categories where
+  // the EssayPro / EssayEdge / TopAdmit competitor analysis applies.
+  // Empty list for other categories — we don't force a positioning
+  // play that doesn't match the gig's niche.
+  const nichePlays = getNicheAuthorityPlays(opts.category, opts.subcategory ?? '')
+  for (const play of nichePlays) {
+    lines.push(play)
+  }
 
   lines.push(
     `LINKING: When you name a controlling authority, use the canonical name in full ("USCIS", "IRCC", "GOV.UK", "Home Office") — never "the government" or "the immigration office". The proper name IS the anchor signal Google reads.`,
