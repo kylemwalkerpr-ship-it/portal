@@ -63,6 +63,20 @@ export type Cluster =
                    // Springboard, ADPList, Codementor, GrowthMentor.
                    // 1-on-1 mentor / coding mentor / career coach
                    // commercial-intent vocabulary.
+  | 'attorney-immigration-legal'
+                   // Competitor-mapped 7-cluster intent taxonomy for
+                   // ATTORNEY gigs. Mirrors the academic-writing-essay
+                   // structure (transactional / informational / long-
+                   // tail by visa form / comparison / jurisdiction-
+                   // specific / trust+credibility / cross-appeal) but
+                   // targets immigration-law + general-legal
+                   // vocabulary. Competitors mapped: Boundless
+                   // Immigration, VisaPlace, RapidVisa, Murthy Law
+                   // Firm, Reeves Immigration Law Group, Berardi
+                   // Immigration Law, Cyrus D. Mehta & Partners, AILA
+                   // member firms, SimpleCitizen, Borderwise,
+                   // ImmigrationHelp.org, Path2USA, Avvo, Justia,
+                   // FindLaw, Nolo, Rocket Lawyer (legal arm).
 
 export interface StrategicKeyword {
   // The exact phrase to surface in priority lists. Verbatim from the
@@ -660,6 +674,163 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'goal-setting coach',                      cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'executive coach',                         cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'leadership coach',                        cluster: 'mentorship-coaching', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // ===================================================================
+  // --- Attorney-immigration-legal cluster (7-intent taxonomy) ---
+  //
+  // Mirrors the academic-writing-essay cluster's 7-intent structure
+  // (Cluster 1: Transactional/Commercial, 2: Informational/Top-of-
+  // Funnel, 3: Long-tail by visa form, 4: Comparison/Branded, 5:
+  // Jurisdiction-specific, 6: Trust/Credibility & Proof, 7: Cross-
+  // Appeal/Adjacent services) — applied to immigration-law +
+  // general-legal vocabulary.
+  //
+  // Competitor mapping:
+  //   • Boundless Immigration   — DIY-attorney-hybrid for family-based GC
+  //   • VisaPlace               — Canadian + US immigration boutique
+  //   • RapidVisa (Boundless)   — K-1 + family visa specialist
+  //   • Murthy Law Firm         — H-1B + employment-based immigration
+  //   • Reeves Immigration Law  — H-1B + investor visas + EB-5
+  //   • Berardi Immigration Law — cross-border US/Canada
+  //   • Cyrus D. Mehta & Partners — corporate immigration
+  //   • AILA member firms       — generic high-trust positioning
+  //   • SimpleCitizen           — DIY immigration software + attorney review
+  //   • Borderwise              — DIY-attorney-hybrid for K-1, AOS, GC
+  //   • ImmigrationHelp.org     — nonprofit DIY guidance
+  //   • Path2USA                — H-1B + immigration consulting
+  //   • Avvo / Justia / FindLaw / Nolo — legal directories + DIY content
+  //   • Rocket Lawyer (legal arm) — document prep + on-demand attorney
+  //
+  // EXCLUDED: "cheap immigration lawyer", "guaranteed visa approval",
+  // "100% approval rate" — bar-association ethics rules prohibit
+  // outcome guarantees for legal services, and Google's helpful-
+  // content updates penalize sites ranking for those terms.
+  // ===================================================================
+
+  // -- Cluster 1: Transactional / Commercial (service-page lead) --
+  { term: 'immigration lawyer near me',              cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'immigration attorney consultation',       cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'h-1b visa lawyer',                        cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'green card application lawyer',           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'family-based green card attorney',        cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'i-130 petition attorney',                 cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'i-485 adjustment of status lawyer',       cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'asylum lawyer',                           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'citizenship application lawyer',          cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'n-400 naturalization attorney',           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'visa denial appeal attorney',             cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'removal proceedings lawyer',              cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'deportation defense attorney',            cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'k-1 fiance visa lawyer',                  cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'eb-5 investor visa lawyer',               cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'o-1 extraordinary ability attorney',      cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'l-1 intracompany transfer lawyer',        cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'rfe response attorney',                   cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'i-751 removal of conditions lawyer',      cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'naturalization n-400 help',               cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+
+  // -- Cluster 2: Informational / Top-of-Funnel (blog-post intent) --
+  { term: 'how to apply for a green card',           cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how long does h-1b take',                 cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'i-130 processing time',                   cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'i-485 processing time',                   cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'green card vs visa',                      cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'common reasons for i-485 denial',         cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'uscis rfe response guide',                cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'what is form i-94',                       cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'adjustment of status timeline',           cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'consular processing vs adjustment of status', cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'h-1b cap-exempt employers',               cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to respond to a uscis rfe',           cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'i-94 expired what to do',                 cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'who is eligible for u visa',              cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to file form i-130',                  cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'daca renewal guide',                      cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'naturalization eligibility requirements', cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'asylum application process',              cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 3: Long-Tail by Visa Form / Document --
+  { term: 'i-589 asylum application help',           cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'i-765 ead application',                   cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-131 advance parole',                    cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-129 nonimmigrant worker petition',      cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-140 employment-based petition',         cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-918 u visa application',                cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-360 vawa self-petition',                cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'n-600 citizenship application',           cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'h-1b specialty occupation help',          cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'e-2 investor visa attorney',              cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'tn nafta visa lawyer',                    cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'r-1 religious worker visa',               cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'cr-1 spouse visa lawyer',                 cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'eb-2 niw petition lawyer',                cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'eb-3 skilled worker green card',          cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+
+  // -- Cluster 4: Comparison / Branded (vs DIY tools + competitors) --
+  { term: 'boundless review',                        cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'visaplace review',                        cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'rapidvisa alternative',                   cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'simplecitizen review',                    cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'boundless vs immigration lawyer',         cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'diy green card application vs attorney',  cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'best immigration lawyer',                 cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration lawyer cost',                 cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'flat fee immigration attorney',           cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'immigration lawyer free consultation',    cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'best immigration law firm',               cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'is boundless safe',                       cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 5: Jurisdiction-Specific (country/embassy framings) --
+  { term: 'us immigration lawyer for indian nationals', cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'us immigration attorney for chinese nationals', cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'consular processing attorney',            cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'us embassy interview help',               cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'uk home office spouse visa solicitor',    cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'uk skilled worker visa lawyer',           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'uk ilr application lawyer',               cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'ircc immigration lawyer canada',          cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'canada express entry lawyer',             cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'canada pgwp application help',            cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'canada study permit lawyer',              cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+
+  // -- Cluster 6: Trust / Credibility & Proof --
+  // Bar-admission, AILA membership, board certification — high-
+  // weight buyer-trust signals for legal services. ZERO outcome
+  // promises (bar ethics prohibit guarantees of legal outcomes).
+  { term: 'aila member immigration attorney',        cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'board-certified immigration lawyer',      cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration lawyer reviews',              cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration attorney testimonials',       cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration lawyer credentials',          cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'bar admitted immigration attorney',       cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'experienced uscis attorney',              cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration lawyer free consultation',    cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'transparent immigration lawyer fees',     cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration attorney case studies',       cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'immigration attorney years of experience', cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'how to verify an immigration attorney',   cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'attorney ethics immigration law',         cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 7: Cross-Appeal / Adjacent Services --
+  // Workflow-adjacent legal-services that immigration / general-legal
+  // attorneys often add to their gig ladder.
+  { term: 'us visa interview preparation',           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'immigration document translation',        cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'rfe response writing service',            cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'uscis receipt notice tracking',           cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'consular processing preparation',         cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'biometrics appointment guide',            cluster: 'attorney-immigration-legal', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'immigration appeal brief writing',        cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'i-601 waiver application',                cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'i-601a provisional waiver',               cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'aao appeal filing',                       cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'bia appeal immigration',                  cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'employment-based green card strategy',    cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'family-based green card strategy',        cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'employer h-1b cap registration',          cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'perm labor certification',                cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'i-9 employer compliance',                 cluster: 'attorney-immigration-legal', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'legal document review service',           cluster: 'attorney-immigration-legal', intent: 'transactional', surface: 'marketplace', month: 1 },
 ]
 
 // Map a taxonomy category + jurisdiction to the relevant strategy
@@ -690,18 +861,29 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
 type ClusterMap = Record<string, Partial<Record<Exclude<Jurisdiction, ''>, Cluster[]>>>
 
 const CATEGORY_TO_CLUSTERS_ATTORNEY: ClusterMap = {
-  // Attorneys keep the broad immigration-policy cluster mapping
-  // because they ARE selling the legal/policy outcome the clusters
-  // target. Layered ON TOP of that: the commercial-intent clusters
-  // (career-services, business-formation, credential-evaluation,
-  // mentorship-coaching) so an attorney offering resume review,
-  // LLC formation, WES help, or mentorship still gets the
-  // competitor-mapped commercial vocabulary on top of the
-  // legal-anchor vocabulary.
-  immigration:        { us: ['us-f1-opt', 'us-work', 'us-pr'], uk: ['uk-work'],     ca: ['canada-sp-pgwp', 'canada-pr'] },
+  // Attorneys get THREE keyword layers stacked:
+  //
+  // 1. Q3 strategy clusters (us-f1-opt, uk-work, canada-pr etc.) —
+  //    the policy-specific high-converting queries from the
+  //    quarterly plan, already proven in the canonical-content tier.
+  //
+  // 2. attorney-immigration-legal cluster — the new 7-intent
+  //    competitor-mapped bank covering immigration + general-legal
+  //    commercial intent (Boundless / VisaPlace / AILA-firm
+  //    vocabulary). Mirrors the academic-writing-essay structure
+  //    that landed for consultants.
+  //
+  // 3. Commercial-adjacent clusters (career-services, business-
+  //    formation, credential-evaluation, mentorship-coaching) so an
+  //    attorney offering resume review, LLC formation, WES help, or
+  //    mentorship gets that vocabulary on top of the legal anchors.
+  //
+  // Subcategory-affinity routing handles which slice of each cluster
+  // surfaces for a given (category, subcategory) pair.
+  immigration:        { us: ['us-f1-opt', 'us-work', 'us-pr', 'attorney-immigration-legal'], uk: ['uk-work', 'attorney-immigration-legal'], ca: ['canada-sp-pgwp', 'canada-pr', 'attorney-immigration-legal'] },
   education:          { us: ['us-f1-opt', 'academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['canada-sp-pgwp', 'academic-writing-essay'] },
   'academic-writing': { us: ['us-f1-opt', 'academic-writing-essay'], uk: ['academic-writing-essay'], ca: ['canada-sp-pgwp', 'academic-writing-essay'] },
-  legal:              { us: ['us-f1-opt', 'us-work', 'us-pr', 'business-formation'], uk: ['uk-tenancy', 'uk-work', 'business-formation'], ca: ['canada-sp-pgwp', 'canada-pr', 'business-formation'] },
+  legal:              { us: ['us-f1-opt', 'us-work', 'us-pr', 'business-formation', 'attorney-immigration-legal'], uk: ['uk-tenancy', 'uk-work', 'business-formation', 'attorney-immigration-legal'], ca: ['canada-sp-pgwp', 'canada-pr', 'business-formation', 'attorney-immigration-legal'] },
   settlement:         { us: [],                                uk: ['uk-tenancy'],  ca: [] },
   career:             { us: ['us-f1-opt', 'us-work', 'career-services'], uk: ['uk-work', 'career-services'], ca: ['canada-pr', 'career-services'] },
   business:           { us: ['us-work', 'business-formation'], uk: ['uk-work', 'business-formation'], ca: ['canada-pr', 'business-formation'] },
@@ -1003,6 +1185,83 @@ function subcategoryAffinityTokens(subcategoryId: string): string[] {
     case 'housing':               return [
       'tenancy', 'rent', 'housing', 'deposit', 'section 21',
       'renters rights', 'tenancy notice',
+    ]
+    // --- Immigration subcategories (attorney-only) ---
+    case 'study-permits':         return [
+      'study permit', 'f-1', 'f1 visa', 'student visa', 'cas', 'dli',
+      'sevis', 'i-20', 'canada study permit lawyer',
+      'student visa lawyer', 'study permit application',
+    ]
+    case 'work-permits':          return [
+      'h-1b', 'h1b', 'opt', 'cpt', 'l-1', 'l1', 'tn', 'e-3',
+      'h-1b visa lawyer', 'h-1b specialty occupation help',
+      'o-1 extraordinary ability', 'e-2 investor visa',
+      'tn nafta visa lawyer', 'l-1 intracompany transfer',
+      'employer h-1b cap registration', 'perm labor certification',
+      'pgwp', 'lmia', 'work permit', 'work permit lawyer',
+      'how long does h-1b take', 'h-1b cap-exempt employers',
+    ]
+    case 'pr-immigration':        return [
+      'green card', 'permanent residency', 'i-485', 'i-130', 'i-140',
+      'adjustment of status', 'express entry', 'pnp', 'ilr',
+      'green card application lawyer', 'family-based green card',
+      'i-130 petition attorney', 'i-485 adjustment of status lawyer',
+      'eb-2 niw', 'eb-3 skilled worker',
+      'consular processing', 'i-601 waiver', 'i-601a provisional waiver',
+      'canada express entry lawyer', 'uk ilr application lawyer',
+      'common reasons for i-485 denial', 'adjustment of status timeline',
+      'consular processing vs adjustment of status',
+      'employment-based green card strategy', 'family-based green card strategy',
+    ]
+    case 'family-sponsorship':    return [
+      'spouse visa', 'k-1', 'fiance visa', 'cr-1', 'i-130',
+      'family-based green card', 'family-based green card attorney',
+      'i-130 petition attorney', 'k-1 fiance visa lawyer',
+      'cr-1 spouse visa lawyer', 'uk home office spouse visa',
+      'i-360 vawa self-petition', 'i-751 removal of conditions',
+    ]
+    case 'visitor-visas':         return [
+      'b-1', 'b-2', 'b1b2', 'visitor visa', 'trv', 'tourist visa',
+      'us embassy interview help', 'consular processing',
+      'us visa interview preparation', 'temporary resident visa',
+    ]
+    case 'citizenship':           return [
+      'naturalization', 'n-400', 'n-600', 'citizenship',
+      'citizenship application lawyer', 'n-400 naturalization attorney',
+      'naturalization n-400 help', 'naturalization eligibility requirements',
+    ]
+    // --- Legal subcategories (attorney-only) ---
+    case 'document-prep':         return [
+      'i-130', 'i-485', 'i-765', 'i-131', 'i-129', 'i-140', 'i-589',
+      'i-918', 'i-918', 'i-360', 'i-601', 'i-601a', 'n-400', 'n-600',
+      'form preparation', 'document preparation', 'uscis filing',
+      'rfe response writing service', 'immigration document translation',
+      'i-765 ead application', 'i-131 advance parole',
+      'how to file form i-130', 'how to respond to a uscis rfe',
+      'uscis rfe response guide', 'legal document review service',
+    ]
+    case 'attorney-review':       return [
+      'attorney review', 'legal review', 'attorney consultation',
+      'immigration attorney consultation', 'immigration lawyer near me',
+      'rfe response attorney', 'immigration appeal brief writing',
+      'aao appeal filing', 'bia appeal immigration',
+      'visa denial appeal attorney', 'removal proceedings lawyer',
+      'deportation defense attorney',
+    ]
+    case 'legal-consultation':    return [
+      'immigration attorney consultation', 'immigration lawyer free consultation',
+      'flat fee immigration attorney', 'immigration lawyer cost',
+      'transparent immigration lawyer fees', 'aila member immigration attorney',
+      'board-certified immigration lawyer', 'best immigration lawyer',
+      'best immigration law firm', 'immigration lawyer reviews',
+      'immigration attorney testimonials', 'immigration lawyer credentials',
+      'experienced uscis attorney', 'attorney ethics immigration law',
+      'how to verify an immigration attorney',
+      'boundless vs immigration lawyer', 'diy green card application vs attorney',
+    ]
+    case 'compliance':            return [
+      'i-9 employer compliance', 'employer h-1b cap registration',
+      'perm labor certification', 'h-1b cap-exempt employers',
     ]
     default:                       return []
   }
