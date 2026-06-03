@@ -103,26 +103,59 @@ jobs:
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
         run: |
-          if [ -n "$GROQ_API_KEY" ]; then
-            printf '%s' "$GROQ_API_KEY" | npx wrangler secret put GROQ_API_KEY
-          else
-            echo "GROQ_API_KEY not set in repo secrets — skipping"
-          fi
-          if [ -n "$GEMINI_API_KEY" ]; then
-            printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY
-          else
-            echo "GEMINI_API_KEY not set in repo secrets — skipping"
-          fi
+          # Cloudflare's secret API occasionally rejects subsequent secret
+          # pushes within the same workflow run with "Secret edit failed.
+          # You attempted to modify a secret, but the latest version of
+          # your Worker isn't currently deployed." This is a race condition
+          # between Cloudflare's deployment-state propagation and the
+          # secrets API. The race bit us on run #26874086278 (commit
+          # 1b3c8d8) — 5 secrets uploaded successfully, 6th failed.
+          #
+          # Mitigation: wrap each secret push in a bounded retry loop with
+          # exponential-ish backoff. The "latest version not deployed"
+          # error clears within 5-15s as Cloudflare's internal state
+          # settles, so 3 retries with 5s/10s/20s waits cover the worst
+          # case.
+          put_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "$name not set in repo secrets — skipping"
+              return 0
+            fi
+            for attempt in 1 2 3 4; do
+              if printf '%s' "$value" | npx wrangler secret put "$name" 2>&1 | tee /tmp/wrangler-secret-$$.log; then
+                rm -f /tmp/wrangler-secret-$$.log
+                return 0
+              fi
+              if grep -q "latest version of your Worker isn't currently deployed" /tmp/wrangler-secret-$$.log; then
+                local wait=$((attempt * 5))
+                echo "Cloudflare deployment-state race — waiting ${wait}s and retrying $name (attempt $attempt/4)…"
+                sleep "$wait"
+                continue
+              fi
+              # Some other error — surface it and fail the step.
+              cat /tmp/wrangler-secret-$$.log
+              rm -f /tmp/wrangler-secret-$$.log
+              return 1
+            done
+            echo "ERROR: failed to push $name after 4 attempts"
+            return 1
+          }
+
+          # Brief settle-time after the deploy step so Cloudflare has a
+          # chance to propagate the new version as the live deployment
+          # before we start pushing secrets against it.
+          sleep 3
+
+          put_secret GROQ_API_KEY              "$GROQ_API_KEY"
+          put_secret GEMINI_API_KEY            "$GEMINI_API_KEY"
           # GSC live-keyword signals (lib/gscKeywordSignals.ts). All four
           # must be set for the live path to activate; the module returns
           # null and falls back to static keywords if any are missing.
           # Skipping silently keeps the deploy green when GSC isn't yet
           # provisioned.
-          for v in GSC_OAUTH_CLIENT_ID GSC_OAUTH_CLIENT_SECRET GSC_OAUTH_REFRESH_TOKEN GSC_SITE_URL; do
-            val=$(eval echo "\$$v")
-            if [ -n "$val" ]; then
-              printf '%s' "$val" | npx wrangler secret put "$v"
-            else
-              echo "$v not set in repo secrets — skipping"
-            fi
-          done
+          put_secret GSC_OAUTH_CLIENT_ID       "$GSC_OAUTH_CLIENT_ID"
+          put_secret GSC_OAUTH_CLIENT_SECRET   "$GSC_OAUTH_CLIENT_SECRET"
+          put_secret GSC_OAUTH_REFRESH_TOKEN   "$GSC_OAUTH_REFRESH_TOKEN"
+          put_secret GSC_SITE_URL              "$GSC_SITE_URL"
