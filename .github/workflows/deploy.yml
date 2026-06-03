@@ -150,6 +150,15 @@ jobs:
 
           put_secret GROQ_API_KEY              "$GROQ_API_KEY"
           put_secret GEMINI_API_KEY            "$GEMINI_API_KEY"
+          # Cloudflare Workers AI — third fallback provider, runs
+          # on Cloudflare's GPU fleet (lib/chatProvider.ts buildCloudflareAI).
+          # Reuses CI's existing CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN
+          # at runtime so the Worker can call Cloudflare's REST AI API.
+          # Independent quota from Groq + Gemini — when both hit their
+          # daily TPD limits the AI surface stays alive via this path.
+          # Free tier: 10k Neurons/day ≈ 2000 Llama-3.3-70b generations.
+          put_secret CLOUDFLARE_ACCOUNT_ID     "$CLOUDFLARE_ACCOUNT_ID"
+          put_secret CLOUDFLARE_API_TOKEN      "$CLOUDFLARE_API_TOKEN"
           # GSC live-keyword signals (lib/gscKeywordSignals.ts). All four
           # must be set for the live path to activate; the module returns
           # null and falls back to static keywords if any are missing.

@@ -1,13 +1,30 @@
 /**
- * Tiny abstraction over the free AI providers we use for the support chat.
- * Picks whichever is configured at runtime and returns a clean reply string.
+ * Tiny abstraction over the free AI providers we use for the gig-
+ * draft + support-chat AI. Picks whichever is configured at runtime
+ * and chains them so a per-day quota exhaustion on one doesn't break
+ * the AI surface.
  *
  * Preference order (cheapest / fastest first):
- *   1. Groq           — free tier, Llama-3.3-70b, very low latency.
- *   2. Google Gemini  — free tier, gemini-2.5-flash, generous quota.
+ *   1. Groq            — free tier, Llama-3.3-70b, fastest latency.
+ *   2. Google Gemini   — free tier, gemini-2.5-flash, generous quota.
+ *   3. Cloudflare Workers AI — runs on the same CF network as the
+ *                       Worker; reuses CLOUDFLARE_ACCOUNT_ID +
+ *                       CLOUDFLARE_API_TOKEN. 10k Neurons/day free,
+ *                       ≈ 2000 Llama-3.3-70b generations. Independent
+ *                       quota from Groq + Gemini, so when both hit
+ *                       their daily TPD limits this keeps the AI
+ *                       surface alive.
  *
- * Set ONE of GROQ_API_KEY or GEMINI_API_KEY (or both — Groq wins) on
- * Cloudflare. No other config is required.
+ * Configure any subset on Cloudflare:
+ *   - GROQ_API_KEY                — primary
+ *   - GEMINI_API_KEY              — first fallback
+ *   - CLOUDFLARE_ACCOUNT_ID +     — second fallback. No new key — the
+ *     CLOUDFLARE_API_TOKEN          existing deploy creds are reused.
+ *
+ * Chain semantics: each provider gets a 1500ms intra-provider retry
+ * on transient 503/429, then falls through to the next provider on
+ * persistent failure. When all configured providers fail, the error
+ * names all of them so the operator sees the full picture.
  */
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string }
@@ -31,6 +48,12 @@ const DEFAULT_MAX_TOKENS = 600
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const GEMINI_MODEL = 'gemini-2.5-flash'
+// Cloudflare Workers AI model identifier. The `-fp8-fast` variant is
+// the FP8-quantized model running on CF's accelerated inference
+// stack — same architecture as Groq's hosted Llama 3.3 70b but on
+// Cloudflare's network. Costs ~5 Neurons per call; 10k free
+// Neurons/day = ~2000 generations.
+const CF_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
 
 function buildGroq(apiKey: string): ChatProvider {
   const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
@@ -124,6 +147,61 @@ function buildGemini(apiKey: string): ChatProvider {
   }
 }
 
+// Cloudflare Workers AI — third provider, independent quota from
+// Groq + Gemini. Uses the REST AI endpoint with the existing
+// CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN secrets (the same
+// creds CI already uses for `wrangler deploy`), so adding this
+// provider requires ZERO new key provisioning. Free tier is 10k
+// Neurons/day; a Llama-3.3-70b call costs ~5 Neurons so the daily
+// ceiling is ~2000 generations.
+function buildCloudflareAI(accountId: string, apiToken: string): ChatProvider {
+  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
+    // Cloudflare Workers AI exposes an OpenAI-compatible chat endpoint
+    // when you POST to /run/{model} with a `messages` array. The
+    // response shape differs slightly from OpenAI — the reply lives
+    // at result.response — so we unpack that here.
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_AI_MODEL}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: system },
+          ...history.map(t => ({ role: t.role, content: t.content })),
+        ],
+        temperature: 0.4,
+        max_tokens: options?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      const fp = apiToken
+        ? `[len=${apiToken.length} ${apiToken.slice(0, 4)}…${apiToken.slice(-3)}]`
+        : '[missing]'
+      throw new Error(`Cloudflare-AI ${res.status} ${fp}: ${text.slice(0, 280)}`)
+    }
+    const data = await res.json() as {
+      success?: boolean
+      result?: { response?: string }
+      errors?: Array<{ message: string }>
+    }
+    if (!data.success) {
+      const errs = (data.errors || []).map(e => e.message).join(' | ').slice(0, 280)
+      throw new Error(`Cloudflare-AI returned success=false: ${errs || 'no detail'}`)
+    }
+    const reply = data.result?.response?.trim()
+    if (!reply) throw new Error('Cloudflare-AI returned an empty reply')
+    return reply
+  }
+  return {
+    name: 'cloudflare-ai',
+    reply: (system, history, options) => withRetry('cloudflare-ai', () => callOnce(system, history, options)),
+  }
+}
+
 // Retry pattern shared by both adapters. Gemini's "model overloaded"
 // (503 UNAVAILABLE) and Groq's 429 rate-limits both typically clear
 // in 1-3 seconds — Google's docs explicitly say to retry on
@@ -200,11 +278,18 @@ export function getChatProvider(): ChatProvider | null {
   // API_KEY_INVALID. Same applies to Groq's Authorization header.
   const groqKey = (process.env.GROQ_API_KEY || '').trim()
   const geminiKey = ((process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) || '').trim()
+  const cfAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
+  const cfApiToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim()
   const groq = groqKey ? buildGroq(groqKey) : null
   const gemini = geminiKey ? buildGemini(geminiKey) : null
+  const cloudflare = cfAccountId && cfApiToken ? buildCloudflareAI(cfAccountId, cfApiToken) : null
 
-  if (groq && gemini) return chain(groq, gemini)
-  if (groq) return groq
-  if (gemini) return gemini
-  return null
+  // Build the chain from whichever providers are configured. Order:
+  // Groq (fastest) → Gemini (largest free quota) → Cloudflare AI
+  // (independent vendor, separate quota). Each chain() hop adds a
+  // 1500ms intra-provider retry plus an inter-provider fallback.
+  const configured = [groq, gemini, cloudflare].filter((p): p is ChatProvider => p !== null)
+  if (configured.length === 0) return null
+  if (configured.length === 1) return configured[0]
+  return configured.reduce((acc, next) => chain(acc, next))
 }
