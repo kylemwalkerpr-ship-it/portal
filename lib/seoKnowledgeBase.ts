@@ -274,6 +274,162 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'visa interview essay prep',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
 
   // ===================================================================
+  // --- Seven-cluster taxonomy extension ---
+  // Curated from competitor mapping + intent-clustering analysis. The
+  // existing entries above cover the niche-by-competitor view. The
+  // entries below cover the intent-by-cluster view, organized as:
+  //
+  //   1. Transactional / Commercial  (service-page lead vocabulary)
+  //   2. Informational / Top-of-Funnel (blog-post lead vocabulary)
+  //   3. Long-Tail by Program       (program-specific service/blog)
+  //   4. Comparison / Branded       (review + alternative searches)
+  //   5. Study-Abroad Specific      (international / scholarship)
+  //   6. Trust / Credibility & Proof (review, guarantee, ethics)
+  //   7. Cross-Appeal / Adjacent    (resume, interview, planning)
+  //
+  // EXCLUDED: "buy college admission essay" — high commercial intent
+  // but high academic-integrity risk; YouSafe consultants edit and
+  // coach, never ghost-write submitted papers. Ranking for that term
+  // attracts the wrong buyer and triggers Google's helpful-content
+  // penalties.
+  // ===================================================================
+
+  // -- Cluster 1: Transactional / Commercial (service-page vocabulary) --
+  { term: 'admissions essay editing service',        cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'personal statement editing',              cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'statement of purpose writing service',    cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'sop review service',                      cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'phd statement of purpose editing service', cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'graduate school application essay service', cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'undergraduate admission essay help',      cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'hire admissions consultant',              cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'rush essay editing service',              cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'professional statement writer',           cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'scholarship essay editing service',       cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+
+  // -- Cluster 2: Informational / Top-of-Funnel (blog-post lead vocab) --
+  // These are blog-post-intent queries. The AI weaves them into long
+  // description + FAQ sections, NOT into gig titles or pitches — the
+  // playbook's long-tail rule already enforces that for 5+ word terms.
+  { term: 'how to write a personal statement',       cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'common app essay examples',               cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'statement of purpose format',             cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a college essay that stands out', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'what makes a good personal statement',    cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how long is a statement of purpose',      cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to start a personal statement',       cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'mistakes to avoid in personal statement', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a statement of purpose for phd', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a diversity statement',      cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a law school personal statement', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a medical school personal statement', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'best structure for mba essays',           cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'common app essay prompt',                 cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to choose a topic for college essay', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'tips for writing a scholarship essay',    cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'do colleges really read essays',          cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'college essay tips',                      cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 3: Long-Tail by Program (specialty-school positioning) --
+  { term: 'mba essay consultant for top business schools', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'phd statement of purpose engineering',    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'phd in economics statement of purpose',   cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'masters in computer science statement of purpose', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'psychology phd personal statement examples', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'law school personal statement for public interest', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'medical school secondary application essay help', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'dental school personal statement editing', cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'nursing school personal statement help',  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba application resume service',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba waitlist essay help',                 cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'medical school rejection help',           cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'phd fellowship personal statement',       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'business school letter of recommendation tips', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 4: Comparison / Branded (positioning vs competitors) --
+  // Comparison-page intent. AI uses these as positioning signals in
+  // description / about copy — never as verbatim title tokens.
+  { term: 'essayedge alternative',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essaypro review',                         cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'topadmit review',                         cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'studyabroad.com review',                  cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'is essaypro safe',                        cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'essayedge vs topadmit',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'best admissions essay editing service',   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'best mba essay editing service',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'best statement of purpose editing service', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'graduate school essay editing service reviews', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'cheapest personal statement editing service', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'college essay guy vs consultant',         cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'personal statement editing service reddit', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: '7sisters admissions essay alternative',   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+
+  // -- Cluster 5: Study-Abroad Specific (international + scholarship) --
+  // Augments the existing International/ESL block with destination-
+  // specific commercial intent for UK/Australia/Canada/Europe and
+  // headline-scholarship programs (Fulbright/Erasmus/Chevening).
+  { term: 'study abroad consultant',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'international student application help',  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'study abroad scholarship essay',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'study abroad personal statement example', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to write a study abroad statement of purpose', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'uk university personal statement editing', cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'australian university application essay help', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'canada study permit statement of purpose', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'european university motivation letter editing', cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'study abroad consultant cost',            cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'best study abroad consultants for us students', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'fulbright personal statement help',       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'erasmus motivation letter editing',       cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'chevening scholarship essay editing',     cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'study abroad scholarship essay example',  cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+
+  // -- Cluster 6: Trust / Credibility & Proof (NEW CLUSTER) --
+  // Surfaces buyers explicitly searching for proof, credentials, and
+  // social validation before booking. Critical for marketplace
+  // consultants competing against established brand-name competitors.
+  // AI uses these to surface trust-building copy in description /
+  // FAQ — credentials, guarantees, transparency claims.
+  { term: 'admissions essay editing service reviews', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'before and after college essay samples',  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'is college essay editing worth it',       cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'qualified admissions consultant credentials', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'college admissions consultant reviews',   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'personal statement editing guarantee',    cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'how to verify an essay editing service',  cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'admissions essay editor profile',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'college essay editing success stories',   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'admissions consulting ethics',            cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'law school admissions consulting reviews', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'mba admissions consultant success rate',  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'transparent essay editing pricing',       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'free consultation admissions essay',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'testimonials for statement of purpose service', cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+
+  // -- Cluster 7: Cross-Appeal / Adjacent Services (NEW CLUSTER) --
+  // Captures buyers searching for academic-writing-adjacent services
+  // (resume, interview prep, LOR coaching, application planning).
+  // Lets the AI position multi-service consultants who cover both
+  // admissions essays AND the surrounding application workflow.
+  { term: 'graduate school resume writing service',  cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'mba interview preparation service',       cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'scholarship essay writing help',          cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'law school interview coaching',           cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'medical school interview preparation',    cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'resume for grad school application',      cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'how to ask for a letter of recommendation', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'phd research proposal writing service',   cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'mba application timeline planner',        cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'study abroad visa interview tips',        cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'college application timeline for seniors', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'transfer application essay help',         cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'second bachelor application essay help',  cluster: 'academic-writing-essay', intent: 'transactional', surface: 'marketplace', month: 1 },
+  { term: 'extracurricular activities list for college apps', cluster: 'academic-writing-essay', intent: 'informational', surface: 'either', month: 1 },
+  { term: 'college interview questions prep',        cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'gap year admission essay',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+  { term: 'homeschool college application essay',    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'either', month: 1 },
+
+  // ===================================================================
   // --- Career-services cluster ---
   // LinkedIn Premium, Resume.com, TopResume, ResumeGenius, ZipJob,
   // TopInterview, MyPerfectResume, Career.io, Find My Profession.
@@ -661,35 +817,81 @@ function subcategoryAffinityTokens(subcategoryId: string): string[] {
       'sop', 'statement of purpose', 'graduate school', 'grad school',
       'study plan', 'letter of intent', 'research statement',
       'phd personal statement', 'masters personal statement',
+      'sop writing service', 'sop review service',
+      'phd statement of purpose', 'phd statement of purpose engineering',
+      'phd in economics statement of purpose', 'phd fellowship personal statement',
+      'masters in computer science statement of purpose',
+      'how to write a statement of purpose for phd', 'statement of purpose format',
+      'how long is a statement of purpose', 'transparent essay editing pricing',
+      'best statement of purpose editing service', 'testimonials for statement of purpose service',
     ]
     case 'application-essays':    return [
       'college essay', 'common app', 'supplemental', 'admissions essay',
       'personal statement', 'application essay', 'why this college',
       'college admissions', 'application essay feedback',
+      'admissions essay editing service', 'undergraduate admission essay help',
+      'how to write a personal statement', 'common app essay examples',
+      'how to write a college essay that stands out', 'what makes a good personal statement',
+      'how to start a personal statement', 'mistakes to avoid in personal statement',
+      'how to write a diversity statement', 'how to choose a topic for college essay',
+      'do colleges really read essays', 'common app essay prompt',
+      'transfer application essay help', 'second bachelor application essay help',
+      'gap year admission essay', 'homeschool college application essay',
+      'before and after college essay samples', 'college essay editing success stories',
+      'admissions essay editing service reviews', 'admissions essay editor profile',
+      'college essay tips',
     ]
     case 'scholarship-essays':    return [
       'scholarship', 'merit', 'funding', 'fulbright', 'rhodes',
       'gates scholarship', 'chevening', 'commonwealth',
+      'scholarship essay editing service', 'tips for writing a scholarship essay',
+      'study abroad scholarship essay', 'study abroad scholarship essay example',
+      'fulbright personal statement help', 'chevening scholarship essay editing',
+      'erasmus motivation letter editing',
     ]
     case 'research-writing':      return [
       'research paper', 'thesis', 'dissertation', 'manuscript',
       'journal submission', 'phd thesis', 'literature review',
+      'phd research proposal writing service',
     ]
     case 'proofreading-editing':  return [
       'editing', 'proofreading', 'language polishing', 'grammar',
       'esl', 'english proofreading',
+      'rush essay editing service', 'transparent essay editing pricing',
+      'personal statement editing', 'personal statement editing guarantee',
+      'how to verify an essay editing service', 'is college essay editing worth it',
+      'professional statement writer',
     ]
     // --- Education & Admissions subcategories ---
     case 'university-admissions': return [
       'college essay', 'common app', 'admissions', 'personal statement',
       'ivy', 'harvard', 'stanford', 'oxbridge', 'cambridge', 'oxford',
       'ucas', 'russell group', 'private admissions counselor',
-      'college admissions coach',
+      'college admissions coach', 'hire admissions consultant',
+      'college admissions consultant reviews', 'qualified admissions consultant credentials',
+      'admissions consulting ethics', 'mba admissions consultant success rate',
+      'best admissions essay editing service', 'free consultation admissions essay',
+      'extracurricular activities list for college apps',
+      'college application timeline for seniors', 'college interview questions prep',
     ]
     case 'graduate-school':       return [
       'graduate', 'grad school', 'phd', 'mba', 'med school', 'medical school',
       'law school', 'thesis', 'amcas', 'aacomas', 'lsat',
       'wharton', 'hbs',
+      'graduate school application essay service',
+      'mba essay consultant for top business schools', 'mba application resume service',
+      'mba waitlist essay help', 'best mba essay editing service',
+      'best structure for mba essays', 'how to write a law school personal statement',
+      'how to write a medical school personal statement',
+      'law school personal statement for public interest',
+      'medical school secondary application essay help',
+      'dental school personal statement editing', 'nursing school personal statement help',
+      'medical school rejection help', 'business school letter of recommendation tips',
+      'law school admissions consulting reviews',
+      'graduate school resume writing service', 'resume for grad school application',
+      'mba interview preparation service', 'mba application timeline planner',
+      'law school interview coaching', 'medical school interview preparation',
+      'graduate school essay editing service reviews',
     ]
     case 'scholarships':          return [
       'scholarship', 'funding', 'merit', 'fulbright', 'rhodes',
