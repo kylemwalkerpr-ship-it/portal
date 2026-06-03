@@ -7,29 +7,39 @@ import ChatSidePane from '../marketplace/ChatSidePane'
 import { renderBioMarkdown } from '@/lib/bioMarkdown'
 
 // Browse list + full-screen detail (Fiverr-style seller profile).
+// As of 2026-06-03 this surface unifies attorneys + consultants under a
+// single "Find a consultant or attorney" page powered by /api/providers.
+// Students can toggle between roles or browse all. The endpoint filters
+// to onboarded profiles only (headshot + tagline + bio set), so empty-
+// profile cards never ship.
 export default function FindAttorney() {
-  const [attorneys, setAttorneys] = React.useState([])
+  const [providers, setProviders] = React.useState([])
+  const [counts, setCounts] = React.useState({ total: 0, attorneys: 0, consultants: 0 })
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [query, setQuery] = React.useState('')
-  const [openId, setOpenId] = React.useState(null)
-  const [intakeFor, setIntakeFor] = React.useState(null) // { id, name } when student opens intake from a profile
+  const [roleFilter, setRoleFilter] = React.useState('all') // 'all' | 'attorney' | 'consultant'
+  const [openProvider, setOpenProvider] = React.useState(null) // { id, role }
+  const [intakeFor, setIntakeFor] = React.useState(null) // { id, name, role } when student opens intake
 
   React.useEffect(() => {
     let cancelled = false
-    fetch('/api/attorneys', { credentials: 'same-origin' })
+    setLoading(true)
+    fetch(`/api/providers?role=${roleFilter}`, { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
         if (cancelled) return
         if (!r.ok) {
-          setError(payload?.error || 'Could not load attorneys.')
+          setError(payload?.error || 'Could not load providers.')
           return
         }
-        setAttorneys(Array.isArray(payload?.attorneys) ? payload.attorneys : [])
+        setProviders(Array.isArray(payload?.providers) ? payload.providers : [])
+        setCounts(payload?.counts || { total: 0, attorneys: 0, consultants: 0 })
+        setError('')
       })
       .catch((e) => {
         if (cancelled) return
-        setError(e.message || 'Could not load attorneys.')
+        setError(e.message || 'Could not load providers.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -37,17 +47,17 @@ export default function FindAttorney() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [roleFilter])
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return attorneys
-    return attorneys.filter((a) =>
-      [a.full_name, a.tagline, a.jurisdictions, a.practice_areas, a.bio, (a.specialties || []).join(' '), (a.languages || []).join(' ')]
+    if (!q) return providers
+    return providers.filter((p) =>
+      [p.full_name, p.tagline, p.jurisdictions, p.practice_areas, p.bio, (p.specialties || []).join(' '), (p.languages || []).join(' ')]
         .filter(Boolean)
         .some((s) => String(s).toLowerCase().includes(q)),
     )
-  }, [attorneys, query])
+  }, [providers, query])
 
   if (intakeFor) {
     return (
@@ -56,7 +66,7 @@ export default function FindAttorney() {
         onCancel={() => setIntakeFor(null)}
         onSubmitted={() => {
           setIntakeFor(null)
-          setOpenId(null)
+          setOpenProvider(null)
           // Tell the student dashboard to switch to the My Inquiries tab.
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'inquiries' } }))
@@ -66,11 +76,12 @@ export default function FindAttorney() {
     )
   }
 
-  if (openId) {
+  if (openProvider) {
     return (
       <AttorneyDetail
-        attorneyId={openId}
-        onBack={() => setOpenId(null)}
+        attorneyId={openProvider.id}
+        providerRole={openProvider.role}
+        onBack={() => setOpenProvider(null)}
         onStartInquiry={(att) => setIntakeFor(att)}
       />
     )
@@ -79,19 +90,71 @@ export default function FindAttorney() {
   return (
     <div style={{ padding: '24px 28px' }}>
       <div style={{ marginBottom: '20px' }}>
-        <div style={eyebrow}>Attorney panel</div>
+        <div style={eyebrow}>Verified panel</div>
         <h2 style={{ fontFamily: C.serif, fontSize: '28px', fontWeight: 500, color: C.text, margin: '4px 0', letterSpacing: '-0.012em' }}>
-          Find an attorney.
+          Find a consultant or attorney.
         </h2>
-        <p style={{ color: C.textMuted, fontSize: '14px', margin: 0, maxWidth: '600px' }}>
-          Verified panel of attorneys, solicitors, and Canadian lawyers. Pick someone whose
-          jurisdiction and specialty match your matter.
+        <p style={{ color: C.textMuted, fontSize: '14px', margin: 0, maxWidth: '640px' }}>
+          Verified panel of consultants, attorneys, solicitors, and Canadian lawyers. Filter by role
+          or browse all — pick someone whose jurisdiction, subject, or specialty matches your need.
         </p>
+      </div>
+
+      {/* Role toggle — three-button segmented control */}
+      <div
+        role="tablist"
+        aria-label="Filter providers by role"
+        style={{
+          display: 'inline-flex',
+          padding: '4px',
+          background: C.surface2,
+          border: `1px solid ${C.border2}`,
+          borderRadius: '999px',
+          marginBottom: '16px',
+          gap: '2px',
+        }}
+      >
+        {[
+          { key: 'all', label: 'All', count: counts.total },
+          { key: 'attorney', label: 'Attorneys', count: counts.attorneys },
+          { key: 'consultant', label: 'Consultants', count: counts.consultants },
+        ].map((opt) => {
+          const active = roleFilter === opt.key
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setRoleFilter(opt.key)}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '999px',
+                border: 'none',
+                background: active ? C.surface : 'transparent',
+                color: active ? C.text : C.textMuted,
+                fontSize: '13px',
+                fontWeight: active ? 600 : 500,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                transition: 'background 0.12s, color 0.12s',
+                boxShadow: active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+              }}
+            >
+              {opt.label}
+              {opt.count > 0 && (
+                <span style={{ marginLeft: '6px', fontSize: '11px', color: active ? C.textMuted : C.textDim, fontWeight: 500 }}>
+                  {opt.count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <input
         type="text"
-        placeholder="Search by name, jurisdiction, specialty, or language..."
+        placeholder="Search by name, jurisdiction, subject, specialty, or language..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{
@@ -105,11 +168,12 @@ export default function FindAttorney() {
           fontSize: '14px',
           fontFamily: 'inherit',
           marginBottom: '24px',
+          marginLeft: '12px',
           outline: 'none',
         }}
       />
 
-      {loading && <div style={{ color: C.textMuted, fontSize: '14px' }}>Loading attorneys...</div>}
+      {loading && <div style={{ color: C.textMuted, fontSize: '14px' }}>Loading providers...</div>}
 
       {error && (
         <div
@@ -130,14 +194,20 @@ export default function FindAttorney() {
       {!loading && !error && filtered.length === 0 && (
         <Card>
           <div style={{ padding: '24px', textAlign: 'center', color: C.textMuted, fontSize: '14px' }}>
-            {attorneys.length === 0 ? 'No attorneys are available yet. Check back soon.' : 'No attorneys match your search.'}
+            {providers.length === 0
+              ? roleFilter === 'attorney'
+                ? 'No attorneys are available yet. Check back soon.'
+                : roleFilter === 'consultant'
+                  ? 'No consultants are available yet. Check back soon.'
+                  : 'No providers are available yet. Check back soon.'
+              : 'No providers match your search.'}
           </div>
         </Card>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-        {filtered.map((a) => (
-          <AttorneyCard key={a.id} attorney={a} onSelect={() => setOpenId(a.id)} />
+        {filtered.map((p) => (
+          <AttorneyCard key={`${p.role}:${p.id}`} attorney={p} onSelect={() => setOpenProvider({ id: p.id, role: p.role })} />
         ))}
       </div>
     </div>
@@ -176,10 +246,20 @@ function AttorneyCard({ attorney, onSelect }) {
             </div>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, lineHeight: 1.2, fontWeight: 500 }}>
-              {attorney.full_name}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <div style={{ fontFamily: C.serif, fontSize: '18px', color: C.text, lineHeight: 1.2, fontWeight: 500 }}>
+                {attorney.full_name}
+              </div>
+              {/* Role badge — surfaces whether a card belongs to an
+                  attorney or consultant. The credential_type below is
+                  the role's professional class (e.g. "Lawyer" for an
+                  attorney, "consultant" for a consultant); this badge
+                  is the higher-level role discriminator the unified
+                  /api/providers endpoint emits. */}
+              {attorney.role === 'attorney' && <Badge color="cyan">Attorney</Badge>}
+              {attorney.role === 'consultant' && <Badge color="green">Consultant</Badge>}
             </div>
-            {attorney.credential_type && (
+            {attorney.credential_type && attorney.credential_type !== 'consultant' && (
               <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '2px' }}>{attorney.credential_type}</div>
             )}
             <RatingDisplay count={attorney.rating_count} avg={attorney.rating_avg} compact />
@@ -280,14 +360,21 @@ function RatingDisplay({ count, avg, compact }) {
 }
 
 // ── Detail (full profile) ─────────────────────────────────────────────────
-function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
+function AttorneyDetail({ attorneyId, providerRole, onBack, onStartInquiry }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
   const [chatOpen, setChatOpen] = React.useState(false)
 
   React.useEffect(() => {
-    fetch(`/api/attorneys/${attorneyId}`, { credentials: 'same-origin' })
+    // Route the detail fetch to the role-appropriate endpoint. The
+    // unified /api/providers directory hands us a role discriminator
+    // per card; we use it here so consultant cards open consultant
+    // detail and attorney cards open attorney detail.
+    const endpoint = providerRole === 'consultant'
+      ? `/api/consultants/${attorneyId}`
+      : `/api/attorneys/${attorneyId}`
+    fetch(endpoint, { credentials: 'same-origin' })
       .then(async (r) => {
         const payload = await r.json().catch(() => null)
         if (!r.ok) {
@@ -298,7 +385,7 @@ function AttorneyDetail({ attorneyId, onBack, onStartInquiry }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [attorneyId])
+  }, [attorneyId, providerRole])
 
   if (loading) return <div style={{ padding: '24px 28px', color: C.textMuted, fontSize: '14px' }}>Loading profile...</div>
   if (error || !data) {
