@@ -87,39 +87,169 @@ export const STRATEGIC_KEYWORDS: StrategicKeyword[] = [
   { term: 'EB-2 NIW green card STEM OPT students 2026',            cluster: 'us-pr',          intent: 'informational', surface: 'either',      month: 3 },
   { term: 'Canada study permit financial proof GIC vs bank statement 2026', cluster: 'canada-sp-pgwp', intent: 'commercial', surface: 'either', month: 3 },
   { term: 'F-1 visa interview questions Lagos Mumbai Nairobi London 2026', cluster: 'us-f1-opt', intent: 'informational', surface: 'canonical', month: 3 },
+  // ===================================================================
   // --- Academic-writing-essay cluster ---
-  // Competitor-derived (essaypro.com and adjacent essay-service
-  // marketplaces). All commercial-intent, surface=marketplace, month
-  // tagged as 1 so they're always in scope regardless of the
-  // quarterly-month filter. Intentionally EXCLUDES academically-
-  // dishonest terms ("write my essay", "buy essay online", "cheap
-  // essay writing service") — Google's helpful-content updates
-  // penalize sites ranking for those, and YouSafe consultants
-  // deliver editing / coaching / review, not finished papers.
+  //
+  // Comprehensive competitor-mapped keyword bank for academic-writing
+  // consultant gigs. Sourced by manual competitor analysis of the
+  // ranking sets of:
+  //
+  //   * EssayPro.com           — broad essay/SOP commercial intent
+  //   * EssayEdge.com          — admissions-essay editing
+  //   * TopAdmit.com           — international student admissions
+  //   * Accepted.com           — MBA + med school admissions
+  //   * Crimson Education      — premium Ivy admissions consulting
+  //   * Ivy Coach              — ivy-league admissions premium
+  //   * IvyWise                — admissions consulting
+  //   * College Coach          — generalist admissions consulting
+  //   * Stratus Admissions     — MBA admissions
+  //   * Aringo                 — MBA admissions
+  //   * Personal Statement Pro — UCAS / UK admissions
+  //   * MedSchoolCoach         — med school admissions
+  //   * LawSchoolToolbox       — law school admissions
+  //   * Scribendi              — academic editing
+  //   * Wordvice               — academic editing (ESL focus)
+  //   * Editage                — research-paper editing
+  //   * Cambridge Proofreading — academic proofreading
+  //   * Grammarly Business     — proofreading + editing (heavyweight)
+  //   * StudyAbroad.com        — broader study abroad info hub
+  //
+  // All entries: commercial intent, surface=marketplace, month=1 so
+  // they're always in scope regardless of quarterly-month filter.
+  //
+  // EXCLUDED: academically-dishonest terms ("write my essay", "buy
+  // essay online", "cheap essay writing service", "pay someone to
+  // write my essay"). Google's helpful-content updates penalize
+  // sites ranking for those, and YouSafe consultants deliver
+  // editing / coaching / review — never finished papers ghostwritten
+  // for academic submission. Sellers who ARE doing that are in
+  // violation of YouSafe ToS; we don't optimize for them.
+  // ===================================================================
+
+  // -- General admissions essay help (EssayPro, EssayEdge, College Coach) --
   { term: 'personal statement help',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'college essay help',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'admissions essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'essay editing service',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'essay proofreading',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'academic editing service',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'essay review service',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'common app essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'supplemental essay help',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'scholarship essay help',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'why this college essay help',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'college admissions essay coach',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'application essay feedback',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay topic brainstorming',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'essay structure help',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'application essay review',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Premium / Ivy admissions consulting (Crimson, Ivy Coach, IvyWise) --
+  { term: 'ivy league admissions consultant',        cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'ivy league essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'harvard admissions essay help',           cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'stanford application essay help',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'top college admissions strategy',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'private admissions counselor',            cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'admissions consultant',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'college admissions coach',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Graduate school SOP / personal statement (Accepted, EssayEdge, TopAdmit) --
   { term: 'sop writing service',                     cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'statement of purpose help',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'graduate school personal statement',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'med school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'law school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'grad school sop editing',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'phd personal statement',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'masters personal statement help',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'study plan writing',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'letter of intent writing',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'research statement help',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- MBA admissions (Stratus, Aringo, MBAStandard, Accepted MBA) --
   { term: 'mba essay help',                          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba admissions consultant',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba personal statement',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba application essay coach',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba essay editing',                       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'wharton essay help',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'harvard hbs essay help',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba goals essay',                         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Med school admissions (MedSchoolCoach, Accepted med arm) --
+  { term: 'med school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'medical school admissions consultant',    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'amcas personal statement',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'aacomas personal statement',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'med school secondary essays',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'medical school essay editing',            cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'pre-med essay coach',                     cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Law school admissions (LawSchoolToolbox, Accepted law arm) --
+  { term: 'law school personal statement help',      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'law school admissions consultant',        cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'lsat personal statement',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'law school addendum writing',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'law school diversity statement',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'law school essay editing',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- UK admissions / UCAS (Personal Statement Pro) --
+  { term: 'ucas personal statement help',            cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'oxbridge admissions consultant',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'oxbridge personal statement',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'russell group application help',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'cambridge application essay',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'oxford application essay',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Scholarship + funding essays (EssayEdge, ScholarshipPoints) --
+  { term: 'scholarship essay help',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'scholarship essay editing',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'merit essay writing',                     cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'fulbright application help',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'rhodes scholarship essay',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'gates scholarship essay',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'chevening essay help',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'commonwealth scholarship essay',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Academic editing / proofreading (Scribendi, Wordvice, Editage, Cambridge Proofreading, Grammarly) --
+  { term: 'essay proofreading',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic editing service',                cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'academic proofreading service',           cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'paper proofreading service',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'esl essay editing',                       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'english proofreading service',            cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'language polishing service',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'grammar editing service',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Research-paper / thesis / dissertation (Editage, Cambridge Proofreading) --
   { term: 'thesis editing service',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'dissertation editing',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'dissertation proofreading',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'research paper editing',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'research paper review',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'manuscript editing service',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'journal submission editing',              cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'phd thesis editing',                      cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'literature review editing',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Application coaching / general consulting --
   { term: 'academic writing coach',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'admissions consultant',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
   { term: 'college application essay coach',         cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'ivy league essay help',                   cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
-  { term: 'essay structure help',                    cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'graduate school application coach',       cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'admissions strategy session',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'school selection consultant',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'application timeline coaching',           cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'recommendation letter editing',           cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'recommendation letter coaching',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- Interview prep adjacent --
+  { term: 'admissions interview prep',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mba interview coaching',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'med school interview prep',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'mmi interview practice',                  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'oxbridge interview prep',                 cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+
+  // -- International / ESL student angle (TopAdmit, Wordvice) --
+  { term: 'international student admissions essay',  cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'esl personal statement help',             cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'study abroad application essay',          cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
+  { term: 'visa interview essay prep',               cluster: 'academic-writing-essay', intent: 'commercial', surface: 'marketplace', month: 1 },
 ]
 
 // Map a taxonomy category + jurisdiction to the relevant strategy
@@ -256,20 +386,77 @@ export function getStrategicKeywordsForGig(opts: GetStrategicKeywordsOpts): Stra
 
 // Tokens that, when present in a strategic keyword's term, signal
 // affinity for the seller's chosen subcategory. Hand-curated per
-// subcategory id from lib/categories.ts — kept compact so the
-// affinity boost is precise, not broad.
+// subcategory id from lib/categories.ts.
+//
+// The strategic keyword bank is broad (~100 academic-writing entries);
+// affinity tokens route the right slice to the right gig. Multiple
+// token matches stack: a keyword that contains MORE matching tokens
+// outranks one that contains fewer (the affinity score sums hits).
+//
+// Tokens are matched as substring (case-insensitive) against the
+// keyword term. Pick tokens that are SPECIFIC to the niche; broad
+// tokens like "essay" would match everything and defeat the purpose.
 function subcategoryAffinityTokens(subcategoryId: string): string[] {
   switch (subcategoryId) {
-    case 'sop-writing':           return ['sop', 'statement of purpose', 'graduate school', 'study plan']
-    case 'scholarship-essays':    return ['scholarship', 'merit', 'funding']
-    case 'application-essays':    return ['college essay', 'common app', 'supplemental', 'admissions essay', 'personal statement']
-    case 'research-writing':      return ['research paper', 'thesis', 'dissertation', 'manuscript']
-    case 'proofreading-editing':  return ['editing', 'proofreading', 'review']
-    case 'university-admissions': return ['college essay', 'common app', 'admissions', 'personal statement', 'ivy']
-    case 'graduate-school':       return ['graduate', 'phd', 'mba', 'med school', 'law school', 'thesis']
-    case 'scholarships':          return ['scholarship', 'funding', 'merit']
-    case 'student-mentorship':    return ['admissions', 'coach', 'consultant']
-    case 'housing':               return ['tenancy', 'rent', 'housing', 'deposit', 'section 21']
+    // --- Academic Writing & Application Support subcategories ---
+    case 'sop-writing':           return [
+      'sop', 'statement of purpose', 'graduate school', 'grad school',
+      'study plan', 'letter of intent', 'research statement',
+      'phd personal statement', 'masters personal statement',
+    ]
+    case 'application-essays':    return [
+      'college essay', 'common app', 'supplemental', 'admissions essay',
+      'personal statement', 'application essay', 'why this college',
+      'college admissions', 'application essay feedback',
+    ]
+    case 'scholarship-essays':    return [
+      'scholarship', 'merit', 'funding', 'fulbright', 'rhodes',
+      'gates scholarship', 'chevening', 'commonwealth',
+    ]
+    case 'research-writing':      return [
+      'research paper', 'thesis', 'dissertation', 'manuscript',
+      'journal submission', 'phd thesis', 'literature review',
+    ]
+    case 'proofreading-editing':  return [
+      'editing', 'proofreading', 'language polishing', 'grammar',
+      'esl', 'english proofreading',
+    ]
+    // --- Education & Admissions subcategories ---
+    case 'university-admissions': return [
+      'college essay', 'common app', 'admissions', 'personal statement',
+      'ivy', 'harvard', 'stanford', 'oxbridge', 'cambridge', 'oxford',
+      'ucas', 'russell group', 'private admissions counselor',
+      'college admissions coach',
+    ]
+    case 'graduate-school':       return [
+      'graduate', 'grad school', 'phd', 'mba', 'med school', 'medical school',
+      'law school', 'thesis', 'amcas', 'aacomas', 'lsat',
+      'wharton', 'hbs',
+    ]
+    case 'scholarships':          return [
+      'scholarship', 'funding', 'merit', 'fulbright', 'rhodes',
+      'chevening', 'commonwealth',
+    ]
+    case 'test-prep':             return [
+      'lsat', 'mmi', 'interview prep', 'interview coaching',
+    ]
+    case 'academic-mentoring':    return [
+      'coach', 'coaching', 'admissions strategy', 'application timeline',
+      'school selection', 'recommendation letter',
+    ]
+    // --- Mentorship & Coaching subcategories ---
+    case 'student-mentorship':    return [
+      'admissions', 'coach', 'coaching', 'consultant',
+      'admissions strategy', 'application timeline', 'school selection',
+    ]
+    case 'professional-coaching': return [
+      'mba', 'med school', 'law school', 'professional', 'admissions coach',
+    ]
+    // --- Settlement & Integration subcategories ---
+    case 'housing':               return [
+      'tenancy', 'rent', 'housing', 'deposit', 'section 21',
+      'renters rights', 'tenancy notice',
+    ]
     default:                       return []
   }
 }
