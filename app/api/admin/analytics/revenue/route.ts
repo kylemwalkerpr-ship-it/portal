@@ -55,7 +55,7 @@ export async function GET(req: Request) {
   try {
     let q = db
       .from('orders')
-      .select('id, status, total_amount, created_at, consultant_id, gig_id')
+      .select('id, status, total_amount, created_at, consultant_id')
     if (since) q = q.gte('created_at', since)
     const { data, error } = await q
     if (error) throw error
@@ -84,25 +84,39 @@ export async function GET(req: Request) {
       avg_order_value: count ? gross / count : 0,
     }))
 
-  // By category — join via gig_id
-  let gigCategoryMap: Record<string, string> = {}
-  try {
-    const gigIds = [...new Set(validOrders.map(o => o.gig_id).filter(Boolean))]
-    if (gigIds.length) {
-      const { data, error } = await db
-        .from('gigs')
-        .select('id, category')
-        .in('id', gigIds)
+  // By category — orders.gig_id does not exist; route via order_items.service_id
+  // and read category from the services table.
+  const orderIds = validOrders.map(o => o.id)
+  let serviceByOrder: Record<string, string> = {}
+  let serviceCategoryMap: Record<string, string> = {}
+  if (orderIds.length) {
+    try {
+      const { data: items, error } = await db
+        .from('order_items')
+        .select('order_id, service_id')
+        .in('order_id', orderIds)
       if (error) throw error
-      for (const g of data ?? []) gigCategoryMap[g.id] = g.category || 'uncategorized'
+      for (const i of items ?? []) {
+        if (!serviceByOrder[i.order_id] && i.service_id) serviceByOrder[i.order_id] = i.service_id
+      }
+      const svcIds = [...new Set(Object.values(serviceByOrder))]
+      if (svcIds.length) {
+        const { data: svcs, error: svcErr } = await db
+          .from('services')
+          .select('id, category')
+          .in('id', svcIds)
+        if (svcErr) throw svcErr
+        for (const s of svcs ?? []) serviceCategoryMap[s.id] = s.category || 'uncategorized'
+      }
+    } catch (e: any) {
+      data_warnings.push(`services (category): ${e.message}`)
     }
-  } catch (e: any) {
-    data_warnings.push(`gigs (category): ${e.message}`)
   }
 
   const catBuckets: Record<string, { gross: number; count: number }> = {}
   for (const o of validOrders) {
-    const cat = (o.gig_id ? gigCategoryMap[o.gig_id] : null) || 'uncategorized'
+    const sid = serviceByOrder[o.id]
+    const cat = (sid ? serviceCategoryMap[sid] : null) || 'uncategorized'
     if (!catBuckets[cat]) catBuckets[cat] = { gross: 0, count: 0 }
     catBuckets[cat].gross += Number(o.total_amount) || 0
     catBuckets[cat].count += 1

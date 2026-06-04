@@ -50,7 +50,7 @@ export async function GET() {
   try {
     const { data, error } = await db
       .from('orders')
-      .select('id, status, total_amount, platform_fee_amount, consultant_payout_amount, escrow_status, escrow_amount, consultant_id, gig_id, created_at, updated_at')
+      .select('id, status, total_amount, platform_fee_amount, consultant_payout_amount, escrow_status, escrow_amount, consultant_id, created_at, updated_at')
       .gte('created_at', ago90)
     if (error) throw error
     orders = data ?? []
@@ -137,21 +137,40 @@ export async function GET() {
   const daily_series = Object.entries(dayMap).map(([date, v]) => ({ date, ...v }))
 
   // ── Top 5 services by gross 90d ─────────────────────────────────────────────
+  // orders.gig_id does not exist on this schema; bucket via order_items.service_id
+  // and resolve titles from the services table.
   let top_services: Array<{ gig_id: string; title: string | null; orders: number; gross_cents: number }> = []
   try {
+    const activeOrders = orders.filter(isActive)
+    const orderIds = activeOrders.map(o => o.id)
+    const grossByOrder: Record<string, number> = {}
+    for (const o of activeOrders) grossByOrder[o.id] = toCents(o.total_amount)
+
+    let serviceByOrder: Record<string, string> = {}
+    if (orderIds.length) {
+      const { data: items } = await db
+        .from('order_items')
+        .select('order_id, service_id')
+        .in('order_id', orderIds)
+      for (const i of items ?? []) {
+        if (!serviceByOrder[i.order_id] && i.service_id) serviceByOrder[i.order_id] = i.service_id
+      }
+    }
+
     const buckets: Record<string, { orders: number; gross_cents: number }> = {}
-    for (const o of orders.filter(isActive)) {
-      if (!o.gig_id) continue
-      buckets[o.gig_id] = buckets[o.gig_id] || { orders: 0, gross_cents: 0 }
-      buckets[o.gig_id].orders++
-      buckets[o.gig_id].gross_cents += toCents(o.total_amount)
+    for (const oid of orderIds) {
+      const sid = serviceByOrder[oid]
+      if (!sid) continue
+      buckets[sid] = buckets[sid] || { orders: 0, gross_cents: 0 }
+      buckets[sid].orders++
+      buckets[sid].gross_cents += grossByOrder[oid] || 0
     }
     const ranked = Object.entries(buckets).sort((a, b) => b[1].gross_cents - a[1].gross_cents).slice(0, 5)
     const ids = ranked.map(([id]) => id)
     const titleMap: Record<string, string> = {}
     if (ids.length) {
-      const { data: gigsData } = await db.from('gigs').select('id, title').in('id', ids)
-      for (const g of gigsData ?? []) titleMap[g.id] = g.title
+      const { data: svcs } = await db.from('services').select('id, title').in('id', ids)
+      for (const s of svcs ?? []) titleMap[s.id] = s.title
     }
     top_services = ranked.map(([gig_id, v]) => ({ gig_id, title: titleMap[gig_id] || null, ...v }))
   } catch (e: any) {
