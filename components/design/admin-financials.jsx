@@ -1,10 +1,84 @@
 'use client'
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
+import AdminStudentFinancialDrawer from './admin-student-financial-drawer'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = C.sans
+
+// ─── live data hook ───────────────────────────────────────────────────────────
+// Self-healing GET against the requireAdminUser ok/fail envelope. Never throws
+// — tabs render with the prop-derived fallbacks when an endpoint can't answer.
+function useAdminAnalytics(endpoint) {
+  const [data, setData] = React.useState(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true); setError('')
+      try {
+        const res = await fetch(`/api/admin/analytics/${endpoint}`, { credentials: 'same-origin' })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json?.error?.message || json?.error || 'Failed')
+        if (!cancelled) setData(json?.data ?? json)
+      } catch (e) {
+        if (!cancelled) setError(e.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [endpoint])
+  return { data, loading, error }
+}
+
+// Cents → currency string. Used wherever we read from APIs that speak cents.
+const fmtCents = (cents, compact = false) => {
+  const dollars = (Number(cents) || 0) / 100
+  const abs = Math.abs(dollars)
+  if (compact && abs >= 1_000_000) return `$${(abs / 1_000_000).toFixed(1)}M`
+  if (compact && abs >= 1_000)     return `$${(abs / 1_000).toFixed(1)}K`
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(dollars)
+}
+const fmtPct = (n) => `${(Number(n) || 0).toFixed(1)}%`
+
+// "Coming soon" pill — surfaced when an API can't supply a number yet.
+function ComingSoonBadge() {
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em',
+      padding: '2px 6px', borderRadius: 3, background: '#FEF5E4', color: '#8B5E0A',
+      whiteSpace: 'nowrap', marginLeft: 6,
+    }}>Coming soon</span>
+  )
+}
+
+function Legend({ color, label, value, dashed }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        width: 18, height: 3, borderRadius: 2, background: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 7px)` : color,
+      }} />
+      <span style={{ fontSize: 12, color: '#5C6070' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+    </div>
+  )
+}
+
+function DataWarnings({ items }) {
+  if (!items?.length) return null
+  return (
+    <div style={{
+      background: '#FEF5E4', border: '1px solid #F0E2C0', borderRadius: 6,
+      padding: '8px 12px', fontSize: 12, color: '#8B5E0A', lineHeight: 1.45,
+    }}>
+      <strong style={{ marginRight: 4 }}>Partial data:</strong>
+      {items.slice(0, 3).join(' · ')}{items.length > 3 ? ` · +${items.length - 3} more` : ''}
+    </div>
+  )
+}
 
 const TABS = [
   { id: 'overview',     label: 'Overview',       icon: '📊' },
@@ -150,7 +224,7 @@ function Section({ title, sub, action, children }) {
 }
 
 // ─── Table shell ──────────────────────────────────────────────────────────────
-function DataTable({ cols, rows, emptyMsg = 'No data' }) {
+function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: '8px', overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
@@ -167,15 +241,30 @@ function DataTable({ cols, rows, emptyMsg = 'No data' }) {
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={cols.length} style={{ padding: '32px', textAlign: 'center', color: '#9097A8', fontSize: '14px' }}>{emptyMsg}</td></tr>
-            ) : rows.map((row, ri) => (
-              <tr key={ri} style={{ background: ri % 2 === 0 ? '#fff' : '#FAFAF8', borderBottom: '1px solid #F2EFE9' }}>
-                {cols.map(c => (
-                  <td key={c.key} style={{ padding: '11px 14px', fontSize: '13px', textAlign: c.right ? 'right' : 'left', color: c.muted ? '#9097A8' : '#1A1F2E', fontWeight: c.bold ? 700 : 400, whiteSpace: c.wrap ? 'normal' : 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                    {row[c.key]}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            ) : rows.map((row, ri) => {
+              // onRowClick is opt-in per-table. When supplied, the row
+              // gains hover affordance + a pointer cursor; without it,
+              // every other table on this page behaves exactly as before.
+              const clickable = typeof onRowClick === 'function' && row._clickable !== false
+              return (
+                <tr key={ri}
+                  onClick={clickable ? () => onRowClick(row, ri) : undefined}
+                  style={{
+                    background: ri % 2 === 0 ? '#fff' : '#FAFAF8',
+                    borderBottom: '1px solid #F2EFE9',
+                    cursor: clickable ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={clickable ? e => { e.currentTarget.style.background = '#F2EFE9' } : undefined}
+                  onMouseLeave={clickable ? e => { e.currentTarget.style.background = ri % 2 === 0 ? '#fff' : '#FAFAF8' } : undefined}
+                >
+                  {cols.map(c => (
+                    <td key={c.key} style={{ padding: '11px 14px', fontSize: '13px', textAlign: c.right ? 'right' : 'left', color: c.muted ? '#9097A8' : '#1A1F2E', fontWeight: c.bold ? 700 : 400, whiteSpace: c.wrap ? 'normal' : 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {row[c.key]}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -195,6 +284,35 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
   const [tab, setTab] = React.useState('overview')
   const [userSort, setUserSort] = React.useState('spent')
   const [exportMsg, setExportMsg] = React.useState('')
+  // Open student id for the financial drill-down drawer. Set by clicking
+  // a row in the Student / Client Spending table; cleared by the drawer's
+  // own onClose. Lives at the page level so we can render the drawer at
+  // the bottom of the Users tab block without re-wiring DataTable.
+  const [openStudentId, setOpenStudentId] = React.useState(null)
+  // Map of student display-name -> profile_id, built once from the
+  // `users` prop. The DataTable's underlying student rows only carry the
+  // display name (because they are aggregated from orders), so we resolve
+  // the profile_id by name here. Names are unique enough in practice; on
+  // a collision the first match wins, which is acceptable for an admin
+  // tool — clicking again reopens with the matched id.
+  // ── Live API hooks. Each tab gets its own self-healing fetch. Failures
+  //    surface as a data_warnings banner; values stay falsy so the tab
+  //    cleanly degrades to prop-derived numbers below. ────────────────────────
+  const finOverview  = useAdminAnalytics('financial-overview')
+  const finLiab      = useAdminAnalytics('liabilities')
+  const finProj      = useAdminAnalytics('projections')
+  const finRisk      = useAdminAnalytics('risk')
+
+  const studentNameToId = React.useMemo(() => {
+    const m = {}
+    for (const u of users || []) {
+      const role = String(u?.role || '').toLowerCase()
+      if (role && role !== 'student' && role !== 'client') continue
+      const key = u?.name || u?.full_name || u?.email
+      if (key && u?.id && !m[key]) m[key] = u.id
+    }
+    return m
+  }, [users])
 
   // ── Derived metrics ──────────────────────────────────────────────────────────
   const consultantPct = Number(settings.consultant_fee_percent || 70)
@@ -354,75 +472,154 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
       </div>
 
       {/* ── OVERVIEW ──────────────────────────────────────────────────────────── */}
-      {tab === 'overview' && (
-        <>
-          <Section title="Revenue Summary" sub={`${allOrders.length} total orders · ${activeOrders.length} active · ${cancelled.length} cancelled`}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-              <KpiCard label="Gross Revenue" value={fmt(grossRevenue, true)} sub={`${activeOrders.length} paid orders`} accent="#1A6B45"
-                chart={<MiniSparkline values={last6.map(k => monthlyMap[k].gross)} color="#1A6B45" />} />
-              <KpiCard label="Net Revenue (Platform)" value={fmt(netRevenue, true)} sub={`${platformPct}% platform cut`} delta={growthRate} accent="#0F172A"
-                chart={<MiniSparkline values={last6.map(k => monthlyMap[k].net)} />} />
-              <KpiCard label="Total Paid Out" value={fmt(totalPayouts, true)} sub={`${consultantPct}% provider share`} accent="#9A7B3B"
-                chart={<MiniSparkline values={last6.map(k => monthlyMap[k].payouts)} color="#9A7B3B" />} />
-              <KpiCard label="Escrow Held (Liability)" value={fmt(heldEscrow, true)} sub={`${held.length} orders pending release`} accent="#D97706" />
-              <KpiCard label="Pending Net Revenue" value={fmt(pendingRevenue, true)} sub="Awaiting delivery approval" accent="#3D2B6B" />
-              <KpiCard label="Cancelled / Refunded" value={fmt(cancelledValue, true)} sub={`${cancellationRate.toFixed(1)}% cancellation rate`} accent="#8B1A1A" />
-            </div>
-          </Section>
+      {tab === 'overview' && (() => {
+        // Live snapshot from /api/admin/analytics/financial-overview. Falls
+        // back to prop-derived totals if the API is unreachable.
+        const od = finOverview.data || {}
+        const grossDelta = od.gross_30d_prev_cents
+          ? ((od.gross_30d_cents - od.gross_30d_prev_cents) / od.gross_30d_prev_cents) * 100
+          : null
+        const daily = od.daily_series || []
+        // Build a small split-line chart from the daily series.
+        const splitMax = Math.max(1, ...daily.map(d => Math.max(d.gross, d.net, d.payouts)))
+        const linePath = (key, w = 100, h = 80) => daily.length < 2 ? '' :
+          daily.map((d, i) => `${i === 0 ? 'M' : 'L'}${(i / (daily.length - 1)) * w},${h - (d[key] / splitMax) * h}`).join(' ')
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {/* Revenue split donut */}
-            <Card style={{ padding: '20px' }}>
-              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>Revenue Split</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                <DonutChart size={100} segments={[
-                  { label: `Platform (${platformPct}%)`, value: netRevenue, color: '#0F172A' },
-                  { label: `Providers (${consultantPct}%)`, value: totalPayouts, color: '#9A7B3B' },
-                  { label: 'Escrow Held', value: heldEscrow, color: '#D97706' },
-                ]} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                  {[
-                    { label: `Platform Revenue (${platformPct}%)`, value: netRevenue, color: '#0F172A' },
-                    { label: `Provider Payouts (${consultantPct}%)`, value: totalPayouts, color: '#9A7B3B' },
-                    { label: 'In Escrow', value: heldEscrow, color: '#D97706' },
-                    { label: 'Cancelled', value: cancelledValue, color: '#8B1A1A' },
-                  ].map(row => (
-                    <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: row.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: '12px', color: '#5C6070', flex: 1 }}>{row.label}</span>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{fmt(row.value, true)}</span>
-                    </div>
-                  ))}
-                </div>
+        return (
+          <>
+            <DataWarnings items={od.data_warnings} />
+
+            {/* Top row — 4 decision-useful KPIs (cents-based, from API) */}
+            <Section title="Last 30 Days" sub="Operator KPIs sourced from live order + escrow data">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                <KpiCard label="Gross Revenue (30d)" value={fmtCents(od.gross_30d_cents, true)}
+                  sub={`vs ${fmtCents(od.gross_30d_prev_cents, true)} prior 30d`}
+                  delta={grossDelta} accent="#1A6B45" icon="💵" />
+                <KpiCard label="Net Take (30d)" value={fmtCents(od.net_take_30d_cents, true)}
+                  sub={`After ${od.platform_fee_percent || platformPct}% fee · payouts ${fmtCents(od.payouts_30d_cents, true)}`}
+                  accent="#0F172A" icon="📊" />
+                <KpiCard label="Outstanding Escrow" value={fmtCents(od.outstanding_escrow_cents, true)}
+                  sub="Held / partial / disputed / frozen" accent="#D97706" icon="🔒" />
+                <KpiCard label="Refund Rate (30d)" value={fmtPct(od.refund_rate_30d_pct)}
+                  sub={`${fmtCents(od.chargeback_dollar_30d_cents, true)} refunded`}
+                  accent={(od.refund_rate_30d_pct || 0) > 10 ? '#8B1A1A' : '#1A6B45'} icon="↩" />
               </div>
-            </Card>
+            </Section>
 
-            {/* Key ratios */}
+            {/* 30d revenue chart split gross / net / payouts */}
+            <Section title="30-Day Revenue Flow" sub="Gross collected · platform net · provider payouts">
+              <Card style={{ padding: '20px' }}>
+                {finOverview.loading ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                ) : daily.length < 2 ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No revenue in last 30 days</div>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 100 80" preserveAspectRatio="none" style={{ width: '100%', height: 140 }}>
+                      <path d={linePath('gross')}   fill="none" stroke="#1A6B45" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                      <path d={linePath('net')}     fill="none" stroke="#0F172A" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                      <path d={linePath('payouts')} fill="none" stroke="#9A7B3B" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeDasharray="2 2" />
+                    </svg>
+                    <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2EFE9', flexWrap: 'wrap' }}>
+                      <Legend color="#1A6B45" label="Gross" value={fmtCents(od.gross_30d_cents, true)} />
+                      <Legend color="#0F172A" label="Net (platform)" value={fmtCents(od.net_take_30d_cents, true)} />
+                      <Legend color="#9A7B3B" label="Payouts" value={fmtCents(od.payouts_30d_cents, true)} dashed />
+                    </div>
+                  </>
+                )}
+              </Card>
+            </Section>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <Section title="Top 5 Services (90d gross)"
+                action={<Btn variant="ghost" size="sm" onClick={() => exportCSV((od.top_services || []).map(s => ({ service: s.title || s.gig_id, orders: s.orders, gross_cents: s.gross_cents })), 'top-services.csv')}>↓ CSV</Btn>}>
+                <DataTable
+                  cols={[
+                    { key: 'rank',   label: '#', muted: true },
+                    { key: 'title',  label: 'Service', wrap: true },
+                    { key: 'orders', label: 'Orders', right: true },
+                    { key: 'gross',  label: 'Gross', right: true, bold: true },
+                  ]}
+                  rows={(od.top_services || []).map((s, i) => ({
+                    rank:   `#${i + 1}`,
+                    title:  s.title || (s.gig_id ? `${s.gig_id.slice(0, 8)}…` : '—'),
+                    orders: s.orders,
+                    gross:  fmtCents(s.gross_cents, true),
+                  }))}
+                  emptyMsg={finOverview.loading ? 'Loading…' : 'No orders in last 90 days'}
+                />
+              </Section>
+              <Section title="Top 5 Providers (90d gross)"
+                action={<Btn variant="ghost" size="sm" onClick={() => exportCSV((od.top_providers || []).map(p => ({ provider: p.name || p.provider_id, role: p.role, orders: p.orders, gross_cents: p.gross_cents })), 'top-providers.csv')}>↓ CSV</Btn>}>
+                <DataTable
+                  cols={[
+                    { key: 'rank',   label: '#', muted: true },
+                    { key: 'name',   label: 'Provider' },
+                    { key: 'role',   label: 'Role', muted: true },
+                    { key: 'orders', label: 'Orders', right: true },
+                    { key: 'gross',  label: 'Gross', right: true, bold: true },
+                  ]}
+                  rows={(od.top_providers || []).map((p, i) => ({
+                    rank:   `#${i + 1}`,
+                    name:   p.name || (p.provider_id ? `${p.provider_id.slice(0, 8)}…` : '—'),
+                    role:   p.role || '—',
+                    orders: p.orders,
+                    gross:  fmtCents(p.gross_cents, true),
+                  }))}
+                  emptyMsg={finOverview.loading ? 'Loading…' : 'No orders in last 90 days'}
+                />
+              </Section>
+            </div>
+
+            {/* Supporting context — prop-derived ratios (all-time, not 30d) */}
             <Card style={{ padding: '20px' }}>
-              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>Key Ratios</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>All-Time Ratios</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                 {[
-                  { label: 'Avg. Order Value',       value: fmt(avgOrderValue) },
+                  { label: 'Avg Order Value',        value: fmt(avgOrderValue) },
                   { label: 'Order Completion Rate',  value: `${completionRate.toFixed(1)}%` },
                   { label: 'Cancellation Rate',      value: `${cancellationRate.toFixed(1)}%` },
                   { label: 'Platform Take Rate',     value: pct(netRevenue, grossRevenue) },
                   { label: 'Escrow Liability Ratio', value: pct(heldEscrow, grossRevenue) },
-                  { label: 'MRR (trailing 6m avg)',  value: fmt(mrr, true) },
+                  { label: 'MRR (6m trailing)',      value: fmt(mrr, true) },
                 ].map(row => (
-                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #F2EFE9' }}>
-                    <span style={{ fontSize: '13px', color: '#5C6070' }}>{row.label}</span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
+                    <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
                   </div>
                 ))}
               </div>
             </Card>
-          </div>
-        </>
-      )}
+          </>
+        )
+      })()}
 
       {/* ── REVENUE ───────────────────────────────────────────────────────────── */}
       {tab === 'revenue' && (
         <>
+          <DataWarnings items={finOverview.data?.data_warnings} />
+
+          {/* Live 30d stat row — RPAU + refund $ — sits above the monthly ladder */}
+          <Section title="Last 30 Days — Operator View" sub="Revenue per acquired user and refund dollars">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <KpiCard
+                label="Revenue per Acquired User"
+                value={fmtCents(finOverview.data?.revenue_per_acquired_user_cents, false)}
+                sub={`${finOverview.data?.signups_30d || 0} new signups · net take / signups`}
+                accent="#0F172A" icon="👥" />
+              <KpiCard
+                label="Refund / Chargeback (30d)"
+                value={fmtCents(finOverview.data?.chargeback_dollar_30d_cents, true)}
+                sub={`${fmtPct(finOverview.data?.refund_rate_30d_pct)} of all 30d orders`}
+                accent={(finOverview.data?.refund_rate_30d_pct || 0) > 10 ? '#8B1A1A' : '#D97706'} icon="↩" />
+              <KpiCard
+                label="Net Take (30d)"
+                value={fmtCents(finOverview.data?.net_take_30d_cents, true)}
+                sub={`Platform cut at ${finOverview.data?.platform_fee_percent || platformPct}%`}
+                accent="#1A6B45" icon="💰" />
+            </div>
+          </Section>
+
           <Section title="Monthly Revenue" sub="Gross revenue collected per month (last 6 months)">
             <Card style={{ padding: '20px' }}>
               <BarChart data={monthlyBarData} height={140} />
@@ -502,6 +699,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 { key: 'last',     label: 'Last Order', muted: true },
               ]}
               rows={sortedStudents.map((u, i) => ({
+                _profileId: studentNameToId[u.name] || null,
+                _clickable: !!studentNameToId[u.name],
                 rank:     `#${i + 1}`,
                 name:     u.name,
                 orders:   u.orders,
@@ -512,6 +711,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 pct:      pct(u.spent, grossRevenue),
                 last:     u.lastOrder ? new Date(u.lastOrder).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
               }))}
+              onRowClick={row => { if (row._profileId) setOpenStudentId(row._profileId) }}
               emptyMsg="No client spending data"
             />
           </Section>
@@ -575,72 +775,195 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               emptyMsg="No transactions yet"
             />
           </Section>
+
+          {/* Per-student financial drill-down drawer. Lives at the tail
+              of the Users tab block; only mounts when openStudentId is
+              truthy. Backdrop click + ESC + the drawer's own X all
+              close it via the same callback. */}
+          {openStudentId && (
+            <AdminStudentFinancialDrawer
+              studentId={openStudentId}
+              onClose={() => setOpenStudentId(null)}
+            />
+          )}
         </>
       )}
 
       {/* ── LIABILITIES ───────────────────────────────────────────────────────── */}
-      {tab === 'liabilities' && (
+      {tab === 'liabilities' && (() => {
+        const ld = finLiab.data || {}
+        const aging = ld.escrow_aging || {}
+        const agingRows = [
+          { bucket: '0-7 days',   key: '0_7' },
+          { bucket: '8-30 days',  key: '8_30' },
+          { bucket: '31-60 days', key: '31_60' },
+          { bucket: '60+ days',   key: '60_plus' },
+        ].map(b => ({
+          bucket: b.bucket,
+          count:  aging[b.key]?.count ?? 0,
+          held:   fmtCents(aging[b.key]?.cents ?? 0, true),
+        }))
+        const heldRows = (ld.held_orders || []).map(o => ({
+          order:    o.order_number || (o.id ? `${o.id.slice(0, 8)}…` : '—'),
+          status:   `${o.status} / ${o.escrow_status}`,
+          client:   o.client_name || '—',
+          provider: o.consultant_name || '—',
+          amount:   fmtCents(o.amount_cents, true),
+          age:      `${o.age_days}d`,
+        }))
+        return (
+          <>
+            <DataWarnings items={ld.data_warnings} />
+            <Section title="Platform Liability" sub="Sources we owe money to right now — escrow held funds + student wallet balances">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <KpiCard label="Outstanding Escrow" value={fmtCents(ld.escrow_outstanding_cents, true)}
+                  sub={`${(ld.held_orders || []).length}+ orders held / disputed / frozen`}
+                  accent="#D97706" icon="🔒" />
+                <KpiCard label="Wallet Liability"
+                  value={ld.wallet_liability_cents === null ? '' : fmtCents(ld.wallet_liability_cents, true)}
+                  sub={ld.wallet_liability_cents === null ? <>student_wallets unavailable <ComingSoonBadge /></> : `${ld.wallet_count || 0} wallets`}
+                  accent="#3D2B6B" icon="💼" />
+                <KpiCard label="Total Liability"
+                  value={fmtCents(ld.total_liability_cents, true)}
+                  sub="Escrow + wallet exposure"
+                  accent="#0F172A" icon="⚖️" />
+                <KpiCard label="Cancelled / Refunded (all-time)"
+                  value={fmt(cancelledValue, true)} sub={`${cancelled.length} orders`}
+                  accent="#8B1A1A" icon="⚠️" />
+              </div>
+            </Section>
+
+            <Section title="Escrow Aging" sub="How long has held money been sitting? Anything in 60+ days needs follow-up"
+              action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(agingRows.map(r => ({ bucket: r.bucket, count: r.count, held: r.held })), 'escrow-aging.csv')}>↓ CSV</Btn>}>
+              <DataTable
+                cols={[
+                  { key: 'bucket', label: 'Age bucket' },
+                  { key: 'count',  label: 'Orders', right: true },
+                  { key: 'held',   label: 'Cents Held', right: true, bold: true },
+                ]}
+                rows={agingRows}
+                emptyMsg="No held funds"
+              />
+            </Section>
+
+            <Section title="Held Escrow Detail" sub="Top 25 held orders, oldest first"
+              action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(heldRows, 'escrow-held.csv')}>↓ CSV</Btn>}>
+              <DataTable
+                cols={[
+                  { key: 'order',    label: 'Order' },
+                  { key: 'status',   label: 'Status' },
+                  { key: 'client',   label: 'Client' },
+                  { key: 'provider', label: 'Provider' },
+                  { key: 'amount',   label: 'Held', right: true, bold: true },
+                  { key: 'age',      label: 'Age', right: true, muted: true },
+                ]}
+                rows={heldRows}
+                emptyMsg={finLiab.loading ? 'Loading…' : 'No funds currently in escrow'}
+              />
+            </Section>
+
+            <Section title="Cancelled & Refunded Orders" sub="Historical cancellations and revenue lost"
+              action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(cancelled.map(o => ({ id: o.id, service: o.service, client: o.student, value: o.amountValue, status: o.status, date: o.createdAt })), 'cancelled-orders.csv')}>↓ CSV</Btn>}>
+              <DataTable
+                cols={[
+                  { key: 'service',  label: 'Service' },
+                  { key: 'client',   label: 'Client' },
+                  { key: 'amount',   label: 'Value Lost', right: true, bold: true },
+                  { key: 'status',   label: 'Status' },
+                  { key: 'date',     label: 'Date', muted: true },
+                ]}
+                rows={cancelled.map(o => ({
+                  service: o.service,
+                  client:  o.student,
+                  amount:  fmt(o.amountValue),
+                  status:  o.status,
+                  date:    o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
+                }))}
+                emptyMsg="No cancellations"
+              />
+            </Section>
+          </>
+        )
+      })()}
+
+      {/* ── PROJECTIONS ───────────────────────────────────────────────────────── */}
+      {tab === 'projections' && (() => {
+        // Live 90d run-rate projection from /api/admin/analytics/projections.
+        // The API returns by_role { attorney, consultant, total } each with
+        // run_rate_30d_cents + lo_cents/hi_cents (±1 SD confidence band) and
+        // forward_3m points. We render the forward band first, then fall back
+        // to the prop-derived ladder + scenario table below.
+        const pd = finProj.data || {}
+        const fwd = pd.forward_3m || []
+        const total = pd.by_role?.total || {}
+        const attorney = pd.by_role?.attorney || {}
+        const consultant = pd.by_role?.consultant || {}
+
+        // SVG confidence band — point line + shaded lo/hi area
+        const w = 100, h = 60
+        const allVals = fwd.flatMap(p => [p.lo_cents, p.point_cents, p.hi_cents])
+        const maxV = Math.max(1, ...allVals)
+        const yAt = (v) => h - (Number(v) / maxV) * (h - 6) - 3
+        const xAt = (i) => fwd.length > 1 ? (i / (fwd.length - 1)) * w : w / 2
+        const pointPath = fwd.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i)},${yAt(p.point_cents)}`).join(' ')
+        const bandPath = fwd.length >= 2
+          ? `${fwd.map((p, i) => `${i === 0 ? 'M' : 'L'}${xAt(i)},${yAt(p.hi_cents)}`).join(' ')} ${fwd.map((p, i) => `L${xAt(fwd.length - 1 - i)},${yAt(fwd[fwd.length - 1 - i].lo_cents)}`).join(' ')} Z`
+          : ''
+
+        return (
         <>
-          <Section title="Liability Overview" sub="Current financial obligations and exposure">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-              <KpiCard label="Escrow Held" value={fmt(heldEscrow, true)} sub={`${held.length} orders locked`} accent="#D97706" icon="🔒" />
-              <KpiCard label="Pending Provider Payouts" value={fmt(pendingRevenue, true)} sub="Platform cut from held orders" accent="#3D2B6B" icon="⏳" />
-              <KpiCard label="Cancelled/Refund Exposure" value={fmt(cancelledValue, true)} sub={`${cancelled.length} cancelled orders`} accent="#8B1A1A" icon="⚠️" />
-              <KpiCard label="Total Liability" value={fmt(heldEscrow + cancelledValue, true)} sub="Max exposure if all fail" accent="#0F172A" icon="⚖️" />
+          <DataWarnings items={pd.data_warnings} />
+
+          {/* Live 90d run-rate + confidence band, role-split */}
+          <Section title="3-Month Forward Projection (90d run-rate)"
+            sub="Point estimate = mean monthly gross from last 90 days. Band = ±1 standard deviation across the buckets."
+            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(fwd.map(p => ({ month: p.month, point_cents: p.point_cents, lo_cents: p.lo_cents, hi_cents: p.hi_cents })), 'projections-forward.csv')}>↓ CSV</Btn>}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+              <KpiCard label="Total Run-Rate (30d)" value={fmtCents(total.run_rate_30d_cents, true)}
+                sub={`Band ${fmtCents(total.lo_cents, true)} – ${fmtCents(total.hi_cents, true)}`}
+                accent="#0F172A" icon="📊" />
+              <KpiCard label="Attorney Run-Rate (30d)" value={fmtCents(attorney.run_rate_30d_cents, true)}
+                sub={`Band ${fmtCents(attorney.lo_cents, true)} – ${fmtCents(attorney.hi_cents, true)}`}
+                accent="#3D2B6B" icon="⚖️" />
+              <KpiCard label="Consultant Run-Rate (30d)" value={fmtCents(consultant.run_rate_30d_cents, true)}
+                sub={`Band ${fmtCents(consultant.lo_cents, true)} – ${fmtCents(consultant.hi_cents, true)}`}
+                accent="#9A7B3B" icon="🧑‍💼" />
             </div>
           </Section>
 
-          <Section title="Escrow Ledger" sub="All orders with funds currently locked in escrow">
-            <DataTable
-              cols={[
-                { key: 'service',  label: 'Service' },
-                { key: 'client',   label: 'Client' },
-                { key: 'provider', label: 'Provider' },
-                { key: 'amount',   label: 'Gross Held', right: true, bold: true },
-                { key: 'platform', label: 'Platform Share', right: true },
-                { key: 'provider_share', label: 'Provider Share', right: true },
-                { key: 'status',   label: 'Order Status' },
-                { key: 'date',     label: 'Created', muted: true },
-              ]}
-              rows={held.map(o => ({
-                service:  o.service,
-                client:   o.student,
-                provider: o.consultant || '—',
-                amount:   fmt(o.amountValue),
-                platform: fmt(mv(o.adminCut)),
-                provider_share: fmt(mv(o.consultantPay)),
-                status:   o.status,
-                date:     o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
-              }))}
-              emptyMsg="No funds currently in escrow"
-            />
+          <Section title="Forward Band — Next 3 Months" sub="Shaded area is the ±1 SD confidence interval. Single line is the point estimate.">
+            <Card style={{ padding: 20 }}>
+              {finProj.loading ? (
+                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+              ) : fwd.length < 2 ? (
+                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough run-rate history yet</div>
+              ) : (
+                <>
+                  <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 160 }}>
+                    <path d={bandPath} fill="rgba(15,23,42,0.08)" />
+                    <path d={pointPath} fill="none" stroke="#0F172A" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                    {fwd.map((p, i) => (
+                      <g key={p.month}>
+                        <circle cx={xAt(i)} cy={yAt(p.point_cents)} r="1.6" fill="#0F172A" vectorEffect="non-scaling-stroke">
+                          <title>{p.month}: {fmtCents(p.point_cents, true)} ({fmtCents(p.lo_cents, true)}–{fmtCents(p.hi_cents, true)})</title>
+                        </circle>
+                      </g>
+                    ))}
+                  </svg>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid #F2EFE9' }}>
+                    {fwd.map(p => (
+                      <div key={p.month} style={{ textAlign: 'center', flex: 1 }}>
+                        <div style={{ fontSize: 11, color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>{p.month}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginTop: 2 }}>{fmtCents(p.point_cents, true)}</div>
+                        <div style={{ fontSize: 11, color: '#9097A8', marginTop: 2 }}>{fmtCents(p.lo_cents, true)} – {fmtCents(p.hi_cents, true)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </Card>
           </Section>
 
-          <Section title="Cancelled & Refunded Orders" sub="Historical cancellations and revenue lost">
-            <DataTable
-              cols={[
-                { key: 'service',  label: 'Service' },
-                { key: 'client',   label: 'Client' },
-                { key: 'amount',   label: 'Value Lost', right: true, bold: true },
-                { key: 'status',   label: 'Status' },
-                { key: 'date',     label: 'Date', muted: true },
-              ]}
-              rows={cancelled.map(o => ({
-                service: o.service,
-                client:  o.student,
-                amount:  fmt(o.amountValue),
-                status:  o.status,
-                date:    o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
-              }))}
-              emptyMsg="No cancellations"
-            />
-          </Section>
-        </>
-      )}
-
-      {/* ── PROJECTIONS ───────────────────────────────────────────────────────── */}
-      {tab === 'projections' && (
-        <>
           <Section title="Revenue Projections" sub={`Based on ${last6.length}-month trailing average. ${roiNote}.`}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
               <KpiCard label="MRR (trailing avg)" value={fmt(mrr, true)} sub={`${last6.length}-month average`} accent="#0F172A" icon="📅" />
@@ -710,11 +1033,131 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             </div>
           </Section>
         </>
-      )}
+        )
+      })()}
 
       {/* ── RISK ──────────────────────────────────────────────────────────────── */}
-      {tab === 'risk' && (
+      {tab === 'risk' && (() => {
+        // Live risk feed from /api/admin/analytics/risk. Renders disputed
+        // KPIs + refund-rate trend + high-refund providers + auto-release
+        // overdue list above the prop-derived concentration analysis.
+        const rd = finRisk.data || {}
+        const trend = rd.refund_rate_trend || []
+        const refundProviders = rd.high_refund_providers || []
+        const overdue = rd.past_auto_release_overdue || []
+        const disputedRows = rd.disputed_orders || []
+
+        return (
         <>
+          <DataWarnings items={rd.data_warnings} />
+
+          {/* Live operator KPIs */}
+          <Section title="Live Risk Snapshot" sub="Disputed escrow + refund rate trend from order data">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+              <KpiCard label="Disputed / Frozen Orders" value={rd.disputed_count ?? 0}
+                sub={`${fmtCents(rd.disputed_dollar_cents, true)} held`}
+                accent={(rd.disputed_count || 0) > 0 ? '#8B1A1A' : '#1A6B45'} icon="⚠️" />
+              <KpiCard label="Refund Rate (current month)"
+                value={fmtPct(trend.length ? trend[trend.length - 1].refund_rate_pct : 0)}
+                sub={trend.length ? `${trend[trend.length - 1].refunded} of ${trend[trend.length - 1].total_orders} orders` : 'no data'}
+                accent={(trend.length && trend[trend.length - 1].refund_rate_pct > 10) ? '#8B1A1A' : '#D97706'} icon="↩" />
+              <KpiCard label="Auto-Release Overdue" value={overdue.length}
+                sub="Held orders >7d past eligibility"
+                accent={overdue.length > 0 ? '#8B1A1A' : '#1A6B45'} icon="⏰" />
+              <KpiCard label="High-Refund Providers" value={refundProviders.length}
+                sub="≥5 orders, ranked by refund %"
+                accent={refundProviders.length > 0 ? '#D97706' : '#1A6B45'} icon="👤" />
+            </div>
+          </Section>
+
+          {/* Refund-rate trend over last 6 months */}
+          <Section title="Refund Rate Trend (6 months)" sub="Refunded + cancelled orders divided by total orders per month"
+            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(trend.map(t => ({ month: t.month, refund_rate_pct: t.refund_rate_pct.toFixed(2), total_orders: t.total_orders, refunded: t.refunded })), 'refund-rate-trend.csv')}>↓ CSV</Btn>}>
+            <DataTable
+              cols={[
+                { key: 'month',  label: 'Month' },
+                { key: 'total',  label: 'Orders', right: true },
+                { key: 'refund', label: 'Refunded', right: true },
+                { key: 'pct',    label: 'Refund Rate', right: true, bold: true },
+              ]}
+              rows={trend.map(t => ({
+                month:  t.month,
+                total:  t.total_orders,
+                refund: t.refunded,
+                pct:    fmtPct(t.refund_rate_pct),
+              }))}
+              emptyMsg={finRisk.loading ? 'Loading…' : 'No order history'}
+            />
+          </Section>
+
+          {/* Top 5 providers by refund rate */}
+          <Section title="Top 5 Providers by Refund Rate" sub="Providers with ≥5 orders in last 180 days"
+            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(refundProviders.map(p => ({ name: p.name || p.provider_id, orders: p.orders, refunded: p.refunded, refund_rate_pct: p.refund_rate_pct.toFixed(2) })), 'top-refund-providers.csv')}>↓ CSV</Btn>}>
+            <DataTable
+              cols={[
+                { key: 'rank',    label: '#', muted: true },
+                { key: 'name',    label: 'Provider' },
+                { key: 'orders',  label: 'Orders', right: true },
+                { key: 'refund',  label: 'Refunded', right: true },
+                { key: 'pct',     label: 'Refund %', right: true, bold: true },
+              ]}
+              rows={refundProviders.map((p, i) => ({
+                rank:   `#${i + 1}`,
+                name:   p.name || (p.provider_id ? `${p.provider_id.slice(0, 8)}…` : '—'),
+                orders: p.orders,
+                refund: p.refunded,
+                pct:    fmtPct(p.refund_rate_pct),
+              }))}
+              emptyMsg={finRisk.loading ? 'Loading…' : 'No provider qualifies (<5 orders each)'}
+            />
+          </Section>
+
+          {/* Auto-release overdue */}
+          <Section title="Auto-Release Overdue (>7d past eligible)" sub="Held escrow that should already have released. Investigate before manual release."
+            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(overdue.map(o => ({ id: o.id, order_number: o.order_number, amount_cents: o.amount_cents, client: o.client_name, provider: o.consultant_name, days_overdue: o.days_overdue, eligible_at: o.auto_release_eligible_at })), 'auto-release-overdue.csv')}>↓ CSV</Btn>}>
+            <DataTable
+              cols={[
+                { key: 'order',    label: 'Order' },
+                { key: 'client',   label: 'Client' },
+                { key: 'provider', label: 'Provider' },
+                { key: 'amount',   label: 'Held', right: true, bold: true },
+                { key: 'days',     label: 'Days Overdue', right: true },
+              ]}
+              rows={overdue.map(o => ({
+                order:    o.order_number || (o.id ? `${o.id.slice(0, 8)}…` : '—'),
+                client:   o.client_name || '—',
+                provider: o.consultant_name || '—',
+                amount:   fmtCents(o.amount_cents, true),
+                days:     o.days_overdue == null ? '—' : `${o.days_overdue}d`,
+              }))}
+              emptyMsg={finRisk.loading ? 'Loading…' : 'No overdue auto-releases'}
+            />
+          </Section>
+
+          {/* Disputed orders detail */}
+          <Section title="Disputed / Frozen Orders" sub="Held with reason — escrow disputed_at / frozen_at"
+            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(disputedRows.map(d => ({ id: d.id, order_number: d.order_number, escrow_status: d.escrow_status, amount_cents: d.amount_cents, client: d.client_name, provider: d.consultant_name, reason: d.reason, flagged_at: d.flagged_at })), 'disputed-orders.csv')}>↓ CSV</Btn>}>
+            <DataTable
+              cols={[
+                { key: 'order',    label: 'Order' },
+                { key: 'status',   label: 'Escrow Status' },
+                { key: 'client',   label: 'Client' },
+                { key: 'provider', label: 'Provider' },
+                { key: 'amount',   label: 'Held', right: true, bold: true },
+                { key: 'reason',   label: 'Reason', wrap: true, muted: true },
+              ]}
+              rows={disputedRows.map(d => ({
+                order:    d.order_number || (d.id ? `${d.id.slice(0, 8)}…` : '—'),
+                status:   d.escrow_status,
+                client:   d.client_name || '—',
+                provider: d.consultant_name || '—',
+                amount:   fmtCents(d.amount_cents, true),
+                reason:   d.reason || '—',
+              }))}
+              emptyMsg={finRisk.loading ? 'Loading…' : 'No disputes — nothing to triage'}
+            />
+          </Section>
+
           <Section title="Risk Dashboard" sub="Financial exposure, concentration risk, and early-warning indicators">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
               <KpiCard label="Revenue Concentration" value={`${concentrationRisk.toFixed(1)}%`}
@@ -809,7 +1252,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             />
           </Section>
         </>
-      )}
+        )
+      })()}
     </div>
   )
 }
