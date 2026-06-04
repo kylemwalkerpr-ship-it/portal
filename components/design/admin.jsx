@@ -1937,8 +1937,24 @@ function AdminApp({ onLogout }) {
                     <div style={{ fontSize: '11px', color: C.textMuted, marginTop: '4px' }}>{statusLabel(s)}</div>
                   </td>
                   <td style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                       <Btn variant="ghost" size="sm" onClick={() => setEditing(s)}>Edit</Btn>
+                      {normalizeProductType(s.product_type) === 'template' && s.slug && (
+                        <a
+                          href={`/api/templates/download/${encodeURIComponent(s.slug)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Download template pack (admin bypass)"
+                          style={{
+                            fontSize: '12px', fontWeight: 600, color: C.cyan,
+                            textDecoration: 'none', padding: '4px 8px',
+                            border: `1px solid ${C.cyan}`, borderRadius: '6px',
+                            background: 'transparent', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Download
+                        </a>
+                      )}
                     </div>
                   </td>
                 </tr>

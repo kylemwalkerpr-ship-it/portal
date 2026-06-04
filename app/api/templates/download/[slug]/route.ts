@@ -36,16 +36,20 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
   if (!pack) return fail('Template not found.', 404)
 
   // 2. Entitlement check — the email on the profile MUST match a paid
-  //    template_orders row that contains this slug.
-  const { data: profile } = await auth.db
-    .from('profiles')
-    .select('email')
-    .eq('id', auth.profileId)
-    .single()
-  const email = (profile?.email || '').toLowerCase()
-  if (!email) return fail('No email on profile — cannot verify purchase.', 403)
-  const owns = await userOwnsSlug(auth.db, email, slug)
-  if (!owns) return fail('You haven\'t purchased this template yet.', 403)
+  //    template_orders row that contains this slug. Admins bypass this
+  //    check so they can audit and re-distribute packs from the dashboard
+  //    without going through checkout.
+  if (auth.role !== 'admin') {
+    const { data: profile } = await auth.db
+      .from('profiles')
+      .select('email')
+      .eq('id', auth.profileId)
+      .single()
+    const email = (profile?.email || '').toLowerCase()
+    if (!email) return fail('No email on profile — cannot verify purchase.', 403)
+    const owns = await userOwnsSlug(auth.db, email, slug)
+    if (!owns) return fail('You haven\'t purchased this template yet.', 403)
+  }
 
   // 3. Mint a signed URL via the service-role client. We never expose
   //    the bucket via the anon key; the service role is the only path
