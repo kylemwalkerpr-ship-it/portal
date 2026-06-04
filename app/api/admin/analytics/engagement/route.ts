@@ -63,11 +63,11 @@ export async function GET() {
   try {
     const { data, error } = await db
       .from('inquiries')
-      .select('client_id, claimed_by_attorney_id, created_at, updated_at')
+      .select('client_profile_id, claimed_by_attorney_id, created_at, updated_at')
       .gte('updated_at', ago30)
     if (error) throw error
     for (const r of data ?? []) {
-      if (r.client_id) activity.push({ user_id: r.client_id, at: r.updated_at || r.created_at })
+      if (r.client_profile_id) activity.push({ user_id: r.client_profile_id, at: r.updated_at || r.created_at })
       if (r.claimed_by_attorney_id) activity.push({ user_id: r.claimed_by_attorney_id, at: r.updated_at || r.created_at })
     }
   } catch (e: any) {
@@ -116,29 +116,25 @@ export async function GET() {
   }
 
   // ── Messages per order (last 30d) ───────────────────────────────────────────
+  // ref_order_id lives on conversation_messages, not conversations. We bucket
+  // by ref_order_id directly and average across distinct orders.
   let messages_per_order: number | null = null
   try {
-    // conversations linked to orders in the last 30 days
-    const { data: convs, error: cErr } = await db
-      .from('conversations')
-      .select('id, ref_order_id')
+    const { data: msgs, error: mErr } = await db
+      .from('conversation_messages')
+      .select('ref_order_id')
       .not('ref_order_id', 'is', null)
-      .gte('updated_at', ago30)
-    if (cErr) throw cErr
-    const convIds = (convs ?? []).map((c: any) => c.id).filter(Boolean)
-    if (convIds.length) {
-      // Total message rows on those conversations
-      // Try messages table
-      const { count, error: mErr } = await db
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .in('conversation_id', convIds)
-      if (mErr) throw mErr
-      const orderCount = new Set((convs ?? []).map((c: any) => c.ref_order_id)).size
-      messages_per_order = orderCount ? (count ?? 0) / orderCount : 0
-    } else {
-      messages_per_order = 0
+      .gte('created_at', ago30)
+    if (mErr) throw mErr
+    const buckets: Record<string, number> = {}
+    for (const m of msgs ?? []) {
+      const k = (m as any).ref_order_id
+      if (!k) continue
+      buckets[k] = (buckets[k] ?? 0) + 1
     }
+    const orderCount = Object.keys(buckets).length
+    const totalMsgs  = Object.values(buckets).reduce((a, b) => a + b, 0)
+    messages_per_order = orderCount ? totalMsgs / orderCount : 0
   } catch (e: any) {
     data_warnings.push(`messages_per_order: ${e?.message || 'unavailable'}`)
   }
@@ -152,7 +148,7 @@ export async function GET() {
       .gte('created_at', ago90)
     const { data: inqs } = await db
       .from('inquiries')
-      .select('client_id')
+      .select('client_profile_id')
       .gte('created_at', ago90)
     const buckets: Record<string, { orders: number; inquiries: number }> = {}
     for (const r of ords ?? []) {
@@ -161,9 +157,10 @@ export async function GET() {
       buckets[r.client_id].orders++
     }
     for (const r of inqs ?? []) {
-      if (!r.client_id) continue
-      buckets[r.client_id] = buckets[r.client_id] || { orders: 0, inquiries: 0 }
-      buckets[r.client_id].inquiries++
+      const cid = (r as any).client_profile_id
+      if (!cid) continue
+      buckets[cid] = buckets[cid] || { orders: 0, inquiries: 0 }
+      buckets[cid].inquiries++
     }
     const ranked = Object.entries(buckets)
       .map(([id, b]) => ({ id, ...b, total: b.orders + b.inquiries }))

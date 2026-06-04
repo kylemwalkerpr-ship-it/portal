@@ -78,22 +78,22 @@ export async function GET() {
   }
 
   // ── Search → order: no search session table in current schema ───────────────
+  // KPI tile already renders "Coming Soon"; don't surface as a banner.
   const search_to_order_pct: number | null = null
-  data_warnings.push('search_to_order_pct: not_implemented — no search session table')
 
   // ── Active gigs with zero views in last 30d ─────────────────────────────────
   let gigs_zero_views_30d = 0
   try {
     const { data, error } = await db
       .from('gig_metrics')
-      .select('gig_id, impressions, updated_at')
+      .select('gig_id, impressions, last_computed_at')
     if (error) throw error
     const metrics = data ?? []
     const activeIds = new Set(activeGigs.map(g => g.id))
     const seenWithViews = new Set<string>()
     for (const m of metrics) {
       if (!activeIds.has(m.gig_id)) continue
-      const updated = (m as any).updated_at
+      const updated = (m as any).last_computed_at
       if (Number(m.impressions) > 0 && (!updated || updated >= ago30)) seenWithViews.add(m.gig_id)
     }
     gigs_zero_views_30d = activeGigs.filter(g => !seenWithViews.has(g.id)).length
@@ -101,21 +101,39 @@ export async function GET() {
     data_warnings.push(`gig_metrics: ${e?.message || 'unavailable'}`)
   }
 
-  // ── Top gigs by orders (last 90d) for the drilldown table ───────────────────
+  // ── Top services by orders (last 90d) for the drilldown table ───────────────
+  // orders.gig_id may not exist on older schemas; we bucket via order_items.service_id
+  // which is the canonical join. Title comes from the services table.
   let top_gigs_by_orders: Array<{ gig_id: string; title: string | null; orders: number; gross: number }> = []
   try {
-    const { data, error } = await db
+    const { data: ords, error } = await db
       .from('orders')
-      .select('gig_id, total_amount, status, created_at')
+      .select('id, total_amount, status, created_at')
       .gte('created_at', ago90)
       .not('status', 'in', '(cancelled,refunded)')
     if (error) throw error
+    const orderIds = (ords ?? []).map((o: any) => o.id)
+    const grossByOrder: Record<string, number> = {}
+    for (const o of ords ?? []) grossByOrder[o.id] = Number(o.total_amount) || 0
+
+    let serviceByOrder: Record<string, string> = {}
+    if (orderIds.length) {
+      const { data: items } = await db
+        .from('order_items')
+        .select('order_id, service_id')
+        .in('order_id', orderIds)
+      for (const i of items ?? []) {
+        if (!serviceByOrder[i.order_id] && i.service_id) serviceByOrder[i.order_id] = i.service_id
+      }
+    }
+
     const buckets: Record<string, { orders: number; gross: number }> = {}
-    for (const o of data ?? []) {
-      if (!o.gig_id) continue
-      buckets[o.gig_id] = buckets[o.gig_id] || { orders: 0, gross: 0 }
-      buckets[o.gig_id].orders++
-      buckets[o.gig_id].gross += Number(o.total_amount) || 0
+    for (const oid of orderIds) {
+      const sid = serviceByOrder[oid]
+      if (!sid) continue
+      buckets[sid] = buckets[sid] || { orders: 0, gross: 0 }
+      buckets[sid].orders++
+      buckets[sid].gross += grossByOrder[oid] || 0
     }
     const ranked = Object.entries(buckets)
       .sort((a, b) => b[1].orders - a[1].orders)
@@ -123,8 +141,8 @@ export async function GET() {
     const ids = ranked.map(([id]) => id)
     const titleMap: Record<string, string> = {}
     if (ids.length) {
-      const { data: gigsData } = await db.from('gigs').select('id, title').in('id', ids)
-      for (const g of gigsData ?? []) titleMap[g.id] = g.title
+      const { data: svcs } = await db.from('services').select('id, title').in('id', ids)
+      for (const s of svcs ?? []) titleMap[s.id] = s.title
     }
     top_gigs_by_orders = ranked.map(([gig_id, v]) => ({
       gig_id,
@@ -133,7 +151,7 @@ export async function GET() {
       gross: v.gross,
     }))
   } catch (e: any) {
-    data_warnings.push(`top_gigs_by_orders: ${e?.message || 'unavailable'}`)
+    data_warnings.push(`top_services_by_orders: ${e?.message || 'unavailable'}`)
   }
 
   return ok({

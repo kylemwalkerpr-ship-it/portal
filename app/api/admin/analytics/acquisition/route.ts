@@ -66,9 +66,10 @@ export async function GET() {
   const signups30 = profiles.filter(p => p.created_at >= ago30)
   const signupsPrev = profiles.filter(p => p.created_at < ago30 && p.created_at >= ago60)
 
-  const signups_by_role_30d: Record<string, number> = { student: 0, consultant: 0, attorney: 0, support: 0 }
+  const signups_by_role_30d: Record<string, number> = { student: 0, consultant: 0, attorney: 0, support: 0, other: 0 }
   for (const p of signups30) {
-    if (p.role in signups_by_role_30d) signups_by_role_30d[p.role]++
+    if (p.role && p.role in signups_by_role_30d) signups_by_role_30d[p.role]++
+    else signups_by_role_30d.other++
   }
 
   const signups_by_source_30d: Record<string, number | null> = {
@@ -83,9 +84,10 @@ export async function GET() {
       else signups_by_source_30d.organic = (signups_by_source_30d.organic as number) + 1
     }
   } else {
+    // Invited card already renders "Coming Soon" with the missing-column hint;
+    // don't double-surface as a Partial-data banner.
     signups_by_source_30d.invited = null
     signups_by_source_30d.organic = signups30.length
-    data_warnings.push('source_tracking_missing — profiles has no invited_by/referrer_id; all signups counted as organic')
   }
 
   // Daily series over the trailing 30 days

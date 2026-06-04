@@ -93,12 +93,13 @@ export async function GET() {
     try {
       const { data, error } = await db
         .from('inquiries')
-        .select('client_id, created_at')
-        .in('client_id', cohortIds)
+        .select('client_profile_id, created_at')
+        .in('client_profile_id', cohortIds)
         .order('created_at', { ascending: true })
       if (error) throw error
       for (const r of data ?? []) {
-        if (r.client_id && !firstInquiryByClient[r.client_id]) firstInquiryByClient[r.client_id] = r.created_at
+        const cid = (r as any).client_profile_id
+        if (cid && !firstInquiryByClient[cid]) firstInquiryByClient[cid] = r.created_at
       }
     } catch (e: any) {
       data_warnings.push(`inquiries: ${e?.message || 'unavailable'}`)

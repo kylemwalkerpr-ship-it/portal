@@ -58,19 +58,25 @@ function BarChart({ data = [], height = 110, color = NAVY }) {
   if (!data.length) return <EmptyChart height={height} />
   const max = Math.max(...data.map(d => d.value), 1)
   const w = 100 / data.length
+  // Thin x-labels when there are many bars so they don't overlap.
+  // Roughly target 8-12 visible labels regardless of series length.
+  const stride = data.length > 14 ? Math.ceil(data.length / 8) : 1
   return (
     <svg viewBox={`0 0 100 ${height + 18}`} preserveAspectRatio="none" style={{ width: '100%', height: height + 18, overflow: 'visible' }}>
       {data.map((d, i) => {
         const bh = (d.value / max) * height
         const x = i * w + w * 0.1
         const bw = w * 0.8
+        const showLabel = i === 0 || i === data.length - 1 || i % stride === 0
         return (
           <g key={i}>
             <title>{d.label}: {fmtNum(d.value)}</title>
             <rect x={x} y={height - bh} width={bw} height={bh} fill={d.highlight ? GOLD : color} rx="1.5" opacity={0.92} />
-            <text x={x + bw / 2} y={height + 12} textAnchor="middle" fontSize="4.5" fill="#9097A8" fontFamily={sans}>
-              {d.shortLabel || d.label}
-            </text>
+            {showLabel && (
+              <text x={x + bw / 2} y={height + 12} textAnchor="middle" fontSize="4.5" fill="#9097A8" fontFamily={sans}>
+                {d.shortLabel || d.label}
+              </text>
+            )}
           </g>
         )
       })}
@@ -381,7 +387,7 @@ function AcquisitionTab({ q }) {
         {q.loading ? [1, 2, 3, 4, 5].map(i => <KpiSkeleton key={i} />) : (
           <>
             <Kpi label="Signups (30d)" value={fmtNum(d.signups_30d)} sub={`vs ${fmtNum(d.signups_30d_prev)} prior 30d`} delta={delta} spark={dailySpark} sparkColor={NAVY} accent={NAVY} />
-            <Kpi label="Students" value={fmtNum(byRole.student)} sub="of total signups" accent={GREEN} />
+            <Kpi label="Students" value={fmtNum(byRole.student)} sub={byRole.other ? `${fmtNum(byRole.other)} unset role` : 'of total signups'} accent={GREEN} />
             <Kpi label="Consultants + Attorneys" value={fmtNum((byRole.consultant || 0) + (byRole.attorney || 0))} sub="providers joined" accent={PURPLE} />
             <Kpi label="Invited" value={bySource.invited === null ? '' : fmtNum(bySource.invited)} sub={bySource.invited === null ? 'profiles has no invited_by column' : `${d.signups_30d ? fmtPct((bySource.invited / d.signups_30d) * 100) : '0%'} of signups`} accent={GOLD} comingSoon={bySource.invited === null} />
             <Kpi label="Signup → First Order" value={fmtPct(d.signup_to_first_order_pct)} sub={`Cohort of ${fmtNum(d.signup_to_first_order_cohort_size)} from prior 30d`} accent={GREEN} />

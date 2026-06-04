@@ -54,9 +54,10 @@ export async function GET() {
       orders = (data ?? []).filter((r: any) => r.client_id && r.created_at)
     } catch (e: any) { data_warnings.push(`orders: ${e?.message || 'unavailable'}`) }
     try {
-      const { data, error } = await db.from('inquiries').select('client_id, created_at').in('client_id', ids)
+      const { data, error } = await db.from('inquiries').select('client_profile_id, created_at').in('client_profile_id', ids)
       if (error) throw error
-      inquiries = (data ?? []).filter((r: any) => r.client_id && r.created_at)
+      inquiries = (data ?? []).map((r: any) => ({ client_id: r.client_profile_id, created_at: r.created_at }))
+        .filter((r: any) => r.client_id && r.created_at)
     } catch (e: any) { data_warnings.push(`inquiries: ${e?.message || 'unavailable'}`) }
   }
 
