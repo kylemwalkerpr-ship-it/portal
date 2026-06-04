@@ -124,6 +124,14 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
   const [impactLoading, setImpactLoading] = React.useState(false)
   const [lifecyclePending, setLifecyclePending] = React.useState(false)
   const [lifecycleNotice, setLifecycleNotice] = React.useState(null)
+  // Extended detail panels — wired to /details, /risk and /lifecycle so the
+  // four drawer sections never render blank. Mirrors admin-consultant-management.
+  const [details, setDetails] = React.useState(null)
+  const [detailsLoading, setDetailsLoading] = React.useState(true)
+  const [risk, setRisk] = React.useState(null)
+  const [riskLoading, setRiskLoading] = React.useState(true)
+  const [lifecycle, setLifecycle] = React.useState(null)
+  const [lifecycleLoading, setLifecycleLoading] = React.useState(true)
 
   const flashLifecycle = (type, msg) => {
     setLifecycleNotice({ type, msg })
@@ -138,6 +146,23 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
       .then(d => setEvents(d.events || []))
       .catch(() => setEvents([]))
       .finally(() => setEventsLoading(false))
+  }, [application?.id])
+
+  React.useEffect(() => {
+    if (!application?.id) return
+    setDetailsLoading(true); setRiskLoading(true); setLifecycleLoading(true)
+    const id = application.id
+    Promise.allSettled([
+      fetch(`/api/admin/attorney-applications/${id}/details`,   { credentials: 'same-origin' }).then(r => r.json()),
+      fetch(`/api/admin/attorney-applications/${id}/risk`,      { credentials: 'same-origin' }).then(r => r.json()),
+      fetch(`/api/admin/attorney-applications/${id}/lifecycle`, { credentials: 'same-origin' }).then(r => r.json()),
+    ]).then(([d, r, l]) => {
+      setDetails(d.status === 'fulfilled'   ? (d.value?.data ?? null)             : null)
+      setRisk(r.status === 'fulfilled'      ? (r.value?.data?.risk ?? null)       : null)
+      setLifecycle(l.status === 'fulfilled' ? (l.value?.data?.lifecycle ?? null)  : null)
+    }).finally(() => {
+      setDetailsLoading(false); setRiskLoading(false); setLifecycleLoading(false)
+    })
   }, [application?.id])
 
   React.useEffect(() => {
@@ -238,56 +263,51 @@ function DetailDrawer({ application, onClose, onDecide, decisionPending, onLifec
 
         {/* Body — scrollable */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 120px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Risk panel */}
+          {/* Risk panel — wired to /risk for band + driver weights +
+              recommendation. Falls back to the row-level risk score during
+              load so the section never renders blank. */}
           <Section title="Risk assessment">
-            <div style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
-              <RiskBar score={application.risk_score} flags={flagList} />
-              {flagList.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {flagList.map(f => (
-                    <span key={f} style={{ fontSize: 11, fontWeight: 600, color: RED, background: `${RED}10`, border: `1px solid ${RED}33`, padding: '3px 8px', borderRadius: 4 }}>
-                      {RISK_FLAG_LABELS[f] || f}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {flagList.length === 0 && <div style={{ fontSize: 12, color: MUTED }}>No automated flags raised.</div>}
-            </div>
+            <RiskPanel
+              risk={risk}
+              loading={riskLoading}
+              fallbackScore={application.risk_score}
+              fallbackFlags={flagList}
+            />
           </Section>
 
-          {/* Full application — single-column Google-form-style sheet so every
-              answer renders in full (no two-column clipping). Lists every field
-              the applicant submitted, in form order, for complete review. */}
+          {/* Full application — merges submitted form + linked profile +
+              attorney row so headshot, languages, years of practice, bio
+              etc. appear without leaving the drawer. */}
           <Section title="Application">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr' }}>
-              <FormRow label="Full name"                value={application.full_name} first />
-              <FormRow label="Email"                    value={application.email} link={application.email ? `mailto:${application.email}` : undefined} />
-              <FormRow label="Phone"                    value={application.phone} />
-              <FormRow label="Credential type"          value={application.credential_type} />
-              <FormRow label="Bar / roll number"        value={application.bar_number} />
-              <FormRow label="Jurisdictions admitted"   value={application.jurisdictions} />
-              <FormRow label="Practice areas"           value={application.practice_areas} />
-              <FormRow label="Capacity / availability"  value={application.capacity} />
-              <FormRow label="Professional indemnity / malpractice insurance" value={application.malpractice_insurance} />
-              <FormRow label="Public profile / website" value={application.profile_url} link={application.profile_url} />
-              <FormRow label="Anything else we should know" value={application.notes} />
+            <AttorneyApplicationBody
+              application={application}
+              details={details}
+              loading={detailsLoading}
+            />
+          </Section>
+
+          {/* Decision audit — always renders so the section is never blank.
+              Shows "No decision yet" for pending. */}
+          <Section title="Decision">
+            <DecisionPanel
+              application={application}
+              details={details}
+              events={events}
+              loading={detailsLoading}
+            />
+          </Section>
+
+          {/* Lifecycle — onboarding tiles for every status, plus the
+              approved-only impact + lifecycle controls below. */}
+          <Section title="Lifecycle">
+            <div style={{ padding: '14px 18px', display: 'grid', gap: 14 }}>
+              <LifecycleTiles lifecycle={lifecycle} loading={lifecycleLoading} />
             </div>
           </Section>
 
-          {/* Decision audit */}
-          {application.status !== 'pending' && (
-            <Section title="Decision">
-              <div style={{ padding: '14px 18px', display: 'grid', gap: 8 }}>
-                <Field label="Decided" value={`${application.status} · ${fmtRelative(application.decided_at)}`} />
-                {application.reviewer_profile && <Field label="Reviewer" value={`${application.reviewer_profile.full_name || application.reviewer_profile.email}`} />}
-                {application.decision_notes && <Field label="Notes" value={application.decision_notes} multiline />}
-              </div>
-            </Section>
-          )}
-
-          {/* Lifecycle controls — appear only for approved attorneys. */}
+          {/* Approved-only impact + admin controls retained from before. */}
           {application.status === 'approved' && (
-            <Section title="Lifecycle">
+            <Section title="Approved — operations">
               <div style={{ padding: '14px 18px', display: 'grid', gap: 12 }}>
                 {/* Impact panel */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
@@ -424,6 +444,220 @@ function Field({ label, value, multiline, link, span }) {
       ) : (
         <div style={{ fontSize: 13, color: TEXT }}>{value}</div>
       )}
+    </div>
+  )
+}
+
+// ─── Risk read-out (mirrors admin-consultant-management). ──────────────────
+function RiskPanel({ risk, loading, fallbackScore, fallbackFlags }) {
+  const score = risk?.score ?? Number(fallbackScore || 0)
+  const flags = Array.isArray(risk?.flags) ? risk.flags : (fallbackFlags || [])
+  const drivers = Array.isArray(risk?.drivers) ? risk.drivers : []
+  const band = risk?.band || (score >= 50 ? 'high' : score >= 25 ? 'med' : score > 0 ? 'low' : 'none')
+  const scored = risk ? risk.scored : (score > 0 || flags.length > 0)
+  const bandColor = band === 'high' ? RED : band === 'med' ? AMBER : band === 'low' ? GREEN : DIM
+  const bandLabel = band === 'high' ? 'High' : band === 'med' ? 'Medium' : band === 'low' ? 'Low' : 'Unscored'
+
+  if (loading && !risk) {
+    return <div style={{ padding: '16px 18px', color: MUTED, fontSize: 13 }}>Loading risk assessment…</div>
+  }
+  if (!scored) {
+    return (
+      <div style={{ padding: '16px 18px', display: 'grid', gap: 6 }}>
+        <div style={{ fontSize: 13, color: MUTED }}>Not scored — risk evaluation has not run for this application.</div>
+        {risk?.recommendation && <div style={{ fontSize: 12, color: DIM, fontStyle: 'italic' }}>{risk.recommendation}</div>}
+      </div>
+    )
+  }
+  return (
+    <div style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <RiskBar score={score} flags={flags} />
+        <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', background: `${bandColor}15`, color: bandColor, border: `1px solid ${bandColor}33` }}>
+          {bandLabel} risk
+        </span>
+      </div>
+      {drivers.length > 0 ? (
+        <div style={{ display: 'grid', gap: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.10em', textTransform: 'uppercase', color: DIM, fontFamily: MONO }}>Drivers</div>
+          {drivers.map(d => (
+            <div key={d.flag} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 10px', background: `${RED}08`, border: `1px solid ${RED}22`, borderRadius: 4, fontSize: 12 }}>
+              <span style={{ color: TEXT, fontWeight: 600 }}>{d.label}</span>
+              <span style={{ fontFamily: MONO, color: RED, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>+{d.weight}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: MUTED }}>No automated flags raised.</div>
+      )}
+      {risk?.recommendation && (
+        <div style={{ fontSize: 12, color: TEXT, padding: '8px 10px', background: BORDER2, borderRadius: 4 }}>
+          <strong style={{ color: NAVY }}>Recommendation —</strong> {risk.recommendation}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Application body for the attorney lane (merges row + /details). ──────
+function AttorneyApplicationBody({ application, details, loading }) {
+  const a = (details?.application) || application
+  const at = details?.attorney || {}
+  const p = details?.profile || {}
+  const headshot = at.headshot_url
+  const langs = Array.isArray(at.languages) ? at.languages.filter(Boolean).join(', ') : null
+  const atSpecialties = Array.isArray(at.specialties) ? at.specialties.join(', ') : at.specialties
+  const role = (p.role || 'attorney')
+  const submittedAt = a.created_at
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr' }}>
+      {headshot && (
+        <div style={{ padding: '14px 18px', borderTop: 'none', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img
+            src={headshot}
+            alt={a.full_name || 'Headshot'}
+            style={{ width: 56, height: 56, borderRadius: 999, objectFit: 'cover', border: `1px solid ${BORDER}` }}
+            onError={e => { e.currentTarget.style.display = 'none' }}
+          />
+          <div>
+            <div style={{ fontSize: 14, color: TEXT, fontWeight: 600 }}>{a.full_name}</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: MONO, textTransform: 'capitalize' }}>{role}</div>
+          </div>
+        </div>
+      )}
+
+      <FormRow label="Full name"     value={a.full_name} first={!headshot} />
+      <FormRow label="Email"         value={a.email} link={a.email ? `mailto:${a.email}` : undefined} />
+      <FormRow label="Phone"         value={a.phone} />
+      <FormRow label="Role"          value={role} />
+      <FormRow label="Submitted at"  value={submittedAt ? new Date(submittedAt).toLocaleString('en-US') : null} />
+
+      {a.credential_type        && <FormRow label="Credential type"       value={a.credential_type} />}
+      {a.bar_number             && <FormRow label="Bar / roll number"     value={a.bar_number} />}
+      {a.jurisdictions          && <FormRow label="Jurisdictions admitted" value={a.jurisdictions} />}
+      {a.practice_areas         && <FormRow label="Practice areas"        value={a.practice_areas} />}
+      {atSpecialties            && <FormRow label="Specialties"           value={atSpecialties} />}
+      {langs                    && <FormRow label="Languages"             value={langs} />}
+      {at.years_experience      && <FormRow label="Years of practice"     value={String(at.years_experience)} />}
+      {(at.intro || at.bio)     && <FormRow label="Bio / about"           value={at.bio || at.intro} />}
+      {at.education             && <FormRow label="Education"             value={at.education} />}
+      {at.timezone              && <FormRow label="Timezone"              value={at.timezone} />}
+      {at.starting_price > 0    && <FormRow label="Starting price"        value={`$${Number(at.starting_price).toLocaleString('en-US')}`} />}
+      {a.capacity               && <FormRow label="Capacity / availability" value={a.capacity} />}
+      {a.malpractice_insurance  && <FormRow label="Professional indemnity / malpractice insurance" value={a.malpractice_insurance} />}
+      {a.profile_url            && <FormRow label="Public profile / website" value={a.profile_url} link={a.profile_url} />}
+      {at.video_intro_url       && <FormRow label="Video introduction"    value={at.video_intro_url} link={at.video_intro_url} />}
+      {a.notes                  && <FormRow label="Anything else we should know" value={a.notes} />}
+
+      {loading && !details && (
+        <div style={{ padding: '10px 18px', fontSize: 12, color: DIM, fontFamily: MONO }}>Loading enriched profile…</div>
+      )}
+    </div>
+  )
+}
+
+// ─── Decision panel (always renders; empty state for pending). ─────────────
+function DecisionPanel({ application, details, events, loading }) {
+  const status = application.status
+  const reviewer = details?.reviewer || application.reviewer_profile
+  const decidedAt = application.decided_at
+  const decisionNotes = application.decision_notes
+
+  const transitions = (Array.isArray(events) ? events : [])
+    .filter(e => e.from_status && e.to_status)
+    .slice(0, 8)
+
+  if (status === 'pending') {
+    return (
+      <div style={{ padding: '14px 18px', display: 'grid', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <StatusBadge status={status} />
+          <span style={{ fontSize: 12, color: MUTED }}>No decision yet — use the Decide panel below.</span>
+        </div>
+        {transitions.length > 0 && (
+          <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.10em', textTransform: 'uppercase', color: DIM, fontFamily: MONO }}>Prior transitions</div>
+            {transitions.map(t => (
+              <div key={t.id} style={{ fontSize: 12, color: MUTED }}>
+                <span style={{ fontFamily: MONO, color: DIM, marginRight: 8 }}>{fmtDate(t.created_at)}</span>
+                {t.from_status} → {t.to_status}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '14px 18px', display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <StatusBadge status={status} />
+        {decidedAt && <span style={{ fontSize: 12, color: MUTED, fontFamily: MONO }}>{fmtRelative(decidedAt)} · {fmtDate(decidedAt)}</span>}
+      </div>
+      {reviewer && (
+        <Field label="Reviewer" value={`${reviewer.full_name || reviewer.email}${reviewer.email && reviewer.full_name ? ` · ${reviewer.email}` : ''}`} />
+      )}
+      {decisionNotes && <Field label="Decision notes" value={decisionNotes} multiline />}
+      {transitions.length > 0 && (
+        <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.10em', textTransform: 'uppercase', color: DIM, fontFamily: MONO }}>Prior transitions</div>
+          {transitions.map(t => (
+            <div key={t.id} style={{ fontSize: 12, color: MUTED }}>
+              <span style={{ fontFamily: MONO, color: DIM, marginRight: 8 }}>{fmtDate(t.created_at)}</span>
+              {t.from_status} → {t.to_status}
+              {t.notes && <span style={{ color: DIM, fontStyle: 'italic' }}> · “{t.notes}”</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {loading && !details && (
+        <div style={{ fontSize: 12, color: DIM, fontFamily: MONO }}>Loading reviewer details…</div>
+      )}
+    </div>
+  )
+}
+
+// ─── Onboarding-progress tiles. ────────────────────────────────────────────
+function LifecycleTiles({ lifecycle, loading }) {
+  const checks = Array.isArray(lifecycle?.checks) ? lifecycle.checks : []
+  if (loading && !lifecycle) {
+    return <div style={{ color: MUTED, fontSize: 13 }}>Loading lifecycle…</div>
+  }
+  if (!checks.length) {
+    return <div style={{ color: MUTED, fontSize: 13 }}>No lifecycle data available.</div>
+  }
+  const completed = lifecycle.completed ?? checks.filter(c => c.done).length
+  const total = lifecycle.total ?? checks.length
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12, color: MUTED, fontFamily: MONO }}>
+        {completed} of {total} milestones reached
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
+        {checks.map(c => (
+          <div key={c.id} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            padding: '8px 10px', borderRadius: 6,
+            background: c.done ? `${GREEN}10` : BORDER2,
+            border: `1px solid ${c.done ? `${GREEN}33` : BORDER}`,
+          }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 16, height: 16, borderRadius: 999,
+              background: c.done ? GREEN : SURFACE,
+              color: c.done ? '#fff' : DIM,
+              border: `1px solid ${c.done ? GREEN : BORDER}`,
+              fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 2,
+            }}>{c.done ? '✓' : '·'}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: c.done ? GREEN : TEXT }}>{c.label}</div>
+              {c.hint && !c.done && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{c.hint}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
