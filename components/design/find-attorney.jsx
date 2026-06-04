@@ -403,7 +403,17 @@ function AttorneyDetail({ attorneyId, providerRole, onBack, onStartInquiry }) {
     )
   }
 
-  const a = data.attorney
+  // Endpoints disagree on key: /api/attorneys/[id] returns { attorney },
+  // /api/consultants/[id] returns { consultant }. Accept either shape.
+  const a = data.attorney || data.consultant
+  if (!a) {
+    return (
+      <div style={{ padding: '24px 28px' }}>
+        <button onClick={onBack} type="button" style={backBtn}>← Back</button>
+        <div style={errorBox}>Profile payload was empty.</div>
+      </div>
+    )
+  }
   const ratings = data.ratings || []
   const gigs = data.gigs || []
   const initial = (a.full_name || '?').trim().charAt(0).toUpperCase()
