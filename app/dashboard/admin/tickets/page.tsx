@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { AdminTicketsShell } from '@/components/admin/AdminTicketsShell'
+import AdminTickets from '@/components/design/admin-tickets'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,5 +18,5 @@ export default async function AdminTicketsPage() {
   if (auth.role !== 'admin') {
     redirect('/dashboard')
   }
-  return <AdminTicketsShell />
+  return <AdminTickets />
 }
