@@ -170,12 +170,227 @@ function TxnTypeBadge({ type }) {
   )
 }
 
+// ─── Top-up modal ─────────────────────────────────────────────────────────────
+const REASON_PRESETS = [
+  'Goodwill credit',
+  'Service make-good',
+  'Promotional credit',
+  'Refund correction',
+  'Other',
+]
+
+function TopUpModal({ profileId, onClose, onSuccess }) {
+  const [amount, setAmount] = React.useState('')
+  const [memo, setMemo] = React.useState('')
+  const [reasonChoice, setReasonChoice] = React.useState(REASON_PRESETS[0])
+  const [reasonOther, setReasonOther] = React.useState('')
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState(null)
+
+  // ESC closes the modal unless a request is in flight.
+  React.useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'Escape' && !submitting) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [submitting, onClose])
+
+  const parsedDollars = parseFloat(amount)
+  const amountCents = Number.isFinite(parsedDollars) ? Math.round(parsedDollars * 100) : 0
+  const reasonValue = (reasonChoice === 'Other' ? reasonOther : reasonChoice).trim()
+  const memoTrimmed = memo.trim()
+  const canSubmit = (
+    !submitting &&
+    Number.isInteger(amountCents) && amountCents > 0 &&
+    memoTrimmed.length > 0 && memoTrimmed.length <= 120 &&
+    reasonValue.length > 0
+  )
+
+  const handleSubmit = async e => {
+    e?.preventDefault?.()
+    if (!canSubmit) return
+    setSubmitting(true); setError(null)
+    try {
+      const res = await fetch(`/api/admin/wallet/credit/${profileId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountCents,
+          memo: memoTrimmed,
+          reason: reasonValue,
+          metadata: { kind: 'admin_topup' },
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json?.error) {
+        const message = json?.error?.message || `Top-up failed (HTTP ${res.status})`
+        setError(message)
+        setSubmitting(false)
+        return
+      }
+      const payload = json?.data || json || {}
+      onSuccess({
+        creditedCents: amountCents,
+        balanceCents: Number(payload.balanceCents) || 0,
+        transactionId: payload.transactionId || null,
+      })
+    } catch (err) {
+      setError(String(err?.message || err))
+      setSubmitting(false)
+    }
+  }
+
+  const handleBackdrop = () => { if (!submitting) onClose() }
+
+  return (
+    <div
+      onClick={handleBackdrop}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(15,23,42,0.55)',
+        zIndex: 200,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(440px, 100%)',
+          background: '#FAFAF8',
+          border: '1px solid #DDD8CE',
+          borderRadius: '12px',
+          boxShadow: '0 24px 60px rgba(15,23,42,0.28)',
+          fontFamily: sans,
+          overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+        }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #DDD8CE', background: '#fff' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9097A8', marginBottom: '4px' }}>Wallet adjustment</div>
+          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '22px', color: '#0F172A', margin: 0, letterSpacing: '-0.012em' }}>
+            Top up wallet
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9097A8', lineHeight: 1.4 }}>
+            Credits the student&rsquo;s balance and writes a row to the ledger. Memo is visible to the student.
+          </p>
+        </div>
+
+        <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Amount */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Amount (USD)</span>
+            <div style={{ position: 'relative' }}>
+              <span style={{
+                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                color: '#9097A8', fontSize: '14px', fontWeight: 600, pointerEvents: 'none',
+              }}>$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="25.00"
+                autoFocus
+                disabled={submitting}
+                style={{
+                  width: '100%', padding: '10px 12px 10px 24px',
+                  border: '1px solid #DDD8CE', borderRadius: '6px',
+                  background: '#fff', fontSize: '14px', fontFamily: sans, color: '#1A1F2E',
+                  fontVariantNumeric: 'tabular-nums', boxSizing: 'border-box',
+                  outline: 'none',
+                }} />
+            </div>
+            {amount && amountCents <= 0 && (
+              <span style={{ fontSize: '12px', color: '#8B1A1A' }}>Enter an amount greater than zero.</span>
+            )}
+          </label>
+
+          {/* Memo */}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Memo <span style={{ color: '#9097A8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(ledger description)</span>
+            </span>
+            <input
+              type="text"
+              value={memo}
+              onChange={e => setMemo(e.target.value.slice(0, 120))}
+              placeholder="e.g. Make-good for delayed consultant response"
+              maxLength={120}
+              disabled={submitting}
+              style={{
+                padding: '10px 12px',
+                border: '1px solid #DDD8CE', borderRadius: '6px',
+                background: '#fff', fontSize: '14px', fontFamily: sans, color: '#1A1F2E',
+                boxSizing: 'border-box', outline: 'none',
+              }} />
+            <span style={{ fontSize: '11px', color: '#9097A8', textAlign: 'right' }}>{memoTrimmed.length}/120</span>
+          </label>
+
+          {/* Reason */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Reason</span>
+            <select
+              value={reasonChoice}
+              onChange={e => setReasonChoice(e.target.value)}
+              disabled={submitting}
+              style={{
+                padding: '10px 12px',
+                border: '1px solid #DDD8CE', borderRadius: '6px',
+                background: '#fff', fontSize: '14px', fontFamily: sans, color: '#1A1F2E',
+                boxSizing: 'border-box', outline: 'none', cursor: submitting ? 'not-allowed' : 'pointer',
+              }}>
+              {REASON_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {reasonChoice === 'Other' && (
+              <input
+                type="text"
+                value={reasonOther}
+                onChange={e => setReasonOther(e.target.value)}
+                placeholder="Describe the reason"
+                disabled={submitting}
+                style={{
+                  marginTop: '4px',
+                  padding: '10px 12px',
+                  border: '1px solid #DDD8CE', borderRadius: '6px',
+                  background: '#fff', fontSize: '14px', fontFamily: sans, color: '#1A1F2E',
+                  boxSizing: 'border-box', outline: 'none',
+                }} />
+            )}
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '10px 12px', background: '#FAEAEA', border: '1px solid #E5BFBF',
+              borderRadius: '6px', color: '#8B1A1A', fontSize: '13px',
+            }}>{error}</div>
+          )}
+        </div>
+
+        <div style={{
+          padding: '14px 22px', borderTop: '1px solid #DDD8CE', background: '#fff',
+          display: 'flex', gap: '8px', justifyContent: 'flex-end',
+        }}>
+          <Btn variant="ghost" size="sm" onClick={onClose} disabled={submitting} type="button">Cancel</Btn>
+          <Btn variant="primary" size="sm" type="submit" disabled={!canSubmit} onClick={handleSubmit}>
+            {submitting ? 'Crediting…' : amountCents > 0 ? `Credit ${fmt(amountCents)}` : 'Credit'}
+          </Btn>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 // ─── Wallet detail drawer ────────────────────────────────────────────────────
 function WalletDrawer({ profileId, onClose }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState(null)
   const [typeFilter, setTypeFilter] = React.useState('all')
+  const [reloadKey, setReloadKey] = React.useState(0)
+  const [topUpOpen, setTopUpOpen] = React.useState(false)
+  const [toast, setToast] = React.useState(null)
 
   React.useEffect(() => {
     if (!profileId) return
@@ -189,7 +404,14 @@ function WalletDrawer({ profileId, onClose }) {
       })
       .catch(e => setError(String(e?.message || e)))
       .finally(() => setLoading(false))
-  }, [profileId, typeFilter])
+  }, [profileId, typeFilter, reloadKey])
+
+  // Auto-dismiss toast after 5s
+  React.useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   if (!profileId) return null
 
@@ -250,10 +472,22 @@ function WalletDrawer({ profileId, onClose }) {
                       {data.wallet?.currency || 'USD'} · updated {fmtDateTime(data.wallet?.updated_at)}
                     </div>
                   </div>
-                  <Btn variant="primary" size="sm" onClick={() => alert('Top-up wiring is a follow-up — placeholder for now.')}>
+                  <Btn variant="primary" size="sm" onClick={() => setTopUpOpen(true)}>
                     Top up
                   </Btn>
                 </div>
+                {toast && (
+                  <div style={{
+                    marginTop: '14px',
+                    padding: '10px 12px',
+                    background: '#EAF5EE',
+                    border: '1px solid #BFD9C8',
+                    borderRadius: '6px',
+                    color: '#1A6B45',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}>{toast}</div>
+                )}
               </Card>
 
               {/* Lifetime totals */}
@@ -315,6 +549,18 @@ function WalletDrawer({ profileId, onClose }) {
             </>
           )}
         </div>
+
+        {topUpOpen && (
+          <TopUpModal
+            profileId={profileId}
+            onClose={() => setTopUpOpen(false)}
+            onSuccess={({ creditedCents, balanceCents }) => {
+              setTopUpOpen(false)
+              setToast(`Credited ${fmt(creditedCents)} · new balance ${fmt(balanceCents)}`)
+              setReloadKey(k => k + 1)
+            }}
+          />
+        )}
       </div>
     </div>
   )
