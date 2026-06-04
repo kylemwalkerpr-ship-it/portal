@@ -54,6 +54,13 @@ const GEMINI_MODEL = 'gemini-2.5-flash'
 // Cloudflare's network. Costs ~5 Neurons per call; 10k free
 // Neurons/day = ~2000 generations.
 const CF_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+// OpenRouter free model. The `:free` suffix flags rows on OpenRouter's
+// free tier — these have their own per-day quotas separate from every
+// other provider in the chain, so we get genuine extra headroom rather
+// than just a fancier paid relay. Llama-3.1-8b is the most predictable
+// for instruction-following; Hermes/Mistral come behind it. Cheap to
+// swap if quotas shift.
+const OPENROUTER_MODEL = 'meta-llama/llama-3.1-8b-instruct:free'
 
 function buildGroq(apiKey: string): ChatProvider {
   const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
@@ -202,6 +209,51 @@ function buildCloudflareAI(accountId: string, apiToken: string): ChatProvider {
   }
 }
 
+// OpenRouter — fourth provider, independent quota again. OpenRouter's
+// :free models have separate per-day caps from Groq/Gemini/Cloudflare,
+// so this is genuine extra headroom rather than a paid relay onto the
+// same upstream. Requires a single OPENROUTER_API_KEY. The API speaks
+// OpenAI shape, so the call site mirrors buildGroq.
+function buildOpenRouter(apiKey: string): ChatProvider {
+  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        // OpenRouter asks attribution headers on the free tier so they
+        // can rate-limit fairly. These are best-effort and harmless.
+        'HTTP-Referer': 'https://portal.yousafeconsultancy.com',
+        'X-Title': 'YouSafe Portal',
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        temperature: 0.4,
+        max_tokens: options?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+        messages: [
+          { role: 'system', content: system },
+          ...history.map(t => ({ role: t.role, content: t.content })),
+        ],
+      }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      const fp = apiKey
+        ? `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
+        : '[missing]'
+      throw new Error(`OpenRouter ${res.status} ${fp}: ${text.slice(0, 280)}`)
+    }
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
+    const reply = data.choices?.[0]?.message?.content?.trim()
+    if (!reply) throw new Error('OpenRouter returned an empty reply')
+    return reply
+  }
+  return {
+    name: 'openrouter',
+    reply: (system, history, options) => withRetry('openrouter', () => callOnce(system, history, options)),
+  }
+}
+
 // Retry pattern shared by both adapters. Gemini's "model overloaded"
 // (503 UNAVAILABLE) and Groq's 429 rate-limits both typically clear
 // in 1-3 seconds — Google's docs explicitly say to retry on
@@ -291,15 +343,18 @@ export function getChatProvider(): ChatProvider | null {
     process.env.CLOUDFLARE_WORKERS_AI_TOKEN ||
     ''
   ).trim()
+  const openRouterKey = (process.env.OPENROUTER_API_KEY || '').trim()
   const groq = groqKey ? buildGroq(groqKey) : null
   const gemini = geminiKey ? buildGemini(geminiKey) : null
   const cloudflare = cfAccountId && cfAiToken ? buildCloudflareAI(cfAccountId, cfAiToken) : null
+  const openrouter = openRouterKey ? buildOpenRouter(openRouterKey) : null
 
   // Build the chain from whichever providers are configured. Order:
   // Groq (fastest) → Gemini (largest free quota) → Cloudflare AI
-  // (independent vendor, separate quota). Each chain() hop adds a
-  // 1500ms intra-provider retry plus an inter-provider fallback.
-  const configured = [groq, gemini, cloudflare].filter((p): p is ChatProvider => p !== null)
+  // (independent vendor, separate quota) → OpenRouter :free models
+  // (separate quotas again). Each chain() hop adds a 1500ms intra-
+  // provider retry plus an inter-provider fallback.
+  const configured = [groq, gemini, cloudflare, openrouter].filter((p): p is ChatProvider => p !== null)
   if (configured.length === 0) return null
   if (configured.length === 1) return configured[0]
   return configured.reduce((acc, next) => chain(acc, next))
