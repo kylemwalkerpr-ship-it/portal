@@ -54,13 +54,17 @@ const GEMINI_MODEL = 'gemini-2.5-flash'
 // Cloudflare's network. Costs ~5 Neurons per call; 10k free
 // Neurons/day = ~2000 generations.
 const CF_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-// OpenRouter free model. The `:free` suffix flags rows on OpenRouter's
-// free tier — these have their own per-day quotas separate from every
-// other provider in the chain, so we get genuine extra headroom rather
-// than just a fancier paid relay. Llama-3.1-8b is the most predictable
-// for instruction-following; Hermes/Mistral come behind it. Cheap to
-// swap if quotas shift.
-const OPENROUTER_MODEL = 'meta-llama/llama-3.1-8b-instruct:free'
+// OpenRouter free models. The `:free` suffix flags rows on OpenRouter's
+// free tier — each has its own per-day quota separate from every other
+// provider in the chain, so we get genuine extra headroom rather than
+// just a fancier paid relay. We try the 70b Llama first (matches Groq's
+// model so voice is consistent), then Hermes-3-405b when the primary is
+// throttled. Both probed live 2026-06-04. Model availability shifts
+// frequently on free tier — if both 404, the provider drops out cleanly.
+const OPENROUTER_MODELS = [
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+]
 
 function buildGroq(apiKey: string): ChatProvider {
   const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
@@ -215,7 +219,7 @@ function buildCloudflareAI(accountId: string, apiToken: string): ChatProvider {
 // same upstream. Requires a single OPENROUTER_API_KEY. The API speaks
 // OpenAI shape, so the call site mirrors buildGroq.
 function buildOpenRouter(apiKey: string): ChatProvider {
-  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
+  const callModel = async (model: string, system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -227,7 +231,7 @@ function buildOpenRouter(apiKey: string): ChatProvider {
         'X-Title': 'YouSafe Portal',
       },
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model,
         temperature: 0.4,
         max_tokens: options?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
         messages: [
@@ -241,12 +245,30 @@ function buildOpenRouter(apiKey: string): ChatProvider {
       const fp = apiKey
         ? `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
         : '[missing]'
-      throw new Error(`OpenRouter ${res.status} ${fp}: ${text.slice(0, 280)}`)
+      throw new Error(`OpenRouter[${model}] ${res.status} ${fp}: ${text.slice(0, 280)}`)
     }
     const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
     const reply = data.choices?.[0]?.message?.content?.trim()
-    if (!reply) throw new Error('OpenRouter returned an empty reply')
+    if (!reply) throw new Error(`OpenRouter[${model}] returned an empty reply`)
     return reply
+  }
+  // Walk the free-model list on transient errors (429/503/404) so a
+  // throttled or retired model doesn't take the whole OpenRouter slot
+  // down — we only fall through to the next provider in the chain
+  // once every free model has been tried.
+  const callOnce = async (system: string, history: ChatTurn[], options?: ChatReplyOptions) => {
+    let lastErr: Error | null = null
+    for (const model of OPENROUTER_MODELS) {
+      try {
+        return await callModel(model, system, history, options)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        const tryNext = /\b(404|429|503)\b/.test(msg) || /not.found|rate.?limit|overload|unavailable/i.test(msg)
+        lastErr = e instanceof Error ? e : new Error(msg)
+        if (!tryNext) break
+      }
+    }
+    throw lastErr || new Error('OpenRouter: no models succeeded')
   }
   return {
     name: 'openrouter',
