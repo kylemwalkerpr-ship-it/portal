@@ -311,8 +311,9 @@ export async function GET(req: Request) {
 }
 
 /**
- * Server-side summary via the admin_orders_summary RPC.
- * Falls back to a degraded summary if the RPC is missing.
+ * Server-side summary across the full dataset (not just the current page).
+ * Prefers the admin_orders_summary RPC; falls back to two cheap COUNT queries
+ * when the RPC is absent so the Kanban footer hint still renders.
  */
 async function fetchSummary(db: any, from: string | null, to: string | null, warnings: string[]) {
   try {
@@ -320,10 +321,26 @@ async function fetchSummary(db: any, from: string | null, to: string | null, war
       p_from: from || null,
       p_to:   to   || null,
     })
-    if (error) throw error
-    return data
+    if (!error && data) return data
   } catch {
-    warnings.push('summary_rpc_unavailable')
+    /* fall through to direct counts */
+  }
+
+  try {
+    let totalQ = db.from('orders').select('id', { count: 'exact', head: true })
+    let heldQ  = db.from('orders').select('id', { count: 'exact', head: true }).eq('escrow_status', 'held')
+    if (from) { totalQ = totalQ.gte('created_at', from); heldQ = heldQ.gte('created_at', from) }
+    if (to)   { totalQ = totalQ.lte('created_at', to);   heldQ = heldQ.lte('created_at', to) }
+    const [totalRes, heldRes] = await Promise.allSettled([totalQ, heldQ])
+    const total_count = totalRes.status === 'fulfilled' ? (totalRes.value as any).count ?? null : null
+    const escrow_held_count = heldRes.status === 'fulfilled' ? (heldRes.value as any).count ?? null : null
+    if (total_count == null && escrow_held_count == null) {
+      warnings.push('summary_unavailable')
+      return null
+    }
+    return { total_count, escrow_held_count }
+  } catch {
+    warnings.push('summary_unavailable')
     return null
   }
 }

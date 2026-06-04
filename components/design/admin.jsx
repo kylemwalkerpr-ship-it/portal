@@ -9,6 +9,7 @@ import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import AdminAnalyticsPro from './admin-analytics'
 import AdminPayouts from './admin-payouts'
 import AdminOrders from './admin-orders'
+import AdminTickets from './admin-tickets'
 import AdminEscrow from './admin-escrow'
 import AdminDashboard from './admin-dashboard'
 import AdminAttorneyApplications from './admin-attorney-applications'
@@ -465,9 +466,8 @@ function AdminApp({ onLogout }) {
         {/* Attorney + Consultant Management moved into My Office as tabs.
             Sidebar shows a combined pending-app badge so admins still see
             the count without an extra nav item. */}
-        <NavItem icon="📦" label="All Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
-        <NavItem icon="🗂️" label="Order Kanban" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/orders'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/orders' }} />
-        <NavItem icon="🎫" label="Support Tickets" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/admin/tickets'} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/tickets' }} />
+        <NavItem icon="🗂️" label="Order Kanban" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
+        <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
         <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
         <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
@@ -2721,7 +2721,7 @@ function AdminApp({ onLogout }) {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2740,6 +2740,7 @@ function AdminApp({ onLogout }) {
           {page === 'dashboard' && <AdminDashboard onNav={setPage} />}
           {page === 'users' && <Users />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
+          {page === 'tickets' && <AdminTickets />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'escrow' && <AdminEscrow />}
           {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
