@@ -289,7 +289,12 @@ export default function AdminDashboard({onNav}) {
 
     {/* ──────── FINANCIAL FLOW — money in motion ────────────────────────────── */}
     <Section title="Money in Motion" subtitle="Live financial flow across escrow, payouts, and refunds"
-      right={<button onClick={()=>onNav?.('financials')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view financials →</button>}>
+      right={
+        <div style={{display:'flex',gap:'6px'}}>
+          <button onClick={()=>onNav?.('loyalty')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>loyalty ledger →</button>
+          <button onClick={()=>onNav?.('financials')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view financials →</button>
+        </div>
+      }>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'10px'}}>
         <MiniKpi label="Escrow Held"   value={$(esc.summary?.held_total,true)} sub={`${fmtN(esc.summary?.held_count||0)} orders`} accent={AMBER} onClick={()=>onNav?.('escrow')}/>
         <MiniKpi label="Partial Release" value={$(esc.summary?.partial_released_total,true)} sub={`${fmtN(esc.summary?.partial_released_count||0)} active`} accent={CYAN} onClick={()=>onNav?.('escrow')}/>

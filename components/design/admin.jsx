@@ -3,6 +3,7 @@ import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
 import AdminFinancials from './admin-financials'
 import AdminWallets from './admin-wallets'
+import AdminWalletLoyalty from './admin-wallet-loyalty'
 import AdminGigsManager from './admin-gigs'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import AdminAnalyticsPro from './admin-analytics'
@@ -473,6 +474,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
         <NavItem icon="👛" label="Wallets" active={page === 'wallets'} onClick={() => setPage('wallets')} />
+        <NavItem icon="🎖" label="Loyalty" active={page === 'loyalty'} onClick={() => setPage('loyalty')} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
@@ -2719,7 +2721,7 @@ function AdminApp({ onLogout }) {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'All Orders', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2744,6 +2746,7 @@ function AdminApp({ onLogout }) {
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
           {page === 'wallets' && <AdminWallets />}
+          {page === 'loyalty' && <AdminWalletLoyalty />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'settings' && <Settings />}

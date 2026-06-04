@@ -16,6 +16,7 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { credit, getOrCreateWallet } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { computeLoyaltyState } from '@/lib/loyaltyWallet'
 
 async function authViaServiceToken(req: Request) {
   const header = req.headers.get('authorization') || ''
@@ -50,12 +51,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ profile
   const amountCents = Number(body.amountCents)
   const memo = typeof body.memo === 'string' ? body.memo.trim() : ''
   const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+  const inboundMetadata =
+    body && typeof body.metadata === 'object' && body.metadata !== null
+      ? (body.metadata as Record<string, unknown>)
+      : null
 
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     return fail('amountCents must be a positive integer.', 422)
   }
   if (!memo) return fail('memo is required.', 422)
   if (!reason) return fail('reason is required.', 422)
+
+  // Loyalty-credit guard. Free-form admin credits stay unconstrained — only
+  // credits explicitly tagged as `kind: 'loyalty_credit'` are bounded by
+  // the available loyalty balance. This means callers can't bypass the
+  // $10-per-$1000 rule by piping a loyalty award through the generic
+  // credit endpoint.
+  if (inboundMetadata?.kind === 'loyalty_credit') {
+    const state = await computeLoyaltyState(profileId)
+    if (amountCents > state.available_credit_cents) {
+      return fail(
+        'Loyalty credit exceeds available balance.',
+        422,
+        {
+          amount_cents:           amountCents,
+          available_credit_cents: state.available_credit_cents,
+          earned_credit_cents:    state.earned_credit_cents,
+          awarded_credit_cents:   state.awarded_credit_cents,
+        }
+      )
+    }
+  }
 
   // Verify the target profile exists before we try to credit (the wallet
   // RPC will auto-create the wallet row if needed, but a missing profile
@@ -71,11 +97,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ profile
 
   let tx
   try {
-    tx = await credit(profileId, amountCents, memo, undefined, {
+    // Pass through caller metadata (e.g. { kind: 'loyalty_credit',
+    // awarded_by: ... }) so the ledger row carries the tag the loyalty
+    // calculator looks for. Caller fields take precedence over the
+    // defaults below, except that `actor` is always pinned to the
+    // authenticated context to prevent spoofing.
+    const mergedMetadata: Record<string, unknown> = {
       reason,
       source: 'support_saas',
+      ...(inboundMetadata || {}),
       actor: actorId,
-    })
+    }
+    tx = await credit(profileId, amountCents, memo, undefined, mergedMetadata)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Credit failed'
     return fail(message, 500)
