@@ -171,6 +171,51 @@ export async function GET(req: Request) {
     }
   }
 
+  // ── Wallet-side transactions (top-ups, admin credits, adjustments) ──────────
+  // Anything that moved the wallet balance independently of an order needs to
+  // surface here too, otherwise students see a $20 balance with no record of
+  // how it got there. We pull from wallet_transactions and skip rows that are
+  // already represented by an order-derived entry (any debit whose `reference`
+  // matches an order id we just synthesized).
+  try {
+    const orderIdSet = new Set(orderIds)
+    const { data: walletRows, error: wErr } = await db
+      .from('wallet_transactions')
+      .select('id, type, amount_cents, signed_cents, balance_after_cents, description, reference, metadata, created_at')
+      .eq('profile_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (!wErr) {
+      for (const w of walletRows ?? []) {
+        const isOrderDebit = (w.type === 'debit' || w.type === 'purchase') && w.reference && orderIdSet.has(w.reference)
+        if (isOrderDebit) continue
+        const rawType = String(w.type || '').toLowerCase()
+        const kind = (w.metadata && typeof w.metadata === 'object' ? (w.metadata as any).kind : null) as string | null
+        let mapped: Tx['type']
+        if (rawType === 'topup') mapped = 'topup'
+        else if (rawType === 'refund') mapped = 'refund'
+        else if (rawType === 'credit' || rawType === 'adjustment' || kind === 'admin_topup' || kind === 'loyalty_credit') mapped = 'wallet_credit'
+        else if (rawType === 'debit' || rawType === 'purchase') mapped = 'purchase'
+        else mapped = 'wallet_credit'
+        ledger.push({
+          id: `wt-${w.id}`,
+          date: w.created_at,
+          type: mapped,
+          description: w.description || (mapped === 'topup' ? 'Wallet top-up' : mapped === 'wallet_credit' ? 'Wallet credit' : 'Wallet activity'),
+          orderId: w.reference && orderIdSet.has(w.reference) ? w.reference : null,
+          orderNumber: null,
+          amountCents: Math.abs(Number(w.amount_cents || w.signed_cents || 0)),
+          signedCents: Number(w.signed_cents || 0),
+          status: 'posted',
+          currency: 'usd',
+        })
+      }
+    }
+  } catch {
+    // Self-heal: if wallet_transactions is unreachable we still return the
+    // order-derived ledger rather than 500ing the whole tab.
+  }
+
   // Filter
   let filtered = ledger
   if (type !== 'all') filtered = filtered.filter(t => t.type === type)

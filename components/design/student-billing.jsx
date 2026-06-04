@@ -48,6 +48,7 @@ const TYPE_CONFIG = {
 
 const TABS = [
   { id: 'all',           label: 'All' },
+  { id: 'topup',         label: 'Top ups' },
   { id: 'purchase',      label: 'Purchases' },
   { id: 'refund',        label: 'Refunds' },
   { id: 'wallet_credit', label: 'Wallet credits' },
