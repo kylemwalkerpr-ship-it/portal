@@ -13,6 +13,7 @@ import AdminDashboard from './admin-dashboard'
 import AdminAttorneyApplications from './admin-attorney-applications'
 import AdminConsultantManagement from './admin-consultant-management'
 import { usePortalTheme } from './usePortalTheme'
+import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
 import { LanguageSelector } from '../language-selector'
 
@@ -145,6 +146,8 @@ function AdminApp({ onLogout }) {
       email: p.email || '',
       role: normalizeRole(p.role),
       country: p.country || '—',
+      country_code: p.country_code ? String(p.country_code).toUpperCase() : null,
+      country_source: p.country_source || null,
       joined: p.created_at ? new Date(p.created_at).toLocaleDateString() : '—',
       createdAt: p.created_at,
       orders: (data.orders ?? []).filter(o => o.client_id === p.id || o.consultant_id === p.id).length,
@@ -700,10 +703,27 @@ function AdminApp({ onLogout }) {
     const ROLE_COLORS = { student: '#0891B2', consultant: '#7C3AED', attorney: '#0F172A', support: '#D97706', admin: '#DC2626' };
     const ROLE_BG     = { student: '#EFF6FF', consultant: '#F5F3FF', attorney: '#EFF6FF', support: '#FFF7ED', admin: '#FEF2F2' };
 
+    // Prefer the ISO `country_code` (canonical, stamped by cf-ipcountry or
+    // student override). Fall back to the legacy free-form `country` text
+    // so environments that haven't migrated yet still get a working filter.
+    const hasCountryCodes = React.useMemo(
+      () => filteredUsers.some(u => u.country_code),
+      [filteredUsers],
+    );
     const countries = React.useMemo(() => {
-      const set = new Set(filteredUsers.map(u => u.country).filter(Boolean));
+      if (hasCountryCodes) {
+        const seen = new Set(filteredUsers.map(u => u.country_code).filter(Boolean));
+        const inUse = COUNTRY_LIST.filter(c => seen.has(c.code));
+        return ['all', ...inUse.map(c => c.code)];
+      }
+      const set = new Set(filteredUsers.map(u => u.country).filter(v => v && v !== '—'));
       return ['all', ...Array.from(set).sort()];
-    }, [filteredUsers]);
+    }, [filteredUsers, hasCountryCodes]);
+    const countryLabel = (code) => {
+      if (code === 'all') return 'All countries';
+      const name = countryNameForCode(code);
+      return name ? `${code} — ${name}` : code;
+    };
 
     const handleSort = col => {
       if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -726,8 +746,12 @@ function AdminApp({ onLogout }) {
     const afterFilters = React.useMemo(() => {
       return afterSort
         .filter(u => statusFilter === 'all' || u.status === statusFilter)
-        .filter(u => countryFilter === 'all' || u.country === countryFilter);
-    }, [afterSort, statusFilter, countryFilter]);
+        .filter(u => {
+          if (countryFilter === 'all') return true;
+          if (hasCountryCodes) return u.country_code === countryFilter;
+          return u.country === countryFilter;
+        });
+    }, [afterSort, statusFilter, countryFilter, hasCountryCodes]);
 
     const totalPages = Math.max(1, Math.ceil(afterFilters.length / PER_PAGE));
     const pagedUsers = afterFilters.slice((localPage - 1) * PER_PAGE, localPage * PER_PAGE);
@@ -985,7 +1009,7 @@ function AdminApp({ onLogout }) {
         {/* Country filter */}
         <select value={countryFilter} onChange={e => { setCountryFilter(e.target.value); setLocalPage(1); }}
           style={{ padding: '8px 12px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: '13px', fontFamily: 'inherit', cursor: 'pointer' }}>
-          {countries.map(c => <option key={c} value={c}>{c === 'all' ? 'All countries' : c}</option>)}
+          {countries.map(c => <option key={c} value={c}>{countryLabel(c)}</option>)}
         </select>
 
         {/* Results count */}
@@ -1108,7 +1132,14 @@ function AdminApp({ onLogout }) {
                     </td>
 
                     {/* Country */}
-                    <td style={tdStyle({ color: C.textMuted })}>{u.country || '—'}</td>
+                    <td style={tdStyle({ color: C.textMuted })}>
+                      {u.country_code ? (
+                        <span title={u.country_source ? `source: ${u.country_source}` : undefined}>
+                          <span style={{ fontFamily: 'SF Mono, Menlo, monospace', fontWeight: 700 }}>{u.country_code}</span>
+                          {countryNameForCode(u.country_code) ? <span style={{ marginLeft: 6 }}>{countryNameForCode(u.country_code)}</span> : null}
+                        </span>
+                      ) : (u.country && u.country !== '—' ? u.country : '—')}
+                    </td>
 
                     {/* Joined */}
                     <td style={tdStyle({ color: C.textMuted, whiteSpace: 'nowrap' })}>{u.joined}</td>
@@ -1230,7 +1261,9 @@ function AdminApp({ onLogout }) {
               {[
                 ['Role', selectedUser.role],
                 ['Status', selectedUser.status],
-                ['Country', selectedUser.country],
+                ['Country', selectedUser.country_code
+                  ? `${selectedUser.country_code}${countryNameForCode(selectedUser.country_code) ? ' — ' + countryNameForCode(selectedUser.country_code) : ''}`
+                  : selectedUser.country],
                 ['Joined', selectedUser.joined],
                 ['Orders', selectedUser.orders],
                 ['Financials', selectedUser.spend],

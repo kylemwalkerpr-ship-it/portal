@@ -1,12 +1,61 @@
 import { getClerkUserId } from './auth'
 import { createSupabaseAdminClient } from './supabase'
 import { clerkClient } from '@clerk/nextjs/server'
+import { headers as nextHeaders } from 'next/headers'
+import { extractCountryFromRequest } from './countryDetection'
 
 export type PortalUserContext = {
   db: ReturnType<typeof createSupabaseAdminClient>
   profile: Record<string, any>
   profileId: string
   role: string
+}
+
+// Cached probe so we don't repeatedly issue UPDATEs that hit a "column does
+// not exist" error in environments where the country migration hasn't been
+// run yet. Re-checks once per worker isolate, which is sufficient because
+// schema changes prompt a redeploy.
+let COUNTRY_COLUMNS_AVAILABLE: boolean | null = null
+
+/**
+ * Best-effort backfill of `country_code` from the current request's
+ * `cf-ipcountry` header. Runs lazily on the first authed call once we know
+ * the profile exists. Never throws — a partially-migrated DB (no
+ * country_code column) is detected and remembered so subsequent calls skip
+ * the update entirely.
+ */
+async function backfillCountryFromIp(
+  db: ReturnType<typeof createSupabaseAdminClient>,
+  profile: Record<string, any>,
+): Promise<void> {
+  if (COUNTRY_COLUMNS_AVAILABLE === false) return
+  if (profile.country_code) return
+
+  let detected: string | null = null
+  try {
+    const hdrs = await nextHeaders()
+    detected = extractCountryFromRequest(hdrs as any)
+  } catch {
+    // headers() can throw outside a request scope — silently bail.
+    return
+  }
+  if (!detected) return
+
+  const { error } = await db
+    .from('profiles')
+    .update({ country_code: detected, country_source: 'ip' })
+    .eq('id', profile.id)
+    .is('country_code', null)
+
+  if (error) {
+    if (/column .*(country_code|country_source).*does not exist/i.test(error.message || '')) {
+      COUNTRY_COLUMNS_AVAILABLE = false
+    }
+    return
+  }
+  COUNTRY_COLUMNS_AVAILABLE = true
+  profile.country_code = detected
+  profile.country_source = 'ip'
 }
 
 export async function requirePortalUser(): Promise<
@@ -17,15 +66,32 @@ export async function requirePortalUser(): Promise<
   if (!clerkUserId) return { error: 'Unauthorized', status: 401 }
 
   const db = createSupabaseAdminClient()
-  const { data: profile, error } = await db
+  let profileRes = await db
     .from('profiles')
-    .select('id, clerk_user_id, role, status, email, full_name')
+    .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
     .eq('clerk_user_id', clerkUserId)
     .single()
+
+  // Self-heal for environments that haven't run the country migration yet —
+  // fall back to the legacy SELECT so existing endpoints keep working.
+  if (profileRes.error && /column .*(country_code|country_source)/i.test(profileRes.error.message || '')) {
+    COUNTRY_COLUMNS_AVAILABLE = false
+    profileRes = await db
+      .from('profiles')
+      .select('id, clerk_user_id, role, status, email, full_name')
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+  }
+  const { data: profile, error } = profileRes
 
   if (error) return { error: error.message, status: 500 }
   if (!profile) return { error: 'Profile not found.', status: 404 }
   if (profile.status && profile.status !== 'active') return { error: 'Account is not active.', status: 403 }
+
+  // Fire-and-forget country backfill on the first authed hit. Awaited so the
+  // in-memory `profile` object reflects the new code before downstream
+  // callers read it, but errors never propagate.
+  await backfillCountryFromIp(db, profile)
 
   // Resolve email from Clerk if missing in the profiles row and backfill silently
   if (!profile.email) {
@@ -73,11 +139,19 @@ export async function getOptionalPortalUser(): Promise<PortalUserContext | null>
   if (!clerkUserId) return null
 
   const db = createSupabaseAdminClient()
-  const { data: profile, error } = await db
+  let profileRes = await db
     .from('profiles')
-    .select('id, clerk_user_id, role, status, email, full_name')
+    .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
     .eq('clerk_user_id', clerkUserId)
     .single()
+  if (profileRes.error && /column .*(country_code|country_source)/i.test(profileRes.error.message || '')) {
+    profileRes = await db
+      .from('profiles')
+      .select('id, clerk_user_id, role, status, email, full_name')
+      .eq('clerk_user_id', clerkUserId)
+      .single()
+  }
+  const { data: profile, error } = profileRes
 
   if (error || !profile) return null
   if (profile.status && profile.status !== 'active') return null

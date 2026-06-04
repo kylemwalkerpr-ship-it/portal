@@ -2,6 +2,7 @@
 'use client'
 import React from 'react'
 import { C, Btn, Card, Avatar } from './shared'
+import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 
 /**
  * Role-scoped user table for the Attorney + Consultant management modules.
@@ -43,6 +44,7 @@ export default function AdminRoleUsersTable({ role }) {
   const [currentAdminId, setCurrentAdminId] = React.useState(null)
   const [q, setQ]             = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('all') // all|active|pending|suspended
+  const [countryFilter, setCountryFilter] = React.useState('all') // 'all' or an ISO alpha-2 code
   const [sortCol, setSortCol] = React.useState('created_at')
   const [sortDir, setSortDir] = React.useState('desc')
   const [selectedRows, setSelectedRows] = React.useState(new Set())
@@ -73,11 +75,16 @@ export default function AdminRoleUsersTable({ role }) {
     const ql = q.trim().toLowerCase()
     let rows = users.filter(u => u.role === role)
     if (statusFilter !== 'all') rows = rows.filter(u => u.status === statusFilter)
+    if (countryFilter !== 'all') {
+      rows = rows.filter(u => (u.country_code || '').toUpperCase() === countryFilter)
+    }
     if (ql.length > 0) {
       rows = rows.filter(u =>
         (u.full_name || '').toLowerCase().includes(ql) ||
         (u.email     || '').toLowerCase().includes(ql) ||
-        (u.country   || '').toLowerCase().includes(ql)
+        (u.country   || '').toLowerCase().includes(ql) ||
+        (u.country_code || '').toLowerCase().includes(ql) ||
+        (countryNameForCode(u.country_code) || '').toLowerCase().includes(ql)
       )
     }
     const dir = sortDir === 'asc' ? 1 : -1
@@ -89,7 +96,20 @@ export default function AdminRoleUsersTable({ role }) {
       return 0
     })
     return rows
-  }, [users, role, statusFilter, q, sortCol, sortDir])
+  }, [users, role, statusFilter, countryFilter, q, sortCol, sortDir])
+
+  // Country options derive from the live data so admins only see countries
+  // that actually have users in this role bucket. Falls back to the full
+  // list if the data path doesn't have country_code yet (pre-migration).
+  const countryOptions = React.useMemo(() => {
+    const seen = new Set(
+      users
+        .filter(u => u.role === role && u.country_code)
+        .map(u => String(u.country_code).toUpperCase())
+    )
+    const inUse = COUNTRY_LIST.filter(c => seen.has(c.code))
+    return inUse.length > 0 ? inUse : COUNTRY_LIST
+  }, [users, role])
 
   const statusCounts = React.useMemo(() => {
     const all = users.filter(u => u.role === role)
@@ -301,6 +321,22 @@ export default function AdminRoleUsersTable({ role }) {
             color: C.text, fontSize: '13px', fontFamily: 'inherit',
           }}
         />
+        <select
+          value={countryFilter}
+          onChange={(e) => { setCountryFilter(e.target.value); setSelectedRows(new Set()) }}
+          aria-label="Filter by country"
+          style={{
+            padding: '8px 12px', borderRadius: '8px',
+            border: `1px solid ${C.border}`, background: C.surface2,
+            color: C.text, fontSize: '13px', fontFamily: 'inherit',
+            minWidth: '160px',
+          }}
+        >
+          <option value="all">All countries</option>
+          {countryOptions.map(c => (
+            <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+          ))}
+        </select>
         <span style={{ fontSize: '12px', color: C.textMuted }}>
           {visible.length} result{visible.length !== 1 ? 's' : ''}
         </span>
@@ -345,7 +381,7 @@ export default function AdminRoleUsersTable({ role }) {
                     style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#C4A45A' }} />
                 </th>
                 <th style={thStyle('full_name')} onClick={() => handleSort('full_name')}>User</th>
-                <th style={thStyle('country')}   onClick={() => handleSort('country')}>Country</th>
+                <th style={thStyle('country_code')} onClick={() => handleSort('country_code')}>Country</th>
                 <th style={thStyle('created_at')} onClick={() => handleSort('created_at')}>Joined</th>
                 <th style={thStyle('status')}    onClick={() => handleSort('status')}>Status</th>
                 <th style={thStyle('', { cursor: 'default' })}>Actions</th>
@@ -377,7 +413,16 @@ export default function AdminRoleUsersTable({ role }) {
                         </div>
                       </div>
                     </td>
-                    <td style={tdStyle({ color: C.textMuted })}>{u.country || '—'}</td>
+                    <td style={tdStyle({ color: C.textMuted })}>
+                      {u.country_code
+                        ? (
+                          <span title={u.country_source ? `source: ${u.country_source}` : undefined}>
+                            <span style={{ fontFamily: 'SF Mono, Menlo, monospace', fontWeight: 700 }}>{u.country_code}</span>
+                            {countryNameForCode(u.country_code) ? <span style={{ marginLeft: 6 }}>{countryNameForCode(u.country_code)}</span> : null}
+                          </span>
+                        )
+                        : (u.country || '—')}
+                    </td>
                     <td style={tdStyle({ color: C.textMuted, whiteSpace: 'nowrap' })}>{fmtDate(u.created_at)}</td>
                     <td style={tdStyle()}>
                       <span style={{

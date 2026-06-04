@@ -23,7 +23,7 @@ export async function GET() {
   const { db } = auth
 
   let [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes]: any[] = await Promise.all([
-    db.from('profiles').select('id, full_name, email, role, country, status, created_at').order('created_at', { ascending: false }),
+    db.from('profiles').select('id, full_name, email, role, country, country_code, country_source, status, created_at').order('created_at', { ascending: false }),
     // orders.service_title was removed; the kanban derives the title from
     // order_items → services. Selecting it first and retrying on the error
     // wasted a round-trip every load. Also surface attorney_id, amount_paid,
@@ -41,6 +41,11 @@ export async function GET() {
     db.from('attorneys').select('id, profile_id'),
   ])
 
+  if (profilesRes.error && /column .*(country_code|country_source)/i.test(profilesRes.error.message)) {
+    // Partial migration: country exists but country_code/source don't. Drop
+    // just the new columns so the dashboard keeps loading.
+    profilesRes = await db.from('profiles').select('id, full_name, email, role, country, status, created_at').order('created_at', { ascending: false })
+  }
   if (profilesRes.error && /column .*country/i.test(profilesRes.error.message)) {
     profilesRes = await db.from('profiles').select('id, full_name, email, role, status, created_at').order('created_at', { ascending: false })
   }

@@ -4,6 +4,7 @@ import { Card, Btn, Badge, Avatar, Input, Select } from './shared'
 import { PhoneVerificationCard } from '../PhoneVerificationCard'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
+import { COUNTRY_LIST } from '../../lib/countryList'
 
 /**
  * Student → Settings (Fiverr-grade).
@@ -172,6 +173,7 @@ function ProfileTab({ data, setData, userName, flash }) {
     city:          data.profile.city || '',
     postal_code:   data.profile.postal_code || '',
     country:       data.profile.country || '',
+    country_code:  data.profile.country_code || '',
   })
   const [saving, setSaving] = React.useState(false)
 
@@ -185,6 +187,21 @@ function ProfileTab({ data, setData, userName, flash }) {
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Save failed')
+      // ISO country override goes through a dedicated endpoint so the server
+      // can stamp country_source='user' and reject codes outside our allowlist.
+      // Skipped silently if the user didn't change it or the env hasn't run
+      // the country migration yet (503 from the route).
+      if (form.country_code && form.country_code !== (data.profile.country_code || '')) {
+        const cr = await fetch('/api/profile/country', {
+          method: 'PATCH', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country_code: form.country_code }),
+        })
+        if (!cr.ok && cr.status !== 503) {
+          const cd = await cr.json().catch(() => ({}))
+          throw new Error(cd?.error?.message || cd?.error || 'Country save failed')
+        }
+      }
       flash('ok', 'Profile saved.')
       // Reload from server so the canonical full_name is reflected
       const r2 = await fetch('/api/student/preferences', { credentials: 'same-origin' })
@@ -259,6 +276,15 @@ function ProfileTab({ data, setData, userName, flash }) {
             <Input label="Postal code" value={form.postal_code} onChange={v => setForm(f => ({ ...f, postal_code: v }))} />
             <Input label="Country"     value={form.country}     onChange={v => setForm(f => ({ ...f, country: v }))} placeholder="Canada" />
           </div>
+          <Select
+            label="Country (for matching & jurisdiction)"
+            value={form.country_code}
+            onChange={v => setForm(f => ({ ...f, country_code: v }))}
+            options={[
+              { value: '', label: 'Detect from my location' },
+              ...COUNTRY_LIST.map(c => ({ value: c.code, label: `${c.code} — ${c.name}` })),
+            ]}
+          />
         </div>
       </Section>
 
