@@ -96,6 +96,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GSC_OAUTH_CLIENT_ID: ${{ secrets.GSC_OAUTH_CLIENT_ID }}
@@ -152,13 +153,18 @@ jobs:
           put_secret GEMINI_API_KEY            "$GEMINI_API_KEY"
           # Cloudflare Workers AI — third fallback provider, runs
           # on Cloudflare's GPU fleet (lib/chatProvider.ts buildCloudflareAI).
-          # Reuses CI's existing CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN
-          # at runtime so the Worker can call Cloudflare's REST AI API.
+          # Uses a SCOPED token (Workers AI : Read) stored as
+          # CLOUDFLARE_AI_TOKEN. The deploy-time CLOUDFLARE_API_TOKEN does
+          # NOT have Workers AI scope and returns 401 code 10000 when used
+          # against the AI REST endpoint, so we keep the two tokens distinct.
           # Independent quota from Groq + Gemini — when both hit their
           # daily TPD limits the AI surface stays alive via this path.
           # Free tier: 10k Neurons/day ≈ 2000 Llama-3.3-70b generations.
+          # If CLOUDFLARE_AI_TOKEN is unset the third provider is dropped
+          # from the chain (put_secret is a no-op on empty value).
           put_secret CLOUDFLARE_ACCOUNT_ID     "$CLOUDFLARE_ACCOUNT_ID"
           put_secret CLOUDFLARE_API_TOKEN      "$CLOUDFLARE_API_TOKEN"
+          put_secret CLOUDFLARE_AI_TOKEN       "$CLOUDFLARE_AI_TOKEN"
           # GSC live-keyword signals (lib/gscKeywordSignals.ts). All four
           # must be set for the live path to activate; the module returns
           # null and falls back to static keywords if any are missing.
