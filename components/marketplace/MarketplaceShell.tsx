@@ -392,14 +392,39 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
   const [roleLoaded, setRoleLoaded] = React.useState(false)
   const [section, setSection] = React.useState<Section>('browse')
 
-  // Resolve role once on mount
-  React.useEffect(() => {
-    fetch('/api/profile', { credentials: 'same-origin' })
+  // Resolve role on mount AND whenever the tab regains focus or the
+  // pathname changes. Without revalidation the shell kept whichever
+  // role it loaded at mount even after the user signed out in another
+  // tab -- the navbar still showed Browse / My Orders / Inquiries /
+  // Messages for what is now an anon visitor. We also have to set the
+  // role explicitly (including to null) so subsequent calls can CLEAR
+  // a stale value, not just set it on first sight.
+  const refreshRole = React.useCallback(() => {
+    fetch('/api/profile', { credentials: 'same-origin', cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.profile?.role) setRole(d.profile.role) })
-      .catch(() => {})
+      .then(d => { setRole((d?.profile?.role as Role) || null) })
+      .catch(() => { setRole(null) })
       .finally(() => setRoleLoaded(true))
   }, [])
+
+  React.useEffect(() => {
+    refreshRole()
+  }, [refreshRole, pathname])
+
+  React.useEffect(() => {
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshRole()
+      }
+    }
+    const onFocus = () => refreshRole()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refreshRole])
 
   // Sync section from URL ?view= param (so back/forward works and direct links work)
   React.useEffect(() => {
