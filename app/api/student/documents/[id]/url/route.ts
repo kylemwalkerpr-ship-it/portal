@@ -1,15 +1,20 @@
 /**
  * GET /api/student/documents/[id]/url
- * Mints a fresh 10-minute signed URL for one file. Ownership-checked.
- * Called on-demand from the UI so we don't sign URLs for files the user
- * never actually opens.
+ *
+ * Mints a fresh short-lived signed URL for one file. Ownership-checked
+ * against the parent order, audited, and -- when the file is flagged
+ * sensitive -- minted with a 30s TTL and the `download_sensitive`
+ * audit action.
+ *
+ * Optional query params:
+ *   download=1  -- force a Content-Disposition: attachment response
  */
 import { getCurrentStudent } from '@/lib/student'
+import { mintSignedDocumentUrl } from '@/lib/documentStorage'
 
 const BUCKET = 'order-files'
-const TTL = 60 * 10
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profile } = auth
@@ -17,13 +22,27 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const { id } = await context.params
   if (!id) return Response.json({ error: 'File id required' }, { status: 400 })
 
-  // Verify the file belongs to one of the student's own orders.
-  const { data: file, error } = await db
-    .from('order_files')
-    .select('id, order_id, storage_path, name, mime_type')
-    .eq('id', id)
-    .single()
-  if (error || !file) return Response.json({ error: 'File not found' }, { status: 404 })
+  // Pull is_sensitive when the migration has run; fall back gracefully.
+  let file: any
+  {
+    const res = await db
+      .from('order_files')
+      .select('id, order_id, storage_path, name, mime_type, is_sensitive, is_deleted')
+      .eq('id', id)
+      .single()
+    if (res.error && /column .*(is_sensitive|is_deleted).* does not exist/i.test(res.error.message || '')) {
+      const fallback = await db
+        .from('order_files')
+        .select('id, order_id, storage_path, name, mime_type')
+        .eq('id', id)
+        .single()
+      file = fallback.data
+    } else {
+      file = res.data
+    }
+  }
+  if (!file) return Response.json({ error: 'File not found' }, { status: 404 })
+  if (file.is_deleted) return Response.json({ error: 'File not found' }, { status: 404 })
 
   const { data: order } = await db
     .from('orders')
@@ -34,12 +53,28 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: signed, error: signErr } = await db.storage
-    .from(BUCKET)
-    .createSignedUrl(file.storage_path, TTL)
-  if (signErr || !signed?.signedUrl) {
-    return Response.json({ error: signErr?.message || 'Failed to sign URL' }, { status: 500 })
+  const url = new URL(req.url)
+  const download = url.searchParams.get('download') === '1'
+
+  const result = await mintSignedDocumentUrl(db, {
+    bucket: BUCKET,
+    path: file.storage_path,
+    accessorProfileId: profile.id,
+    filename: file.name,
+    request: req,
+    documentId: file.id,
+    sensitive: !!file.is_sensitive,
+    download,
+  })
+  if ('error' in result) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json({ url: signed.signedUrl, name: file.name, mime_type: file.mime_type, expires_in: TTL })
+  return Response.json({
+    url: result.signedUrl,
+    name: file.name,
+    mime_type: file.mime_type,
+    expires_in: result.ttl,
+    is_sensitive: !!file.is_sensitive,
+  })
 }

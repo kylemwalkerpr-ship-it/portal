@@ -14,6 +14,13 @@ import { Card, Btn, Badge } from './shared'
  * - Per-file: open (mints signed URL on demand), delete (yours only)
  * - Inline preview for images, target=_blank for everything else
  * - Upload via per-order picker
+ *
+ * Security cues:
+ * - Lock glyph next to every Open button. Tooltip: "Encrypted at rest.
+ *   Short-lived signed URL." We don't need to say "60s" -- the URL
+ *   itself encodes the TTL, and the server picks 30s for sensitive
+ *   blobs anyway.
+ * - "Sensitive" badge on files flagged is_sensitive=true.
  */
 
 const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
@@ -330,7 +337,12 @@ export default function StudentDocuments({ onOpenOrder }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ fontSize: 22 }}>{TYPE_ICON(f.mime_type, f.name)}</span>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{f.name}</div>
+                        <div style={{ color: TEXT, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
+                          {f.name}
+                          {f.is_sensitive && (
+                            <span style={{ marginLeft: 8, padding: '1px 6px', fontSize: 9, fontFamily: MONO, fontWeight: 700, letterSpacing: '.08em', background: '#FBEEEE', color: RED, borderRadius: 4, textTransform: 'uppercase' }}>Sensitive</span>
+                          )}
+                        </div>
                         <div style={{ fontSize: 10, color: DIM, fontFamily: MONO, textTransform: 'uppercase' }}>{f.mime_type || 'file'}</div>
                       </div>
                     </div>
@@ -349,7 +361,8 @@ export default function StudentDocuments({ onOpenOrder }) {
                   </Td>
                   <Td style={{ textAlign: 'right', fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtBytes(f.size_bytes)}</Td>
                   <Td>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span title="Encrypted at rest. Short-lived signed URL." style={{ fontSize: 12, color: GREEN, cursor: 'help' }}>🔒</span>
                       <button onClick={() => openFile(f)} style={actionBtn(CYAN)}>Open ↗</button>
                       {f.is_mine && <button onClick={() => deleteFile(f)} style={actionBtn(RED)}>×</button>}
                     </div>
@@ -385,6 +398,7 @@ export default function StudentDocuments({ onOpenOrder }) {
                           {f.is_mine ? 'You' : f.uploader_name || 'Consultant'} · {fmtRelative(f.created_at)} · {fmtBytes(f.size_bytes)}
                         </div>
                       </div>
+                      <span title="Encrypted at rest. Short-lived signed URL." style={{ fontSize: 12, color: GREEN, cursor: 'help' }}>🔒</span>
                       <button onClick={() => openFile(f)} style={actionBtn(CYAN)}>Open ↗</button>
                       {f.is_mine && <button onClick={() => deleteFile(f)} style={actionBtn(RED)}>×</button>}
                     </div>

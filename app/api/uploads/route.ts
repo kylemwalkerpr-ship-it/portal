@@ -1,6 +1,9 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { validateUpload, safeDisplayName } from '@/lib/uploadAuth'
+import { recordDocumentAccess } from '@/lib/documentStorage'
 
+const BUCKET = 'offer-attachments'
 const MAX_BYTES = 20 * 1024 * 1024
 const ALLOWED = new Set([
   'application/pdf',
@@ -9,10 +12,6 @@ const ALLOWED = new Set([
   'image/png',
   'video/mp4',
 ])
-
-function cleanName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._ -]+/g, '').trim().slice(0, 120) || 'attachment'
-}
 
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
@@ -27,23 +26,39 @@ export async function POST(req: Request) {
 
   const uploaded = []
   for (const file of files) {
-    if (file.size > MAX_BYTES) return fail(`${file.name} exceeds 20 MB.`, 422, { fields: { files: 'Each file must be 20 MB or less.' } })
-    if (file.type && !ALLOWED.has(file.type)) {
-      return fail(`${file.name} is not an accepted file type.`, 422, { fields: { files: 'Accepted: PDF, DOCX, JPG, PNG, MP4.' } })
+    const validation = await validateUpload(file, {
+      maxBytes: MAX_BYTES,
+      allowedMime: ALLOWED,
+      // mp4 video has no magic-number entry in the allowlist; skip
+      // sniffing so we don't reject valid uploads.
+      sniffMagicNumbers: !file.type.startsWith('video/'),
+    })
+    if (!validation.ok) {
+      const v = validation as { ok: false; error: string; status: 400 | 413 | 415 | 422 }
+      return fail(v.error, v.status, { fields: { files: v.error } })
     }
 
-    const fileName = cleanName(file.name || 'attachment')
-    const path = `${auth.profileId}/${crypto.randomUUID()}-${fileName}`
-    const { error } = await auth.db.storage.from('offer-attachments').upload(path, await file.arrayBuffer(), {
-      contentType: file.type || 'application/octet-stream',
+    const displayName = safeDisplayName(file.name, 'attachment')
+    const path = `${auth.profileId}/${validation.safeName}`
+    const { error } = await auth.db.storage.from(BUCKET).upload(path, validation.bytes, {
+      contentType: validation.mime,
       upsert: false,
     })
-    if (error) return fail(error.message, 500)
+    if (error) return fail('Upload failed. Please try again.', 500)
+
+    await recordDocumentAccess(auth.db, {
+      bucket: BUCKET,
+      path,
+      action: 'upload',
+      accessorProfileId: auth.profileId,
+      request: req,
+    })
+
     uploaded.push({
       file_url: path,
-      file_name: fileName,
+      file_name: displayName,
       file_size: file.size,
-      mime_type: file.type || 'application/octet-stream',
+      mime_type: validation.mime,
       scan_status: 'pending',
     })
   }

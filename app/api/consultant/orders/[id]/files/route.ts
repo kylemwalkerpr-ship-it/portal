@@ -1,23 +1,33 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { mintSignedDocumentUrl, recordDocumentAccess, DEFAULT_TTL_SECONDS } from '@/lib/documentStorage'
+import { validateUpload, safeDisplayName, DEFAULT_MAX_BYTES } from '@/lib/uploadAuth'
 
 const BUCKET = 'order-files'
-const MAX_BYTES = 25 * 1024 * 1024 // 25 MB
-const SIGNED_URL_TTL = 60 * 10 // 10 minutes
 
-function safeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 180) || 'file'
-}
-
-async function listOrderFilesWithUrls(db: ReturnType<typeof import('@/lib/supabase').createSupabaseAdminClient>, orderId: string) {
-  const { data, error } = await db
+async function listOrderFilesWithUrls(
+  db: ReturnType<typeof import('@/lib/supabase').createSupabaseAdminClient>,
+  orderId: string,
+  accessorProfileId: string,
+  request?: Request,
+) {
+  let res: any = await db
     .from('order_files')
-    .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
+    .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, is_sensitive, is_deleted, created_at')
     .eq('order_id', orderId)
     .order('created_at', { ascending: false })
+  if (res.error && /column .*(is_sensitive|is_deleted).* does not exist/i.test(res.error.message || '')) {
+    res = await db
+      .from('order_files')
+      .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+  }
+  const data = res.data
+  const error = res.error
   if (error) throw new Error(error.message)
 
-  const rows = data ?? []
-  const uploaderIds = Array.from(new Set(rows.map(r => r.uploader_id).filter(Boolean)))
+  const rows = (data ?? []).filter((r: any) => !r.is_deleted)
+  const uploaderIds = Array.from(new Set(rows.map((r: any) => r.uploader_id).filter(Boolean)))
   const uploaderNames = new Map<string, string>()
   if (uploaderIds.length > 0) {
     const { data: profiles } = await db.from('profiles').select('id, full_name, email').in('id', uploaderIds)
@@ -27,8 +37,17 @@ async function listOrderFilesWithUrls(db: ReturnType<typeof import('@/lib/supaba
   }
 
   const signed = await Promise.all(
-    rows.map(async row => {
-      const { data: link } = await db.storage.from(BUCKET).createSignedUrl(row.storage_path, SIGNED_URL_TTL)
+    rows.map(async (row: any) => {
+      const result = await mintSignedDocumentUrl(db, {
+        bucket: BUCKET,
+        path: row.storage_path,
+        accessorProfileId,
+        filename: row.name,
+        request,
+        documentId: row.id,
+        sensitive: !!row.is_sensitive,
+        download: false,
+      })
       return {
         id: row.id,
         name: row.name,
@@ -37,15 +56,17 @@ async function listOrderFilesWithUrls(db: ReturnType<typeof import('@/lib/supaba
         uploader_id: row.uploader_id,
         uploader_role: row.uploader_role,
         uploader_name: uploaderNames.get(row.uploader_id) || 'User',
+        is_sensitive: !!row.is_sensitive,
         created_at: row.created_at,
-        url: link?.signedUrl ?? null,
+        url: 'signedUrl' in result ? result.signedUrl : null,
+        url_ttl: 'ttl' in result ? result.ttl : DEFAULT_TTL_SECONDS,
       }
     }),
   )
   return signed
 }
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await getCurrentConsultant()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
@@ -59,7 +80,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   if (!order) return Response.json({ error: 'Order not found' }, { status: 404 })
 
   try {
-    const files = await listOrderFilesWithUrls(auth.db, id)
+    const files = await listOrderFilesWithUrls(auth.db, id, auth.profile.id, req)
     return Response.json({ files })
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : 'Unable to list files' }, { status: 500 })
@@ -88,40 +109,86 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const file = form.get('file')
   if (!(file instanceof File)) return Response.json({ error: 'file field is required' }, { status: 400 })
-  if (file.size === 0) return Response.json({ error: 'File is empty' }, { status: 400 })
-  if (file.size > MAX_BYTES) return Response.json({ error: `File exceeds ${MAX_BYTES / (1024 * 1024)} MB limit` }, { status: 413 })
 
-  const cleanName = safeFileName(file.name || 'upload')
-  const path = `${id}/${crypto.randomUUID()}_${cleanName}`
-  const buf = await file.arrayBuffer()
+  const isSensitive = form.get('sensitive') === 'true'
+  const validation = await validateUpload(file, { maxBytes: DEFAULT_MAX_BYTES })
+  if (!validation.ok) {
+    const v = validation as { ok: false; error: string; status: 400 | 413 | 415 | 422 }
+    return Response.json({ error: v.error }, { status: v.status })
+  }
 
-  const { error: uploadErr } = await auth.db.storage.from(BUCKET).upload(path, buf, {
-    contentType: file.type || 'application/octet-stream',
+  const displayName = safeDisplayName(file.name, 'upload')
+  const path = `${id}/${validation.safeName}`
+
+  const { error: uploadErr } = await auth.db.storage.from(BUCKET).upload(path, validation.bytes, {
+    contentType: validation.mime,
     upsert: false,
   })
   if (uploadErr) {
-    return Response.json({ error: `Upload failed: ${uploadErr.message}` }, { status: 500 })
+    return Response.json({ error: 'Upload failed. Please try again.' }, { status: 500 })
   }
 
-  const { data: row, error: insertErr } = await auth.db
-    .from('order_files')
-    .insert({
-      order_id: id,
-      uploader_id: auth.profile.id,
-      uploader_role: 'consultant',
-      name: file.name || cleanName,
-      mime_type: file.type || null,
-      size_bytes: file.size,
-      storage_path: path,
-    })
-    .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
-    .single()
-  if (insertErr) {
+  let row: any
+  let insertErr: any
+  {
+    const res = await auth.db
+      .from('order_files')
+      .insert({
+        order_id: id,
+        uploader_id: auth.profile.id,
+        uploader_role: 'consultant',
+        name: displayName,
+        mime_type: validation.mime,
+        size_bytes: file.size,
+        storage_path: path,
+        is_sensitive: isSensitive,
+      })
+      .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, is_sensitive, created_at')
+      .single()
+    row = res.data
+    insertErr = res.error
+    if (insertErr && /column .*is_sensitive.* does not exist/i.test(insertErr.message || '')) {
+      const retry = await auth.db
+        .from('order_files')
+        .insert({
+          order_id: id,
+          uploader_id: auth.profile.id,
+          uploader_role: 'consultant',
+          name: displayName,
+          mime_type: validation.mime,
+          size_bytes: file.size,
+          storage_path: path,
+        })
+        .select('id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
+        .single()
+      row = retry.data
+      insertErr = retry.error
+    }
+  }
+  if (insertErr || !row) {
     await auth.db.storage.from(BUCKET).remove([path])
-    return Response.json({ error: insertErr.message }, { status: 500 })
+    return Response.json({ error: 'Could not save attachment.' }, { status: 500 })
   }
 
-  const { data: link } = await auth.db.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL)
+  await recordDocumentAccess(auth.db, {
+    bucket: BUCKET,
+    path,
+    action: 'upload',
+    accessorProfileId: auth.profile.id,
+    request: req,
+    documentId: row.id,
+  })
+
+  const signed = await mintSignedDocumentUrl(auth.db, {
+    bucket: BUCKET,
+    path,
+    accessorProfileId: auth.profile.id,
+    filename: displayName,
+    request: req,
+    documentId: row.id,
+    sensitive: isSensitive,
+    download: false,
+  })
 
   return Response.json({
     file: {
@@ -132,8 +199,10 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       uploader_id: row.uploader_id,
       uploader_role: row.uploader_role,
       uploader_name: auth.profile.full_name || auth.profile.email || 'You',
+      is_sensitive: !!row.is_sensitive || isSensitive,
       created_at: row.created_at,
-      url: link?.signedUrl ?? null,
+      url: 'signedUrl' in signed ? signed.signedUrl : null,
+      url_ttl: 'ttl' in signed ? signed.ttl : DEFAULT_TTL_SECONDS,
     },
   })
 }
@@ -166,9 +235,24 @@ export async function DELETE(req: Request, context: { params: Promise<{ id: stri
     return Response.json({ error: 'You can only delete files you uploaded' }, { status: 403 })
   }
 
+  const soft = await auth.db
+    .from('order_files')
+    .update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: auth.profile.id })
+    .eq('id', fileId)
+  if (soft.error && /column .*(is_deleted|deleted_at|deleted_by).* does not exist/i.test(soft.error.message || '')) {
+    await auth.db.from('order_files').delete().eq('id', fileId)
+  }
+
   await auth.db.storage.from(BUCKET).remove([row.storage_path])
-  const { error } = await auth.db.from('order_files').delete().eq('id', fileId)
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  await recordDocumentAccess(auth.db, {
+    bucket: BUCKET,
+    path: row.storage_path,
+    action: 'delete',
+    accessorProfileId: auth.profile.id,
+    request: req,
+    documentId: fileId,
+  })
 
   return Response.json({ ok: true })
 }

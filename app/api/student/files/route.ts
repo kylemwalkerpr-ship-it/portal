@@ -1,9 +1,9 @@
 import { getCurrentStudent } from '@/lib/student'
+import { mintSignedDocumentUrl, DEFAULT_TTL_SECONDS } from '@/lib/documentStorage'
 
 const BUCKET = 'order-files'
-const SIGNED_URL_TTL = 60 * 10
 
-export async function GET() {
+export async function GET(req?: Request) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
@@ -35,12 +35,22 @@ export async function GET() {
     if (svc) serviceTitleByOrder.set(item.order_id, svc.title)
   }
 
-  const { data: rows, error } = await db
+  let { data: rows, error } = await db
     .from('order_files')
-    .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
+    .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, is_sensitive, is_deleted, created_at')
     .in('order_id', orderIds)
     .order('created_at', { ascending: false })
+  if (error && /column .*(is_sensitive|is_deleted).* does not exist/i.test(error.message || '')) {
+    const fallback = await db
+      .from('order_files')
+      .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at')
+      .in('order_id', orderIds)
+      .order('created_at', { ascending: false })
+    rows = fallback.data as any
+    error = fallback.error
+  }
   if (error) return Response.json({ error: error.message }, { status: 500 })
+  rows = (rows ?? []).filter((r: any) => !r.is_deleted)
 
   const uploaderIds = Array.from(new Set((rows ?? []).map(r => r.uploader_id).filter(Boolean)))
   const uploaderNames = new Map<string, string>()
@@ -52,8 +62,17 @@ export async function GET() {
   }
 
   const files = await Promise.all(
-    (rows ?? []).map(async row => {
-      const { data: link } = await db.storage.from(BUCKET).createSignedUrl(row.storage_path, SIGNED_URL_TTL)
+    (rows ?? []).map(async (row: any) => {
+      const sign = await mintSignedDocumentUrl(db, {
+        bucket: BUCKET,
+        path: row.storage_path,
+        accessorProfileId: profile.id,
+        filename: row.name,
+        request: req,
+        documentId: row.id,
+        sensitive: !!row.is_sensitive,
+        download: false,
+      })
       return {
         id: row.id,
         order_id: row.order_id,
@@ -64,8 +83,10 @@ export async function GET() {
         uploader_id: row.uploader_id,
         uploader_role: row.uploader_role,
         uploader_name: uploaderNames.get(row.uploader_id) || 'User',
+        is_sensitive: !!row.is_sensitive,
         created_at: row.created_at,
-        url: link?.signedUrl ?? null,
+        url: 'signedUrl' in sign ? sign.signedUrl : null,
+        url_ttl: 'ttl' in sign ? sign.ttl : DEFAULT_TTL_SECONDS,
         is_mine: row.uploader_id === profile.id,
       }
     }),

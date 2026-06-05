@@ -3,6 +3,7 @@ import { requirePortalUser } from '@/lib/portalAuth'
 import { userOwnsSlug } from '@/lib/templateEntitlements'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getTemplatePack } from '@/lib/template-packs'
+import { recordDocumentAccess } from '@/lib/documentStorage'
 
 // Authenticated download endpoint for paid template packs.
 //
@@ -22,7 +23,7 @@ import { getTemplatePack } from '@/lib/template-packs'
 
 const SIGNED_URL_TTL_SECONDS = 60
 
-export async function GET(_req: Request, context: { params: Promise<{ slug: string }> }) {
+export async function GET(req: Request, context: { params: Promise<{ slug: string }> }) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
@@ -76,6 +77,18 @@ export async function GET(_req: Request, context: { params: Promise<{ slug: stri
     }
     return fail(signErr?.message || 'Could not generate download link.', 500)
   }
+
+  // Audit row -- best-effort; never fails the response. Templates are
+  // a download, not a sensitive ID scan, so the regular 'download'
+  // action is correct.
+  await recordDocumentAccess(admin, {
+    bucket: 'templates',
+    path: objectPath,
+    action: 'download',
+    accessorProfileId: auth.profileId,
+    request: req,
+    meta: { slug },
+  })
 
   return Response.redirect(signed.signedUrl, 302)
 }

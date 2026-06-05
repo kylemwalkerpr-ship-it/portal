@@ -78,7 +78,7 @@ export async function GET(req: Request) {
   // OR-chain across mime + name).
   let qb = db
     .from('order_files')
-    .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at', { count: 'exact' })
+    .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, is_sensitive, is_deleted, created_at', { count: 'exact' })
     .in('order_id', orderIds)
     .order(sort, { ascending: dir })
 
@@ -96,10 +96,30 @@ export async function GET(req: Request) {
     qb = qb.limit(500) // upper bound — covers ~500 files of any type
   }
 
-  const { data: rows, error, count } = await qb
+  let { data: rows, error, count } = await qb
+  // Self-heal: drop is_sensitive/is_deleted from the SELECT if the
+  // migration hasn't been applied yet so the route doesn't 500.
+  if (error && /column .*(is_sensitive|is_deleted).* does not exist/i.test(error.message || '')) {
+    let qb2 = db
+      .from('order_files')
+      .select('id, order_id, name, mime_type, size_bytes, storage_path, uploader_id, uploader_role, created_at', { count: 'exact' })
+      .in('order_id', orderIds)
+      .order(sort, { ascending: dir })
+    if (orderId) qb2 = qb2.eq('order_id', orderId)
+    if (uploader !== 'all') qb2 = qb2.eq('uploader_role', uploader)
+    if (q) qb2 = qb2.ilike('name', `%${q}%`)
+    if (fromISO) qb2 = qb2.gte('created_at', fromISO)
+    if (toISO) qb2 = qb2.lte('created_at', new Date(new Date(toISO).getTime() + 86_400_000).toISOString())
+    if (type === 'all') qb2 = qb2.range((page - 1) * pageSize, page * pageSize - 1)
+    else qb2 = qb2.limit(500)
+    const retry = await qb2
+    rows = retry.data as any
+    error = retry.error
+    count = retry.count
+  }
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  let list = rows ?? []
+  let list = (rows ?? []).filter((r: any) => !r.is_deleted)
   if (type !== 'all') {
     const matcher = TYPE_MATCHERS[type] || (() => true)
     list = list.filter((r: any) => matcher(r.mime_type || '', r.name || ''))
@@ -125,6 +145,7 @@ export async function GET(req: Request) {
     uploader_id: row.uploader_id,
     uploader_role: row.uploader_role,
     uploader_name: uploaderNames.get(row.uploader_id) || 'User',
+    is_sensitive: !!row.is_sensitive,
     created_at: row.created_at,
     is_mine: row.uploader_id === profile.id,
   }))
