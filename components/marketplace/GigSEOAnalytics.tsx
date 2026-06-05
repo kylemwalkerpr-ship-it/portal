@@ -60,6 +60,48 @@ interface EditorState {
   autoDraft?: boolean
 }
 
+// One-click coherent-fix request. The modal opens with this, calls
+// /api/seo/coherent-fix on mount, and renders the resulting diff. The
+// "Edit manually instead" button collapses the modal and opens the
+// inline editor pre-loaded with the same field/hint — same path the
+// older "Apply AI fix" button used.
+type SeoCoherentFixField =
+  | 'title' | 'seo_title' | 'seo_description'
+  | 'pitch' | 'description' | 'tags' | 'faq'
+interface CoherentFixRequest {
+  issueId: string
+  issueLabel: string
+  issueHint: string
+  targetFields: SeoCoherentFixField[]
+  // Optional lift estimate to show in the modal header
+  liftEstimate?: string
+  // Non-AI items (internal-link, GSC when disabled) skip the AI call
+  // and render a static explanation + CTA instead.
+  staticExplanation?: { body: string; cta?: { label: string; href: string } }
+}
+
+// Maps an audit SectionFinding.fix.field (which is a single EditableField)
+// to the wider set of fields a coherent fix should rewrite together.
+// Matches the spec's issue → field mapping exactly.
+function targetsForIssue(issueId: string, primaryField: EditableField | null): SeoCoherentFixField[] {
+  switch (issueId) {
+    case 'cluster_coverage':       return ['description', 'tags', 'title']
+    case 'intent_diversity':       return ['description', 'faq']
+    case 'jurisdiction_alignment': return ['title', 'pitch', 'description']
+    case 'schema_readiness':       return ['faq']
+    case 'eeat_surfacing':         return ['pitch', 'description']
+    case 'snippet_engineering':    return ['seo_title', 'seo_description']
+    case 'voice_hygiene':          return ['description', 'pitch']
+    default: {
+      // Use whatever field the audit finding flagged, normalised.
+      if (primaryField && ['title','seo_title','seo_description','pitch','description','tags'].includes(primaryField)) {
+        return [primaryField as SeoCoherentFixField]
+      }
+      return ['description']
+    }
+  }
+}
+
 // ---------------------------------------------------------------------
 // Tokens + score helpers
 
@@ -181,18 +223,50 @@ function SchemaBadgeRow({ audit }: { audit: AuditResult }) {
 }
 
 function FindingRow({
-  finding, onApplyFix,
-}: { finding: SectionFinding; onApplyFix: (e: EditorState) => void }) {
+  finding, sectionId, onCoherentFix,
+}: {
+  finding: SectionFinding
+  // Audit section id this finding belongs to — drives the issue→fields
+  // mapping in targetsForIssue() so the coherent fix touches the right
+  // set of fields (not just the single field the audit flagged).
+  sectionId: SectionId
+  // Open the coherent-fix modal. The modal owns the manual-edit
+  // fallback (its "Edit manually instead" button bubbles back up to
+  // GigAuditDetail which then opens GigSEOInlineEditor).
+  onCoherentFix: (req: CoherentFixRequest) => void
+}) {
   const icon = finding.kind === 'ok' ? '✓' : finding.kind === 'warn' ? '!' : '✕'
   const color = finding.kind === 'ok' ? T.moss : finding.kind === 'warn' ? '#D97706' : T.brick
+  const clickable = !!finding.fix
+  const buildRequest = (): CoherentFixRequest | null => {
+    if (!finding.fix) return null
+    const targetFields = targetsForIssue(sectionId, finding.fix.field as EditableField)
+    return {
+      issueId: sectionId,
+      issueLabel: finding.label,
+      issueHint: finding.fix.hint,
+      targetFields,
+    }
+  }
   return (
-    <div style={{
-      display: 'flex', gap: 10, alignItems: 'flex-start',
-      padding: '9px 12px',
-      borderRadius: 6,
-      background: finding.kind === 'ok' ? `${T.moss}08` : finding.kind === 'warn' ? '#FEF5E4' : `${T.brick}08`,
-      marginBottom: 6,
-    }}>
+    <div
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? () => { const r = buildRequest(); if (r) onCoherentFix(r) } : undefined}
+      onKeyDown={clickable
+        ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const r = buildRequest(); if (r) onCoherentFix(r) } }
+        : undefined}
+      title={clickable ? 'Click to apply a coherent AI fix' : undefined}
+      style={{
+        display: 'flex', gap: 10, alignItems: 'flex-start',
+        padding: '9px 12px',
+        borderRadius: 6,
+        background: finding.kind === 'ok' ? `${T.moss}08` : finding.kind === 'warn' ? '#FEF5E4' : `${T.brick}08`,
+        marginBottom: 6,
+        cursor: clickable ? 'pointer' : 'default',
+        outline: 'none',
+        transition: 'background 0.15s ease',
+      }}>
       <span style={{ color, fontWeight: 800, marginTop: 1, fontSize: 12, flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
         <div style={{ color: T.ink, fontWeight: 600 }}>{finding.label}</div>
@@ -201,14 +275,14 @@ function FindingRow({
       {finding.fix && (
         <button
           type="button"
-          onClick={() => onApplyFix({ field: finding.fix!.field as EditableField, prefillHint: finding.fix!.hint, autoDraft: true })}
+          onClick={(e) => { e.stopPropagation(); const r = buildRequest(); if (r) onCoherentFix(r) }}
           style={{
             flexShrink: 0, padding: '5px 10px', fontSize: 11, fontWeight: 700,
             background: NAVY, color: '#FFFFFF',
             border: 'none', borderRadius: 6, cursor: 'pointer',
             fontFamily: F.ui, whiteSpace: 'nowrap',
           }}>
-          Apply AI fix
+          One-click fix
         </button>
       )}
     </div>
@@ -261,8 +335,8 @@ function SectionCard({
 // Cluster coverage map (Section 2)
 
 function ClusterCoverageMap({
-  audit, onApplyFix,
-}: { audit: AuditResult; onApplyFix: (e: EditorState) => void }) {
+  audit, onCoherentFix,
+}: { audit: AuditResult; onCoherentFix: (r: CoherentFixRequest) => void }) {
   const entry = audit.clusterCoverage[0]
   if (!entry) {
     return (
@@ -317,13 +391,18 @@ function ClusterCoverageMap({
             }}>
               <span style={{ fontWeight: 600 }}>{kw}</span>
               <button type="button"
-                onClick={() => onApplyFix({ field: 'description', prefillHint: `Weave the keyword "${kw}" into the description prose naturally.`, autoDraft: true })}
+                onClick={() => onCoherentFix({
+                  issueId: 'cluster_coverage',
+                  issueLabel: `Add the keyword "${kw}" to this gig`,
+                  issueHint: `Weave the missing primary-cluster keyword "${kw}" into the description and tags. Keep all other fields byte-identical.`,
+                  targetFields: ['description', 'tags', 'title'],
+                })}
                 style={{
                   padding: '4px 10px', fontSize: 11, fontWeight: 700,
                   background: NAVY, color: '#FFFFFF',
                   border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
                 }}>
-                Apply AI fix
+                One-click fix
               </button>
             </div>
           ))}
@@ -358,8 +437,8 @@ function ClusterCoverageMap({
 // Intent diversity chips (Section 3)
 
 function IntentDiversityGrid({
-  audit, onApplyFix,
-}: { audit: AuditResult; onApplyFix: (e: EditorState) => void }) {
+  audit, onCoherentFix,
+}: { audit: AuditResult; onCoherentFix: (r: CoherentFixRequest) => void }) {
   const buckets = Object.keys(audit.intent.buckets) as IntentBucket[]
   return (
     <div>
@@ -388,13 +467,18 @@ function IntentDiversityGrid({
       </div>
       {audit.intent.covered < 5 && (
         <button type="button"
-          onClick={() => onApplyFix({ field: 'description', prefillHint: 'Broaden the intent surface — add an informational, comparison, or long-tail keyword to the description.', autoDraft: true })}
+          onClick={() => onCoherentFix({
+            issueId: 'intent_diversity',
+            issueLabel: 'Broaden intent coverage',
+            issueHint: 'Add informational + comparison-intent phrasing across description and FAQ so Google can rank this gig for buyer-research queries, not just transactional ones.',
+            targetFields: ['description', 'faq'],
+          })}
           style={{
             padding: '6px 12px', fontSize: 11, fontWeight: 700,
             background: NAVY, color: '#FFFFFF',
             border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: F.ui,
           }}>
-          Apply AI fix — broaden intent coverage
+          One-click fix: broaden intent coverage
         </button>
       )}
     </div>
@@ -647,6 +731,348 @@ function HolisticRepitchPanel({
 }
 
 // ---------------------------------------------------------------------
+// Coherent-fix modal — opened when a seller clicks an "OPTIMIZATION
+// CHECKLIST" row. Auto-fires POST /api/seo/coherent-fix on mount,
+// renders a word-level diff of the proposed change(s), and writes
+// them back via the existing PATCH /api/gigs/[id]. The "Edit manually
+// instead" button collapses the modal and opens the existing inline
+// editor — that fallback was the prior path for every "Apply AI fix"
+// button.
+
+interface CoherentFixApiChange {
+  field: SeoCoherentFixField
+  before: string
+  after: string | string[] | Array<{ question: string; answer: string }>
+  rationale: string
+}
+
+// Naive word-level diff. We don't want to ship a diff library; for the
+// surface fields the seller is editing here a token-by-token highlight
+// is enough to tell them what moved. We use a longest-common-subsequence
+// pass over whitespace-separated tokens.
+function wordDiff(before: string, after: string): Array<{ kind: 'same' | 'add' | 'del'; text: string }> {
+  const a = before.split(/(\s+)/)
+  const b = after.split(/(\s+)/)
+  const m = a.length, n = b.length
+  // LCS table — capped at 800 tokens per side so a 700-word description
+  // diff doesn't blow memory in the browser. Larger fields just lose
+  // word-level granularity past the cap and show plain blocks.
+  const CAP = 800
+  if (m > CAP || n > CAP) {
+    return [{ kind: 'del', text: before }, { kind: 'add', text: after }]
+  }
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = m - 1; i >= 0; i -= 1) {
+    for (let j = n - 1; j >= 0; j -= 1) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const out: Array<{ kind: 'same' | 'add' | 'del'; text: string }> = []
+  let i = 0, j = 0
+  while (i < m && j < n) {
+    if (a[i] === b[j]) { out.push({ kind: 'same', text: a[i] }); i += 1; j += 1 }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ kind: 'del', text: a[i] }); i += 1 }
+    else { out.push({ kind: 'add', text: b[j] }); j += 1 }
+  }
+  while (i < m) { out.push({ kind: 'del', text: a[i] }); i += 1 }
+  while (j < n) { out.push({ kind: 'add', text: b[j] }); j += 1 }
+  return out
+}
+
+function DiffBlock({ before, after }: { before: string; after: string }) {
+  const tokens = React.useMemo(() => wordDiff(before, after), [before, after])
+  return (
+    <div style={{
+      padding: '10px 12px',
+      background: '#FFFFFF',
+      border: `1px solid ${T.rule}`,
+      borderRadius: 6,
+      fontSize: 13, lineHeight: 1.55,
+      color: T.ink,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+    }}>
+      {tokens.map((t, i) => {
+        if (t.kind === 'same') return <span key={i}>{t.text}</span>
+        if (t.kind === 'add') return <span key={i} style={{ background: `${T.moss}22`, color: T.moss, fontWeight: 600 }}>{t.text}</span>
+        return <span key={i} style={{ background: `${T.brick}18`, color: T.brick, textDecoration: 'line-through' }}>{t.text}</span>
+      })}
+    </div>
+  )
+}
+
+function formatAfterForDisplay(after: CoherentFixApiChange['after']): string {
+  if (typeof after === 'string') return after
+  if (Array.isArray(after)) {
+    if (after.length === 0) return ''
+    if (typeof after[0] === 'string') return (after as string[]).join(', ')
+    return (after as Array<{ question: string; answer: string }>)
+      .map((e, i) => `${i + 1}. Q: ${e.question}\n   A: ${e.answer}`)
+      .join('\n\n')
+  }
+  return ''
+}
+
+// Render label per field — kept short so the modal can stack 3-4
+// changes without visual chrome overwhelming the diff.
+const FIELD_LABELS: Record<SeoCoherentFixField, string> = {
+  title: 'Service title',
+  seo_title: 'SEO title',
+  seo_description: 'Meta description',
+  pitch: 'Pitch / tagline',
+  description: 'Long description',
+  tags: 'Tags',
+  faq: 'FAQ',
+}
+
+interface CoherentFixModalProps {
+  gigId: string
+  request: CoherentFixRequest
+  onClose: () => void
+  onSaved: () => void
+  onEditManually: (field: EditableField, hint: string) => void
+}
+
+function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: CoherentFixModalProps) {
+  const [changes, setChanges] = React.useState<CoherentFixApiChange[]>([])
+  const [loading, setLoading] = React.useState(!request.staticExplanation)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [seed, setSeed] = React.useState(0)
+  const [provider, setProvider] = React.useState('AI provider')
+
+  const generate = React.useCallback(async (nextSeed?: number) => {
+    if (request.staticExplanation) return
+    setLoading(true); setError(null); setChanges([])
+    try {
+      const res = await fetch('/api/seo/coherent-fix', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gigId,
+          issueId: request.issueId,
+          issueLabel: request.issueLabel,
+          issueHint: request.issueHint,
+          targetFields: request.targetFields,
+          seed: nextSeed ?? seed,
+        }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(payload?.error?.message || `Coherent fix failed (${res.status})`)
+      }
+      const data = payload?.data ?? payload
+      setChanges((data?.changes ?? []) as CoherentFixApiChange[])
+      setProvider('AI provider')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Coherent fix failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [gigId, request.staticExplanation, request.issueId, request.issueLabel, request.issueHint, request.targetFields, seed])
+
+  React.useEffect(() => {
+    void generate(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const accept = async () => {
+    setSaving(true); setError(null)
+    try {
+      const patch: Record<string, unknown> = {}
+      for (const c of changes) {
+        if (c.field === 'tags') {
+          // tags arrive as array; PATCH expects array.
+          patch[c.field] = Array.isArray(c.after) ? c.after : []
+        } else if (c.field === 'faq') {
+          patch[c.field] = Array.isArray(c.after) ? c.after : []
+        } else {
+          patch[c.field] = typeof c.after === 'string' ? c.after : ''
+        }
+      }
+      const res = await fetch(`/api/gigs/${gigId}`, {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => ({}))
+        throw new Error(p?.error?.message || `Save failed (${res.status})`)
+      }
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const reroll = () => {
+    const next = seed + 1
+    setSeed(next)
+    void generate(next)
+  }
+
+  return (
+    <div
+      role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9000,
+        background: 'rgba(15,23,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 720, maxHeight: '90vh',
+          background: PAPER, borderRadius: 12,
+          border: `1px solid ${T.rule}`,
+          boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+          display: 'flex', flexDirection: 'column',
+          fontFamily: F.ui,
+        }}>
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.rule}`, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 600, color: T.ink, lineHeight: 1.3 }}>
+              {request.issueLabel}
+            </div>
+            {request.liftEstimate && (
+              <div style={{ marginTop: 4, fontSize: 12, color: T.moss, fontWeight: 700 }}>
+                Estimated lift: {request.liftEstimate}
+              </div>
+            )}
+            {request.issueHint && (
+              <div style={{ marginTop: 6, fontSize: 12, color: T.inkSoft, lineHeight: 1.5 }}>
+                {request.issueHint}
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: 'none', background: 'transparent',
+              cursor: 'pointer', fontSize: 18, color: T.inkSoft,
+              padding: 4, marginRight: -4,
+            }}>×</button>
+        </div>
+
+        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
+          {request.staticExplanation ? (
+            <div>
+              <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.6, marginBottom: 14 }}>
+                {request.staticExplanation.body}
+              </div>
+              {request.staticExplanation.cta && (
+                <a href={request.staticExplanation.cta.href}
+                  style={{
+                    display: 'inline-block', padding: '8px 14px', borderRadius: 6,
+                    background: NAVY, color: '#FFFFFF', textDecoration: 'none',
+                    fontSize: 12, fontWeight: 700,
+                  }}>
+                  {request.staticExplanation.cta.label}
+                </a>
+              )}
+            </div>
+          ) : loading ? (
+            <div style={{ fontSize: 13, color: T.inkSoft, fontStyle: 'italic' }}>
+              Generating with {provider}… this typically takes 3–10s.
+            </div>
+          ) : error ? (
+            <div>
+              <div style={{ color: T.brick, fontSize: 13, marginBottom: 10 }}>
+                {error}
+              </div>
+              <button type="button" onClick={() => generate(seed)}
+                style={{
+                  padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                  background: NAVY, color: '#FFFFFF',
+                  border: 'none', borderRadius: 5, cursor: 'pointer',
+                }}>Retry</button>
+            </div>
+          ) : changes.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {changes.map((c, idx) => (
+                <div key={`${c.field}-${idx}`} style={{
+                  border: `1px solid ${T.rule}`, borderRadius: 8,
+                  background: VELLUM, padding: '10px 12px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                    <strong style={{ fontSize: 12, color: T.ink, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {FIELD_LABELS[c.field]}
+                    </strong>
+                    {c.rationale && (
+                      <span style={{ fontSize: 11, color: T.inkSoft, fontStyle: 'italic', maxWidth: '60%', textAlign: 'right' }}>
+                        {c.rationale}
+                      </span>
+                    )}
+                  </div>
+                  {typeof c.after === 'string' ? (
+                    <DiffBlock before={c.before} after={c.after} />
+                  ) : (
+                    <div style={{
+                      padding: '10px 12px', background: '#FFFFFF',
+                      border: `1px solid ${T.rule}`, borderRadius: 6,
+                      fontSize: 13, lineHeight: 1.55, color: T.ink,
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {formatAfterForDisplay(c.after)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: T.inkSoft }}>No proposed changes.</div>
+          )}
+        </div>
+
+        <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.rule}`, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', background: VELLUM }}>
+          {!request.staticExplanation && (
+            <>
+              <button type="button" onClick={() => {
+                const primary = request.targetFields[0]
+                const editable: EditableField = primary === 'faq' ? 'description' : (primary as EditableField)
+                onEditManually(editable, request.issueHint)
+              }}
+                style={{
+                  padding: '7px 14px', fontSize: 12, fontWeight: 600,
+                  background: 'transparent', color: T.inkSoft,
+                  border: `1px solid ${T.rule}`, borderRadius: 6, cursor: 'pointer',
+                }}>Edit manually instead</button>
+              <button type="button" onClick={reroll} disabled={loading || saving}
+                style={{
+                  padding: '7px 14px', fontSize: 12, fontWeight: 600,
+                  background: 'transparent', color: NAVY,
+                  border: `1px solid ${NAVY}55`, borderRadius: 6,
+                  cursor: loading || saving ? 'wait' : 'pointer',
+                }}>Re-roll</button>
+            </>
+          )}
+          <button type="button" onClick={onClose}
+            style={{
+              padding: '7px 14px', fontSize: 12, fontWeight: 600,
+              background: 'transparent', color: T.inkSoft,
+              border: `1px solid ${T.rule}`, borderRadius: 6, cursor: 'pointer',
+            }}>Cancel</button>
+          {!request.staticExplanation && changes.length > 0 && (
+            <button type="button" onClick={accept} disabled={saving || loading}
+              style={{
+                padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                background: saving ? T.rule : T.ink, color: '#FFFFFF',
+                border: 'none', borderRadius: 6,
+                cursor: saving || loading ? 'wait' : 'pointer',
+              }}>
+              {saving ? 'Saving…' : 'Accept and save'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Per-gig holistic audit card (the expanded surface)
 
 function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void }) {
@@ -655,6 +1081,9 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
   const [loading, setLoading] = React.useState(true)
   const [expandedSections, setExpandedSections] = React.useState<Set<SectionId>>(new Set(['cluster_coverage']))
   const [editor, setEditor] = React.useState<EditorState | null>(null)
+  // Open coherent-fix modal request. When non-null the modal is shown
+  // and auto-fires the AI call on mount.
+  const [coherentFix, setCoherentFix] = React.useState<CoherentFixRequest | null>(null)
 
   const load = React.useCallback(async () => {
     setLoading(true); setError(null)
@@ -742,7 +1171,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('cluster_coverage')?.summary ?? ''}
         expanded={expandedSections.has('cluster_coverage')}
         onToggle={() => toggle('cluster_coverage')}>
-        <ClusterCoverageMap audit={audit} onApplyFix={setEditor} />
+        <ClusterCoverageMap audit={audit} onCoherentFix={setCoherentFix} />
       </SectionCard>
 
       <SectionCard title="Intent diversity" score={section('intent_diversity')?.score ?? 0}
@@ -750,7 +1179,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('intent_diversity')?.summary ?? ''}
         expanded={expandedSections.has('intent_diversity')}
         onToggle={() => toggle('intent_diversity')}>
-        <IntentDiversityGrid audit={audit} onApplyFix={setEditor} />
+        <IntentDiversityGrid audit={audit} onCoherentFix={setCoherentFix} />
       </SectionCard>
 
       <SectionCard title="Snippet engineering" score={section('snippet_engineering')?.score ?? 0}
@@ -761,7 +1190,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         <SnippetEditor gig={gig} onSaved={handleSavedInner} />
         <div style={{ marginTop: 14 }}>
           {(section('snippet_engineering')?.findings ?? []).map((f, i) => (
-            <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+            <FindingRow key={i} finding={f} sectionId="snippet_engineering" onCoherentFix={setCoherentFix} />
           ))}
         </div>
       </SectionCard>
@@ -772,7 +1201,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         expanded={expandedSections.has('jurisdiction_alignment')}
         onToggle={() => toggle('jurisdiction_alignment')}>
         {(section('jurisdiction_alignment')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+          <FindingRow key={i} finding={f} sectionId="jurisdiction_alignment" onCoherentFix={setCoherentFix} />
         ))}
       </SectionCard>
 
@@ -809,7 +1238,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         expanded={expandedSections.has('eeat_surfacing')}
         onToggle={() => toggle('eeat_surfacing')}>
         {(section('eeat_surfacing')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+          <FindingRow key={i} finding={f} sectionId="eeat_surfacing" onCoherentFix={setCoherentFix} />
         ))}
       </SectionCard>
 
@@ -818,8 +1247,38 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('internal_link_surface')?.summary ?? ''}
         expanded={expandedSections.has('internal_link_surface')}
         onToggle={() => toggle('internal_link_surface')}>
+        {/* Internal-link issues can't be auto-fixed by editing one gig —
+            they require publishing another gig in the cluster. Override
+            the row click so it surfaces a static explanation + CTA to
+            the gig-builder, never the AI modal. */}
         {(section('internal_link_surface')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+          <div key={i}
+            onClick={() => setCoherentFix({
+              issueId: 'internal_link_surface',
+              issueLabel: f.label,
+              issueHint: f.detail ?? '',
+              targetFields: [],
+              staticExplanation: {
+                body: 'Internal-link strength comes from publishing more than one gig in the same keyword cluster, then letting the marketplace sidebar surface them together. This is not something a single gig\'s copy can fix.',
+                cta: { label: 'Create another gig in this cluster', href: '/dashboard/gigs/new' },
+              },
+            })}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLDivElement).click() }}
+            style={{
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+              padding: '9px 12px', borderRadius: 6,
+              background: f.kind === 'ok' ? `${T.moss}08` : f.kind === 'warn' ? '#FEF5E4' : `${T.brick}08`,
+              marginBottom: 6, cursor: 'pointer',
+            }}>
+            <span style={{ color: f.kind === 'ok' ? T.moss : f.kind === 'warn' ? '#D97706' : T.brick, fontWeight: 800, marginTop: 1, fontSize: 12, flexShrink: 0 }}>
+              {f.kind === 'ok' ? '✓' : f.kind === 'warn' ? '!' : '✕'}
+            </span>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
+              <div style={{ color: T.ink, fontWeight: 600 }}>{f.label}</div>
+              {f.detail && <div style={{ color: T.inkSoft, marginTop: 2 }}>{f.detail}</div>}
+            </div>
+          </div>
         ))}
       </SectionCard>
 
@@ -830,7 +1289,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
           expanded={expandedSections.has('gsc_alignment')}
           onToggle={() => toggle('gsc_alignment')}>
           {(section('gsc_alignment')?.findings ?? []).map((f, i) => (
-            <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+            <FindingRow key={i} finding={f} sectionId="gsc_alignment" onCoherentFix={setCoherentFix} />
           ))}
         </SectionCard>
       )}
@@ -841,7 +1300,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         expanded={expandedSections.has('voice_hygiene')}
         onToggle={() => toggle('voice_hygiene')}>
         {(section('voice_hygiene')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} onApplyFix={setEditor} />
+          <FindingRow key={i} finding={f} sectionId="voice_hygiene" onCoherentFix={setCoherentFix} />
         ))}
         {audit.bannedPhrasesFound.length > 0 && (
           <div style={{ marginTop: 8, padding: '10px 12px', background: `${T.brick}08`, border: `1px solid ${T.brick}33`, borderRadius: 6 }}>
@@ -884,7 +1343,10 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         <HolisticRepitchPanel gigId={gig.id} onSaved={handleSavedInner} />
       </div>
 
-      {/* Inline editor overlay — used by every "Apply AI fix" button */}
+      {/* Inline editor overlay — fallback for the "Edit manually
+          instead" button on the coherent-fix modal. Also used by any
+          surface that still routes through the legacy `setEditor`
+          path. */}
       {editor && (
         <div style={{ marginTop: 14 }}>
           <GigSEOInlineEditor
@@ -897,6 +1359,23 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
             onCancel={() => setEditor(null)}
           />
         </div>
+      )}
+
+      {/* One-click coherent-fix modal — opened when a seller clicks
+          any clickable checklist row. Hits /api/seo/coherent-fix on
+          mount, renders a word-level diff of the proposed change(s),
+          and writes back via the existing PATCH /api/gigs/[id]. */}
+      {coherentFix && (
+        <CoherentFixModal
+          gigId={gig.id}
+          request={coherentFix}
+          onClose={() => setCoherentFix(null)}
+          onSaved={() => { setCoherentFix(null); void handleSavedInner() }}
+          onEditManually={(field, hint) => {
+            setCoherentFix(null)
+            setEditor({ field, prefillHint: hint, autoDraft: false })
+          }}
+        />
       )}
     </div>
   )

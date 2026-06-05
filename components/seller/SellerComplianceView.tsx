@@ -43,14 +43,42 @@ async function requestJson(url: string, options: RequestInit = {}) {
   return payload?.data ?? payload
 }
 
+// Compliance items that can be auto-drafted by the AI. Mirrors the
+// `editable` flag in lib/coherentFix.ts — keep these in lockstep.
+const AI_DRAFTABLE_ITEMS = new Set([
+  'credential_type', 'bar_number', 'malpractice', 'jurisdictions',
+])
+
+// Persist unsaved drafts to localStorage so the seller never loses what
+// the AI wrote if they refresh before pasting into their application.
+// Key is namespaced by item id; we cap to a single value per item.
+function loadDraftFromLocal(itemId: string): string {
+  if (typeof window === 'undefined') return ''
+  try { return window.localStorage.getItem(`compliance_drafts:${itemId}`) || '' } catch { return '' }
+}
+function saveDraftToLocal(itemId: string, draft: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (draft) window.localStorage.setItem(`compliance_drafts:${itemId}`, draft)
+    else window.localStorage.removeItem(`compliance_drafts:${itemId}`)
+  } catch { /* storage disabled — silent fail */ }
+}
+
 export default function SellerComplianceView({ role }: SellerComplianceViewProps) {
   const [data, setData] = React.useState<ComplianceResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
-  const [explainingId, setExplainingId] = React.useState<string | null>(null)
+  const [expandedId, setExpandedId] = React.useState<string | null>(null)
   const [explanations, setExplanations] = React.useState<Record<string, string>>({})
   const [explainBusyId, setExplainBusyId] = React.useState<string | null>(null)
   const [explainError, setExplainError] = React.useState<Record<string, string>>({})
+  // AI-drafted "next step" text per item. The seller can edit it in
+  // a textarea before saving — that's what the inline expansion exposes.
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({})
+  const [draftBusyId, setDraftBusyId] = React.useState<string | null>(null)
+  const [draftError, setDraftError] = React.useState<Record<string, string>>({})
+  const [draftSeeds, setDraftSeeds] = React.useState<Record<string, number>>({})
+  const [savedDraftId, setSavedDraftId] = React.useState<string | null>(null)
   const [checklist, setChecklist] = React.useState<string[] | null>(null)
   const [checklistBusy, setChecklistBusy] = React.useState(false)
   const [checklistError, setChecklistError] = React.useState('')
@@ -69,10 +97,23 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
 
   React.useEffect(() => { load() }, [load])
 
-  const handleExplain = async (item: ComplianceItem) => {
-    if (explainingId === item.id) { setExplainingId(null); return }
-    setExplainingId(item.id)
-    if (explanations[item.id]) return // cached
+  // Row click expands the inline panel. The 2-sentence "why this
+  // matters" explanation is fetched lazily from /api/compliance/guide
+  // (unchanged). For AI-draftable rows we also restore any saved
+  // localStorage draft so a refresh doesn't lose the seller's text.
+  const handleRowClick = (item: ComplianceItem) => {
+    if (expandedId === item.id) { setExpandedId(null); return }
+    setExpandedId(item.id)
+    if (!explanations[item.id] && explainBusyId !== item.id) {
+      void loadExplanation(item)
+    }
+    if (AI_DRAFTABLE_ITEMS.has(item.id) && !drafts[item.id]) {
+      const saved = loadDraftFromLocal(item.id)
+      if (saved) setDrafts((prev) => ({ ...prev, [item.id]: saved }))
+    }
+  }
+
+  const loadExplanation = async (item: ComplianceItem) => {
     setExplainBusyId(item.id)
     setExplainError((prev) => ({ ...prev, [item.id]: '' }))
     try {
@@ -90,6 +131,50 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
     } finally {
       setExplainBusyId(null)
     }
+  }
+
+  // Draft (or re-roll) the AI's next-step text for an editable
+  // compliance item. Hits /api/compliance/coherent-fix which returns
+  // a ready-to-paste paragraph with [BRACKETED] placeholders wherever
+  // a real identifier (bar number, policy number, carrier) would go.
+  const handleDraft = async (item: ComplianceItem) => {
+    const nextSeed = (draftSeeds[item.id] ?? 0) + 1
+    setDraftSeeds((prev) => ({ ...prev, [item.id]: nextSeed }))
+    setDraftBusyId(item.id)
+    setDraftError((prev) => ({ ...prev, [item.id]: '' }))
+    try {
+      const res = await requestJson('/api/compliance/coherent-fix', {
+        method: 'POST',
+        body: JSON.stringify({
+          issueId: item.id,
+          issueLabel: item.label,
+          seed: nextSeed,
+        }),
+      }) as { draft: string; rationale: string }
+      setDrafts((prev) => ({ ...prev, [item.id]: res.draft }))
+      saveDraftToLocal(item.id, res.draft)
+    } catch (e) {
+      const err = e as Error & { status?: number }
+      const msg = err.status === 503
+        ? 'AI drafting isn\'t configured for this site yet.'
+        : err.message || 'Could not draft the next step.'
+      setDraftError((prev) => ({ ...prev, [item.id]: msg }))
+    } finally {
+      setDraftBusyId(null)
+    }
+  }
+
+  // Persist the draft locally. No backend endpoint exists today for
+  // patching arbitrary application/profile fields from this surface,
+  // so we stash to localStorage and the seller pastes into the
+  // existing intake / profile form via the row's primary action
+  // button. The "Save draft" CTA is the fallback the spec calls for.
+  const handleSaveDraft = (item: ComplianceItem) => {
+    saveDraftToLocal(item.id, drafts[item.id] ?? '')
+    setSavedDraftId(item.id)
+    window.setTimeout(() => {
+      setSavedDraftId((current) => current === item.id ? null : current)
+    }, 2500)
   }
 
   const handleChecklist = async () => {
@@ -170,10 +255,24 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
           <div style={{ display: 'grid', gap: '8px' }}>
             {data.items.map((item) => {
               const s = STATUS_STYLES[item.status]
-              const isOpen = explainingId === item.id
+              const isOpen = expandedId === item.id
+              const isDraftable = AI_DRAFTABLE_ITEMS.has(item.id)
               return (
                 <div key={item.id} style={{ borderRadius: '8px', background: s.bg, border: `1px solid ${s.ring}`, overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px' }}>
+                  {/* Row header — the entire div is the click target. */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleRowClick(item)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(item) } }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '12px 14px',
+                      cursor: 'pointer', outline: 'none',
+                      transition: 'background 0.15s ease',
+                    }}
+                    title="Click for AI guidance + a draft of the next step"
+                  >
                     <span style={{
                       width: '24px', height: '24px', borderRadius: '50%',
                       background: '#FFFFFF', color: s.markColor,
@@ -190,10 +289,12 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                       </div>
                     </div>
                     <div style={{ display: 'inline-flex', gap: '6px', flexShrink: 0 }}>
+                      {/* Toggle pill — duplicate of the row click target,
+                          kept for affordance + accessible button parity. */}
                       <button
                         type="button"
-                        onClick={() => handleExplain(item)}
-                        title="Ask the AI assistant to explain this"
+                        onClick={(e) => { e.stopPropagation(); handleRowClick(item) }}
+                        title="Open AI guidance + draft"
                         style={{
                           padding: '5px 10px', borderRadius: '5px',
                           background: 'transparent', color: '#3C3B6E',
@@ -208,17 +309,13 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                         {isOpen ? 'Hide' : 'Explain'}
                       </button>
                       {item.actionHref && item.actionLabel && (
-                        // In-page hash links (e.g. "/dashboard/compliance#phone")
-                        // need plain <a> for smooth scroll on the current
-                        // route; Next.js <Link> intercepts navigation and
-                        // skips the scroll. Detect by leading-hash or
-                        // same-pathname-with-hash and render accordingly.
                         // Same-page hash links: /dashboard/compliance#phone,
                         // /dashboard/compliance#two-factor, etc. The Next.js
                         // Link component swallows the scroll on same-route
                         // navigation; a plain <a> respects the hash.
                         item.actionHref.includes('#') && item.actionHref.startsWith('/dashboard/compliance') ? (
                           <a
+                            onClick={(e) => e.stopPropagation()}
                             href={`#${item.actionHref.split('#')[1] || ''}`}
                             style={{
                               padding: '5px 10px', borderRadius: '5px',
@@ -230,23 +327,29 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                             {item.actionLabel}
                           </a>
                         ) : (
-                          <Link
-                            href={item.actionHref}
-                            style={{
-                              padding: '5px 10px', borderRadius: '5px',
-                              background: '#0F172A', color: '#FFFFFF',
-                              fontSize: '11px', fontWeight: 700,
-                              textDecoration: 'none', whiteSpace: 'nowrap' as const,
-                            }}
-                          >
-                            {item.actionLabel}
-                          </Link>
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <Link
+                              href={item.actionHref}
+                              style={{
+                                padding: '5px 10px', borderRadius: '5px',
+                                background: '#0F172A', color: '#FFFFFF',
+                                fontSize: '11px', fontWeight: 700,
+                                textDecoration: 'none', whiteSpace: 'nowrap' as const,
+                              }}
+                            >
+                              {item.actionLabel}
+                            </Link>
+                          </span>
                         )
                       )}
                     </div>
                   </div>
+
+                  {/* Inline expansion — explanation + (for editable
+                      rows) AI draft + textarea + Save draft CTA. */}
                   {isOpen && (
                     <div style={{ padding: '10px 14px 14px 50px', borderTop: `1px solid ${s.ring}`, background: '#FFFFFF' }}>
+                      {/* Why this matters (2-sentence AI explanation) */}
                       {explainBusyId === item.id ? (
                         <div style={{ fontSize: '12px', color: '#5C6070' }}>Asking the assistant…</div>
                       ) : explainError[item.id] ? (
@@ -256,8 +359,101 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
                           {explanations[item.id]}
                         </div>
                       )}
+
+                      {/* AI draft + textarea + Save draft. Editable
+                          rows only — for email/phone/2FA the explanation
+                          above is enough, the row's primary action
+                          button takes them to the real workflow. */}
+                      {isDraftable && (
+                        <div style={{ marginTop: '12px' }}>
+                          {drafts[item.id] ? (
+                            <>
+                              <label style={{
+                                display: 'block', fontSize: '11px', fontWeight: 700,
+                                color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em',
+                                marginBottom: '4px',
+                              }}>
+                                Draft for {item.label} — edit before submitting
+                              </label>
+                              <textarea
+                                value={drafts[item.id] ?? ''}
+                                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                rows={5}
+                                style={{
+                                  width: '100%', padding: '8px 10px', borderRadius: '6px',
+                                  border: '1px solid #DDD8CE', fontSize: '13px',
+                                  fontFamily: sans, color: '#0F172A', background: '#FAFAF7',
+                                  lineHeight: 1.55, resize: 'vertical' as const,
+                                  boxSizing: 'border-box',
+                                }}
+                              />
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' as const }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveDraft(item)}
+                                  style={{
+                                    padding: '6px 12px', borderRadius: '5px',
+                                    background: '#3C3B6E', color: '#FFFFFF',
+                                    border: 'none', fontSize: '11px', fontWeight: 700,
+                                    cursor: 'pointer', fontFamily: sans,
+                                  }}
+                                >
+                                  Save draft locally
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDraft(item)}
+                                  disabled={draftBusyId === item.id}
+                                  style={{
+                                    padding: '6px 12px', borderRadius: '5px',
+                                    background: 'transparent', color: '#3C3B6E',
+                                    border: '1px solid rgba(60,59,110,0.30)',
+                                    fontSize: '11px', fontWeight: 700,
+                                    cursor: draftBusyId === item.id ? 'wait' : 'pointer',
+                                    fontFamily: sans,
+                                  }}
+                                >
+                                  {draftBusyId === item.id ? 'Re-rolling…' : 'Re-roll'}
+                                </button>
+                                {savedDraftId === item.id && (
+                                  <span style={{ fontSize: '11px', color: '#1A6B45', alignSelf: 'center', fontWeight: 600 }}>
+                                    Saved locally. Paste into your application.
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          ) : draftBusyId === item.id ? (
+                            <div style={{ fontSize: '12px', color: '#5C6070', fontStyle: 'italic' }}>
+                              Drafting next step with AI…
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleDraft(item)}
+                              disabled={draftBusyId === item.id}
+                              style={{
+                                marginTop: '4px',
+                                padding: '7px 14px', borderRadius: '5px',
+                                background: '#3C3B6E', color: '#FFFFFF',
+                                border: 'none', fontSize: '12px', fontWeight: 700,
+                                cursor: 'pointer', fontFamily: sans,
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                              }}
+                            >
+                              <span aria-hidden style={{ fontSize: '11px' }}>✦</span>
+                              Draft my next step
+                            </button>
+                          )}
+                          {draftError[item.id] && (
+                            <div style={{ marginTop: '8px', fontSize: '12px', color: '#8B1A1A' }}>
+                              {draftError[item.id]}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <p style={{ marginTop: '8px', fontSize: '10px', color: '#9097A8', lineHeight: 1.5 }}>
-                        Guidance only — the AI never fills in your credentials. Enter your own real values via the action button.
+                        Guidance only — the AI never fills in your real credentials, bar numbers, or policy details. Replace bracketed placeholders with your actual values before submitting.
                       </p>
                     </div>
                   )}
@@ -372,3 +568,4 @@ export default function SellerComplianceView({ role }: SellerComplianceViewProps
     </div>
   )
 }
+
