@@ -4,7 +4,19 @@ import { computeAttorneyStrength, PROFILE_PUBLISH_THRESHOLD } from '@/lib/attorn
 import { computeConsultantStrength, CONSULTANT_PUBLISH_THRESHOLD } from '@/lib/consultantProfileStrength'
 import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
 
-export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    return await handlePublish(req, context)
+  } catch (e: any) {
+    // Any unhandled error here becomes a proper JSON 500. Without this
+    // the runtime renders an HTML 503 from the edge, which the gig
+    // builder client tries to JSON.parse and crashes on with "string
+    // did not match the expected pattern".
+    return fail(`Publish handler crashed: ${e?.message || String(e)}`, 500)
+  }
+}
+
+async function handlePublish(_req: Request, context: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
@@ -97,26 +109,34 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
   // Profile completeness gate. A gig cannot move to `active` until the
   // attorney's/consultant's profile is at least 75% complete AND has an
   // SEO-friendly username set (used as the public-profile URL slug).
-  if (auth.role === 'attorney') {
-    const strength = await computeAttorneyStrength(auth.db, auth.profileId)
-    if (!strength.username) {
-      errors.profile_username =
-        'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
+  // Strength check — wrap so an upstream Supabase glitch surfaces as a
+  // soft validation error instead of throwing the whole route. Without
+  // this guard, a transient DB hiccup turned into the HTML 503 the user
+  // saw with "string did not match the expected pattern" on the client.
+  try {
+    if (auth.role === 'attorney') {
+      const strength = await computeAttorneyStrength(auth.db, auth.profileId)
+      if (!strength.username) {
+        errors.profile_username =
+          'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
+      }
+      if (strength.score < PROFILE_PUBLISH_THRESHOLD) {
+        errors.profile_strength =
+          `Your profile is ${strength.score}% complete. Reach ${PROFILE_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
+      }
+    } else if (auth.role === 'consultant') {
+      const strength = await computeConsultantStrength(auth.db, auth.profileId)
+      if (!strength.username) {
+        errors.profile_username =
+          'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
+      }
+      if (strength.score < CONSULTANT_PUBLISH_THRESHOLD) {
+        errors.profile_strength =
+          `Your profile is ${strength.score}% complete. Reach ${CONSULTANT_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
+      }
     }
-    if (strength.score < PROFILE_PUBLISH_THRESHOLD) {
-      errors.profile_strength =
-        `Your profile is ${strength.score}% complete. Reach ${PROFILE_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
-    }
-  } else if (auth.role === 'consultant') {
-    const strength = await computeConsultantStrength(auth.db, auth.profileId)
-    if (!strength.username) {
-      errors.profile_username =
-        'Set your SEO-friendly profile handle before publishing. It becomes your public profile URL.'
-    }
-    if (strength.score < CONSULTANT_PUBLISH_THRESHOLD) {
-      errors.profile_strength =
-        `Your profile is ${strength.score}% complete. Reach ${CONSULTANT_PUBLISH_THRESHOLD}% before publishing — finish the intake checklist on your dashboard.`
-    }
+  } catch (e: any) {
+    errors.profile_strength = `Could not verify profile strength (${e?.message || 'unknown error'}). Try again.`
   }
 
   if (Object.keys(errors).length > 0) return fieldFail(errors, 422)

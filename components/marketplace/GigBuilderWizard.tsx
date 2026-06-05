@@ -400,8 +400,17 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
         body: JSON.stringify(draftPayload),
       })
       if (!draftRes.ok) {
-        const d = await draftRes.json()
-        throw new Error(d?.error?.message || d?.error || 'Failed to save gig before publishing')
+        const ct = draftRes.headers.get('content-type') || ''
+        let d: any = null
+        if (ct.includes('application/json')) {
+          d = await draftRes.json().catch(() => null)
+        } else {
+          await draftRes.text().catch(() => '')
+        }
+        const fallback = draftRes.status >= 500
+          ? `Server returned ${draftRes.status} while saving. Please retry.`
+          : `Failed to save gig before publishing (HTTP ${draftRes.status}).`
+        throw new Error(d?.error?.message || d?.error || fallback)
       }
       const draftData = await draftRes.json()
       // apiEnvelope shape: { data: { gig }, error, meta }. Fall back to the
@@ -418,7 +427,17 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
         headers: { 'Content-Type': 'application/json' },
       })
       if (!publishRes.ok) {
-        const d = await publishRes.json()
+        // 5xx responses from Cloudflare's edge return HTML, not JSON.
+        // Guard against the "string did not match the expected pattern"
+        // crash by checking content-type and falling back to a status-
+        // appropriate message when the body isn't parseable.
+        const ct = publishRes.headers.get('content-type') || ''
+        let d: any = null
+        if (ct.includes('application/json')) {
+          d = await publishRes.json().catch(() => null)
+        } else {
+          await publishRes.text().catch(() => '')
+        }
         // 422 = validation: lift the per-field errors into state so the
         // wizard can render them next to the publish button. The seller
         // sees what's missing instead of a generic "failed" banner.
@@ -426,7 +445,10 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
           setPublishErrors(d.error.fields as Record<string, string>)
           throw new Error(d?.error?.message || 'A few details are missing before this gig can publish.')
         }
-        throw new Error(d?.error?.message || d?.error || 'Failed to publish gig')
+        const fallback = publishRes.status >= 500
+          ? `Server returned ${publishRes.status}. Please retry in a moment — if it persists, contact support.`
+          : `Failed to publish gig (HTTP ${publishRes.status}).`
+        throw new Error(d?.error?.message || d?.error || fallback)
       }
 
       setAutoSaveStatus('Published!')
