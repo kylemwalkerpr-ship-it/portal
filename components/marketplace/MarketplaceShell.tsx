@@ -32,7 +32,7 @@ interface NavLink { icon: string; label: string; view: string }
 const CLIENT_NAV: NavLink[] = [
   { icon: '🏬', label: 'Browse',        view: 'browse'    },
   { icon: '📦', label: 'My Orders',     view: 'orders'    },
-  { icon: '⚖️', label: 'Find Attorney', view: 'attorneys' },
+  { icon: '⚖️', label: 'Find A Specialist', view: 'attorneys' },
   { icon: '📥', label: 'Inquiries',     view: 'inquiries' },
   { icon: '💬', label: 'Messages',      view: 'messages'  },
 ]
@@ -57,7 +57,7 @@ function navLinksForRole(role: Role | null): NavLink[] {
   if (role === 'client')     return CLIENT_NAV
   // public / unauthenticated
   return [
-    { icon: '⚖️', label: 'Find Attorney', view: 'attorneys' },
+    { icon: '⚖️', label: 'Find A Specialist', view: 'attorneys' },
   ]
 }
 
