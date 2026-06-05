@@ -665,8 +665,10 @@ const CSS = `
 .cw-market .filters a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
 .cw-market .filters a.on { background: ${T.ink}; color: #fff; border-color: ${T.ink}; }
 .cw-market .filters a .ct { font-family: ${F.mono}; font-size: 10.5px; margin-left: 6px; color: currentColor; opacity: 0.7; }
-.cw-market .gig-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 1080px) { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } }
+.cw-market .gig-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1400px) { .cw-market .gig-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1180px) { .cw-market .gig-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px)  { .cw-market .gig-grid { grid-template-columns: repeat(2, 1fr); } .cw-market .hero-grid { grid-template-columns: 1fr; } }
 @media (max-width: 700px) {
   .cw-market .gig-grid { grid-template-columns: 1fr; }
   .cw-market .nav-search { display: none; }
