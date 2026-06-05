@@ -11,7 +11,11 @@ import { requirePortalUser } from '@/lib/portalAuth'
 
 export async function GET() {
   const auth = await requirePortalUser()
-  if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
+  // The public marketplace renders Live case briefs to anon visitors as a
+  // "what attorneys see" preview. Returning 401 here surfaces an ugly
+  // "Couldn't load briefs: Unauthorized" banner. Treat anon (and any
+  // non-attorney/non-author role) as "no briefs to show" instead.
+  if ('error' in auth) return Response.json({ statuses: [] })
 
   const role = auth.role
   const isAttorney = role === 'attorney'
