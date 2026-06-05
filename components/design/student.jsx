@@ -1586,7 +1586,7 @@ function StudentApp({ onLogout, userId, userName }) {
           <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
           <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
-        <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Student portal</div>
+        <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Client portal</div>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
