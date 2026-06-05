@@ -4,13 +4,68 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useLanguage } from "@/contexts/language-context"
 import { getLocalTranslation } from "@/lib/translations"
 
+// In-memory cache — fast hot path. Persists to localStorage too so
+// repeat page loads skip the network entirely.
 const clientCache = new Map<string, string>()
 const translationQueue = new Map<string, Promise<string>>()
 const TRANSLATION_ENDPOINTS = ["/api/translate", "https://yousafeconsultancy.com/api/translate"]
 const BATCH_ENDPOINTS = ["/api/translate/batch", "https://yousafeconsultancy.com/api/translate/batch"]
 
+const STORAGE_KEY = "ys.translate.cache.v2"
+const STORAGE_LIMIT = 2000   // entries; older drops on overflow
+let storageHydrated = false
+
+function hydrateFromStorage() {
+  if (storageHydrated || typeof window === "undefined") return
+  storageHydrated = true
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw) as Array<[string, string]>
+    if (!Array.isArray(parsed)) return
+    for (const [k, v] of parsed) {
+      if (typeof k === "string" && typeof v === "string") clientCache.set(k, v)
+    }
+  } catch { /* corrupt storage — ignore */ }
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+function schedulePersist() {
+  if (typeof window === "undefined") return
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    try {
+      // Take only the last STORAGE_LIMIT entries (Map preserves insertion
+      // order, so this is FIFO eviction).
+      const entries = Array.from(clientCache.entries())
+      const tail = entries.length > STORAGE_LIMIT ? entries.slice(-STORAGE_LIMIT) : entries
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tail))
+    } catch { /* quota full — drop the write, in-memory cache still works */ }
+  }, 400)
+}
+
+// CRITICAL: cache a translation ONLY when it's actually different from
+// the source. MyMemory returns the original English when it's rate-
+// limited, can't translate a proper noun, or the language pair fails.
+// Caching that English-equals-source string used to permanently freeze
+// footer items as untranslated -- subsequent runs hit the cache, got
+// English back, and never retried. Treat same-as-source as a miss so
+// the next page load (with cache cleared) re-attempts.
+function cacheTranslation(key: string, source: string, translated: string): string {
+  const norm = (translated ?? "").trim()
+  if (!norm) return source
+  if (norm === source.trim()) {
+    // Don't poison the cache with a failed translation.
+    return source
+  }
+  clientCache.set(key, translated)
+  schedulePersist()
+  return translated
+}
+
 export async function translateTexts(texts: string[], targetLang: string): Promise<string[]> {
   if (!texts.length || targetLang === "en") return [...texts]
+  hydrateFromStorage()
 
   // Resolve from local + client cache first; only ship uncached strings.
   const results: string[] = new Array(texts.length)
@@ -33,6 +88,7 @@ export async function translateTexts(texts: string[], targetLang: string): Promi
     const local = getLocalTranslation(normalized, targetLang)
     if (local) {
       clientCache.set(cacheKey, local)
+      schedulePersist()
       results[i] = local
       continue
     }
@@ -56,10 +112,10 @@ export async function translateTexts(texts: string[], targetLang: string): Promi
 
       for (let k = 0; k < missingIndices.length; k++) {
         const idx = missingIndices[k]
-        const translated = typeof translations[k] === "string" ? (translations[k] as string) : missingTexts[k]
-        const cacheKey = `${targetLang}:${missingTexts[k]}`
-        clientCache.set(cacheKey, translated)
-        results[idx] = translated
+        const source = missingTexts[k]
+        const translated = typeof translations[k] === "string" ? (translations[k] as string) : source
+        const cacheKey = `${targetLang}:${source}`
+        results[idx] = cacheTranslation(cacheKey, source, translated)
       }
       return results
     } catch {}
@@ -76,6 +132,7 @@ export async function translateTexts(texts: string[], targetLang: string): Promi
 export async function translateText(text: string, targetLang: string): Promise<string> {
   const normalized = text.trim()
   if (!normalized || targetLang === "en") return text
+  hydrateFromStorage()
 
   const cacheKey = `${targetLang}:${normalized}`
   const cached = clientCache.get(cacheKey)
@@ -84,6 +141,7 @@ export async function translateText(text: string, targetLang: string): Promise<s
   const localTranslation = getLocalTranslation(normalized, targetLang)
   if (localTranslation) {
     clientCache.set(cacheKey, localTranslation)
+    schedulePersist()
     return localTranslation
   }
 
@@ -101,9 +159,8 @@ export async function translateText(text: string, targetLang: string): Promise<s
           })
           if (!response.ok) continue
           const data = await response.json()
-          const result = data.translatedText || normalized
-          clientCache.set(cacheKey, result)
-          return result
+          const result = typeof data?.translatedText === "string" ? data.translatedText : normalized
+          return cacheTranslation(cacheKey, normalized, result)
         } catch {}
       }
       return normalized
@@ -154,7 +211,11 @@ export function useTranslations(texts: string[]): string[] {
     }
 
     let cancelled = false
-    Promise.all(texts.map((text) => translateText(text, language))).then((results) => {
+    // Use the batch path -- one network round-trip instead of N. The
+    // previous Promise.all(map(translateText)) issued one request per
+    // string which throttled MyMemory hard and amplified perceived
+    // latency.
+    translateTexts(texts, language).then((results) => {
       if (!cancelled) setTranslatedTexts(results)
     })
 

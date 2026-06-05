@@ -198,8 +198,11 @@ export async function translateBatch(
     }
   })
 
-  // Run with concurrency limit so we don't hammer MyMemory
-  const CONCURRENCY = 6
+  // Run with concurrency limit. Previously 6 — far below MyMemory's actual
+  // tolerance and produced visible serialization on pages with 30+ cache
+  // misses. 20 keeps us under their free-tier IP limit while cutting wall-
+  // clock latency roughly 3×.
+  const CONCURRENCY = 20
   for (let i = 0; i < queue.length; i += CONCURRENCY) {
     await Promise.all(queue.slice(i, i + CONCURRENCY))
   }

@@ -66,11 +66,14 @@ async function batchTranslateUnique(texts: string[], language: string): Promise<
   // have translated — and on rate-limit MyMemory returned English, which
   // looked like "translation isn't working."
   //
-  // Chunking is still done here to keep the network request under the
-  // server's 100-strings-per-call cap.
+  // Chunks are issued IN PARALLEL. The previous sequential `for await` loop
+  // meant a page with 300 strings did 3 round-trips back-to-back instead of
+  // 3 concurrently — perceived latency was 3x what it needed to be.
   const chunks = chunk(texts, 100)
-  for (const part of chunks) {
-    const results = await translateTexts(part, language)
+  const allResults = await Promise.all(
+    chunks.map((part) => translateTexts(part, language).then((results) => ({ part, results })))
+  )
+  for (const { part, results } of allResults) {
     for (let i = 0; i < part.length; i++) {
       map.set(part[i], results[i] ?? part[i])
     }
