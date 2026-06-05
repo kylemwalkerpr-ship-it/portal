@@ -5,7 +5,6 @@ import { EstateFooter } from '@/components/EstateFooter'
 import { SeoIntroBlock } from '@/components/SeoIntroBlock'
 import HomeClient from './HomeClient'
 import { getFeaturedGigs } from '@/components/design/landing/data/featured-services'
-import { getFeaturedProviders } from '@/components/design/landing/data/featured-providers'
 
 const SUPPORTED_LANGS = new Set(['en', 'es', 'fr', 'ar', 'zh', 'hi', 'pt'])
 
@@ -72,10 +71,7 @@ const HOMEPAGE_JSONLD = [
 ]
 
 export default async function Page() {
-  const [gigs, providers] = await Promise.all([
-    getFeaturedGigs(),
-    getFeaturedProviders(),
-  ])
+  const gigs = await getFeaturedGigs()
 
   return (
     <>
@@ -94,7 +90,7 @@ export default async function Page() {
         title="Study abroad consulting and legal document review in one secure portal."
         description="Trusted by students, attorneys, and consultants across the US, UK, and Canada. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
       />
-      <HomeClient gigs={gigs} providers={providers} />
+      <HomeClient gigs={gigs} />
       <EstateFooter />
     </>
   )

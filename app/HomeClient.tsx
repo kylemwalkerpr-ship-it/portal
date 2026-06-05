@@ -7,11 +7,9 @@ import Hero from '@/components/design/landing/Hero'
 import FeaturedServices from '@/components/design/landing/FeaturedServices'
 import TwoPractices from '@/components/design/landing/TwoPractices'
 import HowItWorks from '@/components/design/landing/HowItWorks'
-import FeaturedProviders from '@/components/design/landing/FeaturedProviders'
 import FAQ from '@/components/design/landing/FAQ'
 import FinalCTA from '@/components/design/landing/FinalCTA'
 import type { FeaturedGig } from '@/components/design/landing/data/featured-services'
-import type { FeaturedProvider } from '@/components/design/landing/data/featured-providers'
 
 // MemberSignInModal is invisible until the user clicks the Sign In button.
 // Eager-loading it pulled the Clerk sign-in UI bundle (~80 kB gzipped) into
@@ -25,10 +23,9 @@ const MemberSignInModal = dynamic(
 
 interface HomeClientProps {
   gigs: FeaturedGig[]
-  providers: FeaturedProvider[]
 }
 
-export default function HomeClient({ gigs, providers }: HomeClientProps) {
+export default function HomeClient({ gigs }: HomeClientProps) {
   const [signInOpen, setSignInOpen] = React.useState(false)
 
   return (
@@ -51,7 +48,6 @@ export default function HomeClient({ gigs, providers }: HomeClientProps) {
         <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
         <div className="stack-section"><TwoPractices /></div>
         <div className="stack-section"><HowItWorks /></div>
-        <div className="stack-section"><FeaturedProviders providers={providers} /></div>
         <div className="stack-section"><FAQ /></div>
         <div className="stack-section"><FinalCTA /></div>
       </div>
