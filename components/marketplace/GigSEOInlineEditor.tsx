@@ -84,6 +84,15 @@ interface GigSEOInlineEditorProps {
   field: EditableField
   initialValue: string | string[]
   hintFromCheck?: string
+  // When supplied, pre-fills the optional AI hint input. Used by the
+  // holistic audit modal so "Apply AI fix" buttons that target a
+  // specific cluster keyword arrive in the editor with the keyword
+  // already typed in.
+  prefillHint?: string
+  // Auto-trigger the AI draft once on mount. The audit modal sets
+  // this when the seller clicked "Apply AI fix" — they shouldn't have
+  // to hit the Draft button a second time.
+  autoDraft?: boolean
   onSaved: () => void
   onCancel: () => void
 }
@@ -141,17 +150,18 @@ async function patchJson(url: string, body: unknown) {
 }
 
 export default function GigSEOInlineEditor({
-  gigId, field, initialValue, hintFromCheck, onSaved, onCancel,
+  gigId, field, initialValue, hintFromCheck, prefillHint, autoDraft, onSaved, onCancel,
 }: GigSEOInlineEditorProps) {
   const cfg = FIELDS[field]
   const [value, setValue] = React.useState<string | string[]>(initialValue)
   const [tagDraft, setTagDraft] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [aiBusy, setAiBusy] = React.useState(false)
-  const [aiHint, setAiHint] = React.useState('')
+  const [aiHint, setAiHint] = React.useState(prefillHint || '')
   const [error, setError] = React.useState<string | null>(null)
   const [aiNote, setAiNote] = React.useState<string | null>(null)
   const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const autoFiredRef = React.useRef(false)
 
   React.useEffect(() => {
     // Autofocus the text input when the editor mounts so click-to-fix
@@ -194,6 +204,19 @@ export default function GigSEOInlineEditor({
       setSaving(false)
     }
   }
+
+  // Auto-fire the AI draft once on mount when the parent (the holistic
+  // audit modal) asked for it. Guarded by autoFiredRef so React 18
+  // strict-mode double-mount doesn't double-charge the AI provider.
+  React.useEffect(() => {
+    if (!autoDraft || autoFiredRef.current || !canAi) return
+    autoFiredRef.current = true
+    void handleAi()
+    // We deliberately depend only on autoDraft + canAi here; handleAi
+    // is recreated every render but the autoFiredRef guard ensures it
+    // only ever runs once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDraft, canAi])
 
   const addTagFromDraft = () => {
     const raw = tagDraft.trim().toLowerCase()

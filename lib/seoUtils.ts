@@ -1,38 +1,43 @@
 /**
  * SEO utility functions for gig content optimization.
  *
- * Keyword seeds are hand-curated from real legal/immigration search
- * terms — they are NOT LLM-generated and are not hallucinated. Each
- * list reflects high-intent buyer queries in that vertical.
+ * This module is a thin compatibility wrapper around the holistic
+ * scoring engine in lib/seoAudit.ts. It exists so legacy callers
+ * (the previous field-by-field analytics modal, the inline editor,
+ * unit tests written against the SEOScoreResult shape) keep working
+ * — but the actual scoring path now traverses the same 10-factor
+ * audit the new analytics modal renders.
  *
- * Future enhancement: pull live data from Google Search Console (OAuth
- * already set up at the repo level — see reference_oauth_credentials)
- * to rank these by actual click volume and trim ones the seller's site
- * doesn't surface for. Tracking issue: replace static seeds with a
- * scored result from /api/seo/keyword-suggestions once Search Console
- * project is added.
+ * If you're writing new code, prefer importing `runSeoAudit` from
+ * `lib/seoAudit.ts` directly — the AuditResult shape carries the
+ * cluster coverage map, intent diversity, schema readiness, E-E-A-T,
+ * live GSC alignment, and voice-hygiene data the legacy SEOCheck
+ * shape can't represent.
  */
 
-// Recommended keywords by category. Picked from terms that consistently
-// appear in immigration/legal SEO research (Ahrefs Keyword Explorer,
-// SEMrush Topic Research) for the buyer intent that gigs target —
-// "lawyer for X", "how to apply for X", "X application help", etc.
+import { runSeoAudit, type AuditGig, type AuditRole, type SellerCredibility, type SiblingGig } from './seoAudit'
+import type { LiveKeywordSignal } from './gscKeywordSignals'
+import { STRATEGIC_KEYWORDS, getStrategicKeywordsForGig } from './seoKnowledgeBase'
+
+// Legacy category-keyword map. Retained as a fallback when the
+// taxonomy + strategy bank doesn't yield a match — pre-existing
+// callers in lib/seoResearch.ts rely on this.
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'study-permit': ['study permit', 'student visa', 'study abroad', 'visa application', 'document review', 'F-1 visa', 'I-20', 'SEVIS'],
-  'visa': ['visa application', 'visa assistance', 'travel visa', 'visa interview', 'visa documents', 'visa appeal', 'visa denial'],
+  'study-permit':       ['study permit', 'student visa', 'study abroad', 'visa application', 'document review', 'F-1 visa', 'I-20', 'SEVIS'],
+  'visa':               ['visa application', 'visa assistance', 'travel visa', 'visa interview', 'visa documents', 'visa appeal', 'visa denial'],
   'legal-consultation': ['legal advice', 'legal review', 'lawyer consultation', 'legal documents', 'contract review', 'attorney advice', 'document drafting'],
-  'academic': ['university application', 'admission help', 'college essay', 'statement of purpose', 'academic writing', 'application review', 'sop editing'],
-  'career': ['resume review', 'cv writing', 'job search', 'interview prep', 'cover letter', 'linkedin profile', 'career coaching'],
-  'business': ['business plan', 'company formation', 'llc formation', 'business registration', 'corporate documents', 'business advice'],
+  'academic':           ['university application', 'admission help', 'college essay', 'statement of purpose', 'academic writing', 'application review', 'sop editing'],
+  'career':             ['resume review', 'cv writing', 'job search', 'interview prep', 'cover letter', 'linkedin profile', 'career coaching'],
+  'business':           ['business plan', 'company formation', 'llc formation', 'business registration', 'corporate documents', 'business advice'],
   'immigration': [
     'immigration lawyer', 'immigration help', 'green card', 'visa process',
     'residence permit', 'citizenship', 'naturalization', 'USCIS',
     'family-based immigration', 'work visa', 'H-1B', 'I-130',
   ],
-  'settlement': ['relocation help', 'housing setup', 'social security number', 'bank account setup', 'driver license', 'newcomer support'],
-  'credentials': ['credential evaluation', 'foreign degree assessment', 'WES evaluation', 'transcript verification', 'license recognition'],
-  'mentorship': ['career mentor', 'mentorship program', 'professional guidance', 'industry mentor', 'one on one coaching'],
-  'general': ['professional service', 'expert advice', 'document review', 'consultation', 'online service'],
+  'settlement':   ['relocation help', 'housing setup', 'social security number', 'bank account setup', 'driver license', 'newcomer support'],
+  'credentials':  ['credential evaluation', 'foreign degree assessment', 'WES evaluation', 'transcript verification', 'license recognition'],
+  'mentorship':   ['career mentor', 'mentorship program', 'professional guidance', 'industry mentor', 'one on one coaching'],
+  'general':      ['professional service', 'expert advice', 'document review', 'consultation', 'online service'],
 }
 
 export function getKeywordsForCategory(category = ''): string[] {
@@ -44,11 +49,32 @@ export function getKeywordsForCategory(category = ''): string[] {
   return CATEGORY_KEYWORDS.general
 }
 
+// Pull the strategic keyword bag for a (category × subcategory × jurisdiction × role)
+// tuple. Re-exported so callers that need the canonical knowledge-base view (instead
+// of the legacy substring bank) can reach it through one import.
+export function getStrategicKeywordsFor(opts: {
+  category: string
+  subcategory?: string
+  jurisdiction: string
+  role: AuditRole
+}): string[] {
+  const strategic = getStrategicKeywordsForGig(opts)
+  if (strategic.length > 0) return strategic.map((k) => k.term)
+  return STRATEGIC_KEYWORDS.slice(0, 6).map((k) => k.term)
+}
+
 export function countKeywordDensity(text: string, keywords: string[]): number {
   const lower = text.toLowerCase()
   const matches = keywords.filter((kw) => lower.includes(kw.toLowerCase()))
   return matches.length
 }
+
+// ---------------------------------------------------------------------
+// Legacy SEOData / SEOScoreResult shape. Preserved so the dashboard
+// fallback cards and any old callers keep type-checking. The computed
+// `checks` array is derived from the holistic audit's findings, so the
+// scoring stays in lockstep with the new modal even when consumers
+// haven't migrated.
 
 export interface SEOData {
   title: string
@@ -59,6 +85,10 @@ export interface SEOData {
   seo_description: string
   category: string
   jurisdiction: string
+  subcategory?: string
+  role?: AuditRole
+  faq?: Array<{ question?: string; answer?: string }>
+  tiers?: Array<{ tier?: string; price?: number; delivery_days?: number; features?: string[] }>
 }
 
 export interface SEOCheck {
@@ -73,82 +103,51 @@ export interface SEOScoreResult {
   checks: SEOCheck[]
 }
 
-export function computeSEOScore(data: SEOData): SEOScoreResult {
-  const finalTitle = data.seo_title || data.title
-  const metaDesc = data.seo_description || data.pitch || ''
-  const keywords = getKeywordsForCategory(data.category)
+export interface ComputeSEOScoreExtras {
+  role?: AuditRole
+  seller?: SellerCredibility | null
+  siblings?: SiblingGig[] | null
+  gscSignals?: LiveKeywordSignal[] | null
+  gigId?: string
+}
 
-  const checks: SEOCheck[] = [
-    {
-      label: 'Title present & 20–80 chars',
-      passed: data.title.length >= 20 && data.title.length <= 80,
-      weight: 15,
-      hint: data.title.length < 20 ? `Add ${20 - data.title.length} more characters` : 'Good length!',
-    },
-    {
-      label: 'SEO title filled (separate from gig title)',
-      passed: data.seo_title.length > 0 && data.seo_title !== data.title,
-      weight: 10,
-      hint: 'A separate SEO title lets you target different keywords than the gig title',
-    },
-    {
-      label: 'SEO title ≤ 60 chars (Google display limit)',
-      passed: finalTitle.length <= 60,
-      weight: 10,
-      hint: finalTitle.length > 60 ? `${finalTitle.length}/60 chars — Google may truncate this` : 'Within limits',
-    },
-    {
-      label: 'Meta description 120–160 chars',
-      passed: metaDesc.length >= 120 && metaDesc.length <= 160,
-      weight: 12,
-      hint: metaDesc.length < 120 ? `Add ${120 - metaDesc.length} more chars for optimal snippets` : metaDesc.length > 160 ? `${metaDesc.length}/160 — trim to avoid truncation` : 'Perfect length',
-    },
-    {
-      label: 'SEO description filled',
-      passed: data.seo_description.length > 0,
-      weight: 8,
-      hint: 'A custom meta description boosts click-through from search results',
-    },
-    {
-      label: 'Pitch/Tagline present (40–160 chars)',
-      passed: data.pitch.length >= 40 && data.pitch.length <= 160,
-      weight: 12,
-      hint: data.pitch.length < 40 ? `Need ${40 - data.pitch.length} more chars` : 'Great',
-    },
-    {
-      label: 'Description ≥ 300 chars',
-      passed: data.description.length >= 300,
-      weight: 10,
-      hint: data.description.length < 300 ? `${300 - data.description.length} more chars needed for rich snippets` : 'Good depth',
-    },
-    {
-      label: 'Tags: 3–5 set',
-      passed: data.tags.length >= 3 && data.tags.length <= 5,
-      weight: 8,
-      hint: data.tags.length < 3 ? 'Add more tags to improve discovery' : data.tags.length > 5 ? 'Max 5 tags' : 'Optimal',
-    },
-    {
-      label: 'Category selected',
-      passed: !!data.category,
-      weight: 5,
-      hint: 'Categorization is critical for search filtering',
-    },
-    {
-      label: 'Jurisdiction set',
-      passed: !!data.jurisdiction,
-      weight: 5,
-      hint: 'Clients filter by jurisdiction',
-    },
-    {
-      label: 'Keywords in title',
-      passed: countKeywordDensity(data.title, keywords) >= 1,
-      weight: 5,
-      hint: `Consider adding: ${keywords.slice(0, 2).join(', ')}`,
-    },
-  ]
+export function computeSEOScore(data: SEOData, extras: ComputeSEOScoreExtras = {}): SEOScoreResult {
+  const role: AuditRole = extras.role ?? data.role ?? 'consultant'
+  const gig: AuditGig = {
+    id: extras.gigId ?? 'inline',
+    title: data.title || null,
+    pitch: data.pitch || null,
+    description: data.description || null,
+    tags: data.tags ?? [],
+    category: data.category || null,
+    subcategory: data.subcategory || null,
+    jurisdiction: data.jurisdiction || null,
+    seo_title: data.seo_title || null,
+    seo_description: data.seo_description || null,
+    faq: data.faq ?? null,
+    tiers: data.tiers ?? null,
+  }
+  const audit = runSeoAudit({
+    gig,
+    role,
+    seller: extras.seller ?? null,
+    siblings: extras.siblings ?? null,
+    gscSignals: extras.gscSignals ?? null,
+  })
 
-  const passedWeight = checks.filter((c) => c.passed).reduce((sum, c) => sum + c.weight, 0)
-  const score = Math.round((passedWeight / 100) * 100)
+  // Project each section into the legacy SEOCheck shape so the old
+  // dashboard renderer (and any unit test snapshots) still works.
+  // Section score >= 70 = passed; weight maps to the audit section's
+  // weight scaled to ~100 (sum across all enabled sections).
+  const totalWeight = audit.sections.reduce((sum, s) => sum + s.weight, 0)
+  const checks: SEOCheck[] = audit.sections.map((s) => ({
+    label: s.label,
+    passed: s.score >= 70,
+    weight: Math.round((s.weight / Math.max(1, totalWeight)) * 100),
+    hint: s.findings.find((f) => f.kind !== 'ok')?.detail
+      || s.findings.find((f) => f.kind !== 'ok')?.label
+      || s.summary,
+  }))
 
-  return { score, checks }
+  return { score: audit.overall, checks }
 }

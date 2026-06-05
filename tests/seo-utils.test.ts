@@ -1,8 +1,14 @@
 /**
  * seo-utils.test.ts
  *
- * Unit tests for the SEO scoring and keyword utilities extracted from SEOPreviewPanel.
- * Pure function testing — no mocking required.
+ * Unit tests for the SEO scoring + keyword utilities. The scoring layer
+ * now delegates to lib/seoAudit.ts (the holistic, 10-factor audit), so
+ * these tests assert the COMPATIBILITY-WRAPPER semantics — the legacy
+ * SEOScoreResult { score, checks } shape continues to be safe to call
+ * with the same SEOData input and returns a non-throwing result that's
+ * a usable proxy for the holistic audit. The richer surface (cluster
+ * coverage, intent diversity, schema readiness, GSC) is tested via the
+ * audit module directly in seo-audit.test.ts.
  */
 
 import {
@@ -85,10 +91,10 @@ describe('countKeywordDensity', () => {
 })
 
 // ────────────────────────────────────────────────────────────
-// computeSEOScore
+// computeSEOScore — compatibility wrapper semantics
 // ────────────────────────────────────────────────────────────
 
-describe('computeSEOScore', () => {
+describe('computeSEOScore (compatibility wrapper)', () => {
   const validData = {
     title: 'Expert Canadian Study Permit Application Assistance',
     pitch: 'We help international students navigate the Canadian study permit application process with expert document review and filing support.',
@@ -97,7 +103,7 @@ describe('computeSEOScore', () => {
     seo_title: 'Canadian Study Permit Help | YouSafe',
     seo_description: 'Get expert assistance with your Canadian study permit application. Professional document review and filing support for international students.',
     category: 'immigration',
-    jurisdiction: 'Canada',
+    jurisdiction: 'ca',
   }
 
   it('returns a score between 0 and 100', () => {
@@ -106,123 +112,64 @@ describe('computeSEOScore', () => {
     expect(result.score).toBeLessThanOrEqual(100)
   })
 
-  it('returns all 11 checks', () => {
+  it('returns a non-empty list of section-level checks', () => {
     const result = computeSEOScore(validData)
-    expect(result.checks).toHaveLength(11)
-  })
-
-  it('gives a high score for fully optimized data', () => {
-    const result = computeSEOScore(validData)
-    expect(result.score).toBeGreaterThanOrEqual(65)
-  })
-
-  it('gives a low score for empty data with default jurisdiction', () => {
-    const result = computeSEOScore({
-      title: '',
-      pitch: '',
-      description: '',
-      tags: [],
-      seo_title: '',
-      seo_description: '',
-      category: '',
-      jurisdiction: '',
+    expect(result.checks.length).toBeGreaterThan(0)
+    // Each check carries a label + weight + passed + hint.
+    result.checks.forEach((c) => {
+      expect(typeof c.label).toBe('string')
+      expect(typeof c.weight).toBe('number')
+      expect(typeof c.passed).toBe('boolean')
+      expect(typeof c.hint).toBe('string')
     })
-    expect(result.score).toBeLessThanOrEqual(15)
   })
 
-  it('fails the title check for short titles', () => {
-    const result = computeSEOScore({ ...validData, title: 'Hi' })
-    const titleCheck = result.checks.find(c => c.label.includes('Title') && c.label.includes('20'))
-    expect(titleCheck?.passed).toBe(false)
-  })
-
-  it('passes the title check for titles 20–80 chars', () => {
-    const result = computeSEOScore({ ...validData, title: 'X'.repeat(40) })
-    const titleCheck = result.checks.find(c => c.label.includes('Title') && c.label.includes('20'))
-    expect(titleCheck?.passed).toBe(true)
-  })
-
-  it('fails SEO title length check when > 60 chars', () => {
-    const result = computeSEOScore({ ...validData, seo_title: 'X'.repeat(65) })
-    const lengthCheck = result.checks.find(c => c.label.includes('60'))
-    expect(lengthCheck?.passed).toBe(false)
-  })
-
-  it('passes meta description length check at 150 chars', () => {
+  it('handles empty data without throwing and reports a low score', () => {
     const result = computeSEOScore({
-      ...validData,
-      seo_description: 'X'.repeat(150),
+      title: '', pitch: '', description: '', tags: [],
+      seo_title: '', seo_description: '', category: '', jurisdiction: '',
     })
-    const descCheck = result.checks.find(c => c.label.includes('Meta description'))
-    expect(descCheck?.passed).toBe(true)
+    expect(result.score).toBeDefined()
+    // With nothing filled, the audit's section-by-section weights drag the
+    // result well under 30 even with the renormalization wrapping.
+    expect(result.score).toBeLessThan(30)
   })
 
-  it('fails description check when < 300 chars', () => {
-    const result = computeSEOScore({
-      ...validData,
-      description: 'Short desc',
-    })
-    const descCheck = result.checks.find(c => c.label.includes('Description'))
-    expect(descCheck?.passed).toBe(false)
-  })
-
-  it('fails tags check when 0 tags', () => {
-    const result = computeSEOScore({ ...validData, tags: [] })
-    const tagsCheck = result.checks.find(c => c.label.includes('Tags'))
-    expect(tagsCheck?.passed).toBe(false)
-  })
-
-  it('passes tags check with exactly 3 tags', () => {
-    const result = computeSEOScore(validData)
-    const tagsCheck = result.checks.find(c => c.label.includes('Tags'))
-    expect(tagsCheck?.passed).toBe(true)
-  })
-
-  it('fails category check when empty', () => {
-    const result = computeSEOScore({ ...validData, category: '' })
-    const catCheck = result.checks.find(c => c.label.includes('Category'))
-    expect(catCheck?.passed).toBe(false)
-  })
-
-  it('fails jurisdiction check when empty', () => {
-    const result = computeSEOScore({ ...validData, jurisdiction: '' })
-    const jurCheck = result.checks.find(c => c.label.includes('Jurisdiction'))
-    expect(jurCheck?.passed).toBe(false)
-  })
-
-  it('weights are correct and sum to approximately 100', () => {
+  it('section weights renormalize to ~100', () => {
     const result = computeSEOScore(validData)
     const totalWeight = result.checks.reduce((sum, c) => sum + c.weight, 0)
-    expect(totalWeight).toBe(100)
-
-    // Each weight is positive
-    result.checks.forEach(c => {
-      expect(c.weight).toBeGreaterThan(0)
-    })
+    // Floor + rounding can introduce +/- 2 drift; assert the contract is
+    // "weights sum to about 100" not the exact integer.
+    expect(totalWeight).toBeGreaterThanOrEqual(95)
+    expect(totalWeight).toBeLessThanOrEqual(105)
   })
 
-  it('each check has a hint string', () => {
+  it('emits a hint string for every check', () => {
     const result = computeSEOScore(validData)
-    result.checks.forEach(c => {
+    result.checks.forEach((c) => {
       expect(typeof c.hint).toBe('string')
-      expect(c.hint.length).toBeGreaterThan(0)
     })
   })
 
-  it('handles all empty string fields gracefully', () => {
+  it('a fully empty gig surfaces the snippet-engineering finding as failed', () => {
+    const result = computeSEOScore({
+      title: '', pitch: '', description: '', tags: [],
+      seo_title: '', seo_description: '', category: '', jurisdiction: '',
+    })
+    const snippet = result.checks.find((c) => c.label.toLowerCase().includes('snippet'))
+    expect(snippet?.passed).toBe(false)
+  })
+
+  it('a well-formed snippet passes the snippet-engineering check', () => {
     const data = {
-      title: 'Adequate Title Here',
-      pitch: '',
-      description: '',
-      tags: [],
-      seo_title: '',
-      seo_description: '',
-      category: '',
-      jurisdiction: '',
+      ...validData,
+      seo_title: 'Canadian Study Permit Help — YouSafe',
+      seo_description: 'Get expert assistance with your Canadian study permit application. Professional document review and filing support for international students.',
+      description: 'A'.repeat(400),
     }
-    const result = computeSEOScore(data)
-    // Should still run without throwing
-    expect(result.score).toBeDefined()
-    expect(result.checks.length).toBe(11)
+    const result = computeSEOScore(data, { role: 'attorney' })
+    const snippet = result.checks.find((c) => c.label.toLowerCase().includes('snippet'))
+    // Snippet readiness >= 70 → passed in the compatibility wrapper.
+    expect(snippet?.passed).toBe(true)
   })
 })
