@@ -32,6 +32,14 @@ const isPublicRoute = createRouteMatcher([
   '/api/reviews(.*)',
   '/api/attorneys(.*)',
   '/api/consultants(.*)',
+  // /api/providers is the unified directory the marketplace Find Attorney
+  // page hits via the FindAttorney component (defaults to Consultants tab,
+  // exposes Attorneys alongside). Handler uses createSupabaseAdminClient
+  // directly with no mutation paths, gates onboarding via isOnboarded()
+  // so empty profiles never leak. Without this entry, anon visitors on
+  // market.yousafeconsultancy.com/marketplace?view=attorneys see a
+  // big red "Unauthorized" banner instead of the panel.
+  '/api/providers(.*)',
   // /api/profile is hit on every marketplace page by MarketplaceShell to
   // resolve the current user's role. The GET handler returns
   // `{ profile: null }` for anonymous callers; PATCH still enforces auth
