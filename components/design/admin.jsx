@@ -478,6 +478,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="📄" label="PDF Maker" active={typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/admin/templates/pdf-maker')} onClick={() => { if (typeof window !== 'undefined') window.location.href = '/dashboard/admin/templates/pdf-maker' }} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>

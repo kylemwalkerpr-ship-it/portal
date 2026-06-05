@@ -14,6 +14,8 @@ import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
+import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
+import { getManifest } from '@/lib/templatePdfManifests'
 
 export async function POST(req: Request) {
   const auth = await getCurrentStudent()
@@ -129,9 +131,12 @@ export async function POST(req: Request) {
     )
 
     // Record template orders
+    const pdfWarnings: string[] = []
+    let templateOrderId: string | null = null
     if (templateItems.length > 0) {
+      templateOrderId = randomUUID()
       const { error: tplErr } = await db.from('template_orders').insert({
-        id: randomUUID(),
+        id: templateOrderId,
         email: profile.email || '',
         name: profile.full_name || '',
         slugs: templateItems.map((v) => v.slug),
@@ -141,6 +146,69 @@ export async function POST(req: Request) {
       })
       if (tplErr) {
         console.error('[wallet/debit] template_orders insert failed:', tplErr)
+      } else {
+        // Best-effort: generate prefilled PDFs and upload to private storage.
+        // A failure here MUST NOT roll back the debit — we already took
+        // the user's money and the legacy download path remains available.
+        for (const item of templateItems) {
+          try {
+            const manifest = getManifest(item.slug)
+            if (!manifest) {
+              pdfWarnings.push(`No manifest for ${item.slug}`)
+              continue
+            }
+            const pack = getTemplatePack(item.slug)
+            const prefill = buildPrefill({
+              userFullName: profile.full_name || '',
+              userEmail: profile.email || '',
+              orderId: templateOrderId,
+              templateName: pack?.name || item.name,
+              templateBadge: pack?.badge || '',
+            })
+            const pdfBytes = await generateTemplatePdf({
+              manifest,
+              prefillValues: prefill,
+              meta: {
+                templateName: pack?.name || item.name,
+                templateBadge: pack?.badge,
+                templateDescription: pack?.short_description,
+                keywords: pack?.includes,
+                userFullName: profile.full_name || '',
+                userEmail: profile.email || '',
+                orderId: templateOrderId,
+                generationDate: new Date(),
+              },
+            })
+            const storagePath = `templates-generated/${profile.id}/${item.slug}/${templateOrderId}.pdf`
+            const { error: upErr } = await db.storage
+              .from('templates')
+              .upload(storagePath, pdfBytes, {
+                contentType: 'application/pdf',
+                upsert: true,
+              })
+            if (upErr) {
+              pdfWarnings.push(`Upload failed for ${item.slug}: ${upErr.message}`)
+              continue
+            }
+            const { error: renderErr } = await db.from('template_pdf_renders').insert({
+              id: randomUUID(),
+              profile_id: profile.id,
+              slug: item.slug,
+              order_id: templateOrderId,
+              transaction_id: tx.id,
+              storage_bucket: 'templates',
+              storage_path: storagePath,
+              size_bytes: pdfBytes.byteLength,
+            })
+            if (renderErr) {
+              pdfWarnings.push(`Render row failed for ${item.slug}: ${renderErr.message}`)
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'PDF generation failed'
+            pdfWarnings.push(`PDF for ${item.slug}: ${msg}`)
+            console.error('[wallet/debit] pdf gen', item.slug, msg)
+          }
+        }
       }
     }
 
@@ -175,11 +243,12 @@ export async function POST(req: Request) {
 
     return Response.json({
       ok: true,
-      orderId: randomUUID(),
+      orderId: templateOrderId ?? randomUUID(),
       status: 'paid',
       totalCents,
       balanceCents: tx.balance_after_cents,
       ledgerId: tx.id,
+      pdfWarnings: pdfWarnings.length ? pdfWarnings : undefined,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Debit failed'
