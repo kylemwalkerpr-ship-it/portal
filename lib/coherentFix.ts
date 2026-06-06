@@ -56,6 +56,18 @@ export interface CoherentFixSeoArgs {
   // Optional regeneration nonce — when callers re-roll, bump this so
   // even at temperature 0.4 the response varies.
   seed?: number
+  // Optional directed-intent guidance for the rewrite. Used by the
+  // route layer to feed the audit's `intentBucketHints` (missing
+  // buckets + concrete example phrases) into the prompt so the AI
+  // doesn't just receive a generic "broaden intent" hint.
+  intentBucketHints?: Array<{ bucket: string; phrases: string[] }>
+  // Optional missing keyword the seller asked us to weave in. Used by
+  // the cluster-coverage "MISSING — add this keyword" flow so the AI
+  // knows the EXACT phrase + intent bucket to insert.
+  targetedKeyword?: {
+    term: string
+    intent?: string
+  } | null
 }
 
 export type SeoEditableField =
@@ -122,6 +134,38 @@ function buildSeoSystemPrompt(role: 'attorney' | 'consultant'): string {
 function buildSeoUserPrompt(args: CoherentFixSeoArgs): string {
   const fields = args.targetFields
   const limits = fields.map(f => `- ${f}: ${SEO_FIELD_LIMITS[f]}`).join('\n')
+  // Directed-intent block — when present, the AI gets the missing
+  // buckets and example phrases for each so the rewrite measurably
+  // increases the audit's intent.covered count (target: +1-3 buckets).
+  const intentBlock = args.intentBucketHints && args.intentBucketHints.length > 0
+    ? [
+        '## Intent buckets the audit says are MISSING — fill at least 2 of these',
+        ...args.intentBucketHints.map((h) => {
+          const samples = h.phrases.map((p) => `"${p}"`).join(', ')
+          return `- ${h.bucket}: weave phrasing similar to ${samples}.`
+        }),
+        '',
+        'Concrete patterns by bucket:',
+        '- long_tail: write a step-by-step paragraph or numbered list using a 5+ word user query.',
+        '- comparison: add a short "how I differ from..." paragraph using comparison phrasing.',
+        '- trust: insert credibility cues — years of experience, completed orders, response window.',
+        '- informational: explain a process or definition the buyer searches before buying.',
+        '- transactional: include a clear hire/book/order verb tied to the deliverable.',
+        '- study_abroad: name the visa/program/school program when appropriate.',
+        '- cross_appeal: bridge two related needs (e.g. essay + visa, career + mentor).',
+        'After your rewrite, the audit\'s intent.covered count MUST increase by at least 1, ideally 2-3.',
+        '',
+      ].join('\n')
+    : ''
+  const targetedKwBlock = args.targetedKeyword
+    ? [
+        '## Targeted keyword to weave in (THE specific phrase, not a synonym)',
+        `- term: "${args.targetedKeyword.term}"`,
+        args.targetedKeyword.intent ? `- intent bucket it fills: ${args.targetedKeyword.intent}` : '',
+        'Weave it into description and tags (or title when relevant). Don\'t pad — REPLACE a weaker phrase if needed so word counts stay close to the original.',
+        '',
+      ].filter(Boolean).join('\n')
+    : ''
   return [
     '## Current gig state (DO NOT change any field that is not in the editable list)',
     gigSnapshot(args.gig),
@@ -134,6 +178,8 @@ function buildSeoUserPrompt(args: CoherentFixSeoArgs): string {
     `- label: ${args.issueLabel}`,
     `- hint: ${args.issueHint}`,
     '',
+    targetedKwBlock,
+    intentBlock,
     '## Fields you MAY edit (and their limits)',
     limits,
     '',
@@ -174,6 +220,28 @@ export interface CoherentFixSeoResult {
     after: string | string[] | Array<{ question: string; answer: string }>
     rationale: string
   }>
+}
+// Helper: expose the raw parsed changes for downstream score
+// projection. The route layer feeds these into projectAuditAfterPatch
+// to compute expectedScoreDelta before returning.
+export function changesToPatch(
+  changes: CoherentFixSeoResult['changes'],
+): Partial<{
+  title: string; seo_title: string; seo_description: string;
+  pitch: string; description: string;
+  tags: string[]; faq: Array<{ question: string; answer: string }>
+}> {
+  const out: Record<string, unknown> = {}
+  for (const c of changes) {
+    if (c.field === 'tags') {
+      out.tags = Array.isArray(c.after) ? (c.after as string[]) : []
+    } else if (c.field === 'faq') {
+      out.faq = Array.isArray(c.after) ? (c.after as Array<{ question: string; answer: string }>) : []
+    } else if (typeof c.after === 'string') {
+      out[c.field] = c.after
+    }
+  }
+  return out as ReturnType<typeof changesToPatch>
 }
 export interface CoherentFixFailure {
   ok: false

@@ -27,6 +27,7 @@ import { Btn, Card, Badge } from '../design/shared'
 import { T, F } from './tokens'
 import GigSEOInlineEditor, { type EditableField } from './GigSEOInlineEditor'
 import type { AuditResult, SectionFinding, SectionId, IntentBucket } from '@/lib/seoAudit'
+import { PLATEAU_THRESHOLDS } from '@/lib/seoAudit'
 
 // ---------------------------------------------------------------------
 // Types
@@ -78,6 +79,32 @@ interface CoherentFixRequest {
   // Non-AI items (internal-link, GSC when disabled) skip the AI call
   // and render a static explanation + CTA instead.
   staticExplanation?: { body: string; cta?: { label: string; href: string } }
+  // Optional: weave THIS specific cluster keyword in. Surfaced when
+  // the seller clicks a MISSING pill so the AI gets the exact phrase
+  // and its intent bucket, not just a generic "broaden coverage" hint.
+  targetedKeyword?: { term: string; intent?: string }
+}
+
+// Server-side score-delta envelope returned by /api/seo/coherent-fix.
+// The modal shows it as "Score: 46 → 71 (+25)" so the seller has
+// closure feedback before committing.
+interface ExpectedScoreDelta {
+  current: number
+  projected: number
+  deltaBySection: Array<{ id: string; label: string; delta: number }>
+  intentBucketsAdded: IntentBucket[]
+}
+
+// One-click DIFFERENTIATE request. Triggered by the "Differentiate"
+// button next to each cannibalized keyword pill — opens a sibling
+// modal that POSTs /api/seo/differentiate-gig with the contested
+// keyword + IDs of the sibling gigs that share it, then renders the
+// proposed swap + a PATCH commit for the displaced gig.
+interface DifferentiateRequest {
+  gigId: string
+  cannibalKeyword: string
+  siblingGigIds: string[]
+  siblingTitles: string[]
 }
 
 // Maps an audit SectionFinding.fix.field (which is a single EditableField)
@@ -335,9 +362,14 @@ function SectionCard({
 // Cluster coverage map (Section 2)
 
 function ClusterCoverageMap({
-  audit, onCoherentFix,
-}: { audit: AuditResult; onCoherentFix: (r: CoherentFixRequest) => void }) {
+  audit, onCoherentFix, onDifferentiate,
+}: {
+  audit: AuditResult
+  onCoherentFix: (r: CoherentFixRequest) => void
+  onDifferentiate: (r: DifferentiateRequest) => void
+}) {
   const entry = audit.clusterCoverage[0]
+  const [showOptional, setShowOptional] = React.useState(false)
   if (!entry) {
     return (
       <div style={{ fontSize: 12, color: T.inkSoft, padding: '8px 0' }}>
@@ -345,8 +377,11 @@ function ClusterCoverageMap({
       </div>
     )
   }
-  const total = entry.covered.length + entry.missing.length
-  const pct = total > 0 ? Math.round((entry.covered.length / total) * 100) : 0
+  const pct = Math.round(entry.coverageRatio * 100)
+  // Cap displayed missing to PLATEAU_THRESHOLDS.missingDisplayCap. The
+  // audit already ranks + caps but we double-bound here so the UI is
+  // self-contained when consuming an older audit shape.
+  const missingDisplay = entry.missing.slice(0, PLATEAU_THRESHOLDS.missingDisplayCap)
   return (
     <div>
       <div style={{ marginBottom: 12 }}>
@@ -377,35 +412,89 @@ function ClusterCoverageMap({
         </div>
       )}
 
-      {entry.missing.length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-            Missing — high value to add
+      {/* MISSING section. When the cluster has plateaued the section is
+          collapsed by default into "optional refinements" — that's how
+          we kill the endless-treadmill loop the user reported. */}
+      {missingDisplay.length > 0 && entry.plateau && !showOptional && (
+        <div style={{
+          marginBottom: 10, padding: '10px 12px',
+          background: `${T.moss}08`, border: `1px solid ${T.moss}33`, borderRadius: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div style={{ fontSize: 12, color: T.ink, lineHeight: 1.5 }}>
+            Cluster already at <strong>{pct}% coverage</strong> with description + title plateau met.
+            No more required keywords here — this section is now optional.
           </div>
-          {entry.missing.map((kw) => (
-            <div key={kw} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '6px 10px', marginBottom: 4,
-              background: '#FEF5E4', border: '1px solid #F0E2C0', borderRadius: 6,
-              fontSize: 12, color: T.ink,
+          <button type="button" onClick={() => setShowOptional(true)}
+            style={{
+              flexShrink: 0, padding: '5px 10px', fontSize: 11, fontWeight: 700,
+              background: 'transparent', color: T.moss,
+              border: `1px solid ${T.moss}55`, borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
             }}>
-              <span style={{ fontWeight: 600 }}>{kw}</span>
-              <button type="button"
-                onClick={() => onCoherentFix({
-                  issueId: 'cluster_coverage',
-                  issueLabel: `Add the keyword "${kw}" to this gig`,
-                  issueHint: `Weave the missing primary-cluster keyword "${kw}" into the description and tags. Keep all other fields byte-identical.`,
-                  targetFields: ['description', 'tags', 'title'],
-                })}
-                style={{
-                  padding: '4px 10px', fontSize: 11, fontWeight: 700,
-                  background: NAVY, color: '#FFFFFF',
-                  border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
-                }}>
-                One-click fix
-              </button>
+            Show optional refinements
+          </button>
+        </div>
+      )}
+      {missingDisplay.length > 0 && (!entry.plateau || showOptional) && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            marginBottom: 6,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: entry.plateau ? T.inkSoft : '#B45309', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {entry.plateau
+                ? `Optional refinements (cluster already at ${pct}% coverage)`
+                : `Missing — high value to add (top ${missingDisplay.length})`}
             </div>
-          ))}
+            {entry.plateau && (
+              <button type="button" onClick={() => setShowOptional(false)}
+                style={{
+                  padding: '3px 8px', fontSize: 10, fontWeight: 600,
+                  background: 'transparent', color: T.inkSoft,
+                  border: `1px solid ${T.rule}`, borderRadius: 4, cursor: 'pointer', fontFamily: F.ui,
+                }}>Hide</button>
+            )}
+          </div>
+          {missingDisplay.map((kw) => {
+            const bucket = entry.missingIntent?.[kw]
+            const bucketLabel = bucket ? INTENT_LABELS[bucket] : null
+            return (
+              <div key={kw} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px', marginBottom: 4,
+                background: entry.plateau ? VELLUM : '#FEF5E4',
+                border: `1px solid ${entry.plateau ? T.rule : '#F0E2C0'}`,
+                borderRadius: 6, fontSize: 12, color: T.ink,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                  <span style={{ fontWeight: 600 }}>{kw}</span>
+                  {bucketLabel && (
+                    <span style={{
+                      padding: '1px 7px', borderRadius: 999,
+                      background: `${NAVY}10`, color: NAVY,
+                      fontSize: 10, fontWeight: 700,
+                      border: `1px solid ${NAVY}33`, whiteSpace: 'nowrap',
+                    }}>fills {bucketLabel}</span>
+                  )}
+                </div>
+                <button type="button"
+                  onClick={() => onCoherentFix({
+                    issueId: 'cluster_coverage',
+                    issueLabel: `Weave "${kw}" into this gig`,
+                    issueHint: `Weave the missing primary-cluster keyword "${kw}" into description${bucket ? ` (it fills the ${INTENT_LABELS[bucket]} intent bucket)` : ''}. Don't pad — replace a weaker phrase if needed.`,
+                    targetFields: ['description', 'tags', 'title'],
+                    targetedKeyword: { term: kw, intent: bucket },
+                  })}
+                  style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                    background: NAVY, color: '#FFFFFF',
+                    border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
+                  }}>
+                  One-click fix
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -414,18 +503,47 @@ function ClusterCoverageMap({
           <div style={{ fontSize: 11, fontWeight: 700, color: T.brick, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
             Cannibalized — splits ranking with your other gigs
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
-            {entry.cannibalized.map((kw) => (
-              <span key={kw} style={{
-                padding: '4px 10px', borderRadius: 999,
-                background: `${T.brick}14`, color: T.brick,
-                fontSize: 11, fontWeight: 600,
-                border: `1px solid ${T.brick}44`,
-              }}>{kw}</span>
-            ))}
-          </div>
-          <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.5 }}>
-            These primary keywords also appear in other gigs of yours, which splits Google's ranking signal between competing pages. Differentiate each gig's title + meta so only one targets each phrase.
+          {entry.cannibalized.map((kw) => {
+            const warning = audit.cannibalizationWarnings.find((w) => w.keyword === kw)
+            const siblingGigIds = (warning?.otherGigs ?? []).map((g) => g.id)
+            const siblingTitles = (warning?.otherGigs ?? []).map((g) => g.title || '(untitled)')
+            const hasSiblings = siblingGigIds.length > 0
+            return (
+              <div key={kw} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '6px 10px', marginBottom: 4,
+                background: `${T.brick}08`, border: `1px solid ${T.brick}33`, borderRadius: 6,
+                fontSize: 12, color: T.ink, gap: 10,
+              }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ fontWeight: 600, color: T.brick }}>{kw}</span>
+                  {siblingTitles.length > 0 && (
+                    <span style={{ fontSize: 11, color: T.inkSoft, marginLeft: 6 }}>
+                      · also in: {siblingTitles.slice(0, 2).join(', ')}{siblingTitles.length > 2 ? `, +${siblingTitles.length - 2}` : ''}
+                    </span>
+                  )}
+                </div>
+                {hasSiblings && (
+                  <button type="button"
+                    onClick={() => onDifferentiate({
+                      gigId: '',
+                      cannibalKeyword: kw,
+                      siblingGigIds,
+                      siblingTitles,
+                    })}
+                    style={{
+                      flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                      background: T.brick, color: '#FFFFFF',
+                      border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
+                    }}>
+                    Differentiate
+                  </button>
+                )}
+              </div>
+            )
+          })}
+          <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.5, marginTop: 6 }}>
+            Click <strong>Differentiate</strong> to let the AI pick which gig should own each phrase and propose a distinct primary keyword for the other.
           </div>
         </div>
       )}
@@ -465,22 +583,30 @@ function IntentDiversityGrid({
       <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 8 }}>
         {audit.intent.covered}/7 buckets covered. Diverse intent coverage means Google can rank this gig for the buyer's research, comparison, and trust queries — not just the obvious transactional one.
       </div>
-      {audit.intent.covered < 5 && (
-        <button type="button"
-          onClick={() => onCoherentFix({
-            issueId: 'intent_diversity',
-            issueLabel: 'Broaden intent coverage',
-            issueHint: 'Add informational + comparison-intent phrasing across description and FAQ so Google can rank this gig for buyer-research queries, not just transactional ones.',
-            targetFields: ['description', 'faq'],
-          })}
-          style={{
-            padding: '6px 12px', fontSize: 11, fontWeight: 700,
-            background: NAVY, color: '#FFFFFF',
-            border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: F.ui,
-          }}>
-          One-click fix: broaden intent coverage
-        </button>
-      )}
+      {audit.intent.covered < PLATEAU_THRESHOLDS.intentCoveredSatisfied && audit.intentMissingBuckets.length > 0 && (() => {
+        // Build a directed hint inline so the modal can render the
+        // exact buckets we're asking the AI to fill. The route layer
+        // ALSO forwards the audit's per-bucket example phrases — this
+        // hint stays human-readable for the modal preview header.
+        const labels = audit.intentMissingBuckets.map((b) => INTENT_LABELS[b])
+        const hint = `ADD the missing intent buckets (${labels.join(', ')}) to description + FAQ. The audit will inject the specific example phrases for each missing bucket. After the rewrite the intent.covered count MUST increase by at least 1.`
+        return (
+          <button type="button"
+            onClick={() => onCoherentFix({
+              issueId: 'intent_diversity',
+              issueLabel: `Broaden intent coverage — fill the ${labels.join(', ')} bucket${labels.length > 1 ? 's' : ''}`,
+              issueHint: hint,
+              targetFields: ['description', 'faq'],
+            })}
+            style={{
+              padding: '6px 12px', fontSize: 11, fontWeight: 700,
+              background: NAVY, color: '#FFFFFF',
+              border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: F.ui,
+            }}>
+            One-click fix: broaden intent coverage
+          </button>
+        )
+      })()}
     </div>
   )
 }
@@ -957,10 +1083,11 @@ function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: 
   const [error, setError] = React.useState<string | null>(null)
   const [seed, setSeed] = React.useState(0)
   const [provider, setProvider] = React.useState('AI provider')
+  const [delta, setDelta] = React.useState<ExpectedScoreDelta | null>(null)
 
   const generate = React.useCallback(async (nextSeed?: number) => {
     if (request.staticExplanation) return
-    setLoading(true); setError(null); setChanges([])
+    setLoading(true); setError(null); setChanges([]); setDelta(null)
     try {
       const res = await fetch('/api/seo/coherent-fix', {
         method: 'POST', credentials: 'same-origin',
@@ -971,6 +1098,7 @@ function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: 
           issueLabel: request.issueLabel,
           issueHint: request.issueHint,
           targetFields: request.targetFields,
+          targetedKeyword: request.targetedKeyword ?? null,
           seed: nextSeed ?? seed,
         }),
       })
@@ -980,13 +1108,16 @@ function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: 
       }
       const data = payload?.data ?? payload
       setChanges((data?.changes ?? []) as CoherentFixApiChange[])
+      if (data?.expectedScoreDelta && typeof data.expectedScoreDelta === 'object') {
+        setDelta(data.expectedScoreDelta as ExpectedScoreDelta)
+      }
       setProvider('AI provider')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Coherent fix failed')
     } finally {
       setLoading(false)
     }
-  }, [gigId, request.staticExplanation, request.issueId, request.issueLabel, request.issueHint, request.targetFields, seed])
+  }, [gigId, request.staticExplanation, request.issueId, request.issueLabel, request.issueHint, request.targetFields, request.targetedKeyword, seed])
 
   React.useEffect(() => {
     void generate(0)
@@ -1054,9 +1185,47 @@ function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: 
             <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 600, color: T.ink, lineHeight: 1.3 }}>
               {request.issueLabel}
             </div>
-            {request.liftEstimate && (
+            {request.liftEstimate && !delta && (
               <div style={{ marginTop: 4, fontSize: 12, color: T.moss, fontWeight: 700 }}>
                 Estimated lift: {request.liftEstimate}
+              </div>
+            )}
+            {delta && (
+              <div style={{
+                marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center',
+              }}>
+                <span style={{
+                  padding: '4px 10px', borderRadius: 999,
+                  background: delta.projected > delta.current ? `${T.moss}18` : T.rule,
+                  color: delta.projected > delta.current ? T.moss : T.inkSoft,
+                  border: `1px solid ${delta.projected > delta.current ? `${T.moss}44` : T.rule}`,
+                  fontSize: 12, fontWeight: 800,
+                }}>
+                  Score: {delta.current} → {delta.projected}
+                  {delta.projected !== delta.current && (
+                    <span style={{ marginLeft: 6 }}>
+                      ({delta.projected > delta.current ? '+' : ''}{delta.projected - delta.current})
+                    </span>
+                  )}
+                </span>
+                {delta.intentBucketsAdded.length > 0 && (
+                  <span style={{
+                    padding: '4px 10px', borderRadius: 999,
+                    background: `${NAVY}14`, color: NAVY,
+                    border: `1px solid ${NAVY}44`,
+                    fontSize: 11, fontWeight: 700,
+                  }}>
+                    +{delta.intentBucketsAdded.length} intent bucket{delta.intentBucketsAdded.length > 1 ? 's' : ''}: {delta.intentBucketsAdded.map((b) => INTENT_LABELS[b]).join(', ')}
+                  </span>
+                )}
+                {delta.deltaBySection.slice(0, 2).map((d) => (
+                  <span key={d.id} style={{
+                    fontSize: 11, color: d.delta > 0 ? T.moss : d.delta < 0 ? T.brick : T.inkSoft,
+                    fontWeight: 600,
+                  }}>
+                    {d.label} {d.delta > 0 ? '+' : ''}{d.delta}
+                  </span>
+                ))}
               </div>
             )}
             {request.issueHint && (
@@ -1190,6 +1359,221 @@ function CoherentFixModal({ gigId, request, onClose, onSaved, onEditManually }: 
 }
 
 // ---------------------------------------------------------------------
+// Differentiate modal — opened when the seller clicks the
+// "Differentiate" button next to a cannibalized keyword pill. Calls
+// POST /api/seo/differentiate-gig with { gigId, cannibalKeyword,
+// siblingGigIds }, then renders the AI proposal (who owns the keyword,
+// what the displaced gig retargets) and lets the seller PATCH the
+// displaced gig with a single click.
+
+interface DifferentiateApiResult {
+  ownerGigId: string
+  displacedGigId: string | null
+  newPrimaryKeyword: string | null
+  newTitle: string | null
+  newSeoTitle: string | null
+  newSeoDescription: string | null
+  rationale: string
+  contestedKeyword: string
+  cluster: string | null
+  stale?: boolean
+  displacedBefore: {
+    id: string
+    title: string | null
+    seo_title: string | null
+    seo_description: string | null
+  } | null
+}
+
+interface DifferentiateModalProps {
+  gigId: string
+  request: DifferentiateRequest
+  onClose: () => void
+  onSaved: () => void
+}
+
+function DifferentiateModal({ gigId, request, onClose, onSaved }: DifferentiateModalProps) {
+  const [result, setResult] = React.useState<DifferentiateApiResult | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const generate = React.useCallback(async () => {
+    setLoading(true); setError(null); setResult(null)
+    try {
+      const res = await fetch('/api/seo/differentiate-gig', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gigId,
+          cannibalKeyword: request.cannibalKeyword,
+          siblingGigIds: request.siblingGigIds,
+        }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload?.error?.message || `Differentiation failed (${res.status})`)
+      const data = payload?.data ?? payload
+      setResult(data as DifferentiateApiResult)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Differentiation failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [gigId, request.cannibalKeyword, request.siblingGigIds])
+
+  React.useEffect(() => { void generate() }, [generate])
+
+  const accept = async () => {
+    if (!result || !result.displacedGigId || !result.newTitle || !result.newSeoTitle || !result.newSeoDescription) return
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch(`/api/gigs/${result.displacedGigId}`, {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: result.newTitle,
+          seo_title: result.newSeoTitle,
+          seo_description: result.newSeoDescription,
+        }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => ({}))
+        throw new Error(p?.error?.message || `Save failed (${res.status})`)
+      }
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const displacedIsThisGig = result?.displacedGigId === gigId
+  const summary = result
+    ? displacedIsThisGig
+      ? `This gig will retarget "${result.newPrimaryKeyword}" instead of "${result.contestedKeyword}" so your sibling gig can own it cleanly.`
+      : `Your sibling gig will retarget "${result.newPrimaryKeyword}" instead of "${result.contestedKeyword}" so this gig can own it cleanly.`
+    : ''
+
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9000,
+        background: 'rgba(15,23,42,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 720, maxHeight: '90vh',
+          background: PAPER, borderRadius: 12,
+          border: `1px solid ${T.rule}`,
+          boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+          display: 'flex', flexDirection: 'column', fontFamily: F.ui,
+        }}>
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.rule}`, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 600, color: T.ink, lineHeight: 1.3 }}>
+              Resolve cannibalization on “{request.cannibalKeyword}”
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: T.inkSoft, lineHeight: 1.5 }}>
+              {request.siblingTitles.length > 0
+                ? `Conflicting with: ${request.siblingTitles.join(', ')}`
+                : 'No sibling gigs to compare.'}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            style={{
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              fontSize: 18, color: T.inkSoft, padding: 4, marginRight: -4,
+            }}>×</button>
+        </div>
+
+        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
+          {loading ? (
+            <div style={{ fontSize: 13, color: T.inkSoft, fontStyle: 'italic' }}>
+              Asking the AI which gig should own the keyword and what to retarget the other onto…
+            </div>
+          ) : error ? (
+            <div>
+              <div style={{ color: T.brick, fontSize: 13, marginBottom: 10 }}>{error}</div>
+              <button type="button" onClick={generate}
+                style={{
+                  padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                  background: NAVY, color: '#FFFFFF',
+                  border: 'none', borderRadius: 5, cursor: 'pointer',
+                }}>Retry</button>
+            </div>
+          ) : result?.stale ? (
+            <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.6 }}>
+              No sibling gigs match this keyword anymore — the cannibalization warning is stale. Close this dialog and re-run the audit.
+            </div>
+          ) : result ? (
+            <div>
+              <div style={{
+                padding: '10px 12px', marginBottom: 12,
+                background: `${NAVY}08`, border: `1px solid ${NAVY}33`, borderRadius: 6,
+                fontSize: 13, color: T.ink, lineHeight: 1.55,
+              }}>
+                {summary}
+                {result.rationale && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: T.inkSoft, fontStyle: 'italic' }}>
+                    Why: {result.rationale}
+                  </div>
+                )}
+              </div>
+
+              {result.displacedBefore && result.newTitle && result.newSeoTitle && result.newSeoDescription && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ border: `1px solid ${T.rule}`, borderRadius: 8, background: VELLUM, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                      Displaced gig title
+                    </div>
+                    <DiffBlock before={result.displacedBefore.title || ''} after={result.newTitle} />
+                  </div>
+                  <div style={{ border: `1px solid ${T.rule}`, borderRadius: 8, background: VELLUM, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                      Displaced gig SEO title
+                    </div>
+                    <DiffBlock before={result.displacedBefore.seo_title || ''} after={result.newSeoTitle} />
+                  </div>
+                  <div style={{ border: `1px solid ${T.rule}`, borderRadius: 8, background: VELLUM, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                      Displaced gig meta description
+                    </div>
+                    <DiffBlock before={result.displacedBefore.seo_description || ''} after={result.newSeoDescription} />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.rule}`, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', background: VELLUM }}>
+          <button type="button" onClick={onClose}
+            style={{
+              padding: '7px 14px', fontSize: 12, fontWeight: 600,
+              background: 'transparent', color: T.inkSoft,
+              border: `1px solid ${T.rule}`, borderRadius: 6, cursor: 'pointer',
+            }}>Cancel</button>
+          {result && !result.stale && result.displacedGigId && (
+            <button type="button" onClick={accept} disabled={saving || loading}
+              style={{
+                padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                background: saving ? T.rule : T.ink, color: '#FFFFFF',
+                border: 'none', borderRadius: 6,
+                cursor: saving || loading ? 'wait' : 'pointer',
+              }}>
+              {saving ? 'Saving…' : displacedIsThisGig ? 'Accept and update this gig' : 'Accept and update sibling gig'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Per-gig holistic audit card (the expanded surface)
 
 function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void }) {
@@ -1201,6 +1585,9 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
   // Open coherent-fix modal request. When non-null the modal is shown
   // and auto-fires the AI call on mount.
   const [coherentFix, setCoherentFix] = React.useState<CoherentFixRequest | null>(null)
+  // Open differentiate-gig modal request. When non-null the modal is
+  // shown and auto-fires the AI call on mount.
+  const [differentiate, setDifferentiate] = React.useState<DifferentiateRequest | null>(null)
 
   const load = React.useCallback(async () => {
     setLoading(true); setError(null)
@@ -1242,6 +1629,43 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
 
   const section = (id: SectionId) => audit.sections.find((s) => s.id === id)
 
+  // Cap how many OPEN findings (warn|fail with a fix hint) the seller
+  // sees across the whole audit. The user's "endless treadmill"
+  // complaint = too many issues open at once. We rank open findings
+  // by section weight × (100 - section score) so the highest-leverage
+  // issues stay visible and the rest become "noise" we suppress in
+  // the UI. Plateaued cluster-coverage findings are excluded from the
+  // pruning set so the seller never sees them as open issues either.
+  const visibleFindingKeys: Set<string> = React.useMemo(() => {
+    const candidates: Array<{ key: string; weightedDelta: number }> = []
+    for (const s of audit.sections) {
+      const isClusterPlateau = s.id === 'cluster_coverage'
+        && (audit.clusterCoverage[0]?.plateau ?? false)
+      const isIntentSatisfied = s.id === 'intent_diversity'
+        && audit.intent.covered >= PLATEAU_THRESHOLDS.intentCoveredSatisfied
+      for (let i = 0; i < s.findings.length; i += 1) {
+        const f = s.findings[i]
+        if (f.kind === 'ok' || !f.fix) continue
+        if (isClusterPlateau || isIntentSatisfied) continue
+        const key = `${s.id}|${i}`
+        const weightedDelta = (s.weight || 1) * Math.max(1, 100 - s.score)
+        candidates.push({ key, weightedDelta })
+      }
+    }
+    candidates.sort((a, b) => b.weightedDelta - a.weightedDelta)
+    return new Set(candidates.slice(0, PLATEAU_THRESHOLDS.maxOutstandingIssues).map((c) => c.key))
+  }, [audit])
+
+  const renderFindings = (sectionId: SectionId, findings: SectionFinding[]) =>
+    findings.map((f, i) => {
+      const key = `${sectionId}|${i}`
+      // Always show OK findings — they're not "issues", they're
+      // affirmation. Only prune unfixable warn/fail rows that fell
+      // outside the top-N.
+      if (f.kind !== 'ok' && f.fix && !visibleFindingKeys.has(key)) return null
+      return <FindingRow key={i} finding={f} sectionId={sectionId} onCoherentFix={setCoherentFix} />
+    })
+
   return (
     <div style={{ padding: '14px 16px 18px', background: PAPER, borderTop: `1px solid ${T.rule}` }}>
       {/* KPI strip */}
@@ -1257,8 +1681,8 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         <KpiTile
           label="Intent coverage"
           value={`${audit.intent.covered}/7`}
-          sub={audit.intent.covered >= 5 ? 'Diverse intent surface' : 'Add more intent variety'}
-          color={audit.intent.covered >= 5 ? T.moss : '#D97706'}
+          sub={audit.intent.covered >= PLATEAU_THRESHOLDS.intentCoveredSatisfied ? 'Diverse intent surface' : 'Add more intent variety'}
+          color={audit.intent.covered >= PLATEAU_THRESHOLDS.intentCoveredSatisfied ? T.moss : '#D97706'}
         />
         <KpiTile
           label="Snippet readiness"
@@ -1288,7 +1712,11 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('cluster_coverage')?.summary ?? ''}
         expanded={expandedSections.has('cluster_coverage')}
         onToggle={() => toggle('cluster_coverage')}>
-        <ClusterCoverageMap audit={audit} onCoherentFix={setCoherentFix} />
+        <ClusterCoverageMap
+          audit={audit}
+          onCoherentFix={setCoherentFix}
+          onDifferentiate={(r) => setDifferentiate({ ...r, gigId: gig.id })}
+        />
       </SectionCard>
 
       <SectionCard title="Intent diversity" score={section('intent_diversity')?.score ?? 0}
@@ -1306,9 +1734,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         onToggle={() => toggle('snippet_engineering')}>
         <SnippetEditor gig={gig} onSaved={handleSavedInner} />
         <div style={{ marginTop: 14 }}>
-          {(section('snippet_engineering')?.findings ?? []).map((f, i) => (
-            <FindingRow key={i} finding={f} sectionId="snippet_engineering" onCoherentFix={setCoherentFix} />
-          ))}
+          {renderFindings('snippet_engineering', section('snippet_engineering')?.findings ?? [])}
         </div>
       </SectionCard>
 
@@ -1317,9 +1743,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('jurisdiction_alignment')?.summary ?? ''}
         expanded={expandedSections.has('jurisdiction_alignment')}
         onToggle={() => toggle('jurisdiction_alignment')}>
-        {(section('jurisdiction_alignment')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} sectionId="jurisdiction_alignment" onCoherentFix={setCoherentFix} />
-        ))}
+        {renderFindings('jurisdiction_alignment', section('jurisdiction_alignment')?.findings ?? [])}
       </SectionCard>
 
       <SectionCard title="Schema.org readiness" score={section('schema_readiness')?.score ?? 0}
@@ -1354,9 +1778,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('eeat_surfacing')?.summary ?? ''}
         expanded={expandedSections.has('eeat_surfacing')}
         onToggle={() => toggle('eeat_surfacing')}>
-        {(section('eeat_surfacing')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} sectionId="eeat_surfacing" onCoherentFix={setCoherentFix} />
-        ))}
+        {renderFindings('eeat_surfacing', section('eeat_surfacing')?.findings ?? [])}
       </SectionCard>
 
       <SectionCard title="Internal-link surface" score={section('internal_link_surface')?.score ?? 0}
@@ -1405,9 +1827,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
           summary={section('gsc_alignment')?.summary ?? ''}
           expanded={expandedSections.has('gsc_alignment')}
           onToggle={() => toggle('gsc_alignment')}>
-          {(section('gsc_alignment')?.findings ?? []).map((f, i) => (
-            <FindingRow key={i} finding={f} sectionId="gsc_alignment" onCoherentFix={setCoherentFix} />
-          ))}
+          {renderFindings('gsc_alignment', section('gsc_alignment')?.findings ?? [])}
         </SectionCard>
       )}
 
@@ -1416,9 +1836,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         summary={section('voice_hygiene')?.summary ?? ''}
         expanded={expandedSections.has('voice_hygiene')}
         onToggle={() => toggle('voice_hygiene')}>
-        {(section('voice_hygiene')?.findings ?? []).map((f, i) => (
-          <FindingRow key={i} finding={f} sectionId="voice_hygiene" onCoherentFix={setCoherentFix} />
-        ))}
+        {renderFindings('voice_hygiene', section('voice_hygiene')?.findings ?? [])}
         {audit.bannedPhrasesFound.length > 0 && (
           <div style={{ marginTop: 8, padding: '10px 12px', background: `${T.brick}08`, border: `1px solid ${T.brick}33`, borderRadius: 6 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.brick, marginBottom: 4 }}>AI tells detected</div>
@@ -1439,11 +1857,31 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
             Keyword cannibalization across your gigs
           </div>
           <div style={{ fontSize: 12, color: T.ink, lineHeight: 1.55, marginBottom: 8 }}>
-            These primary keywords appear in multiple of your active gigs, which splits ranking signals between competing pages:
+            These primary keywords appear in multiple of your active gigs, which splits ranking signals between competing pages. Click <strong>Differentiate</strong> to let the AI pick which gig should own each phrase and retarget the other.
           </div>
           {audit.cannibalizationWarnings.map((w) => (
-            <div key={w.keyword} style={{ fontSize: 12, color: T.ink, marginBottom: 4 }}>
-              · <strong>{w.keyword}</strong> — also in: {w.otherGigs.map((g) => g.title).join(', ')}
+            <div key={w.keyword} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px 0', borderBottom: `1px solid ${T.brick}22`,
+              fontSize: 12, color: T.ink, gap: 10,
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                · <strong>{w.keyword}</strong> — also in: {w.otherGigs.map((g) => g.title).join(', ')}
+              </div>
+              <button type="button"
+                onClick={() => setDifferentiate({
+                  gigId: gig.id,
+                  cannibalKeyword: w.keyword,
+                  siblingGigIds: w.otherGigs.map((g) => g.id),
+                  siblingTitles: w.otherGigs.map((g) => g.title || '(untitled)'),
+                })}
+                style={{
+                  flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                  background: T.brick, color: '#FFFFFF',
+                  border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: F.ui,
+                }}>
+                Differentiate
+              </button>
             </div>
           ))}
         </div>
@@ -1492,6 +1930,15 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
             setCoherentFix(null)
             setEditor({ field, prefillHint: hint, autoDraft: false })
           }}
+        />
+      )}
+
+      {differentiate && (
+        <DifferentiateModal
+          gigId={gig.id}
+          request={differentiate}
+          onClose={() => setDifferentiate(null)}
+          onSaved={() => { setDifferentiate(null); void handleSavedInner() }}
         />
       )}
     </div>

@@ -126,10 +126,27 @@ export interface ClusterCoverageEntry {
   // Keywords in this cluster that the gig surfaces somewhere.
   covered: string[]
   // Keywords NOT yet in the gig but recommended by the strategy doc.
+  // Intent-aware ranked (weight × intent-gap multiplier) and capped at
+  // PLATEAU_THRESHOLDS.missingDisplayCap. This is what the UI shows.
   missing: string[]
+  // Per-keyword intent bucket that the missing keyword would fill — keyed
+  // by term. The UI uses this to render the bucket tag on the chip and
+  // the coherent-fix client passes it to the AI hint so the rewrite
+  // targets the specific intent gap.
+  missingIntent: Record<string, IntentBucket>
   // Keywords that ALSO appear in another of the seller's gigs (split
   // ranking signals). Rendered as a separate amber-red callout.
   cannibalized: string[]
+  // True when the cluster has reached the "good enough" plateau:
+  // - coverage ratio >= clusterCoverageRatio
+  // - transactionalInTitle (set on the title)
+  // - descCoverageCount >= clusterDescCoverageCount
+  // When true the UI collapses the MISSING section into "optional
+  // refinements" instead of treating it as an open issue.
+  plateau: boolean
+  // Coverage ratio (0..1) for the cluster bag. Convenience for the UI
+  // copy ("cluster already at 87% coverage").
+  coverageRatio: number
 }
 
 export interface IntentCoverage {
@@ -183,10 +200,109 @@ export interface AuditResult {
   strategicCovered: string[]
   // Strategic keywords the gig is missing and SHOULD weave in.
   strategicMissing: string[]
+  // Intent buckets that have ZERO coverage — feeds the directed
+  // "broaden intent coverage" hint with per-bucket example phrases.
+  intentMissingBuckets: IntentBucket[]
+  // The example phrases the coherent-fix route should weave into the
+  // rewrite, one entry per missing bucket. Pulled from the primary
+  // cluster bank when the bank has examples for that intent, else from
+  // INTENT_BUCKET_EXAMPLE_PHRASES.
+  intentBucketHints: Array<{ bucket: IntentBucket; phrases: string[] }>
 }
 
 // ---------------------------------------------------------------------
-// Helpers
+// Tunable plateau thresholds. Surfaced as a NAMED constant so the UI
+// and the API routes can both reason about "good enough" without
+// duplicating magic numbers. Tuning these here moves the whole funnel.
+//
+//  - clusterCoverageRatio: covered/(covered+missing) above which we stop
+//    treating the cluster as a fresh source of issues. The seller can
+//    still see "optional refinements" but the MISSING section is
+//    collapsed by default.
+//  - clusterDescCoverageCount: minimum number of cluster keywords woven
+//    into the description prose.
+//  - missingDisplayCap: hard cap on how many "MISSING" pills the UI
+//    will ever render — quality over quantity.
+//  - intentCoveredSatisfied: once intent.covered reaches this number
+//    the "broaden intent coverage" CTA disappears.
+//  - maxOutstandingIssues: the seller should never see more than this
+//    many open issues at once. The UI ranks the open findings by
+//    section-weight × delta-to-100 and trims the rest.
+export const PLATEAU_THRESHOLDS = {
+  clusterCoverageRatio: 0.80,
+  clusterDescCoverageCount: 6,
+  missingDisplayCap: 5,
+  intentCoveredSatisfied: 5,
+  maxOutstandingIssues: 6,
+} as const
+
+// Intent-gap multipliers — applied on top of the StrategicKeyword
+// intent weight when ranking the missing list. Keywords that fill a
+// bucket the gig has ZERO coverage in rank above keywords whose bucket
+// is already saturated.
+const INTENT_GAP_MULTIPLIER_EMPTY = 2.4
+const INTENT_GAP_MULTIPLIER_LIGHT = 1.4
+const INTENT_GAP_MULTIPLIER_FULL = 0.8
+
+// Human-facing labels for the intent buckets — used inside the AI hint
+// the coherent-fix route relays. UI labels live in the React layer.
+const INTENT_LABEL_FOR_HINT: Record<IntentBucket, string> = {
+  transactional: 'Transactional',
+  informational: 'Informational',
+  long_tail: 'Long-tail',
+  comparison: 'Comparison',
+  study_abroad: 'Study-Abroad',
+  trust: 'Trust',
+  cross_appeal: 'Cross-Appeal',
+}
+
+// Intent → example-phrase corpus. The coherent-fix flow uses these to
+// build a directed AI hint per missing bucket so the rewrite has
+// concrete phrasing to imitate instead of a generic "add intent
+// variety" prompt. Each bucket carries 3 short prototypes — the route
+// also pulls cluster-specific examples from STRATEGIC_KEYWORDS when
+// available, but these are the safety net for clusters with thin banks.
+export const INTENT_BUCKET_EXAMPLE_PHRASES: Record<IntentBucket, string[]> = {
+  transactional: [
+    'book a 1:1 session today',
+    'order your edit now',
+    'hire a verified specialist',
+  ],
+  informational: [
+    'a step-by-step guide to',
+    'how to write a',
+    'what to expect from',
+  ],
+  long_tail: [
+    'step-by-step admissions essay guide for international applicants',
+    'how to write a common app essay with limited extracurriculars',
+    'detailed roadmap for first-generation graduate-school applicants',
+  ],
+  comparison: [
+    'best common app essay editors compared',
+    'how I differ from generic editing services',
+    'pros and cons versus large-volume essay mills',
+  ],
+  study_abroad: [
+    'F-1 visa, OPT, and study-permit applicants',
+    'international student admissions strategy',
+    'SOP and scholarship-essay specialist',
+  ],
+  trust: [
+    'former admissions reader essay reviews',
+    'completed 400+ admissions edits since 2019',
+    '24-hour response window, refund guarantee',
+  ],
+  cross_appeal: [
+    'career mentor for international graduates',
+    'admissions coach who has placed students at',
+    'mentorship that bridges essays and visa strategy',
+  ],
+}
+
+// Single-row score helper used by `rerunScore` so the coherent-fix
+// route can project an expected delta without duplicating the whole
+// runSeoAudit pipeline.
 
 const CTA_VERBS = [
   'get', 'book', 'review', 'talk', 'start', 'order', 'request',
@@ -307,15 +423,16 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
     ? STRATEGIC_KEYWORDS.filter((k) => k.cluster === primaryCluster && surfaceFilter.has(k.surface))
     : []
 
-  // Identify covered / missing within the primary cluster.
+  // Identify covered / missing within the primary cluster — and keep
+  // the StrategicKeyword reference around for the ranked-missing pass
+  // below (we need intent + cluster to score each candidate).
   const clusterCovered: string[] = []
-  const clusterMissing: string[] = []
+  const clusterMissingRaw: StrategicKeyword[] = []
   for (const k of clusterBag) {
     if (containsCi(text.full, k.term) || hasAnyTokenOverlap(text.full, k.term)) clusterCovered.push(k.term)
-    else clusterMissing.push(k.term)
+    else clusterMissingRaw.push(k)
   }
-  // Cap missing list to most-relevant 8 for the UI.
-  const clusterMissingTop = clusterMissing.slice(0, 8)
+
   // Cannibalization — same keyword appearing in another active gig of
   // this seller. Splits ranking signals.
   const cannibalizationWarnings: Array<{ keyword: string; otherGigs: SiblingGig[] }> = []
@@ -323,12 +440,6 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
     const others = siblings.filter((s) => s.id !== gig.id && (containsCi(s.title || '', k) || containsCi(s.seo_title || '', k)))
     if (others.length > 0) cannibalizationWarnings.push({ keyword: k, otherGigs: others })
   }
-  const clusterCoverage: ClusterCoverageEntry[] = primaryCluster ? [{
-    cluster: primaryCluster,
-    covered: clusterCovered,
-    missing: clusterMissingTop,
-    cannibalized: cannibalizationWarnings.map((c) => c.keyword),
-  }] : []
 
   // Score: split into title-transactional / desc-coverage / long-tail-or-compare.
   const transactionalInTitle = clusterBag.some((k) =>
@@ -336,13 +447,99 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
   const descCoverageCount = clusterBag.reduce((n, k) => n + (containsCi(text.desc, k.term) ? 1 : 0), 0)
   const hasLongOrCompareIntent = clusterBag.some((k) =>
     (k.cluster === 'compare' || k.term.split(/\s+/).length >= 5) && containsCi(text.full, k.term))
+
+  // -- Intent-aware ranking of the MISSING list. -----------------------
+  // First pass: which buckets are already covered by the gig's CURRENT
+  // copy. We use the same wider+role-aware corpus as the intent
+  // diversity section so the two sections stay consistent.
+  const widerForBucketing = isValidJx && primaryCluster
+    ? STRATEGIC_KEYWORDS.filter((k) => surfaceFilter.has(k.surface))
+    : []
+  const currentBucketCounts: Record<IntentBucket, number> = {
+    transactional: 0, informational: 0, long_tail: 0,
+    comparison: 0, study_abroad: 0, trust: 0, cross_appeal: 0,
+  }
+  for (const kw of widerForBucketing) {
+    if (!containsCi(text.full, kw.term)) continue
+    for (const b of bucketsForKeyword(kw)) currentBucketCounts[b] += 1
+  }
+  // Strategic-intent weight: transactional > commercial > informational.
+  const intentBaseWeight = (kw: StrategicKeyword): number => {
+    if (kw.intent === 'transactional') return 1.0
+    if (kw.intent === 'commercial') return 0.85
+    return 0.65
+  }
+  const gapMultiplier = (count: number): number => {
+    if (count === 0) return INTENT_GAP_MULTIPLIER_EMPTY
+    if (count <= 2) return INTENT_GAP_MULTIPLIER_LIGHT
+    return INTENT_GAP_MULTIPLIER_FULL
+  }
+  // Pick the bucket each missing keyword would fill (max-gap bucket if
+  // it covers several). This is what the UI tags onto the chip.
+  const bestBucketFor = (kw: StrategicKeyword): IntentBucket | null => {
+    const buckets = bucketsForKeyword(kw)
+    if (buckets.length === 0) return null
+    let best: IntentBucket = buckets[0]
+    let bestCount = currentBucketCounts[best]
+    for (const b of buckets) {
+      if (currentBucketCounts[b] < bestCount) { best = b; bestCount = currentBucketCounts[b] }
+    }
+    return best
+  }
+  const scoreForMissing = (kw: StrategicKeyword): number => {
+    const buckets = bucketsForKeyword(kw)
+    if (buckets.length === 0) return intentBaseWeight(kw)
+    // Use the BEST (lowest current-count) bucket so a long-tail keyword
+    // that fills a missing bucket beats a transactional one whose
+    // bucket is already saturated. That's the user's stated rule.
+    const minCount = buckets.reduce((m, b) => Math.min(m, currentBucketCounts[b]), Number.POSITIVE_INFINITY)
+    return intentBaseWeight(kw) * gapMultiplier(minCount)
+  }
+  const rankedMissing = clusterMissingRaw
+    .map((kw) => ({ kw, score: scoreForMissing(kw), bucket: bestBucketFor(kw) }))
+    .sort((a, b) => b.score - a.score)
+  const clusterMissingTop = rankedMissing
+    .slice(0, PLATEAU_THRESHOLDS.missingDisplayCap)
+    .map((r) => r.kw.term)
+  const missingIntent: Record<string, IntentBucket> = {}
+  for (const r of rankedMissing.slice(0, PLATEAU_THRESHOLDS.missingDisplayCap)) {
+    if (r.bucket) missingIntent[r.kw.term] = r.bucket
+  }
+
+  // Coverage ratio + plateau flag. A cluster at plateau still shows
+  // the top-N missing pills as "optional refinements", not as open
+  // issues — that's how we kill the endless treadmill.
+  const totalBag = clusterCovered.length + clusterMissingRaw.length
+  const coverageRatio = totalBag > 0 ? clusterCovered.length / totalBag : 0
+  const clusterPlateau = (
+    coverageRatio >= PLATEAU_THRESHOLDS.clusterCoverageRatio
+    && transactionalInTitle
+    && descCoverageCount >= PLATEAU_THRESHOLDS.clusterDescCoverageCount
+  )
+
+  const clusterCoverage: ClusterCoverageEntry[] = primaryCluster ? [{
+    cluster: primaryCluster,
+    covered: clusterCovered,
+    missing: clusterMissingTop,
+    missingIntent,
+    cannibalized: cannibalizationWarnings.map((c) => c.keyword),
+    plateau: clusterPlateau,
+    coverageRatio,
+  }] : []
+
+  // Score: title-transactional + diminishing-returns desc-coverage +
+  // long-tail-or-compare. Diminishing returns means the seller stops
+  // chasing keyword saturation once "good enough" is reached. We
+  // weight desc coverage on a curve so going from 4→6 covered cluster
+  // keywords still moves the needle, but 12→16 barely does.
   const clusterFindings: SectionFinding[] = []
   let clusterScore = 0
   if (clusterBag.length === 0) {
     clusterFindings.push({ kind: 'warn', label: 'No primary cluster matched', detail: 'Set category + jurisdiction so the SEO knowledge base can target a keyword cluster.' })
   } else {
+    // (a) Title transactional — 35 pts.
     if (transactionalInTitle) {
-      clusterScore += 40
+      clusterScore += 35
       clusterFindings.push({ kind: 'ok', label: 'Title carries a transactional cluster keyword' })
     } else {
       clusterFindings.push({
@@ -352,9 +549,20 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
         fix: { field: 'title', hint: `Lead with a transactional keyword from the ${primaryCluster} cluster, e.g. "${clusterBag[0]?.term ?? ''}".` },
       })
     }
-    if (descCoverageCount >= 3) {
-      clusterScore += 35
-      clusterFindings.push({ kind: 'ok', label: `Description covers ${descCoverageCount} cluster keywords` })
+    // (b) Desc coverage — diminishing-returns curve up to 45 pts.
+    // 1-(0.78^count) means count=3 ≈ 26pts, count=6 ≈ 36pts, count=10 ≈ 42pts.
+    // Plateaus near the cap so the seller's 11th add gains <1pt.
+    const descCurve = Math.round((1 - Math.pow(0.78, Math.max(0, descCoverageCount))) * 45)
+    clusterScore += descCurve
+    if (descCoverageCount >= PLATEAU_THRESHOLDS.clusterDescCoverageCount) {
+      clusterFindings.push({ kind: 'ok', label: `Description covers ${descCoverageCount} cluster keywords (plateau threshold met)` })
+    } else if (descCoverageCount >= 3) {
+      clusterFindings.push({
+        kind: 'warn',
+        label: `Description covers ${descCoverageCount}/${PLATEAU_THRESHOLDS.clusterDescCoverageCount} cluster keywords`,
+        detail: `Weave a few more cluster keywords into the description prose to plateau this section.`,
+        fix: { field: 'description', hint: `Weave 1–2 more cluster keywords into the description, e.g. ${clusterMissingTop.slice(0, 2).map((t) => `"${t}"`).join(', ')}. Don't pad — replace a weaker phrase if needed.` },
+      })
     } else {
       clusterFindings.push({
         kind: 'fail',
@@ -363,8 +571,9 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
         fix: { field: 'description', hint: `Weave in at least 3 keywords from the ${primaryCluster} cluster, e.g. ${clusterMissingTop.slice(0, 3).map((t) => `"${t}"`).join(', ')}.` },
       })
     }
+    // (c) Long-tail / comparison anchor — 20 pts.
     if (hasLongOrCompareIntent) {
-      clusterScore += 25
+      clusterScore += 20
       clusterFindings.push({ kind: 'ok', label: 'A long-tail or comparison keyword is present' })
     } else {
       clusterFindings.push({
@@ -374,6 +583,7 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
         fix: { field: 'description', hint: `Add a long-tail or comparison keyword like "${clusterBag.find((k) => k.cluster === 'compare')?.term ?? clusterBag.find((k) => k.term.split(/\s+/).length >= 5)?.term ?? ''}".` },
       })
     }
+    clusterScore = Math.min(100, clusterScore)
   }
 
   // ------- 2. INTENT DIVERSITY -------
@@ -393,10 +603,54 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
   const intentCovered = (Object.values(intentBuckets).filter((arr) => arr.length > 0)).length
   const intent: IntentCoverage = { buckets: intentBuckets, covered: intentCovered, total: 7 }
   const intentScore = Math.round((intentCovered / 7) * 100)
+
+  // Compute the missing buckets + per-bucket example phrases now so
+  // both the intent_diversity finding's fix hint AND the AuditResult
+  // can carry the targeted guidance. The coherent-fix route uses these
+  // to build the AI prompt with concrete phrasing for each gap — that
+  // was the user's "Fix C" complaint: the generic "broaden intent"
+  // hint didn't tell the model WHICH buckets to fill.
+  const intentMissingBuckets: IntentBucket[] = (Object.keys(intentBuckets) as IntentBucket[])
+    .filter((b) => intentBuckets[b].length === 0)
+  const intentBucketHints: Array<{ bucket: IntentBucket; phrases: string[] }> = intentMissingBuckets
+    .map((bucket) => {
+      // Prefer keywords from the gig's wider role/jurisdiction-aware
+      // strategic set that map onto THIS bucket — they're already
+      // role-appropriate phrasing.
+      const fromBank = wider
+        .filter((k) => bucketsForKeyword(k).includes(bucket))
+        .map((k) => k.term)
+        .slice(0, 3)
+      const phrases = fromBank.length >= 2
+        ? fromBank
+        : [...fromBank, ...INTENT_BUCKET_EXAMPLE_PHRASES[bucket]].slice(0, 3)
+      return { bucket, phrases }
+    })
+
+  const intentBucketHintBlock = intentBucketHints
+    .map((h) => {
+      const samples = h.phrases.map((p) => `"${p}"`).join(', ')
+      return `${INTENT_LABEL_FOR_HINT[h.bucket]} (missing): weave phrasing like ${samples}.`
+    })
+    .join(' ')
+  const intentFixHint = intentMissingBuckets.length === 0
+    ? 'Intent coverage already broad — no rewrite needed.'
+    : `ADD these specific intent gaps to description and FAQ. ${intentBucketHintBlock} Don't pad — replace a weaker phrase if needed. After the rewrite the intent bucket count MUST increase by at least 1, ideally 2-3.`
+
   const intentFindings: SectionFinding[] = []
-  if (intentCovered >= 5) intentFindings.push({ kind: 'ok', label: `Covers ${intentCovered}/7 intent buckets` })
-  else if (intentCovered >= 3) intentFindings.push({ kind: 'warn', label: `Covers only ${intentCovered}/7 intent buckets`, detail: 'Add an informational, long-tail, or comparison keyword to broaden the search-intent surface area.' })
-  else intentFindings.push({ kind: 'fail', label: `Covers only ${intentCovered}/7 intent buckets`, detail: 'Add informational, comparison, or trust-intent keywords so Google can rank this for more than the obvious transactional query.', fix: { field: 'description', hint: 'Add an informational or comparison-intent keyword to broaden intent coverage.' } })
+  if (intentCovered >= PLATEAU_THRESHOLDS.intentCoveredSatisfied) intentFindings.push({ kind: 'ok', label: `Covers ${intentCovered}/7 intent buckets` })
+  else if (intentCovered >= 3) intentFindings.push({
+    kind: 'warn',
+    label: `Covers only ${intentCovered}/7 intent buckets`,
+    detail: `Missing buckets: ${intentMissingBuckets.map((b) => INTENT_LABEL_FOR_HINT[b]).join(', ')}. The one-click fix targets these explicitly.`,
+    fix: { field: 'description', hint: intentFixHint },
+  })
+  else intentFindings.push({
+    kind: 'fail',
+    label: `Covers only ${intentCovered}/7 intent buckets`,
+    detail: `Missing buckets: ${intentMissingBuckets.map((b) => INTENT_LABEL_FOR_HINT[b]).join(', ')}.`,
+    fix: { field: 'description', hint: intentFixHint },
+  })
 
   // ------- 3. JURISDICTION ALIGNMENT -------
   const jxFindings: SectionFinding[] = []
@@ -790,6 +1044,53 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
     gscEnabled,
     strategicCovered: strategic.filter((k) => containsCi(text.full, k.term)).map((k) => k.term),
     strategicMissing: strategic.filter((k) => !containsCi(text.full, k.term)).map((k) => k.term),
+    intentMissingBuckets,
+    intentBucketHints,
+  }
+}
+
+// Build a projected AuditResult by re-running the audit against a
+// patched copy of the gig. The coherent-fix route uses this to compute
+// `expectedScoreDelta` BEFORE the seller commits the rewrite. The
+// caller is expected to keep `seller`, `siblings`, and `gscSignals`
+// stable so the delta isolates the field-level rewrite's impact.
+export function projectAuditAfterPatch(
+  input: AuditInputs,
+  patch: Partial<Pick<AuditGig, 'title' | 'seo_title' | 'seo_description' | 'pitch' | 'description' | 'tags' | 'faq'>>,
+): AuditResult {
+  const merged: AuditGig = { ...input.gig, ...patch }
+  return runSeoAudit({ ...input, gig: merged })
+}
+
+// Compute the per-section delta surfaced in the coherent-fix modal.
+// `before` is the audit at click-time, `after` is the projected audit
+// once the rewrite is patched in. Sections that don't move are pruned.
+export interface ExpectedScoreDelta {
+  current: number
+  projected: number
+  deltaBySection: Array<{ id: SectionId; label: string; delta: number }>
+  intentBucketsAdded: IntentBucket[]
+}
+export function buildExpectedScoreDelta(before: AuditResult, after: AuditResult): ExpectedScoreDelta {
+  const map = new Map(before.sections.map((s) => [s.id, s]))
+  const deltaBySection: ExpectedScoreDelta['deltaBySection'] = []
+  for (const a of after.sections) {
+    const b = map.get(a.id)
+    if (!b) continue
+    const delta = a.score - b.score
+    if (delta !== 0) deltaBySection.push({ id: a.id, label: a.label, delta })
+  }
+  deltaBySection.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+  const beforeBuckets = new Set<IntentBucket>(
+    (Object.keys(before.intent.buckets) as IntentBucket[]).filter((b) => before.intent.buckets[b].length > 0),
+  )
+  const intentBucketsAdded = (Object.keys(after.intent.buckets) as IntentBucket[])
+    .filter((b) => after.intent.buckets[b].length > 0 && !beforeBuckets.has(b))
+  return {
+    current: before.overall,
+    projected: after.overall,
+    deltaBySection,
+    intentBucketsAdded,
   }
 }
 
