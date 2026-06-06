@@ -583,8 +583,8 @@ interface RepitchResult {
 }
 
 function HolisticRepitchPanel({
-  gigId, onSaved,
-}: { gigId: string; onSaved: () => void }) {
+  gigId, onSaved, audit,
+}: { gigId: string; onSaved: () => void; audit: AuditResult | null }) {
   const FIELDS_TO_REWRITE: Array<{ field: string; label: string }> = [
     { field: 'title',           label: 'Service title' },
     { field: 'seo_title',       label: 'SEO title' },
@@ -592,50 +592,157 @@ function HolisticRepitchPanel({
     { field: 'seo_description', label: 'Meta description' },
     { field: 'description',     label: 'Long description (first pass)' },
   ]
+  const FIELD_TIMEOUT_MS = 60_000
   const [results, setResults] = React.useState<RepitchResult[]>([])
   const [running, setRunning] = React.useState(false)
   const [committing, setCommitting] = React.useState(false)
-  const [provider, setProvider] = React.useState<string>('')
   const [done, setDone] = React.useState(false)
+  const abortRef = React.useRef<AbortController | null>(null)
+
+  // Build a per-field issue brief from the open audit findings. This is
+  // what makes the holistic re-pitch actually MOVE the score: each field's
+  // rewrite knows exactly which audit issues touch that field and what
+  // outcome the audit is looking for. Without this the AI rewrote in a
+  // vacuum and the next audit pass left most issues open -- which is the
+  // "endless one-liner fixes" symptom the user reported.
+  const fieldBrief = React.useMemo(() => {
+    const briefs: Record<string, string[]> = {}
+    for (const f of FIELDS_TO_REWRITE) briefs[f.field] = []
+    if (!audit) return briefs
+    const issueTargets: Record<string, string[]> = {
+      cluster_coverage:       ['title', 'description'],
+      intent_diversity:       ['description'],
+      jurisdiction_alignment: ['title', 'pitch', 'description'],
+      schema_readiness:       [],  // FAQ-driven, handled elsewhere
+      eeat_surfacing:         ['pitch', 'description'],
+      snippet_engineering:    ['seo_title', 'seo_description'],
+      voice_hygiene:          ['pitch', 'description'],
+    }
+    for (const [issueId, fields] of Object.entries(issueTargets)) {
+      const section = audit.sections.find((s) => s.id === issueId)
+      if (!section || section.score >= 80) continue
+      for (const fld of fields) {
+        if (!(fld in briefs)) continue
+        const findings = (section.findings ?? [])
+          .filter((x) => x.kind !== 'ok')
+          .map((x) => x.detail || x.label)
+          .filter(Boolean)
+          .slice(0, 3)
+        if (findings.length) {
+          briefs[fld].push(`Fix ${section.label || issueId}: ${findings.join(' / ')}`)
+        }
+      }
+    }
+    return briefs
+  }, [audit])
+
+  const buildHint = (field: string) => {
+    const base = 'Rewrite as part of a coordinated single-artifact pass — title + SEO title + pitch + meta + first paragraph should read as ONE coherent crawl-friendly target. Match jurisdiction. Lead with the primary cluster keyword.'
+    const issueLines = (fieldBrief[field] || [])
+    if (!issueLines.length) return base
+    return `${base}\n\nResolve these open audit issues in this field:\n- ${issueLines.join('\n- ')}`
+  }
+
+  // Withdraw any in-flight draft when the panel unmounts so a slow
+  // provider doesn't keep a fetch alive in the background.
+  React.useEffect(() => () => { abortRef.current?.abort() }, [])
 
   const run = async () => {
+    abortRef.current?.abort()
+    const ctl = new AbortController()
+    abortRef.current = ctl
     setRunning(true); setDone(false)
     setResults(FIELDS_TO_REWRITE.map((f) => ({ field: f.field, status: 'pending' as const })))
-    // Fire in parallel — the AI suggest endpoint is stateless per field
-    // and the chain can take 2-15s sequentially. Parallel keeps the
-    // spinner short and prevents one slow field from blocking the rest.
+
+    // Per-field timeout so one stuck provider can't freeze the panel.
+    // Without this the previous build sat at "Drafting…" forever for any
+    // field whose request hung -- and because the original loop awaited
+    // promises in order, a single hung field hid the results of every
+    // field that followed it.
+    const indexByField = new Map(FIELDS_TO_REWRITE.map((f, i) => [f.field, i] as const))
     const promises = FIELDS_TO_REWRITE.map(async (f) => {
+      const idx = indexByField.get(f.field)!
+      const fieldCtl = new AbortController()
+      const timeoutId = setTimeout(() => fieldCtl.abort(), FIELD_TIMEOUT_MS)
+      // Cascade abort: cancel from the panel controller too
+      const linkAbort = () => fieldCtl.abort()
+      ctl.signal.addEventListener('abort', linkAbort)
       try {
         const res = await fetch(`/api/gigs/${gigId}/seo-suggest`, {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: f.field, hint: 'Rewrite as part of a coordinated single-artifact pass — title + SEO title + pitch + meta + first paragraph should read as one coherent crawl-friendly target. Match jurisdiction. Lead with the primary cluster keyword.' }),
+          body: JSON.stringify({ field: f.field, hint: buildHint(f.field) }),
+          signal: fieldCtl.signal,
         })
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) {
-          return { field: f.field, status: 'fail' as const, error: payload?.error?.message || `Failed (${res.status})` }
+          const r: RepitchResult = { field: f.field, status: 'fail', error: payload?.error?.message || `Failed (${res.status})` }
+          // Update IMMEDIATELY -- not in arrival order. Previous build
+          // awaited promises sequentially which delayed every render until
+          // the previous-index promise resolved.
+          setResults((prev) => { const next = [...prev]; next[idx] = r; return next })
+          return r
         }
         const data = payload?.data ?? payload
         const v = (data as { value: unknown }).value
-        return { field: f.field, status: 'ok' as const, value: typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : '' }
+        const r: RepitchResult = { field: f.field, status: 'ok', value: typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : '' }
+        setResults((prev) => { const next = [...prev]; next[idx] = r; return next })
+        return r
       } catch (e) {
-        return { field: f.field, status: 'fail' as const, error: e instanceof Error ? e.message : 'Failed' }
+        const aborted = (e as { name?: string })?.name === 'AbortError'
+        const r: RepitchResult = {
+          field: f.field,
+          status: 'fail',
+          error: aborted
+            ? (ctl.signal.aborted ? 'Cancelled' : `Timed out after ${FIELD_TIMEOUT_MS / 1000}s — retry`)
+            : e instanceof Error ? e.message : 'Failed',
+        }
+        setResults((prev) => { const next = [...prev]; next[idx] = r; return next })
+        return r
+      } finally {
+        clearTimeout(timeoutId)
+        ctl.signal.removeEventListener('abort', linkAbort)
       }
     })
-    // Update incrementally as each resolves so the user sees progress.
-    let i = 0
-    for (const p of promises) {
-      const r = await p
-      setResults((prev) => {
-        const next = [...prev]
-        next[i] = r
-        return next
-      })
-      i += 1
-    }
+
+    await Promise.allSettled(promises)
     setRunning(false)
     setDone(true)
-    if (!provider) setProvider('AI suggest provider')
+  }
+
+  const cancel = () => {
+    abortRef.current?.abort()
+    setRunning(false)
+    setDone(true)
+  }
+
+  const retryField = async (field: string) => {
+    const idx = FIELDS_TO_REWRITE.findIndex((f) => f.field === field)
+    if (idx < 0) return
+    setResults((prev) => { const next = [...prev]; next[idx] = { field, status: 'pending' }; return next })
+    const fieldCtl = new AbortController()
+    const timeoutId = setTimeout(() => fieldCtl.abort(), FIELD_TIMEOUT_MS)
+    try {
+      const res = await fetch(`/api/gigs/${gigId}/seo-suggest`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, hint: buildHint(field) }),
+        signal: fieldCtl.signal,
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setResults((prev) => { const next = [...prev]; next[idx] = { field, status: 'fail', error: payload?.error?.message || `Failed (${res.status})` }; return next })
+        return
+      }
+      const data = payload?.data ?? payload
+      const v = (data as { value: unknown }).value
+      setResults((prev) => { const next = [...prev]; next[idx] = { field, status: 'ok', value: typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : '' }; return next })
+    } catch (e) {
+      const aborted = (e as { name?: string })?.name === 'AbortError'
+      setResults((prev) => { const next = [...prev]; next[idx] = { field, status: 'fail', error: aborted ? `Timed out after ${FIELD_TIMEOUT_MS / 1000}s` : e instanceof Error ? e.message : 'Failed' }; return next })
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 
   const commit = async () => {
@@ -678,8 +785,12 @@ function HolisticRepitchPanel({
       {results.length > 0 && (
         <div style={{ marginTop: 8 }}>
           {running && (
-            <div style={{ fontSize: 11, color: T.inkSoft, marginBottom: 8, fontStyle: 'italic' }}>
-              Drafting via {provider || 'AI provider'}… this typically takes 2–15s per field. Running in parallel.
+            <div style={{ fontSize: 11, color: T.inkSoft, marginBottom: 8, fontStyle: 'italic', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span>Drafting all 5 fields in parallel — 2–15s typical, 60s timeout per field. Cancel to stop.</span>
+              <button type="button" onClick={cancel}
+                style={{ padding: '4px 10px', fontSize: 11, fontWeight: 700, background: 'transparent', color: T.brick, border: `1px solid ${T.brick}55`, borderRadius: 4, cursor: 'pointer', fontFamily: F.ui }}>
+                Cancel
+              </button>
             </div>
           )}
           {results.map((r) => {
@@ -701,7 +812,13 @@ function HolisticRepitchPanel({
                   <div style={{ fontSize: 12, color: T.ink, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{r.value}</div>
                 )}
                 {r.status === 'fail' && (
-                  <div style={{ fontSize: 11, color: T.brick }}>{r.error}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 11, color: T.brick }}>{r.error}</div>
+                    <button type="button" onClick={() => retryField(r.field)}
+                      style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, background: T.brick, color: '#FFFFFF', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: F.ui }}>
+                      Retry
+                    </button>
+                  </div>
                 )}
               </div>
             )
@@ -1340,7 +1457,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
         <div style={{ fontFamily: SERIF, fontSize: 16, color: T.ink, fontWeight: 600, marginBottom: 4 }}>
           Holistic re-pitch
         </div>
-        <HolisticRepitchPanel gigId={gig.id} onSaved={handleSavedInner} />
+        <HolisticRepitchPanel gigId={gig.id} onSaved={handleSavedInner} audit={audit} />
       </div>
 
       {/* Inline editor overlay — fallback for the "Edit manually
