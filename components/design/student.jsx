@@ -17,6 +17,7 @@ import StudentOrders from './student-orders'
 import StudentOrderDetail from './student-order-detail'
 import StudentBilling from './student-billing'
 import StudentDocuments from './student-documents'
+import StudentTemplateFiller from '../student/StudentTemplateFiller'
 import CardFields from '@/components/payments/CardFields'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
@@ -1151,6 +1152,9 @@ function StudentApp({ onLogout, userId, userName }) {
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [actionNotice, setActionNotice] = React.useState('');
+  const [hasPaidTemplates, setHasPaidTemplates] = React.useState(false);
+  const [paidTemplates, setPaidTemplates] = React.useState([]);
+  const [selectedTemplateSlug, setSelectedTemplateSlug] = React.useState(null);
   const [orderPlaced, setOrderPlaced] = React.useState(false);
 
   // Unread inbox badge — fetched from the unified /api/messages/unread.
@@ -1214,6 +1218,18 @@ function StudentApp({ onLogout, userId, userName }) {
       })
       .catch(() => !cancelled && setWalletSummary({ available: 0, pending: 0 }));
     return () => { cancelled = true; };
+  }, []);
+
+  // Check if user has paid templates (for nav visibility) and store the list
+  React.useEffect(() => {
+    fetch('/api/profile/template-downloads')
+      .then(r => r.json())
+      .then(d => {
+        const items = d.data?.entitlements ?? [];
+        setPaidTemplates(items);
+        setHasPaidTemplates(items.length > 0);
+      })
+      .catch(() => { setHasPaidTemplates(false); setPaidTemplates([]); });
   }, []);
 
   const goToRoute = React.useCallback((href) => {
@@ -1597,6 +1613,7 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
+        {hasPaidTemplates && <NavItem icon="📄" label="Template Filler" active={page === 'templates'} onClick={() => setPage('templates')} />}
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
@@ -1727,7 +1744,8 @@ function StudentApp({ onLogout, userId, userName }) {
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
             { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
             { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },
-          ].map(({ icon, label, sub, action }) => (
+            (hasPaidTemplates ? { icon: '📄', label: 'Template Filler', sub: 'Fill and download your templates', action: () => setPage('templates') } : null),
+          ].filter(Boolean).map(({ icon, label, sub, action }) => (
             <QuickActionTile key={label} icon={icon} label={label} sub={sub} onClick={action} />
           ))}
         </div>
@@ -2224,6 +2242,10 @@ function StudentApp({ onLogout, userId, userName }) {
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
+          if (cartIsTemplate && cart?.slug) {
+            setSelectedTemplateSlug(cart.slug);
+            setPage('templates');
+          }
         } catch (e) {
           setPayError(e.message);
         } finally { setPaying(false); }
@@ -2255,6 +2277,10 @@ function StudentApp({ onLogout, userId, userName }) {
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
+          if (cartIsTemplate && cart?.slug) {
+            setSelectedTemplateSlug(cart.slug);
+            setPage('templates');
+          }
         } catch (e) {
           setPayError(e.message);
         } finally { setPaying(false); }
@@ -2292,6 +2318,10 @@ function StudentApp({ onLogout, userId, userName }) {
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
           setTimeout(() => setOrderPlaced(false), 6000);
+          if (cartIsTemplate && cart?.slug) {
+            setSelectedTemplateSlug(cart.slug);
+            setPage('templates');
+          }
         } catch (e) {
           setPayError(e.message);
         } finally { setPaying(false); }
@@ -3268,6 +3298,7 @@ function StudentApp({ onLogout, userId, userName }) {
               }}
             />
           )}
+          {page === 'templates' && <StudentTemplateFiller paidTemplates={paidTemplates} autoSelectSlug={selectedTemplateSlug} />}
           {page === 'billing' && <BillingWithNmi />}
           {page === 'settings' && <StudentSettings userName={userName} />}
           {page === 'messages' && (
@@ -3297,6 +3328,10 @@ function StudentApp({ onLogout, userId, userName }) {
             await checkoutRequest.onSuccess?.(orderId);
             await refreshStudentData();
             setTimeout(() => setOrderPlaced(false), 6000);
+          if (cartIsTemplate && cart?.slug) {
+            setSelectedTemplateSlug(cart.slug);
+            setPage('templates');
+          }
           }}
         />
       )}
