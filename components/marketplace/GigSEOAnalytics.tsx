@@ -1611,23 +1611,12 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
     onSaved()
   }
 
-  if (loading && !payload) return <div style={{ padding: 12, fontSize: 12, color: T.inkSoft }}>Loading holistic audit…</div>
-  if (error && !payload) return (
-    <div style={{ padding: 12, fontSize: 12, color: T.brick }}>
-      {error}
-      <button type="button" onClick={load} style={{ marginLeft: 12, padding: '4px 10px', fontSize: 11, fontWeight: 700, border: 'none', borderRadius: 4, background: NAVY, color: '#FFFFFF', cursor: 'pointer' }}>Retry</button>
-    </div>
-  )
-  if (!payload) return null
-
-  const audit = payload.audit
-  const toggle = (id: SectionId) => setExpandedSections((prev) => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
-
-  const section = (id: SectionId) => audit.sections.find((s) => s.id === id)
+  // Extract audit safely with a fallback so all hooks are called
+  // unconditionally before any early return. Previously the useMemo
+  // for visibleFindingKeys lived below the `if (!payload) return null`
+  // check, which made React see 10 hooks on the data render vs 9 on
+  // the loading render → React error #310.
+  const audit = payload?.audit ?? null
 
   // Cap how many OPEN findings (warn|fail with a fix hint) the seller
   // sees across the whole audit. The user's "endless treadmill"
@@ -1637,6 +1626,7 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
   // the UI. Plateaued cluster-coverage findings are excluded from the
   // pruning set so the seller never sees them as open issues either.
   const visibleFindingKeys: Set<string> = React.useMemo(() => {
+    if (!audit) return new Set()
     const candidates: Array<{ key: string; weightedDelta: number }> = []
     for (const s of audit.sections) {
       const isClusterPlateau = s.id === 'cluster_coverage'
@@ -1655,6 +1645,23 @@ function GigAuditDetail({ gig, onSaved }: { gig: GigItem; onSaved: () => void })
     candidates.sort((a, b) => b.weightedDelta - a.weightedDelta)
     return new Set(candidates.slice(0, PLATEAU_THRESHOLDS.maxOutstandingIssues).map((c) => c.key))
   }, [audit])
+
+  if (loading && !payload) return <div style={{ padding: 12, fontSize: 12, color: T.inkSoft }}>Loading holistic audit…</div>
+  if (error && !payload) return (
+    <div style={{ padding: 12, fontSize: 12, color: T.brick }}>
+      {error}
+      <button type="button" onClick={load} style={{ marginLeft: 12, padding: '4px 10px', fontSize: 11, fontWeight: 700, border: 'none', borderRadius: 4, background: NAVY, color: '#FFFFFF', cursor: 'pointer' }}>Retry</button>
+    </div>
+  )
+  if (!payload) return null
+
+  const toggle = (id: SectionId) => setExpandedSections((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const section = (id: SectionId) => audit.sections.find((s) => s.id === id)
 
   const renderFindings = (sectionId: SectionId, findings: SectionFinding[]) =>
     findings.map((f, i) => {
