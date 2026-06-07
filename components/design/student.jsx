@@ -2182,7 +2182,7 @@ function StudentApp({ onLogout, userId, userName }) {
       if (!showCheckout) return;
       fetch('/api/wallet/balance')
         .then(r => r.json())
-        .then(d => setWalletBalance(d.available?.usd ?? 0))
+        .then(d => setWalletBalance(d.available?.usd ?? d.available ?? 0))
         .catch(() => setWalletBalance(0));
 
       setCardsLoading(true);
