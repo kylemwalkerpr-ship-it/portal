@@ -1,8 +1,13 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { EstateFooter } from '@/components/EstateFooter'
 import { SeoIntroBlock } from '@/components/SeoIntroBlock'
 import HomeClient from './HomeClient'
 import { getFeaturedGigs } from '@/components/design/landing/data/featured-services'
+
+// ISR: revalidate at most once per hour. Serves cached HTML between builds
+// and regenerates in the background on the first request after TTL expiry.
+export const revalidate = 3600
 
 // Portal is noindex sitewide (see layout.tsx robots config), so translated
 // metadata has zero SEO value. We keep static English metadata here to avoid
@@ -51,9 +56,14 @@ const HOMEPAGE_JSONLD = [
   },
 ]
 
-export default async function Page() {
+// Extracted so the `getFeaturedGigs` fetch streams in via Suspense instead of
+// blocking the page shell (preload link, JSON-LD, SeoIntroBlock, footer).
+async function HomeClientWithGigs() {
   const gigs = await getFeaturedGigs()
+  return <HomeClient gigs={gigs} />
+}
 
+export default async function Page() {
   return (
     <>
       <link
@@ -71,7 +81,9 @@ export default async function Page() {
         title="Study abroad consulting and legal document review in one secure portal."
         description="Trusted by students, attorneys, and consultants across the US, UK, and Canada. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
       />
-      <HomeClient gigs={gigs} />
+      <Suspense fallback={null}>
+        <HomeClientWithGigs />
+      </Suspense>
       <EstateFooter />
     </>
   )
