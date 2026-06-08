@@ -14,6 +14,7 @@ import AdminEscrow from './admin-escrow'
 import AdminDashboard from './admin-dashboard'
 import AdminAttorneyApplications from './admin-attorney-applications'
 import AdminConsultantManagement from './admin-consultant-management'
+import AdminTemplates from './admin-templates'
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -478,6 +479,7 @@ function AdminApp({ onLogout }) {
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
+        <NavItem icon="📦" label="Templates" active={page === 'templates'} onClick={() => setPage('templates')} />
         <NavItem icon="📄" label="PDF Maker" active={false} onClick={() => window.open('/dashboard/admin/templates/pdf-maker', '_blank')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
@@ -2770,6 +2772,7 @@ const Settings = () => {
           {page === 'loyalty' && <AdminWalletLoyalty />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
+          {page === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
           {page === 'settings' && <Settings />}
         </div>
       </div>
