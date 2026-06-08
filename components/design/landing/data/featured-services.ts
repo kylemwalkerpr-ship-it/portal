@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { getCached, setCached } from '@/lib/cache'
 
 export interface FeaturedGig {
   slug: string
@@ -75,7 +76,12 @@ export const FALLBACK_GIGS: FeaturedGig[] = [
   },
 ]
 
-export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> => {
+/**
+ * Core data fetcher — queries Supabase for active gigs with their cheapest
+ * tier pricing. Extracted so both `getFeaturedGigs` (Next.js unstable_cache)
+ * and the KV layer can call it.
+ */
+async function fetchFeaturedGigsFromDb(): Promise<FeaturedGig[]> {
   try {
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return FALLBACK_GIGS
     const db = createSupabaseAdminClient()
@@ -130,7 +136,7 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
         category: g.category,
         providerName: profileById.get(g.provider_id) || 'YouSafe Provider',
         providerRole: g.provider_type || 'consultant',
-        providerAvatarUrl: null, // omitted headshot queries on cold-start; coverUrl is the primary image source
+        providerAvatarUrl: null,
         avgRating: rating,
         reviewCount: reviews,
         deliveryDays: cheapest?.delivery_days ?? null,
@@ -151,4 +157,43 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
   } catch {
     return FALLBACK_GIGS
   }
-}, ['landing-featured-gigs'], { revalidate: 600 })
+}
+
+/** KV cache key for featured gigs data. */
+const KV_CACHE_KEY = 'featured-gigs'
+
+/** KV cache TTL: 5 minutes (shorter than Next.js cache so KV is a warm-up layer). */
+const KV_CACHE_TTL = 300
+
+/**
+ * Returns featured gigs with a two-layer cache:
+ *   1. KV (Cloudflare) — survives deployments, zero DB cost on hit.
+ *   2. Next.js unstable_cache (in-memory / Supabase) — 600s revalidation.
+ *
+ * KV is checked first because it's the fastest path (no worker-internal cache
+ * lookup or serialization). On miss it falls through to unstable_cache which
+ * may still serve from its in-memory cache or revalidate from Supabase.
+ */
+export async function getFeaturedGigs(): Promise<FeaturedGig[]> {
+  // Layer 1: KV cache (fastest, survives redeploys)
+  const kv = await getCached<FeaturedGig[]>(KV_CACHE_KEY, KV_CACHE_TTL)
+  if (kv !== null) return kv
+
+  // Layer 2: Next.js unstable_cache (in-memory, 600s revalidation)
+  const result = await getFeaturedGigsCached()
+
+  // Warm KV in background for next cold start
+  setCached(KV_CACHE_KEY, result, KV_CACHE_TTL).catch(() => {})
+
+  return result
+}
+
+/**
+ * Next.js unstable_cache layer. Revalidates every 600s from Supabase.
+ * This is the fallback when KV misses (e.g. first deploy, TTL expiry).
+ */
+const getFeaturedGigsCached = unstable_cache(
+  fetchFeaturedGigsFromDb,
+  ['landing-featured-gigs'],
+  { revalidate: 600 },
+)

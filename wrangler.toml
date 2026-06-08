@@ -10,6 +10,15 @@ compatibility_flags = ["nodejs_compat"]
 # CPU ceiling (10 ms) is far below what a cold-start parse requires.
 # Reference: opennextjs/opennextjs-cloudflare#598.
 
+# ── KV Namespaces ───────────────────────────────────────────────────────
+# KV-based page cache for expensive operations (featured gigs, etc.).
+# Create the namespace first, then paste its ID below:
+#   npx wrangler kv namespace create "PAGE_CACHE"
+#
+# [[kv_namespaces]]
+# binding = "PAGE_CACHE"
+# id = "<paste-namespace-id-here>"
+
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
