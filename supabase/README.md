@@ -139,8 +139,6 @@ These files were originally kept for reference but have been deleted since their
 | `document_security_jun2026.sql` | Document-level security (encrypted access, signed URLs) |
 | `portal_theme_preference.sql` | Theme/color preference per user |
 | `pending_jun_2026.sql` | Miscellaneous pending changes from June 2026 |
-| `availability_default_away.sql` | Default availability = away for all providers |
-
 ---
 
 ## Execution order (recommended)
