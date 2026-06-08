@@ -86,7 +86,7 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
       .select('slug, title, category, avg_rating, review_count, order_count, gallery_images, provider_id, provider_type, tiers:gig_tiers(price, delivery_days, is_active)')
       .eq('status', 'active')
       .order('rank_score', { ascending: false })
-      .limit(10)
+      .limit(6)
 
     if (!gigs || gigs.length === 0) return FALLBACK_GIGS
 
@@ -95,25 +95,7 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
       ? await db.from('profiles').select('id, full_name').in('id', providerIds)
       : { data: [] }
 
-    // Provider headshot lives on attorneys/consultants tables, joined via
-    // profile_id. Used as fallback avatar when the gig has no gallery image.
-    const [{ data: attorneys }, { data: consultants }] = await Promise.all([
-      providerIds.length > 0
-        ? db.from('attorneys').select('profile_id, headshot_url').in('profile_id', providerIds)
-        : Promise.resolve({ data: [] }),
-      providerIds.length > 0
-        ? db.from('consultants').select('profile_id, headshot_url').in('profile_id', providerIds)
-        : Promise.resolve({ data: [] }),
-    ])
-
     const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p.full_name]))
-    const avatarByProfile = new Map<string, string>()
-    for (const row of (attorneys ?? []) as any[]) {
-      if (row.headshot_url) avatarByProfile.set(row.profile_id, row.headshot_url)
-    }
-    for (const row of (consultants ?? []) as any[]) {
-      if (row.headshot_url) avatarByProfile.set(row.profile_id, row.headshot_url)
-    }
 
     const mapped: FeaturedGig[] = gigs.map((g: any) => {
       // Cheapest active tier — source of truth for "From ..." price + delivery.
@@ -148,7 +130,7 @@ export const getFeaturedGigs = unstable_cache(async (): Promise<FeaturedGig[]> =
         category: g.category,
         providerName: profileById.get(g.provider_id) || 'YouSafe Provider',
         providerRole: g.provider_type || 'consultant',
-        providerAvatarUrl: avatarByProfile.get(g.provider_id) ?? null,
+        providerAvatarUrl: null, // omitted headshot queries on cold-start; coverUrl is the primary image source
         avgRating: rating,
         reviewCount: reviews,
         deliveryDays: cheapest?.delivery_days ?? null,
