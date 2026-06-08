@@ -333,7 +333,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
     student: t.email || t.name || 'Guest',
     consultant: null,
     amountValue: (t.amount_cents || 0) / 100,
-    adminCut: (t.amount_cents || 0) / 200,
+    adminCut: ((t.amount_cents || 0) / 100) * (platformPct / 100),
+    isTemplate: true,
     consultantPay: 0,
     escrow: t.status === 'paid' ? 'released' : 'held',
     status: t.status === 'refunded' ? 'refunded' : 'completed',
@@ -798,19 +799,38 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 { key: 'escrow',   label: 'Escrow' },
                 { key: 'status',   label: 'Status' },
                 { key: 'date',     label: 'Date', muted: true },
+                { key: 'actions',  label: 'Actions' },
               ]}
-              rows={[...allOrders].reverse().map(o => ({
-                id:       o.id?.slice(0, 8) + '…',
-                service:  o.service,
-                student:  o.student,
-                provider: o.consultant || '—',
-                amount:   fmt(o.amountValue),
-                fee:      fmt(mv(o.adminCut)),
-                pay:      fmt(mv(o.consultantPay)),
-                escrow:   o.escrow === 'released' ? '✓ Released' : '🔒 Held',
-                status:   o.status,
-                date:     o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
-              }))}
+              rows={[...allOrders].reverse().map(o => {
+                const orderType = o.isTemplate ? 'template_order' : 'order'
+                const refundLabel = o.service || 'Order'
+                return {
+                  id:       o.id?.slice(0, 8) + '…',
+                  service:  o.service,
+                  student:  o.student,
+                  provider: o.consultant || '—',
+                  amount:   fmt(o.amountValue),
+                  fee:      fmt(mv(o.adminCut)),
+                  pay:      fmt(mv(o.consultantPay)),
+                  escrow:   o.escrow === 'released' ? '✓ Released' : '🔒 Held',
+                  status:   o.status,
+                  date:     o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
+                  actions:  o.status !== 'refunded' ? (
+                    <button
+                      onClick={() => handleRefund(orderType, o.id, refundLabel)}
+                      style={{
+                        padding: '3px 8px', fontSize: '11px', fontWeight: 600, fontFamily: 'inherit',
+                        background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: '4px',
+                        cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Refund
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '11px', color: '#9097A8' }}>Refunded</span>
+                  ),
+                }
+              })}
               emptyMsg="No transactions yet"
             />
           </Section>
@@ -1082,7 +1102,36 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
       {tab === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
 
       {/* ── WALLETS ───────────────────────────────────────────────────────────── */}
-      {tab === 'wallets' && <AdminWallets />}
+      {tab === 'wallets' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <AdminWallets />
+
+          {/* Wallet transactions history */}
+          <Section title="Wallet Transaction History" sub="All wallet topups, debits, refunds, and adjustments">
+            <DataTable
+              cols={[
+                { key: 'date',        label: 'Date', muted: true },
+                { key: 'profile_id',  label: 'Profile ID', muted: true },
+                { key: 'type',        label: 'Type' },
+                { key: 'amount',      label: 'Amount', right: true, bold: true },
+                { key: 'balance',     label: 'Balance After', right: true },
+                { key: 'description', label: 'Description', wrap: true },
+                { key: 'reference',   label: 'Reference', muted: true },
+              ]}
+              rows={walletTransactions.slice(0, 100).map(w => ({
+                date:        w.created_at ? new Date(w.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
+                profile_id:  w.profile_id ? w.profile_id.slice(0, 8) + '…' : '—',
+                type:        w.type || '—',
+                amount:      fmtCents(w.signed_cents),
+                balance:     fmtCents(w.balance_after_cents),
+                description: w.description || '—',
+                reference:   w.reference ? w.reference.slice(0, 16) : '—',
+              }))}
+              emptyMsg="No wallet transactions yet"
+            />
+          </Section>
+        </div>
+      )}
 
       {/* ── LOYALTY ───────────────────────────────────────────────────────────── */}
       {tab === 'loyalty' && <AdminWalletLoyalty />}
