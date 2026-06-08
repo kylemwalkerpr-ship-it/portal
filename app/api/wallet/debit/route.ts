@@ -20,6 +20,8 @@ import { randomUUID } from 'crypto'
 import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
 import { getManifest } from '@/lib/templatePdfManifests'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(req: Request) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
@@ -63,12 +65,18 @@ export async function POST(req: Request) {
   for (const raw of rawItems) {
     const qty = Math.max(1, Math.floor(Number(raw?.quantity) || 1))
 
-    // Try template pack first
-    const slug = typeof raw?.slug === 'string' ? raw.slug : ''
+    // Try template pack first. The client sends `slug: cart.slug || cart.id`,
+    // so this may be a services-row UUID when the row's slug was blank — resolve
+    // it back to the catalogue slug before giving up.
+    let slug = typeof raw?.slug === 'string' ? raw.slug : ''
+    if (slug && !getTemplatePack(slug) && UUID_RE.test(slug)) {
+      const { data: svcRow } = await db.from('services').select('slug').eq('id', slug).maybeSingle()
+      if (svcRow?.slug && getTemplatePack(svcRow.slug)) slug = svcRow.slug
+    }
     if (slug) {
       const pack = getTemplatePack(slug)
       if (pack) {
-        const unitCents = getTemplatePackPriceCents(slug)
+        const unitCents = getTemplatePackPriceCents(slug)!
         totalCents += unitCents * qty
         templateItems.push({ slug, name: pack.name, quantity: qty, unitCents })
         continue

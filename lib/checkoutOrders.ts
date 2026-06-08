@@ -247,7 +247,9 @@ export async function createPaidOrder(
     net_payout: item.netPayoutCents,
     payout_status: 'pending',
     requirements: item.description || item.title,
-    deadline,
+    // NOTE: the DB column is `delivery_deadline` (read routes alias it back to
+    // `deadline`). There is no bare `deadline` column — writing one throws
+    // PGRST204 and silently aborts every order insert. Do not re-add it.
     delivery_deadline: deadline,
     offer_id: item.offerId || null,
     source_offer_id: item.sourceOfferId || null,
@@ -260,14 +262,23 @@ export async function createPaidOrder(
     ...(identity || {}),
   }
 
-  let { data: order, error } = await db.from('orders').insert(orderInsert).select('id').single()
-  if (error && /order_number|order_sequence|terms_accepted_at|refund_policy_accepted_at|amount_paid|net_payout|delivery_deadline|offer_id|gig_id|source_|payment_method/i.test(error.message)) {
-    for (const key of ['order_number', 'order_sequence', 'terms_accepted_at', 'refund_policy_accepted_at', 'amount_paid', 'net_payout', 'delivery_deadline', 'offer_id', 'gig_id', 'source_offer_id', 'source_consultant_offer_id', 'source_inquiry_id', 'payment_method']) {
-      delete orderInsert[key]
-    }
-    const retry = await db.from('orders').insert(orderInsert).select('id').single()
-    order = retry.data
-    error = retry.error
+  // Insert, gracefully degrading if a non-essential column is absent in this
+  // environment's schema. PostgREST reports a single missing column per error
+  // (PGRST204 "Could not find the 'X' column …", or "column orders.X does not
+  // exist"); we strip whatever it names and retry, rather than relying on a
+  // hardcoded allow-list that drifts out of sync with the schema.
+  const ESSENTIAL = new Set(['client_id', 'status', 'total_amount'])
+  let order: { id: string } | null = null
+  let error: { message: string } | null = null
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const res = await db.from('orders').insert(orderInsert).select('id').single()
+    order = res.data
+    error = res.error
+    if (!error) break
+    const missing = error.message.match(/'([a-z0-9_]+)' column|column orders\.([a-z0-9_]+)/i)
+    const col = missing?.[1] || missing?.[2]
+    if (!col || ESSENTIAL.has(col) || !(col in orderInsert)) break
+    delete orderInsert[col]
   }
   if (error || !order) throw new Error(error?.message || 'Order creation failed.')
 

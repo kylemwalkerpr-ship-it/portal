@@ -5,6 +5,8 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { randomUUID } from 'crypto'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * POST /api/payments/charge
  *
@@ -64,12 +66,18 @@ export async function POST(request: NextRequest) {
   for (const raw of itemsRaw) {
     const quantity = Math.max(1, Math.floor(Number(raw?.quantity) || 1))
 
-    // Try template pack first
-    const slug = typeof raw?.slug === 'string' ? raw.slug : ''
+    // Try template pack first. The client sends `slug: cart.slug || cart.id`,
+    // so this may be a services-row UUID when the row's slug was blank — resolve
+    // it back to the catalogue slug before giving up.
+    let slug = typeof raw?.slug === 'string' ? raw.slug : ''
+    if (slug && !getTemplatePack(slug) && UUID_RE.test(slug)) {
+      const { data: svcRow } = await db.from('services').select('slug').eq('id', slug).maybeSingle()
+      if (svcRow?.slug && getTemplatePack(svcRow.slug)) slug = svcRow.slug
+    }
     if (slug) {
       const pack = getTemplatePack(slug)
       if (pack) {
-        const unitAmountCents = getTemplatePackPriceCents(slug)
+        const unitAmountCents = getTemplatePackPriceCents(slug)!
         lineItems.push({ slug, name: pack.name, unitAmountCents, quantity, type: 'template' })
         amountCents += unitAmountCents * quantity
         continue

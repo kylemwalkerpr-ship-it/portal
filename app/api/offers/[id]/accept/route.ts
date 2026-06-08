@@ -1,7 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, centsToDollars } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { debit, getOrCreateWallet } from '@/lib/wallet'
+import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
@@ -98,16 +98,28 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'wallet',
         actorId: auth.profileId,
         acceptedAt,
-        skipSourceUpdate: true,
+        // Let createPaidOrder run markSourcePaid, which flips the offer to
+        // 'paid'. Without this the offer is stuck at 'accepted' forever
+        // ("Payment in progress") even though the charge already cleared.
       })
     } catch (orderErr) {
-      console.error('[offers/accept] Order creation failed after debit+accept:', orderErr)
+      // Order creation failed AFTER the wallet was debited. Refund the debit so
+      // the student is not charged for an order that does not exist, and revert
+      // the offer to pending so it can be accepted again cleanly.
+      console.error('[offers/accept] Order creation failed after wallet debit — refunding:', orderErr)
+      try {
+        await credit(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, undefined, { offerId: offer.id, reason: 'order_create_failed' })
+      } catch (refundErr) {
+        console.error('[offers/accept] CRITICAL: refund after failed order also failed:', refundErr)
+      }
+      await auth.db.from('offers').update({ status: 'pending', accepted_at: null }).eq('id', id)
+      return fail('Could not create your order. Your wallet was not charged — please try again.', 500)
     }
 
     try {
       await creditEarning({
         providerId: offer.sender_id,
-        orderId: order?.id || updated.id,
+        orderId: order.id,
         source: 'offer',
         amountCents: netPayout,
         feeCents: platformFee,
@@ -117,7 +129,8 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     }
 
     return ok({
-      offer: updated,
+      // createPaidOrder ran markSourcePaid, so the offer is now 'paid'.
+      offer: { ...updated, status: 'paid' },
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: debitTx.balance_after_cents,
     })
@@ -183,16 +196,22 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'saved_card',
         actorId: auth.profileId,
         acceptedAt,
-        skipSourceUpdate: true,
+        // Let createPaidOrder run markSourcePaid, which flips the offer to
+        // 'paid'. Without this the offer is stuck at 'accepted' forever
+        // ("Payment in progress") even though the charge already cleared.
       })
     } catch (orderErr) {
-      console.error('[offers/accept] Order creation failed after saved_card charge+accept:', orderErr)
+      // The card was already charged. We cannot safely auto-refund a gateway
+      // capture here, so leave the offer at 'accepted' for reconciliation and
+      // surface a clear error instead of pretending the order was created.
+      console.error('[offers/accept] Order creation failed after saved_card charge:', orderErr)
+      return fail('Your payment was captured but we could not create the order. Our team has been notified — please contact support.', 500, { charged: true })
     }
 
     try {
       await creditEarning({
         providerId: offer.sender_id,
-        orderId: order?.id || updated.id,
+        orderId: order.id,
         source: 'offer',
         amountCents: netPayout,
         feeCents: platformFee,
@@ -202,7 +221,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     }
 
     return ok({
-      offer: updated,
+      offer: { ...updated, status: 'paid' },
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: null,
     })
@@ -266,16 +285,22 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
         paymentMethod: 'new_card',
         actorId: auth.profileId,
         acceptedAt,
-        skipSourceUpdate: true,
+        // Let createPaidOrder run markSourcePaid, which flips the offer to
+        // 'paid'. Without this the offer is stuck at 'accepted' forever
+        // ("Payment in progress") even though the charge already cleared.
       })
     } catch (orderErr) {
-      console.error('[offers/accept] Order creation failed after new_card charge+accept:', orderErr)
+      // The card was already charged. We cannot safely auto-refund a gateway
+      // capture here, so leave the offer at 'accepted' for reconciliation and
+      // surface a clear error instead of pretending the order was created.
+      console.error('[offers/accept] Order creation failed after new_card charge:', orderErr)
+      return fail('Your payment was captured but we could not create the order. Our team has been notified — please contact support.', 500, { charged: true })
     }
 
     try {
       await creditEarning({
         providerId: offer.sender_id,
-        orderId: order?.id || updated.id,
+        orderId: order.id,
         source: 'offer',
         amountCents: netPayout,
         feeCents: platformFee,
@@ -285,7 +310,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     }
 
     return ok({
-      offer: updated,
+      offer: { ...updated, status: 'paid' },
       breakdown: buildBreakdown(amount, platformFee, total),
       balanceCents: null,
     })
