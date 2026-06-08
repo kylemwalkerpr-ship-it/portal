@@ -208,7 +208,7 @@ function RecentOrdersWidget() {
     const timeoutId = setTimeout(() => controller.abort(), 8000)
     ;(async () => {
       try {
-        const res = await fetch('/api/orders?client=true&limit=5', { credentials: 'same-origin', signal: controller.signal })
+        const res = await fetch('/api/student/orders?page_size=5', { credentials: 'same-origin', signal: controller.signal })
         let list: Order[] = []
         if (res.ok) {
           const body = await res.json().catch(() => null)

@@ -83,6 +83,30 @@ async function resolveChat(auth: any, senderType: 'attorney' | 'consultant', pro
   return { recipientId: recipientId || order.client_id }
 }
 
+export async function GET(req: Request) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+
+  const { searchParams } = new URL(req.url)
+  const statusFilter = searchParams.get('status') || ''
+
+  let qb = auth.db
+    .from('offers')
+    .select('*')
+    .eq('recipient_id', auth.profileId)
+    .order('created_at', { ascending: false })
+
+  if (statusFilter) {
+    qb = qb.eq('status', statusFilter)
+  }
+
+  const { data: offers, error } = await qb
+
+  if (error) return fail(error.message, 500)
+  const status = 200
+  return ok({ offers: offers ?? [] }, { status })
+}
+
 export async function POST(req: Request) {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)

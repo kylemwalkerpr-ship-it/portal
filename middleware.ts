@@ -201,6 +201,7 @@ export default clerkMiddleware(
     //   • /marketplace/*   — legacy /marketplace-prefixed URLs.
     if (req.method === 'OPTIONS') {
       const isCorsablePath =
+        pathname === '/' ||
         pathname.startsWith('/api/') ||
         pathname.startsWith('/gigs/') ||
         pathname.startsWith('/providers/') ||
