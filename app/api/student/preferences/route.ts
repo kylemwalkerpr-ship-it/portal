@@ -41,7 +41,7 @@ export async function GET() {
 
   let { data, error } = await db
     .from('profiles')
-    .select('id, full_name, email, phone, phone_verified, phone_verified_at, two_factor_enabled, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, country_code, country_source, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
+    .select('id, full_name, email, phone, phone_verified, phone_verified_at, two_factor_enabled, timezone, language, avatar_url, address_line1, address_line2, city, postal_code, country, notif_prefs, privacy_prefs, ui_prefs, vertical, created_at')
     .eq('id', profile.id)
     .single()
 
