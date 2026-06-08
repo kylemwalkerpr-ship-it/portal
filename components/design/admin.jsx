@@ -1770,309 +1770,6 @@ function AdminApp({ onLogout }) {
       </div>
     );
   };
-
-  // ── CATALOGUE MANAGEMENT ──
-  const ServicesAdmin = () => {
-    const [editing, setEditing] = React.useState(null);
-    const [saving, setSaving] = React.useState(false);
-    const [catalogueTab, setCatalogueTab] = React.useState('service');
-    const blankService = { product_type: 'service', title: '', category: 'General', price: 0, delivery_days: 7, active: true, status: 'active', vertical: 'study_abroad' };
-    const blankTemplate = {
-      product_type: 'template',
-      slug: '',
-      title: '',
-      category: 'Templates',
-      short_description: '',
-      full_description: '',
-      region: 'General',
-      template_type: 'General',
-      price_usd: 0,
-      currency_base: 'USD',
-      price_cad_display: '',
-      badge: '',
-      status: 'active',
-      active: true,
-      delivery_type: 'Digital Template',
-      file_path: '',
-      delivery_days: 0,
-      vertical: 'study_abroad',
-    };
-    const visibleItems = services.filter(s => normalizeProductType(s.product_type) === catalogueTab);
-    const serviceItems = services.filter(s => normalizeProductType(s.product_type) === 'service');
-    const templateItems = services.filter(s => normalizeProductType(s.product_type) === 'template');
-    const statusLabel = s => normalizeProductType(s.product_type) === 'template' ? (s.status || (s.active ? 'active' : 'draft')) : (s.active ? 'active' : 'draft');
-    const cadDisplay = value => Number(value || 0) > 0 ? Number(value || 0) : Number(value || 0);
-    const saveService = async () => {
-      setSaving(true);
-      const productType = normalizeProductType(editing.product_type);
-      const payload = {
-        product_type: productType,
-        slug: editing.slug,
-        title: editing.title,
-        category: productType === 'template' ? 'Templates' : editing.category,
-        short_description: editing.short_description,
-        full_description: editing.full_description,
-        region: editing.region,
-        template_type: editing.template_type,
-        price: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.price || 0),
-        price_usd: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.usd_price || editing.price || 0),
-        usd_price: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.usd_price || editing.price || 0),
-        currency: productType === 'template' ? 'usd' : (editing.currency || primaryCurrency || 'usd'),
-        currency_base: productType === 'template' ? 'USD' : String(editing.currency || primaryCurrency || 'usd').toUpperCase(),
-        price_cad_display: editing.price_cad_display === '' ? null : Number(editing.price_cad_display || 0),
-        badge: editing.badge,
-        status: productType === 'template' ? editing.status : (editing.active ? 'active' : 'draft'),
-        delivery_type: productType === 'template' ? (editing.delivery_type || 'Digital Template') : editing.delivery_type,
-        file_path: editing.file_path,
-        delivery_days: productType === 'template' ? 0 : Number(editing.delivery_days || 7),
-        is_active: productType === 'template' ? editing.status === 'active' : Boolean(editing.active),
-        vertical: editing.vertical || 'study_abroad',
-      };
-      const res = await fetch(editing.id ? `/api/admin/services/${editing.id}` : '/api/admin/services', {
-        method: editing.id ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      setSaving(false);
-      if (!res.ok) throw new Error(data.error || 'Service save failed');
-      setEditing(null);
-      refreshAdminData();
-    };
-    const toggleService = async s => {
-      const productType = normalizeProductType(s.product_type);
-      const nextActive = !s.active;
-      const res = await fetch(`/api/admin/services/${s.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...s,
-          product_type: productType,
-          price: productType === 'template' ? Number(s.price_usd || s.price || 0) : s.price,
-          price_usd: Number(s.price_usd || s.usd_price || s.price || 0),
-          status: productType === 'template' ? (nextActive ? 'active' : 'archived') : (nextActive ? 'active' : 'draft'),
-          is_active: nextActive,
-          vertical: s.vertical || 'study_abroad',
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Service update failed');
-      refreshAdminData();
-    };
-    return (
-      <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={adminEyebrow}>Catalogue</div>
-            <h2 style={adminPageTitle}>Catalogue.</h2>
-            <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage bookable Services separately from instant-access digital Templates.</p>
-          </div>
-          <Btn variant="primary" size="sm" onClick={() => setEditing(catalogueTab === 'template' ? blankTemplate : blankService)}>
-            + Add {catalogueTab === 'template' ? 'template' : 'service'}
-          </Btn>
-        </div>
-        <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '4px', gap: '4px' }}>
-          {[
-            { value: 'service', label: `Services (${serviceItems.length})` },
-            { value: 'template', label: `Templates (${templateItems.length})` },
-          ].map(tab => (
-            <button
-              key={tab.value}
-              onClick={() => setCatalogueTab(tab.value)}
-              style={{
-                border: 'none',
-                borderRadius: '999px',
-                padding: '8px 16px',
-                background: catalogueTab === tab.value ? C.text : 'transparent',
-                color: catalogueTab === tab.value ? '#fff' : C.textMuted,
-                fontWeight: 700,
-                fontSize: '13px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <Card style={{ padding: '0', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {(catalogueTab === 'template'
-                  ? ['Template', 'Type', 'Region', 'USD price', 'CAD estimate', 'Status', '']
-                  : ['Service', 'Vertical', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', '']
-                ).map(h => (
-                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleItems.length > 0 ? visibleItems.map((s, i) => (
-                <tr key={s.id} className="yousafe-table-row" style={{ borderBottom: i < visibleItems.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>
-                    <div>{s.title}</div>
-                    <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>
-                      {catalogueTab === 'template' ? (s.delivery_type || 'Digital Template') : deliveryLabel(s.delivery_days)}
-                    </div>
-                  </td>
-                  {catalogueTab === 'template' ? (
-                    <>
-                      <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.template_type || 'General'}</Badge></td>
-                      <td style={{ padding: '14px 16px' }}><Badge color={s.region === 'USA' ? 'cyan' : s.region === 'Canada' ? 'green' : 'purple'}>{s.region || 'General'}</Badge></td>
-                      <td style={{ padding: '14px 16px', fontWeight: 700 }}>{formatMoney(s.price_usd || s.price, 'usd')}</td>
-                      <td style={{ padding: '14px 16px', color: C.textMuted, fontSize: '13px' }}>
-                        approx. {formatMoney(cadDisplay(s.price_cad_display) || Number(s.price_usd || s.price || 0) * Number(platformSettings.usd_to_cad_rate || 1.37), 'cad')}
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={{ padding: '14px 16px' }}>
-                        <Badge color={s.vertical === 'legal' ? 'purple' : 'cyan'}>
-                          {s.vertical === 'legal' ? 'Legal' : 'Study Abroad'}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: 700 }}>{formatMoney(s.price, s.currency)}</div>
-                        {String(s.currency || 'usd').toLowerCase() !== 'usd' && s.usd_price > 0 && (
-                          <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
-                        )}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatMoney(s.price * (consultantFeePercent / 100), s.currency)}</td>
-                      <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatMoney(s.price * (platformFeePercent / 100), s.currency)}</td>
-                      <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
-                    </>
-                  )}
-                  <td style={{ padding: '14px 16px' }}>
-                    <button onClick={() => toggleService(s)} style={{
-                      width: '40px', height: '22px', borderRadius: '99px', border: 'none', cursor: 'pointer',
-                      background: s.active ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
-                    }}>
-                      <div style={{ position: 'absolute', top: '3px', left: s.active ? '20px' : '3px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
-                    </button>
-                    <div style={{ fontSize: '11px', color: C.textMuted, marginTop: '4px' }}>{statusLabel(s)}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <Btn variant="ghost" size="sm" onClick={() => setEditing(s)}>Edit</Btn>
-                      {normalizeProductType(s.product_type) === 'template' && s.slug && (
-                        <a
-                          href={`/api/templates/download/${encodeURIComponent(s.slug)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Download template pack (admin bypass)"
-                          style={{
-                            fontSize: '12px', fontWeight: 600, color: C.cyan,
-                            textDecoration: 'none', padding: '4px 8px',
-                            border: `1px solid ${C.cyan}`, borderRadius: '6px',
-                            background: 'transparent', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Download
-                        </a>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={catalogueTab === 'template' ? 7 : 9} style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>
-                    No {catalogueTab === 'template' ? 'templates' : 'services'} available yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
-        {editing && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '17px', fontWeight: 800 }}>{editing.id ? 'Edit' : 'Add'} {normalizeProductType(editing.product_type) === 'template' ? 'template' : 'service'}</h3>
-                <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
-              </div>
-              <div style={{ display: 'grid', gap: '14px' }}>
-                {normalizeProductType(editing.product_type) === 'template' ? (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Input label="Template title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
-                      <Input label="Slug" value={editing.slug} onChange={v => setEditing(s => ({ ...s, slug: v }))} placeholder="template-slug" />
-                    </div>
-                    <Input label="Short description" value={editing.short_description} onChange={v => setEditing(s => ({ ...s, short_description: v }))} />
-                    <Input label="Full description" value={editing.full_description} onChange={v => setEditing(s => ({ ...s, full_description: v }))} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Select label="Category" value="Templates" onChange={() => {}} options={[{ value: 'Templates', label: 'Templates' }]} />
-                      <Select
-                        label="Region"
-                        value={editing.region || 'General'}
-                        onChange={v => setEditing(s => ({ ...s, region: v }))}
-                        options={[
-                          { value: 'USA', label: 'USA' },
-                          { value: 'Canada', label: 'Canada' },
-                          { value: 'General', label: 'General' },
-                        ]}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Input label="Template type" value={editing.template_type} onChange={v => setEditing(s => ({ ...s, template_type: v }))} placeholder="Study Permit, Visitor Visa, Bundle..." />
-                      <Input label="Badge / label" value={editing.badge} onChange={v => setEditing(s => ({ ...s, badge: v }))} placeholder="USA, Canada, Bundle, Popular..." />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Input label="Base price USD" type="number" value={editing.price_usd ?? editing.price} onChange={v => setEditing(s => ({ ...s, price_usd: v, price: v }))} placeholder="29" />
-                      <Input label="Optional CAD display price" type="number" value={editing.price_cad_display} onChange={v => setEditing(s => ({ ...s, price_cad_display: v }))} placeholder={`Auto: ${(Number(editing.price_usd || editing.price || 0) * Number(platformSettings.usd_to_cad_rate || 1.37)).toFixed(2)}`} />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <Select
-                        label="Status"
-                        value={editing.status || 'active'}
-                        onChange={v => setEditing(s => ({ ...s, status: v, active: v === 'active' }))}
-                        options={[
-                          { value: 'active', label: 'Active' },
-                          { value: 'draft', label: 'Draft' },
-                          { value: 'archived', label: 'Archived' },
-                        ]}
-                      />
-                      <Input label="Delivery type" value={editing.delivery_type || 'Digital Template'} onChange={v => setEditing(s => ({ ...s, delivery_type: v }))} />
-                    </div>
-                    <Input label="Download file path / asset reference" value={editing.file_path} onChange={v => setEditing(s => ({ ...s, file_path: v }))} placeholder="templates/usa/example/README.md" />
-                    <div style={{ fontSize: '12px', color: C.textMuted, lineHeight: 1.55, padding: '12px', background: C.surface2, borderRadius: '10px' }}>
-                      Templates are purchased with student wallet balance, priced in USD. CAD pricing is shown as a display estimate only.
-                    </div>
-                    <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save template'}</Btn>
-                  </>
-                ) : (
-                  <>
-                    <Input label="Service title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
-                    <Select
-                      label="Vertical"
-                      value={editing.vertical || 'study_abroad'}
-                      onChange={v => setEditing(s => ({ ...s, vertical: v }))}
-                      options={[
-                        { value: 'study_abroad', label: 'Study Abroad (yousafeconsultancy.com)' },
-                        { value: 'legal', label: 'Legal (legal.yousafeconsultancy.com)' },
-                      ]}
-                    />
-                    <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />
-                    <Input label={`Price (${String(editing.currency || primaryCurrency || 'usd').toUpperCase()})`} type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} placeholder="$" />
-                    <Input label="Delivery days" type="number" value={editing.delivery_days} onChange={v => setEditing(s => ({ ...s, delivery_days: v }))} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: C.surface2, borderRadius: '10px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 600 }}>Visible to students</span>
-                      <button onClick={() => setEditing(s => ({ ...s, active: !s.active }))} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: editing.active ? C.cyan : C.surface3, position: 'relative' }}>
-                        <div style={{ position: 'absolute', top: '3px', left: editing.active ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
-                      </button>
-                    </div>
-                    <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save service'}</Btn>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   // ── GIGS MANAGEMENT ──
   const GigsManager = () => {
     const filteredGigs = gigFilter === 'all' ? gigs : gigs.filter(g => g.status === gigFilter);
@@ -2780,7 +2477,7 @@ const Settings = () => {
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} />}
-          {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
+          {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} consultantFeePercent={consultantFeePercent} platformFeePercent={platformFeePercent} platformSettings={platformSettings} primaryCurrency={primaryCurrency} />}
           
           
           {page === 'settings' && <Settings />}
@@ -2804,7 +2501,312 @@ const Settings = () => {
  * pages because their `app/dashboard/admin/<slug>/page.tsx` files mount the
  * same UI components directly.
  */
-function MyOffice({ formatPrimary, attorneyBadge, services, refreshAdminData, setActionNotice }) {
+
+// ── CATALOGUE MANAGEMENT (module-level) ──
+const ServicesAdmin = ({ services, refreshAdminData, setActionNotice, consultantFeePercent, platformFeePercent, platformSettings, primaryCurrency }) => {
+    const [editing, setEditing] = React.useState(null);
+    const [saving, setSaving] = React.useState(false);
+    const [catalogueTab, setCatalogueTab] = React.useState('service');
+    const blankService = { product_type: 'service', title: '', category: 'General', price: 0, delivery_days: 7, active: true, status: 'active', vertical: 'study_abroad' };
+    const blankTemplate = {
+    product_type: 'template',
+    slug: '',
+    title: '',
+    category: 'Templates',
+    short_description: '',
+    full_description: '',
+    region: 'General',
+    template_type: 'General',
+    price_usd: 0,
+    currency_base: 'USD',
+    price_cad_display: '',
+    badge: '',
+    status: 'active',
+    active: true,
+    delivery_type: 'Digital Template',
+    file_path: '',
+    delivery_days: 0,
+    vertical: 'study_abroad',
+    };
+    const visibleItems = services.filter(s => normalizeProductType(s.product_type) === catalogueTab);
+    const serviceItems = services.filter(s => normalizeProductType(s.product_type) === 'service');
+    const templateItems = services.filter(s => normalizeProductType(s.product_type) === 'template');
+    const statusLabel = s => normalizeProductType(s.product_type) === 'template' ? (s.status || (s.active ? 'active' : 'draft')) : (s.active ? 'active' : 'draft');
+    const cadDisplay = value => Number(value || 0) > 0 ? Number(value || 0) : Number(value || 0);
+    const saveService = async () => {
+    setSaving(true);
+    const productType = normalizeProductType(editing.product_type);
+    const payload = {
+      product_type: productType,
+      slug: editing.slug,
+      title: editing.title,
+      category: productType === 'template' ? 'Templates' : editing.category,
+      short_description: editing.short_description,
+      full_description: editing.full_description,
+      region: editing.region,
+      template_type: editing.template_type,
+      price: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.price || 0),
+      price_usd: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.usd_price || editing.price || 0),
+      usd_price: productType === 'template' ? Number(editing.price_usd || editing.price || 0) : Number(editing.usd_price || editing.price || 0),
+      currency: productType === 'template' ? 'usd' : (editing.currency || primaryCurrency || 'usd'),
+      currency_base: productType === 'template' ? 'USD' : String(editing.currency || primaryCurrency || 'usd').toUpperCase(),
+      price_cad_display: editing.price_cad_display === '' ? null : Number(editing.price_cad_display || 0),
+      badge: editing.badge,
+      status: productType === 'template' ? editing.status : (editing.active ? 'active' : 'draft'),
+      delivery_type: productType === 'template' ? (editing.delivery_type || 'Digital Template') : editing.delivery_type,
+      file_path: editing.file_path,
+      delivery_days: productType === 'template' ? 0 : Number(editing.delivery_days || 7),
+      is_active: productType === 'template' ? editing.status === 'active' : Boolean(editing.active),
+      vertical: editing.vertical || 'study_abroad',
+    };
+    const res = await fetch(editing.id ? `/api/admin/services/${editing.id}` : '/api/admin/services', {
+      method: editing.id ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) throw new Error(data.error || 'Service save failed');
+    setEditing(null);
+    refreshAdminData();
+    };
+    const toggleService = async s => {
+    const productType = normalizeProductType(s.product_type);
+    const nextActive = !s.active;
+    const res = await fetch(`/api/admin/services/${s.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...s,
+        product_type: productType,
+        price: productType === 'template' ? Number(s.price_usd || s.price || 0) : s.price,
+        price_usd: Number(s.price_usd || s.usd_price || s.price || 0),
+        status: productType === 'template' ? (nextActive ? 'active' : 'archived') : (nextActive ? 'active' : 'draft'),
+        is_active: nextActive,
+        vertical: s.vertical || 'study_abroad',
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Service update failed');
+    refreshAdminData();
+    };
+    return (
+    <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={adminEyebrow}>Catalogue</div>
+          <h2 style={adminPageTitle}>Catalogue.</h2>
+          <p style={{ color: C.textMuted, fontSize: '14px' }}>Manage bookable Services separately from instant-access digital Templates.</p>
+        </div>
+        <Btn variant="primary" size="sm" onClick={() => setEditing(catalogueTab === 'template' ? blankTemplate : blankService)}>
+          + Add {catalogueTab === 'template' ? 'template' : 'service'}
+        </Btn>
+      </div>
+      <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '4px', gap: '4px' }}>
+        {[
+          { value: 'service', label: `Services (${serviceItems.length})` },
+          { value: 'template', label: `Templates (${templateItems.length})` },
+        ].map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => setCatalogueTab(tab.value)}
+            style={{
+              border: 'none',
+              borderRadius: '999px',
+              padding: '8px 16px',
+              background: catalogueTab === tab.value ? C.text : 'transparent',
+              color: catalogueTab === tab.value ? '#fff' : C.textMuted,
+              fontWeight: 700,
+              fontSize: '13px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <Card style={{ padding: '0', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+              {(catalogueTab === 'template'
+                ? ['Template', 'Type', 'Region', 'USD price', 'CAD estimate', 'Status', '']
+                : ['Service', 'Vertical', 'Category', 'Price', 'Consultant cut', 'Platform cut', 'Orders', 'Status', '']
+              ).map(h => (
+                <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: C.textMuted, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleItems.length > 0 ? visibleItems.map((s, i) => (
+              <tr key={s.id} className="yousafe-table-row" style={{ borderBottom: i < visibleItems.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 120ms' }}>
+                <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: '14px' }}>
+                  <div>{s.title}</div>
+                  <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>
+                    {catalogueTab === 'template' ? (s.delivery_type || 'Digital Template') : deliveryLabel(s.delivery_days)}
+                  </div>
+                </td>
+                {catalogueTab === 'template' ? (
+                  <>
+                    <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.template_type || 'General'}</Badge></td>
+                    <td style={{ padding: '14px 16px' }}><Badge color={s.region === 'USA' ? 'cyan' : s.region === 'Canada' ? 'green' : 'purple'}>{s.region || 'General'}</Badge></td>
+                    <td style={{ padding: '14px 16px', fontWeight: 700 }}>{formatMoney(s.price_usd || s.price, 'usd')}</td>
+                    <td style={{ padding: '14px 16px', color: C.textMuted, fontSize: '13px' }}>
+                      approx. {formatMoney(cadDisplay(s.price_cad_display) || Number(s.price_usd || s.price || 0) * Number(platformSettings.usd_to_cad_rate || 1.37), 'cad')}
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td style={{ padding: '14px 16px' }}>
+                      <Badge color={s.vertical === 'legal' ? 'purple' : 'cyan'}>
+                        {s.vertical === 'legal' ? 'Legal' : 'Study Abroad'}
+                      </Badge>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}><Badge color="gray">{s.category}</Badge></td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 700 }}>{formatMoney(s.price, s.currency)}</div>
+                      {String(s.currency || 'usd').toLowerCase() !== 'usd' && s.usd_price > 0 && (
+                        <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '3px' }}>{formatMoney(s.usd_price, 'usd')}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 16px', color: C.cyan, fontWeight: 600 }}>{formatMoney(s.price * (consultantFeePercent / 100), s.currency)}</td>
+                    <td style={{ padding: '14px 16px', color: C.green, fontWeight: 600 }}>{formatMoney(s.price * (platformFeePercent / 100), s.currency)}</td>
+                    <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: 600 }}>{s.orders}</td>
+                  </>
+                )}
+                <td style={{ padding: '14px 16px' }}>
+                  <button onClick={() => toggleService(s)} style={{
+                    width: '40px', height: '22px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+                    background: s.active ? C.cyan : C.surface3, position: 'relative', transition: 'background 0.2s',
+                  }}>
+                    <div style={{ position: 'absolute', top: '3px', left: s.active ? '20px' : '3px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                  </button>
+                  <div style={{ fontSize: '11px', color: C.textMuted, marginTop: '4px' }}>{statusLabel(s)}</div>
+                </td>
+                <td style={{ padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <Btn variant="ghost" size="sm" onClick={() => setEditing(s)}>Edit</Btn>
+                    {normalizeProductType(s.product_type) === 'template' && s.slug && (
+                      <a
+                        href={`/api/templates/download/${encodeURIComponent(s.slug)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Download template pack (admin bypass)"
+                        style={{
+                          fontSize: '12px', fontWeight: 600, color: C.cyan,
+                          textDecoration: 'none', padding: '4px 8px',
+                          border: `1px solid ${C.cyan}`, borderRadius: '6px',
+                          background: 'transparent', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Download
+                      </a>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={catalogueTab === 'template' ? 7 : 9} style={{ padding: '24px 16px', textAlign: 'center', color: C.textMuted }}>
+                  No {catalogueTab === 'template' ? 'templates' : 'services'} available yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+      {editing && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 800 }}>{editing.id ? 'Edit' : 'Add'} {normalizeProductType(editing.product_type) === 'template' ? 'template' : 'service'}</h3>
+              <button onClick={() => setEditing(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
+            </div>
+            <div style={{ display: 'grid', gap: '14px' }}>
+              {normalizeProductType(editing.product_type) === 'template' ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Input label="Template title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
+                    <Input label="Slug" value={editing.slug} onChange={v => setEditing(s => ({ ...s, slug: v }))} placeholder="template-slug" />
+                  </div>
+                  <Input label="Short description" value={editing.short_description} onChange={v => setEditing(s => ({ ...s, short_description: v }))} />
+                  <Input label="Full description" value={editing.full_description} onChange={v => setEditing(s => ({ ...s, full_description: v }))} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Select label="Category" value="Templates" onChange={() => {}} options={[{ value: 'Templates', label: 'Templates' }]} />
+                    <Select
+                      label="Region"
+                      value={editing.region || 'General'}
+                      onChange={v => setEditing(s => ({ ...s, region: v }))}
+                      options={[
+                        { value: 'USA', label: 'USA' },
+                        { value: 'Canada', label: 'Canada' },
+                        { value: 'General', label: 'General' },
+                      ]}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Input label="Template type" value={editing.template_type} onChange={v => setEditing(s => ({ ...s, template_type: v }))} placeholder="Study Permit, Visitor Visa, Bundle..." />
+                    <Input label="Badge / label" value={editing.badge} onChange={v => setEditing(s => ({ ...s, badge: v }))} placeholder="USA, Canada, Bundle, Popular..." />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Input label="Base price USD" type="number" value={editing.price_usd ?? editing.price} onChange={v => setEditing(s => ({ ...s, price_usd: v, price: v }))} placeholder="29" />
+                    <Input label="Optional CAD display price" type="number" value={editing.price_cad_display} onChange={v => setEditing(s => ({ ...s, price_cad_display: v }))} placeholder={`Auto: ${(Number(editing.price_usd || editing.price || 0) * Number(platformSettings.usd_to_cad_rate || 1.37)).toFixed(2)}`} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Select
+                      label="Status"
+                      value={editing.status || 'active'}
+                      onChange={v => setEditing(s => ({ ...s, status: v, active: v === 'active' }))}
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'draft', label: 'Draft' },
+                        { value: 'archived', label: 'Archived' },
+                      ]}
+                    />
+                    <Input label="Delivery type" value={editing.delivery_type || 'Digital Template'} onChange={v => setEditing(s => ({ ...s, delivery_type: v }))} />
+                  </div>
+                  <Input label="Download file path / asset reference" value={editing.file_path} onChange={v => setEditing(s => ({ ...s, file_path: v }))} placeholder="templates/usa/example/README.md" />
+                  <div style={{ fontSize: '12px', color: C.textMuted, lineHeight: 1.55, padding: '12px', background: C.surface2, borderRadius: '10px' }}>
+                    Templates are purchased with student wallet balance, priced in USD. CAD pricing is shown as a display estimate only.
+                  </div>
+                  <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save template'}</Btn>
+                </>
+              ) : (
+                <>
+                  <Input label="Service title" value={editing.title} onChange={v => setEditing(s => ({ ...s, title: v }))} />
+                  <Select
+                    label="Vertical"
+                    value={editing.vertical || 'study_abroad'}
+                    onChange={v => setEditing(s => ({ ...s, vertical: v }))}
+                    options={[
+                      { value: 'study_abroad', label: 'Study Abroad (yousafeconsultancy.com)' },
+                      { value: 'legal', label: 'Legal (legal.yousafeconsultancy.com)' },
+                    ]}
+                  />
+                  <Input label="Category" value={editing.category} onChange={v => setEditing(s => ({ ...s, category: v }))} />
+                  <Input label={`Price (${String(editing.currency || primaryCurrency || 'usd').toUpperCase()})`} type="number" value={editing.price} onChange={v => setEditing(s => ({ ...s, price: v }))} placeholder="$" />
+                  <Input label="Delivery days" type="number" value={editing.delivery_days} onChange={v => setEditing(s => ({ ...s, delivery_days: v }))} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: C.surface2, borderRadius: '10px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Visible to students</span>
+                    <button onClick={() => setEditing(s => ({ ...s, active: !s.active }))} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: editing.active ? C.cyan : C.surface3, position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: '3px', left: editing.active ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
+                    </button>
+                  </div>
+                  <Btn variant="primary" onClick={saveService} disabled={saving}>{saving ? 'Saving…' : 'Save service'}</Btn>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+    );
+};
+
+
+
+function MyOffice({ formatPrimary, attorneyBadge, services, refreshAdminData, setActionNotice, consultantFeePercent, platformFeePercent, platformSettings, primaryCurrency }) {
   const [tab, setTab] = React.useState('gigs');
   const tabs = [
     { id: 'gigs',         label: 'Gigs',                  icon: '⭐' },
@@ -2850,7 +2852,7 @@ function MyOffice({ formatPrimary, attorneyBadge, services, refreshAdminData, se
         {tab === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
         {tab === 'attorneys' && <AdminAttorneyApplications />}
         {tab === 'consultants' && <AdminConsultantManagement />}
-        {tab === 'catalogue' && <ServicesAdmin />}
+{tab === 'catalogue' && <ServicesAdmin services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} consultantFeePercent={consultantFeePercent} platformFeePercent={platformFeePercent} platformSettings={platformSettings} primaryCurrency={primaryCurrency} />}
         {tab === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
         {tab === 'pdfmaker' && (
           <div style={{ padding: '40px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
