@@ -323,10 +323,33 @@ export default function AdminEscrow() {
   const [modal,setModal]           = React.useState(null)
   const [busy,setBusy]             = React.useState(false)
   const [notice,setNotice]         = React.useState({type:'',msg:''})
+  const [ledgerData,setLedgerData] = React.useState(null)
+  const [auditEntries,setAuditEntries] = React.useState(null)
+  const [loadingAudit,setLoadingAudit] = React.useState(false)
   const PER_PAGE = 25
 
   const flash=(type,msg)=>{setNotice({type,msg});setTimeout(()=>setNotice({type:'',msg:''}),5000)}
   React.useEffect(()=>{const t=setTimeout(()=>{setDebouncedQ(searchQ);setPage(1)},300);return()=>clearTimeout(t)},[searchQ])
+  // ── Canonical ledger fetch — pulls escrow totals from the unified ledger
+  //    so operators can verify the escrow API matches the ledger. ────────────
+  React.useEffect(()=>{
+    let cancelled = false
+    fetch('/api/admin/analytics/ledger?view=overview', { credentials: 'same-origin' })
+      .then(r=>r.json()).then(j=>{if(!cancelled)setLedgerData(j?.data??j)})
+      .catch(()=>{}) // non-critical
+    return ()=>{cancelled=true}
+  },[])
+
+  // ── Audit log fetch — cron + manual auto-release sweep history ─────────
+  React.useEffect(()=>{
+    let cancelled = false
+    setLoadingAudit(true)
+    fetch('/api/admin/escrow/audit', { credentials: 'same-origin' })
+      .then(r=>r.json()).then(j=>{if(!cancelled)setAuditEntries(j?.data?.entries??j?.entries??null)})
+      .catch(()=>{}) // non-critical
+      .finally(()=>{if(!cancelled)setLoadingAudit(false)})
+    return ()=>{cancelled=true}
+  },[])
 
   // State mapping for tabs
   const tabToState = {overview:'all',held:'held',auto:'auto_release_ready',partial:'partial_released',disputed:'disputed',frozen:'frozen',released:'released',refunded:'refunded'}
@@ -403,9 +426,7 @@ export default function AdminEscrow() {
           <p style={{color:'#9097A8',fontSize:'13px',margin:'5px 0 0'}}>Automated state machine. Mirror visibility to clients. Override every scenario.</p>
         </div>
         <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
-          {summary.auto_release_ready>0&&(
-            <button onClick={runAutoSweep} disabled={busy} style={{padding:'8px 16px',borderRadius:'6px',border:'none',background:GOLD,color:'#fff',cursor:busy?'not-allowed':'pointer',fontSize:'13px',fontWeight:700,fontFamily:sans,opacity:busy?.7:1}}>⏰ Run Auto-Release Sweep ({summary.auto_release_ready})</button>
-          )}
+          <button onClick={runAutoSweep} disabled={busy} style={{padding:'8px 16px',borderRadius:'6px',border:summary.auto_release_ready>0?'none':'1px solid #DDD8CE',background:summary.auto_release_ready>0?GOLD:'#fff',color:summary.auto_release_ready>0?'#fff':NAVY,cursor:busy?'not-allowed':'pointer',fontSize:'13px',fontWeight:700,fontFamily:sans,opacity:busy?.7:1}}>⏰ Run Auto-Release Sweep{summary.auto_release_ready>0?` (${summary.auto_release_ready})`:''}</button>
           <button onClick={list.reload} style={{padding:'8px 16px',borderRadius:'6px',border:'1px solid #DDD8CE',background:'#fff',color:NAVY,cursor:'pointer',fontSize:'13px',fontWeight:600,fontFamily:sans}}>↻ Refresh</button>
         </div>
       </div>
@@ -440,6 +461,28 @@ export default function AdminEscrow() {
             <Kpi label="Released (all time)" value={$(summary.released_total)} sub={`${summary.released_count||0} orders`} accent={GREEN} icon="✓" onClick={()=>setTab('released')}/>
             <Kpi label="Refunded" value={$(summary.refunded_total)} sub={`${summary.refunded_count||0} orders`} accent={'#9097A8'} icon="↩" onClick={()=>setTab('refunded')}/>
           </div>
+          {/* ── Canonical Ledger Reconciliation ──────────────────────────────
+              Shows the same escrow totals from the canonical ledger so the
+              operator can spot discrepancies between the escrow API and the
+              unified ledger at a glance. */}
+          {ledgerData&&(
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'10px'}}>
+                <span style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.12em',color:'#9097A8'}}>Canonical Ledger Check</span>
+                <span style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:'#EAF5EE',color:'#1A6B45',fontWeight:700}}>live</span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'10px'}}>
+                <Kpi label="Ledger: Deposits"   value={$( (ledgerData.escrow_held_cents||0) / 100 )}     sub={`${ledgerData.escrow_held_count||0} entries`} accent={AMBER} icon="📒"/>
+                <Kpi label="Ledger: Released"   value={$( (ledgerData.escrow_released_cents||0) / 100 )} sub={`${ledgerData.escrow_released_count||0} entries`} accent={GREEN} icon="📒"/>
+                <Kpi label="Ledger: Refunded"   value={$( (ledgerData.escrow_refunded_cents||0) / 100 )} sub={`${ledgerData.escrow_refunded_count||0} entries`} accent={RED} icon="📒"/>
+                <Kpi label="Ledger: Net Outs."  value={$( (ledgerData.escrow_net_outstanding_cents||0) / 100 )} sub="deposits − released − refunded" accent={PURPLE} icon="⚖️"/>
+              </div>
+              <div style={{fontSize:'11px',color:'#9097A8',marginTop:'6px',lineHeight:1.5,paddingLeft:'2px'}}>
+                Totals from <code style={{fontSize:'10px',background:'#F2EFE9',padding:'1px 5px',borderRadius:'3px'}}>canonical_ledger</code> — {ledgerData.escrow_held_count||0} deposits, {ledgerData.escrow_released_count||0} releases, {ledgerData.escrow_refunded_count||0} refunds
+              </div>
+            </div>
+          )}
+
           {/* Quick reference */}
           <Card style={{padding:'18px 20px',borderLeft:`4px solid ${GOLD}`}}>
             <div style={{fontFamily:serif,fontWeight:600,fontSize:'16px',color:NAVY,marginBottom:'6px'}}>How the automated escrow flow works</div>
@@ -459,6 +502,63 @@ export default function AdminEscrow() {
       {/* LIST TABS */}
       {tab!=='overview'&&(
         <>
+          {/* ── Cron Job Monitor (Auto-Release tab only) ────────────────
+              Shows recent cron_auto_release_escrow and escrow_run_auto_releases
+              entries from admin_audit_log so operators can monitor sweep health. */}
+          {tab==='auto'&&(
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
+                <span style={{fontSize:'11px',fontWeight:700,textTransform:'uppercase',letterSpacing:'.12em',color:'#9097A8'}}>Cron Job Monitor</span>
+                <span style={{fontSize:'10px',padding:'2px 6px',borderRadius:'4px',background:loadingAudit?'#F2EFE9':'#EAF5EE',color:loadingAudit?'#9097A8':'#1A6B45',fontWeight:700,transition:'all .2s'}}>{loadingAudit?'loading…':'admin_audit_log'}</span>
+              </div>
+              {loadingAudit&&!auditEntries?(
+                <div style={{background:'#fff',border:'1px solid #DDD8CE',borderRadius:'8px',padding:'24px',textAlign:'center',fontSize:'13px',color:'#9097A8'}}>Loading sweep history…</div>
+              ):!auditEntries||auditEntries.length===0?(
+                <div style={{background:'#fff',border:'1px dashed #C8C2B6',borderRadius:'8px',padding:'20px',textAlign:'center'}}>
+                  <div style={{fontSize:'24px',marginBottom:'6px',opacity:.4}}>⏰</div>
+                  <div style={{fontFamily:serif,fontWeight:600,fontSize:'14px',color:NAVY,marginBottom:'4px'}}>No sweep history yet</div>
+                  <div style={{fontSize:'12px',color:'#9097A8',lineHeight:1.5}}>
+                    No entries in <code style={{fontSize:'11px',background:'#F2EFE9',padding:'1px 5px',borderRadius:'3px'}}>admin_audit_log</code> for auto-release sweeps.
+                    The daily cron job or manual sweep will appear here once it runs.
+                  </div>
+                </div>
+              ):(
+                <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                  {auditEntries.slice(0,10).map((e,i)=>{
+                    const payload = e.payload || {}
+                    const releasedCount = payload.released_count ?? payload.rpc_result?.released_count ?? null
+                    const releasedTotal = payload.released_total ?? payload.rpc_result?.released_total ?? null
+                    const earningsReleased = payload.earnings_released ?? null
+                    const isCron = e.source === 'cron'
+                    return(
+                      <div key={e.id||i} style={{display:'flex',alignItems:'center',gap:'12px',background:'#fff',border:'1px solid #DDD8CE',borderRadius:'7px',padding:'11px 14px',transition:'all .12s'}}>
+                        <div style={{flexShrink:0,width:'28px',height:'28px',borderRadius:'50%',background:isCron?'rgba(196,164,90,.15)':'rgba(15,23,42,.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px'}}>{isCron?'🕐':'👤'}</div>
+                        <div style={{flex:'1',minWidth:0}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
+                            <span style={{fontWeight:700,fontSize:'13px',color:NAVY}}>{isCron?'Cron: Daily Auto-Release':'Manual: Admin Sweep'}</span>
+                            {releasedCount!==null&&<span style={{padding:'1px 6px',borderRadius:'4px',background:releasedCount>0?'#EAF5EE':'#F2EFE9',color:releasedCount>0?GREEN:'#9097A8',fontSize:'10px',fontWeight:700}}>{fmtN(releasedCount)} released</span>}
+                            {!isCron&&<span style={{fontSize:'10px',padding:'1px 5px',borderRadius:'3px',background:'rgba(15,23,42,.06)',color:'#5C6070',fontWeight:500}}>by admin</span>}
+                          </div>
+                          <div style={{display:'flex',gap:'10px',flexWrap:'wrap',marginTop:'3px'}}>
+                            {releasedTotal!==null&&<span style={{fontSize:'11px',color:'#5C6070'}}>Total: <strong style={{color:GREEN}}>{$(releasedTotal)}</strong></span>}
+                            {earningsReleased!==null&&<span style={{fontSize:'11px',color:'#5C6070'}}>Earnings released: <strong style={{color:NAVY}}>{fmtN(earningsReleased)}</strong></span>}
+                            <span style={{fontSize:'11px',color:'#9097A8'}}>{ago(e.ran_at)}</span>
+                          </div>
+                        </div>
+                        <div style={{flexShrink:0,fontSize:'10px',color:'#9097A8',fontWeight:600,fontFamily:'monospace'}}>{new Date(e.ran_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+                      </div>
+                    )
+                  })}
+                  {auditEntries.length>10&&(
+                    <div style={{textAlign:'center',fontSize:'12px',color:'#9097A8',padding:'8px 0'}}>
+                      Showing 10 of {auditEntries.length} entries
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Toolbar */}
           <div style={{display:'flex',gap:'10px',flexWrap:'wrap',alignItems:'center'}}>
             <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search order #, client, provider…" style={{flex:'1 1 220px',maxWidth:'380px',padding:'8px 12px',borderRadius:'7px',border:'1px solid #DDD8CE',fontSize:'13px',fontFamily:sans,outline:'none'}}/>

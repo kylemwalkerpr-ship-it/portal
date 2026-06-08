@@ -14,11 +14,8 @@ alter table services add column if not exists badge text;
 alter table services add column if not exists status text not null default 'active';
 alter table services add column if not exists delivery_type text;
 alter table services add column if not exists file_path text;
-alter table services add column if not exists stripe_product_id varchar(255);
-alter table services add column if not exists stripe_price_id_usd varchar(255);
-alter table services add column if not exists stripe_payment_link_usd text;
-alter table services add column if not exists stripe_price_id_cad varchar(255);
-alter table services add column if not exists stripe_payment_link_cad text;
+-- Stripe columns (stripe_product_id, stripe_price_id_*, stripe_payment_link_*) were removed
+-- by drop_deprecated_stripe_columns.sql. The ADD COLUMN lines have been deleted.
 
 do $$
 begin
@@ -97,34 +94,3 @@ from (
 where not exists (
   select 1 from services where services.product_type = 'template' and services.slug = data.slug
 );
-
--- Stripe payment links generated from catalogue/stripe_payment_links_output.json.
-update services
-set stripe_product_id = data.stripe_product_id,
-    stripe_price_id_usd = data.stripe_price_id_usd,
-    stripe_payment_link_usd = data.stripe_payment_link_usd,
-    stripe_payment_link_url = data.stripe_payment_link_usd,
-    stripe_price_id_cad = data.stripe_price_id_cad,
-    stripe_payment_link_cad = data.stripe_payment_link_cad
-from (
-  values
-  ('us-f1-student-visa-ds160-i20-pack', 'prod_UV4GT29u8qYl7n', 'price_1TW47tFy6WULRNinqqVVQF6G', 'https://buy.stripe.com/00wfZh3G90iGaD18fygYU0m', null, null),
-  ('us-f1-interview-home-ties-pack', 'prod_UV4Gmjgc6E3VrZ', 'price_1TW47vFy6WULRNin1ANajE8N', 'https://buy.stripe.com/28EcN5ekNghE26v7bugYU0n', null, null),
-  ('us-b1b2-visitor-visa-ds160-invitation-pack', 'prod_UV4Gg7qANfUWPt', 'price_1TW47wFy6WULRNinRE6pSkk5', 'https://buy.stripe.com/7sY9ATa4xc1o7qPcvOgYU0o', null, null),
-  ('us-opt-i765-application-prep-pack', 'prod_UV4GCJ14gXHeSr', 'price_1TW47yFy6WULRNinjqi74jSU', 'https://buy.stripe.com/6oU5kDekN1mK7qP53mgYU0p', null, null),
-  ('us-stem-opt-i765-i983-companion-pack', 'prod_UV4GklSSSKoe2r', 'price_1TW47zFy6WULRNinsLmJfi7a', 'https://buy.stripe.com/bJe00ja4x8PcaD1fI0gYU0q', null, null),
-  ('us-i134-financial-support-companion-pack', 'prod_UV4GQHHaYf9I5u', 'price_1TW481Fy6WULRNinqldCQJrf', 'https://buy.stripe.com/9B6bJ1gsV3uSbH5cvOgYU0r', null, null),
-  ('canada-study-permit-complete-pack', 'prod_UV4GHeENd9Mn82', 'price_1TW482Fy6WULRNin2Qtlw7Dw', 'https://buy.stripe.com/5kQ7sL2C50iG9yXanGgYU0s', null, null),
-  ('canada-proof-of-funds-sponsor-pack', 'prod_UV4Ga4LguThCYD', 'price_1TW484Fy6WULRNin8xIREJ1Y', 'https://buy.stripe.com/8x29AT90tghE12ranGgYU0t', null, null),
-  ('canada-study-plan-letter-of-explanation-pack', 'prod_UV4GLQRwdNU0Pg', 'price_1TW486Fy6WULRNin3UdhmvWZ', 'https://buy.stripe.com/6oU00j6Sle9wdPdfI0gYU0u', null, null),
-  ('canada-trv-visitor-visa-pack', 'prod_UV4GwkpQJkK2mx', 'price_1TW487Fy6WULRNin3vTPK4nJ', 'https://buy.stripe.com/fZu7sLgsVd5s3az7bugYU0v', null, null),
-  ('canada-work-permit-outside-canada-pack', 'prod_UV4GhrM1fZT0cD', 'price_1TW489Fy6WULRNinft3qbx4n', 'https://buy.stripe.com/eVq3cv5Oh3uS6mLbrKgYU0w', null, null),
-  ('canada-pgwp-application-pack', 'prod_UV4GWbWau7a8Qu', 'price_1TW48AFy6WULRNin8lLBP17H', 'https://buy.stripe.com/5kQ5kDdgJ5D0cL9cvOgYU0x', null, null),
-  ('canada-family-information-travel-history-pack', 'prod_UV4G2h4nhve0fL', 'price_1TW48CFy6WULRNin1nJYIU7A', 'https://buy.stripe.com/28EcN5gsVc1o8uT53mgYU0y', null, null),
-  ('us-canada-refusal-reapplication-response-pack', 'prod_UV4GI8Jl4kpqvk', 'price_1TW48DFy6WULRNinlbqxJW95', 'https://buy.stripe.com/28E4gz4Kdc1o4eDgM4gYU0z', null, null),
-  ('universal-client-intake-document-review-kit', 'prod_UV4GGoX0lavQsv', 'price_1TW48FFy6WULRNinLPgKMbdg', 'https://buy.stripe.com/5kQ5kD0tX6H47qP0N6gYU0A', null, null),
-  ('premium-usa-canada-study-work-mega-bundle', 'prod_UV4GpEiMNGy9Ta', 'price_1TW48GFy6WULRNinfmjFPWAl', 'https://buy.stripe.com/fZuaEX2C53uSfXl1RagYU0B', null, null)
-) as data(slug, stripe_product_id, stripe_price_id_usd, stripe_payment_link_usd, stripe_price_id_cad, stripe_payment_link_cad)
-where services.product_type = 'template'
-  and services.slug = data.slug;
--- End generated Stripe payment links.

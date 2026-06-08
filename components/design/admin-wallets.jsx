@@ -530,8 +530,12 @@ function WalletDrawer({ profileId, onClose }) {
                     { key: 'amount',  label: 'Amount', right: true, bold: true },
                     { key: 'balance', label: 'Balance after', right: true },
                     { key: 'desc',    label: 'Description', wrap: true, muted: true },
+                    { key: 'actions', label: 'Actions' },
                   ]}
-                  rows={(data.transactions || []).map(t => ({
+                  rows={(data.transactions || []).map(t => {
+                    // Refund is only offered on debit/purchase type entries
+                    const canRefund = t.type === 'debit' || t.type === 'purchase'
+                    return {
                     __rowKey: t.id,
                     when:    fmtDateTime(t.created_at),
                     type:    <TxnTypeBadge type={t.type} />,
@@ -542,7 +546,51 @@ function WalletDrawer({ profileId, onClose }) {
                     ),
                     balance: fmt(t.balance_after_cents),
                     desc:    t.description || '—',
-                  }))}
+                    actions: canRefund ? (
+                      <button
+                        onClick={async () => {
+                          const reason = prompt('Refund reason:')
+                          if (!reason) return
+                          const amtInput = prompt(`Refund amount in cents (max ${Math.abs(Number(t.signed_cents || t.amount_cents || 0))}):`, String(Math.abs(Number(t.signed_cents || t.amount_cents || 0))))
+                          if (!amtInput) return
+                          const amountCents = parseInt(amtInput, 10)
+                          if (!Number.isInteger(amountCents) || amountCents <= 0) {
+                            alert('Invalid amount.')
+                            return
+                          }
+                          try {
+                            const res = await fetch('/api/admin/ledger/refund', {
+                              method: 'POST',
+                              credentials: 'same-origin',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                profile_id: profileId,
+                                amount_cents: amountCents,
+                                order_id: t.reference || null,
+                                source_table: 'wallet_transactions',
+                                source_id: t.id,
+                                reason,
+                                method: 'wallet',
+                              }),
+                            })
+                            const json = await res.json()
+                            if (!res.ok) throw new Error(json?.error || 'Refund failed')
+                            setReloadKey(k => k + 1)
+                            setToast(`Refunded ${fmt(amountCents)} — ${json.data?.warnings?.length ? json.data.warnings.join('; ') : 'done'}`)
+                          } catch (err) {
+                            alert(String(err))
+                          }
+                        }}
+                        style={{
+                          padding: '3px 8px', fontSize: '11px', fontWeight: 600, fontFamily: 'inherit',
+                          background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: '4px',
+                          cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Refund
+                      </button>
+                    ) : null,
+                  }})}
                   emptyMsg="No transactions for this filter"
                 />
               </Section>

@@ -1,3 +1,10 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- DEPRECATED — Stripe excision was part of the Stripe deprecation.
+-- The provider_earnings and provider_payouts tables were created by this
+-- migration. They are kept in the database for backward compatibility.
+-- This file is kept for reference only. Do NOT run it on a fresh database.
+-- ══════════════════════════════════════════════════════════════════════════════
+/*
 -- stripe_excision.sql
 -- Provider earnings and manual payout ledger. Adds tables only.
 -- Run this after wallet_nmi.sql.
@@ -145,3 +152,4 @@ language sql stable as $$
   group by e.provider_id, p.full_name, p.email
   order by total_cents desc;
 $$;
+*/

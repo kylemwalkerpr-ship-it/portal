@@ -3,22 +3,15 @@
 -- ABA Model Rule 5.4: a non-lawyer cannot share legal fees with a lawyer.
 -- So we DON'T split the attorney's fee. Instead the platform fee is added
 -- on top of the attorney fee and disclosed separately to the client.
--- Stripe destination charge with application_fee_amount handles the split:
---   client pays    = attorney_fee + platform_fee
---   attorney gets  = attorney_fee (in full, to their Connect account)
---   platform gets  = platform_fee (as Stripe application fee)
+--
+-- Stripe Connect columns (stripe_account_id, stripe_onboarding_complete) were
+-- dropped by drop_deprecated_stripe_columns.sql and have been removed here.
 
--- 1. Attorneys need Stripe Connect to receive payments.
-alter table public.attorneys add column if not exists stripe_account_id text;
-alter table public.attorneys add column if not exists stripe_onboarding_complete boolean default false;
-
-create index if not exists attorneys_stripe_account_idx on public.attorneys(stripe_account_id);
-
--- 2. Snapshot the fee breakdown on each offer so disclosures are stable
+-- 1. Snapshot the fee breakdown on each offer so disclosures are stable
 --    even if the platform percent changes later.
 alter table public.attorney_offers add column if not exists platform_fee numeric(12,2) default 0;
 alter table public.attorney_offers add column if not exists platform_fee_percent_snapshot numeric(5,2) default 0;
-alter table public.attorney_offers add column if not exists attorney_stripe_account_id text;
+-- attorney_stripe_account_id was dropped by drop_deprecated_stripe_columns.sql
 
 -- 3. Track the split on the resulting order.
 alter table public.orders add column if not exists attorney_fee numeric(12,2);

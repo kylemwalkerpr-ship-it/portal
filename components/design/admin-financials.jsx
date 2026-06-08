@@ -11,19 +11,29 @@ import AdminWalletLoyalty from './admin-wallet-loyalty'
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = C.sans
 
-// ─── live data hook ───────────────────────────────────────────────────────────
-// Self-healing GET against the requireAdminUser ok/fail envelope. Never throws
-// — tabs render with the prop-derived fallbacks when an endpoint can't answer.
-function useAdminAnalytics(endpoint) {
+// ─── canonical ledger hook ──────────────────────────────────────────────────
+// Self-healing GET against the unified /api/admin/analytics/ledger endpoint.
+// Every data-driven tab reads from this one source so all KPIs are consistent.
+function useLedgerQuery(view, params = {}) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  // Stable param string — build from the view + serialized params so the
+  // effect only re-fires when actual query params change.
+  const paramStr = React.useMemo(() => {
+    const p = new URLSearchParams({ view })
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') p.set(k, String(v))
+    }
+    return p.toString()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, JSON.stringify(Object.entries(params).sort((a, b) => a[0].localeCompare(b[0])))])
   React.useEffect(() => {
     let cancelled = false
     ;(async () => {
       setLoading(true); setError('')
       try {
-        const res = await fetch(`/api/admin/analytics/${endpoint}`, { credentials: 'same-origin' })
+        const res = await fetch(`/api/admin/analytics/ledger?${paramStr}`, { credentials: 'same-origin' })
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(json?.error?.message || json?.error || 'Failed')
         if (!cancelled) setData(json?.data ?? json)
@@ -34,7 +44,7 @@ function useAdminAnalytics(endpoint) {
       }
     })()
     return () => { cancelled = true }
-  }, [endpoint])
+  }, [paramStr])
   return { data, loading, error }
 }
 
@@ -95,6 +105,17 @@ const FINANCIAL_TABS = [
   { id: 'projections',  label: 'Projections',     icon: '📈' },
   { id: 'risk',         label: 'Risk',            icon: '🔴' },
   { id: 'loyalty',      label: 'Loyalty',         icon: '🎖' },
+  { id: 'ledger-dash',  label: 'Ledger Dashboard', icon: '📋' },
+]
+
+// ── Entry-type filter groups for the Ledger Dashboard ──────────────────────
+// Grouped by category so operators can quickly find the type they need.
+const ENTRY_TYPE_GROUPS = [
+  { label: 'Revenue', types: ['purchase', 'fee', 'commission', 'discount', 'bonus'] },
+  { label: 'Payouts', types: ['payout'] },
+  { label: 'Refunds', types: ['refund', 'chargeback'] },
+  { label: 'Escrow', types: ['escrow_deposit', 'escrow_release', 'escrow_refund'] },
+  { label: 'Other', types: ['topup', 'adjustment', 'loyalty_credit'] },
 ]
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -303,13 +324,50 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
   // the profile_id by name here. Names are unique enough in practice; on
   // a collision the first match wins, which is acceptable for an admin
   // tool — clicking again reopens with the matched id.
-  // ── Live API hooks. Each tab gets its own self-healing fetch. Failures
-  //    surface as a data_warnings banner; values stay falsy so the tab
-  //    cleanly degrades to prop-derived numbers below. ────────────────────────
-  const finOverview  = useAdminAnalytics('financial-overview')
-  const finLiab      = useAdminAnalytics('liabilities')
-  const finProj      = useAdminAnalytics('projections')
-  const finRisk      = useAdminAnalytics('risk')
+  // ── Canonical ledger hooks. Every tab reads from the same ledger endpoint
+  //    so KPIs are consistent across views. ──────────────────────────────────
+  const ledgerOverview  = useLedgerQuery('overview')
+  const ledgerRevenue   = useLedgerQuery('revenue')
+  const ledgerLiab      = useLedgerQuery('liabilities')
+  const ledgerProj      = useLedgerQuery('projections')
+  const ledgerRisk      = useLedgerQuery('risk')
+  const ledgerDaily     = useLedgerQuery('daily_series')
+  // Ledger Dashboard date range state — defaults to current month for a
+  // tight daily view, but users can widen it to any range the API supports.
+  const [ldFrom, setLdFrom] = React.useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10)
+  })
+  const [ldTo, setLdTo] = React.useState(() => new Date().toISOString().slice(0, 10))
+  // Selected entry types for the Ledger Dashboard filter. Empty array = all types.
+  const [ldTypes, setLdTypes] = React.useState([])
+
+  const ldTypeParam = ldTypes.length ? ldTypes.join(',') : undefined
+  const ledgerDashboard  = useLedgerQuery('daily_series', { from: ldFrom, to: ldTo, type: ldTypeParam })
+
+  // ── Previous period for week-over-week comparison ──────────────────────────
+  // Computes the same-length duration immediately before the current range.
+  const ldPrevRange = React.useMemo(() => {
+    const fromMs = new Date(ldFrom).getTime()
+    const toMs = new Date(ldTo).getTime()
+    if (isNaN(fromMs) || isNaN(toMs) || toMs <= fromMs) return null
+    const durationMs = toMs - fromMs
+    const prevTo = new Date(fromMs - 1)
+    const prevFrom = new Date(prevTo.getTime() - durationMs)
+    return {
+      from: prevFrom.toISOString().slice(0, 10),
+      to: prevTo.toISOString().slice(0, 10),
+      days: Math.round(durationMs / 86400_000),
+    }
+  }, [ldFrom, ldTo])
+  const ledgerDashboardPrev = useLedgerQuery('daily_series', {
+    from: ldPrevRange?.from,
+    to: ldPrevRange?.to,
+    type: ldTypeParam,
+  })
+
+  const toggleLdType = (type) => {
+    setLdTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])
+  }
 
   const studentNameToId = React.useMemo(() => {
     const m = {}
@@ -422,18 +480,33 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
   const sortedStudents  = [...userFinancials.students].sort((a, b) => b[userSort === 'orders' ? 'orders' : 'spent'] - a[userSort === 'orders' ? 'orders' : 'spent'])
   const sortedProviders = [...userFinancials.providers].sort((a, b) => b.earned - a.earned)
 
-  // ── Refund handler ────────────────────────────────────────────────────────────
+  // ── Refund handler (canonical ledger) ──────────────────────────────────────────
+  // Uses the unified /api/admin/ledger/refund endpoint so all refunds write
+  // to canonical_ledger + wallet + legacy tables consistently.
   const handleRefund = async (type, id, label) => {
-    if (!confirm(`Refund ${label}? This will mark it as refunded.`)) return
+    if (!confirm(`Refund ${label}? This will credit the buyer via the unified ledger.`)) return
+    const reason = prompt('Refund reason:')
+    if (!reason) return
+    const amtStr = prompt('Refund amount in cents (leave blank for full):')
+    const amountCents = amtStr ? parseInt(amtStr, 10) : 0
+    if (amountCents <= 0) return alert('Invalid amount.')
     try {
-      const res = await fetch('/api/admin/refund', {
+      const res = await fetch('/api/admin/ledger/refund', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, id }),
+        body: JSON.stringify({
+          profile_id: null, // will be resolved server-side
+          amount_cents: amountCents,
+          order_id: id,
+          source_table: type === 'template_order' ? 'template_orders' : 'orders',
+          source_id: id,
+          reason,
+          method: 'wallet',
+        }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Refund failed')
-      if (setActionNotice) setActionNotice('Refund processed for ' + label)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || json?.data?.error || 'Refund failed')
+      if (setActionNotice) setActionNotice(`Refund processed: ${fmtCents(amountCents)}`)
       window.location.reload()
     } catch (e) {
       if (setActionNotice) setActionNotice(e.message || 'Refund failed')
@@ -513,13 +586,15 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
       {/* ── OVERVIEW ──────────────────────────────────────────────────────────── */}
       {tab === 'overview' && (() => {
-        // Live snapshot from /api/admin/analytics/financial-overview. Falls
-        // back to prop-derived totals if the API is unreachable.
-        const od = finOverview.data || {}
+        // Live snapshot from the canonical ledger. All KPIs come from the
+        // same source so Overview, Revenue, Liabilities all agree.
+        const od = ledgerOverview.data || {}
+        // Daily series from the dedicated view
+        const daily = ledgerDaily.data?.daily_series || []
         const grossDelta = od.gross_30d_prev_cents
           ? ((od.gross_30d_cents - od.gross_30d_prev_cents) / od.gross_30d_prev_cents) * 100
           : null
-        const daily = od.daily_series || []
+        /* daily already set above */
         // Build a small split-line chart from the daily series.
         const splitMax = Math.max(1, ...daily.map(d => Math.max(d.gross, d.net, d.payouts)))
         const linePath = (key, w = 100, h = 80) => daily.length < 2 ? '' :
@@ -529,14 +604,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <>
             <DataWarnings items={od.data_warnings} />
 
-            {/* Top row — 4 decision-useful KPIs (cents-based, from API) */}
-            <Section title="Last 30 Days" sub="Operator KPIs sourced from live order + escrow data">
+            {/* Top row — 4 decision-useful KPIs (cents-based, from ledger) */}
+            <Section title="Last 30 Days" sub="Operator KPIs from the canonical ledger — all transactions across student, attorney, consultant, and platform accounts">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
                 <KpiCard label="Gross Revenue (30d)" value={fmtCents(od.gross_30d_cents, true)}
                   sub={`vs ${fmtCents(od.gross_30d_prev_cents, true)} prior 30d`}
                   delta={grossDelta} accent="#1A6B45" icon="💵" />
                 <KpiCard label="Net Take (30d)" value={fmtCents(od.net_take_30d_cents, true)}
-                  sub={`After ${od.platform_fee_percent || platformPct}% fee · payouts ${fmtCents(od.payouts_30d_cents, true)}`}
+                  sub={`Payouts ${fmtCents(od.payouts_30d_cents, true)}`}
                   accent="#0F172A" icon="📊" />
                 <KpiCard label="Outstanding Escrow" value={fmtCents(od.outstanding_escrow_cents, true)}
                   sub="Held / partial / disputed / frozen" accent="#D97706" icon="🔒" />
@@ -549,7 +624,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             {/* 30d revenue chart split gross / net / payouts */}
             <Section title="30-Day Revenue Flow" sub="Gross collected · platform net · provider payouts">
               <Card style={{ padding: '20px' }}>
-                {finOverview.loading ? (
+                {ledgerDaily.loading ? (
                   <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
                 ) : daily.length < 2 ? (
                   <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No revenue in last 30 days</div>
@@ -568,148 +643,307 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   </>
                 )}
               </Card>
+            </Section>         
+            
+            {/* ── Escrow Summary ────────────────────────────────────────────────
+                Live escrow breakdown from the canonical ledger: held, released,
+                refunded amounts, volume, and a donut-chart distribution. */}
+            <Section title="Escrow Summary" sub="All escrow activity in this period — held, released, refunded, and disputed — from the canonical ledger">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                <KpiCard label="Held (deposits)" value={fmtCents(od.escrow_held_cents, true)}
+                  sub={`${od.escrow_held_count || 0} escrow deposits`}
+                  accent="#D97706" icon="🔒" />
+                <KpiCard label="Released" value={fmtCents(od.escrow_released_cents, true)}
+                  sub={`${od.escrow_released_count || 0} releases`}
+                  accent="#1A6B45" icon="✅" />
+                <KpiCard label="Refunded" value={fmtCents(od.escrow_refunded_cents, true)}
+                  sub={`${od.escrow_refunded_count || 0} refunds`}
+                  accent={od.escrow_refunded_count > 0 ? '#8B1A1A' : '#9097A8'} icon="↩" />
+                <KpiCard label="Net Outstanding" value={fmtCents(od.escrow_net_outstanding_cents, true)}
+                  sub="Current liability (held − released − refunded)"
+                  accent="#3D2B6B" icon="⚖️" />
+                <KpiCard label="Disputed / Frozen"
+                  value={od.escrow_disputed_count || 0}
+                  sub={`${fmtCents(od.escrow_disputed_cents, true)} held`}
+                  accent={(od.escrow_disputed_count || 0) > 0 ? '#8B1A1A' : '#9097A8'} icon="⚠️" />
+              </div>
+
+              {/* Mini donut chart showing the escrow distribution
+                  NOTE: Disputed is NOT included in the donut because it's a
+                  subset of Held — adding it would double-count. Disputed
+                  appears independently in the KPI card above. */}
+              {(od.escrow_held_cents || od.escrow_released_cents || od.escrow_refunded_cents) ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 8 }}>
+                  <DonutChart segments={[
+                    { label: 'Held',       value: od.escrow_held_cents || 0,       color: '#D97706' },
+                    { label: 'Released',   value: od.escrow_released_cents || 0,   color: '#1A6B45' },
+                    { label: 'Refunded',   value: od.escrow_refunded_cents || 0,   color: '#8B1A1A' },
+                  ]} size={80} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {[
+                      { label: 'Held',       cents: od.escrow_held_cents,       color: '#D97706' },
+                      { label: 'Released',   cents: od.escrow_released_cents,   color: '#1A6B45' },
+                      { label: 'Refunded',   cents: od.escrow_refunded_cents,   color: '#8B1A1A' },
+                    ].map(s => (
+                      <Legend key={s.label} color={s.color}
+                        label={s.label}
+                        value={fmtCents(s.cents, true)} />
+                    ))}
+                    {(od.escrow_disputed_count || 0) > 0 && (
+                      <Legend color="#3D2B6B" label="Disputed" value={`${od.escrow_disputed_count} orders`} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }} />
+                  {/* Volume trail — show counts as a simple summary */}
+                  <div style={{ fontSize: 12, color: '#9097A8', lineHeight: 1.6, textAlign: 'right' }}>
+                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_held_count}</strong> deposits</div>
+                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_released_count}</strong> releases</div>
+                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_refunded_count}</strong> refunds</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '16px 0', color: '#9097A8', fontSize: 13, textAlign: 'center' }}>
+                  No escrow activity in this period
+                </div>
+              )}
             </Section>
 
+            {/* ── Escrow Aging ────────────────────────────────────────────────
+                How long have outstanding escrow deposits been sitting? Bucketed
+                by age range so the operator can spot stale funds that need
+                follow-up or admin intervention. */}
+            <Section title="Escrow Aging" sub="When escrow deposits arrived (not adjusted for releases/refunds) — anything in 60+ days needs follow-up">
+              <Card style={{ padding: '20px' }}>
+                {(() => {
+                  const aging = od.escrow_aging || {}
+                  const buckets = [
+                    { key: '0_7',     label: '0–7 days',    color: '#1A6B45', weight: 1 },
+                    { key: '8_30',    label: '8–30 days',   color: '#D97706', weight: 2 },
+                    { key: '31_60',   label: '31–60 days',  color: '#CD5C1C', weight: 3 },
+                    { key: '60_plus', label: '60+ days',    color: '#8B1A1A', weight: 4 },
+                  ]
+                  const totalCents = buckets.reduce((s, b) => s + (aging[b.key]?.cents || 0), 0)
+                  const maxCents = Math.max(1, ...buckets.map(b => aging[b.key]?.cents || 0))
+
+                  if (totalCents === 0) {
+                    return <div style={{ padding: '16px 0', color: '#9097A8', fontSize: 13, textAlign: 'center' }}>No outstanding escrow deposits</div>
+                  }
+
+                  return (
+                    <>
+                      {/* Stacked horizontal bar showing relative proportion */}
+                      <div style={{ display: 'flex', height: 24, borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
+                        {buckets.map(b => {
+                          const pct = totalCents > 0 ? ((aging[b.key]?.cents || 0) / totalCents) * 100 : 0
+                          if (pct === 0) return null
+                          return (
+                            <div key={b.key}
+                              title={`${b.label}: ${fmtCents(aging[b.key]?.cents, true)} (${pct.toFixed(1)}%)`}
+                              style={{ width: `${pct}%`, background: b.color, minWidth: 4, transition: 'width 0.3s' }}
+                            />
+                          )
+                        })}
+                      </div>
+
+                      {/* Bucket table */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {buckets.map(b => {
+                          const row = aging[b.key] || { count: 0, cents: 0 }
+                          const pct = totalCents > 0 ? ((row.cents / totalCents) * 100).toFixed(1) : '0.0'
+                          const barW = maxCents > 0 ? (row.cents / maxCents) * 100 : 0
+                          return (
+                            <div key={b.key}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{
+                                    width: 10, height: 10, borderRadius: '50%',
+                                    background: b.color, display: 'inline-block', flexShrink: 0,
+                                  }} />
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: b.weight >= 3 ? b.color : '#0F172A' }}>
+                                    {b.label}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
+                                    {fmtCents(row.cents, true)}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: '#9097A8', minWidth: 40, textAlign: 'right' }}>
+                                    {row.count} order{row.count !== 1 ? 's' : ''}
+                                  </span>
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 700, minWidth: 38, textAlign: 'right',
+                                    color: Number(pct) > 50 ? b.color : '#9097A8',
+                                  }}>
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Mini inline bar */}
+                              <div style={{ height: 4, background: '#F2EFE9', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{ width: `${barW}%`, height: '100%', background: b.color, borderRadius: 2, transition: 'width 0.3s' }} />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Total row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2EFE9' }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#5C6070' }}>Total outstanding</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>{fmtCents(totalCents, true)}</span>
+                      </div>
+                    </>
+                  )
+                })()}
+              </Card>
+            </Section>
+
+            {/* Top services & providers */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <Section title="Top 5 Services (90d gross)"
-                action={<Btn variant="ghost" size="sm" onClick={() => exportCSV((od.top_services || []).map(s => ({ service: s.title || s.gig_id, orders: s.orders, gross_cents: s.gross_cents })), 'top-services.csv')}>↓ CSV</Btn>}>
-                <DataTable
-                  cols={[
-                    { key: 'rank',   label: '#', muted: true },
-                    { key: 'title',  label: 'Service', wrap: true },
-                    { key: 'orders', label: 'Orders', right: true },
-                    { key: 'gross',  label: 'Gross', right: true, bold: true },
-                  ]}
-                  rows={(od.top_services || []).map((s, i) => ({
-                    rank:   `#${i + 1}`,
-                    title:  s.title || (s.gig_id ? `${s.gig_id.slice(0, 8)}…` : '—'),
-                    orders: s.orders,
-                    gross:  fmtCents(s.gross_cents, true),
-                  }))}
-                  emptyMsg={finOverview.loading ? 'Loading…' : 'No orders in last 90 days'}
-                />
+              <Section title="Revenue Breakdown" sub="What moved through the ledger this period">
+                <Card style={{ padding: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'Gross (purchases)', value: fmtCents(od.gross_30d_cents, true), color: '#1A6B45' },
+                      { label: 'Platform net (fees)', value: fmtCents(od.net_take_30d_cents, true), color: '#0F172A' },
+                      { label: 'Provider payouts', value: fmtCents(od.payouts_30d_cents, true), color: '#9A7B3B' },
+                      { label: 'Refunds', value: fmtCents(od.chargeback_dollar_30d_cents, true), color: '#8B1A1A' },
+                    ].map(row => (
+                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
+                        <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: row.color }}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </Section>
-              <Section title="Top 5 Providers (90d gross)"
-                action={<Btn variant="ghost" size="sm" onClick={() => exportCSV((od.top_providers || []).map(p => ({ provider: p.name || p.provider_id, role: p.role, orders: p.orders, gross_cents: p.gross_cents })), 'top-providers.csv')}>↓ CSV</Btn>}>
-                <DataTable
-                  cols={[
-                    { key: 'rank',   label: '#', muted: true },
-                    { key: 'name',   label: 'Provider' },
-                    { key: 'role',   label: 'Role', muted: true },
-                    { key: 'orders', label: 'Orders', right: true },
-                    { key: 'gross',  label: 'Gross', right: true, bold: true },
-                  ]}
-                  rows={(od.top_providers || []).map((p, i) => ({
-                    rank:   `#${i + 1}`,
-                    name:   p.name || (p.provider_id ? `${p.provider_id.slice(0, 8)}…` : '—'),
-                    role:   p.role || '—',
-                    orders: p.orders,
-                    gross:  fmtCents(p.gross_cents, true),
-                  }))}
-                  emptyMsg={finOverview.loading ? 'Loading…' : 'No orders in last 90 days'}
-                />
+              <Section title="All-Time Platform Metrics" sub="Aggregated from the canonical ledger across all user types">
+                <Card style={{ padding: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'Avg Order Value', value: fmt(avgOrderValue) },
+                      { label: 'Order Completion Rate', value: `${completionRate.toFixed(1)}%` },
+                      { label: 'Cancellation Rate', value: `${cancellationRate.toFixed(1)}%` },
+                      { label: 'Platform Take Rate', value: pct(netRevenue, grossRevenue) },
+                      { label: 'Escrow Liability Ratio', value: pct(heldEscrow, grossRevenue) },
+                      { label: 'MRR (6m trailing)', value: fmt(mrr, true) },
+                    ].map(row => (
+                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
+                        <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </Section>
             </div>
 
-            {/* Supporting context — prop-derived ratios (all-time, not 30d) */}
-            <Card style={{ padding: '20px' }}>
-              <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '16px' }}>All-Time Ratios</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-                {[
-                  { label: 'Avg Order Value',        value: fmt(avgOrderValue) },
-                  { label: 'Order Completion Rate',  value: `${completionRate.toFixed(1)}%` },
-                  { label: 'Cancellation Rate',      value: `${cancellationRate.toFixed(1)}%` },
-                  { label: 'Platform Take Rate',     value: pct(netRevenue, grossRevenue) },
-                  { label: 'Escrow Liability Ratio', value: pct(heldEscrow, grossRevenue) },
-                  { label: 'MRR (6m trailing)',      value: fmt(mrr, true) },
-                ].map(row => (
-                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
-                    <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+
           </>
         )
       })()}
 
       {/* ── REVENUE ───────────────────────────────────────────────────────────── */}
-      {tab === 'revenue' && (
-        <>
-          <DataWarnings items={finOverview.data?.data_warnings} />
+      {tab === 'revenue' && (() => {
+        // Data from the canonical ledger — includes ALL purchases, fees,
+        // payouts, and refunds across student, attorney, and consultant flows.
+        const rd = ledgerRevenue.data || {}
+        const totals = rd.totals || {}
+        const monthlyBkdn = (rd.monthly_breakdown || []).filter(m => m.gross > 0)
+        const last6 = monthlyBkdn.slice(-6)
+        const last3 = monthlyBkdn.slice(-3)
 
-          {/* Live 30d stat row — RPAU + refund $ — sits above the monthly ladder */}
-          <Section title="Last 30 Days — Operator View" sub="Revenue per acquired user and refund dollars">
+        const mrr = last6.length > 0
+          ? last6.reduce((s, m) => s + m.gross, 0) / last6.length
+          : 0
+        const grossAllTime = last6.reduce((s, m) => s + m.gross, 0)
+
+        const monthlyBarData = last6.map(m => ({
+          label: monthLabel(m.month),
+          value: m.gross,
+          highlight: m.month === last6[last6.length - 1]?.month,
+        }))
+        const cumulativeMonths = monthlyBkdn.map((m, i) => ({
+          label: monthLabel(m.month),
+          value: monthlyBkdn.slice(0, i + 1).reduce((s, x) => s + x.gross, 0),
+        }))
+
+        return (
+        <>
+          <DataWarnings items={rd.data_warnings} />
+
+          <Section title="Last 30 Days — From the Canonical Ledger" sub="Revenue, refunds, and platform net across ALL user types (students, attorneys, consultants)">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <KpiCard
-                label="Revenue per Acquired User"
-                value={fmtCents(finOverview.data?.revenue_per_acquired_user_cents, false)}
-                sub={`${finOverview.data?.signups_30d || 0} new signups · net take / signups`}
-                accent="#0F172A" icon="👥" />
+                label="Gross Revenue (30d)"
+                value={fmtCents(totals.purchase__debit?.total_cents, true)}
+                sub={`${totals.purchase__debit?.count || 0} purchase entries`}
+                accent="#1A6B45" icon="💵" />
               <KpiCard
                 label="Refund / Chargeback (30d)"
-                value={fmtCents(finOverview.data?.chargeback_dollar_30d_cents, true)}
-                sub={`${fmtPct(finOverview.data?.refund_rate_30d_pct)} of all 30d orders`}
-                accent={(finOverview.data?.refund_rate_30d_pct || 0) > 10 ? '#8B1A1A' : '#D97706'} icon="↩" />
+                value={fmtCents(totals.refund__debit?.total_cents || totals.refund__credit?.total_cents || 0, true)}
+                sub={`${(totals.refund__debit?.count || totals.refund__credit?.count || 0)} refund entries`}
+                accent="#8B1A1A" icon="↩" />
               <KpiCard
                 label="Net Take (30d)"
-                value={fmtCents(finOverview.data?.net_take_30d_cents, true)}
-                sub={`Platform cut at ${finOverview.data?.platform_fee_percent || platformPct}%`}
-                accent="#1A6B45" icon="💰" />
+                value={fmtCents(totals.fee__credit?.total_cents, true)}
+                sub="Platform fees from all orders"
+                accent="#0F172A" icon="💰" />
+              <KpiCard
+                label="Provider Payouts (30d)"
+                value={fmtCents(totals.payout__credit?.total_cents, true)}
+                sub={`${totals.payout__credit?.count || 0} payouts`}
+                accent="#9A7B3B" icon="📤" />
             </div>
           </Section>
 
-          <Section title="Monthly Revenue" sub="Gross revenue collected per month (last 6 months)">
+          <Section title="Monthly Revenue" sub="Gross revenue per month (last 6, from canonical ledger)">
             <Card style={{ padding: '20px' }}>
               <BarChart data={monthlyBarData} height={140} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F2EFE9' }}>
-                {last3.map(k => (
-                  <div key={k} style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '11px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthLabel(k)}</div>
-                    <div style={{ fontWeight: 700, fontSize: '18px', color: '#0F172A', marginTop: '4px' }}>{fmt(monthlyMap[k].gross, true)}</div>
-                    <div style={{ fontSize: '11px', color: '#1A6B45', marginTop: '2px' }}>{fmt(monthlyMap[k].net, true)} net</div>
+                {last3.map(m => (
+                  <div key={m.month} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthLabel(m.month)}</div>
+                    <div style={{ fontWeight: 700, fontSize: '18px', color: '#0F172A', marginTop: '4px' }}>{fmtCents(m.gross, true)}</div>
+                    <div style={{ fontSize: '11px', color: '#1A6B45', marginTop: '2px' }}>{fmtCents(m.net, true)} net</div>
                   </div>
                 ))}
               </div>
             </Card>
           </Section>
 
-          <Section title="Cumulative Revenue" sub="All-time collected total">
+          <Section title="Cumulative Revenue" sub="All-time collected total (from ledger)">
             <Card style={{ padding: '20px' }}>
-              <LineChart data={cumulativeData} height={120} />
+              <LineChart data={cumulativeMonths} height={120} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #F2EFE9' }}>
-                <span style={{ fontSize: '13px', color: '#9097A8' }}>All-time gross</span>
-                <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmt(grossRevenue)}</span>
+                <span style={{ fontSize: '13px', color: '#9097A8' }}>All-time gross (last 6 month view)</span>
+                <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmtCents(grossAllTime)}</span>
               </div>
             </Card>
           </Section>
 
-          <Section title="Monthly Breakdown Table" sub="Gross · Net (platform) · Payouts · Order count">
+          <Section title="Monthly Breakdown Table" sub="Gross · Net (platform) · Payouts · Order count from the canonical ledger">
             <DataTable
               cols={[
                 { key: 'month',   label: 'Month' },
                 { key: 'gross',   label: 'Gross Revenue', right: true, bold: true },
                 { key: 'net',     label: 'Net (Platform)', right: true },
                 { key: 'payouts', label: 'Provider Payouts', right: true },
-                { key: 'count',   label: 'Orders', right: true },
-                { key: 'aov',     label: 'Avg Order Value', right: true },
-                { key: 'takeRate',label: 'Take Rate', right: true, muted: true },
+                { key: 'count',   label: 'Entries', right: true },
               ]}
-              rows={months.slice().reverse().map(k => ({
-                month:    monthLabel(k),
-                gross:    fmt(monthlyMap[k].gross),
-                net:      fmt(monthlyMap[k].net),
-                payouts:  fmt(monthlyMap[k].payouts),
-                count:    monthlyMap[k].count,
-                aov:      fmt(monthlyMap[k].count ? monthlyMap[k].gross / monthlyMap[k].count : 0),
-                takeRate: pct(monthlyMap[k].net, monthlyMap[k].gross),
+              rows={monthlyBkdn.slice().reverse().map(m => ({
+                month:   monthLabel(m.month),
+                gross:   fmtCents(m.gross),
+                net:     fmtCents(m.net),
+                payouts: fmtCents(m.payouts),
+                count:   m.count,
               }))}
-              emptyMsg="No orders yet"
+              emptyMsg="No revenue data yet (run backfill first)"
             />
           </Section>
         </>
-      )}
+        )
+      })()}
 
       {/* ── USER PROFILES ─────────────────────────────────────────────────────── */}
       {tab === 'users' && (
@@ -850,7 +1084,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
       {/* ── LIABILITIES ───────────────────────────────────────────────────────── */}
       {tab === 'liabilities' && (() => {
-        const ld = finLiab.data || {}
+        const ld = ledgerLiab.data || {}
         const aging = ld.escrow_aging || {}
         const agingRows = [
           { bucket: '0-7 days',   key: '0_7' },
@@ -917,7 +1151,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   { key: 'age',      label: 'Age', right: true, muted: true },
                 ]}
                 rows={heldRows}
-                emptyMsg={finLiab.loading ? 'Loading…' : 'No funds currently in escrow'}
+                emptyMsg={ledgerLiab.loading ? 'Loading…' : 'No funds currently in escrow'}
               />
             </Section>
 
@@ -947,16 +1181,11 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
       {/* ── PROJECTIONS ───────────────────────────────────────────────────────── */}
       {tab === 'projections' && (() => {
-        // Live 90d run-rate projection from /api/admin/analytics/projections.
-        // The API returns by_role { attorney, consultant, total } each with
-        // run_rate_30d_cents + lo_cents/hi_cents (±1 SD confidence band) and
-        // forward_3m points. We render the forward band first, then fall back
-        // to the prop-derived ladder + scenario table below.
-        const pd = finProj.data || {}
+        // Live 90d run-rate projection from the canonical ledger.
+        // All revenue data across every user type feeds into this projection.
+        const pd = ledgerProj.data || {}
         const fwd = pd.forward_3m || []
-        const total = pd.by_role?.total || {}
-        const attorney = pd.by_role?.attorney || {}
-        const consultant = pd.by_role?.consultant || {}
+        const runRate = pd.run_rate_30d_cents || 0
 
         // SVG confidence band — point line + shaded lo/hi area
         const w = 100, h = 60
@@ -973,26 +1202,26 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
         <>
           <DataWarnings items={pd.data_warnings} />
 
-          {/* Live 90d run-rate + confidence band, role-split */}
+          {/* Live 90d run-rate from canonical ledger — covers ALL user types */}
           <Section title="3-Month Forward Projection (90d run-rate)"
-            sub="Point estimate = mean monthly gross from last 90 days. Band = ±1 standard deviation across the buckets."
+            sub="Point estimate = mean monthly gross from canonical ledger. Band = ±1 standard deviation across the buckets."
             action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(fwd.map(p => ({ month: p.month, point_cents: p.point_cents, lo_cents: p.lo_cents, hi_cents: p.hi_cents })), 'projections-forward.csv')}>↓ CSV</Btn>}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-              <KpiCard label="Total Run-Rate (30d)" value={fmtCents(total.run_rate_30d_cents, true)}
-                sub={`Band ${fmtCents(total.lo_cents, true)} – ${fmtCents(total.hi_cents, true)}`}
+              <KpiCard label="Total Run-Rate (30d)" value={fmtCents(runRate, true)}
+                sub="From canonical ledger — all user types"
                 accent="#0F172A" icon="📊" />
-              <KpiCard label="Attorney Run-Rate (30d)" value={fmtCents(attorney.run_rate_30d_cents, true)}
-                sub={`Band ${fmtCents(attorney.lo_cents, true)} – ${fmtCents(attorney.hi_cents, true)}`}
-                accent="#3D2B6B" icon="⚖️" />
-              <KpiCard label="Consultant Run-Rate (30d)" value={fmtCents(consultant.run_rate_30d_cents, true)}
-                sub={`Band ${fmtCents(consultant.lo_cents, true)} – ${fmtCents(consultant.hi_cents, true)}`}
-                accent="#9A7B3B" icon="🧑‍💼" />
+              <KpiCard label="Projected 3-Month" value={fmtCents(runRate * 3, true)}
+                sub="Next 3 months at current pace"
+                accent="#1A6B45" icon="📈" />
+              <KpiCard label="ARR (Annual Run Rate)" value={fmtCents(runRate * 12, true)}
+                sub="12 × monthly run-rate"
+                accent="#3D2B6B" icon="🎯" />
             </div>
           </Section>
 
           <Section title="Forward Band — Next 3 Months" sub="Shaded area is the ±1 SD confidence interval. Single line is the point estimate.">
             <Card style={{ padding: 20 }}>
-              {finProj.loading ? (
+              {ledgerProj.loading ? (
                 <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
               ) : fwd.length < 2 ? (
                 <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough run-rate history yet</div>
@@ -1024,11 +1253,10 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           </Section>
 
           <Section title="Revenue Projections" sub={`Based on ${last6.length}-month trailing average. ${roiNote}.`}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-              <KpiCard label="MRR (trailing avg)" value={fmt(mrr, true)} sub={`${last6.length}-month average`} accent="#0F172A" icon="📅" />
-              <KpiCard label="Projected 3-Month" value={fmt(proj3m, true)} sub="Next 3 months at current pace" accent="#1A6B45" delta={growthRate} icon="📊" />
-              <KpiCard label="Projected 6-Month" value={fmt(proj6m, true)} sub="Next 6 months at current pace" accent="#9A7B3B" icon="📈" />
-              <KpiCard label="ARR (Annual Run Rate)" value={fmt(arr, true)} sub="12 × monthly average" accent="#3D2B6B" icon="🎯" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>                <KpiCard label="Run-Rate (30d)" value={fmtCents(pd.run_rate_30d_cents, true)} sub="From canonical ledger" accent="#0F172A" icon="📅" />
+              <KpiCard label="Projected 3-Month" value={fmtCents(pd.run_rate_30d_cents * 3, true)} sub="Next 3 months at current pace" accent="#1A6B45" icon="📊" />
+              <KpiCard label="Projected 6-Month" value={fmtCents(pd.run_rate_30d_cents * 6, true)} sub="Next 6 months at current pace" accent="#9A7B3B" icon="📈" />
+              <KpiCard label="ARR (Annual Run Rate)" value={fmtCents(pd.run_rate_30d_cents * 12, true)} sub="12 × monthly run-rate" accent="#3D2B6B" icon="🎯" />
             </div>
           </Section>
 
@@ -1136,16 +1364,360 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
       {/* ── LOYALTY ───────────────────────────────────────────────────────────── */}
       {tab === 'loyalty' && <AdminWalletLoyalty />}
 
+      {/* ── LEDGER DASHBOARD ────────────────────────────────────────────────────
+          Dedicated daily-series dashboard with date range controls, multi-series
+          bar / line / area charts, refund-rate analysis, and a raw-data table.
+          All data comes from the canonical ledger's daily_series view. */}
+      {tab === 'ledger-dash' && (() => {
+        const dd = ledgerDashboard.data?.daily_series || []
+        const loading = ledgerDashboard.loading
+
+        // ── Derived totals ─────────────────────────────────────────────────────
+        const totalGross   = dd.reduce((s, d) => s + d.gross, 0)
+        const totalNet     = dd.reduce((s, d) => s + d.net, 0)
+        const totalPayouts = dd.reduce((s, d) => s + d.payouts, 0)
+        const totalRefunds = dd.reduce((s, d) => s + d.refunds, 0)
+        const activeDays   = dd.filter(d => d.gross > 0).length
+        const avgDailyGross = activeDays > 0 ? totalGross / activeDays : 0
+
+        // ── Bar chart (gross net overlay) ─────────────────────────────────────
+        const barData = dd.map(d => ({
+          label: d.date.slice(5),  // "MM-DD"
+          value: d.gross,
+          highlight: d.date === dd[dd.length - 1]?.date,
+        }))
+
+        // ── Cumulative line ───────────────────────────────────────────────────
+        let cum = 0
+        const cumData = dd.map(d => {
+          cum += d.gross
+          return { label: d.date.slice(5), value: cum }
+        })
+
+        // ── Refund-rate by day ───────────────────────────────────────────────
+        const refundRateDays = dd.map(d => {
+          const total = d.gross + d.net + d.refunds
+          return {
+            date:  d.date.slice(5),
+            rate:  total > 0 ? (d.refunds / total) * 100 : 0,
+            cents: d.refunds,
+          }
+        })
+
+        // ── Split line: net vs payouts vs refunds (on a 0-100% scale) ───────
+        const splitMax = Math.max(1, ...dd.map(d => Math.max(d.net, d.payouts, d.refunds)))
+        const mkPath = (key, w = 100, h = 80) => dd.length < 2 ? '' :
+          dd.map((d, i) => `${i === 0 ? 'M' : 'L'}${(i / (dd.length - 1)) * w},${h - (Math.max(d[key], 0) / splitMax) * h}`).join(' ')
+
+        return (
+          <>
+            {/* ── Date range picker ────────────────────────────────────────── */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 4 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9097A8', display: 'block', marginBottom: 4 }}>From</label>
+                <input type="date" value={ldFrom} onChange={e => setLdFrom(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1px solid #DDD8CE', borderRadius: 5, fontSize: 13, fontFamily: sans }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9097A8', display: 'block', marginBottom: 4 }}>To</label>
+                <input type="date" value={ldTo} onChange={e => setLdTo(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1px solid #DDD8CE', borderRadius: 5, fontSize: 13, fontFamily: sans }} />
+              </div>
+              <Btn variant="ghost" size="sm" onClick={() => {
+                const d = new Date(); d.setDate(1)
+                setLdFrom(d.toISOString().slice(0, 10))
+                setLdTo(new Date().toISOString().slice(0, 10))
+              }}>
+                ↺ This month
+              </Btn>
+              <Btn variant="ghost" size="sm" onClick={() => {
+                const to = new Date()
+                const from = new Date(to.getTime() - 30 * 86400_000)
+                setLdFrom(from.toISOString().slice(0, 10))
+                setLdTo(to.toISOString().slice(0, 10))
+              }}>
+                Last 30d
+              </Btn>
+              <Btn variant="ghost" size="sm" onClick={() => {
+                const to = new Date()
+                const from = new Date(to.getTime() - 90 * 86400_000)
+                setLdFrom(from.toISOString().slice(0, 10))
+                setLdTo(to.toISOString().slice(0, 10))
+              }}>
+                Last 90d
+              </Btn>
+              <div style={{ flex: 1 }} />
+              <Btn variant="ghost" size="sm" onClick={() => exportCSV(dd.map(d => ({ date: d.date, gross: d.gross, net: d.net, payouts: d.payouts, refunds: d.refunds })), 'daily-series.csv')}>
+                ↓ CSV
+              </Btn>
+            </div>
+
+            {/* ── Entry-type filter chips ─────────────────────────────
+                Grouped by category. Clicking a chip toggles that entry type
+                on/off. When none are selected, all types are returned. */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8' }}>Type filter</span>
+                {ldTypes.length > 0 && (
+                  <button onClick={() => setLdTypes([])}
+                    style={{ padding: '1px 8px', borderRadius: 4, border: '1px solid #DDD8CE', background: '#F7F5F0', fontSize: 10, fontWeight: 600, color: '#5C6070', cursor: 'pointer', fontFamily: sans }}>
+                    Clear all
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {ENTRY_TYPE_GROUPS.map(group => (
+                  <div key={group.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#9097A8', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 2 }}>{group.label}</span>
+                    {group.types.map(t => {
+                      const active = ldTypes.length === 0 || ldTypes.includes(t)
+                      return (
+                        <button key={t} onClick={() => toggleLdType(t)}
+                          title={`${active ? 'Remove' : 'Add'} ${t} filter`}
+                          style={{
+                            padding: '3px 10px', borderRadius: 14, fontSize: 11, fontWeight: 600,
+                            fontFamily: sans, cursor: 'pointer', whiteSpace: 'nowrap',
+                            border: active ? '1px solid rgba(15,23,42,0.25)' : '1px dashed #DDD8CE',
+                            background: active ? '#0F172A' : '#fff',
+                            color: active ? '#fff' : '#9097A8',
+                            opacity: ldTypes.length === 0 ? 0.85 : 1,
+                            transition: 'all 0.12s',
+                          }}>
+                          {t.replace(/_/g, ' ')}
+                        </button>
+                      )
+                    })}
+                    {group !== ENTRY_TYPE_GROUPS[ENTRY_TYPE_GROUPS.length - 1] && (
+                      <span style={{ width: 1, height: 20, background: '#DDD8CE', margin: '0 6px', flexShrink: 0 }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Period Comparison ────────────────────────────────────
+                This period vs previous same-length period side by side,
+                with change indicators (▲ green / ▼ red). */}
+            <Section title="Period Comparison"
+              sub={`${dd.length}-day period vs prior ${ldPrevRange?.days || 'same-length'} period — same type filter applied`}>
+              {(() => {
+                const prev = ledgerDashboardPrev.data?.daily_series || []
+                const prevLoading = ledgerDashboardPrev.loading
+                if (prevLoading && prev.length === 0) {
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                      {['Gross', 'Net', 'Payouts', 'Refunds'].map(l => (
+                        <div key={l} style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: 8, padding: '16px 18px' }}>
+                          <div style={{ height: 11, width: '40%', background: '#F2EFE9', borderRadius: 3, marginBottom: 8 }} />
+                          <div style={{ height: 22, width: '55%', background: '#F2EFE9', borderRadius: 3, marginBottom: 6 }} />
+                          <div style={{ height: 10, width: '35%', background: '#F2EFE9', borderRadius: 3 }} />
+                        </div>
+                      ))}
+                    </div>
+                  )
+                }
+                const prevGross = prev.reduce((s, d) => s + d.gross, 0)
+                const prevNet = prev.reduce((s, d) => s + d.net, 0)
+                const prevPayouts = prev.reduce((s, d) => s + d.payouts, 0)
+                const prevRefunds = prev.reduce((s, d) => s + d.refunds, 0)
+                const prevActiveDays = prev.filter(d => d.gross > 0).length
+
+                const deltaPct = (cur, prevTotal) => prevTotal === 0 ? null : ((cur - prevTotal) / prevTotal) * 100
+
+                const metrics = [
+                  { label: 'Gross Revenue', cur: totalGross, prev: prevGross, icon: '💵', accent: '#1A6B45' },
+                  { label: 'Platform Net', cur: totalNet, prev: prevNet, icon: '💰', accent: '#0F172A' },
+                  { label: 'Provider Payouts', cur: totalPayouts, prev: prevPayouts, icon: '📤', accent: '#9A7B3B' },
+                  { label: 'Total Refunds', cur: totalRefunds, prev: prevRefunds, icon: '↩', accent: '#8B1A1A' },
+                ]
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Side-by-side metric rows */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 60px', gap: 8, alignItems: 'center', padding: '0 4px', marginBottom: 2 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8' }}>Metric</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#0F172A', textAlign: 'right' }}>This period</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', textAlign: 'right' }}>Previous</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', textAlign: 'right' }}>Change</span>
+                    </div>
+                    {metrics.map(m => {
+                      const delta = deltaPct(m.cur, m.prev)
+                      const dir = delta === null ? '' : delta >= 0 ? '▲' : '▼'
+                      const isGood = m.label === 'Total Refunds' ? (delta !== null && delta <= 0) : (delta !== null && delta >= 0)
+                      const deltaColor = delta === null ? '#9097A8' : isGood ? '#1A6B45' : '#8B1A1A'
+                      return (
+                        <div key={m.label}
+                          style={{
+                            display: 'grid', gridTemplateColumns: '140px 1fr 1fr 60px', gap: 8,
+                            alignItems: 'center', padding: '10px 12px',
+                            background: '#FAFAF8', borderRadius: 6,
+                            borderLeft: `3px solid ${m.accent}`,
+                          }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 14 }}>{m.icon}</span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0F172A' }}>{m.label}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.cur, true)}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#5C6070', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.prev, true)}</span>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            {delta !== null ? (
+                              <span style={{ fontSize: 13, fontWeight: 700, color: deltaColor, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                                {dir} {Math.abs(delta).toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#9097A8' }}>—</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {/* Activity summary row */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, marginTop: 4, padding: '6px 12px' }}>
+                      <span style={{ fontSize: 11, color: '#9097A8' }}>
+                        Active days: <strong style={{ color: '#0F172A' }}>{activeDays}</strong>
+                        <span style={{ color: '#9097A8', margin: '0 4px' }}>vs</span>
+                        <strong style={{ color: prevActiveDays >= activeDays ? '#1A6B45' : '#8B1A1A' }}>{prevActiveDays}</strong>
+                      </span>
+                      <span style={{ fontSize: 11, color: '#9097A8' }}>
+                        Daily avg (active): <strong style={{ color: '#0F172A' }}>{fmtCents(avgDailyGross, true)}</strong>
+                        <span style={{ color: '#9097A8', margin: '0 4px' }}>vs</span>
+                        <strong style={{ color: prevActiveDays >= activeDays ? '#1A6B45' : '#8B1A1A' }}>{fmtCents(prevActiveDays > 0 ? (prevGross / prevActiveDays) : 0, true)}</strong>
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
+            </Section>
+
+            {/* ── Period KPIs ────────────────────────────────────────── */}
+            <Section title="Period Overview" sub={`${dd.length} days · ${activeDays} with activity · avg $${(avgDailyGross / 100).toFixed(0)}/day`}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                <KpiCard label="Gross Revenue" value={fmtCents(totalGross, true)}
+                  sub={`${activeDays} active days`} accent="#1A6B45" icon="💵" />
+                <KpiCard label="Platform Net" value={fmtCents(totalNet, true)}
+                  sub={totalGross > 0 ? `${((totalNet / totalGross) * 100).toFixed(1)}% take rate` : '—'}
+                  accent="#0F172A" icon="💰" />
+                <KpiCard label="Provider Payouts" value={fmtCents(totalPayouts, true)}
+                  sub={`${dd.filter(d => d.payouts > 0).length} payout days`}
+                  accent="#9A7B3B" icon="📤" />
+                <KpiCard label="Total Refunds" value={fmtCents(totalRefunds, true)}
+                  sub={totalGross > 0 ? `${((totalRefunds / totalGross) * 100).toFixed(1)}% of gross` : '—'}
+                  accent={totalRefunds > 0 ? '#8B1A1A' : '#9097A8'} icon="↩" />
+              </div>
+            </Section>
+
+            {/* ── Two charts side by side: daily bars + cumulative line ──── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <Section title="Daily Gross Revenue" sub="Bar chart of gross cents per day">
+                <Card style={{ padding: 20 }}>
+                  {loading ? (
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                  ) : barData.length === 0 ? (
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No data</div>
+                  ) : (
+                    <BarChart data={barData} height={140} barColor="#1A6B45" />
+                  )}
+                </Card>
+              </Section>
+              <Section title="Cumulative Gross" sub="Running total across the period">
+                <Card style={{ padding: 20 }}>
+                  {loading ? (
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                  ) : cumData.length < 2 ? (
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough data</div>
+                  ) : (
+                    <LineChart data={cumData} height={140} color="#0F172A" fillColor="rgba(15,23,42,0.06)" />
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2EFE9' }}>
+                    <span style={{ fontSize: 12, color: '#9097A8' }}>Total gross over period</span>
+                    <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmtCents(totalGross, true)}</span>
+                  </div>
+                </Card>
+              </Section>
+            </div>
+
+            {/* ── Split-line chart (net / payouts / refunds overlay) ────── */}
+            <Section title="Revenue Composition" sub="Daily net (platform) · payouts (provider) · refunds — overlay">
+              <Card style={{ padding: 20 }}>
+                {loading ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                ) : dd.length < 2 ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough daily data</div>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 100 80" preserveAspectRatio="none" style={{ width: '100%', height: 140 }}>
+                      <path d={mkPath('net')}     fill="none" stroke="#0F172A" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                      <path d={mkPath('payouts')} fill="none" stroke="#9A7B3B" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeDasharray="2 2" />
+                      <path d={mkPath('refunds')} fill="none" stroke="#8B1A1A" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeDasharray="4 2" />
+                    </svg>
+                    <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2EFE9', flexWrap: 'wrap' }}>
+                      <Legend color="#0F172A" label="Net (platform)" value={fmtCents(totalNet, true)} />
+                      <Legend color="#9A7B3B" label="Payouts" value={fmtCents(totalPayouts, true)} dashed />
+                      <Legend color="#8B1A1A" label="Refunds" value={fmtCents(totalRefunds, true)} dashed />
+                    </div>
+                  </>
+                )}
+              </Card>
+            </Section>
+
+            {/* ── Refund rate chart ─────────────────────────────────────── */}
+            <Section title="Daily Refund Rate" sub="Refund cents as % of daily volume — spikes reveal problem orders">
+              <Card style={{ padding: 20 }}>
+                {loading ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                ) : refundRateDays.length === 0 ? (
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No data</div>
+                ) : (
+                  <>
+                    <BarChart data={refundRateDays.map(d => ({ label: d.date, value: d.rate, highlight: d.rate > 20 }))}
+                      height={100} barColor="#8B1A1A" />
+                    <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2EFE9', flexWrap: 'wrap' }}>
+                      <Legend color="#8B1A1A" label="Avg daily refund rate"
+                        value={`${(refundRateDays.filter(r => r.rate > 0).reduce((s, r) => s + r.rate, 0) / Math.max(1, refundRateDays.filter(r => r.rate > 0).length)).toFixed(1)}%`} />
+                      <Legend color="#0F172A" label="Days with refunds"
+                        value={`${refundRateDays.filter(r => r.cents > 0).length} / ${refundRateDays.length}`} />
+                    </div>
+                  </>
+                )}
+              </Card>
+            </Section>
+
+            {/* ── Daily data table ──────────────────────────────────────── */}
+            <Section title="Daily Series Table" sub="Every day in the selected range with gross · net · payouts · refunds">
+              <DataTable
+                cols={[
+                  { key: 'date',    label: 'Date' },
+                  { key: 'gross',   label: 'Gross', right: true, bold: true },
+                  { key: 'net',     label: 'Net (Platform)', right: true },
+                  { key: 'payouts', label: 'Provider Payouts', right: true },
+                  { key: 'refunds', label: 'Refunds', right: true },
+                  { key: 'take',    label: 'Take Rate', right: true, muted: true },
+                ]}
+                rows={dd.slice().reverse().map(d => ({
+                  date:    d.date,
+                  gross:   fmtCents(d.gross),
+                  net:     fmtCents(d.net),
+                  payouts: fmtCents(d.payouts),
+                  refunds: fmtCents(d.refunds),
+                  take:    d.gross > 0 ? `${((d.net / d.gross) * 100).toFixed(1)}%` : '—',
+                }))}
+                emptyMsg={loading ? 'Loading…' : 'No daily data for this range'}
+              />
+            </Section>
+          </>
+        )
+      })()}
+
       {/* ── RISK ──────────────────────────────────────────────────────────────── */}
       {tab === 'risk' && (() => {
-        // Live risk feed from /api/admin/analytics/risk. Renders disputed
-        // KPIs + refund-rate trend + high-refund providers + auto-release
-        // overdue list above the prop-derived concentration analysis.
-        const rd = finRisk.data || {}
+        // Live risk feed from the canonical ledger. All refund data across
+        // student, attorney, and consultant flows is aggregated here.
+        const rd = ledgerRisk.data || {}
         const trend = rd.refund_rate_trend || []
-        const refundProviders = rd.high_refund_providers || []
-        const overdue = rd.past_auto_release_overdue || []
-        const disputedRows = rd.disputed_orders || []
 
         return (
         <>
@@ -1185,78 +1757,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 total:  t.total_orders,
                 refund: t.refunded,
                 pct:    fmtPct(t.refund_rate_pct),
-              }))}
-              emptyMsg={finRisk.loading ? 'Loading…' : 'No order history'}
+              }))}                emptyMsg={ledgerRisk.loading ? 'Loading…' : 'No order history'}
             />
           </Section>
 
-          {/* Top 5 providers by refund rate */}
-          <Section title="Top 5 Providers by Refund Rate" sub="Providers with ≥5 orders in last 180 days"
-            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(refundProviders.map(p => ({ name: p.name || p.provider_id, orders: p.orders, refunded: p.refunded, refund_rate_pct: p.refund_rate_pct.toFixed(2) })), 'top-refund-providers.csv')}>↓ CSV</Btn>}>
-            <DataTable
-              cols={[
-                { key: 'rank',    label: '#', muted: true },
-                { key: 'name',    label: 'Provider' },
-                { key: 'orders',  label: 'Orders', right: true },
-                { key: 'refund',  label: 'Refunded', right: true },
-                { key: 'pct',     label: 'Refund %', right: true, bold: true },
-              ]}
-              rows={refundProviders.map((p, i) => ({
-                rank:   `#${i + 1}`,
-                name:   p.name || (p.provider_id ? `${p.provider_id.slice(0, 8)}…` : '—'),
-                orders: p.orders,
-                refund: p.refunded,
-                pct:    fmtPct(p.refund_rate_pct),
-              }))}
-              emptyMsg={finRisk.loading ? 'Loading…' : 'No provider qualifies (<5 orders each)'}
-            />
-          </Section>
-
-          {/* Auto-release overdue */}
-          <Section title="Auto-Release Overdue (>7d past eligible)" sub="Held escrow that should already have released. Investigate before manual release."
-            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(overdue.map(o => ({ id: o.id, order_number: o.order_number, amount_cents: o.amount_cents, client: o.client_name, provider: o.consultant_name, days_overdue: o.days_overdue, eligible_at: o.auto_release_eligible_at })), 'auto-release-overdue.csv')}>↓ CSV</Btn>}>
-            <DataTable
-              cols={[
-                { key: 'order',    label: 'Order' },
-                { key: 'client',   label: 'Client' },
-                { key: 'provider', label: 'Provider' },
-                { key: 'amount',   label: 'Held', right: true, bold: true },
-                { key: 'days',     label: 'Days Overdue', right: true },
-              ]}
-              rows={overdue.map(o => ({
-                order:    o.order_number || (o.id ? `${o.id.slice(0, 8)}…` : '—'),
-                client:   o.client_name || '—',
-                provider: o.consultant_name || '—',
-                amount:   fmtCents(o.amount_cents, true),
-                days:     o.days_overdue == null ? '—' : `${o.days_overdue}d`,
-              }))}
-              emptyMsg={finRisk.loading ? 'Loading…' : 'No overdue auto-releases'}
-            />
-          </Section>
-
-          {/* Disputed orders detail */}
-          <Section title="Disputed / Frozen Orders" sub="Held with reason — escrow disputed_at / frozen_at"
-            action={<Btn variant="ghost" size="sm" onClick={() => exportCSV(disputedRows.map(d => ({ id: d.id, order_number: d.order_number, escrow_status: d.escrow_status, amount_cents: d.amount_cents, client: d.client_name, provider: d.consultant_name, reason: d.reason, flagged_at: d.flagged_at })), 'disputed-orders.csv')}>↓ CSV</Btn>}>
-            <DataTable
-              cols={[
-                { key: 'order',    label: 'Order' },
-                { key: 'status',   label: 'Escrow Status' },
-                { key: 'client',   label: 'Client' },
-                { key: 'provider', label: 'Provider' },
-                { key: 'amount',   label: 'Held', right: true, bold: true },
-                { key: 'reason',   label: 'Reason', wrap: true, muted: true },
-              ]}
-              rows={disputedRows.map(d => ({
-                order:    d.order_number || (d.id ? `${d.id.slice(0, 8)}…` : '—'),
-                status:   d.escrow_status,
-                client:   d.client_name || '—',
-                provider: d.consultant_name || '—',
-                amount:   fmtCents(d.amount_cents, true),
-                reason:   d.reason || '—',
-              }))}
-              emptyMsg={finRisk.loading ? 'Loading…' : 'No disputes — nothing to triage'}
-            />
-          </Section>
+          {/* Note: Provider-level refund rate, auto-release overdue, and
+              disputed order detail are now in the dedicated Escrow tab and
+              the Payouts > Refunds tab, which query their own data sources.
+              The Risk tab focuses on ledger-derived aggregate KPIs. */}
 
           <Section title="Risk Dashboard" sub="Financial exposure, concentration risk, and early-warning indicators">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>

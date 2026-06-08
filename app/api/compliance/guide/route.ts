@@ -62,8 +62,8 @@ const ITEM_BRIEFS: Record<string, { attorney: string; consultant: string }> = {
     consultant: 'Countries / regions — where the consultant primarily works with clients. For example: United States, Canada, United Kingdom. Explain that they should only list regions they actually serve. Do NOT recommend specific countries.',
   },
   payout: {
-    attorney: 'Payout setup — currently manual via admin. Explain that earnings are released through admin once an order is approved by the buyer; no bank details are needed today. Future Stripe Connect integration will let them self-manage. Do NOT promise dates.',
-    consultant: 'Same as attorney — manual payouts via admin until Stripe Connect is wired.',
+    attorney: 'Payout setup — currently manual via admin. Explain that earnings are released through admin once an order is approved by the buyer; no bank details are needed today. Do NOT promise dates.',
+    consultant: 'Same as attorney — manual payouts via admin.',
   },
   accepting: {
     attorney: 'Accepting new clients — a visibility toggle. When paused, the profile is hidden from buyer search results and existing gigs go to draft. Explain that this is the right control for vacation / capacity limits. Found on /dashboard/profile.',
