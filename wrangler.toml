@@ -12,12 +12,10 @@ compatibility_flags = ["nodejs_compat"]
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).
-# Create the namespace first, then paste its ID below:
-#   npx wrangler kv namespace create "PAGE_CACHE"
-#
-# [[kv_namespaces]]
-# binding = "PAGE_CACHE"
-# id = "<paste-namespace-id-here>"
+# Created with: npx wrangler kv namespace create "PAGE_CACHE"
+[[kv_namespaces]]
+binding = "PAGE_CACHE"
+id = "a60944658f974790acc6c74a35c661aa"
 
 [assets]
 directory = ".open-next/assets"
