@@ -24,15 +24,32 @@ export async function POST(req: Request) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
+  // Capture raw body for diagnostic logging on 400 errors
   let body: Record<string, unknown>
+  let rawBodyText = ''
   try {
-    body = await req.json()
+    // Clone so we can read for logging if parsing succeeds
+    const cloned = req.clone ? req.clone() : req
+    rawBodyText = await cloned.text()
+    body = JSON.parse(rawBodyText)
   } catch {
+    console.error('[wallet/debit/400] Invalid JSON body', {
+      raw: rawBodyText.slice(0, 2000),
+      userAgent: req.headers.get('user-agent')?.slice(0, 120),
+      referer: req.headers.get('referer')?.slice(0, 200),
+    })
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
   const rawItems = Array.isArray(body.items) ? body.items : []
   if (rawItems.length === 0) {
+    console.error('[wallet/debit/400] Empty cart', {
+      body: rawBodyText.slice(0, 2000),
+      allKeys: Object.keys(body),
+      profileId: 'error' in auth ? 'unauth' : auth.profile.id,
+      userAgent: req.headers.get('user-agent')?.slice(0, 120),
+      referer: req.headers.get('referer')?.slice(0, 200),
+    })
     return Response.json({ error: 'Cart is empty' }, { status: 400 })
   }
 
@@ -66,6 +83,12 @@ export async function POST(req: Request) {
       continue
     }
 
+    console.error('[wallet/debit/400] Invalid item', {
+      raw: typeof raw === 'object' && raw !== null ? JSON.stringify(raw).slice(0, 500) : String(raw).slice(0, 200),
+      body: rawBodyText.slice(0, 2000),
+      profileId: auth.profile.id,
+      referer: req.headers.get('referer')?.slice(0, 200),
+    })
     return Response.json({ error: 'Invalid cart item: missing slug or serviceId' }, { status: 400 })
   }
 
@@ -86,6 +109,12 @@ export async function POST(req: Request) {
     for (const item of serviceItems) {
       const svc = serviceMap.get(item.serviceId)
       if (!svc) {
+        console.error('[wallet/debit/400] Unknown service', {
+          serviceId: item.serviceId,
+          knownIds: Array.from(serviceMap.keys()),
+          body: rawBodyText.slice(0, 2000),
+          profileId: auth.profile.id,
+        })
         return Response.json({ error: `Unknown or inactive service: ${item.serviceId}` }, { status: 400 })
       }
       const priceUsd = Number(svc.usd_price ?? svc.price ?? 0)
@@ -96,6 +125,13 @@ export async function POST(req: Request) {
   }
 
   if (totalCents <= 0) {
+    console.error('[wallet/debit/400] Zero total', {
+      totalCents,
+      templateItems: templateItems.map(i => ({ slug: i.slug, name: i.name, qty: i.quantity, unitCents: i.unitCents })),
+      serviceItems: serviceItems.map(i => ({ serviceId: i.serviceId, qty: i.quantity })),
+      body: rawBodyText.slice(0, 2000),
+      profileId: auth.profile.id,
+    })
     return Response.json({ error: 'Total must be greater than zero' }, { status: 400 })
   }
 

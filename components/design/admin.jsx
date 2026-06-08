@@ -493,7 +493,6 @@ function AdminApp({ onLogout }) {
         <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
         <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
-        <NavItem icon="📄" label="Templates" active={page === 'templates'} onClick={() => setPage('templates')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
@@ -2477,7 +2476,6 @@ const Settings = () => {
           {page === 'tickets' && <AdminTickets />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
-          {page === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} consultantFeePercent={consultantFeePercent} platformFeePercent={platformFeePercent} platformSettings={platformSettings} primaryCurrency={primaryCurrency} />}
           

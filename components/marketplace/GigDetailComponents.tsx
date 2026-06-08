@@ -117,17 +117,17 @@ export function SellerProfileCard({ seller, onViewProfile, onMessage }: SellerPr
         return
       }
 
-      const convRes = await fetch('/api/conversations', {
+      const convRes = await fetch('/api/messages/start', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          participant_id: seller.id,
-          initial_message: "Hi, I'm interested in your service.",
+          counterpart_profile_id: seller.id,
+          message: "Hi, I'm interested in your service.",
         }),
       })
       const convData = await convRes.json()
-      const convId = convData?.id || convData?.conversation_id
+      const convId = convData?.conversation_id
       window.location.href = `/dashboard/messages${convId ? `?conversation=${convId}` : ''}`
     } catch (e) {
       console.error('Failed to start conversation', e)
