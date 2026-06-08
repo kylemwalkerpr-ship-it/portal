@@ -236,7 +236,7 @@ export default clerkMiddleware(
         // outcome without the 301 leak Ahrefs flagged.
         const cleanPath = pathname.slice('/marketplace'.length) || '/'
         const rewrite = new URL(`/marketplace${cleanPath}${search}`, req.url)
-        return withPathHeaders(NextResponse.rewrite(rewrite), cleanPath, search, lang)
+        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), cleanPath, search, lang), req)
       } else if (
         // Portal-only surfaces should never live on the market host. A Clerk
         // redirect, a stale link, or a typed URL otherwise lands on a rewrite
@@ -250,15 +250,15 @@ export default clerkMiddleware(
         pathname.startsWith('/sellers')
       ) {
         const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
-        return NextResponse.redirect(portalUrl, { status: 302 })
+        return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
       } else {
         const rewrite = new URL(`/marketplace${pathname}${search}`, req.url)
-        return withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang)
+        return withCorsHeaders(withPathHeaders(NextResponse.rewrite(rewrite), pathname, search, lang), req)
       }
     } else if (hostname === PORTAL_HOST && pathname.startsWith('/marketplace')) {
       const redirectPath = pathname.slice('/marketplace'.length) || '/'
       const redirectUrl = new URL(redirectPath + search, `https://${MARKET_HOST}`)
-      return NextResponse.redirect(redirectUrl, { status: 301 })
+      return withCorsHeaders(NextResponse.redirect(redirectUrl, { status: 301 }), req)
     }
 
     if (pathname !== '/' && isPublicRoute(req)) {
