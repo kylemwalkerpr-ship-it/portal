@@ -1,37 +1,56 @@
-// Student: return the manifest sections & fields for a template pack slug.
-// The student must own (have paid for) the slug. The UI uses this to
-// render a fillable form. We strip the slug from the response so the
-// client doesn't need to echo it back.
-import { ok, fail } from '@/lib/apiEnvelope'
-import { requirePortalUser } from '@/lib/portalAuth'
+/**
+ * GET /api/student/templates/manifest/:slug
+ *
+ * Returns the fillable form manifest for a template that the student
+ * has purchased. Used by the TemplateFiller UI to render the form fields.
+ */
+import { fail, ok } from '@/lib/apiEnvelope'
+import { getCurrentStudent } from '@/lib/student'
 import { getManifest } from '@/lib/templatePdfManifests'
-import { userOwnsSlug } from '@/lib/templateEntitlements'
+import { getTemplatePack } from '@/lib/template-packs'
+import { listPaidTemplates } from '@/lib/templateEntitlements'
 
 export async function GET(
   _req: Request,
   context: { params: Promise<{ slug: string }> },
 ) {
-  const auth = await requirePortalUser()
+  const auth = await getCurrentStudent()
   if ('error' in auth) return fail(auth.error, auth.status)
 
   const { slug } = await context.params
-  if (!slug) return fail('Missing template slug.', 400)
+  if (!slug) return fail('Missing slug.', 400)
 
   // Verify entitlement
   const { data: profile } = await auth.db
     .from('profiles')
     .select('email')
-    .eq('id', auth.profileId)
+    .eq('id', auth.profile.id)
     .single()
+
   const email = (profile?.email || '').toLowerCase()
-  if (!email) return fail('No email on profile.', 403)
+  const paid = await listPaidTemplates(auth.db, email)
+  const owns = paid.some(e => e.slug === slug)
+  if (!owns) return fail('You haven\'t purchased this template.', 403)
 
-  const owns = await userOwnsSlug(auth.db, email, slug)
-  if (!owns) return fail("You haven't purchased this template yet.", 403)
-
+  const pack = getTemplatePack(slug)
   const manifest = getManifest(slug)
-  if (!manifest) return fail('This template does not have a fillable form yet.', 404)
 
-  // Only return sections/fields — the client doesn't need the slug back.
-  return ok({ sections: manifest.sections })
+  if (!manifest) {
+    return ok({
+      slug,
+      name: pack?.name || slug,
+      hasManifest: false,
+      sections: [],
+    })
+  }
+
+  return ok({
+    slug,
+    name: pack?.name || slug,
+    badge: pack?.badge,
+    includes: pack?.includes || [],
+    hasManifest: true,
+    sections: manifest.sections,
+    pageSize: manifest.pageSize,
+  })
 }

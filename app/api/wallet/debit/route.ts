@@ -7,7 +7,10 @@
  *
  * Server resolves prices from authoritative sources (template catalogue or
  * services table). Never trusts client-supplied prices.
- * On success: debits wallet, writes ledger row, inserts order records.
+ *
+ * FIXED: Wallet is now debited AFTER all DB writes succeed, not before.
+ * Previously the debit happened first, so if an order insert or PDF
+ * generation failed, the user's money was taken with no order record.
  */
 import { getCurrentStudent } from '@/lib/student'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Cart is empty' }, { status: 400 })
   }
 
-  // Resolve and validate every item server-side
+  // ── 1. Resolve and validate every item server-side ─────────────────
   const db = createSupabaseAdminClient()
   let totalCents = 0
   const templateItems: { slug: string; name: string; quantity: number; unitCents: number }[] = []
@@ -99,7 +102,7 @@ export async function POST(req: Request) {
   const profile = auth.profile
 
   try {
-    // Ensure wallet exists and check balance
+    // ── 2. Check wallet balance (but do NOT debit yet) ────────────────
     const wallet = await getOrCreateWallet(profile.id)
     if (wallet.balance_cents < totalCents) {
       return Response.json(
@@ -112,7 +115,67 @@ export async function POST(req: Request) {
       )
     }
 
-    // Debit wallet atomically
+    // ── 3. Record template orders FIRST (before debit) ────────────────
+    const pdfWarnings: string[] = []
+    let templateOrderId: string | null = null
+    if (templateItems.length > 0) {
+      templateOrderId = randomUUID()
+      const { error: tplErr } = await db.from('template_orders').insert({
+        id: templateOrderId,
+        email: profile.email || '',
+        name: profile.full_name || '',
+        slugs: templateItems.map((v) => v.slug),
+        amount_cents: templateItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0),
+        status: 'pending', // Will be updated to 'paid' after debit
+        transaction_id: null,
+      })
+      if (tplErr) {
+        return Response.json({ error: `Failed to record template order: ${tplErr.message}` }, { status: 500 })
+      }
+    }
+
+    // ── 4. Record service orders (before debit) ──────────────────────
+    let serviceOrderId: string | null = null
+    if (serviceItems.length > 0) {
+      serviceOrderId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const { error: orderErr } = await db.from('orders').insert({
+        id: serviceOrderId,
+        client_id: profile.id,
+        status: 'pending',
+        total_cents: serviceItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0),
+        currency: 'usd',
+        payment_method: 'wallet',
+        transaction_id: null,
+        created_at: new Date().toISOString(),
+      })
+      if (orderErr) {
+        // Roll back template order if service order fails
+        if (templateOrderId) {
+          await db.from('template_orders').delete().eq('id', templateOrderId)
+        }
+        return Response.json({ error: `Failed to record service order: ${orderErr.message}` }, { status: 500 })
+      }
+
+      if (serviceItems.length > 0) {
+        const orderItemRows = serviceItems.map((i) => ({
+          order_id: serviceOrderId!,
+          service_id: i.serviceId,
+          quantity: i.quantity,
+          unit_price: i.unitCents,
+        }))
+        const { error: itemsErr } = await db.from('order_items').insert(orderItemRows)
+        if (itemsErr) {
+          // Roll back
+          await db.from('orders').delete().eq('id', serviceOrderId!)
+          if (templateOrderId) {
+            await db.from('template_orders').delete().eq('id', templateOrderId)
+          }
+          return Response.json({ error: `Failed to record order items: ${itemsErr.message}` }, { status: 500 })
+        }
+      }
+    }
+
+    // ── 5. DEBIT WALLET — this is the LAST step ──────────────────────
     const allNames = [
       ...templateItems.map((v) => v.name),
       ...serviceItems.map((v) => v.name),
@@ -130,120 +193,85 @@ export async function POST(req: Request) {
       }
     )
 
-    // Record template orders
-    const pdfWarnings: string[] = []
-    let templateOrderId: string | null = null
-    if (templateItems.length > 0) {
-      templateOrderId = randomUUID()
-      const { error: tplErr } = await db.from('template_orders').insert({
-        id: templateOrderId,
-        email: profile.email || '',
-        name: profile.full_name || '',
-        slugs: templateItems.map((v) => v.slug),
-        amount_cents: templateItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0),
+    // ── 6. Update orders with transaction ID + status ────────────────
+    if (templateOrderId) {
+      await db.from('template_orders').update({
         status: 'paid',
         transaction_id: tx.id,
-      })
-      if (tplErr) {
-        console.error('[wallet/debit] template_orders insert failed:', tplErr)
-      } else {
-        // Best-effort: generate prefilled PDFs and upload to private storage.
-        // A failure here MUST NOT roll back the debit — we already took
-        // the user's money and the legacy download path remains available.
-        for (const item of templateItems) {
-          try {
-            const manifest = getManifest(item.slug)
-            if (!manifest) {
-              pdfWarnings.push(`No manifest for ${item.slug}`)
-              continue
-            }
-            const pack = getTemplatePack(item.slug)
-            const prefill = buildPrefill({
+      }).eq('id', templateOrderId)
+    }
+    if (serviceOrderId) {
+      await db.from('orders').update({
+        transaction_id: tx.id,
+      }).eq('id', serviceOrderId)
+    }
+
+    // ── 7. Best-effort: generate filled PDFs (non-fatal if fails) ────
+    if (templateOrderId && templateItems.length > 0) {
+      for (const item of templateItems) {
+        try {
+          const manifest = getManifest(item.slug)
+          if (!manifest) {
+            pdfWarnings.push(`No manifest for ${item.slug}`)
+            continue
+          }
+          const pack = getTemplatePack(item.slug)
+          const prefill = buildPrefill({
+            userFullName: profile.full_name || '',
+            userEmail: profile.email || '',
+            orderId: templateOrderId,
+            templateName: pack?.name || item.name,
+            templateBadge: pack?.badge || '',
+          })
+          const pdfBytes = await generateTemplatePdf({
+            manifest,
+            prefillValues: prefill,
+            meta: {
+              templateName: pack?.name || item.name,
+              templateBadge: pack?.badge,
+              templateDescription: pack?.short_description,
+              keywords: pack?.includes,
               userFullName: profile.full_name || '',
               userEmail: profile.email || '',
               orderId: templateOrderId,
-              templateName: pack?.name || item.name,
-              templateBadge: pack?.badge || '',
+              generationDate: new Date(),
+            },
+          })
+          const storagePath = `templates-generated/${profile.id}/${item.slug}/${templateOrderId}.pdf`
+          const { error: upErr } = await db.storage
+            .from('templates')
+            .upload(storagePath, pdfBytes, {
+              contentType: 'application/pdf',
+              upsert: true,
             })
-            const pdfBytes = await generateTemplatePdf({
-              manifest,
-              prefillValues: prefill,
-              meta: {
-                templateName: pack?.name || item.name,
-                templateBadge: pack?.badge,
-                templateDescription: pack?.short_description,
-                keywords: pack?.includes,
-                userFullName: profile.full_name || '',
-                userEmail: profile.email || '',
-                orderId: templateOrderId,
-                generationDate: new Date(),
-              },
-            })
-            const storagePath = `templates-generated/${profile.id}/${item.slug}/${templateOrderId}.pdf`
-            const { error: upErr } = await db.storage
-              .from('templates')
-              .upload(storagePath, pdfBytes, {
-                contentType: 'application/pdf',
-                upsert: true,
-              })
-            if (upErr) {
-              pdfWarnings.push(`Upload failed for ${item.slug}: ${upErr.message}`)
-              continue
-            }
-            const { error: renderErr } = await db.from('template_pdf_renders').insert({
-              id: randomUUID(),
-              profile_id: profile.id,
-              slug: item.slug,
-              order_id: templateOrderId,
-              transaction_id: tx.id,
-              storage_bucket: 'templates',
-              storage_path: storagePath,
-              size_bytes: pdfBytes.byteLength,
-            })
-            if (renderErr) {
-              pdfWarnings.push(`Render row failed for ${item.slug}: ${renderErr.message}`)
-            }
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : 'PDF generation failed'
-            pdfWarnings.push(`PDF for ${item.slug}: ${msg}`)
-            console.error('[wallet/debit] pdf gen', item.slug, msg)
+          if (upErr) {
+            pdfWarnings.push(`Upload failed for ${item.slug}: ${upErr.message}`)
+            continue
           }
-        }
-      }
-    }
-
-    // Record service orders
-    if (serviceItems.length > 0) {
-      const orderId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      const { error: orderErr } = await db.from('orders').insert({
-        id: orderId,
-        client_id: profile.id,
-        status: 'pending',
-        total_cents: serviceItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0),
-        currency: 'usd',
-        payment_method: 'wallet',
-        transaction_id: tx.id,
-        created_at: new Date().toISOString(),
-      })
-      if (orderErr) {
-        console.error('[wallet/debit] orders insert failed:', orderErr)
-      } else {
-        const orderItemRows = serviceItems.map((i) => ({
-          order_id: orderId,
-          service_id: i.serviceId,
-          quantity: i.quantity,
-          unit_price: i.unitCents,
-        }))
-        const { error: itemsErr } = await db.from('order_items').insert(orderItemRows)
-        if (itemsErr) {
-          console.error('[wallet/debit] order_items insert failed:', itemsErr)
+          const { error: renderErr } = await db.from('template_pdf_renders').insert({
+            id: randomUUID(),
+            profile_id: profile.id,
+            slug: item.slug,
+            order_id: templateOrderId,
+            transaction_id: tx.id,
+            storage_bucket: 'templates',
+            storage_path: storagePath,
+            size_bytes: pdfBytes.byteLength,
+          })
+          if (renderErr) {
+            pdfWarnings.push(`Render row failed for ${item.slug}: ${renderErr.message}`)
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'PDF generation failed'
+          pdfWarnings.push(`PDF for ${item.slug}: ${msg}`)
+          console.error('[wallet/debit] pdf gen', item.slug, msg)
         }
       }
     }
 
     return Response.json({
       ok: true,
-      orderId: templateOrderId ?? randomUUID(),
+      orderId: templateOrderId ?? serviceOrderId ?? randomUUID(),
       status: 'paid',
       totalCents,
       balanceCents: tx.balance_after_cents,

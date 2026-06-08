@@ -35,6 +35,7 @@ export default function PdfMakerClient({ slugs }: { slugs: SlugRow[] }) {
   const [loading, setLoading] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string>('')
   const [error, setError] = useState<string>('')
+  const [aiSuggesting, setAiSuggesting] = useState(false)
   const previewBlobRef = useRef<string | null>(null)
 
   // Load manifest on slug change
@@ -51,6 +52,80 @@ export default function PdfMakerClient({ slugs }: { slugs: SlugRow[] }) {
       .catch((e) => setError(e?.message || 'Load failed.'))
       .finally(() => setLoading(false))
   }, [selectedSlug])
+
+  // AI-assisted manifest generation
+  const handleAiSuggest = useCallback(async () => {
+    if (!selectedSlug || aiSuggesting) return
+    setAiSuggesting(true)
+    setError('')
+    try {
+      const slugRow = slugs.find(s => s.slug === selectedSlug)
+      const res = await fetch('/api/templates/fill/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: selectedSlug,
+          fieldId: '__generate_manifest__',
+          fieldLabel: `Generate manifest for "${slugRow?.name || selectedSlug}"`,
+          currentValue: '',
+          profileData: {
+            template_name: slugRow?.name || selectedSlug,
+            template_badge: slugRow?.badge || '',
+            existing_manifest: manifest ? JSON.stringify(manifest) : null,
+          },
+        }),
+        credentials: 'same-origin',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'AI suggest failed')
+      const suggestion = data?.suggestion || data?.data?.suggestion || ''
+      if (suggestion) {
+        // Try to parse the AI response as a manifest JSON
+        try {
+          const jsonMatch = suggestion.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            const suggested = JSON.parse(jsonMatch[0])
+            if (suggested.sections && Array.isArray(suggested.sections)) {
+              const merged: Manifest = {
+                slug: manifest?.slug || selectedSlug,
+                pageSize: manifest?.pageSize || 'LETTER',
+                sections: suggested.sections.map((s: any) => ({
+                  title: s.title || 'Untitled Section',
+                  intro: s.intro || '',
+                  fields: (s.fields || []).map((f: any) => ({
+                    id: f.id || `field_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    label: f.label || 'Field',
+                    type: (['text','multiline','checkbox','date','select','signature'].includes(f.type) ? f.type : 'text') as FieldType,
+                    required: !!f.required,
+                    placeholder: f.placeholder || '',
+                    help: f.help || '',
+                    options: f.options || undefined,
+                  })),
+                })),
+              }
+              setManifest(merged)
+              return
+            }
+          }
+        } catch { /* fall through to text append */ }
+        // If we couldn't parse as JSON, append the suggestion as text to the first field
+        setManifest(prev => {
+          if (!prev) return prev
+          const next = { ...prev, sections: [...prev.sections] }
+          if (next.sections.length > 0 && next.sections[0].fields.length > 0) {
+            const sec = { ...next.sections[0], fields: [...next.sections[0].fields] }
+            sec.fields[0] = { ...sec.fields[0], placeholder: suggestion.slice(0, 200) }
+            next.sections[0] = sec
+          }
+          return next
+        })
+      }
+    } catch (e) {
+      setError(`AI suggestion failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+    } finally {
+      setAiSuggesting(false)
+    }
+  }, [selectedSlug, slugs, manifest, aiSuggesting])
 
   // Debounced render whenever the manifest changes
   const renderPdf = useCallback(async (m: Manifest) => {
@@ -164,9 +239,17 @@ export default function PdfMakerClient({ slugs }: { slugs: SlugRow[] }) {
             ))}
           </select>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <button onClick={exportJson} disabled={!manifest} style={btnPrimary}>Export manifest JSON</button>
           <button onClick={() => manifest && renderPdf(manifest)} disabled={!manifest} style={btnSecondary}>Re-render</button>
+          <button onClick={handleAiSuggest} disabled={!selectedSlug || aiSuggesting} style={{
+            ...btnSecondary,
+            background: aiSuggesting ? '#e8e8e8' : '#f0f4ff',
+            borderColor: aiSuggesting ? '#ccc' : '#4a6fa5',
+            color: aiSuggesting ? '#999' : '#2c5282',
+          }}>
+            {aiSuggesting ? '⟳ AI suggesting fields…' : '🤖 AI Suggest Fields'}
+          </button>
         </div>
         {error && <p style={{ color: '#b00020' }}>{error}</p>}
         {loading && <p>Loading…</p>}

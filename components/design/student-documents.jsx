@@ -68,6 +68,76 @@ function StatTile({ label, value, accent = NAVY, sub }) {
   )
 }
 
+function PurchasedTemplatesSection() {
+  const [templates, setTemplates] = React.useState([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+
+  React.useEffect(() => {
+    fetch('/api/student/templates/purchased', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => {
+        setTemplates(Array.isArray(d.templates) ? d.templates : Array.isArray(d.data) ? d.data : [])
+        setLoading(false)
+      })
+      .catch(e => { setError(e.message); setLoading(false) })
+  }, [])
+
+  if (loading) return null
+  if (error || templates.length === 0) return null
+
+  const openTemplate = async (slug) => {
+    try {
+      const r = await fetch(`/api/student/templates/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, filled: true }),
+        credentials: 'same-origin',
+      })
+      if (!r.ok) throw new Error('Could not download template')
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${slug}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('[purchased-templates] download failed:', e)
+    }
+  }
+
+  return (
+    <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 18px', borderBottom: `1px solid ${BORDER2}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18 }}>📋</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Purchased Templates</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: MONO }}>{templates.length} template{templates.length !== 1 ? 's' : ''} · unlimited downloads</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: '8px 14px 14px' }}>
+        {templates.map(t => (
+          <div key={t.slug || t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1px solid ${BORDER2}` }}>
+            <span style={{ fontSize: 22 }}>📕</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: TEXT, fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {t.name || t.slug || 'Template'}
+              </div>
+              <div style={{ fontSize: 11, color: DIM, fontFamily: MONO }}>
+                {t.purchased_at ? `Purchased ${fmtDate(t.purchased_at)}` : t.status || '—'}
+              </div>
+            </div>
+            <button onClick={() => openTemplate(t.slug)} style={actionBtn(CYAN)}>↓ Download PDF</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function StudentDocuments({ onOpenOrder }) {
   // ── Filters ─────────────────────────────────────────────────────────────
   const [orderId, setOrderId] = React.useState('')
@@ -292,6 +362,9 @@ export default function StudentDocuments({ onOpenOrder }) {
           {notice.msg}
         </div>
       )}
+
+      {/* Purchased Templates */}
+      <PurchasedTemplatesSection />
 
       {/* Content */}
       <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden' }}>

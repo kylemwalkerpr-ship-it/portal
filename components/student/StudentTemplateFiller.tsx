@@ -2,6 +2,25 @@
 
 import React from 'react'
 
+// ── AI suggestion helper ───────────────────────────────────────────
+// Calls the same chatProvider chain as profileSuggest (Groq → Gemini → Cloudflare AI)
+// to generate intelligent suggestions for form fields based on the student's profile.
+
+async function aiSuggest(slug: string, fieldId: string, fieldLabel: string, currentValue: string, profileData: string) {
+  try {
+    const res = await fetch('/api/templates/fill/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, fieldId, fieldLabel, currentValue, profileData }),
+    })
+    const d = await res.json()
+    if (!res.ok) throw new Error(d?.error || 'AI suggest failed')
+    return d.data?.suggestion || ''
+  } catch {
+    return ''
+  }
+}
+
 // ── Design tokens ──────────────────────────────────────────────────
 const C = {
   bg: '#F7F5F0',
@@ -474,10 +493,14 @@ function FormField({
   field,
   value,
   onChange,
+  onAiSuggest,
+  suggesting,
 }: {
   field: ManifestField
   value: string | boolean
   onChange: (id: string, value: string | boolean) => void
+  onAiSuggest?: (fieldId: string, fieldLabel: string) => void
+  suggesting?: string | null
 }) {
   const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null)
   const [focused, setFocused] = React.useState(false)
@@ -595,11 +618,38 @@ function FormField({
   }
 
   return (
-    <div style={styles.fieldGroup}>
-      <label style={styles.fieldLabel}>
-        {field.label}
-        {field.required && <span style={styles.fieldRequired}>*</span>}
-      </label>
+    <div style={styles.fieldGroup}>              <label style={{ ...styles.fieldLabel, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>
+          {field.label}
+          {field.required && <span style={styles.fieldRequired}>*</span>}
+        </span>
+        <button
+          type="button"
+          onClick={() => onAiSuggest?.(field.id, field.label)}
+          title="AI-suggest this field from your profile"
+          disabled={suggesting === field.id}
+          style={{
+            background: 'none',
+            border: '1px solid #DDD8CE',
+            borderRadius: '4px',
+            padding: '2px 6px',
+            fontSize: '10px',
+            fontWeight: 600,
+            color: '#5C6070',
+            cursor: 'pointer',
+            fontFamily: SANS,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = '#9A7B3B'
+            ;(e.currentTarget as HTMLElement).style.color = '#9A7B3B'
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = '#DDD8CE'
+            ;(e.currentTarget as HTMLElement).style.color = '#5C6070'
+          }}
+        >            {suggesting === field.id ? '⏳' : '✨'} {suggesting === field.id ? 'AI…' : 'AI'}
+          </button>
+        </label>
       {renderInput()}
       {field.help && <p style={styles.fieldHelp}>{field.help}</p>}
     </div>
@@ -613,12 +663,16 @@ function SectionCard({
   index,
   values,
   onFieldChange,
+  onAiSuggest,
+  suggesting,
   defaultOpen,
 }: {
   section: ManifestSection
   index: number
   values: Record<string, string | boolean>
   onFieldChange: (id: string, value: string | boolean) => void
+  onAiSuggest?: (fieldId: string, fieldLabel: string) => void
+  suggesting?: string | null
   defaultOpen: boolean
 }) {
   const [open, setOpen] = React.useState(defaultOpen)
@@ -648,13 +702,14 @@ function SectionCard({
         <>
           {section.intro && <p style={styles.sectionIntro}>{section.intro}</p>}
           <div style={styles.sectionBody}>
-            {section.fields.map((field) => (
-              <FormField
-                key={field.id}
-                field={field}
-                value={values[field.id] ?? (field.type === 'checkbox' ? false : '')}
-                onChange={onFieldChange}
-              />
+            {section.fields.map((field) => (              <FormField
+                  key={field.id}
+                  field={field}
+                  value={values[field.id] ?? (field.type === 'checkbox' ? false : '')}
+                  onChange={onFieldChange}
+                  onAiSuggest={onAiSuggest}
+                  suggesting={suggesting}
+                />
             ))}
           </div>
         </>
@@ -684,6 +739,11 @@ export default function StudentTemplateFiller({
   const [toast, setToast] = React.useState<string | null>(null)
   const [hoveredCard, setHoveredCard] = React.useState<string | null>(null)
 
+  // ── Fill session state ─────────────────────────────────────────────
+  const [fillSessionId, setFillSessionId] = React.useState<string | null>(null)
+  const [suggesting, setSuggesting] = React.useState<string | null>(null)
+  const [profileDataForAI, setProfileDataForAI] = React.useState('')
+
   // Fetch paid templates on mount (only if not passed as prop)
   React.useEffect(() => {
     if (propTemplates) {
@@ -703,11 +763,27 @@ export default function StudentTemplateFiller({
       .catch(() => setLoading(false))
   }, [propTemplates, selectedSlug])
 
+  // Fetch profile data once for AI suggestions
+  React.useEffect(() => {
+    fetch('/api/student/home', { credentials: 'same-origin' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => {
+        if (d?.profile) {
+          const p = d.profile
+          setProfileDataForAI(
+            `Full name: ${p.full_name || ''}\nEmail: ${p.email || ''}\nCountry: ${p.country_code || p.country || ''}\nPhone: ${p.phone || ''}`
+          )
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Fetch manifest when selected slug changes
   React.useEffect(() => {
     if (!selectedSlug) {
       setSections([])
       setValues({})
+      setFillSessionId(null)
       return
     }
     setManifestLoading(true)
@@ -718,7 +794,34 @@ export default function StudentTemplateFiller({
         setSections(s)
         // Reset form values when switching templates
         setValues({})
+        setFillSessionId(null)
         setManifestLoading(false)
+        // Auto-start a fill session
+        if (s.length > 0) {
+          const { slug: sessionSlug, fillData } = d.data
+          if (fillData && Object.keys(fillData).length > 0) {
+            setValues(fillData as Record<string, string | boolean>)
+          }
+          // Start a fill session via the API
+          fetch('/api/templates/fill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'start',
+              slug: selectedSlug,
+            }),
+          })
+            .then((r) => r.json())
+            .then((res) => {
+              if (res?.data?.sessionId) {
+                setFillSessionId(res.data.sessionId)
+                if (res.data.fillData) {
+                  setValues(res.data.fillData as Record<string, string | boolean>)
+                }
+              }
+            })
+            .catch(() => {})
+        }
       })
       .catch(() => {
         setSections([])
@@ -726,9 +829,53 @@ export default function StudentTemplateFiller({
       })
   }, [selectedSlug])
 
+  // Auto-save draft on value changes (debounced 2s)
+  const autoSaveRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => {
+    if (!fillSessionId || Object.keys(values).length === 0) return
+    if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
+    autoSaveRef.current = setTimeout(() => {
+      fetch('/api/templates/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          sessionId: fillSessionId,
+          fillData: Object.fromEntries(
+            Object.entries(values).map(([k, v]) => [k, String(v)])
+          ),
+        }),
+      }).catch(() => {})
+    }, 2000)
+    return () => {
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current)
+    }
+  }, [values, fillSessionId])
+
   const handleFieldChange = React.useCallback((id: string, val: string | boolean) => {
     setValues((prev) => ({ ...prev, [id]: val }))
   }, [])
+
+  // AI suggestion for a specific field
+  const handleAiSuggest = React.useCallback(async (fieldId: string, fieldLabel: string) => {
+    if (suggesting) return
+    setSuggesting(fieldId)
+    try {
+      const suggestion = await aiSuggest(
+        selectedSlug!,
+        fieldId,
+        fieldLabel,
+        String(values[fieldId] || ''),
+        profileDataForAI,
+      )
+      if (suggestion) {
+        setValues((prev) => ({ ...prev, [fieldId]: suggestion }))
+        showToast('✨ AI suggestion applied')
+      }
+    } finally {
+      setSuggesting(null)
+    }
+  }, [selectedSlug, values, profileDataForAI, suggesting])
 
   const selectedTemplate = templates.find((t) => t.slug === selectedSlug)
 
@@ -892,14 +1039,15 @@ export default function StudentTemplateFiller({
             ) : sections.length > 0 && selectedSlug ? (
               <>
                 {/* Form sections */}
-                {sections.map((section, i) => (
-                  <SectionCard
-                    key={section.title}
-                    section={section}
-                    index={i}
-                    values={values}
-                    onFieldChange={handleFieldChange}
-                    defaultOpen={i < 2} // First 2 sections open by default
+                {sections.map((section, i) => (                    <SectionCard
+                      key={section.title}
+                      section={section}
+                      index={i}
+                      values={values}
+                      onFieldChange={handleFieldChange}
+                      onAiSuggest={handleAiSuggest}
+                      suggesting={suggesting}
+                      defaultOpen={i < 2} // First 2 sections open by default
                   />
                 ))}
 
@@ -999,6 +1147,62 @@ export default function StudentTemplateFiller({
             >
               {generating === 'filled' ? '⏳ Generating…' : '✨ Download filled PDF'}
             </button>
+            {fillSessionId && (
+              <button
+                onClick={async () => {
+                  try {
+                    // Complete the fill session
+                    const completeRes = await fetch('/api/templates/fill', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'complete',
+                        sessionId: fillSessionId,
+                      }),
+                    })
+                    const completeData = await completeRes.json()
+                    if (!completeRes.ok) {
+                      showToast(`❌ ${completeData?.error || 'Failed to complete form.'}`)
+                      return
+                    }
+                    // Process checkout
+                    const checkoutRes = await fetch(`/api/templates/fill/${fillSessionId}/checkout`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ paymentMethod: 'wallet' }),
+                    })
+                    const checkoutData = await checkoutRes.json()
+                    if (checkoutData?.data?.needsTopUp) {
+                      showToast(`⚠️ Insufficient wallet balance. Needs $${(checkoutData.data.requiredCents / 100).toFixed(2)}`)
+                      return
+                    }
+                    if (!checkoutRes.ok) {
+                      showToast(`❌ ${checkoutData?.error || 'Checkout failed.'}`)
+                      return
+                    }
+                    // Success — redirect to download
+                    showToast('✅ Template purchased! Redirecting to download…')
+                    setTimeout(() => {
+                      window.location.href = `/api/templates/download/${encodeURIComponent(selectedSlug!)}`
+                    }, 1000)
+                  } catch (e) {
+                    showToast(`❌ ${e instanceof Error ? e.message : 'Checkout failed.'}`)
+                  }
+                }}
+                style={{
+                  ...styles.actionBtnPrimary,
+                  background: C.success,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = '#0F5C36'
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = C.success
+                }}
+              >
+                💳 Pay & Download
+              </button>
+            )}
           </div>
         </div>
       )}
