@@ -202,7 +202,37 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 5. Admin audit log ────────────────────────────────────────────────────────
+  // ── 5. Mark source wallet transaction as voided ─────────────────────────────
+  // Ensures the same debit/purchase entry cannot be refunded twice.
+  // Merges refunded_at into the existing metadata (preserving any prior fields).
+  if (sourceTable === 'wallet_transactions' && sourceId && method === 'wallet') {
+    try {
+      const { data: existing } = await db
+        .from('wallet_transactions')
+        .select('metadata')
+        .eq('id', sourceId)
+        .maybeSingle()
+
+      const prevMeta =
+        existing?.metadata && typeof existing.metadata === 'object'
+          ? existing.metadata
+          : {}
+
+      await db
+        .from('wallet_transactions')
+        .update({
+          metadata: {
+            ...(prevMeta as Record<string, unknown>),
+            refunded_at: new Date().toISOString(),
+          },
+        })
+        .eq('id', sourceId)
+    } catch (err: any) {
+      warnings.push(`mark_void_failed: ${err.message}`)
+    }
+  }
+
+  // ── 6. Admin audit log ────────────────────────────────────────────────────────
   try {
     await db.from('admin_audit_log').insert({
       admin_id: adminProfileId,

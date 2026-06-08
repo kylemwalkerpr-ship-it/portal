@@ -534,7 +534,9 @@ function WalletDrawer({ profileId, onClose }) {
                   ]}
                   rows={(data.transactions || []).map(t => {
                     // Refund is only offered on debit/purchase type entries
-                    const canRefund = t.type === 'debit' || t.type === 'purchase'
+                    // and only if the transaction hasn't already been refunded (voided).
+                    const alreadyRefunded = t.metadata?.refunded_at != null
+                    const canRefund = (t.type === 'debit' || t.type === 'purchase') && !alreadyRefunded
                     return {
                     __rowKey: t.id,
                     when:    fmtDateTime(t.created_at),
@@ -551,10 +553,12 @@ function WalletDrawer({ profileId, onClose }) {
                         onClick={async () => {
                           const reason = prompt('Refund reason:')
                           if (!reason) return
-                          const amtInput = prompt(`Refund amount in cents (max ${Math.abs(Number(t.signed_cents || t.amount_cents || 0))}):`, String(Math.abs(Number(t.signed_cents || t.amount_cents || 0))))
+                          const maxDollars = Math.abs(Number(t.signed_cents || t.amount_cents || 0)) / 100
+                          const amtInput = prompt(`Refund amount in dollars (max $${maxDollars.toFixed(2)}):`, maxDollars.toFixed(2))
                           if (!amtInput) return
-                          const amountCents = parseInt(amtInput, 10)
-                          if (!Number.isInteger(amountCents) || amountCents <= 0) {
+                          const parsedDollars = parseFloat(amtInput)
+                          const amountCents = Math.round(parsedDollars * 100)
+                          if (!Number.isFinite(amountCents) || amountCents <= 0) {
                             alert('Invalid amount.')
                             return
                           }

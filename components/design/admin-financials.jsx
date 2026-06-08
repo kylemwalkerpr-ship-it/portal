@@ -487,8 +487,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
     if (!confirm(`Refund ${label}? This will credit the buyer via the unified ledger.`)) return
     const reason = prompt('Refund reason:')
     if (!reason) return
-    const amtStr = prompt('Refund amount in cents (leave blank for full):')
-    const amountCents = amtStr ? parseInt(amtStr, 10) : 0
+    const amtStr = prompt('Refund amount in dollars (leave blank for full):')
+    const amountCents = amtStr ? Math.round(parseFloat(amtStr) * 100) : 0
     if (amountCents <= 0) return alert('Invalid amount.')
     try {
       const res = await fetch('/api/admin/ledger/refund', {
