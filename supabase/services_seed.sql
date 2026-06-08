@@ -1,9 +1,0 @@
--- ══════════════════════════════════════════════════════════════════════════════
--- DEPRECATED — Stripe payment links and IDs are no longer in use.
--- The `stripe_payment_link_id` and `stripe_payment_link_url` columns exist in
--- the database from this earlier migration. This file is kept for reference
--- only. Do NOT run it on a fresh database.
---
--- The full service seed data (21 rows with Stripe payment link IDs and URLs)
--- has been removed from this file. See the git history for the original content.
--- ══════════════════════════════════════════════════════════════════════════════
