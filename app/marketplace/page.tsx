@@ -4,6 +4,9 @@ import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
+// ISR: revalidate at most once per hour
+export const revalidate = 3600
+
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =

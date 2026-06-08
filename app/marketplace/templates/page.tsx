@@ -3,6 +3,9 @@ import Link from 'next/link'
 import { TEMPLATE_PACKS } from '@/lib/template-packs'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
+// ISR: revalidate at most once per hour
+export const revalidate = 3600
+
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'Document Template Packs — Immigration & Study'
   const description =

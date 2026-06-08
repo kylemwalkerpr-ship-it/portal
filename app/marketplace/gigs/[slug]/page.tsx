@@ -7,6 +7,9 @@ import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketp
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
 import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryId } from '@/lib/categories'
 
+// ISR: revalidate at most once per hour
+export const revalidate = 3600
+
 /**
  * Defensive per-page SEO. Gig detail is auth-walled and noindex today, so
  * `robots: { index: false }` stays on — but the metadata is wired up so when
