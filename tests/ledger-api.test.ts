@@ -33,10 +33,20 @@ jest.mock('@/lib/supabase', () => ({
   createSupabaseAdminClient: jest.fn(() => (globalThis as any).__currentMockDb),
 }))
 
-// Mock wallet — credit() is called by the refund route
+// Mock wallet — refundToWallet() is called by the refund route. The cap is
+// enforced inside the route (against order/source/deposit ceilings) before this
+// is invoked, so the mock just returns a balance. walletRefundCeilingCents is
+// mocked high so shape-tests aren't gated by the deposit ceiling; the dedicated
+// cap tests below stub it explicitly.
 jest.mock('@/lib/wallet', () => ({
-  credit: jest.fn((profileId, amountCents, description, orderId, metadata) =>
+  credit: jest.fn(() =>
     Promise.resolve({ balance_after_cents: (globalThis as any).__walletBalance ?? 15000 }),
+  ),
+  refundToWallet: jest.fn(() =>
+    Promise.resolve({ balance_after_cents: (globalThis as any).__walletBalance ?? 15000 }),
+  ),
+  walletRefundCeilingCents: jest.fn(() =>
+    Promise.resolve((globalThis as any).__refundCeilingCents ?? 100_000_000),
   ),
 }))
 
@@ -142,8 +152,10 @@ function mockRefundDb(overrides: {
   orderClientId?: string | null
   insertError?: string | null
   balanceCents?: number
+  orderAmountPaidCents?: number
+  orderRefundedAmount?: number
 } = {}) {
-  const { orderClientId = 'student-1', insertError = null, balanceCents = 5000 } = overrides
+  const { orderClientId = 'student-1', insertError = null, balanceCents = 5000, orderAmountPaidCents, orderRefundedAmount } = overrides
   return {
     from(table: string) {
       if (table === 'canonical_ledger') {
@@ -168,7 +180,14 @@ function mockRefundDb(overrides: {
           select: () => ({
             eq: () => ({
               single: () => Promise.resolve({
-                data: orderClientId ? { id: 'order-1', client_id: orderClientId } : null,
+                data: orderClientId
+                  ? {
+                      id: 'order-1',
+                      client_id: orderClientId,
+                      amount_paid: orderAmountPaidCents,
+                      refunded_amount: orderRefundedAmount,
+                    }
+                  : null,
                 error: orderClientId ? null : { message: 'not found' },
               }),
             }),
@@ -554,6 +573,62 @@ test('refund: handles duplicate key gracefully (no crash)', async () => {
   expect(res.status).toBe(200)
   // Duplicate key errors are silently ignored (expected for idempotent retries)
   expect(res.body.data.warnings).toBeUndefined()
+})
+
+// ════════════════════════════════════════════════════════════
+// POST /api/admin/ledger/refund — Refund cap (never exceed paid-in)
+// ════════════════════════════════════════════════════════════
+
+test('refund: order refund within captured amount succeeds', async () => {
+  ;(globalThis as any).__currentMockDb = mockRefundDb({ orderAmountPaidCents: 5000 })
+
+  const { POST } = await import('@/app/api/admin/ledger/refund/route')
+  const res = await request(jsonServer(POST))
+    .post('/api/admin/ledger/refund')
+    .send({ profile_id: 'student-1', amount_cents: 5000, order_id: 'order-1' })
+
+  expect(res.status).toBe(200)
+  expect(res.body.data.refunded_cents).toBe(5000)
+})
+
+test('refund: order refund exceeding captured amount is rejected (422)', async () => {
+  ;(globalThis as any).__currentMockDb = mockRefundDb({ orderAmountPaidCents: 5000 })
+
+  const { POST } = await import('@/app/api/admin/ledger/refund/route')
+  const res = await request(jsonServer(POST))
+    .post('/api/admin/ledger/refund')
+    .send({ profile_id: 'student-1', amount_cents: 5001, order_id: 'order-1' })
+
+  expect(res.status).toBe(422)
+  expect(res.body.error.message).toMatch(/exceeds the refundable ceiling/i)
+  expect(res.body.error.maxRefundCents).toBe(5000)
+})
+
+test('refund: order refund cap accounts for prior refunds', async () => {
+  // Captured $50.00, already refunded $30.00 → only $20.00 left.
+  ;(globalThis as any).__currentMockDb = mockRefundDb({ orderAmountPaidCents: 5000, orderRefundedAmount: 30 })
+
+  const { POST } = await import('@/app/api/admin/ledger/refund/route')
+  const res = await request(jsonServer(POST))
+    .post('/api/admin/ledger/refund')
+    .send({ profile_id: 'student-1', amount_cents: 2500, order_id: 'order-1' })
+
+  expect(res.status).toBe(422)
+  expect(res.body.error.maxRefundCents).toBe(2000)
+})
+
+test('refund: orphan wallet refund is capped by lifetime deposits', async () => {
+  ;(globalThis as any).__currentMockDb = mockRefundDb()
+  ;(globalThis as any).__refundCeilingCents = 1000 // only $10 ever deposited
+
+  const { POST } = await import('@/app/api/admin/ledger/refund/route')
+  const res = await request(jsonServer(POST))
+    .post('/api/admin/ledger/refund')
+    .send({ profile_id: 'student-1', amount_cents: 5000, reason: 'goodwill' })
+
+  delete (globalThis as any).__refundCeilingCents
+  expect(res.status).toBe(422)
+  expect(res.body.error.maxRefundCents).toBe(1000)
 })
 
 // ════════════════════════════════════════════════════════════

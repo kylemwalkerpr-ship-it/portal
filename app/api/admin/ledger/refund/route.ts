@@ -21,7 +21,7 @@
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { credit } from '@/lib/wallet'
+import { refundToWallet, walletRefundCeilingCents } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 async function authViaServiceToken(req: Request) {
@@ -68,17 +68,17 @@ export async function POST(req: Request) {
   const reason: string | null = body.reason || null
   const method: 'original_payment' | 'wallet' = body.method === 'original_payment' ? 'original_payment' : 'wallet'
 
-  // If profile_id is not provided but order_id is, resolve client_id from the order
-  if (!profileId && orderId) {
+  // Resolve the order (when provided) for client_id AND the refund cap.
+  let orderRow: { client_id?: string; amount_paid?: number; total_amount?: number; refunded_amount?: number } | null = null
+  if (orderId) {
     try {
-      const { data: order } = await db
+      const { data } = await db
         .from('orders')
-        .select('client_id')
+        .select('client_id, amount_paid, total_amount, refunded_amount')
         .eq('id', orderId)
         .single() as any
-      if (order?.client_id) {
-        profileId = order.client_id
-      }
+      orderRow = data || null
+      if (!profileId && orderRow?.client_id) profileId = orderRow.client_id
     } catch {
       // Non-critical — continue without profile_id
     }
@@ -87,6 +87,50 @@ export async function POST(req: Request) {
   if (!profileId) return fail('profile_id is required (provide one or supply order_id to resolve it).', 400)
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     return fail('amount_cents must be a positive integer.', 400)
+  }
+
+  // ── Refund cap: a refund must never return more than the customer paid ──────
+  // Order-bound refunds are capped by the order's captured amount minus prior
+  // refunds. A charge-reversal (source = a wallet debit) is capped by that
+  // debit. An orphan wallet refund is capped by the customer's lifetime
+  // deposits. (original_payment refunds with no order/source are left to the
+  // gateway, which rejects over-refunds itself.)
+  let capCents: number | null = null
+  if (orderRow) {
+    // amount_paid is stored in cents, total_amount in dollars; refunded_amount
+    // in dollars (legacy units).
+    const capturedCents =
+      Math.round(Number(orderRow.amount_paid || 0)) ||
+      Math.round(Number(orderRow.total_amount || 0) * 100)
+    const priorRefundCents = Math.round(Number(orderRow.refunded_amount || 0) * 100)
+    if (capturedCents > 0) {
+      capCents = Math.max(0, capturedCents - priorRefundCents)
+    } else if (method === 'wallet') {
+      // Captured amount unknown (legacy/missing) — fall back to the customer's
+      // lifetime-deposit ceiling instead of hard-blocking the refund.
+      capCents = await walletRefundCeilingCents(profileId)
+    }
+  } else if (sourceTable === 'wallet_transactions' && sourceId) {
+    try {
+      const { data: src } = await db
+        .from('wallet_transactions')
+        .select('amount_cents, type')
+        .eq('id', sourceId)
+        .maybeSingle() as any
+      if (src && src.type === 'debit') capCents = Math.max(0, Number(src.amount_cents || 0))
+    } catch {
+      // fall through — leave cap unenforced for this edge case
+    }
+  } else if (method === 'wallet') {
+    capCents = await walletRefundCeilingCents(profileId)
+  }
+
+  if (capCents !== null && amountCents > capCents) {
+    return fail(
+      `Refund of ${amountCents}¢ exceeds the refundable ceiling of ${capCents}¢ — refunds cannot exceed what the customer paid in.`,
+      422,
+      { maxRefundCents: capCents, requestedCents: amountCents },
+    )
   }
 
   const warnings: string[] = []
@@ -147,12 +191,15 @@ export async function POST(req: Request) {
   let walletTx: any = null
   if (method === 'wallet') {
     try {
-      walletTx = await credit(
+      walletTx = await refundToWallet(
         profileId,
         amountCents,
         reason || `Refund${orderId ? ` for order ${orderId}` : ''}`,
-        orderId || undefined,
-        { admin_id: adminProfileId, refund_method: 'wallet', order_id: orderId }
+        {
+          reference: orderId || undefined,
+          orderCapCents: capCents ?? undefined,
+          metadata: { admin_id: adminProfileId, refund_method: 'wallet', order_id: orderId },
+        }
       )
     } catch (err: any) {
       warnings.push(`wallet_credit_failed: ${err.message}`)

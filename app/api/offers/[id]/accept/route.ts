@@ -1,7 +1,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, centsToDollars } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { credit, debit, getOrCreateWallet } from '@/lib/wallet'
+import { debit, getOrCreateWallet, refundToWallet } from '@/lib/wallet'
 import { creditEarning } from '@/lib/earnings'
 import { createPaidOrder, type CheckoutItem } from '@/lib/checkoutOrders'
 import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
@@ -108,7 +108,10 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       // the offer to pending so it can be accepted again cleanly.
       console.error('[offers/accept] Order creation failed after wallet debit — refunding:', orderErr)
       try {
-        await credit(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, undefined, { offerId: offer.id, reason: 'order_create_failed' })
+        // Reversing the wallet debit we just made, so the cap is that exact
+        // charge (works even if the wallet was funded by comps rather than a
+        // genuine deposit).
+        await refundToWallet(auth.profileId, total, `Refund (order creation failed): ${offer.title}`, { orderCapCents: total, metadata: { offerId: offer.id, reason: 'order_create_failed' } })
       } catch (refundErr) {
         console.error('[offers/accept] CRITICAL: refund after failed order also failed:', refundErr)
       }
