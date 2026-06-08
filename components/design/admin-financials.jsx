@@ -288,7 +288,7 @@ function RiskBadge({ level }) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary }) {
+export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice }) {
   const [tab, setTab] = React.useState('overview')
   const [userSort, setUserSort] = React.useState('spent')
   const [exportMsg, setExportMsg] = React.useState('')
@@ -326,7 +326,20 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
   const consultantPct = Number(settings.consultant_fee_percent || 70)
   const platformPct   = 100 - consultantPct
 
-  const allOrders     = orders
+  // Merge service orders + template orders into one ledger
+  const allOrders     = [...orders, ...templateOrders.map(t => ({
+    id: t.id,
+    service: '📄 Template: ' + ((t.slugs || []).length > 0 ? t.slugs.join(', ') : 'Pack'),
+    student: t.email || t.name || 'Guest',
+    consultant: null,
+    amountValue: (t.amount_cents || 0) / 100,
+    adminCut: (t.amount_cents || 0) / 200,
+    consultantPay: 0,
+    escrow: t.status === 'paid' ? 'released' : 'held',
+    status: t.status === 'refunded' ? 'refunded' : 'completed',
+    createdAt: t.created_at,
+
+  }))]
   const activeOrders  = orders.filter(o => !['cancelled','refunded'].includes(o.status))
   const released      = orders.filter(o => o.escrow === 'released')
   const held          = orders.filter(o => o.escrow === 'held')
@@ -407,6 +420,24 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
   const sortedStudents  = [...userFinancials.students].sort((a, b) => b[userSort === 'orders' ? 'orders' : 'spent'] - a[userSort === 'orders' ? 'orders' : 'spent'])
   const sortedProviders = [...userFinancials.providers].sort((a, b) => b.earned - a.earned)
+
+  // ── Refund handler ────────────────────────────────────────────────────────────
+  const handleRefund = async (type, id, label) => {
+    if (!confirm(`Refund ${label}? This will mark it as refunded.`)) return
+    try {
+      const res = await fetch('/api/admin/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Refund failed')
+      if (setActionNotice) setActionNotice('Refund processed for ' + label)
+      window.location.reload()
+    } catch (e) {
+      if (setActionNotice) setActionNotice(e.message || 'Refund failed')
+    }
+  }
 
   // ── Concentration risk ───────────────────────────────────────────────────────
   const top3StudentRevenue = sortedStudents.slice(0, 3).reduce((s, u) => s + u.spent, 0)

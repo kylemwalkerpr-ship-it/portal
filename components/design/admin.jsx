@@ -107,6 +107,8 @@ function AdminApp({ onLogout }) {
   const [currentAdminId, setCurrentAdminId] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
   const [services, setServices] = React.useState([]);
+  const [templateOrders, setTemplateOrders] = React.useState([]);
+  const [walletTransactions, setWalletTransactions] = React.useState([]);
   const [alerts, setAlerts] = React.useState([]);
   const [platformName, setPlatformName] = React.useState('');
   const [supportEmail, setSupportEmail] = React.useState('');
@@ -244,6 +246,8 @@ function AdminApp({ onLogout }) {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || 'Unable to load admin data');
         normalizeAdminData(data);
+        setTemplateOrders(data.templateOrders || []);
+        setWalletTransactions(data.walletTransactions || []);
         setLoadError(null);
       })
       .catch(e => setLoadError(e.message))
@@ -2761,7 +2765,7 @@ const Settings = () => {
           {page === 'tickets' && <AdminTickets />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
-          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} />}
+          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
