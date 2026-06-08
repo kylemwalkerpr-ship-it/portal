@@ -477,10 +477,6 @@ function AdminApp({ onLogout }) {
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
-        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
-        <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
-        <NavItem icon="📦" label="Templates" active={page === 'templates'} onClick={() => setPage('templates')} />
-        <NavItem icon="📄" label="PDF Maker" active={false} onClick={() => window.open('/dashboard/admin/templates/pdf-maker', '_blank')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
@@ -2743,7 +2739,7 @@ const Settings = () => {
     )
   }
 
-  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', services: 'Catalogue', settings: 'Settings' };
+  const pages = { dashboard: 'Dashboard', users: 'Users', orders: 'Order Kanban', tickets: 'Support Tickets', inquiries: 'Inquiries', escrow: 'Escrow', payouts: 'Payouts', analytics: 'Analytics', financials: 'Financials', wallets: 'Wallets', loyalty: 'Loyalty Ledger', gigs: 'My Office', settings: 'Settings' };
 
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
@@ -2766,9 +2762,9 @@ const Settings = () => {
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
           {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} />}
-          {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
-          {page === 'services' && <ServicesAdmin />}
-          {page === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
+          {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
+          
+          
           {page === 'settings' && <Settings />}
         </div>
       </div>
@@ -2790,12 +2786,15 @@ const Settings = () => {
  * pages because their `app/dashboard/admin/<slug>/page.tsx` files mount the
  * same UI components directly.
  */
-function MyOffice({ formatPrimary, attorneyBadge }) {
+function MyOffice({ formatPrimary, attorneyBadge, services, refreshAdminData, setActionNotice }) {
   const [tab, setTab] = React.useState('gigs');
   const tabs = [
     { id: 'gigs',         label: 'Gigs',                  icon: '⭐' },
     { id: 'attorneys',    label: 'Attorney Management',   icon: '⚖️', badge: attorneyBadge || null },
     { id: 'consultants',  label: 'Consultant Management', icon: '🧭' },
+    { id: 'catalogue',    label: 'Catalogue',             icon: '🛒' },
+    { id: 'templates',    label: 'Templates',              icon: '📦' },
+    { id: 'pdfmaker',     label: 'PDF Maker',              icon: '📄' },
   ];
   const tabBtn = (active) => ({
     display: 'inline-flex', alignItems: 'center', gap: '8px',
@@ -2833,6 +2832,32 @@ function MyOffice({ formatPrimary, attorneyBadge }) {
         {tab === 'gigs' && <AdminGigsManager formatPrimary={formatPrimary} />}
         {tab === 'attorneys' && <AdminAttorneyApplications />}
         {tab === 'consultants' && <AdminConsultantManagement />}
+        {tab === 'catalogue' && <ServicesAdmin />}
+        {tab === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
+        {tab === 'pdfmaker' && (
+          <div style={{ padding: '40px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px' }}>📄</div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>PDF Maker</h3>
+            <p style={{ color: C.textMuted, fontSize: '14px', margin: 0, maxWidth: '400px', lineHeight: 1.5 }}>
+              Create, edit, and manage PDF documents from your templates.
+            </p>
+            <a
+              href="/dashboard/admin/templates/pdf-maker"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '12px 24px', borderRadius: '12px',
+                background: C.cyan, color: '#fff',
+                fontWeight: 700, fontSize: '15px',
+                textDecoration: 'none',
+              }}
+            >
+              <span>Open PDF Maker</span>
+              <span>↗</span>
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
