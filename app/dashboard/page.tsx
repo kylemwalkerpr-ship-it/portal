@@ -6,6 +6,21 @@ import { normalizeAuthLane, type AuthLane } from '@/lib/roleLanes'
 import { normalizeVertical } from '@/lib/platformConfig'
 import DashboardClient from './client'
 
+// Force dynamic rendering — this page reads cookies, Clerk auth, and
+// Supabase on every request. Never cache the HTML so the browser always
+// gets the latest JS chunk URLs after a deploy; otherwise Cloudflare's
+// edge cache can serve a stale page referencing old chunk URLs, causing
+// the admin sidebar to show pre-deploy navigation items.
+export const dynamic = 'force-dynamic'
+
+export const fetchCache = 'force-no-store'
+
+// Build-version meta tag is read by admin.jsx on mount to detect stale JS
+// chunks after a deploy. Must match the BUILD_VERSION constant in admin.jsx.
+export const metadata = {
+  other: { 'build-version': '2026-06-08' },
+}
+
 const SUPPORT_DASHBOARD_URL = 'https://support.yousafeconsultancy.com/dashboard'
 
 async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: AuthLane | null }> {

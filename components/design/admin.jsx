@@ -318,7 +318,25 @@ function AdminApp({ onLogout }) {
     } catch (e) { setActionNotice(e.message) }
   };
 
+  // Version check: if the page HTML was cached from a previous deploy, the
+  // bundled admin.jsx code will be stale. We detect this by checking whether
+  // a unique build-time constant injected by the server matches what this
+  // chunk was compiled with. If not, force a hard reload to pick up the new
+  // JS chunks. This prevents the "old sidebar" flash after a deploy.
+  const BUILD_VERSION = '2026-06-08'
+
   React.useEffect(() => {
+    // Read the deploy version from a meta tag (set by the server at render
+    // time). If the meta tag is missing or doesn't match, a new deploy
+    // happened after this chunk was loaded.
+    const meta = document.querySelector('meta[name="build-version"]')
+    const serverVersion = meta?.getAttribute('content')
+    if (serverVersion && serverVersion !== BUILD_VERSION) {
+      console.log('[admin] build version mismatch — reloading to pick up new chunks')
+      window.location.reload()
+      return
+    }
+
     refreshAdminData();
     refreshAttorneyApplications();
     refreshInvites();
