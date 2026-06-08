@@ -4,21 +4,14 @@ This directory contains all SQL migration files for the YouSafe Portal database.
 
 ---
 
-## Deprecated files (do NOT run)
+## Deleted / deprecated files (removed from tree)
 
-These files are kept for reference only. **Do not run them on a fresh database.**
-
-| File | Reason |
-|---|---|
-| `stripe_connect_bypass.sql` | Stripe Connect is fully deprecated. Managed via admin `stripe_bypass` column that still exists. |
-
-## Deleted files (removed from tree)
-
-These files were originally kept for reference but have been deleted since their content was purely historical comments. See git history for original content.
+These files were kept for reference but have been deleted since their content was purely historical comments or Stripe-specific. See git history for original content.
 
 | File | Superseded by |
 |---|---|
 | `stripe_connect.sql` | `canonical_ledger.sql` + `wallet_nmi.sql` |
+| `stripe_connect_bypass.sql` | N/A — Stripe Connect fully excised from the platform |
 | `stripe_excision.sql` | `canonical_ledger.sql` |
 | `services_seed.sql` | Live `services` table managed via admin dashboard |
 
