@@ -1,6 +1,6 @@
 -- wallet_nmi.sql
 -- Wallet, vaulted cards, and transaction ledger for NMI student accounts.
--- Idempotent. Run this before stripe_excision.sql.
+-- Idempotent. stripe_excision.sql has been removed (Stripe is fully deprecated).
 
 -- 1. Student wallets (single source of truth for balance)
 create table if not exists public.student_wallets (
