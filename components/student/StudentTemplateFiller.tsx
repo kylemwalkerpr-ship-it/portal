@@ -744,6 +744,17 @@ export default function StudentTemplateFiller({
   const [suggesting, setSuggesting] = React.useState<string | null>(null)
   const [profileDataForAI, setProfileDataForAI] = React.useState('')
 
+  // ── Fill-before-pay state ──────────────────────────────────────────
+  // The full catalogue (so a non-buyer can open and fill any template), plus
+  // whether the selected template is already owned (decides download paywall).
+  const [catalog, setCatalog] = React.useState<TemplateEntitlement[]>([])
+  const [catalogLoading, setCatalogLoading] = React.useState(true)
+  const [owns, setOwns] = React.useState(false)
+  const [priceCents, setPriceCents] = React.useState(0)
+  const [autofilling, setAutofilling] = React.useState(false)
+  const [validating, setValidating] = React.useState(false)
+  const [issues, setIssues] = React.useState<Array<{ fields: string[]; severity: string; message: string }>>([])
+
   // Fetch paid templates on mount (only if not passed as prop)
   React.useEffect(() => {
     if (propTemplates) {
@@ -762,6 +773,31 @@ export default function StudentTemplateFiller({
       })
       .catch(() => setLoading(false))
   }, [propTemplates, selectedSlug])
+
+  // Fetch the full catalogue so a non-buyer can browse and fill ANY template
+  // (fill-before-pay). Owned packs are merged in below for purchase metadata.
+  React.useEffect(() => {
+    fetch('/api/templates')
+      .then((r) => r.json())
+      .then((d) => {
+        const rows: any[] = d?.templates ?? []
+        const mapped: TemplateEntitlement[] = rows
+          .filter((t) => t?.slug)
+          .map((t) => ({
+            slug: t.slug,
+            name: t.title || t.name || t.slug,
+            category: t.region || t.category || '',
+            short_description: t.short_description || '',
+            includes: t.includes || [],
+            purchased_at: '',
+            order_id: '',
+            downloadHref: '',
+          }))
+        setCatalog(mapped)
+      })
+      .catch(() => {})
+      .finally(() => setCatalogLoading(false))
+  }, [])
 
   // Fetch profile data once for AI suggestions
   React.useEffect(() => {
@@ -792,6 +828,8 @@ export default function StudentTemplateFiller({
       .then((d) => {
         const s = d.data?.sections ?? []
         setSections(s)
+        setOwns(!!d.data?.owns)
+        setPriceCents(Number(d.data?.priceCents) || 0)
         // Reset form values when switching templates
         setValues({})
         setFillSessionId(null)
@@ -877,7 +915,15 @@ export default function StudentTemplateFiller({
     }
   }, [selectedSlug, values, profileDataForAI, suggesting])
 
-  const selectedTemplate = templates.find((t) => t.slug === selectedSlug)
+  // Merge catalogue + owned packs: every catalogue template is selectable
+  // (fill-before-pay), with owned metadata (purchase date, pack download link)
+  // layered on top where present.
+  const ownedBySlug = new Map(templates.map((t) => [t.slug, t]))
+  const allTemplates: TemplateEntitlement[] =
+    catalog.length > 0
+      ? catalog.map((c) => ({ ...c, ...(ownedBySlug.get(c.slug) || {}) }))
+      : templates
+  const selectedTemplate = allTemplates.find((t) => t.slug === selectedSlug)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -933,6 +979,70 @@ export default function StudentTemplateFiller({
     }
   }
 
+  // One-click AI auto-fill: fills every still-empty field from the student's
+  // profile + already-entered values in a single pass.
+  const handleAutofill = async () => {
+    if (!selectedSlug || autofilling) return
+    setAutofilling(true)
+    showToast('✨ AI is filling your form…')
+    try {
+      const res = await fetch('/api/templates/fill/autofill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: selectedSlug,
+          values: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v])),
+          profileData: profileDataForAI,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      const suggestions = (data?.data?.suggestions || {}) as Record<string, string | boolean>
+      const keys = Object.keys(suggestions)
+      if (keys.length === 0) {
+        showToast('No new fields could be auto-filled — add more profile detail or fill manually.')
+        return
+      }
+      // Only fill fields the student hasn't already entered, so we never clobber
+      // their own input.
+      setValues((prev) => {
+        const next = { ...prev }
+        for (const k of keys) {
+          const cur = next[k]
+          const isEmpty = cur === undefined || cur === null || (typeof cur === 'string' && cur.trim() === '')
+          if (isEmpty) next[k] = suggestions[k]
+        }
+        return next
+      })
+      showToast(`✨ AI filled ${keys.length} field${keys.length === 1 ? '' : 's'} — review before you download.`)
+    } catch {
+      showToast('❌ AI auto-fill failed. Please try again or fill manually.')
+    } finally {
+      setAutofilling(false)
+    }
+  }
+
+  // AI consistency check across all entered values (flags only, never edits).
+  const handleValidate = async () => {
+    if (!selectedSlug || validating) return
+    setValidating(true)
+    showToast('🔍 AI is checking your answers…')
+    try {
+      const res = await fetch('/api/templates/fill/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: selectedSlug, values }),
+      })
+      const data = await res.json().catch(() => ({}))
+      const found = (data?.data?.issues || []) as Array<{ fields: string[]; severity: string; message: string }>
+      setIssues(found)
+      showToast(found.length === 0 ? '✅ No inconsistencies found.' : `⚠️ ${found.length} thing${found.length === 1 ? '' : 's'} to review.`)
+    } catch {
+      showToast('❌ Consistency check failed. Please try again.')
+    } finally {
+      setValidating(false)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────
 
   if (loading) {
@@ -943,7 +1053,7 @@ export default function StudentTemplateFiller({
     )
   }
 
-  const selected = templates.find((t) => t.slug === selectedSlug)
+  const selected = allTemplates.find((t) => t.slug === selectedSlug)
 
   return (
     <div style={styles.container}>
@@ -960,20 +1070,22 @@ export default function StudentTemplateFiller({
           Template Filler
         </h1>
         <p style={styles.headerSub}>
-          {templates.length > 0
-            ? `You have ${templates.length} template pack${templates.length !== 1 ? 's' : ''} to work with.`
-            : 'Purchase a template pack to get started.'}
+          {allTemplates.length > 0
+            ? 'Fill any template for free with AI help — pay only when you’re ready to download.'
+            : 'Loading templates…'}
         </p>
       </div>
 
       <div style={styles.content}>
-        {templates.length === 0 ? (
+        {allTemplates.length === 0 && catalogLoading ? (
+          <div style={styles.loadingDots}>Loading templates…</div>
+        ) : allTemplates.length === 0 ? (
           <div style={styles.emptyState}>
             <div style={styles.emptyIcon}>📂</div>
-            <h2 style={styles.emptyTitle}>No template packs yet</h2>
+            <h2 style={styles.emptyTitle}>No templates available</h2>
             <p style={styles.emptyDesc}>
-              Purchase a template pack to access fillable worksheets, checklists, and
-              document organizers — pre-filled with your details or printed blank.
+              Browse the marketplace to find fillable worksheets, checklists, and
+              document organizers — fill them here with AI assistance, then download.
             </p>
             <a href="/marketplace/templates" style={styles.emptyLink}>
               Browse template packs →
@@ -984,10 +1096,10 @@ export default function StudentTemplateFiller({
             {/* Template selector */}
             <div style={{ marginBottom: '16px' }}>
               <label style={{ ...styles.fieldLabel, fontSize: '13px', marginBottom: '10px' }}>
-                Select a template pack to fill
+                Select a template to fill — free to start, no purchase needed
               </label>
               <div style={styles.selectorGrid}>
-                {templates.map((t) => (
+                {allTemplates.map((t) => (
                   <div
                     key={t.slug}
                     style={{
@@ -1010,7 +1122,9 @@ export default function StudentTemplateFiller({
                     <h3 style={styles.cardName}>{t.name}</h3>
                     <p style={styles.cardDesc}>{t.short_description}</p>
                     <div style={styles.cardDate}>
-                      Purchased {t.purchased_at ? new Date(t.purchased_at).toLocaleDateString() : '—'}
+                      {t.purchased_at
+                        ? `✓ Owned · ${new Date(t.purchased_at).toLocaleDateString()}`
+                        : 'Free to fill · pay to download'}
                     </div>
                   </div>
                 ))}
@@ -1091,6 +1205,34 @@ export default function StudentTemplateFiller({
         )}
       </div>
 
+      {/* AI consistency-check results */}
+      {issues.length > 0 && (
+        <div style={{
+          margin: '0 0 12px', padding: '12px 14px', borderRadius: '10px',
+          background: '#FFF8EC', border: '1px solid #F0D9A8',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <strong style={{ fontSize: '13px', color: '#8A6D1F' }}>
+              🔍 {issues.length} thing{issues.length === 1 ? '' : 's'} to review before you download
+            </strong>
+            <button
+              onClick={() => setIssues([])}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9097A8', fontSize: '16px', lineHeight: 1 }}
+              aria-label="Dismiss consistency check"
+            >
+              ×
+            </button>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {issues.map((it, i) => (
+              <li key={i} style={{ fontSize: '12.5px', color: it.severity === 'warning' ? '#8A4B1F' : '#5C6070', lineHeight: 1.5 }}>
+                {it.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Fixed action bar */}
       {selectedSlug && sections.length > 0 && (
         <div style={styles.actionBar}>
@@ -1098,56 +1240,69 @@ export default function StudentTemplateFiller({
             <strong style={{ color: C.text }}>{selectedTemplate?.name || selectedSlug}</strong>
             {' · '}{sections.reduce((acc, s) => acc + s.fields.length, 0)} fields
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <a
-              href={selectedTemplate?.downloadHref ?? '#'}
-              style={styles.actionBtnLink}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ↓ Download pack
-            </a>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* AI auto-fill — free for everyone, the core friction-killer */}
             <button
-              onClick={() => handleDownload('blank')}
-              disabled={generating !== null}
+              onClick={handleAutofill}
+              disabled={autofilling}
               style={{
                 ...styles.actionBtnSecondary,
-                opacity: generating !== null ? 0.6 : 1,
-                cursor: generating !== null ? 'wait' : 'pointer',
-              }}
-              onMouseEnter={(e) => {
-                if (generating === null) {
-                  (e.currentTarget as HTMLElement).style.background = C.surfaceHover
-                  ;(e.currentTarget as HTMLElement).style.borderColor = C.textMuted
-                }
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'transparent'
-                ;(e.currentTarget as HTMLElement).style.borderColor = C.border
+                opacity: autofilling ? 0.6 : 1,
+                cursor: autofilling ? 'wait' : 'pointer',
               }}
             >
-              {generating === 'blank' ? '⏳ Generating…' : '📄 Download blank PDF'}
+              {autofilling ? '✨ Filling…' : '✨ Auto-fill with AI'}
             </button>
             <button
-              onClick={() => handleDownload('filled')}
-              disabled={generating !== null}
+              onClick={handleValidate}
+              disabled={validating}
               style={{
-                ...styles.actionBtnPrimary,
-                opacity: generating !== null ? 0.7 : 1,
-                cursor: generating !== null ? 'wait' : 'pointer',
-              }}
-              onMouseEnter={(e) => {
-                if (generating === null) {
-                  (e.currentTarget as HTMLElement).style.background = '#2D2B5C'
-                }
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = C.brand
+                ...styles.actionBtnSecondary,
+                opacity: validating ? 0.6 : 1,
+                cursor: validating ? 'wait' : 'pointer',
               }}
             >
-              {generating === 'filled' ? '⏳ Generating…' : '✨ Download filled PDF'}
+              {validating ? '🔍 Checking…' : '🔍 Check answers'}
             </button>
-            {fillSessionId && (
+
+            {owns && selectedTemplate?.downloadHref ? (
+              <a
+                href={selectedTemplate.downloadHref}
+                style={styles.actionBtnLink}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ↓ Download pack
+              </a>
+            ) : null}
+
+            {owns ? (
+              <>
+                <button
+                  onClick={() => handleDownload('blank')}
+                  disabled={generating !== null}
+                  style={{
+                    ...styles.actionBtnSecondary,
+                    opacity: generating !== null ? 0.6 : 1,
+                    cursor: generating !== null ? 'wait' : 'pointer',
+                  }}
+                >
+                  {generating === 'blank' ? '⏳ Generating…' : '📄 Download blank PDF'}
+                </button>
+                <button
+                  onClick={() => handleDownload('filled')}
+                  disabled={generating !== null}
+                  style={{
+                    ...styles.actionBtnPrimary,
+                    opacity: generating !== null ? 0.7 : 1,
+                    cursor: generating !== null ? 'wait' : 'pointer',
+                  }}
+                >
+                  {generating === 'filled' ? '⏳ Generating…' : '✨ Download filled PDF'}
+                </button>
+              </>
+            ) : (
+              fillSessionId && (
               <button
                 onClick={async () => {
                   try {
@@ -1180,7 +1335,9 @@ export default function StudentTemplateFiller({
                       showToast(`❌ ${checkoutData?.error || 'Checkout failed.'}`)
                       return
                     }
-                    // Success — redirect to download
+                    // Success — flip to owner mode (free re-downloads, no
+                    // double-charge) and redirect to the download.
+                    setOwns(true)
                     showToast('✅ Template purchased! Redirecting to download…')
                     setTimeout(() => {
                       window.location.href = `/api/templates/download/${encodeURIComponent(selectedSlug!)}`
@@ -1200,8 +1357,9 @@ export default function StudentTemplateFiller({
                   (e.currentTarget as HTMLElement).style.background = C.success
                 }}
               >
-                💳 Pay & Download
+                {priceCents > 0 ? `💳 Pay $${(priceCents / 100).toFixed(2)} & Download` : '💳 Pay & Download'}
               </button>
+              )
             )}
           </div>
         </div>

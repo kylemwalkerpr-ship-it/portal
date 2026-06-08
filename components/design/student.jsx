@@ -1613,7 +1613,8 @@ function StudentApp({ onLogout, userId, userName }) {
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
         <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
-        {hasPaidTemplates && <NavItem icon="📄" label="Template Filler" active={page === 'templates'} onClick={() => setPage('templates')} />}
+        {/* Always available — fill-before-pay lets non-buyers fill (with AI) before purchasing. */}
+        <NavItem icon="📄" label="Template Filler" active={page === 'templates'} onClick={() => setPage('templates')} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
@@ -1744,7 +1745,7 @@ function StudentApp({ onLogout, userId, userName }) {
             { icon: '📥', label: 'New inquiry', sub: 'Describe your case', action: () => setPage('inquiries') },
             { icon: '📋', label: 'Documents', sub: 'Securely shared files', action: () => setPage('documents') },
             { icon: '💳', label: 'Billing', sub: 'Receipts and methods', action: () => setPage('billing') },
-            (hasPaidTemplates ? { icon: '📄', label: 'Template Filler', sub: 'Fill and download your templates', action: () => setPage('templates') } : null),
+            { icon: '📄', label: 'Template Filler', sub: 'Fill with AI free — pay only to download', action: () => setPage('templates') },
           ].filter(Boolean).map(({ icon, label, sub, action }) => (
             <QuickActionTile key={label} icon={icon} label={label} sub={sub} onClick={action} />
           ))}
@@ -2825,8 +2826,12 @@ function StudentApp({ onLogout, userId, userName }) {
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setSelectedTemplate(template); }}>View Details</Btn>
-                      <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); openTemplateCheckout(template); }}>
-                        Buy Template
+                      {/* Fill-before-pay: lead with the free, AI-assisted fill to lift conversion. */}
+                      <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); setSelectedTemplateSlug(template.slug); setPage('templates'); }}>
+                        ✨ Fill free
+                      </Btn>
+                      <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); openTemplateCheckout(template); }}>
+                        Buy
                       </Btn>
                     </div>
                   </div>
@@ -3016,9 +3021,16 @@ function StudentApp({ onLogout, userId, userName }) {
                       </div>
                     </div>
                   </div>
-                  <Btn variant="primary" size="lg" fullWidth onClick={() => openTemplateCheckout(selectedTemplate)}>
+                  <Btn variant="primary" size="lg" fullWidth onClick={() => { setSelectedTemplateSlug(selectedTemplate.slug || selectedTemplate.id); setSelectedTemplate(null); setPage('templates'); }}>
+                    ✨ Fill free with AI
+                  </Btn>
+                  <div style={{ height: '8px' }} />
+                  <Btn variant="secondary" size="lg" fullWidth onClick={() => openTemplateCheckout(selectedTemplate)}>
                     Buy Template
                   </Btn>
+                  <div style={{ fontSize: '11px', color: C.textDim, marginTop: '8px', textAlign: 'center' }}>
+                    Fill it in free with AI — pay only when you’re ready to download.
+                  </div>
                 </div>
               </aside>
             </div>

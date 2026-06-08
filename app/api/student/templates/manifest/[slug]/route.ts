@@ -1,13 +1,19 @@
 /**
  * GET /api/student/templates/manifest/:slug
  *
- * Returns the fillable form manifest for a template that the student
- * has purchased. Used by the TemplateFiller UI to render the form fields.
+ * Returns the fillable form manifest (field definitions only) for a template.
+ *
+ * FILL-BEFORE-PAY: the manifest is just the list of form fields — not the
+ * deliverable — so it is returned to ANY authenticated student, purchased or
+ * not. This lets a prospective buyer open the form, fill it (with AI help),
+ * and preview it on-screen for free. The downloadable/printable filled PDF
+ * stays gated behind payment (see fill/[sessionId]/checkout). The `owns` flag
+ * tells the UI whether to paywall the download.
  */
 import { fail, ok } from '@/lib/apiEnvelope'
 import { getCurrentStudent } from '@/lib/student'
 import { getManifest } from '@/lib/templatePdfManifests'
-import { getTemplatePack } from '@/lib/template-packs'
+import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { listPaidTemplates } from '@/lib/templateEntitlements'
 
 export async function GET(
@@ -20,7 +26,11 @@ export async function GET(
   const { slug } = await context.params
   if (!slug) return fail('Missing slug.', 400)
 
-  // Verify entitlement
+  const pack = getTemplatePack(slug)
+  if (!pack) return fail('Template not found.', 404)
+
+  // Entitlement is no longer a gate — it only decides whether the download is
+  // free (owned) or requires payment (not owned).
   const { data: profile } = await auth.db
     .from('profiles')
     .select('email')
@@ -30,9 +40,7 @@ export async function GET(
   const email = (profile?.email || '').toLowerCase()
   const paid = await listPaidTemplates(auth.db, email)
   const owns = paid.some(e => e.slug === slug)
-  if (!owns) return fail('You haven\'t purchased this template.', 403)
 
-  const pack = getTemplatePack(slug)
   const manifest = getManifest(slug)
 
   if (!manifest) {
@@ -40,6 +48,8 @@ export async function GET(
       slug,
       name: pack?.name || slug,
       hasManifest: false,
+      owns,
+      priceCents: getTemplatePackPriceCents(slug) ?? 0,
       sections: [],
     })
   }
@@ -50,6 +60,8 @@ export async function GET(
     badge: pack?.badge,
     includes: pack?.includes || [],
     hasManifest: true,
+    owns,
+    priceCents: getTemplatePackPriceCents(slug) ?? 0,
     sections: manifest.sections,
     pageSize: manifest.pageSize,
   })
