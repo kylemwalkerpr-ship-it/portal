@@ -690,7 +690,11 @@ export default function AdminWallets() {
   }
 
   const v30 = stats?.transaction_volume_30d || { topup_cents: 0, debit_cents: 0, refund_cents: 0, adjustment_cents: 0, purchase_cents: 0 }
-  const volume30Total = (v30.topup_cents || 0) + (v30.debit_cents || 0) + (v30.refund_cents || 0) + (v30.adjustment_cents || 0) + (v30.purchase_cents || 0)
+  // Volume = genuine money processed = student deposits + spend. Refunds and
+  // admin comps are reversals/grants, not volume, so they're excluded here (the
+  // stats route classifies them into refund_cents / adjustment_cents). This
+  // keeps the headline equal to the "top-ups · purchases" breakdown shown below.
+  const volume30Total = (v30.topup_cents || 0) + (v30.purchase_cents || 0)
 
   return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px', fontFamily: sans }}>

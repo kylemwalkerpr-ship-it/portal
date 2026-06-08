@@ -18,8 +18,6 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 
-const TXN_TYPES = ['topup', 'debit', 'refund', 'adjustment', 'purchase'] as const
-
 export async function GET() {
   const auth = await requireAdminUser()
   if ('error' in auth) return fail(auth.error, auth.status)
@@ -97,11 +95,18 @@ export async function GET() {
   })
 
   // ── 2. 30-day transactions ─────────────────────────────────────────────────
-  let txns30: Array<{ profile_id: string; type: string; amount_cents: number }> = []
+  // Classify by INTENT, not the raw `type` column. Purchases are recorded as
+  // `debit` rows (there is no `purchase` type), and refunds/admin comps are
+  // recorded as `topup` credits — so bucketing purely by `type` reports $0
+  // purchases and lumps comps + refunds into "top-ups". We re-classify so the
+  // dashboard's "top-ups" means genuine student deposits and "purchases" means
+  // genuine spend; comps and refunds are tracked separately and excluded from
+  // the headline volume.
+  let txns30: Array<{ profile_id: string; type: string; amount_cents: number; description?: string; metadata?: any }> = []
   try {
     const { data, error } = await db
       .from('wallet_transactions')
-      .select('profile_id, type, amount_cents')
+      .select('profile_id, type, amount_cents, description, metadata')
       .gte('created_at', ago30)
     if (error) throw error
     txns30 = (data ?? []) as any[]
@@ -109,18 +114,45 @@ export async function GET() {
     data_warnings.push(`txn_volume_unavailable: ${e?.message || 'unknown'}`)
   }
 
+  const classifyTxn = (t: { type: string; description?: string; metadata?: any }): 'deposit' | 'purchase' | 'refund' | 'adjustment' => {
+    const m = t.metadata && typeof t.metadata === 'object' ? t.metadata : {}
+    const desc = String(t.description || '')
+    const isRefund = m.kind === 'refund' || /^\s*refund/i.test(desc) || m.reason === 'order_create_failed'
+    if (t.type === 'topup') {
+      if (isRefund) return 'refund'
+      // Admin-issued credits (comps / manual adjustments) carry an admin_id or
+      // refund_method and are NOT student-funded top-ups.
+      if (m.admin_id || m.refund_method) return 'adjustment'
+      return 'deposit'
+    }
+    if (t.type === 'debit') {
+      // A top-up reversal (topupTxId) or anything refund-flagged is money out as
+      // a refund, not a purchase.
+      if (m.topupTxId || isRefund) return 'refund'
+      return 'purchase'
+    }
+    if (t.type === 'refund') return 'refund'
+    if (t.type === 'purchase') return 'purchase'
+    return 'adjustment'
+  }
+
   const transaction_volume_30d: Record<string, number> = {
-    topup_cents: 0,
-    debit_cents: 0,
-    refund_cents: 0,
-    adjustment_cents: 0,
-    purchase_cents: 0,
+    topup_cents: 0, // genuine student deposits
+    purchase_cents: 0, // genuine spend
+    refund_cents: 0, // refunds (credited back or reversed)
+    adjustment_cents: 0, // admin comps / manual credits
+    debit_cents: 0, // raw debit total (retained for reference / back-compat)
   }
   const activeIds = new Set<string>()
   for (const t of txns30) {
     activeIds.add(t.profile_id)
-    if ((TXN_TYPES as readonly string[]).includes(t.type)) {
-      transaction_volume_30d[`${t.type}_cents`] += Number(t.amount_cents || 0)
+    const amt = Number(t.amount_cents || 0)
+    if (t.type === 'debit') transaction_volume_30d.debit_cents += amt
+    switch (classifyTxn(t)) {
+      case 'deposit': transaction_volume_30d.topup_cents += amt; break
+      case 'purchase': transaction_volume_30d.purchase_cents += amt; break
+      case 'refund': transaction_volume_30d.refund_cents += amt; break
+      case 'adjustment': transaction_volume_30d.adjustment_cents += amt; break
     }
   }
   const active_wallets_30d = activeIds.size
