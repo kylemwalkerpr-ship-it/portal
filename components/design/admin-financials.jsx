@@ -2,6 +2,10 @@
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
 import AdminStudentFinancialDrawer from './admin-student-financial-drawer'
+import AdminEscrow from './admin-escrow'
+import AdminPayouts from './admin-payouts'
+import AdminWallets from './admin-wallets'
+import AdminWalletLoyalty from './admin-wallet-loyalty'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
@@ -80,13 +84,17 @@ function DataWarnings({ items }) {
   )
 }
 
-const TABS = [
+const FINANCIAL_TABS = [
   { id: 'overview',     label: 'Overview',       icon: '📊' },
   { id: 'revenue',      label: 'Revenue',         icon: '💰' },
   { id: 'users',        label: 'User Profiles',   icon: '👤' },
+  { id: 'escrow',       label: 'Escrow',          icon: '🔒' },
+  { id: 'payouts',      label: 'Payouts',         icon: '💰' },
+  { id: 'wallets',      label: 'Wallets',         icon: '👛' },
   { id: 'liabilities',  label: 'Liabilities',     icon: '⚖️' },
   { id: 'projections',  label: 'Projections',     icon: '📈' },
   { id: 'risk',         label: 'Risk',            icon: '🔴' },
+  { id: 'loyalty',      label: 'Loyalty',         icon: '🎖' },
 ]
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -280,7 +288,7 @@ function RiskBadge({ level }) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage }) {
+export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary }) {
   const [tab, setTab] = React.useState('overview')
   const [userSort, setUserSort] = React.useState('spent')
   const [exportMsg, setExportMsg] = React.useState('')
@@ -456,7 +464,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid #DDD8CE', gap: 0, overflowX: 'auto' }}>
-        {TABS.map(t => (
+        {FINANCIAL_TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '10px 18px',
             fontSize: '13px', fontWeight: tab === t.id ? 600 : 400,
@@ -1035,6 +1043,18 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
         </>
         )
       })()}
+
+      {/* ── ESCROW ───────────────────────────────────────────────────────────── */}
+      {tab === 'escrow' && <AdminEscrow />}
+
+      {/* ── PAYOUTS ──────────────────────────────────────────────────────────── */}
+      {tab === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
+
+      {/* ── WALLETS ───────────────────────────────────────────────────────────── */}
+      {tab === 'wallets' && <AdminWallets />}
+
+      {/* ── LOYALTY ───────────────────────────────────────────────────────────── */}
+      {tab === 'loyalty' && <AdminWalletLoyalty />}
 
       {/* ── RISK ──────────────────────────────────────────────────────────────── */}
       {tab === 'risk' && (() => {

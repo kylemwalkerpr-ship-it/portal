@@ -22,7 +22,7 @@ export async function GET() {
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db } = auth
 
-  let [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes]: any[] = await Promise.all([
+  let [profilesRes, ordersRes, itemsRes, servicesRes, settingsRes, consultantsRes, attorneysRes, templateOrdersRes, walletTxRes]: any[] = await Promise.all([
     db.from('profiles').select('id, full_name, email, role, country, country_code, country_source, status, created_at').order('created_at', { ascending: false }),
     // orders.service_title was removed; the kanban derives the title from
     // order_items → services. Selecting it first and retrying on the error
@@ -39,6 +39,10 @@ export async function GET() {
     db.from('platform_settings').select('value').eq('key', 'default').single(),
     db.from('consultants').select('id, profile_id, user_id, email'),
     db.from('attorneys').select('id, profile_id'),
+    // Template-pack orders — guest checkout purchases for digital templates
+    db.from('template_orders').select('*').order('created_at', { ascending: false }),
+    // Wallet transactions (topups, debits, refunds, purchases, adjustments)
+    db.from('wallet_transactions').select('id, profile_id, type, amount_cents, signed_cents, balance_after_cents, description, reference, created_at').order('created_at', { ascending: false }),
   ])
 
   if (profilesRes.error && /column .*(country_code|country_source)/i.test(profilesRes.error.message)) {
@@ -79,6 +83,8 @@ export async function GET() {
     orders: ordersRes.data ?? [],
     orderItems: itemsRes.data ?? [],
     services: servicesRes.data ?? [],
+    templateOrders: templateOrdersRes.data ?? [],
+    walletTransactions: walletTxRes.data ?? [],
     settings: { ...DEFAULT_PLATFORM_SETTINGS, ...(settingsRes.data?.value || {}) },
     connectByProfileId: connectSummary,
     currentAdminId: auth.adminProfileId,

@@ -470,12 +470,8 @@ function AdminApp({ onLogout }) {
         <NavItem icon="🗂️" label="Order Kanban" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
         <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
         <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
-        <NavItem icon="🔒" label="Escrow" active={page === 'escrow'} onClick={() => setPage('escrow')} />
-        <NavItem icon="💰" label="Payouts" active={page === 'payouts'} onClick={() => setPage('payouts')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
         <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
-        <NavItem icon="👛" label="Wallets" active={page === 'wallets'} onClick={() => setPage('wallets')} />
-        <NavItem icon="🎖" label="Loyalty" active={page === 'loyalty'} onClick={() => setPage('loyalty')} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
         <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="🛒" label="Catalogue" active={page === 'services'} onClick={() => setPage('services')} />
@@ -2764,12 +2760,8 @@ const Settings = () => {
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
           {page === 'tickets' && <AdminTickets />}
           {page === 'inquiries' && <Inquiries />}
-          {page === 'escrow' && <AdminEscrow />}
-          {page === 'payouts' && <AdminPayouts formatPrimary={formatPrimary} />}
           {page === 'analytics' && <AdminAnalyticsPro />}
-          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} />}
-          {page === 'wallets' && <AdminWallets />}
-          {page === 'loyalty' && <AdminWalletLoyalty />}
+          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} />}
           {page === 'services' && <ServicesAdmin />}
           {page === 'templates' && <AdminTemplates services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} />}
