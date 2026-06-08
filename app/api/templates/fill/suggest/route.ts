@@ -26,9 +26,12 @@ export async function POST(req: Request) {
     return fail('Invalid JSON body.', 400)
   }
 
-  const fieldLabel = String(body.fieldLabel || body.fieldId || '')
+  const fieldId = String(body.fieldId || '')
+  const fieldLabel = String(body.fieldLabel || fieldId || '')
   const currentValue = String(body.currentValue || '')
-  const profileData = String(body.profileData || '')
+  const fieldType = String(body.type || 'text')
+  const profileRaw = body.profileData
+  const profileData = typeof profileRaw === 'string' ? profileRaw : JSON.stringify(profileRaw || {}, null, 2)
 
   if (!fieldLabel) return fail('fieldId or fieldLabel is required.', 400)
 
@@ -37,6 +40,57 @@ export async function POST(req: Request) {
     return ok({ suggestion: '' })
   }
 
+  // ── Special mode: generate a full manifest JSON ──────────────────────
+  if (fieldId === '__generate_manifest__') {
+    const systemPrompt = [
+      'You are a PDF form manifest generator for immigration document templates.',
+      'Given a template name and any existing manifest context, produce a VALID JSON manifest.',
+      'The manifest MUST be in this exact structure:',
+      '{',
+      '  "slug": "template-slug",',
+      '  "pageSize": "LETTER",',
+      '  "sections": [',
+      '    {',
+      '      "title": "Section Title",',
+      '      "intro": "Optional description",',
+      '      "fields": [',
+      '        { "id": "field_id", "label": "Field Label", "type": "text", "required": false, "placeholder": "", "help": "" }',
+      '      ]',
+      '    }',
+      '  ]',
+      '}',
+      'Valid field types: text, multiline, checkbox, date, select, signature.',
+      'If an existing_manifest is provided in the context, ENHANCE it by adding more relevant fields.',
+      'Include all fields that would be needed for this immigration document.',
+      'Output ONLY the raw JSON — no markdown fences, no explanations.',
+    ].join('\n')
+
+    const userMessage = [
+      '## Template context',
+      profileData,
+      '',
+      'Generate a comprehensive fillable PDF manifest for this immigration template.',
+      'Include ALL relevant fields a typical applicant would need to fill out.',
+      'Return ONLY the raw JSON object.',
+    ].join('\n')
+
+    try {
+      const raw = await provider.reply(systemPrompt, [{ role: 'user', content: userMessage }], { maxOutputTokens: 2000 })
+      // Strip markdown fences if the AI wrapped it
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+      const jsonStart = cleaned.indexOf('{')
+      const jsonEnd = cleaned.lastIndexOf('}')
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        const manifestJson = cleaned.slice(jsonStart, jsonEnd + 1)
+        return ok({ suggestion: manifestJson })
+      }
+      return ok({ suggestion: cleaned })
+    } catch {
+      return ok({ suggestion: '' })
+    }
+  }
+
+  // ── Normal mode: single field value suggestion ───────────────────────
   const systemPrompt = [
     'You are a helpful assistant that suggests values for immigration document template fields.',
     'You ONLY use information already present in the student profile data below.',

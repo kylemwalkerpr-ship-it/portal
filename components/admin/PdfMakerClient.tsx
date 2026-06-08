@@ -71,7 +71,7 @@ export default function PdfMakerClient({ slugs }: { slugs: SlugRow[] }) {
           profileData: {
             template_name: slugRow?.name || selectedSlug,
             template_badge: slugRow?.badge || '',
-            existing_manifest: manifest ? JSON.stringify(manifest) : null,
+            existing_manifest: manifest ? manifest : null,
           },
         }),
         credentials: 'same-origin',
