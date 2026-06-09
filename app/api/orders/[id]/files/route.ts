@@ -131,10 +131,14 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   })
   if (uploadErr) return Response.json({ error: 'Upload failed. Please try again.' }, { status: 500 })
 
+  // order_files.uploader_role is constrained to client/consultant/admin/support.
+  // Any provider (consultant or attorney) is recorded as 'consultant' — the
+  // provider role in this model — to satisfy the check constraint.
+  const uploaderRole = auth.role === 'client' ? 'client' : auth.role === 'admin' ? 'admin' : 'consultant'
   const baseRow = {
     order_id: id,
     uploader_id: auth.profileId,
-    uploader_role: auth.role,
+    uploader_role: uploaderRole,
     name: displayName,
     mime_type: validation.mime,
     size_bytes: file.size,
