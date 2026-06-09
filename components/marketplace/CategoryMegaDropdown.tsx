@@ -8,7 +8,7 @@ import { T, F } from './tokens'
 
 interface Props {
   category: Category
-  country: 'all' | 'us' | 'uk' | 'ca'
+  country: 'all' | 'us' | 'uk' | 'ca' | 'au'
   anchorRect: DOMRect | null
   onClose: () => void
   onNavigate: () => void

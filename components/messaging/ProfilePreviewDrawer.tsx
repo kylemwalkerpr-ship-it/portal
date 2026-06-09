@@ -140,7 +140,7 @@ export default function ProfilePreviewDrawer({ sellerId, viewerId, open, onClose
                   display: 'grid', placeItems: 'center',
                 }}>
                   {seller.headshot_url ? (
-                    <img src={seller.headshot_url} alt="" style={{ width: 96, height: 96, objectFit: 'cover' }} />
+                    <img src={seller.headshot_url} alt={seller.full_name || ''} style={{ width: 96, height: 96, objectFit: 'cover' }} />
                   ) : (
                     <span style={{ fontSize: 36, color: '#fff', fontWeight: 600 }}>
                       {(seller.full_name || '?').charAt(0).toUpperCase()}

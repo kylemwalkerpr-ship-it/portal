@@ -344,7 +344,7 @@ function AttorneyCard({ attorney, onOpen, onContact }) {
       )}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         {attorney.headshot_url
-          ? <img src={attorney.headshot_url} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
+          ? <img src={attorney.headshot_url} alt={attorney.full_name || ''} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
           : <div style={{ width: 56, height: 56, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, fontFamily: SERIF }}>{initials(attorney.full_name)}</div>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 18, color: TEXT, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attorney.full_name}</div>
@@ -426,7 +426,7 @@ function AttorneyDrawer({ attorneyId, attorneyFallback, onClose, onContact, onCh
               {/* Top stats */}
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {att.headshot_url
-                  ? <img src={att.headshot_url} alt="" style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
+                  ? <img src={att.headshot_url} alt={att.full_name || ''} style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
                   : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 26, fontFamily: SERIF }}>{initials(att.full_name)}</div>}
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {att.rating_avg !== null && (

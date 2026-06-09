@@ -53,6 +53,7 @@ const JURISDICTION_LABEL: Record<string, string> = {
   us: 'United States',
   uk: 'United Kingdom',
   ca: 'Canada',
+  au: 'Australia',
 }
 
 function firstImageUrl(gallery?: GigJsonLdInput['gig']['gallery_images']): string | null {

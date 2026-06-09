@@ -105,8 +105,8 @@ export async function POST(req: Request) {
 
   const cat = String(gig.category || '').trim().toLowerCase()
   const sub = String(gig.subcategory || '').trim().toLowerCase()
-  const jx = (String(gig.jurisdiction || '').trim().toLowerCase() as '' | 'us' | 'uk' | 'ca')
-  const isValidJx = jx === 'us' || jx === 'uk' || jx === 'ca'
+  const jx = (String(gig.jurisdiction || '').trim().toLowerCase() as '' | 'us' | 'uk' | 'ca' | 'au')
+  const isValidJx = jx === 'us' || jx === 'uk' || jx === 'ca' || jx === 'au'
 
   // Identify the cluster the cannibalized keyword belongs to so we can
   // pull alternative primaries from the SAME cluster — different enough

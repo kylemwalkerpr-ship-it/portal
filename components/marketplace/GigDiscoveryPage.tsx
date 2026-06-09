@@ -223,7 +223,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     const single = searchParams?.get('country')
     const multi = searchParams?.getAll('jurisdiction').filter(Boolean) ?? []
     if (single) multi.push(single.toLowerCase())
-    return Array.from(new Set(multi.filter((c) => ['us', 'uk', 'ca'].includes(c))))
+    return Array.from(new Set(multi.filter((c) => ['us', 'uk', 'ca', 'au'].includes(c))))
   })
   const [minPrice, setMinPrice] = React.useState(searchParams?.get('min_price') || '')
   const [maxPrice, setMaxPrice] = React.useState(searchParams?.get('max_price') || '')
@@ -284,6 +284,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     { id: 'us', label: 'United States',  count: facets?.jurisdictionCounts?.us },
     { id: 'uk', label: 'United Kingdom', count: facets?.jurisdictionCounts?.uk },
     { id: 'ca', label: 'Canada',         count: facets?.jurisdictionCounts?.ca },
+    { id: 'au', label: 'Australia',      count: facets?.jurisdictionCounts?.au },
   ]
 
   const hasActiveFilters = Boolean(
@@ -368,7 +369,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     const merged = Array.from(new Set([
       ...multi,
       ...(single ? [single.toLowerCase()] : []),
-    ].filter((c) => ['us', 'uk', 'ca'].includes(c))))
+    ].filter((c) => ['us', 'uk', 'ca', 'au'].includes(c))))
     setSelectedJurisdictions(prev => arraysEqual(prev, merged) ? prev : merged)
 
     const nextDelivery = searchParams.getAll('delivery_days').filter(Boolean)
@@ -445,6 +446,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     us: 'United States',
     uk: 'United Kingdom',
     ca: 'Canada',
+    au: 'Australia',
   }
 
   const handleRemoveFilter = (id: string) => {
@@ -504,7 +506,7 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
     }
     if (selectedCategories.length > 1) return `${selectedCategories.length} categories`
     if (selectedJurisdictions.length === 1) {
-      return ({ us: 'United States', uk: 'United Kingdom', ca: 'Canada' }[selectedJurisdictions[0]]
+      return ({ us: 'United States', uk: 'United Kingdom', ca: 'Canada', au: 'Australia' }[selectedJurisdictions[0]]
         || selectedJurisdictions[0].toUpperCase()) + ' services'
     }
     return 'All services'

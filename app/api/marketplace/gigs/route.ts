@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   const validProviderTypes = providerTypes.filter(type => ['attorney', 'consultant'].includes(type))
   if (validProviderTypes.length === 1) query = query.eq('provider_type', validProviderTypes[0])
   else if (validProviderTypes.length > 1) query = query.in('provider_type', validProviderTypes)
-  if (['us', 'uk', 'ca'].includes(country)) query = query.eq('jurisdiction', country)
+  if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.eq('jurisdiction', country)
   if (minRating) query = query.gte('avg_rating', parseFloat(minRating))
 
   if (sort === 'best_rated') query = query.gte('review_count', 3).order('avg_rating', { ascending: false })

@@ -78,8 +78,8 @@ async function handlePublish(_req: Request, context: { params: Promise<{ id: str
   if (!gig.subcategory) errors.subcategory = 'Subcategory is required.'
 
   // jurisdiction: required (must be one of us/uk/ca)
-  if (!['us', 'uk', 'ca'].includes(String(gig.jurisdiction || '').toLowerCase())) {
-    errors.jurisdiction = 'Pick the jurisdiction this brief is licensed to serve (US, UK, or CA).'
+  if (!['us', 'uk', 'ca', 'au'].includes(String(gig.jurisdiction || '').toLowerCase())) {
+    errors.jurisdiction = 'Pick the jurisdiction this brief is licensed to serve (US, UK, CA, or AU).'
   }
 
   // tags: 3–5 items

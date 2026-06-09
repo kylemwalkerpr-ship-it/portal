@@ -96,7 +96,7 @@ export default function MarketplaceAuthNav({ signUpHref }: MarketplaceAuthNavPro
         }}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+          <img src={imageUrl} alt={fullName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
         ) : (
           <span style={{ fontFamily: F.display, fontSize: 14, fontWeight: 600, color: T.indigo }}>
             {initials}

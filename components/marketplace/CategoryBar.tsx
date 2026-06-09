@@ -7,7 +7,7 @@ import { T, F } from './tokens'
 import { CategoryMegaDropdown } from './CategoryMegaDropdown'
 
 interface Props {
-  country: 'all' | 'us' | 'uk' | 'ca'
+  country: 'all' | 'us' | 'uk' | 'ca' | 'au'
 }
 
 // Hard-coded heights that the sticky offset uses to clear the TopNav.

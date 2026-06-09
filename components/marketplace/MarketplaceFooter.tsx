@@ -2,7 +2,7 @@
  * MarketplaceFooter — compact editorial-commerce footer for the marketplace
  * landing. Replaces EstateFooter on this surface only.
  *
- * Visual language: warm vellum + indigo accent with a US/UK/CA flag-stripe
+ * Visual language: warm vellum + indigo accent with a US/UK/CA/AU flag-stripe
  * rule at the top to thread back to the rest of the landing. One narrow row
  * of essential links + a one-line legal block. No wide-screen-only multi-col
  * grid, no marketing tagline duplication.

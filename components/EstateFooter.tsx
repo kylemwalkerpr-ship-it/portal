@@ -42,7 +42,7 @@ export function EstateFooter() {
             YouSafe Consultancy
           </div>
           <p style={{ marginTop: '8px', maxWidth: '36rem', fontSize: '14px', lineHeight: 1.65, color: C.muted }}>
-            Study, work, and settle abroad — visa document preparation and a vetted legal marketplace across the US, UK, and Canada.
+            Study, work, and settle abroad — visa document preparation and a vetted legal marketplace across the US, UK, Canada, and Australia.
           </p>
         </div>
 

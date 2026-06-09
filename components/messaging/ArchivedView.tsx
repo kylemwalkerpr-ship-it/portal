@@ -62,7 +62,7 @@ export default function ArchivedView({ open, onClose, conversations, onUnarchive
               <div key={c.id} className="modal-row" style={{ cursor: 'default' }}>
                 <div className="row-avatar" style={{ background: bg, width: 40, height: 40 }}>
                   {c.counterpart?.avatar_url
-                    ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                    ? <img src={c.counterpart.avatar_url} alt={name} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
                     : initials}
                 </div>
                 <div className="modal-row-body">

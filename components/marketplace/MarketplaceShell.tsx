@@ -211,7 +211,7 @@ function EmptyCard({ icon, title, body, cta }: { icon: string; title: string; bo
 
 // ─── top nav bar ─────────────────────────────────────────────────────────────
 
-function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' }) {
+function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: Section; onNav: (v: Section) => void; country: 'all' | 'us' | 'uk' | 'ca' | 'au' }) {
   const [scrolled, setScrolled] = React.useState(false)
   // Refs for the scrollable nav strip + the currently-active button so we
   // can auto-scroll the active tab into view on mobile. Without this, when

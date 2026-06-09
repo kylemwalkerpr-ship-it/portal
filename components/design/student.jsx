@@ -501,7 +501,7 @@ function EscrowApprovalCard({ order }) {
     if (approving) return;
     setApproving(true); setApproveError('');
     try {
-      const r = await fetch(`/api/orders/${order.id}/approve`, { method: 'POST', credentials: 'same-origin' });
+      const r = await fetch(`/api/orders/${order.id}/escrow`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve_delivery' }), credentials: 'same-origin' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error?.message || d?.error || 'Could not release payment.');
       setState('approved');

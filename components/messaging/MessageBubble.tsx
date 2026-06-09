@@ -175,7 +175,7 @@ export default function MessageBubble({
           title={avatarName || ''}
         >
           {avatarUrl
-            ? <img src={avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+            ? <img src={avatarUrl} alt={avatarName || ''} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
             : (avatarName || '?').charAt(0).toUpperCase()}
         </button>
       )}

@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   // resolving to a single integer; cheap on the gigs table size.
   const applyBaseFilters = (q: any) => {
     let query = q.eq('status', 'active')
-    if (['us', 'uk', 'ca'].includes(country)) query = query.eq('jurisdiction', country)
+    if (['us', 'uk', 'ca', 'au'].includes(country)) query = query.eq('jurisdiction', country)
     const validTypes = providerTypes.filter((t) => ['attorney', 'consultant'].includes(t))
     if (validTypes.length === 1) query = query.eq('provider_type', validTypes[0])
     else if (validTypes.length > 1) query = query.in('provider_type', validTypes)
@@ -70,9 +70,9 @@ export async function GET(req: Request) {
     }),
   )
 
-  const jurisdictionCounts: Record<string, number> = { us: 0, uk: 0, ca: 0 }
+  const jurisdictionCounts: Record<string, number> = { us: 0, uk: 0, ca: 0, au: 0 }
   await Promise.all(
-    (['us', 'uk', 'ca'] as const).map(async (j) => {
+    (['us', 'uk', 'ca', 'au'] as const).map(async (j) => {
       // Don't double-filter on jurisdiction — the caller's jurisdiction
       // param is for context (e.g. "what category counts in the UK")
       // but the jurisdiction-facet itself should always reflect total
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
   await Promise.all(
     (['attorney', 'consultant'] as const).map(async (t) => {
       let q = db.from('gigs').select('id', { count: 'exact', head: true }).eq('status', 'active').eq('provider_type', t)
-      if (['us', 'uk', 'ca'].includes(country)) q = q.eq('jurisdiction', country)
+      if (['us', 'uk', 'ca', 'au'].includes(country)) q = q.eq('jurisdiction', country)
       if (minRating) q = q.gte('avg_rating', parseFloat(minRating))
       const { count } = await q
       providerTypeCounts[t] = count ?? 0

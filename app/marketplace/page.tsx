@@ -10,7 +10,7 @@ export const revalidate = 3600
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
-    'Browse vetted US, UK and Canada immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
+    'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
   const canonicalUrl = getMarketplaceCanonicalUrl('/marketplace/')
   return {
     title,
@@ -26,11 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-type Country = 'all' | 'us' | 'uk' | 'ca'
+type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
 
 function parseCountry(raw: string | string[] | undefined): Country {
   const v = Array.isArray(raw) ? raw[0] : raw
-  if (v === 'us' || v === 'uk' || v === 'ca') return v
+  if (v === 'us' || v === 'uk' || v === 'ca' || v === 'au') return v
   return 'all'
 }
 

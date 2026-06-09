@@ -75,6 +75,7 @@ const FIELDS: Record<EditableField, FieldConfig> = {
       { value: 'us', label: 'United States' },
       { value: 'uk', label: 'United Kingdom' },
       { value: 'ca', label: 'Canada' },
+      { value: 'au', label: 'Australia' },
     ],
   },
 }

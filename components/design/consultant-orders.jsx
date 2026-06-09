@@ -1,35 +1,8 @@
 'use client'
 import React from 'react'
-import { C, Btn, Badge, Card, Avatar, StatusBadge, PayoutBadge, ProgressBar, Input, MessageBody } from './shared'
-import ChatScreen from '../messaging/ChatScreen'
-import MessageBubble from '../messaging/MessageBubble'
-import AutoGrowInput from '../messaging/AutoGrowInput'
-import { dateLabel, sameDay } from '@/lib/messaging/format'
+import { C, Btn, Badge, Card, Avatar, StatusBadge, PayoutBadge, ProgressBar, Input } from './shared'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 import OrderDeliverables from '../orders/OrderDeliverables'
-
-const CONSULTANT_QUICK_REPLIES = [
-  {
-    label: 'Intro & next steps',
-    body:
-      'Hello — thanks for placing your order. I\'ve reviewed the details and I\'m ready to get started.\n\nHere\'s what I\'ll need from you:\n1. Any supporting documents (transcripts, acceptance letters, financial proofs)\n2. Your preferred timeline for submission\n3. Specific questions or concerns you\'d like addressed\n\nReply here or upload files using the paperclip button below.',
-  },
-  {
-    label: 'Documents needed',
-    body:
-      'Could you upload the following so I can proceed with your order?\n\n• Valid passport / government-issued ID\n• Academic transcripts and certificates\n• Proof of English proficiency (if applicable)\n• Visa / immigration correspondence (if any)\n• Any previous applications or submissions\n\nUse the paperclip in the composer to attach files.',
-  },
-  {
-    label: 'Timeline & delivery',
-    body:
-      'Thanks for your patience. Here\'s where things stand:\n\n• Current progress is reflected in the progress bar above.\n• I\'ll update you at each stage of the work.\n• The estimated delivery date is shown on the order card.\n• If anything changes on your end, just let me know.\n\nI\'ll notify you as soon as the deliverable is ready for review.',
-  },
-  {
-    label: 'Out of scope',
-    body:
-      'Thank you for reaching out. After reviewing your request, this specific item falls outside the scope of our current service agreement.\n\nI can still proceed with the original scope we agreed on. If you need something different, feel free to describe what you\'re looking for and I can check if I\'m able to help.',
-  },
-]
 
 // ── Helper: Offer timeline ────────────────────────────────────────────
 function isOfferSystemMessage(message) {
@@ -63,8 +36,6 @@ function OrderDetail({ order, onBack, orderDetailProgress, setOrderDetailProgres
     { label: 'Sent for review', date: order.deadline, done: progressVal >= 90 },
     { label: 'Completed', date: '—', done: order.status === 'completed' },
   ];
-  const orderTimeline = buildOfferTimeline(messages, consultantOffers);
-
   return (
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

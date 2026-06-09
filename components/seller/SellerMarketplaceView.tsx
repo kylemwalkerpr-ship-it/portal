@@ -92,7 +92,7 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
   const [debouncedQuery, setDebouncedQuery] = React.useState('')
   const [category, setCategory] = React.useState('')
   const [sort, setSort] = React.useState<SortKey>('rank_score')
-  const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca'>('all')
+  const [country, setCountry] = React.useState<'all' | 'us' | 'uk' | 'ca' | 'au'>('all')
   const [includeOwn, setIncludeOwn] = React.useState(false)
 
   const categoryFilters = React.useMemo(() => {
@@ -219,7 +219,7 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
                 >
                   {cover ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cover} alt="" style={{ width: '52px', height: '52px', borderRadius: '5px', objectFit: 'cover' as const, flexShrink: 0 }} />
+                    <img src={cover} alt={gig.title || ''} style={{ width: '52px', height: '52px', borderRadius: '5px', objectFit: 'cover' as const, flexShrink: 0 }} />
                   ) : (
                     <div style={{
                       width: '52px', height: '52px', borderRadius: '5px',
@@ -299,6 +299,7 @@ export default function SellerMarketplaceView({ viewerProfileId, viewerRole }: S
             <option value="us">United States</option>
             <option value="uk">United Kingdom</option>
             <option value="ca">Canada</option>
+            <option value="au">Australia</option>
           </select>
           <select
             value={sort}
@@ -405,7 +406,7 @@ function SellerMarketCard({ gig, viewerProfileId, viewerRole }: { gig: Marketpla
       <Link href={`/marketplace/gigs/${gig.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" style={{ width: '100%', aspectRatio: '16 / 9' as unknown as number, objectFit: 'cover' as const, display: 'block', background: '#F2EFE9' }} />
+          <img src={cover} alt={gig.title || ''} style={{ width: '100%', aspectRatio: '16 / 9' as unknown as number, objectFit: 'cover' as const, display: 'block', background: '#F2EFE9' }} />
         ) : (
           <div style={{
             width: '100%', aspectRatio: '16 / 9' as unknown as number,

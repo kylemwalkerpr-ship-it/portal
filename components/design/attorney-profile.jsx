@@ -394,7 +394,7 @@ function PreviewTab({ strength }) {
         <div style={{ padding: '0 28px 28px', marginTop: -44 }}>
           <div style={{ display: 'flex', gap: 18, alignItems: 'flex-end' }}>
             {a.headshot_url
-              ? <img src={a.headshot_url} alt="" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: `4px solid ${SURFACE}` }} />
+              ? <img src={a.headshot_url} alt={profile.full_name || ''} style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: `4px solid ${SURFACE}` }} />
               : <div style={{ width: 88, height: 88, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 32, fontFamily: SERIF, border: `4px solid ${SURFACE}` }}>{initial}</div>}
             <div style={{ flex: 1, paddingBottom: 8 }}>
               <div style={{ fontFamily: SERIF, fontSize: 26, fontWeight: 600, color: TEXT, lineHeight: 1.1 }}>

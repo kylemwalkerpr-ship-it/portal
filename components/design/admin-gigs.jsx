@@ -280,7 +280,7 @@ function GigDrawer({gig,onClose,onAction}) {
               {gig.gallery_images?.length>0&&(
                 <div>
                   <div style={{fontSize:'10px',fontWeight:700,color:'#9097A8',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'6px'}}>Gallery ({gig.gallery_images.length})</div>
-                  <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>{gig.gallery_images.slice(0,4).map((img,i)=>{const url=typeof img==='string'?img:img?.url;return url?<img key={i} src={url} alt="" style={{width:'70px',height:'70px',objectFit:'cover',borderRadius:'6px',border:'1px solid #DDD8CE'}}/>:null})}</div>
+                  <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>{gig.gallery_images.slice(0,4).map((img,i)=>{const url=typeof img==='string'?img:img?.url;return url?<img key={i} src={url} alt={gig.title || 'Gallery image'} style={{width:'70px',height:'70px',objectFit:'cover',borderRadius:'6px',border:'1px solid #DDD8CE'}}/>:null})}</div>
                 </div>
               )}
             </div>

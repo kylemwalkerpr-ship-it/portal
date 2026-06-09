@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CATEGORIES } from '@/lib/categories'
 
-type Country = 'all' | 'us' | 'uk' | 'ca'
+type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
 
 interface Gig {
   id: string
@@ -21,7 +21,7 @@ interface Gig {
 
 interface ApiEnvelope { gigs?: Gig[]; total?: number }
 
-const CURRENCY_BY: Record<Country, string> = { all: 'USD', us: 'USD', uk: 'GBP', ca: 'CAD' }
+const CURRENCY_BY: Record<Country, string> = { all: 'USD', us: 'USD', uk: 'GBP', ca: 'CAD', au: 'AUD' }
 
 function formatPrice(cents: number | null | undefined, currency = 'USD'): string {
   if (cents == null) return '—'
@@ -121,7 +121,7 @@ export function AllGigsDrawer({
                 <div className="cw-all-filterblock">
                   <div className="cw-all-filter-label">Jurisdiction</div>
                   <div className="cw-all-jx">
-                    {(['all', 'us', 'uk', 'ca'] as Country[]).map((c) => (
+                    {(['all', 'us', 'uk', 'ca', 'au'] as Country[]).map((c) => (
                       <button
                         key={c}
                         type="button"

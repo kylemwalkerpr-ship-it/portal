@@ -43,7 +43,7 @@ const F = {
 
 const PORTAL_URL = 'https://portal.yousafeconsultancy.com'
 
-type Country = 'all' | 'us' | 'uk' | 'ca'
+type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
 type JxCode = Exclude<Country, 'all'>
 
 function signUpHref(utm: string): string {
@@ -123,12 +123,14 @@ const COUNTRY_CODE_MAP: Record<string, JxCode> = {
   US: 'us', USA: 'us', 'UNITED STATES': 'us',
   UK: 'uk', GB: 'uk', GBR: 'uk', 'UNITED KINGDOM': 'uk',
   CA: 'ca', CAN: 'ca', CANADA: 'ca',
+  AU: 'au', AUS: 'au', AUSTRALIA: 'au',
 }
 
 const COUNTRY_META: Record<JxCode, { name: string; currency: string }> = {
   us: { name: 'United States', currency: 'USD' },
   uk: { name: 'United Kingdom', currency: 'GBP' },
   ca: { name: 'Canada', currency: 'CAD' },
+  au: { name: 'Australia', currency: 'AUD' },
 }
 
 function resolveJurisdiction(country?: string | null): JxCode | null {
@@ -213,6 +215,7 @@ async function loadLandingData(): Promise<LandingData> {
     us: emptySlice('United States', 'USD'),
     uk: emptySlice('United Kingdom', 'GBP'),
     ca: emptySlice('Canada', 'CAD'),
+    au: emptySlice('Australia', 'AUD'),
   }
   const fallback: LandingData = {
     slices: fallbackSlices,
@@ -220,6 +223,7 @@ async function loadLandingData(): Promise<LandingData> {
       { code: 'us', name: 'United States', currency: 'USD', count: 0, fromCents: null, topCategories: [] },
       { code: 'uk', name: 'United Kingdom', currency: 'GBP', count: 0, fromCents: null, topCategories: [] },
       { code: 'ca', name: 'Canada', currency: 'CAD', count: 0, fromCents: null, topCategories: [] },
+      { code: 'au', name: 'Australia', currency: 'AUD', count: 0, fromCents: null, topCategories: [] },
     ],
     reviews: [],
   }
@@ -296,7 +300,7 @@ async function loadLandingData(): Promise<LandingData> {
     // Gig-level jurisdiction wins over provider.country — the column is the
     // contract going forward, profile country is only the legacy fallback
     // until the backfill catches every row.
-    const gigJx: JxCode | null = ['us', 'uk', 'ca'].includes(String(row.jurisdiction || '').toLowerCase())
+    const gigJx: JxCode | null = ['us', 'uk', 'ca', 'au'].includes(String(row.jurisdiction || '').toLowerCase())
       ? (String(row.jurisdiction).toLowerCase() as JxCode)
       : null
     const gallery = normalizeGallery(row.gallery_images)
@@ -322,7 +326,7 @@ async function loadLandingData(): Promise<LandingData> {
     }
   })
 
-  const gigsByCountry: Record<JxCode, LandingGig[]> = { us: [], uk: [], ca: [] }
+  const gigsByCountry: Record<JxCode, LandingGig[]> = { us: [], uk: [], ca: [], au: [] }
   for (const g of allGigs) {
     if (g.jx) gigsByCountry[g.jx].push(g)
   }
@@ -332,6 +336,7 @@ async function loadLandingData(): Promise<LandingData> {
     us: buildSlice(COUNTRY_META.us.name, COUNTRY_META.us.currency, gigsByCountry.us),
     uk: buildSlice(COUNTRY_META.uk.name, COUNTRY_META.uk.currency, gigsByCountry.uk),
     ca: buildSlice(COUNTRY_META.ca.name, COUNTRY_META.ca.currency, gigsByCountry.ca),
+    au: buildSlice(COUNTRY_META.au.name, COUNTRY_META.au.currency, gigsByCountry.au),
   }
 
   /* ── Jurisdiction rail cards (always all 3, regardless of active slice) ── */
@@ -464,6 +469,14 @@ const POPULAR_CHIPS: Record<Country, Array<{ label: string; q: string }>> = {
     { label: 'Spousal sponsorship', q: 'Spousal sponsorship' },
     { label: 'LMIA support letter', q: 'LMIA' },
   ],
+  au: [
+    { label: 'Student visa evidence pack', q: 'Subclass 500' },
+    { label: 'Genuine Student review', q: 'Genuine Student' },
+    { label: 'Subclass 485 checklist', q: 'Subclass 485' },
+    { label: 'Work rights explanation', q: 'work rights' },
+    { label: 'NSW tenancy help', q: 'NSW tenancy' },
+    { label: 'Financial capacity review', q: 'financial capacity' },
+  ],
 }
 
 /* ───────────────────────── JSON-LD ─────────────────────────── */
@@ -482,6 +495,7 @@ const SERVICE_JSONLD = {
     { '@type': 'Country', name: 'United States' },
     { '@type': 'Country', name: 'United Kingdom' },
     { '@type': 'Country', name: 'Canada' },
+    { '@type': 'Country', name: 'Australia' },
   ],
   hasOfferCatalog: {
     '@type': 'OfferCatalog',
@@ -515,7 +529,7 @@ const FAQS = [
   {
     q: 'What jurisdictions do you cover?',
     a:
-      'The marketplace focuses on the United States, the United Kingdom, and Canada. Providers specialise in visas, work permits, permanent residency, family sponsorship, and tenancy law for those three countries.',
+      'The marketplace focuses on the United States, the United Kingdom, Canada, and Australia. Providers specialise in visas, work permits, permanent residency, family sponsorship, and tenancy law for those four countries.',
   },
 ]
 
@@ -898,11 +912,18 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
       'ICCRC-registered consultants and Canadian attorneys covering Study Permit packs, PGWP, Express Entry CRS, ' +
       'PNP strategy, spousal sponsorship, and provincial tenancy law. Fixed-fee, escrowed, refundable.',
   },
+  au: {
+    eyebrow: 'Australia · Subclass 500 · Subclass 485 · Student work rights',
+    h1: <>Australian study and housing help — <em>by the brief, not the meter.</em></>,
+    lede:
+      'Providers covering student visa packs, Genuine Student checks, financial capacity evidence, graduate visa prep, ' +
+      'and tenancy support for Australia. Fixed-fee briefs, escrowed payment, clear scope.',
+  },
 }
 
 export async function PublicMarketplaceLanding({ country = 'all' as Country }: { country?: Country }) {
   const data = await loadLandingData()
-  const active: Country = (['all', 'us', 'uk', 'ca'] as Country[]).includes(country) ? country : 'all'
+  const active: Country = (['all', 'us', 'uk', 'ca', 'au'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
   const { reviews } = data
   const headline = HERO_HEADLINES[active]
@@ -915,7 +936,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
   // Always include the active slice first, then remaining jurisdictions.
   // Fallback to the global top brief only for jurisdictions with zero gigs.
   const slides: HeroSlide[] = []
-  const jxOrder: Country[] = [active, ...(['all', 'us', 'uk', 'ca'] as Country[]).filter((c) => c !== active)]
+  const jxOrder: Country[] = [active, ...(['all', 'us', 'uk', 'ca', 'au'] as Country[]).filter((c) => c !== active)]
   for (const jx of jxOrder) {
     const s = data.slices[jx]
     if (!s) continue

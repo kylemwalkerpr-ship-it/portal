@@ -210,7 +210,7 @@ export function GigBuilderWizard({ gigId, existingGig, onComplete, onCancel, rol
     if (step === 0) {
       if (!gigData.category) newErrors.category = 'Please select a category'
       if (!gigData.subcategory) newErrors.subcategory = 'Please select a subcategory'
-      if (!['us', 'uk', 'ca'].includes(gigData.jurisdiction)) {
+      if (!['us', 'uk', 'ca', 'au'].includes(gigData.jurisdiction)) {
         newErrors.jurisdiction = role === 'consultant' ? 'Pick the country your clients are in' : 'Pick the jurisdiction this brief serves'
       }
     }
@@ -993,6 +993,7 @@ function CategoryStep({ gigData, errors, onChange, role }: any) {
           <option value="us">United States</option>
           <option value="uk">United Kingdom</option>
           <option value="ca">Canada</option>
+          <option value="au">Australia</option>
         </select>
         <p style={{ fontSize: '12px', color: T.inkMuted, margin: '6px 0 0' }}>
           {role === 'consultant'

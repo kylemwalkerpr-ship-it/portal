@@ -342,7 +342,7 @@ function ProviderCard({ a, onSelect }) {
         )}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {a.headshot_url
-            ? <img src={a.headshot_url} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${T.rule}` }} />
+            ? <img src={a.headshot_url} alt={a.full_name || ''} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${T.rule}` }} />
             : <div style={{ width: 56, height: 56, borderRadius: '50%', background: `${T.indigo}10`, color: T.indigo, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, fontFamily: F.display }}>{initials(a.full_name)}</div>}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 18, color: T.ink, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.full_name}</div>
@@ -415,7 +415,7 @@ function ProviderSidePane({ a, onClose }) {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, padding: '18px 22px 14px', borderBottom: `1px solid ${T.rule}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
             {a.headshot_url
-              ? <img src={a.headshot_url} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${T.rule}` }} />
+              ? <img src={a.headshot_url} alt={a.full_name || ''} style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${T.rule}` }} />
               : <div style={{ width: 64, height: 64, borderRadius: '50%', background: `${T.indigo}10`, color: T.indigo, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 22, fontFamily: F.display }}>{initials(a.full_name)}</div>}
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 22, color: T.ink, lineHeight: 1.15 }}>{a.full_name}</div>

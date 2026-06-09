@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { T, F } from './tokens'
 
 interface Props {
-  active: 'all' | 'us' | 'uk' | 'ca'
+  active: 'all' | 'us' | 'uk' | 'ca' | 'au'
 }
 
 const OPTIONS: { value: Props['active']; label: string }[] = [
@@ -13,6 +13,7 @@ const OPTIONS: { value: Props['active']; label: string }[] = [
   { value: 'us', label: 'United States' },
   { value: 'uk', label: 'United Kingdom' },
   { value: 'ca', label: 'Canada' },
+  { value: 'au', label: 'Australia' },
 ]
 
 export function JurisdictionDropdown({ active }: Props) {

@@ -374,7 +374,7 @@ function containsCi(haystack: string, needle: string): boolean {
 // arrays are not exported; this is the audit-side copy. Keep in lockstep
 // when the source-of-truth list grows; if they drift, the audit just
 // underreports coverage — never throws).
-const JURISDICTION_TERMS: Record<'us' | 'uk' | 'ca', { attorney: string[]; consultant: string[] }> = {
+const JURISDICTION_TERMS: Record<'us' | 'uk' | 'ca' | 'au', { attorney: string[]; consultant: string[] }> = {
   us: {
     attorney: ['USCIS', 'green card', 'I-130', 'I-485', 'I-765', 'H-1B', 'F-1 visa', 'OPT', 'naturalization', 'EAD', 'United States', 'US'],
     consultant: ['United States', 'US-based', 'US clients', 'US', 'America'],
@@ -386,6 +386,10 @@ const JURISDICTION_TERMS: Record<'us' | 'uk' | 'ca', { attorney: string[]; consu
   ca: {
     attorney: ['IRCC', 'express entry', 'PR card', 'CRS score', 'study permit', 'PGWP', 'PNP', 'LMIA', 'work permit Canada', 'Canada'],
     consultant: ['Canada', 'Canada-based', 'Canadian clients', 'Canadian'],
+  },
+  au: {
+    attorney: ['Department of Home Affairs', 'student visa', 'subclass 500', 'subclass 485', 'Genuine Student', 'work rights', 'Australia'],
+    consultant: ['Australia', 'Australia-based', 'Australian clients', 'AU'],
   },
 }
 
@@ -400,8 +404,8 @@ export function runSeoAudit(input: AuditInputs): AuditResult {
 
   const cat = String(gig.category || '').trim().toLowerCase()
   const sub = String(gig.subcategory || '').trim().toLowerCase()
-  const jx = String(gig.jurisdiction || '').trim().toLowerCase() as '' | 'us' | 'uk' | 'ca'
-  const isValidJx = jx === 'us' || jx === 'uk' || jx === 'ca'
+  const jx = String(gig.jurisdiction || '').trim().toLowerCase() as '' | 'us' | 'uk' | 'ca' | 'au'
+  const isValidJx = jx === 'us' || jx === 'uk' || jx === 'ca' || jx === 'au'
   const text = surfaceText(gig)
 
   // ------- 1. CLUSTER COVERAGE -------

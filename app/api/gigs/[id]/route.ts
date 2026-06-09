@@ -84,7 +84,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
   if ('jurisdiction' in body) {
     const j = typeof body.jurisdiction === 'string' ? body.jurisdiction.trim().toLowerCase() : ''
-    payload.jurisdiction = ['us', 'uk', 'ca'].includes(j) ? j : null
+    payload.jurisdiction = ['us', 'uk', 'ca', 'au'].includes(j) ? j : null
   }
   if (body.status && ['draft', 'active', 'paused'].includes(body.status)) {
     payload.status = body.status

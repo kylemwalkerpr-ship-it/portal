@@ -17,9 +17,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: 'YouSafe Portal — Study Abroad & Legal Services',
     description:
-      'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK and Canada legal document review — students, attorneys, consultants, and admins in one secure portal.',
-    openGraph: { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK and Canada legal document review — students, attorneys, consultants, and admins in one secure portal.', type: 'website' },
-    twitter:   { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK and Canada legal document review — students, attorneys, consultants, and admins in one secure portal.', card: 'summary_large_image' },
+      'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.',
+    openGraph: { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.', type: 'website' },
+    twitter:   { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.', card: 'summary_large_image' },
   }
 }
 
@@ -79,7 +79,7 @@ export default async function Page() {
       <SeoIntroBlock
         eyebrow="YouSafe Consultancy"
         title="Study abroad consulting and legal document review in one secure portal."
-        description="Trusted by students, attorneys, and consultants across the US, UK, and Canada. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
+        description="Trusted by students, attorneys, and consultants across the US, UK, Canada, and Australia. Submit your study-abroad application, review legal documents, and message verified providers — all in your preferred language."
       />
       <Suspense fallback={null}>
         <HomeClientWithGigs />

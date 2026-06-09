@@ -1,7 +1,7 @@
 'use client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
-type Code = 'all' | 'us' | 'uk' | 'ca'
+type Code = 'all' | 'us' | 'uk' | 'ca' | 'au'
 
 interface Tab {
   code: Code
@@ -13,6 +13,7 @@ const TABS: Tab[] = [
   { code: 'us', label: 'United States' },
   { code: 'uk', label: 'United Kingdom' },
   { code: 'ca', label: 'Canada' },
+  { code: 'au', label: 'Australia' },
 ]
 
 export function CountryTabs({ active }: { active: Code }) {
@@ -82,6 +83,7 @@ export function CountryPicker({ active }: { active: Code }) {
       <option value="us">United States</option>
       <option value="uk">United Kingdom</option>
       <option value="ca">Canada</option>
+      <option value="au">Australia</option>
     </select>
   )
 }

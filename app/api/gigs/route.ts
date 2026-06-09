@@ -187,7 +187,7 @@ export async function POST(req: Request) {
   }
 
   const rawJurisdiction = String(body.jurisdiction || '').trim().toLowerCase()
-  const jurisdiction = ['us', 'uk', 'ca'].includes(rawJurisdiction) ? rawJurisdiction : null
+  const jurisdiction = ['us', 'uk', 'ca', 'au'].includes(rawJurisdiction) ? rawJurisdiction : null
   const tiers = Array.isArray(body.tiers) ? body.tiers.slice(0, 3) : []
 
   // gallery_images can arrive as strings (older builder code, third-party

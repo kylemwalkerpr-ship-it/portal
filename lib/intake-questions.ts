@@ -1,4 +1,4 @@
-export type Country = 'US' | 'UK' | 'CA'
+export type Country = 'US' | 'UK' | 'CA' | 'AU'
 
 export type QuestionOption = { id: string; label: string; help?: string }
 
@@ -810,6 +810,170 @@ export const COUNTRIES: CountryConfig[] = [
       },
       {
         id: 'other_ca',
+        label: 'Something else',
+        questions: [
+          {
+            id: 'topic',
+            type: 'long_text',
+            label: 'In a sentence or two, what’s going on?',
+            required: true,
+          },
+          PRIOR_DENIAL_QUESTION,
+          URGENCY_QUESTION,
+          FREEFORM_DETAIL,
+        ],
+      },
+    ],
+  },
+  {
+    id: 'AU',
+    flag: 'AU',
+    label: 'Australia',
+    blurb: 'Student visas / graduate visas / work rights / tenancy',
+    caseTypes: [
+      {
+        id: 'student_visa',
+        label: 'Student visa',
+        questions: [
+          {
+            id: 'institution',
+            type: 'short_text',
+            label: 'Education provider',
+            placeholder: 'e.g. University of Sydney, UNSW, RMIT',
+            required: true,
+          },
+          {
+            id: 'visa_stream',
+            type: 'select',
+            label: 'Which visa / grant type?',
+            options: [
+              { id: 'subclass_500', label: 'Subclass 500 student visa' },
+              { id: 'genuine_student', label: 'Genuine Student requirement' },
+              { id: 'financial_capacity', label: 'Financial capacity evidence' },
+              { id: 'unsure', label: "I'm not sure yet" },
+            ],
+            required: true,
+          },
+          {
+            id: 'application_stage',
+            type: 'select',
+            label: 'Where are you in the process?',
+            options: [
+              { id: 'pre_lodgement', label: 'Preparing to lodge' },
+              { id: 'lodged', label: 'Already lodged' },
+              { id: 'refused', label: 'Refused / need reapply' },
+              { id: 'inside_australia', label: 'Already in Australia' },
+            ],
+            required: true,
+          },
+          PRIOR_DENIAL_QUESTION,
+          URGENCY_QUESTION,
+          FREEFORM_DETAIL,
+        ],
+      },
+      {
+        id: 'graduate_visa',
+        label: 'Temporary Graduate visa',
+        questions: [
+          {
+            id: 'visa_subclass',
+            type: 'select',
+            label: 'Which subclass?',
+            options: [
+              { id: '485', label: 'Subclass 485' },
+              { id: 'other', label: 'Another post-study stream' },
+              { id: 'unsure', label: "I'm not sure" },
+            ],
+            required: true,
+          },
+          {
+            id: 'study_area',
+            type: 'short_text',
+            label: 'Course / qualification completed',
+            placeholder: 'e.g. Bachelor of Nursing',
+          },
+          {
+            id: 'location',
+            type: 'select',
+            label: 'Where are you applying from?',
+            options: [
+              { id: 'inside', label: 'Inside Australia' },
+              { id: 'outside', label: 'Outside Australia' },
+            ],
+            required: true,
+          },
+          PRIOR_DENIAL_QUESTION,
+          URGENCY_QUESTION,
+          FREEFORM_DETAIL,
+        ],
+      },
+      {
+        id: 'work_rights',
+        label: 'Work rights',
+        questions: [
+          {
+            id: 'employment_status',
+            type: 'select',
+            label: 'What do you need help with?',
+            options: [
+              { id: 'hour_limit', label: 'Student visa work-hour limit' },
+              { id: 'work_while_studying', label: 'Working while studying' },
+              { id: 'poststudy', label: 'Post-study work rights' },
+              { id: 'unsure', label: "I'm not sure" },
+            ],
+            required: true,
+          },
+          {
+            id: 'sector',
+            type: 'short_text',
+            label: 'Industry / employer',
+            placeholder: 'e.g. hospitality, healthcare, tech',
+          },
+          PRIOR_DENIAL_QUESTION,
+          URGENCY_QUESTION,
+          FREEFORM_DETAIL,
+        ],
+      },
+      {
+        id: 'tenancy',
+        label: 'Tenancy / housing',
+        questions: [
+          {
+            id: 'state',
+            type: 'select',
+            label: 'Which state or territory?',
+            options: [
+              { id: 'nsw', label: 'New South Wales' },
+              { id: 'vic', label: 'Victoria' },
+              { id: 'qld', label: 'Queensland' },
+              { id: 'wa', label: 'Western Australia' },
+              { id: 'sa', label: 'South Australia' },
+              { id: 'act', label: 'ACT' },
+              { id: 'tas', label: 'Tasmania' },
+              { id: 'nt', label: 'Northern Territory' },
+            ],
+            required: true,
+          },
+          {
+            id: 'tenancy_issue',
+            type: 'select',
+            label: 'What is happening?',
+            options: [
+              { id: 'bond', label: 'Bond / deposit issue' },
+              { id: 'repairs', label: 'Repairs / maintenance' },
+              { id: 'notice', label: 'Notice to vacate' },
+              { id: 'sharehouse', label: 'Roommate / sharehouse dispute' },
+              { id: 'other', label: 'Something else' },
+            ],
+            required: true,
+          },
+          PRIOR_DENIAL_QUESTION,
+          URGENCY_QUESTION,
+          FREEFORM_DETAIL,
+        ],
+      },
+      {
+        id: 'other_au',
         label: 'Something else',
         questions: [
           {

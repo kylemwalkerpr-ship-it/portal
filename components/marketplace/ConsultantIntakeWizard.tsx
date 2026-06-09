@@ -378,7 +378,7 @@ function PhotoStep({ form, setField, onUpload, uploading }: { form: Form; setFie
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={photoFrame}>
             {form.headshot_url
-              ? <img src={form.headshot_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ? <img src={form.headshot_url} alt="Headshot preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <span style={{ fontFamily: "'Lora', serif", fontSize: 28, color: '#64748B' }}>?</span>}
           </div>
           <label style={uploadCta(uploading)}>
