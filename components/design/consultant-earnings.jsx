@@ -9,10 +9,15 @@ import { C, Badge, Card, StatCard } from './shared'
  * the Earnings + Payout Setup pages.
  */
 
-export default function ConsultantEarnings({ orders, monthEarnings, totalEarnings }) {
+export default function ConsultantEarnings({ orders, monthEarnings, totalEarnings, pendingPayoutCents }) {
   const completed = orders.filter(o => o.status === 'completed');
   const transferredCents = completed.reduce((a, o) => a + (o.payoutStatus === 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
-  const pendingCents = completed.reduce((a, o) => a + (o.payoutStatus !== 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
+  // Canonical pending payout = sum of releasable provider_earnings (reconciled
+  // with admin financials + the weekly Tuesday batch). Fall back to the
+  // order-derived estimate only if the canonical figure wasn't supplied.
+  const pendingCents = (pendingPayoutCents !== undefined && pendingPayoutCents !== null)
+    ? Number(pendingPayoutCents)
+    : completed.reduce((a, o) => a + (o.payoutStatus !== 'transferred' ? Number(o.consultantPayoutAmount || 0) : 0), 0);
   const transferredDollars = (transferredCents / 100).toFixed(2);
   const pendingDollars = (pendingCents / 100).toFixed(2);
   const completedOrders = completed.length;
@@ -42,7 +47,7 @@ export default function ConsultantEarnings({ orders, monthEarnings, totalEarning
         <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Paid out</div>
         <div style={{ fontSize: '48px', fontWeight: 800, color: '#fff', marginBottom: '8px' }}>${transferredDollars}</div>
         <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px' }}>
-          Payouts are released by YouSafe once an order is completed and approved by the student. No setup needed.
+          Payouts are released once an order is completed and approved by the student, then paid out in the weekly batch every Tuesday. No setup needed.
         </div>
       </div>
 

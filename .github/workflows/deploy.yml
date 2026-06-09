@@ -104,6 +104,9 @@ jobs:
           GSC_OAUTH_CLIENT_SECRET: ${{ secrets.GSC_OAUTH_CLIENT_SECRET }}
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          # Shared secret the weekly-payouts cron route checks (Bearer). Same
+          # value as the CRON_SECRET repo secret used by weekly-payouts.yml.
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           # Cloudflare's secret API occasionally rejects subsequent secret
           # pushes within the same workflow run with "Secret edit failed.
@@ -180,3 +183,5 @@ jobs:
           put_secret GSC_OAUTH_CLIENT_SECRET   "$GSC_OAUTH_CLIENT_SECRET"
           put_secret GSC_OAUTH_REFRESH_TOKEN   "$GSC_OAUTH_REFRESH_TOKEN"
           put_secret GSC_SITE_URL              "$GSC_SITE_URL"
+          # Weekly payout cron auth — POST /api/cron/weekly-payouts checks this.
+          put_secret CRON_SECRET               "$CRON_SECRET"

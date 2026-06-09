@@ -70,6 +70,9 @@ function ConsultantApp({ onLogout }) {
     return () => window.removeEventListener('yousafe-open-order', handler);
   }, [orders]);
   const [earningsByDay, setEarningsByDay] = React.useState([]);
+  // Canonical payout figures (sum of releasable provider_earnings) — reconciled
+  // with the admin financials and the weekly Tuesday batch.
+  const [payouts, setPayouts] = React.useState({ pendingPayoutCents: 0, awaitingApprovalCents: 0, paidCents: 0 });
   const [notifications, setNotifications] = React.useState([]);
   const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set());
   const [profileName, setProfileName] = React.useState('');
@@ -120,6 +123,7 @@ function ConsultantApp({ onLogout }) {
       .then((data) => {
         setOrders(data.orders ?? []);
         setEarningsByDay(data.earningsByDay ?? []);
+        if (data.payouts) setPayouts(data.payouts);
         setProfileName(data.consultant?.name || '');
         setProfileEmail(data.consultant?.email || '');
         setProfileBio(data.consultant?.bio || '');
@@ -810,6 +814,7 @@ function ConsultantApp({ onLogout }) {
                 orders={orders}
                 monthEarnings={monthEarnings}
                 totalEarnings={totalEarnings}
+                pendingPayoutCents={payouts.pendingPayoutCents}
                 onNavigate={setPage}
               />
             )}
