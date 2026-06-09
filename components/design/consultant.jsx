@@ -34,6 +34,22 @@ function ConsultantApp({ onLogout }) {
     return allowed.includes(goto) ? goto : 'overview';
   }, []);
   const [page, setPage] = React.useState(initialPage);
+  // Order-detail "Open conversation in Messages" dispatches yousafe-open-messages;
+  // switch to the Messages page with that thread so all order comms live in the
+  // unified messenger.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const threadId = e?.detail?.threadId;
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (threadId) url.searchParams.set('thread', threadId); else url.searchParams.delete('thread');
+        window.history.replaceState({}, '', url.toString());
+      }
+      setPage('messages');
+    };
+    window.addEventListener('yousafe-open-messages', handler);
+    return () => window.removeEventListener('yousafe-open-messages', handler);
+  }, []);
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);

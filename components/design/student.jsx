@@ -8,6 +8,7 @@ import StudentSettings from './student-settings'
 import StudentDashboardHome from './student-dashboard-home'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -1138,6 +1139,21 @@ function StudentApp({ onLogout, userId, userName }) {
     window.addEventListener('yousafe-navigate', handler)
     return () => window.removeEventListener('yousafe-navigate', handler)
   }, []);
+  // Order-detail "Open conversation in Messages" → open that thread in the
+  // unified messenger so all order comms live in one place.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const threadId = e?.detail?.threadId;
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (threadId) url.searchParams.set('thread', threadId); else url.searchParams.delete('thread');
+        window.history.replaceState({}, '', url.toString());
+      }
+      setPage('messages');
+    };
+    window.addEventListener('yousafe-open-messages', handler);
+    return () => window.removeEventListener('yousafe-open-messages', handler);
+  }, []);
   const [selectedOrder, setSelectedOrder] = React.useState(null);
   const [msgInput, setMsgInput] = React.useState('');
   const [messages, setMessages] = React.useState([]);
@@ -1870,7 +1886,25 @@ function StudentApp({ onLogout, userId, userName }) {
             {order.status === 'review' && (
               <EscrowApprovalCard order={order} />
             )}
-            {/* Messages */}
+            {/* Messages — consolidated into the unified messenger */}
+            <Card style={{ padding: '20px 22px' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Conversation</div>
+              <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 14px', lineHeight: 1.5 }}>
+                All messages and files for this order are kept in your Messages inbox. Open the chat
+                to talk with your specialist and share files.
+              </p>
+              <Btn
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  try { await openOrderInMessenger({ orderId: selectedOrder.id }); }
+                  catch (e) { alert(e.message); }
+                }}
+              >
+                💬 Open conversation in Messages
+              </Btn>
+            </Card>
+            {false && (
             <Card style={{ padding: 0, overflow: 'hidden', height: 420 }}>
               <ChatScreen
                 mode="panel"
@@ -1931,6 +1965,7 @@ function StudentApp({ onLogout, userId, userName }) {
                 }
               />
             </Card>
+            )}
           </div>
           {/* Sidebar info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

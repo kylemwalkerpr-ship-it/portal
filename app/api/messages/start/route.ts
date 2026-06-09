@@ -36,6 +36,23 @@ export async function POST(req: Request) {
   } else if (typeof body.counterpart_consultant_id === 'string' && body.counterpart_consultant_id) {
     const { data } = await db.from('consultants').select('profile_id').eq('id', body.counterpart_consultant_id).maybeSingle()
     counterpartId = (data as any)?.profile_id || null
+  } else if (contextKind === 'order' && contextId) {
+    // Resolve the counterpart from the order itself, so order-detail views can
+    // open the conversation with just the order id. The counterpart is the
+    // other party relative to the caller: client ↔ provider (consultant_id).
+    const { data: order } = await db
+      .from('orders')
+      .select('client_id, consultant_id')
+      .eq('id', contextId)
+      .maybeSingle()
+    if (order) {
+      counterpartId =
+        (order as any).client_id === profileId
+          ? (order as any).consultant_id
+          : (order as any).consultant_id === profileId
+            ? (order as any).client_id
+            : null
+    }
   }
 
   if (!counterpartId) return Response.json({ error: 'Could not resolve counterpart.' }, { status: 400 })

@@ -5,6 +5,7 @@ import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
+import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 
 const CONSULTANT_QUICK_REPLIES = [
   {
@@ -107,98 +108,25 @@ function OrderDetail({ order, onBack, orderDetailProgress, setOrderDetailProgres
             </div>
           </Card>
           {/* Messages */}
-          <Card style={{ padding: 0, height: 420, overflow: 'hidden' }}>
-            <ChatScreen
-              mode="panel"
-              header={
-                <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}`, background: '#fff' }}>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>Chat with {order.student}</div>
-                  <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Send offer</Btn>
-                </div>
-              }
-              messages={
-                <>
-                  {messagesLoading && orderTimeline.length === 0 && (
-                    <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', marginTop: 20 }}>Loading messages…</div>
-                  )}
-                  {!messagesLoading && orderTimeline.length === 0 && (
-                    <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', marginTop: 20 }}>No messages yet — say hello.</div>
-                  )}
-                  {orderTimeline.map((item, i) => {
-                    if (item.kind === 'offer') {
-                      return (
-                        <OfferBubble key={item.key} mine createdAt={item.created_at}>
-                          <ConsultantOfferCard offer={item.offer} onWithdraw={() => onWithdrawOffer(item.offer)} />
-                        </OfferBubble>
-                      )
-                    }
-                    const prev = orderTimeline[i - 1]
-                    const next = orderTimeline[i + 1]
-                    const mine = item.message.from === 'consultant'
-                    const isFirstInGroup = !prev || prev.kind !== 'message' || (prev.message.from === 'consultant') !== mine
-                    const isLastInGroup = !next || next.kind !== 'message' || (next.message.from === 'consultant') !== mine
-                    const prevDate = prev && (prev.kind === 'message' ? prev.message.created_at : prev.created_at)
-                    const showDate = !prev || !sameDay(item.message.created_at, prevDate)
-                    return (
-                      <React.Fragment key={item.key || i}>
-                        {showDate && (
-                          <div style={{ textAlign: 'center', margin: '12px 0', fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>
-                            {dateLabel(item.message.created_at)}
-                          </div>
-                        )}
-                        <MessageBubble
-                          mine={mine}
-                          isFirstInGroup={isFirstInGroup}
-                          isLastInGroup={isLastInGroup}
-                          timestamp={item.message.created_at}
-                          body={<MessageBody body={item.message.text} linkColor={C.cyan} />}
-                        />
-                      </React.Fragment>
-                    )
-                  })}
-                </>
-              }
-              composer={
-                <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, background: '#fff' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', color: C.textDim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: '4px' }}>
-                      Quick replies
-                    </span>
-                    {CONSULTANT_QUICK_REPLIES.map(t => (
-                      <button
-                        key={t.label}
-                        type="button"
-                        onClick={() => setMsgInput(prev => prev ? `${prev.replace(/\n+$/, '')}\n\n${t.body}` : t.body)}
-                        style={{
-                          border: `1px solid ${C.border}`,
-                          background: C.surface2,
-                          color: C.textMuted,
-                          borderRadius: '999px',
-                          padding: '4px 10px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                        }}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                    <input ref={messageFileInputRef} type="file" style={{ display: 'none' }} onChange={e => onSendMessage(e.target.files?.[0])} />
-                    <Btn variant="secondary" size="sm" onClick={() => messageFileInputRef.current?.click()} title="Attach a file">📎</Btn>
-                    <AutoGrowInput
-                      value={msgInput}
-                      onChange={setMsgInput}
-                      onSubmit={onSendMessage}
-                      placeholder="Message student…"
-                    />
-                    <Btn variant="primary" size="sm" onClick={onSendMessage}>Send</Btn>
-                  </div>
-                </div>
-              }
-            />
+          <Card style={{ padding: '20px 22px' }}>
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Conversation</div>
+            <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 14px', lineHeight: 1.5 }}>
+              All messages and files for this order are kept in your Messages inbox. Open the chat
+              to talk with {order.student} and share files.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Btn
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  try { await openOrderInMessenger({ orderId: order.id }) }
+                  catch (e) { alert(e.message) }
+                }}
+              >
+                💬 Open conversation in Messages
+              </Btn>
+              <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Send offer</Btn>
+            </div>
           </Card>
         </div>
         {/* Sidebar */}

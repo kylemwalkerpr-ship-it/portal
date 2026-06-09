@@ -15,6 +15,7 @@ import AttorneySettings from './attorney-settings'
 import AttorneyOverview from './attorney-overview'
 import { usePortalTheme } from './usePortalTheme'
 import UnifiedInbox from '../messaging/UnifiedInbox'
+import { openOrderInMessenger } from '@/lib/openOrderMessenger'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -44,6 +45,22 @@ export default function AttorneyApp({ onLogout, userName }) {
     return allowed.includes(goto) ? goto : 'overview'
   }, [])
   const [page, setPage] = React.useState(initialPage)
+  // Order-detail "Open conversation in Messages" dispatches yousafe-open-messages;
+  // switch to the Messages page with that thread so all order comms live in the
+  // unified messenger.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const threadId = e?.detail?.threadId
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        if (threadId) url.searchParams.set('thread', threadId); else url.searchParams.delete('thread')
+        window.history.replaceState({}, '', url.toString())
+      }
+      setPage('messages')
+    }
+    window.addEventListener('yousafe-open-messages', handler)
+    return () => window.removeEventListener('yousafe-open-messages', handler)
+  }, [])
   const [profileData, setProfileData] = React.useState(null)
   const [profileError, setProfileError] = React.useState('')
   const [dashboardData, setDashboardData] = React.useState(null)
@@ -1247,6 +1264,7 @@ export function OrderDetail({ orderId, onBack }) {
   const [progressDraft, setProgressDraft] = React.useState(0)
   const [savingProgress, setSavingProgress] = React.useState(false)
   const [completing, setCompleting] = React.useState(false)
+  const [openingMsg, setOpeningMsg] = React.useState(false)
   const fileRef = React.useRef(null)
 
   const load = React.useCallback((isInitial) => {
@@ -1377,19 +1395,24 @@ export function OrderDetail({ orderId, onBack }) {
         <div style={{ display: 'grid', gap: '12px' }}>
           <Card>
             <div style={{ padding: '16px 18px' }}>
-              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '12px' }}>Conversation</div>
-              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflow: 'auto' }}>
-                {messages.length === 0 && <div style={{ color: C.textMuted, fontSize: '13px', textAlign: 'center', padding: '12px 0' }}>No messages yet.</div>}
-                {messages.map((m) => <OrderBubble key={m.id} message={m} />)}
-              </div>
-              {!completed && (
-                <form onSubmit={send} style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                  <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => send(e, e.target.files?.[0])} />
-                  <Btn type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()} title="Attach a file">📎</Btn>
-                  <textarea rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply to your client..." style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', color: C.text, fontSize: '14px', fontFamily: 'inherit', resize: 'vertical' }} />
-                  <Btn type="submit" variant="primary" size="sm" disabled={sending || !draft.trim()}>{sending ? 'Sending...' : 'Send'}</Btn>
-                </form>
-              )}
+              <div style={{ fontWeight: 700, color: C.text, fontSize: '14px', marginBottom: '8px' }}>Conversation</div>
+              <p style={{ color: C.textMuted, fontSize: '13px', margin: '0 0 12px', lineHeight: 1.5 }}>
+                All messages and files for this order are kept in your Messages inbox. Open the
+                chat to talk with {order.client_name || 'your client'} and share files.
+              </p>
+              <Btn
+                variant="primary"
+                size="sm"
+                disabled={openingMsg || !order.client_id}
+                onClick={async () => {
+                  setOpeningMsg(true)
+                  try { await openOrderInMessenger({ counterpartId: order.client_id, orderId }) }
+                  catch (e) { setError(e.message) }
+                  finally { setOpeningMsg(false) }
+                }}
+              >
+                {openingMsg ? 'Opening…' : '💬 Open conversation in Messages'}
+              </Btn>
             </div>
           </Card>
         </div>
