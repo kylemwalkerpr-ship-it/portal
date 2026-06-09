@@ -5,6 +5,7 @@
  * Self-heals if any optional column is missing.
  */
 import { getCurrentStudent } from '@/lib/student'
+import { mintSignedDocumentUrl } from '@/lib/documentStorage'
 
 function dollarsFromCents(cents: unknown) { return Number(cents || 0) / 100 }
 
@@ -44,7 +45,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     order.consultant_id
       ? db.from('profiles').select('id, full_name, email, avatar_url, role').eq('id', order.consultant_id).single()
       : Promise.resolve({ data: null }),
-    db.from('order_files').select('id, name, size_bytes, uploader_role, uploader_id, mime_type, created_at, url').eq('order_id', id).order('created_at', { ascending: false }),
+    db.from('order_files').select('id, name, size_bytes, uploader_role, uploader_id, mime_type, created_at, storage_path, is_sensitive, is_deleted').eq('order_id', id).order('created_at', { ascending: false }),
     db.from('order_messages').select('id, sender_id, sender_role, body, created_at, attachment_url, attachment_name').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
     db.from('order_events').select('id, event_type, from_status, to_status, notes, metadata, actor_id, created_at').eq('order_id', id).order('created_at', { ascending: false }).limit(50),
     db.from('order_milestones').select('*').eq('order_id', id).order('sequence', { ascending: true }),
@@ -62,7 +63,41 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   const isTemplate = primaryService?.product_type === 'template'
 
   const consultant = consultantRes.status === 'fulfilled' ? (consultantRes.value as any)?.data || null : null
-  const files     = filesRes.status === 'fulfilled' ? (filesRes.value.data ?? []) : []
+
+  // Order files: every file exchanged on this order (student uploads + provider
+  // deliverables), newest first, with a short-lived signed URL so the Files tab
+  // can view/download. Soft-deleted files are excluded.
+  const fileRowsRaw = filesRes.status === 'fulfilled' ? ((filesRes.value as any).data ?? []) : []
+  const fileRows = (fileRowsRaw as any[]).filter((r) => !r.is_deleted)
+  const files = await Promise.all(
+    fileRows.map(async (r: any) => {
+      let url: string | null = null
+      try {
+        if (r.storage_path) {
+          const signed = await mintSignedDocumentUrl(db, {
+            bucket: 'order-files',
+            path: r.storage_path,
+            accessorProfileId: profile.id,
+            filename: r.name,
+            documentId: r.id,
+            sensitive: !!r.is_sensitive,
+            download: false,
+          })
+          url = 'signedUrl' in signed ? signed.signedUrl : null
+        }
+      } catch { /* leave url null */ }
+      return {
+        id: r.id,
+        name: r.name,
+        size_bytes: r.size_bytes,
+        mime_type: r.mime_type,
+        uploader_role: r.uploader_role,
+        uploader_id: r.uploader_id,
+        created_at: r.created_at,
+        url,
+      }
+    }),
+  )
   const messages  = messagesRes.status === 'fulfilled' ? (messagesRes.value.data ?? []) : []
   const events    = eventsRes.status === 'fulfilled' ? (eventsRes.value.data ?? []) : []
   const milestones = milestonesRes.status === 'fulfilled' ? (milestonesRes.value.data ?? []) : []

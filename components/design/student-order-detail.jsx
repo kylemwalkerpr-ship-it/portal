@@ -542,9 +542,20 @@ function FilesTab({ orderId, files, onRefresh, flash }) {
               <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: i < files.length - 1 ? `1px solid ${BORDER2}` : 'none' }}>
                 <span style={{ fontSize: 22 }}>📄</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      flexShrink: 0,
+                      fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
+                      fontFamily: MONO, padding: '2px 7px', borderRadius: 999,
+                      background: mine ? `${CYAN}1A` : `${GREEN}1A`,
+                      color: mine ? CYAN : GREEN,
+                    }}>
+                      {mine ? '↑ Sent' : '↓ Received'}
+                    </span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                  </div>
                   <div style={{ fontSize: 11, color: DIM, fontFamily: MONO }}>
-                    {mine ? 'You' : 'Consultant'} · {fmtRelative(f.created_at)}{sizeKb ? ` · ${sizeKb} KB` : ''}
+                    {mine ? 'You' : 'Your specialist'} · {fmtRelative(f.created_at)}{sizeKb ? ` · ${sizeKb} KB` : ''}
                   </div>
                 </div>
                 {f.url && <a href={f.url} target="_blank" rel="noreferrer" style={{ color: CYAN, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>Open ↗</a>}
