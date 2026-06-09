@@ -1,6 +1,9 @@
 /**
  * GET /api/admin/payouts
- * Manual payout queue — providers with releasable earnings.
+ * Payout queue, derived from provider_earnings (the canonical ledger the
+ * attorney/consultant dashboards and the weekly Tuesday batch all use). Returns
+ * order-level rows + a summary the Payout Centre UI renders:
+ *   { orders: [...], summary: {...}, providers: [...] }
  *
  * POST /api/admin/payouts
  * Mark a batch of earnings as paid. Body:
@@ -15,8 +18,69 @@ export async function GET() {
   if ('error' in auth) return fail(auth.error, auth.status)
 
   try {
-    const providers = await listReleasableByProvider()
-    return ok({ providers })
+    // Pull every earning that matters to the payout queue.
+    const { data: earnings, error: earnErr } = await auth.db
+      .from('provider_earnings')
+      .select('id, provider_id, order_id, amount_cents, fee_cents, status, created_at')
+      .in('status', ['owed', 'releasable', 'paid'])
+      .order('created_at', { ascending: true })
+    if (earnErr) return fail(earnErr.message, 500)
+    const rows = (earnings ?? []) as any[]
+
+    // Hydrate provider name/email/role.
+    const providerIds = Array.from(new Set(rows.map((r) => r.provider_id).filter(Boolean)))
+    const profileMap = new Map<string, any>()
+    if (providerIds.length) {
+      const { data: profiles } = await auth.db
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .in('id', providerIds)
+      for (const p of profiles ?? []) profileMap.set((p as any).id, p)
+    }
+
+    const now = Date.now()
+    // Payout-queue status: releasable/owed are "pending" (awaiting payout),
+    // paid is "transferred". Connect onboarding is no longer required, so every
+    // row is always releasable (connect_ready=true).
+    const orders = rows.map((e) => {
+      const p = profileMap.get(e.provider_id) || {}
+      const amount = Number(e.amount_cents || 0)
+      const fee = Number(e.fee_cents || 0)
+      return {
+        id: e.order_id || e.id,
+        earning_id: e.id,
+        provider_id: e.provider_id,
+        provider_name: p.full_name || p.email || 'Provider',
+        provider_email: p.email || null,
+        provider_role: p.role || 'consultant',
+        payout_status: e.status === 'paid' ? 'transferred' : 'pending',
+        earning_status: e.status,
+        gross: (amount + fee) / 100,
+        payout: amount / 100,
+        fee: fee / 100,
+        days_waiting: Math.max(0, Math.floor((now - new Date(e.created_at).getTime()) / 86400000)),
+        connect_ready: true,
+        bypass_active: false,
+      }
+    })
+
+    const pendingRows = rows.filter((r) => r.status === 'owed' || r.status === 'releasable')
+    const paidRows = rows.filter((r) => r.status === 'paid')
+    const sumAmt = (list: any[]) => list.reduce((a, r) => a + Number(r.amount_cents || 0), 0)
+    const summary = {
+      pending: pendingRows.length,
+      total_pending_cents: sumAmt(pendingRows),
+      transferred: paidRows.length,
+      total_transferred_cents: sumAmt(paidRows),
+      failed: 0,
+      total_failed_cents: 0,
+    }
+
+    // Keep the per-provider aggregate for any consumer that still reads it.
+    let providers: any[] = []
+    try { providers = await listReleasableByProvider() } catch { /* non-fatal */ }
+
+    return ok({ orders, summary, providers })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Queue load failed'
     return fail(msg, 500)
