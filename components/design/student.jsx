@@ -9,6 +9,7 @@ import StudentDashboardHome from './student-dashboard-home'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
+import OrderDeliverables from '../orders/OrderDeliverables'
 import OrderRatingPrompt from './order-rating-prompt'
 import DashboardRightPane from './dashboard-right-pane'
 import { LanguageSelector } from '../language-selector'
@@ -493,6 +494,23 @@ function EscrowApprovalCard({ order }) {
   const [rejectStep, setRejectStep] = React.useState(null); // null | choose | refund | reassign
   const [refundRequested, setRefundRequested] = React.useState(false);
   const [reassigned, setReassigned] = React.useState(false);
+  const [approving, setApproving] = React.useState(false);
+  const [approveError, setApproveError] = React.useState('');
+
+  const approveAndRelease = async () => {
+    if (approving) return;
+    setApproving(true); setApproveError('');
+    try {
+      const r = await fetch(`/api/orders/${order.id}/approve`, { method: 'POST', credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.error?.message || d?.error || 'Could not release payment.');
+      setState('approved');
+    } catch (e) {
+      setApproveError(e.message || 'Could not release payment.');
+    } finally {
+      setApproving(false);
+    }
+  };
 
   if (state === 'approved') return (
     <div style={{ background: `${C.green}12`, border: `1px solid ${C.green}33`, borderRadius: '14px', padding: '20px' }}>
@@ -524,9 +542,12 @@ function EscrowApprovalCard({ order }) {
           <p style={{ fontSize: '13px', color: C.textMuted, lineHeight: 1.6, marginBottom: '16px' }}>
             Your consultant has completed the deliverable. Review the files, then approve to release payment — <strong style={{ color: C.cyan }}>80%</strong> goes to your consultant, <strong style={{ color: C.green }}>20%</strong> to the platform.
           </p>
+          {approveError && (
+            <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '8px 12px', fontSize: '12.5px', color: C.red, marginBottom: '12px' }}>{approveError}</div>
+          )}
           <div style={{ display: 'flex', gap: '10px' }}>
-            <Btn variant="success" size="sm" onClick={() => setState('approved')}>✓ Approve &amp; release payment</Btn>
-            <Btn variant="danger" size="sm" onClick={() => setRejectStep('choose')}>✕ Reject delivery</Btn>
+            <Btn variant="success" size="sm" disabled={approving} onClick={approveAndRelease}>{approving ? 'Releasing…' : '✓ Approve & release payment'}</Btn>
+            <Btn variant="danger" size="sm" disabled={approving} onClick={() => setRejectStep('choose')}>✕ Reject delivery</Btn>
           </div>
         </div>
       )}
@@ -1886,6 +1907,7 @@ function StudentApp({ onLogout, userId, userName }) {
             {order.status === 'review' && (
               <EscrowApprovalCard order={order} />
             )}
+            <OrderDeliverables orderId={selectedOrder.id} canUpload={false} />
             {/* Messages — consolidated into the unified messenger */}
             <Card style={{ padding: '20px 22px' }}>
               <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px' }}>Conversation</div>

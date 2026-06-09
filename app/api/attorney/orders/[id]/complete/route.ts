@@ -13,16 +13,33 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     .update({ status: 'under_review', progress: 100 })
     .eq('id', id)
     .eq('consultant_id', ctx.profileId)
-    .select('id, status')
+    .select('id, status, client_id')
     .single()
   if (updErr || !order) return Response.json({ error: updErr?.message || 'Could not mark complete.' }, { status: 500 })
 
+  const note = 'Deliverable submitted for client review. Please review the files and approve to release escrow.'
   await ctx.db.from('order_messages').insert({
     order_id: id,
     sender_id: ctx.profileId,
     sender_role: 'consultant',
-    body: 'Deliverable submitted for client review. The client can now approve and release escrow.',
+    body: note,
   })
+
+  // Mirror into the unified messenger so the client is notified there too.
+  if ((order as any).client_id) {
+    try {
+      const { mirrorMessage } = await import('@/lib/conversations')
+      await mirrorMessage(ctx.db, {
+        participantA: ctx.profileId,
+        participantB: (order as any).client_id,
+        senderId: ctx.profileId,
+        body: note,
+        contextKind: 'order',
+        contextId: id,
+        refOrderId: id,
+      })
+    } catch { /* non-fatal */ }
+  }
 
   return Response.json({ order })
 }
