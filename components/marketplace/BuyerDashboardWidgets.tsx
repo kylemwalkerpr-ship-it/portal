@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import Link from 'next/link'
+import { OfferPaymentModal } from '@/components/messaging/OfferPaymentModal'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -322,41 +323,44 @@ function money(cents: number) {
 function PendingOffersWidget() {
   const [offers, setOffers] = React.useState<Offer[]>([])
   const [loading, setLoading] = React.useState(true)
+  // Offer currently being accepted/paid via the shared payment modal.
+  const [activeOfferId, setActiveOfferId] = React.useState<string | null>(null)
+
+  const loadOffers = React.useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/offers?status=pending&client=true', { credentials: 'same-origin', signal })
+      // Unwrap multiple possible payload shapes:
+      //   { data: { offers: [...] } } (envelope), { offers: [...] }, [...]
+      let list: Offer[] = []
+      if (res.ok) {
+        const body = await res.json().catch(() => null)
+        const payload = body?.data ?? body ?? {}
+        list = Array.isArray(payload?.offers) ? payload.offers
+             : Array.isArray(payload)         ? payload
+             : []
+      }
+      setOffers(list)
+    } catch {
+      // Aborted, 404, JSON parse failure — fall through to empty state
+      setOffers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   React.useEffect(() => {
-    let cancelled = false
     const controller = new AbortController()
     // Hard timeout so we never sit on "Loading…" forever if the network
     // hangs or the endpoint returns an unexpected payload shape.
     const timeoutId = setTimeout(() => controller.abort(), 8000)
-    ;(async () => {
-      try {
-        const res = await fetch('/api/offers?status=pending&client=true', { credentials: 'same-origin', signal: controller.signal })
-        // Unwrap multiple possible payload shapes:
-        //   { data: { offers: [...] } } (envelope), { offers: [...] }, [...]
-        let list: Offer[] = []
-        if (res.ok) {
-          const body = await res.json().catch(() => null)
-          const payload = body?.data ?? body ?? {}
-          list = Array.isArray(payload?.offers) ? payload.offers
-               : Array.isArray(payload)         ? payload
-               : []
-        }
-        if (!cancelled) setOffers(list)
-      } catch {
-        // Aborted, 404, JSON parse failure — fall through to empty state
-        if (!cancelled) setOffers([])
-      } finally {
-        clearTimeout(timeoutId)
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => { cancelled = true; clearTimeout(timeoutId); controller.abort() }
-  }, [])
+    loadOffers(controller.signal).finally(() => clearTimeout(timeoutId))
+    return () => { clearTimeout(timeoutId); controller.abort() }
+  }, [loadOffers])
 
   const headerSuffix = loading ? null : offers.length > 0 ? `(${offers.length})` : '(None)'
 
   return (
+    <>
     <WidgetCard title={`Pending Offers${headerSuffix ? ` ${headerSuffix}` : ''}`}>
       {loading ? (
         // Skeleton placeholder — same height as a row, no "Loading…" text
@@ -392,28 +396,44 @@ function PendingOffersWidget() {
                     {expiresLabel ? ` · ${expiresLabel}` : ''}
                   </p>
                 </div>
-                <Link
-                  href={`/dashboard/offers/${offer.id}`}
+                <button
+                  type="button"
+                  onClick={() => setActiveOfferId(offer.id)}
                   style={{
                     display: 'inline-block',
                     padding: '6px 12px',
                     background: '#d97706',
                     color: '#fff',
+                    border: 'none',
                     borderRadius: '8px',
                     fontSize: '12px',
                     fontWeight: 700,
-                    textDecoration: 'none',
+                    cursor: 'pointer',
                     flexShrink: 0,
                   }}
                 >
                   Accept
-                </Link>
+                </button>
               </div>
             )
           })}
         </div>
       )}
     </WidgetCard>
+    {activeOfferId && (
+      <OfferPaymentModal
+        offerId={activeOfferId}
+        open={!!activeOfferId}
+        onClose={() => setActiveOfferId(null)}
+        onPaid={() => {
+          setActiveOfferId(null)
+          // Optimistically drop the accepted offer, then re-sync from the server.
+          setOffers((prev) => prev.filter((o) => o.id !== activeOfferId))
+          loadOffers()
+        }}
+      />
+    )}
+    </>
   )
 }
 
