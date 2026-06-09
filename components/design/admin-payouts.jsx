@@ -138,8 +138,24 @@ export default function AdminPayouts({ formatPrimary }) {
   const providerData = useFetch('/api/admin/payouts/providers')
   const connectData  = useFetch('/api/admin/payouts/connect')
   const refundData   = useFetch('/api/admin/payouts/refunds')
+  const [batchRunning,setBatchRunning] = React.useState(false)
 
   const flash = (msg,type='ok') => { setNotice({msg,type}); setTimeout(()=>setNotice({msg:'',type:'ok'}),5000) }
+
+  const runWeeklyBatch = async () => {
+    if (batchRunning) return
+    if (typeof window !== 'undefined' && !window.confirm('Run the weekly payout batch now? This pays out all releasable earnings, grouped per provider.')) return
+    setBatchRunning(true)
+    try {
+      const r = await post('/api/admin/payouts/run-weekly-batch', {})
+      flash(`Weekly batch ${r.weekTag}: paid ${r.providerCount} provider${r.providerCount===1?'':'s'} · ${$c(r.totalCents)} total${r.skipped?.length?` · ${r.skipped.length} skipped`:''}`, 'ok')
+      queueData.reload(); providerData.reload()
+    } catch (e) {
+      flash(e.message || 'Weekly batch failed', 'err')
+    } finally {
+      setBatchRunning(false)
+    }
+  }
 
   const releaseOne = async(orderId, providerName) => {
     setConfirm({
@@ -236,6 +252,20 @@ export default function AdminPayouts({ formatPrimary }) {
       {/* ── OVERVIEW ──────────────────────────────────────────────────────── */}
       {tab==='overview'&&(
         <>
+          {/* Weekly payout batch — auto-reconciled from provider_earnings */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',background:'#fff',border:'1px solid #DDD8CE',borderRadius:10,padding:'14px 18px',marginBottom:12}}>
+            <div>
+              <div style={{fontWeight:700,color:NAVY,fontSize:14}}>Weekly payout batch</div>
+              <div style={{color:'#5C6070',fontSize:12.5,marginTop:2,lineHeight:1.5}}>
+                {$c(qSummary.total_pending_cents)} releasable across {qSummary.pending||0} order{qSummary.pending===1?'':'s'} is queued for payout.
+                Processed automatically every <strong>Tuesday</strong>; run it now if needed.
+              </div>
+            </div>
+            <button type="button" onClick={runWeeklyBatch} disabled={batchRunning}
+              style={{background:NAVY,color:'#fff',border:'none',borderRadius:8,padding:'9px 16px',fontSize:13,fontWeight:700,cursor:batchRunning?'wait':'pointer',opacity:batchRunning?0.7:1,whiteSpace:'nowrap'}}>
+              {batchRunning?'Processing…':'Run weekly batch now'}
+            </button>
+          </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:'12px'}}>
             <Kpi label="Pending Release" value={$c(qSummary.total_pending_cents)} sub={`${qSummary.pending||0} orders waiting`} accent={AMBER} icon="⏳" onClick={()=>setTab('queue')}/>
             <Kpi label="Total Transferred" value={$c(qSummary.total_transferred_cents)} sub={`${qSummary.transferred||0} completed`} accent={GREEN} icon="✅"/>

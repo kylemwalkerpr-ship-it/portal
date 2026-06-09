@@ -1,4 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { summary as earningsSummary } from '@/lib/earnings'
 
 function dollarsFromCents(cents: unknown) {
   return Number(cents || 0) / 100
@@ -116,6 +117,10 @@ export async function GET() {
 
   const defaultNotifPrefs = { orders: true, messages: true, payments: true }
 
+  // Canonical payout figures from provider_earnings (same ledger the weekly
+  // Tuesday batch acts on), so consultant, admin, and the batch agree.
+  const earn = await earningsSummary(profile.id).catch(() => ({ owedCents: 0, releasableCents: 0, paidCents: 0 }))
+
   return Response.json({
     consultant: {
       name: profile.full_name || consultant.full_name || consultant.name || '',
@@ -128,6 +133,11 @@ export async function GET() {
     },
     orders,
     earningsByDay: days,
+    payouts: {
+      pendingPayoutCents: earn.releasableCents,   // queued for next Tuesday batch
+      awaitingApprovalCents: earn.owedCents,       // still in escrow, awaiting client approval
+      paidCents: earn.paidCents,                   // lifetime paid out
+    },
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

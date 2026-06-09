@@ -1,0 +1,27 @@
+name: Weekly Payout Batch
+
+# Runs every Tuesday at 06:00 UTC and triggers the weekly payout batch, which
+# pays out all `releasable` provider earnings (completed/approved tasks) grouped
+# per provider. Can also be run on demand from the Actions tab.
+on:
+  schedule:
+    - cron: '0 6 * * 2'   # Tuesdays 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  run-batch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly payout batch
+        run: |
+          set -euo pipefail
+          URL="${PORTAL_URL:-https://portal.yousafeconsultancy.com}/api/cron/weekly-payouts"
+          echo "POST $URL"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+          echo "HTTP $code"; cat /tmp/resp.json || true
+          test "$code" = "200"
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}

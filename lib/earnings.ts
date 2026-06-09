@@ -143,6 +143,74 @@ export async function listPayouts(providerId: string): Promise<ProviderPayout[]>
   return (data ?? []) as ProviderPayout[]
 }
 
+/** ISO week tag like "2026-W24" — used as the payout batch reference. */
+export function isoWeekTag(d = new Date()): string {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+  const dayNum = (date.getUTCDay() + 6) % 7
+  date.setUTCDate(date.getUTCDate() - dayNum + 3)
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4))
+  const week = 1 + Math.round(((date.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7)
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+}
+
+export type WeeklyBatchResult = {
+  weekTag: string
+  providerCount: number
+  totalCents: number
+  payouts: { providerId: string; amountCents: number; count: number; payoutId: string }[]
+  skipped: { providerId: string; reason: string }[]
+}
+
+/**
+ * Process the weekly payout batch: every `releasable` earning is grouped by
+ * provider and recorded as a single paid payout (status → `paid`, linked to a
+ * provider_payouts row). Idempotent within reason — once an earning is `paid`
+ * it is no longer `releasable`, so re-running the same week pays out only what
+ * has become releasable since. Run on a Tuesday schedule (see the cron route).
+ */
+export async function runWeeklyPayoutBatch(markedBy: string): Promise<WeeklyBatchResult> {
+  const weekTag = isoWeekTag()
+  const reference = `weekly-${weekTag}`
+
+  const { data: rows, error } = await db()
+    .from('provider_earnings')
+    .select('id, provider_id, amount_cents')
+    .eq('status', 'releasable')
+  if (error) throw new Error(`Weekly batch load failed: ${error.message}`)
+
+  const byProvider = new Map<string, { ids: string[]; total: number }>()
+  for (const r of (rows ?? []) as { id: string; provider_id: string; amount_cents: number }[]) {
+    const g = byProvider.get(r.provider_id) ?? { ids: [], total: 0 }
+    g.ids.push(r.id)
+    g.total += Number(r.amount_cents || 0)
+    byProvider.set(r.provider_id, g)
+  }
+
+  const payouts: WeeklyBatchResult['payouts'] = []
+  const skipped: WeeklyBatchResult['skipped'] = []
+  let totalCents = 0
+
+  for (const [providerId, g] of byProvider) {
+    if (g.total <= 0 || g.ids.length === 0) continue
+    try {
+      const payout = await recordPayout(providerId, {
+        amountCents: g.total,
+        method: 'weekly_batch',
+        reference,
+        notes: `Automatic weekly payout batch ${weekTag} (${g.ids.length} earning${g.ids.length === 1 ? '' : 's'})`,
+        markedBy,
+        earningIds: g.ids,
+      })
+      payouts.push({ providerId, amountCents: g.total, count: g.ids.length, payoutId: payout.id })
+      totalCents += g.total
+    } catch (e) {
+      skipped.push({ providerId, reason: e instanceof Error ? e.message : 'payout failed' })
+    }
+  }
+
+  return { weekTag, providerCount: payouts.length, totalCents, payouts, skipped }
+}
+
 // Admin: list all providers with releasable earnings
 export async function listReleasableByProvider(): Promise<
   {

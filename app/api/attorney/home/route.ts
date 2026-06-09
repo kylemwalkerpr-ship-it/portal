@@ -6,6 +6,7 @@
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
 import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
+import { summary as earningsSummary } from '@/lib/earnings'
 
 const ACTIVE = ['active', 'in_progress']
 const REVIEW = ['review', 'under_review']
@@ -57,6 +58,12 @@ export async function GET() {
   const transferred30d = transferred.filter((o: any) => transferredAt(o) >= now - 30 * day)
   const sumFee = (list: any[]) => list.reduce((s, o: any) => s + Number(o.attorney_fee || 0), 0)
 
+  // Canonical payout figures come from provider_earnings (the same ledger the
+  // weekly Tuesday payout batch acts on), so the dashboard, admin financials,
+  // and the batch always agree. `releasable` = pending payout (queued for the
+  // next Tuesday batch); `owed` = still awaiting client approval/escrow release.
+  const earn = await earningsSummary(ctx.profileId).catch(() => ({ owedCents: 0, releasableCents: 0, paidCents: 0 }))
+
   const orderStats = {
     total:             orders.length,
     active:            orders.filter((o: any) => ACTIVE.includes(o.status)).length,
@@ -64,8 +71,9 @@ export async function GET() {
     completed:         orders.filter((o: any) => o.status === 'completed').length,
     overdue:           orders.filter(overdue).length,
     dueSoon:           orders.filter(dueSoon).length,
-    pendingPayoutFee:  sumFee(orders.filter((o: any) => isCompleted(o) && o.payout_status !== 'transferred' && o.payout_status !== 'refunded')),
-    transferredLifetime: sumFee(transferred),
+    pendingPayoutFee:  earn.releasableCents / 100,
+    awaitingApprovalFee: earn.owedCents / 100,
+    transferredLifetime: earn.paidCents / 100,
     transferred30d:    sumFee(transferred30d),
   }
 
