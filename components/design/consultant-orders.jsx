@@ -6,6 +6,7 @@ import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
+import OrderDeliverables from '../orders/OrderDeliverables'
 
 const CONSULTANT_QUICK_REPLIES = [
   {
@@ -128,6 +129,10 @@ function OrderDetail({ order, onBack, orderDetailProgress, setOrderDetailProgres
               <Btn variant="secondary" size="sm" onClick={() => setShowOfferModal(true)}>Send offer</Btn>
             </div>
           </Card>
+
+          <div style={{ marginTop: '16px' }}>
+            <OrderDeliverables orderId={order.id} canUpload={order.status !== 'completed'} />
+          </div>
         </div>
         {/* Sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

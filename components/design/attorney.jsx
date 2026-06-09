@@ -16,6 +16,7 @@ import AttorneyOverview from './attorney-overview'
 import { usePortalTheme } from './usePortalTheme'
 import UnifiedInbox from '../messaging/UnifiedInbox'
 import { openOrderInMessenger } from '@/lib/openOrderMessenger'
+import OrderDeliverables from '../orders/OrderDeliverables'
 import ChatScreen from '../messaging/ChatScreen'
 import MessageBubble from '../messaging/MessageBubble'
 import AutoGrowInput from '../messaging/AutoGrowInput'
@@ -1415,6 +1416,8 @@ export function OrderDetail({ orderId, onBack }) {
               </Btn>
             </div>
           </Card>
+
+          <OrderDeliverables orderId={orderId} canUpload={!completed} />
         </div>
 
         <div style={{ display: 'grid', gap: '12px' }}>
