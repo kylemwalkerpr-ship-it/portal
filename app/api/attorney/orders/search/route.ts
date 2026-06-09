@@ -42,11 +42,17 @@ export async function GET(req: Request) {
   const page      = Math.max(1, Number(searchParams.get('page') || 1))
   const pageSize  = Math.min(100, Math.max(1, Number(searchParams.get('page_size') || 25)))
 
+  // `deadline` is a SELECT alias for the real `delivery_deadline` column —
+  // PostgREST .order() needs the real column name, so map it (otherwise the
+  // query 400s on "column orders.deadline does not exist" and falls back to a
+  // wasteful full-table re-query that silently drops the sort).
+  const sortColumn = sort === 'deadline' ? 'delivery_deadline' : sort
+
   let qb = ctx.db
     .from('orders')
     .select('id, order_number, client_id, status, escrow_status, total_amount, attorney_fee, platform_fee, progress, deadline:delivery_deadline, created_at, completed_at, source_offer_id, offer_id, payout_status, requirements', { count: 'exact' })
     .eq('consultant_id', ctx.profileId)
-    .order(sort, { ascending: dir, nullsFirst: false })
+    .order(sortColumn, { ascending: dir, nullsFirst: false })
     .range((page - 1) * pageSize, page * pageSize - 1)
 
   if (statusF !== 'all') {
