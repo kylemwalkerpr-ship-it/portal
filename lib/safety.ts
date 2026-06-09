@@ -172,8 +172,18 @@ export interface SafetyGuardResult {
   violations?: SafetyViolation[]
 }
 
+// Server-generated attachment markup appended by messageBodyFromFormData:
+//   "<caption>\n\nAttachment: <filename>\nAttachmentMeta: {<json…file_size…>}"
+// The filename (dates/IDs) and the numeric file_size legitimately contain long
+// digit runs that the phone/number patterns flag, so an attachment with no
+// human-typed contact info was wrongly blocked ("contains phone number"). Strip
+// the trailing server block before scanning so we only police what the USER
+// actually typed — the caption.
+const ATTACHMENT_BLOCK = /\n*Attachment:[^\n]*(?:\nAttachmentMeta:[^\n]*)?\s*$/
+
 export function safetyGuard(text: string): SafetyGuardResult {
-  const r = scanMessage(text)
+  const caption = typeof text === 'string' ? text.replace(ATTACHMENT_BLOCK, '').trim() : text
+  const r = scanMessage(caption)
   if (r.ok) return { ok: true }
   const labels = Array.from(new Set(r.hardViolations.map((v) => v.label))).join(', ')
   return {
