@@ -28,6 +28,17 @@ function fmtSize(bytes?: number | null): string {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const actionBtn: React.CSSProperties = {
+  background: '#fff',
+  border: '1px solid #E5E0D6',
+  borderRadius: 8,
+  padding: '5px 9px',
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+}
+
 export default function OrderDeliverables({
   orderId,
   canUpload = false,
@@ -59,6 +70,11 @@ export default function OrderDeliverables({
 
   React.useEffect(() => { load() }, [load])
 
+  const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [notice, setNotice] = React.useState('')
+
+  const flash = (msg: string) => { setNotice(msg); setTimeout(() => setNotice(''), 3000) }
+
   const onPick = async (file?: File | null) => {
     if (!file) return
     setUploading(true)
@@ -70,11 +86,44 @@ export default function OrderDeliverables({
       const d = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(d?.error || 'Upload failed.')
       await load()
+      flash('Deliverable uploaded.')
     } catch (e: any) {
       setError(e?.message || 'Upload failed.')
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  const onDelete = async (fileId: string) => {
+    if (busyId) return
+    if (typeof window !== 'undefined' && !window.confirm('Delete this file? This cannot be undone.')) return
+    setBusyId(fileId); setError('')
+    try {
+      const r = await fetch(`${apiBase}/${orderId}/files/${fileId}`, { method: 'DELETE', credentials: 'same-origin' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || 'Could not delete.')
+      setFiles((prev) => prev.filter((f) => f.id !== fileId))
+      flash('File deleted.')
+    } catch (e: any) {
+      setError(e?.message || 'Could not delete.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const onSend = async (fileId: string) => {
+    if (busyId) return
+    setBusyId(fileId); setError('')
+    try {
+      const r = await fetch(`${apiBase}/${orderId}/files/${fileId}`, { method: 'POST', credentials: 'same-origin' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d?.error || 'Could not send.')
+      flash('Shared in Messages.')
+    } catch (e: any) {
+      setError(e?.message || 'Could not send.')
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -111,6 +160,11 @@ export default function OrderDeliverables({
           {error}
         </div>
       )}
+      {notice && (
+        <div style={{ background: 'rgba(26,107,69,0.08)', border: '1px solid #1A6B4544', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, color: '#1A6B45', marginBottom: 10 }}>
+          {notice}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ color: '#9097A8', fontSize: 13 }}>Loading…</div>
@@ -120,27 +174,48 @@ export default function OrderDeliverables({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {files.map((f) => (
-            <a
-              key={f.id}
-              href={f.url || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
-                background: '#FAFAF7', border: '1px solid #E5E0D6', borderRadius: 10, padding: '10px 12px',
-              }}
-            >
-              <span style={{ fontSize: 18 }}>📄</span>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1F2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                <div style={{ fontSize: 11, color: '#9097A8' }}>
-                  {[f.uploader_name, fmtSize(f.size_bytes), f.created_at ? new Date(f.created_at).toLocaleDateString() : ''].filter(Boolean).join(' · ')}
+          {files.map((f) => {
+            const rowBusy = busyId === f.id
+            return (
+              <div
+                key={f.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: '#FAFAF7', border: '1px solid #E5E0D6', borderRadius: 10, padding: '10px 12px',
+                  opacity: rowBusy ? 0.6 : 1,
+                }}
+              >
+                <span style={{ fontSize: 18 }}>📄</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1F2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: '#9097A8' }}>
+                    {[f.uploader_name, fmtSize(f.size_bytes), f.created_at ? new Date(f.created_at).toLocaleDateString() : ''].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <a
+                    href={f.url || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View / download"
+                    style={{ ...actionBtn, color: '#3C3B6E', textDecoration: 'none' }}
+                  >
+                    View
+                  </a>
+                  {canUpload && (
+                    <>
+                      <button type="button" title="Share in Messages" disabled={rowBusy} onClick={() => onSend(f.id)} style={{ ...actionBtn, color: '#1A6B45' }}>
+                        Send
+                      </button>
+                      <button type="button" title="Delete file" disabled={rowBusy} onClick={() => onDelete(f.id)} style={{ ...actionBtn, color: '#8B1A1A' }}>
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: '#3C3B6E', fontWeight: 700 }}>Download</span>
-            </a>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
