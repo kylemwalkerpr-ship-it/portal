@@ -21,12 +21,15 @@ type OfferCardProps = {
     status: OfferStatus
     linked_gig?: { id: string; title: string; slug: string } | null
     attachments?: { url: string; name: string }[] | string[]
+    order_id?: string | null
+    order_number?: string | null
   }
   viewerRole: 'buyer' | 'seller'
   offerBusy?: boolean
   onAccept?: (offerId: string) => void
   onDecline?: (offerId: string) => void
   onWithdraw?: (offerId: string) => void
+  onOpenOrder?: (orderId: string) => void
 }
 
 // ── design tokens (editorial T/F from tokens.ts) ────────────────────────────
@@ -94,7 +97,7 @@ function useMinuteTick(): number {
   return now
 }
 
-export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccept, onDecline, onWithdraw }: OfferCardProps) {
+export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccept, onDecline, onWithdraw, onOpenOrder }: OfferCardProps) {
   const now = useMinuteTick()
   const currency = (offer.currency || 'USD').toUpperCase()
   const hasDiscount = offer.discount_cents != null && offer.discount_cents > 0
@@ -286,7 +289,22 @@ export function MessageOfferCard({ offer, viewerRole, offerBusy = false, onAccep
             </button>
           )
         ) : (
-          <StatusMessage status={offer.status} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <StatusMessage status={offer.status} />
+            {offer.order_id && onOpenOrder && (
+              <button
+                type="button"
+                onClick={() => onOpenOrder(offer.order_id as string)}
+                style={{
+                  alignSelf: 'flex-start', padding: '8px 14px', borderRadius: 10, border: 'none',
+                  background: T.indigo, color: '#fff', fontWeight: 700, fontSize: 13,
+                  cursor: 'pointer', fontFamily: F.ui,
+                }}
+              >
+                📦 View order{offer.order_number ? ` · ${offer.order_number}` : ''} →
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

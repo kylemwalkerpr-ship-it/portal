@@ -1210,6 +1210,18 @@ function StudentApp({ onLogout, userId, userName }) {
   }, []);
   const [checkoutRequest, setCheckoutRequest] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
+  // Deep-link to a specific order from the messenger offer card.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const orderId = e?.detail?.orderId;
+      if (!orderId) return;
+      const found = orders.find(o => o.id === orderId);
+      if (found) { setSelectedOrder(found); setPage('order-detail'); }
+      else { setSelectedOrder({ id: orderId }); setPage('order-detail'); }
+    };
+    window.addEventListener('yousafe-open-order', handler);
+    return () => window.removeEventListener('yousafe-open-order', handler);
+  }, [orders]);
   const [ordersLoading, setOrdersLoading] = React.useState(true);
   const [ordersError, setOrdersError] = React.useState(null);
   const [viewerVertical, setViewerVertical] = React.useState('study_abroad');

@@ -62,6 +62,18 @@ export default function AttorneyApp({ onLogout, userName }) {
     window.addEventListener('yousafe-open-messages', handler)
     return () => window.removeEventListener('yousafe-open-messages', handler)
   }, [])
+  // Deep-link to a specific order from the messenger offer card.
+  const [pendingOrderId, setPendingOrderId] = React.useState(null)
+  React.useEffect(() => {
+    const handler = (e) => {
+      const orderId = e?.detail?.orderId
+      if (!orderId) return
+      setPendingOrderId(orderId)
+      setPage('orders')
+    }
+    window.addEventListener('yousafe-open-order', handler)
+    return () => window.removeEventListener('yousafe-open-order', handler)
+  }, [])
   const [profileData, setProfileData] = React.useState(null)
   const [profileError, setProfileError] = React.useState('')
   const [dashboardData, setDashboardData] = React.useState(null)
@@ -310,7 +322,7 @@ export default function AttorneyApp({ onLogout, userName }) {
               {page === 'overview' && <AttorneyOverview onJump={setPage} displayName={displayName} />}
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
-              {page === 'orders' && <OrdersPage />}
+              {page === 'orders' && <OrdersPage openOrderId={pendingOrderId} />}
               {page === 'messages' && (
                 <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <UnifiedInbox
@@ -1250,8 +1262,10 @@ function CompactOrderRow({ order }) {
 }
 
 // ── Orders page ────────────────────────────────────────────────────────────
-function OrdersPage() {
-  const [openId, setOpenId] = React.useState(null)
+function OrdersPage({ openOrderId }) {
+  const [openId, setOpenId] = React.useState(openOrderId || null)
+  // Deep-link from the messenger (offer card → "View order").
+  React.useEffect(() => { if (openOrderId) setOpenId(openOrderId) }, [openOrderId])
   if (openId) return <OrderDetail orderId={openId} onBack={() => setOpenId(null)} />
   return <AttorneyOrders onOpenOrder={(id) => setOpenId(id)} />
 }

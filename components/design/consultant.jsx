@@ -57,6 +57,18 @@ function ConsultantApp({ onLogout }) {
   const [showOfferModal, setShowOfferModal] = React.useState(false);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [orders, setOrders] = React.useState([]);
+  // Deep-link to a specific order from the messenger offer card.
+  React.useEffect(() => {
+    const handler = (e) => {
+      const orderId = e?.detail?.orderId;
+      if (!orderId) return;
+      const found = orders.find(o => o.id === orderId);
+      if (found) { setSelectedOrder(found); setPage('order-detail'); }
+      else { setPage('orders'); }
+    };
+    window.addEventListener('yousafe-open-order', handler);
+    return () => window.removeEventListener('yousafe-open-order', handler);
+  }, [orders]);
   const [earningsByDay, setEarningsByDay] = React.useState([]);
   const [notifications, setNotifications] = React.useState([]);
   const [readNotifKeys, setReadNotifKeys] = React.useState(() => new Set());

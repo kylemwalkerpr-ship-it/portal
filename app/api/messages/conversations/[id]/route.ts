@@ -70,7 +70,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
   try {
     const { data: orders } = await db
       .from('orders')
-      .select('id, order_number, status, total_amount, escrow_status, created_at')
+      .select('id, order_number, status, total_amount, escrow_status, offer_id, created_at')
       .or(`and(client_id.eq.${profileId},consultant_id.eq.${counterpartId}),and(client_id.eq.${counterpartId},consultant_id.eq.${profileId})`)
       .order('created_at', { ascending: false })
       .limit(20)
@@ -121,6 +121,16 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
         status: row.status,
         gig_id: row.gig_id ?? undefined,
       })
+    }
+
+    // Link each offer to its order (if one was created), so the messenger can
+    // jump straight to the order from the offer card.
+    for (const ord of sharedOrders) {
+      if (ord?.offer_id && offerMap.has(ord.offer_id)) {
+        const off = offerMap.get(ord.offer_id)
+        off.order_id = ord.id
+        off.order_number = ord.order_number ?? undefined
+      }
     }
 
     // STEP 2 — attach linked gig info (best-effort, doesn't touch offer rows).

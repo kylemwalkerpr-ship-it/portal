@@ -942,7 +942,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
                   <StatusRing hasStatus={!!counterStatus} viewed={!!counterStatus?.viewed} size={48}>
                     <div className="row-avatar" style={{ background: c.counterpart?.avatar_color || '#3C3B6E' }}>
                       {c.counterpart?.avatar_url
-                        ? <img src={c.counterpart.avatar_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+                        ? <img src={c.counterpart.avatar_url} alt={c.counterpart?.name || ''} style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
                         : initials(c.counterpart?.name || '?')}
                     </div>
                   </StatusRing>
@@ -1058,7 +1058,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       >
         <div className="cv-head-avatar" style={{ background: activeConv?.counterpart?.avatar_color || '#3C3B6E' }}>
           {activeConv?.counterpart?.avatar_url
-            ? <img src={activeConv.counterpart.avatar_url} alt="" style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
+            ? <img src={activeConv.counterpart.avatar_url} alt={activeConv.counterpart?.full_name || ''} style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }} />
             : initials(activeConv?.counterpart?.full_name || '?')}
         </div>
         <div className="cv-head-text">
@@ -1631,6 +1631,11 @@ function ThreadMessage({
               onAccept={onAccept}
               onDecline={onDecline}
               onWithdraw={onWithdraw}
+              onOpenOrder={(orderId) => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('yousafe-open-order', { detail: { orderId } }))
+                }
+              }}
             />
           </div>
           <div className="bub-foot" style={{ padding: '4px 8px' }}>
