@@ -265,6 +265,19 @@ export default clerkMiddleware(
       return withCorsHeaders(withPathHeaders(NextResponse.next(), pathname, search, lang), req)
     }
 
+    // Homepage fast-path. The ONLY reason to resolve the session on `/` is to
+    // bounce a signed-in user to /dashboard. Clerk's `__client_uat` cookie is
+    // absent or '0' whenever there is no active session, so anonymous visitors
+    // and crawlers — the bulk of `/` traffic — can be served the cached
+    // homepage WITHOUT paying the crypto cost of auth(). This keeps `/` well
+    // under the Workers free-plan 10ms CPU budget (the incident route).
+    if (pathname === '/') {
+      const uat = req.cookies.get('__client_uat')?.value
+      if (!uat || uat === '0') {
+        return withPathHeaders(NextResponse.next(), pathname, search, lang)
+      }
+    }
+
     const { userId } = await auth()
 
     if (pathname === '/') {
