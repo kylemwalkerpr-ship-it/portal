@@ -1,12 +1,135 @@
 /**
- * GET /api/orders/[id]/escrow
- * Client/student view of their order's escrow status: milestones, pending
- * scope changes, and recent escrow event timeline.
+ * GET  /api/orders/[id]/escrow  — client view of escrow status/timeline.
+ * POST /api/orders/[id]/escrow  — client decisions on a delivered order:
+ *     { action: 'approve_delivery' | 'request_revision' | 'raise_dispute', note? }
  *
  * Auth: requirePortalUser; must own the order (auth.profileId === order.client_id)
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { releaseEarningsForOrder } from '@/lib/earnings'
+import { mirrorMessage } from '@/lib/conversations'
+
+const APPROVABLE = ['under_review', 'review', 'delivered']
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requirePortalUser()
+  if ('error' in auth) return fail(auth.error, auth.status)
+  const { db, profileId } = auth
+
+  const { id: orderId } = await params
+  if (!orderId) return fail('Order id is required.', 400)
+
+  const body = await req.json().catch(() => ({}))
+  const action = String(body.action || '')
+  const note = typeof body.note === 'string' ? body.note.slice(0, 1200) : null
+
+  const ordRes = await db
+    .from('orders')
+    .select('id, status, escrow_status, escrow_amount, escrow_released_amount, client_id, consultant_id')
+    .eq('id', orderId)
+    .single() as any
+  const ord = ordRes.data
+  if (ordRes.error || !ord) return fail('Order not found.', 404)
+  if (ord.client_id !== profileId) return fail('Only the client can act on this order.', 403)
+
+  const counterpartId = ord.consultant_id || null
+  const warnings: string[] = []
+
+  // ── Approve & release ───────────────────────────────────────────────────
+  if (action === 'approve_delivery') {
+    if (!APPROVABLE.includes(String(ord.status))) {
+      return fail(`This order can't be approved from its current state (${ord.status}).`, 409)
+    }
+    const previousEscrow = Number(ord.escrow_amount || 0)
+    let releasedCount = 0
+    try {
+      const released = await releaseEarningsForOrder(orderId)
+      releasedCount = Array.isArray(released) ? released.length : 0
+    } catch (e: any) { warnings.push(`earnings_release_failed: ${e?.message || 'unknown'}`) }
+
+    const { data: updated, error: updErr } = await db
+      .from('orders')
+      .update({
+        status: 'completed',
+        escrow_status: 'released',
+        escrow_released_amount: Number(ord.escrow_released_amount || 0) + previousEscrow,
+        escrow_amount: 0,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId)
+      .select('id, status, escrow_status')
+      .single() as any
+    if (updErr || !updated) return fail(updErr?.message || 'Could not approve the order.', 500)
+
+    try {
+      await db.from('escrow_events').insert({
+        order_id: orderId, event_type: 'client_release', amount: -1 * previousEscrow, balance_after: 0,
+        actor_id: profileId, actor_role: 'client', reason: 'Client approved the deliverable — escrow released.',
+        metadata: { released_earnings: releasedCount },
+      })
+    } catch (e: any) { warnings.push(`escrow_event_failed: ${e?.message || 'unknown'}`) }
+
+    if (counterpartId) {
+      try {
+        await mirrorMessage(db, {
+          participantA: profileId, participantB: counterpartId, senderId: profileId,
+          body: '✅ I’ve approved the deliverable and released payment from escrow. Thank you!',
+          contextKind: 'order', contextId: orderId, refOrderId: orderId,
+        })
+      } catch { /* non-fatal */ }
+    }
+    return ok({ order: updated, released_earnings: releasedCount }, {}, warnings.length ? { data_warnings: warnings } : {})
+  }
+
+  // ── Request a revision ──────────────────────────────────────────────────
+  if (action === 'request_revision') {
+    if (!APPROVABLE.includes(String(ord.status))) {
+      return fail(`This order can't be sent back for revision from its current state (${ord.status}).`, 409)
+    }
+    const { data: updated, error: updErr } = await db
+      .from('orders')
+      .update({ status: 'revision_requested', revision_reason: note, updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .select('id, status')
+      .single() as any
+    if (updErr || !updated) return fail(updErr?.message || 'Could not request a revision.', 500)
+
+    if (counterpartId) {
+      try {
+        await mirrorMessage(db, {
+          participantA: profileId, participantB: counterpartId, senderId: profileId,
+          body: `🔄 I’ve requested a revision.${note ? ` Notes: ${note}` : ''} Escrow stays held until the updated work is approved.`,
+          contextKind: 'order', contextId: orderId, refOrderId: orderId,
+        })
+      } catch { /* non-fatal */ }
+    }
+    return ok({ order: updated })
+  }
+
+  // ── Raise a dispute ─────────────────────────────────────────────────────
+  if (action === 'raise_dispute') {
+    const { data: updated, error: updErr } = await db
+      .from('orders')
+      .update({ escrow_status: 'disputed', status: 'disputed', updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .select('id, status, escrow_status')
+      .single() as any
+    if (updErr || !updated) return fail(updErr?.message || 'Could not raise a dispute.', 500)
+
+    try {
+      await db.from('escrow_events').insert({
+        order_id: orderId, event_type: 'dispute_opened', balance_after: Number(ord.escrow_amount || 0),
+        actor_id: profileId, actor_role: 'client', reason: note || 'Client raised a dispute.',
+      })
+    } catch (e: any) { warnings.push(`escrow_event_failed: ${e?.message || 'unknown'}`) }
+
+    return ok({ order: updated }, {}, warnings.length ? { data_warnings: warnings } : {})
+  }
+
+  return fail('Unknown action. Use approve_delivery, request_revision, or raise_dispute.', 400)
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePortalUser()
