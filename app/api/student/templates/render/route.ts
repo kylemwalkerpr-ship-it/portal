@@ -12,7 +12,6 @@ import { fail } from '@/lib/apiEnvelope'
 import { getCurrentStudent } from '@/lib/student'
 import { getTemplatePack } from '@/lib/template-packs'
 import { getManifest } from '@/lib/templatePdfManifests'
-import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
 import { listPaidTemplates } from '@/lib/templateEntitlements'
 
 export async function POST(req: Request) {
@@ -51,6 +50,9 @@ export async function POST(req: Request) {
   if (!manifest) return fail('No fillable form manifest for this template.', 400)
 
   try {
+    // pdf-lib + generator are heavy; lazy-load so cold starts on other
+    // routes never pay for them (Workers CPU-limit mitigation).
+    const { generateTemplatePdf, buildPrefill } = await import('@/lib/pdfGenerator')
     const prefill = buildPrefill({
       userFullName: profile?.full_name || '',
       userEmail: profile?.email || '',

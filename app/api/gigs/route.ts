@@ -10,8 +10,14 @@ export async function GET(req: Request) {
   const auth = await getOptionalPortalUser()
   const db = auth ? auth.db : createSupabaseAdminClient()
 
-  // Public list endpoint — no auth required for browsing active gigs
+  // Public list endpoint — no auth required for browsing active gigs.
+  // The response is identical for every public caller, so serve from KV.
   if (!auth || !['attorney', 'consultant'].includes(auth.role)) {
+    const { getCached, setCached, generateCacheKey } = await import('@/lib/cache')
+    const cacheKey = generateCacheKey('/api/gigs', 'public')
+    const cached = await getCached<Record<string, unknown>>(cacheKey, 60)
+    if (cached) return ok(cached)
+
     const { data: rows, error, count } = await db
       .from('gigs')
       .select('*, tiers:gig_tiers(*)', { count: 'exact' })
@@ -20,7 +26,9 @@ export async function GET(req: Request) {
       .range(0, 99)
 
     if (error) return fail(error.message, 500)
-    return ok({ gigs: rows ?? [], total: count ?? 0 })
+    const payload = { gigs: rows ?? [], total: count ?? 0 }
+    await setCached(cacheKey, payload, 60)
+    return ok(payload)
   }
 
   // Provider-specific endpoint — authed providers managing their own gigs

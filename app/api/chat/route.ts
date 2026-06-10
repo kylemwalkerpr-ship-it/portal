@@ -1,4 +1,3 @@
-import { CHAT_SYSTEM_PROMPT } from '@/lib/chatKnowledgeBase'
 import { getChatProvider, type ChatTurn } from '@/lib/chatProvider'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
@@ -208,6 +207,9 @@ export async function POST(req: Request) {
     : ''
 
   try {
+    // Lazy-load the ~580-line static knowledge base so its module evaluation
+    // cost stays off the worker cold-start path (CPU-limit mitigation).
+    const { CHAT_SYSTEM_PROMPT } = await import('@/lib/chatKnowledgeBase')
     const reply = await provider.reply(CHAT_SYSTEM_PROMPT + viewerContext + pageContext + liveSection, cleaned)
     return withCors(req, { reply, provider: provider.name, supportApiUrl: SUPPORT_WIDGET_API })
   } catch (err) {

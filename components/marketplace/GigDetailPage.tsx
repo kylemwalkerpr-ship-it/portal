@@ -282,8 +282,13 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
     load()
   }, [load])
 
+  // One idempotency key per checkout attempt: double-clicks and network
+  // retries replay the same server-side outcome instead of double-charging.
+  const idemKeyRef = React.useRef<string | null>(null)
+
   const handleOrder = async () => {
     if (!selectedTierId || !gig) return
+    idemKeyRef.current ||= crypto.randomUUID()
     try {
       const payload = await requestJson('/api/checkout/order', {
         method: 'POST',
@@ -292,8 +297,10 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
           sourceId: gig.id,
           tierId: selectedTierId,
           paymentMethod: 'wallet',
+          idempotencyKey: idemKeyRef.current,
         }),
       })
+      idemKeyRef.current = null
       requestJson('/api/gig-metrics/event', {
         method: 'POST',
         body: JSON.stringify({ gig_id: gig.id, event_type: 'purchase' }),

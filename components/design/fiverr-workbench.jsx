@@ -571,6 +571,10 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
     setHasSetDefaultPayMethod(true)
   }, [walletBalance, cards, totalCents, hasSetDefaultPayMethod])
 
+  // One idempotency key per checkout attempt — retries replay the stored
+  // server outcome instead of double-charging.
+  const idemKeyRef = React.useRef(null)
+
   const pay = async () => {
     if (busy) return
     if (payMethod === 'wallet' && !canUseWallet) {
@@ -584,6 +588,7 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
     setBusy(true)
     setError('')
     setCardError(null)
+    idemKeyRef.current ||= crypto.randomUUID()
     try {
       // For new-card flow, tokenize at click-time so the user sees one button.
       let result = newCardToken ? lastTokenRef.current : null
@@ -600,11 +605,13 @@ function GigCheckoutDialog({ gig, tier, onClose, onPaid }) {
         paymentMethod: payMethod,
         ...(payMethod === 'saved_card' && { paymentMethodId: selectedCardId }),
         ...(payMethod === 'new_card'   && { token: result.token, gateway: result.gateway }),
+        idempotencyKey: idemKeyRef.current,
       }
       const payload = await requestJson('/api/checkout/order', {
         method: 'POST',
         body: JSON.stringify(body),
       })
+      idemKeyRef.current = null
       if (payload.url) {
         window.location.href = payload.url
         return

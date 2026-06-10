@@ -17,7 +17,6 @@ import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
-import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
 import { getManifest } from '@/lib/templatePdfManifests'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -252,6 +251,9 @@ export async function POST(req: Request) {
 
     // ── 7. Best-effort: generate filled PDFs (non-fatal if fails) ────
     if (templateOrderId && templateItems.length > 0) {
+      // pdf-lib + generator are heavy; lazy-load so cold starts on the plain
+      // wallet-debit path never pay for them (Workers CPU-limit mitigation).
+      const { generateTemplatePdf, buildPrefill } = await import('@/lib/pdfGenerator')
       for (const item of templateItems) {
         try {
           const manifest = getManifest(item.slug)

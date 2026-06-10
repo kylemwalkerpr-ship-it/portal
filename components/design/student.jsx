@@ -1037,6 +1037,10 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
       .catch(() => setCards([]));
   }, []);
 
+  // One idempotency key per checkout attempt — retries replay the stored
+  // server outcome instead of double-charging.
+  const idemKeyRef = React.useRef(null);
+
   const pay = async () => {
     if (!request || busy) return;
     if (payMethod === 'wallet' && !canUseWallet) {
@@ -1049,6 +1053,7 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
     }
     setBusy(true);
     setError('');
+    idemKeyRef.current ||= crypto.randomUUID();
     try {
       const res = await fetch('/api/checkout/order', {
         method: 'POST',
@@ -1059,10 +1064,12 @@ function OrderCheckoutDialog({ request, onClose, onPaid }) {
           tierId: request.tierId,
           paymentMethod: payMethod,
           paymentMethodId: selectedCardId,
+          idempotencyKey: idemKeyRef.current,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Checkout failed.');
+      idemKeyRef.current = null;
       if (data.url) {
         window.location.href = data.url;
         return;

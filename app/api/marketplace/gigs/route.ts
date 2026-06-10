@@ -1,8 +1,11 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { getCached, setCached, generateCacheKey } from '@/lib/cache'
 import { getCategoryFilterTerms } from '@/lib/categories'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+
+const CACHE_TTL_SECONDS = 60
 
 export async function GET(req: Request) {
   // Auth is optional for this public endpoint — do not require it
@@ -12,6 +15,15 @@ export async function GET(req: Request) {
   const db = auth ? auth.db : createSupabaseAdminClient()
 
   const url = new URL(req.url)
+
+  // Anonymous responses contain nothing user-specific (is_saved is always
+  // false), so serve them from KV — this is the hottest public endpoint and
+  // the cache keeps marketplace browsing off the DB + CPU-heavy shaping path.
+  const cacheKey = auth ? null : generateCacheKey('/api/marketplace/gigs', url.searchParams.toString())
+  if (cacheKey) {
+    const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+    if (cached) return ok(cached)
+  }
   const q = (url.searchParams.get('q') || '').trim()
   const categories = url.searchParams.getAll('category').filter(Boolean)
   const providerTypes = url.searchParams.getAll('provider_type').filter(Boolean)
@@ -105,11 +117,13 @@ export async function GET(req: Request) {
   if (sort === 'price_asc') shaped.sort((a: any, b: any) => Number(a.starting_price || 0) - Number(b.starting_price || 0))
   if (sort === 'price_desc') shaped.sort((a: any, b: any) => Number(b.starting_price || 0) - Number(a.starting_price || 0))
 
-  return ok({
+  const payload = {
     gigs: shaped,
     total: count || 0,
     page,
     limit,
     hasMore: offset + shaped.length < (count || 0),
-  })
+  }
+  if (cacheKey) await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
+  return ok(payload)
 }

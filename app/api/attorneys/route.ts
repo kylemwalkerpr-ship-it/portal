@@ -1,5 +1,8 @@
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
+import { getCached, setCached, generateCacheKey } from '@/lib/cache'
+
+const CACHE_TTL_SECONDS = 60
 
 type AttorneyRow = {
   id: string
@@ -37,6 +40,11 @@ type ApplicationRow = {
 }
 
 export async function GET() {
+  // Identical response for every caller — serve from KV (60 s TTL).
+  const cacheKey = generateCacheKey('/api/attorneys')
+  const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+  if (cached) return Response.json(cached)
+
   const db = createSupabaseAdminClient()
 
   const { data: attorneys, error: attorneyErr } = await db
@@ -106,5 +114,7 @@ export async function GET() {
       }
     })
 
-  return Response.json({ attorneys: result })
+  const payload = { attorneys: result }
+  await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
+  return Response.json(payload)
 }

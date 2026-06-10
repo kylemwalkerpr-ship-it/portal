@@ -32,6 +32,7 @@ export async function GET() {
     }))
   )
 
+  // Pure static taxonomy — let browsers/CDN cache it for an hour.
   return ok({
     categories,
     popularCategories: getPopularCategories().map(cat => ({
@@ -40,5 +41,5 @@ export async function GET() {
       icon: cat.icon,
     })),
     allSubcategories,
-  })
+  }, { headers: { 'Cache-Control': 'public, max-age=3600, s-maxage=3600' } })
 }

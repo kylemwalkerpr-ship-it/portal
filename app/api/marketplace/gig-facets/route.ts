@@ -1,6 +1,9 @@
 import { ok, fail } from '@/lib/apiEnvelope'
+import { getCached, setCached, generateCacheKey } from '@/lib/cache'
 import { CATEGORIES, getCategoryFilterTerms } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+
+const CACHE_TTL_SECONDS = 120
 
 /**
  * GET /api/marketplace/gig-facets
@@ -40,6 +43,13 @@ export async function GET(req: Request) {
   const country = (url.searchParams.get('country') || '').toLowerCase()
   const providerTypes = url.searchParams.getAll('provider_type').filter(Boolean)
   const minRating = url.searchParams.get('min_rating')
+
+  // This route fans out into ~16 COUNT queries; identical for every caller
+  // with the same filters, so serve from KV (filter counts tolerate 2 min
+  // of staleness).
+  const cacheKey = generateCacheKey('/api/marketplace/gig-facets', url.searchParams.toString())
+  const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+  if (cached) return ok(cached, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } })
 
   // Build the base filter once and reuse for each per-category COUNT.
   // Supabase doesn't have a clean GROUP BY in the JS client, so we
@@ -102,8 +112,7 @@ export async function GET(req: Request) {
     db.from('gigs').select('id', { count: 'exact', head: true }),
   )
 
-  return ok(
-    { categoryCounts, jurisdictionCounts, providerTypeCounts, total: total ?? 0 },
-    { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } },
-  )
+  const payload = { categoryCounts, jurisdictionCounts, providerTypeCounts, total: total ?? 0 }
+  await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
+  return ok(payload, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } })
 }

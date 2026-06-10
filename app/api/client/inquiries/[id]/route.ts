@@ -1,7 +1,8 @@
 import { requireClient } from '@/lib/clientAuth'
 import { ok, fail } from '@/lib/apiEnvelope'
 import { safetyGuard } from '@/lib/safety'
-import { recommendTier } from '@/lib/intake-questions'
+// intake-questions (~1k lines of static question data) is lazy-loaded at the
+// point of use to keep its evaluation cost off the worker cold-start path.
 
 // Returns the inquiry + a per-attorney thread structure:
 //   threads: [{ attorney_id, attorney_profile_id, attorney_name, messages, offers }]
@@ -192,6 +193,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   if (countryChanged || caseTypeChanged || answersChanged) {
     const newCountry = (updates.country || inquiry.country) as string
     const newCaseType = (updates.case_type || inquiry.case_type) as string
+    const { recommendTier } = await import('@/lib/intake-questions')
     const tier = recommendTier(newCountry as any, newCaseType, answers as any)
     updates.recommended_tier = tier.tier
   }

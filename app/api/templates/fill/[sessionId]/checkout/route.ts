@@ -16,7 +16,6 @@ import { getCurrentStudent } from '@/lib/student'
 import { debit, getOrCreateWallet } from '@/lib/wallet'
 import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { getManifest } from '@/lib/templatePdfManifests'
-import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
 
@@ -86,6 +85,8 @@ export async function POST(
 
   let pdfBytes: Uint8Array
   try {
+    // pdf-lib + generator are heavy; lazy-load to keep cold starts lean.
+    const { generateTemplatePdf, buildPrefill } = await import('@/lib/pdfGenerator')
     const prefill = buildPrefill({
       userFullName: profile.full_name || '',
       userEmail: profile.email || '',

@@ -1,7 +1,8 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireClient } from '@/lib/clientAuth'
 import { safetyGuard } from '@/lib/safety'
-import { recommendTier } from '@/lib/intake-questions'
+// intake-questions (~1k lines of static question data) is lazy-loaded at the
+// point of use to keep its evaluation cost off the worker cold-start path.
 
 const ACTIVE_STATUS_CAP = 10
 
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     )
   }
 
+  const { recommendTier } = await import('@/lib/intake-questions')
   const tier = recommendTier(country as any, caseType, answers as any)
 
   // Insert inquiry

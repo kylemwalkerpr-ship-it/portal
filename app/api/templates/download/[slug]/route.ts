@@ -4,7 +4,6 @@ import { userOwnsSlug } from '@/lib/templateEntitlements'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getTemplatePack } from '@/lib/template-packs'
 import { recordDocumentAccess } from '@/lib/documentStorage'
-import { generateTemplatePdf, buildPrefill } from '@/lib/pdfGenerator'
 import { getManifest } from '@/lib/templatePdfManifests'
 import { randomUUID } from 'crypto'
 
@@ -90,6 +89,8 @@ export async function GET(req: Request, context: { params: Promise<{ slug: strin
           if (order?.id) orderId = order.id
         }
 
+        // pdf-lib + generator are heavy; lazy-load to keep cold starts lean.
+        const { generateTemplatePdf, buildPrefill } = await import('@/lib/pdfGenerator')
         const prefill = buildPrefill({
           userFullName: profile?.full_name || auth.profile?.full_name || '',
           userEmail: profile?.email || auth.profile?.email || '',

@@ -1,6 +1,8 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { allowedFieldsForRole, draftField, type SuggestContext, type SuggestField, type SuggestRole, type TierSummary } from '@/lib/seoSuggest'
+// seoSuggest (~900 lines of prompt/keyword data) is lazy-loaded inside the
+// handler to keep its evaluation cost off the worker cold-start path.
+import type { SuggestContext, SuggestField, SuggestRole, TierSummary } from '@/lib/seoSuggest'
 
 function sanitizeTier(raw: Record<string, unknown>): TierSummary {
   const t: TierSummary = {}
@@ -39,6 +41,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     gig.provider_type === 'consultant' ? 'consultant'
     : gig.provider_type === 'attorney' ? 'attorney'
     : auth.role === 'consultant' ? 'consultant' : 'attorney'
+  const { allowedFieldsForRole, draftField } = await import('@/lib/seoSuggest')
   if (!allowedFieldsForRole(role).includes(field)) {
     return fail(`Field "${field}" is not AI-editable for this account.`, 400)
   }

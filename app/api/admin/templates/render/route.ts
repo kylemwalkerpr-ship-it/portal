@@ -2,7 +2,9 @@
 // Used by the PDF Maker preview pane. Never persists.
 import { fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { generateTemplatePdf, TemplatePdfManifest } from '@/lib/pdfGenerator'
+// pdf-lib + generator are heavy; lazy-loaded inside the handler so cold
+// starts on other routes never pay for them (Workers CPU-limit mitigation).
+import type { TemplatePdfManifest } from '@/lib/pdfGenerator'
 
 interface Body {
   manifest?: TemplatePdfManifest
@@ -34,6 +36,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    const { generateTemplatePdf } = await import('@/lib/pdfGenerator')
     const pdfBytes = await generateTemplatePdf({
       manifest: body.manifest,
       prefillValues: body.prefillValues ?? {},

@@ -25,14 +25,14 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { runSeoCoherentFix, changesToPatch, type SeoEditableField } from '@/lib/coherentFix'
-import {
-  runSeoAudit,
-  projectAuditAfterPatch,
+// seoAudit (~1.1k lines incl. static rule/keyword data) is lazy-loaded inside
+// the handler to keep its evaluation cost off the worker cold-start path.
+import type {
   buildExpectedScoreDelta,
-  type AuditGig,
-  type AuditRole,
-  type SellerCredibility,
-  type SiblingGig,
+  AuditGig,
+  AuditRole,
+  SellerCredibility,
+  SiblingGig,
 } from '@/lib/seoAudit'
 
 const VALID_FIELDS: SeoEditableField[] = [
@@ -121,6 +121,7 @@ export async function POST(req: Request) {
 
   // Pre-rewrite audit — used both to source the intent hints and to
   // anchor the score delta the modal surfaces back to the seller.
+  const { runSeoAudit, projectAuditAfterPatch, buildExpectedScoreDelta } = await import('@/lib/seoAudit')
   const beforeAudit = runSeoAudit({ gig: auditGig, role, seller, siblings })
 
   const result = await runSeoCoherentFix({

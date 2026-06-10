@@ -1,20 +1,20 @@
 'use client'
 import React from 'react'
 import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, SearchInput } from './shared'
-import AdminFinancials from './admin-financials'
-import AdminWallets from './admin-wallets'
-import AdminWalletLoyalty from './admin-wallet-loyalty'
-import AdminGigsManager from './admin-gigs'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
-import AdminAnalyticsPro from './admin-analytics'
-import AdminPayouts from './admin-payouts'
-import AdminOrders from './admin-orders'
-import AdminTickets from './admin-tickets'
-import AdminEscrow from './admin-escrow'
 import AdminDashboard from './admin-dashboard'
-import AdminAttorneyApplications from './admin-attorney-applications'
-import AdminConsultantManagement from './admin-consultant-management'
-import AdminTemplates from './admin-templates'
+// Heavy admin sections are code-split with React.lazy so the initial admin
+// bundle only ships the shell + dashboard. Each section loads on first visit.
+// (AdminWallets / AdminPayouts / AdminEscrow / AdminWalletLoyalty are loaded
+// by admin-financials internally — they were dead imports here.)
+const AdminFinancials = React.lazy(() => import('./admin-financials'))
+const AdminGigsManager = React.lazy(() => import('./admin-gigs'))
+const AdminAnalyticsPro = React.lazy(() => import('./admin-analytics'))
+const AdminOrders = React.lazy(() => import('./admin-orders'))
+const AdminTickets = React.lazy(() => import('./admin-tickets'))
+const AdminAttorneyApplications = React.lazy(() => import('./admin-attorney-applications'))
+const AdminConsultantManagement = React.lazy(() => import('./admin-consultant-management'))
+const AdminTemplates = React.lazy(() => import('./admin-templates'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -89,7 +89,32 @@ function AdminApp({ onLogout }) {
     setLoggingOut(true);
     onLogout?.();
   };
-  const [page, setPage] = React.useState('dashboard');
+  // Admin section navigation is URL-synced (?page=...) so sections are
+  // deep-linkable/bookmarkable, survive refresh, and the browser back
+  // button works. 'escrow' is an alias for the Financials escrow tab.
+  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'settings'];
+  const pageFromUrl = () => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const raw = new URLSearchParams(window.location.search).get('page');
+    const p = raw === 'escrow' ? 'financials' : raw;
+    return ADMIN_PAGES.includes(p) ? p : 'dashboard';
+  };
+  const [page, setPageState] = React.useState(pageFromUrl);
+  const setPage = React.useCallback((next) => {
+    const resolved = next === 'escrow' ? 'financials' : next;
+    setPageState(resolved);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', resolved);
+      window.history.pushState({}, '', url);
+    } catch { /* SSR / older browsers — state still updates */ }
+  }, []);
+  React.useEffect(() => {
+    const onPop = () => setPageState(pageFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [userFilter, setUserFilter] = React.useState('all');
   const [orderFilter, setOrderFilter] = React.useState('all');
   const [selectedUser, setSelectedUser] = React.useState(null);
@@ -2470,6 +2495,7 @@ const Settings = () => {
               <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
             </div>
           )}
+          <React.Suspense fallback={<div style={{ padding: '48px', textAlign: 'center', color: C.textMuted }}>Loading…</div>}>
           {page === 'dashboard' && <AdminDashboard onNav={setPage} />}
           {page === 'users' && <Users />}
           {page === 'orders' && <AdminOrders consultants={consultants} formatPrimary={formatPrimary} refreshAdminData={refreshAdminData} />}
@@ -2481,6 +2507,7 @@ const Settings = () => {
           
           
           {page === 'settings' && <Settings />}
+          </React.Suspense>
         </div>
       </div>
     </div>

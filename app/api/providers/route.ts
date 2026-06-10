@@ -30,6 +30,9 @@
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
+import { getCached, setCached, generateCacheKey } from '@/lib/cache'
+
+const CACHE_TTL_SECONDS = 60
 
 type Role = 'attorney' | 'consultant' | 'all'
 
@@ -72,6 +75,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const requested = (searchParams.get('role') || 'all').trim().toLowerCase() as Role
   const role: Role = requested === 'attorney' || requested === 'consultant' ? requested : 'all'
+
+  // Response is identical for every caller (no per-user data), so serve from
+  // KV. This endpoint fans out into 5+ table reads — the hottest directory
+  // surface on both portal and marketplace.
+  const cacheKey = generateCacheKey('/api/providers', `role=${role}`)
+  const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+  if (cached) return Response.json(cached)
 
   const wantAttorneys = role === 'all' || role === 'attorney'
   const wantConsultants = role === 'all' || role === 'consultant'
@@ -250,12 +260,14 @@ export async function GET(req: Request) {
     return dateB - dateA
   })
 
-  return Response.json({
+  const payload = {
     providers,
     counts: {
       total: providers.length,
       attorneys: providers.filter((p) => p.role === 'attorney').length,
       consultants: providers.filter((p) => p.role === 'consultant').length,
     },
-  })
+  }
+  await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
+  return Response.json(payload)
 }

@@ -75,6 +75,24 @@ export async function POST(req: Request) {
   const db = createSupabaseAdminClient()
   const transactionId = event.payload?.id
 
+  // Replay protection: Authorize.net retries delivery and events can arrive
+  // more than once. Insert-first on notificationId — a duplicate loses the
+  // unique-constraint race and is acked without re-processing.
+  if (event.notificationId) {
+    const { error: dedupeErr } = await db.from('webhook_events').insert({
+      event_id: event.notificationId,
+      source: 'authorizenet',
+      event_type: event.eventType,
+      payload: event.payload ?? null,
+    })
+    if (dedupeErr) {
+      if (dedupeErr.code === '23505') return new Response('ok (duplicate)', { status: 200 })
+      // Table missing or transient error: log but continue — dedupe is a
+      // hardening layer, not a delivery gate.
+      console.error('[webhooks/authorizenet] dedupe insert failed', dedupeErr.message)
+    }
+  }
+
   // We intentionally keep handling shallow at this stage: log every event we
   // receive (for later replay if needed) and reconcile order status only on
   // the events we actually care about. The Authorize.net catalogue is large;

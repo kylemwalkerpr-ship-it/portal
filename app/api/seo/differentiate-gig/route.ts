@@ -22,12 +22,9 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { getChatProvider } from '@/lib/chatProvider'
-import {
-  STRATEGIC_KEYWORDS,
-  getStrategicKeywordsForGig,
-  type Cluster,
-  type StrategicKeyword,
-} from '@/lib/seoKnowledgeBase'
+// Heavy static keyword data (~1.5k lines) is lazy-loaded inside the handler
+// so its evaluation cost stays off the worker cold-start path.
+import type { Cluster, StrategicKeyword } from '@/lib/seoKnowledgeBase'
 
 interface GigSnapshotRow {
   id: string
@@ -111,6 +108,7 @@ export async function POST(req: Request) {
   // Identify the cluster the cannibalized keyword belongs to so we can
   // pull alternative primaries from the SAME cluster — different enough
   // not to re-cannibalize but topically aligned.
+  const { STRATEGIC_KEYWORDS, getStrategicKeywordsForGig } = await import('@/lib/seoKnowledgeBase')
   const matchedClusterKw = STRATEGIC_KEYWORDS.find((k) => k.term.toLowerCase() === cannibalKeyword.toLowerCase())
   const primaryCluster: Cluster | null = matchedClusterKw?.cluster
     ?? (isValidJx && cat

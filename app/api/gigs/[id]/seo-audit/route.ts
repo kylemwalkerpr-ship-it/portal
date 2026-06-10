@@ -9,7 +9,9 @@
 
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
-import { runSeoAudit, type AuditRole, type AuditGig, type SellerCredibility, type SiblingGig } from '@/lib/seoAudit'
+// seoAudit (~1.1k lines incl. static rule/keyword data) is lazy-loaded inside
+// the handler to keep its evaluation cost off the worker cold-start path.
+import type { AuditRole, AuditGig, SellerCredibility, SiblingGig } from '@/lib/seoAudit'
 import { fetchGscKeywordSignals } from '@/lib/gscKeywordSignals'
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
@@ -77,6 +79,7 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     faq: Array.isArray(gig.faq) ? gig.faq : null,
     tiers: Array.isArray(gig.tiers) ? gig.tiers : null,
   }
+  const { runSeoAudit } = await import('@/lib/seoAudit')
   const result = runSeoAudit({ gig: auditGig, role, seller, siblings, gscSignals })
   return ok({ audit: result, role, gigSummary: { id: gig.id, title: gig.title, slug: gig.slug, status: gig.status } })
 }
