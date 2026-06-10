@@ -190,17 +190,24 @@ export default function CartPage() {
     }
   }
 
+  // One idempotency key per checkout attempt — retries replay the stored
+  // server outcome instead of double-debiting the wallet.
+  const idemKeyRef = useRef<string | null>(null)
+
   async function handleWalletCheckout() {
     setCheckoutError(null)
     setIsSubmitting(true)
+    idemKeyRef.current ||= crypto.randomUUID()
     try {
       const res = await fetch('/api/wallet/debit', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           items: items.map((i) => ({ slug: i.slug, quantity: i.quantity })),
+          idempotencyKey: idemKeyRef.current,
         }),
       })
+      if (res.ok) idemKeyRef.current = null
       const data = await res.json()
       if (!res.ok || !data.ok) {
         if (res.status === 402 && data.balanceCents !== undefined) {

@@ -15,6 +15,7 @@ const AdminTickets = React.lazy(() => import('./admin-tickets'))
 const AdminAttorneyApplications = React.lazy(() => import('./admin-attorney-applications'))
 const AdminConsultantManagement = React.lazy(() => import('./admin-consultant-management'))
 const AdminTemplates = React.lazy(() => import('./admin-templates'))
+const UserDetailDrawer = React.lazy(() => import('./admin-user-detail'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -1308,68 +1309,15 @@ function AdminApp({ onLogout }) {
         )}
       </Card>
       {selectedUser && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setSelectedUser(null)}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '18px', padding: '28px', width: '100%', maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Avatar name={selectedUser.name} size={48} color={selectedUser.role === 'consultant' ? C.purple : selectedUser.role === 'support' ? C.orange : C.cyan} />
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    {selectedUser.name}
-
-                  </h3>
-                  <div style={{ color: C.textMuted, fontSize: '13px' }}>{selectedUser.email}</div>
-                </div>
-              </div>
-              <button onClick={() => setSelectedUser(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '18px' }}>✕</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-              {[
-                ['Role', selectedUser.role],
-                ['Status', selectedUser.status],
-                ['Country', selectedUser.country_code
-                  ? `${selectedUser.country_code}${countryNameForCode(selectedUser.country_code) ? ' — ' + countryNameForCode(selectedUser.country_code) : ''}`
-                  : selectedUser.country],
-                ['Joined', selectedUser.joined],
-                ['Orders', selectedUser.orders],
-                ['Financials', selectedUser.spend],
-              ].map(([label, value]) => (
-                <div key={label} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '12px' }}>
-                  <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
-                  <div style={{ color: C.text, fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>{value}</div>
-                </div>
-              ))}
-            </div>
-            {['consultant', 'attorney'].includes(selectedUser.role) && (
-              <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                <div style={{ color: C.textMuted, fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Payout setup</div>
-                <div style={{ color: C.text, fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>
-                  ✓ Eligible for manual payouts
-                </div>
-                <div style={{ color: C.textMuted, fontSize: '12px', marginTop: '4px', lineHeight: 1.5 }}>
-                  {selectedUser.role === 'attorney' ? 'Attorney can send paid offers' : 'Consultant can be assigned paid orders'}. Payouts are processed manually by admin.
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <Btn variant="primary" size="sm" onClick={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}>View orders</Btn>
-              {['consultant', 'support'].includes(selectedUser.role) && selectedUser.status === 'pending' && (
-                <Btn variant="success" size="sm" onClick={() => approveUser(selectedUser)}>Approve access</Btn>
-              )}
-              {isCurrentAdmin(selectedUser) ? (
-                <Badge color="red">Current admin account</Badge>
-              ) : (
-                <Btn variant={selectedUser.status === 'active' ? 'danger' : 'success'} size="sm" onClick={() => updateUser(selectedUser, { status: selectedUser.status === 'active' ? 'suspended' : 'active' })}>
-                  {selectedUser.status === 'active' ? 'Suspend user' : 'Activate user'}
-                </Btn>
-              )}
-              {!isCurrentAdmin(selectedUser) && (
-                <Btn variant="danger" size="sm" onClick={() => deleteUser(selectedUser)}>Delete user</Btn>
-              )}
-              <Btn variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Close</Btn>
-            </div>
-          </div>
-        </div>
+        <UserDetailDrawer
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+          isCurrentAdmin={isCurrentAdmin}
+          approveUser={approveUser}
+          updateUser={updateUser}
+          deleteUser={deleteUser}
+          onViewOrders={() => { setSelectedUser(null); setOrderFilter('all'); setPage('orders'); }}
+        />
       )}
       {inviteModal && (
         <InviteModal

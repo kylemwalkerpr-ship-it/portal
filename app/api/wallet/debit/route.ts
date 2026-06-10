@@ -18,6 +18,7 @@ import { getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { randomUUID } from 'crypto'
 import { getManifest } from '@/lib/templatePdfManifests'
+import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey } from '@/lib/idempotency'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -144,17 +145,34 @@ export async function POST(req: Request) {
 
   const profile = auth.profile
 
+  // Idempotency: a duplicate request (double-click / retry) with the same key
+  // replays the stored outcome instead of debiting the wallet and creating
+  // orders twice. Claimed only after validation so a 400 never strands a
+  // pending key.
+  const idemKey = extractIdempotencyKey(req, body)
+  if (idemKey) {
+    const claim = await claimIdempotencyKey(db, profile.id, idemKey)
+    if (claim.kind === 'replay') return Response.json(claim.response, { status: claim.statusCode })
+    if (claim.kind === 'in_flight') {
+      return Response.json({ error: 'A purchase with this key is already in progress.' }, { status: 409 })
+    }
+  }
+  const respond = async (payload: Record<string, unknown>, status: number) => {
+    if (idemKey) await completeIdempotencyKey(db, profile.id, idemKey, payload, status)
+    return Response.json(payload, { status })
+  }
+
   try {
     // ── 2. Check wallet balance (but do NOT debit yet) ────────────────
     const wallet = await getOrCreateWallet(profile.id)
     if (wallet.balance_cents < totalCents) {
-      return Response.json(
+      return respond(
         {
           error: 'Insufficient wallet balance',
           balanceCents: wallet.balance_cents,
           requiredCents: totalCents,
         },
-        { status: 402 }
+        402
       )
     }
 
@@ -173,7 +191,7 @@ export async function POST(req: Request) {
         transaction_id: null,
       })
       if (tplErr) {
-        return Response.json({ error: `Failed to record template order: ${tplErr.message}` }, { status: 500 })
+        return respond({ error: `Failed to record template order: ${tplErr.message}` }, 500)
       }
     }
 
@@ -196,7 +214,7 @@ export async function POST(req: Request) {
         if (templateOrderId) {
           await db.from('template_orders').delete().eq('id', templateOrderId)
         }
-        return Response.json({ error: `Failed to record service order: ${orderErr.message}` }, { status: 500 })
+        return respond({ error: `Failed to record service order: ${orderErr.message}` }, 500)
       }
 
       if (serviceItems.length > 0) {
@@ -213,7 +231,7 @@ export async function POST(req: Request) {
           if (templateOrderId) {
             await db.from('template_orders').delete().eq('id', templateOrderId)
           }
-          return Response.json({ error: `Failed to record order items: ${itemsErr.message}` }, { status: 500 })
+          return respond({ error: `Failed to record order items: ${itemsErr.message}` }, 500)
         }
       }
     }
@@ -227,7 +245,7 @@ export async function POST(req: Request) {
       profile.id,
       totalCents,
       `Purchase: ${allNames.join(', ')}`,
-      undefined,
+      idemKey ? `debit:${idemKey}` : undefined,
       {
         slugs: templateItems.map((v) => v.slug),
         serviceIds: serviceItems.map((v) => v.serviceId),
@@ -315,7 +333,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return Response.json({
+    return respond({
       ok: true,
       orderId: templateOrderId ?? serviceOrderId ?? randomUUID(),
       status: 'paid',
@@ -323,10 +341,10 @@ export async function POST(req: Request) {
       balanceCents: tx.balance_after_cents,
       ledgerId: tx.id,
       pdfWarnings: pdfWarnings.length ? pdfWarnings : undefined,
-    })
+    }, 200)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Debit failed'
     console.error('[wallet/debit]', msg)
-    return Response.json({ error: msg }, { status: 500 })
+    return respond({ error: msg }, 500)
   }
 }

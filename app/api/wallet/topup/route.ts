@@ -11,6 +11,12 @@ import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { credit, getOrCreateWallet } from '@/lib/wallet'
 import { addCard } from '@/lib/payment-methods'
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import {
+  claimIdempotencyKey,
+  completeIdempotencyKey,
+  extractIdempotencyKey,
+  recordPaymentIncident,
+} from '@/lib/idempotency'
 
 export async function POST(req: Request) {
   const auth = await getCurrentStudent()
@@ -26,6 +32,22 @@ export async function POST(req: Request) {
   const amountCents = Number(body.amountCents)
   if (!Number.isInteger(amountCents) || amountCents < 100) {
     return Response.json({ error: 'Amount must be an integer of at least 100 cents (USD 1.00)' }, { status: 400 })
+  }
+
+  // Idempotency: a duplicate request (double-click / retry) with the same key
+  // replays the stored outcome instead of charging the card again.
+  const adminDb = createSupabaseAdminClient()
+  const idemKey = extractIdempotencyKey(req, body)
+  if (idemKey) {
+    const claim = await claimIdempotencyKey(adminDb, auth.profile.id, idemKey)
+    if (claim.kind === 'replay') return Response.json(claim.response, { status: claim.statusCode })
+    if (claim.kind === 'in_flight') {
+      return Response.json({ error: 'A top-up with this key is already in progress.' }, { status: 409 })
+    }
+  }
+  const respond = async (payload: Record<string, unknown>, status: number) => {
+    if (idemKey) await completeIdempotencyKey(adminDb, auth.profile.id, idemKey, payload, status)
+    return Response.json(payload, { status })
   }
 
   const profile = auth.profile
@@ -46,7 +68,7 @@ export async function POST(req: Request) {
         .single()
 
       if (cardErr || !cardRow) {
-        return Response.json({ error: 'Card not found' }, { status: 404 })
+        return respond({ error: 'Card not found' }, 404)
       }
 
       const provider = getPaymentProvider(cardRow.gateway)
@@ -95,33 +117,51 @@ export async function POST(req: Request) {
     }
 
     else {
-      return Response.json({ error: 'Provide either cardId (saved card) or token (new card)' }, { status: 400 })
+      return respond({ error: 'Provide either cardId (saved card) or token (new card)' }, 400)
     }
 
     if (!chargeResult.ok || chargeResult.status !== 'paid') {
-      return Response.json(
+      return respond(
         { error: chargeResult.message || 'Payment declined' },
-        { status: chargeResult.status === 'declined' ? 402 : 500 }
+        chargeResult.status === 'declined' ? 402 : 500
       )
     }
 
-    // Credit the wallet
-    const tx = await credit(
-      profile.id,
-      amountCents,
-      `Wallet top-up via ${body.cardId ? 'saved card' : 'new card'}`,
-      chargeResult.transactionId ?? undefined
-    )
+    // Credit the wallet. The card has been charged — if the credit fails
+    // (e.g. unique-reference conflict from a replayed gateway callback, or a
+    // transient DB error) we must record an incident, never lose the money.
+    let tx
+    try {
+      tx = await credit(
+        profile.id,
+        amountCents,
+        `Wallet top-up via ${body.cardId ? 'saved card' : 'new card'}`,
+        chargeResult.transactionId ?? undefined
+      )
+    } catch (creditErr) {
+      console.error('[wallet/topup] credit failed AFTER charge:', creditErr)
+      await recordPaymentIncident(adminDb, {
+        profileId: profile.id,
+        kind: 'charge_without_order',
+        transactionId: chargeResult.transactionId ?? null,
+        amountCents,
+        context: { source: 'wallet_topup' },
+      })
+      return respond(
+        { error: 'Your card was charged but the wallet credit failed. Support has been notified — do not retry.', transactionId: chargeResult.transactionId },
+        500
+      )
+    }
 
-    return Response.json({
+    return respond({
       success: true,
       transactionId: chargeResult.transactionId,
       ledgerId: tx.id,
       balanceCents: tx.balance_after_cents,
-    })
+    }, 200)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Top-up failed'
     console.error('[wallet/topup]', msg)
-    return Response.json({ error: msg }, { status: 500 })
+    return respond({ error: msg }, 500)
   }
 }

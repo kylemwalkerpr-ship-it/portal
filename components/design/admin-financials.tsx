@@ -331,6 +331,40 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
   const ledgerLiab      = useLedgerQuery('liabilities')
   const ledgerProj      = useLedgerQuery('projections')
   const ledgerRisk      = useLedgerQuery('risk')
+
+  // Open payment incidents (money moved, follow-up write failed). Recorded by
+  // the checkout route; earning_credit_failed rows are auto-retried by the
+  // hourly cron, the rest need an operator. Surfaced on the Risk tab.
+  const [incidents, setIncidents] = React.useState<any[]>([])
+  const [incidentsLoading, setIncidentsLoading] = React.useState(true)
+  const loadIncidents = React.useCallback(async () => {
+    setIncidentsLoading(true)
+    try {
+      const res = await fetch('/api/admin/payment-incidents', { credentials: 'same-origin' })
+      const json = await res.json().catch(() => ({}))
+      setIncidents(res.ok ? (json?.data?.incidents ?? []) : [])
+    } catch { setIncidents([]) }
+    finally { setIncidentsLoading(false) }
+  }, [])
+  React.useEffect(() => { loadIncidents() }, [loadIncidents])
+  const resolveIncident = React.useCallback(async (id: string) => {
+    if (!window.confirm('Mark this incident as resolved? Confirm you have reconciled the money movement (refund issued, order created manually, or earning credited).')) return
+    try {
+      const res = await fetch('/api/admin/payment-incidents', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ id }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setActionNotice?.(json?.error?.message || 'Could not resolve incident.')
+        return
+      }
+      setActionNotice?.('Incident marked resolved.')
+      loadIncidents()
+    } catch { setActionNotice?.('Could not resolve incident.') }
+  }, [loadIncidents, setActionNotice])
   const ledgerDaily     = useLedgerQuery('daily_series')
   // Ledger Dashboard date range state — defaults to current month for a
   // tight daily view, but users can widen it to any range the API supports.
@@ -1733,7 +1767,35 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 value={fmtPct(trend.length ? trend[trend.length - 1].refund_rate_pct : 0)}
                 sub={trend.length ? `${trend[trend.length - 1].refunded} of ${trend[trend.length - 1].total_orders} orders` : 'no data'}
                 accent={(trend.length && trend[trend.length - 1].refund_rate_pct > 10) ? 'var(--portal-brick, #8B1A1A)' : '#D97706'} icon="↩" />
+              <KpiCard label="Open Payment Incidents" value={incidents.length}
+                sub={incidents.length > 0 ? 'Money moved, follow-up failed — action needed' : 'All clear'}
+                accent={incidents.length > 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-moss, #1A6B45)'} icon="🚨" />
             </div>
+          </Section>
+
+          {/* Open payment incidents — the human-action queue. */}
+          <Section title="Open Payment Incidents"
+            sub="Recorded when a charge/debit succeeded but the follow-up write failed. Reconcile the money movement, then mark resolved."
+            action={<Btn variant="ghost" size="sm" onClick={loadIncidents}>↻ Refresh</Btn>}>
+            <DataTable
+              cols={[
+                { key: 'when',   label: 'When' },
+                { key: 'kind',   label: 'Kind' },
+                { key: 'who',    label: 'User' },
+                { key: 'amount', label: 'Amount', right: true, bold: true },
+                { key: 'txn',    label: 'Transaction' },
+                { key: 'action', label: '' },
+              ]}
+              rows={incidents.map((i: any) => ({
+                when:   new Date(i.created_at).toLocaleString(),
+                kind:   String(i.kind || '').replace(/_/g, ' '),
+                who:    i.profile_name || i.profile_email || i.profile_id || '—',
+                amount: fmtCents(i.amount_cents),
+                txn:    i.transaction_id || '—',
+                action: <Btn variant="ghost" size="sm" onClick={() => resolveIncident(i.id)}>Resolve</Btn>,
+              }))}
+              emptyMsg={incidentsLoading ? 'Loading…' : 'No open incidents — payments and follow-up writes are healthy.'}
+            />
           </Section>
 
           {/* Refund-rate trend over last 6 months */}

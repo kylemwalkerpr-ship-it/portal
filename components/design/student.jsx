@@ -798,10 +798,15 @@ function TopUpDialog({ onClose, onSuccess }) {
   const validAmount = !Number.isNaN(amountNum) && amountNum >= 1;
   const canSubmit = validAmount && !!selectedCardId && !submitting;
 
+  // One idempotency key per top-up attempt — retries replay the stored
+  // outcome instead of charging the card again.
+  const topupKeyRef = React.useRef(null);
+
   const handleSubmit = async () => {
     setErrMsg(null);
     if (!canSubmit) return;
     setSubmitting(true);
+    topupKeyRef.current ||= crypto.randomUUID();
     try {
       const res = await fetch('/api/wallet/topup', {
         method: 'POST',
@@ -809,11 +814,13 @@ function TopUpDialog({ onClose, onSuccess }) {
         body: JSON.stringify({
           cardId: selectedCardId,
           amountCents: Math.round(amountNum * 100),
+          idempotencyKey: topupKeyRef.current,
         }),
       });
       let body;
       try { body = await res.json(); } catch { body = { error: `Server returned ${res.status}` }; }
       if (!res.ok || body.error) throw new Error(body.error || `Top-up failed (${res.status})`);
+      topupKeyRef.current = null;
       setSuccess(true);
       setTimeout(() => onSuccess(), 1200);
     } catch (e) {
@@ -2272,6 +2279,10 @@ function StudentApp({ onLogout, userId, userName }) {
         .finally(() => setTemplatesLoading(false));
     }, []);
 
+    // One idempotency key per wallet-pay attempt (see handleWalletPay).
+    // Declared here (component top level) to respect the rules of hooks.
+    const walletPayKeyRef = React.useRef(null);
+
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
       if (!showCheckout) return;
@@ -2304,6 +2315,7 @@ function StudentApp({ onLogout, userId, userName }) {
 
       const handleWalletPay = async () => {
         setPaying(true); setPayError(null);
+        walletPayKeyRef.current ||= crypto.randomUUID();
         try {
           const item = cartIsTemplate
             ? { slug: cart.slug || cart.id, quantity: 1 }
@@ -2311,10 +2323,11 @@ function StudentApp({ onLogout, userId, userName }) {
           const res = await fetch('/api/wallet/debit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: [item] }),
+            body: JSON.stringify({ items: [item], idempotencyKey: walletPayKeyRef.current }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Payment failed');
+          walletPayKeyRef.current = null;
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
