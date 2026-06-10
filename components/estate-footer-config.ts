@@ -51,7 +51,7 @@ export const ESTATE_FOOTER_LEGAL: FooterLink[] = [
 
 export const ESTATE_FOOTER_SOCIAL: FooterLink[] = [
   { label: 'LinkedIn', href: 'https://linkedin.com/company/yousafe-consultancy' },
-  { label: 'X / Twitter', href: 'https://x.com/yousafeconsult' },
+  { label: 'X / Twitter', href: 'https://x.com/yousafeconsul' },
   { label: 'Facebook', href: 'https://facebook.com/yousafeconsultancy' },
   { label: 'Instagram', href: 'https://instagram.com/yousafeconsultancy' },
 ]

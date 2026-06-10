@@ -83,7 +83,7 @@ on legal, point them to intake, articles, or attorney profile chat.
 
 Contact:
 - Email: support@yousafeconsultancy.com (general); legal@yousafeconsultancy.com (attorney panel)
-- Phone (US): 707-396-8390
+- Phone: +1(757) 804-3263
 - Free 15-minute discovery call available; book through the marketplace at market.yousafeconsultancy.com.
 
 ---
