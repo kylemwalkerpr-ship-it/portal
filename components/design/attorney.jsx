@@ -477,6 +477,7 @@ function Sidebar({ page, setPage, onLogout, displayName, headshotUrl, available,
           aria-label="Back to YouSafe Consultancy"
           style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: 'inherit' }}
         >
+          <img src="/logo.png" alt="YouSafe Consultancy" width="32" height="32" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
           <div style={{ fontWeight: 700, fontSize: '14px', color: C.text }}>YouSafe</div>
           <Badge color="cyan" style={{ fontSize: '10px', padding: '2px 8px' }}>Attorney</Badge>
         </a>

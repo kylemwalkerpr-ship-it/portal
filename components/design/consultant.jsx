@@ -604,8 +604,9 @@ function ConsultantApp({ onLogout }) {
     }}>
       <div style={{ padding: '20px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: `linear-gradient(90deg, ${C.cyan} 0%, ${C.cyan} 40%, #fff 40%, #fff 60%, ${C.navy} 60%, ${C.navy} 100%)` }} />
-        <a href="https://yousafeconsultancy.com" style={{ display: 'inline-flex' }}>
-          <img src="logo.png" style={{ height: '32px', filter: 'invert(1)' }} alt="YouSafe" />
+        <a href="https://yousafeconsultancy.com" aria-label="Back to YouSafe Consultancy" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <img src="/logo.png" alt="YouSafe Consultancy" width="32" height="32" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
+          <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
         <Badge color="purple" style={{ fontSize: '10px', padding: '2px 8px' }}>Consultant</Badge>
       </div>

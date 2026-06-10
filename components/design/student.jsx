@@ -1648,7 +1648,7 @@ function StudentApp({ onLogout, userId, userName }) {
     }}>
       <div style={{ padding: '22px 18px', borderBottom: `1px solid ${C.border}` }}>
         <a href="https://yousafeconsultancy.com" aria-label="Back to YouSafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-          <span style={{ width: '28px', height: '28px', borderRadius: '6px', background: C.cyan, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Y</span>
+          <img src="/logo.png" alt="YouSafe Consultancy" width="32" height="32" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
           <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em' }}>YouSafe</span>
         </a>
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Client portal</div>
