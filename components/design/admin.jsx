@@ -476,7 +476,7 @@ function AdminApp({ onLogout }) {
     <div className="yousafe-sidebar" style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '20px 18px', borderBottom: `1px solid ${C.border}` }}>
         <a href="https://yousafeconsultancy.com" aria-label="Back to YouSafe Consultancy" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
-          <span style={{ width: '30px', height: '30px', borderRadius: '8px', background: `linear-gradient(135deg, ${C.cyan}, ${C.cyan}dd)`, color: '#fff', fontFamily: C.serif, fontWeight: 600, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(60,59,110,0.25)' }}>Y</span>
+          <img src="/logo.png" alt="YouSafe Consultancy" width="32" height="32" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
           <div>
             <span style={{ fontFamily: C.serif, fontSize: '17px', color: C.text, letterSpacing: '0.005em', display: 'block', lineHeight: 1.2 }}>YouSafe</span>
             <span style={{ fontSize: '9px', color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700 }}>Admin console</span>
