@@ -74,3 +74,36 @@ export async function setCached<T>(
 export function generateCacheKey(path: string, query?: string): string {
   return `page:${path}${query ? `?${query}` : ''}`
 }
+
+/**
+ * ── Version-stamped invalidation ─────────────────────────────────────────
+ * KV has no tag-based purge, so we stamp keys with a per-namespace version.
+ * Writers call bumpCacheVersion('gigs') after a successful mutation; readers
+ * include the version in their key, so stale entries become unreachable
+ * instantly and expire naturally via their TTL.
+ */
+export async function getCacheVersion(namespace: string): Promise<string> {
+  try {
+    const kv = getKv()
+    if (!kv) return '0'
+    return (await kv.get(`ver:${namespace}`)) || '0'
+  } catch {
+    return '0'
+  }
+}
+
+export async function bumpCacheVersion(namespace: string): Promise<void> {
+  try {
+    const kv = getKv()
+    if (!kv) return
+    await kv.put(`ver:${namespace}`, String(Date.now()))
+  } catch (err) {
+    console.error('[cache] version bump failed:', err)
+  }
+}
+
+/** generateCacheKey + namespace version stamp, for invalidatable caches. */
+export async function generateVersionedCacheKey(namespace: string, path: string, query?: string): Promise<string> {
+  const ver = await getCacheVersion(namespace)
+  return `page:v${ver}:${path}${query ? `?${query}` : ''}`
+}

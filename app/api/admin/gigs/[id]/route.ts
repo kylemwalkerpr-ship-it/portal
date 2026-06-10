@@ -42,5 +42,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     payload_snapshot: { before, after: gig, request: body },
     reason: body.reason || null,
   })
+  // Invalidate public gig listings (cached in KV) after this mutation.
+  const { bumpCacheVersion } = await import('@/lib/cache'); await bumpCacheVersion('gigs')
   return ok({ gig })
 }

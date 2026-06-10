@@ -23,6 +23,17 @@ jest.mock('@/lib/supabase', () => ({
   createSupabaseAdminClient: jest.fn(() => db),
 }))
 
+// Profile-strength publish gates (added after these tests) — stub as
+// "complete profile" so the field-validation tests test field validation.
+jest.mock('@/lib/attorneyProfileStrength', () => ({
+  computeAttorneyStrength: jest.fn(() => Promise.resolve({ score: 100, username: 'test-attorney' })),
+  PROFILE_PUBLISH_THRESHOLD: 75,
+}))
+jest.mock('@/lib/consultantProfileStrength', () => ({
+  computeConsultantStrength: jest.fn(() => Promise.resolve({ score: 100, username: 'test-consultant' })),
+  CONSULTANT_PUBLISH_THRESHOLD: 75,
+}))
+
 // email helper used by decline route — stub to prevent network calls
 jest.mock('@/lib/email', () => ({
   sendEmail: jest.fn(() => Promise.resolve()),
@@ -244,8 +255,13 @@ function validGigBase() {
     title: 'A valid title that is long enough for publish',  // 44 chars
     pitch: 'This is a valid pitch that meets the forty-character minimum requirement here.',
     description: 'A'.repeat(350),  // ≥300 chars
-    category: 'legal',
-    subcategory: 'immigration',
+    // The fixture seller is a consultant; 'legal'/'immigration' became
+    // attorney-only after these tests were written, so the publish route's
+    // category gate 403'd before field validation ever ran. Use a
+    // consultant-permitted category so the validation tests test validation.
+    category: 'education',
+    subcategory: 'university-admissions',
+    jurisdiction: 'us',  // required since the jurisdiction gate landed
     tags: ['visa', 'consultation', 'immigration'],
     requirements: 'Please describe your situation.',
     gallery_images: ['https://cdn.example.com/image1.jpg'],

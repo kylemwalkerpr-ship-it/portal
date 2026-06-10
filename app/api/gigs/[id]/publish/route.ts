@@ -158,5 +158,7 @@ async function handlePublish(_req: Request, context: { params: Promise<{ id: str
     .single()
 
   if (error || !updated) return fail(error?.message || 'Could not publish gig.', 500)
+  // Invalidate public gig listings so the new gig appears immediately.
+  const { bumpCacheVersion } = await import('@/lib/cache'); await bumpCacheVersion('gigs')
   return ok({ gig: updated })
 }

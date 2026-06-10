@@ -309,8 +309,11 @@ function RiskBadge({ level }: any) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice }: any) {
-  const [tab, setTab] = React.useState('overview')
+export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice, initialTab = null }: any) {
+  const [tab, setTab] = React.useState(initialTab || 'overview')
+  // Navigating to an alias page (escrow/payouts/wallets/loyalty) while
+  // already on Financials should switch tabs too.
+  React.useEffect(() => { if (initialTab) setTab(initialTab) }, [initialTab])
   const [userSort, setUserSort] = React.useState('spent')
   const [exportMsg, setExportMsg] = React.useState('')
   // Open student id for the financial drill-down drawer. Set by clicking

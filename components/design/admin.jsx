@@ -90,25 +90,48 @@ function AdminApp({ onLogout }) {
     setLoggingOut(true);
     onLogout?.();
   };
-  // Admin section navigation is URL-synced (?page=...) so sections are
-  // deep-linkable/bookmarkable, survive refresh, and the browser back
-  // button works. 'escrow' is an alias for the Financials escrow tab.
+  // Admin section navigation is URL-synced so sections are deep-linkable,
+  // survive refresh, and the browser back button works. Canonical URLs are
+  // the real routes /dashboard/admin/<section> (served by
+  // app/dashboard/admin/[section]/page.tsx); the legacy /dashboard?page=...
+  // form is still read for old bookmarks. escrow / payouts / wallets /
+  // loyalty are aliases for the matching Financials tab.
   const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'settings'];
+  const FINANCIAL_TAB_ALIASES = { escrow: 'escrow', payouts: 'payouts', wallets: 'wallets', loyalty: 'loyalty' };
+  const [financialsTab, setFinancialsTab] = React.useState(null);
+  const rawSectionFromUrl = () => {
+    if (typeof window === 'undefined') return null;
+    const m = window.location.pathname.match(/^\/dashboard\/admin\/([a-z-]+)/);
+    if (m) return m[1];
+    return new URLSearchParams(window.location.search).get('page');
+  };
   const pageFromUrl = () => {
-    if (typeof window === 'undefined') return 'dashboard';
-    const raw = new URLSearchParams(window.location.search).get('page');
-    const p = raw === 'escrow' ? 'financials' : raw;
+    const raw = rawSectionFromUrl();
+    const p = FINANCIAL_TAB_ALIASES[raw] ? 'financials' : raw;
     return ADMIN_PAGES.includes(p) ? p : 'dashboard';
   };
   const [page, setPageState] = React.useState(pageFromUrl);
+  // On first mount, honor a financials-tab alias arriving via URL.
+  React.useEffect(() => {
+    const raw = rawSectionFromUrl();
+    if (FINANCIAL_TAB_ALIASES[raw]) setFinancialsTab(FINANCIAL_TAB_ALIASES[raw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const setPage = React.useCallback((next) => {
-    const resolved = next === 'escrow' ? 'financials' : next;
+    const alias = FINANCIAL_TAB_ALIASES[next];
+    const resolved = alias ? 'financials' : next;
+    setFinancialsTab(alias || null);
     setPageState(resolved);
     try {
+      // Push the canonical route. pushState avoids a full Next.js
+      // navigation — the [section] server route exists for direct hits,
+      // refreshes, and shared links; in-app switching stays instant.
       const url = new URL(window.location.href);
-      url.searchParams.set('page', resolved);
+      url.pathname = `/dashboard/admin/${resolved}`;
+      url.searchParams.delete('page');
       window.history.pushState({}, '', url);
     } catch { /* SSR / older browsers — state still updates */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   React.useEffect(() => {
     const onPop = () => setPageState(pageFromUrl());
@@ -118,11 +141,24 @@ function AdminApp({ onLogout }) {
     // otherwise persist through ?page= navigation.
     try {
       const url = new URL(window.location.href);
+      let dirty = false;
       if (url.searchParams.has('lane') || url.searchParams.has('vertical')) {
         url.searchParams.delete('lane');
         url.searchParams.delete('vertical');
-        window.history.replaceState({}, '', url);
+        dirty = true;
       }
+      // Normalize the legacy /dashboard?page=... form to the canonical
+      // /dashboard/admin/<section> route so refresh + sharing use real URLs.
+      if (url.pathname === '/dashboard' && url.searchParams.has('page')) {
+        const raw = url.searchParams.get('page');
+        const resolved = FINANCIAL_TAB_ALIASES[raw] ? 'financials' : raw;
+        if (ADMIN_PAGES.includes(resolved)) {
+          url.pathname = `/dashboard/admin/${resolved}`;
+          url.searchParams.delete('page');
+          dirty = true;
+        }
+      }
+      if (dirty) window.history.replaceState({}, '', url);
     } catch { /* non-fatal */ }
     return () => window.removeEventListener('popstate', onPop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2461,7 +2497,7 @@ const Settings = () => {
           {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading live admin data…</div>}
           {actionNotice && (
             <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-              <span>{actionNotice}</span>
+              <span>{typeof actionNotice === 'string' ? actionNotice : JSON.stringify(actionNotice)}</span>
               <button onClick={() => setActionNotice('')} style={{ background: 'none', border: 'none', color: C.cyan, cursor: 'pointer', fontWeight: 800 }}>×</button>
             </div>
           )}
@@ -2472,7 +2508,7 @@ const Settings = () => {
           {page === 'tickets' && <AdminTickets />}
           {page === 'inquiries' && <Inquiries />}
           {page === 'analytics' && <AdminAnalyticsPro />}
-          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} />}
+          {page === 'financials' && <AdminFinancials orders={orders} users={users} settings={platformSettings} setPage={setPage} formatPrimary={formatPrimary} templateOrders={templateOrders} walletTransactions={walletTransactions} setActionNotice={setActionNotice} initialTab={financialsTab} />}
           {page === 'gigs' && <MyOffice formatPrimary={formatPrimary} attorneyBadge={pendingAttorneyApps.length} services={services} refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} consultantFeePercent={consultantFeePercent} platformFeePercent={platformFeePercent} platformSettings={platformSettings} primaryCurrency={primaryCurrency} />}
           
           

@@ -1,5 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
-import { getCached, setCached, generateCacheKey } from '@/lib/cache'
+import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { CATEGORIES, getCategoryFilterTerms } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
   // This route fans out into ~16 COUNT queries; identical for every caller
   // with the same filters, so serve from KV (filter counts tolerate 2 min
   // of staleness).
-  const cacheKey = generateCacheKey('/api/marketplace/gig-facets', url.searchParams.toString())
+  const cacheKey = await generateVersionedCacheKey('gigs', '/api/marketplace/gig-facets', url.searchParams.toString())
   const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
   if (cached) return ok(cached, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60' } })
 

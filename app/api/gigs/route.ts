@@ -13,8 +13,8 @@ export async function GET(req: Request) {
   // Public list endpoint — no auth required for browsing active gigs.
   // The response is identical for every public caller, so serve from KV.
   if (!auth || !['attorney', 'consultant'].includes(auth.role)) {
-    const { getCached, setCached, generateCacheKey } = await import('@/lib/cache')
-    const cacheKey = generateCacheKey('/api/gigs', 'public')
+    const { getCached, setCached, generateVersionedCacheKey } = await import('@/lib/cache')
+    const cacheKey = await generateVersionedCacheKey('gigs', '/api/gigs', 'public')
     const cached = await getCached<Record<string, unknown>>(cacheKey, 60)
     if (cached) return ok(cached)
 

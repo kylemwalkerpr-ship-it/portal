@@ -142,6 +142,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     if (tierError) return fail(tierError.message, 500)
   }
 
+  // Invalidate public gig listings (cached in KV) after this mutation.
+  const { bumpCacheVersion } = await import('@/lib/cache'); await bumpCacheVersion('gigs')
   return ok({ gig: shapeGig(gig) })
 }
 
@@ -160,5 +162,7 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
     .select('*')
     .single()
   if (error || !gig) return fail(error?.message || 'Could not delete gig.', 500)
+  // Invalidate public gig listings (cached in KV) after this mutation.
+  const { bumpCacheVersion } = await import('@/lib/cache'); await bumpCacheVersion('gigs')
   return ok({ gig })
 }

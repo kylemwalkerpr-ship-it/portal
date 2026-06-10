@@ -1,5 +1,5 @@
 import { ok, fail } from '@/lib/apiEnvelope'
-import { getCached, setCached, generateCacheKey } from '@/lib/cache'
+import { getCached, setCached, generateVersionedCacheKey } from '@/lib/cache'
 import { getCategoryFilterTerms } from '@/lib/categories'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { getOptionalPortalUser } from '@/lib/portalAuth'
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   // Anonymous responses contain nothing user-specific (is_saved is always
   // false), so serve them from KV — this is the hottest public endpoint and
   // the cache keeps marketplace browsing off the DB + CPU-heavy shaping path.
-  const cacheKey = auth ? null : generateCacheKey('/api/marketplace/gigs', url.searchParams.toString())
+  const cacheKey = auth ? null : await generateVersionedCacheKey('gigs', '/api/marketplace/gigs', url.searchParams.toString())
   if (cacheKey) {
     const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
     if (cached) return ok(cached)
