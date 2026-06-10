@@ -85,3 +85,63 @@
   --portal-accent-deep:  #8A4424;
   --portal-accent-soft:  rgba(184,98,62,0.08);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Appearance preferences — typography, kerning, background pattern.
+   Applied as data-attributes on <html> by lib/portalAppearance.ts and
+   selectable from the Appearance section in every role's Settings.
+   Components consume the font vars via C.serif / C.sans (shared.jsx).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Classic (default): Garamond display over the system sans body. */
+  --portal-font-display: 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif;
+  --portal-font-body: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --portal-kerning: 0em;
+}
+
+[data-portal-font="modern"] {
+  --portal-font-display: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  --portal-font-body: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+
+[data-portal-font="editorial"] {
+  --portal-font-display: Georgia, 'Times New Roman', serif;
+  --portal-font-body: Georgia, 'Times New Roman', serif;
+}
+
+[data-portal-kerning="tight"]   { --portal-kerning: -0.01em; }
+[data-portal-kerning="relaxed"] { --portal-kerning: 0.025em; }
+
+[data-portal-kerning] body { letter-spacing: var(--portal-kerning); }
+
+/* Background patterns — a fixed, non-interactive overlay at very low
+   contrast so it reads as paper texture, never as noise. Sits below
+   modals/drawers (z-index 200+) so overlays stay crisp. */
+html[data-portal-pattern="dots"]::after,
+html[data-portal-pattern="grid"]::after,
+html[data-portal-pattern="linen"]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+html[data-portal-pattern="dots"]::after {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.055) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+html[data-portal-pattern="grid"]::after {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+html[data-portal-pattern="linen"]::after {
+  background-image:
+    repeating-linear-gradient(45deg, rgba(15, 23, 42, 0.022) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(15, 23, 42, 0.022) 0 1px, transparent 1px 5px);
+}

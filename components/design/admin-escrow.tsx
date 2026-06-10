@@ -3,7 +3,7 @@ import React from 'react'
 import { C, Card, Btn } from './shared'
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)"
 const sans  = C.sans
 const NAVY = 'var(--portal-ink, #0F172A)', GOLD = 'var(--portal-gold, #9A7B3B)', GREEN = 'var(--portal-moss, #1A6B45)'
 const AMBER = '#8B5E0A', RED = 'var(--portal-brick, #8B1A1A)', PURPLE = '#3D2B6B', CYAN = '#0E7C8E'

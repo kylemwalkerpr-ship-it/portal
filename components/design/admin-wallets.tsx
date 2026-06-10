@@ -3,7 +3,7 @@ import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
 
 // ─── constants ────────────────────────────────────────────────────────────────
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)"
 const sans  = C.sans
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

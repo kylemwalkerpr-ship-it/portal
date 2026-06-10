@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, MessageBody } from './shared'
+import { C, Btn, Badge, Card, Input, Select, Avatar, UserMenu, StatusBadge, Divider, StatCard, ProgressBar, NavItem, NavGroupLabel, MessageBody } from './shared'
 import FindAttorney from './find-attorney'
 import MyInquiries from './my-inquiries'
 import StudentSettings from './student-settings'
@@ -1152,15 +1152,43 @@ function CheckoutChoice({ active, disabled, onClick, title, detail }) {
 
 function StudentApp({ onLogout, userId, userName }) {
   const [theme] = usePortalTheme()
-  // Read ?goto=<section> from the URL so marketplace nav header links land on the right tab
-  const initialPage = React.useMemo(() => {
-    if (typeof window === 'undefined') return 'dashboard'
-    const params = new URLSearchParams(window.location.search)
-    const goto = params.get('goto') || params.get('page')
-    const allowed = ['dashboard','orders','attorneys','inquiries','messages','documents','billing','services','settings']
-    return allowed.includes(goto) ? goto : 'dashboard'
-  }, [])
-  const [page, setPage] = React.useState(initialPage);
+  // URL-synced navigation (?page=...): sections are deep-linkable,
+  // survive refresh, and the browser back button works — same pattern as
+  // the admin console. Legacy ?goto= links are honored on first read.
+  const ALLOWED_PAGES = ['dashboard','orders','attorneys','inquiries','messages','documents','billing','services','templates','settings'];
+  const pageFromUrl = () => {
+    if (typeof window === 'undefined') return 'dashboard';
+    const params = new URLSearchParams(window.location.search);
+    const goto = params.get('page') || params.get('goto');
+    return ALLOWED_PAGES.includes(goto) ? goto : 'dashboard';
+  };
+  const [page, setPageState] = React.useState(pageFromUrl);
+  const setPage = React.useCallback((next) => {
+    setPageState(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', next);
+      url.searchParams.delete('goto');
+      window.history.pushState({}, '', url);
+    } catch { /* SSR / older browsers — state still updates */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => {
+    const onPop = () => setPageState(pageFromUrl());
+    window.addEventListener('popstate', onPop);
+    // Strip stale auth-entry params — sign-in routing hints, meaningless
+    // once the app has mounted.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('lane') || url.searchParams.has('vertical')) {
+        url.searchParams.delete('lane');
+        url.searchParams.delete('vertical');
+        window.history.replaceState({}, '', url);
+      }
+    } catch { /* non-fatal */ }
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Cross-component navigation: child views (e.g. FindAttorney) dispatch a
   // CustomEvent('yousafe-navigate', { detail: { page } }) to switch tabs.
   React.useEffect(() => {
@@ -1668,17 +1696,20 @@ function StudentApp({ onLogout, userId, userName }) {
         <div style={{ marginTop: '4px', color: C.textDim, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700 }}>Client portal</div>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <NavGroupLabel label="Overview" first />
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
         <NavItem icon="🏬" label="Marketplace" active={typeof window !== 'undefined' && window.location.pathname === '/marketplace'} onClick={() => goToRoute('/marketplace')} />
+        <NavGroupLabel label="My Work" />
         <NavItem icon="📦" label="My Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={activeOrders > 0 ? activeOrders : null} />
         <NavItem icon="🛒" label="Services & Templates" active={page === 'services'} onClick={() => setPage('services')} />
+        {/* Always available — fill-before-pay lets non-buyers fill (with AI) before purchasing. */}
+        <NavItem icon="📄" label="Template Filler" active={page === 'templates'} onClick={() => setPage('templates')} />
+        <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
+        <NavGroupLabel label="Connect" />
         <NavItem icon="🎯" label="Find Your Specialist" active={page === 'attorneys'} onClick={() => setPage('attorneys')} />
         <NavItem icon="📥" label="My Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
-        <NavItem icon="📋" label="Documents" active={page === 'documents'} onClick={() => setPage('documents')} />
-        {/* Always available — fill-before-pay lets non-buyers fill (with AI) before purchasing. */}
-        <NavItem icon="📄" label="Template Filler" active={page === 'templates'} onClick={() => setPage('templates')} />
-        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
+        <NavGroupLabel label="Account" />
         <NavItem icon="💳" label="Billing" active={page === 'billing'} onClick={() => setPage('billing')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>

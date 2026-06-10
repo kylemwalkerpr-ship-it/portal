@@ -7,15 +7,15 @@ import React from 'react'
  * "Nerdy" aesthetic: tabular numerals, monospace IDs, micro-charts, terminal vibes.
  */
 
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
-const sans  = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)"
+const sans  = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)"
 const mono  = "'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace"
 
-const NAVY = '#0F172A', NAVY2 = '#2C3F66'
-const GOLD = '#9A7B3B', GOLD2 = '#C4A45A'
-const GREEN = '#1A6B45', AMBER = '#8B5E0A', RED = '#8B1A1A', PURPLE = '#3D2B6B', CYAN = '#0E7C8E'
-const INK = '#0F1729'         // deep navy for the command-center background panel
-const TERM = '#0A1426'        // even deeper for terminal stripes
+const NAVY = 'var(--portal-ink, #0F172A)', NAVY2 = '#2C3F66'
+const GOLD = 'var(--portal-gold, #9A7B3B)', GOLD2 = 'var(--portal-gold, #C4A45A)'
+const GREEN = 'var(--portal-moss, #1A6B45)', AMBER = '#8B5E0A', RED = 'var(--portal-brick, #8B1A1A)', PURPLE = '#3D2B6B', CYAN = 'var(--portal-accent, #0E7C8E)'
+const INK = 'var(--portal-accent-deep, #0F1729)' // hero panel follows the theme accent
+const TERM = '#0A1426'        // deep stripe for the live activity panel
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const $   = (v, compact=false) => {
@@ -152,15 +152,15 @@ function AlertPill({color,count,label,onClick}) {
 
 // Section card with gold rule + serif heading
 function Section({title,subtitle,right,children,accent=GOLD2}) {
-  return <section style={{background:'#fff',border:'1px solid #DDD8CE',borderRadius:'10px',boxShadow:'0 1px 3px rgba(27,45,79,.06)',overflow:'hidden'}}>
+  return <section style={{background:'#fff',border:'1px solid var(--portal-rule, #DDD8CE)',borderRadius:'10px',boxShadow:'0 1px 3px rgba(27,45,79,.06)',overflow:'hidden'}}>
     <div style={{padding:'18px 22px 14px',display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:'12px',borderBottom:`1px solid #F2EFE9`}}>
       <div>
         <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'2px'}}>
           <span style={{width:'14px',height:'2px',background:accent,display:'inline-block'}}/>
-          <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.18em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono}}>System Module</span>
+          <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.18em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono}}>System Module</span>
         </div>
         <h3 style={{fontFamily:serif,fontWeight:600,fontSize:'19px',color:NAVY,margin:0,letterSpacing:'-.012em'}}>{title}</h3>
-        {subtitle&&<div style={{fontSize:'12px',color:'#9097A8',marginTop:'2px'}}>{subtitle}</div>}
+        {subtitle&&<div style={{fontSize:'12px',color:'var(--portal-ink-soft, #9097A8)',marginTop:'2px'}}>{subtitle}</div>}
       </div>
       {right}
     </div>
@@ -171,19 +171,19 @@ function Section({title,subtitle,right,children,accent=GOLD2}) {
 // Mini KPI block (in light section bodies)
 function MiniKpi({label,value,accent=NAVY,sub,trend,onClick}) {
   const [h,setH]=React.useState(false)
-  return <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} onClick={onClick} style={{background:h&&onClick?'#FAFAF8':'#F7F5F0',border:'1px solid #E8E4DC',borderRadius:'7px',padding:'12px 14px',cursor:onClick?'pointer':'default',transition:'background .12s'}}>
-    <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'4px'}}>{label}</div>
+  return <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)} onClick={onClick} style={{background:h&&onClick?'#FAFAF8':'var(--portal-bg, #F7F5F0)',border:'1px solid #E8E4DC',borderRadius:'7px',padding:'12px 14px',cursor:onClick?'pointer':'default',transition:'background .12s'}}>
+    <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,marginBottom:'4px'}}>{label}</div>
     <div style={{fontFamily:serif,fontWeight:600,fontSize:'21px',color:accent,fontVariantNumeric:'tabular-nums',letterSpacing:'-.015em',lineHeight:1.1}}>{value}</div>
-    {sub&&<div style={{fontSize:'11px',color:'#9097A8',marginTop:'3px'}}>{sub}</div>}
+    {sub&&<div style={{fontSize:'11px',color:'var(--portal-ink-soft, #9097A8)',marginTop:'3px'}}>{sub}</div>}
     {trend!=null&&<div style={{fontSize:'10px',fontWeight:700,color:trend>=0?GREEN:RED,marginTop:'2px',fontFamily:mono}}>{trend>=0?'▲':'▼'} {Math.abs(trend).toFixed(1)}%</div>}
   </div>
 }
 
 // Progress bar
-function Bar({value,max=100,color=NAVY,label,track='#F2EFE9'}) {
+function Bar({value,max=100,color=NAVY,label,track='var(--portal-rule-soft, #F2EFE9)'}) {
   const pct=Math.min(100,Math.max(0,(Number(value)||0)/(max||1)*100))
   return <div>
-    {label&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px',fontSize:'11px',color:'#5C6070'}}><span>{label}</span><span style={{fontWeight:700,fontFamily:mono,color:NAVY}}>{pct.toFixed(0)}%</span></div>}
+    {label&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px',fontSize:'11px',color:'var(--portal-ink-mid, #5C6070)'}}><span>{label}</span><span style={{fontWeight:700,fontFamily:mono,color:NAVY}}>{pct.toFixed(0)}%</span></div>}
     <div style={{height:'5px',borderRadius:'3px',background:track,overflow:'hidden'}}>
       <div style={{height:'100%',width:`${pct}%`,background:color,borderRadius:'3px',transition:'width .5s'}}/>
     </div>
@@ -232,18 +232,12 @@ export default function AdminDashboard({onNav}) {
   if(ord.late_delivery_count>0)   alerts.push({color:'#F59E0B',count:ord.late_delivery_count,label:'late orders',target:'orders'})
   if(con.summary?.not_started>0)  alerts.push({color:AMBER,count:con.summary.not_started,label:'providers without payout setup',target:'payouts'})
 
-  return <div style={{padding:'24px 28px 60px',display:'flex',flexDirection:'column',gap:'18px',fontFamily:sans,background:'#F7F5F0',minHeight:'100vh'}}>
+  return <div style={{padding:'24px 28px 48px',display:'flex',flexDirection:'column',gap:'20px',fontFamily:sans,background:'var(--portal-bg, #F7F5F0)',minHeight:'100vh'}}>
 
     {/* ──────── HERO BANNER ─────────────────────────────────────────────────── */}
     <div style={{background:`linear-gradient(135deg, ${INK} 0%, ${NAVY} 100%)`,borderRadius:'12px',padding:'28px 32px',position:'relative',overflow:'hidden',boxShadow:'0 8px 24px rgba(15,23,41,.18)'}}>
       {/* Decorative gold lines */}
       <div style={{position:'absolute',top:0,left:0,right:0,height:'2px',background:`linear-gradient(90deg, transparent, ${GOLD2}, transparent)`}}/>
-      <svg style={{position:'absolute',right:'-40px',top:'-40px',opacity:.06}} width="280" height="280" viewBox="0 0 280 280">
-        <circle cx="140" cy="140" r="130" fill="none" stroke={GOLD2} strokeWidth="0.5"/>
-        <circle cx="140" cy="140" r="100" fill="none" stroke={GOLD2} strokeWidth="0.5"/>
-        <circle cx="140" cy="140" r="70"  fill="none" stroke={GOLD2} strokeWidth="0.5"/>
-        <circle cx="140" cy="140" r="40"  fill="none" stroke={GOLD2} strokeWidth="0.5"/>
-      </svg>
 
       {/* Top row: title + clock */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'24px',gap:'16px',flexWrap:'wrap',position:'relative'}}>
@@ -278,7 +272,7 @@ export default function AdminDashboard({onNav}) {
 
     {/* ──────── ALERT STRIP — real-time signals ─────────────────────────────── */}
     {alerts.length>0&&(
-      <div style={{background:'#fff',border:`1px solid #DDD8CE`,borderRadius:'10px',padding:'14px 18px',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+      <div style={{background:'#fff',border:`1px solid var(--portal-rule, #DDD8CE)`,borderRadius:'10px',padding:'14px 18px',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
         <div style={{display:'flex',alignItems:'center',gap:'6px',padding:'2px 10px 2px 0',borderRight:'1px solid #E8E4DC',marginRight:'4px'}}>
           <span style={{fontSize:'12px'}}>🔔</span>
           <span style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:NAVY,fontFamily:mono}}>{alerts.length} signal{alerts.length>1?'s':''}</span>
@@ -291,16 +285,16 @@ export default function AdminDashboard({onNav}) {
     <Section title="Money in Motion" subtitle="Live financial flow across escrow, payouts, and refunds"
       right={
         <div style={{display:'flex',gap:'6px'}}>
-          <button onClick={()=>onNav?.('loyalty')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>loyalty ledger →</button>
-          <button onClick={()=>onNav?.('financials')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view financials →</button>
+          <button onClick={()=>onNav?.('loyalty')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>loyalty ledger →</button>
+          <button onClick={()=>onNav?.('financials')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view financials →</button>
         </div>
       }>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:'10px'}}>
         <MiniKpi label="Escrow Held"   value={$(esc.summary?.held_total,true)} sub={`${fmtN(esc.summary?.held_count||0)} orders`} accent={AMBER} onClick={()=>onNav?.('escrow')}/>
         <MiniKpi label="Partial Release" value={$(esc.summary?.partial_released_total,true)} sub={`${fmtN(esc.summary?.partial_released_count||0)} active`} accent={CYAN} onClick={()=>onNav?.('escrow')}/>
-        <MiniKpi label="Auto-Release Ready" value={fmtN(esc.summary?.auto_release_ready||0)} sub="eligible now" accent={esc.summary?.auto_release_ready>0?GOLD:'#9097A8'} onClick={()=>onNav?.('escrow')}/>
-        <MiniKpi label="Disputed"      value={fmtN(esc.summary?.disputed_count||0)} sub={$(esc.summary?.disputed_total)} accent={esc.summary?.disputed_count>0?RED:'#9097A8'} onClick={()=>onNav?.('escrow')}/>
-        <MiniKpi label="Frozen"        value={fmtN(esc.summary?.frozen_count||0)} sub={$(esc.summary?.frozen_total)} accent={esc.summary?.frozen_count>0?PURPLE:'#9097A8'} onClick={()=>onNav?.('escrow')}/>
+        <MiniKpi label="Auto-Release Ready" value={fmtN(esc.summary?.auto_release_ready||0)} sub="eligible now" accent={esc.summary?.auto_release_ready>0?GOLD:'var(--portal-ink-soft, #9097A8)'} onClick={()=>onNav?.('escrow')}/>
+        <MiniKpi label="Disputed"      value={fmtN(esc.summary?.disputed_count||0)} sub={$(esc.summary?.disputed_total)} accent={esc.summary?.disputed_count>0?RED:'var(--portal-ink-soft, #9097A8)'} onClick={()=>onNav?.('escrow')}/>
+        <MiniKpi label="Frozen"        value={fmtN(esc.summary?.frozen_count||0)} sub={$(esc.summary?.frozen_total)} accent={esc.summary?.frozen_count>0?PURPLE:'var(--portal-ink-soft, #9097A8)'} onClick={()=>onNav?.('escrow')}/>
         <MiniKpi label="Released (all-time)" value={$(esc.summary?.released_total,true)} sub={`${fmtN(esc.summary?.released_count||0)} orders`} accent={GREEN} onClick={()=>onNav?.('escrow')}/>
       </div>
 
@@ -340,17 +334,17 @@ export default function AdminDashboard({onNav}) {
 
       {/* Marketplace pulse */}
       <Section title="Marketplace Pulse" subtitle="Discovery funnel · gig health · ratings" accent={CYAN}
-        right={<button onClick={()=>onNav?.('gigs')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>service mgmt →</button>}>
+        right={<button onClick={()=>onNav?.('gigs')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>service mgmt →</button>}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'14px'}}>
           <MiniKpi label="Impressions" value={fmtN(mkt.funnel?.impressions||0,true)} sub={fmtPct((mkt.funnel?.clicks||0)/(mkt.funnel?.impressions||1)*100)+' CTR'} accent={NAVY}/>
           <MiniKpi label="Saves"       value={fmtN(mkt.funnel?.saves||0,true)} sub="user favourites" accent={GOLD}/>
           <MiniKpi label="Content Score" value={fmtPct(mkt.avg_content_score||0)} sub="platform avg" accent={mkt.avg_content_score>=70?GREEN:AMBER}/>
-          <MiniKpi label="Mod Queue" value={fmtN((mq.counts?.pending_review||0)+(mq.counts?.appeals||0)+(mq.counts?.auto_flagged||0))} sub="awaiting review" accent={(mq.counts?.pending_review||0)>0?'#3B82F6':'#9097A8'} onClick={()=>onNav?.('gigs')}/>
+          <MiniKpi label="Mod Queue" value={fmtN((mq.counts?.pending_review||0)+(mq.counts?.appeals||0)+(mq.counts?.auto_flagged||0))} sub="awaiting review" accent={(mq.counts?.pending_review||0)>0?'#3B82F6':'var(--portal-ink-soft, #9097A8)'} onClick={()=>onNav?.('gigs')}/>
         </div>
 
         {/* Discovery funnel — 4-stage micro funnel */}
-        <div style={{padding:'12px 14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
-          <div style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>DISCOVERY → ORDER FUNNEL</div>
+        <div style={{padding:'12px 14px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
+          <div style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,marginBottom:'8px'}}>DISCOVERY → ORDER FUNNEL</div>
           {[
             {l:'Impressions',v:mkt.funnel?.impressions||0,c:NAVY},
             {l:'Clicks',v:mkt.funnel?.clicks||0,c:CYAN},
@@ -361,10 +355,10 @@ export default function AdminDashboard({onNav}) {
             const conv=i>0&&arr[i-1].v>0?((s.v/arr[i-1].v)*100).toFixed(1):null
             return <div key={s.l} style={{marginBottom:'5px'}}>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',marginBottom:'2px'}}>
-                <span style={{color:'#5C6070'}}>{s.l}</span>
+                <span style={{color:'var(--portal-ink-mid, #5C6070)'}}>{s.l}</span>
                 <span style={{fontFamily:mono,color:NAVY,fontWeight:700}}>{fmtN(s.v,true)} {conv&&<span style={{color:GREEN,marginLeft:'6px'}}>{conv}% →</span>}</span>
               </div>
-              <div style={{height:'4px',background:'#E8E4DC',borderRadius:'2px',overflow:'hidden'}}>
+              <div style={{height:'4px',background:'var(--portal-rule, #E8E4DC)',borderRadius:'2px',overflow:'hidden'}}>
                 <div style={{height:'100%',width:`${(s.v/max)*100}%`,background:s.c,borderRadius:'2px'}}/>
               </div>
             </div>
@@ -374,7 +368,7 @@ export default function AdminDashboard({onNav}) {
 
       {/* Order pipeline */}
       <Section title="Order Pipeline" subtitle="State machine · escrow health · throughput" accent={GOLD}
-        right={<button onClick={()=>onNav?.('orders')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>all orders →</button>}>
+        right={<button onClick={()=>onNav?.('orders')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>all orders →</button>}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'14px'}}>
           <MiniKpi label="AOV"          value={$(ord.avg_order_value)}      sub="avg order value" accent={NAVY}/>
           <MiniKpi label="Days to Complete" value={`${Number(ord.avg_days_to_complete||0).toFixed(1)}d`} sub="median" accent={CYAN}/>
@@ -383,15 +377,15 @@ export default function AdminDashboard({onNav}) {
         </div>
 
         {/* Status distribution */}
-        <div style={{padding:'12px 14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
-          <div style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>STATUS DISTRIBUTION</div>
+        <div style={{padding:'12px 14px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
+          <div style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,marginBottom:'8px'}}>STATUS DISTRIBUTION</div>
           {Object.entries(ord.by_status||{}).slice(0,6).map(([s,n])=>{
             const total=Math.max(1,Object.values(ord.by_status||{}).reduce((a,v)=>a+v,0))
-            const color=s==='completed'||s==='released'?GREEN:s.includes('cancel')||s.includes('refund')?RED:s==='in_progress'?CYAN:'#9097A8'
+            const color=s==='completed'||s==='released'?GREEN:s.includes('cancel')||s.includes('refund')?RED:s==='in_progress'?CYAN:'var(--portal-ink-soft, #9097A8)'
             return <div key={s} style={{display:'flex',alignItems:'center',gap:'8px',padding:'4px 0'}}>
               <span style={{width:'5px',height:'5px',borderRadius:'50%',background:color}}/>
-              <span style={{fontSize:'11px',color:'#5C6070',textTransform:'capitalize',flex:1}}>{s.replace(/_/g,' ')}</span>
-              <div style={{width:'60px',height:'4px',background:'#E8E4DC',borderRadius:'2px',overflow:'hidden'}}>
+              <span style={{fontSize:'11px',color:'var(--portal-ink-mid, #5C6070)',textTransform:'capitalize',flex:1}}>{s.replace(/_/g,' ')}</span>
+              <div style={{width:'60px',height:'4px',background:'var(--portal-rule, #E8E4DC)',borderRadius:'2px',overflow:'hidden'}}>
                 <div style={{height:'100%',width:`${(n/total)*100}%`,background:color,borderRadius:'2px'}}/>
               </div>
               <span style={{fontFamily:mono,fontSize:'11px',color:NAVY,fontWeight:700,minWidth:'30px',textAlign:'right'}}>{fmtN(n)}</span>
@@ -403,47 +397,47 @@ export default function AdminDashboard({onNav}) {
 
     {/* ──────── PROVIDER ECOSYSTEM ──────────────────────────────────────────── */}
     <Section title="Provider Ecosystem" subtitle="Top earners · payout setup health · seller levels" accent={PURPLE}
-      right={<button onClick={()=>onNav?.('users')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>all providers →</button>}>
+      right={<button onClick={()=>onNav?.('users')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>all providers →</button>}>
       <div style={{display:'grid',gridTemplateColumns:'1.5fr 1fr',gap:'18px'}}>
         {/* Leaderboard */}
         <div>
-          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>TOP EARNERS · 30D</div>
+          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,marginBottom:'8px'}}>TOP EARNERS · 30D</div>
           {(prv.leaderboard||[]).slice(0,6).map((p,i)=>(
             <div key={i} style={{display:'flex',alignItems:'center',gap:'10px',padding:'8px 10px',borderRadius:'6px',background:i===0?'rgba(196,164,90,.10)':'transparent',marginBottom:'2px'}}>
-              <span style={{fontFamily:mono,fontSize:'11px',fontWeight:700,color:i===0?GOLD:i<3?NAVY:'#9097A8',width:'22px'}}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span>
+              <span style={{fontFamily:mono,fontSize:'11px',fontWeight:700,color:i===0?GOLD:i<3?NAVY:'var(--portal-ink-soft, #9097A8)',width:'22px'}}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:'13px',fontWeight:600,color:NAVY,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||p.email||'—'}</div>
-                <div style={{fontSize:'10px',color:'#9097A8',fontFamily:mono,letterSpacing:'.04em'}}>{p.role==='attorney'?'⚖ ATTORNEY':'👤 CONSULTANT'} · {fmtN(p.completed_orders||0)} orders {p.avg_rating?` · ${Number(p.avg_rating).toFixed(1)}★`:''}</div>
+                <div style={{fontSize:'10px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.04em'}}>{p.role==='attorney'?'⚖ ATTORNEY':'👤 CONSULTANT'} · {fmtN(p.completed_orders||0)} orders {p.avg_rating?` · ${Number(p.avg_rating).toFixed(1)}★`:''}</div>
               </div>
               <div style={{textAlign:'right'}}>
                 <div style={{fontFamily:mono,fontSize:'14px',fontWeight:700,color:GREEN,fontVariantNumeric:'tabular-nums'}}>{$(p.gross_earnings,true)}</div>
               </div>
             </div>
           ))}
-          {(!prv.leaderboard||prv.leaderboard.length===0)&&<div style={{padding:'24px',textAlign:'center',color:'#9097A8',fontSize:'12px'}}>No provider data yet</div>}
+          {(!prv.leaderboard||prv.leaderboard.length===0)&&<div style={{padding:'24px',textAlign:'center',color:'var(--portal-ink-soft, #9097A8)',fontSize:'12px'}}>No provider data yet</div>}
         </div>
 
         {/* Connect health donut + breakdown */}
         <div>
-          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono,marginBottom:'8px'}}>PAYOUT SETUP HEALTH</div>
-          <div style={{padding:'14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC',display:'flex',flexDirection:'column',gap:'8px'}}>
+          <div style={{fontSize:'10px',fontWeight:700,letterSpacing:'.10em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,marginBottom:'8px'}}>PAYOUT SETUP HEALTH</div>
+          <div style={{padding:'14px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'7px',border:'1px solid #E8E4DC',display:'flex',flexDirection:'column',gap:'8px'}}>
             <Bar value={con.summary?.active||0} max={con.summary?.total||1} color={GREEN} label="Active"/>
             <Bar value={con.summary?.pending||0} max={con.summary?.total||1} color={AMBER} label="Pending"/>
             <Bar value={con.summary?.not_started||0} max={con.summary?.total||1} color={RED} label="Not started"/>
             <div style={{display:'flex',justifyContent:'space-between',paddingTop:'8px',borderTop:'1px solid #E8E4DC',marginTop:'4px'}}>
-              <span style={{fontSize:'11px',color:'#5C6070'}}>Admin bypass</span>
+              <span style={{fontSize:'11px',color:'var(--portal-ink-mid, #5C6070)'}}>Admin bypass</span>
               <Tag color={GOLD}>{con.summary?.bypassed||0} active</Tag>
             </div>
           </div>
 
           {/* Provider breakdown */}
           <div style={{marginTop:'12px',display:'flex',gap:'8px'}}>
-            <div style={{flex:1,padding:'10px 12px',background:'#F7F5F0',borderRadius:'6px',border:'1px solid #E8E4DC'}}>
-              <div style={{fontSize:'10px',color:'#9097A8',fontFamily:mono,letterSpacing:'.05em',marginBottom:'2px'}}>⚖ ATTORNEYS</div>
+            <div style={{flex:1,padding:'10px 12px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'6px',border:'1px solid #E8E4DC'}}>
+              <div style={{fontSize:'10px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.05em',marginBottom:'2px'}}>⚖ ATTORNEYS</div>
               <div style={{fontFamily:mono,fontSize:'18px',fontWeight:700,color:NAVY,fontVariantNumeric:'tabular-nums'}}>{fmtN(prv.provider_count_by_role?.attorney||ov.by_role?.attorney||0)}</div>
             </div>
-            <div style={{flex:1,padding:'10px 12px',background:'#F7F5F0',borderRadius:'6px',border:'1px solid #E8E4DC'}}>
-              <div style={{fontSize:'10px',color:'#9097A8',fontFamily:mono,letterSpacing:'.05em',marginBottom:'2px'}}>👤 CONSULTANTS</div>
+            <div style={{flex:1,padding:'10px 12px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'6px',border:'1px solid #E8E4DC'}}>
+              <div style={{fontSize:'10px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.05em',marginBottom:'2px'}}>👤 CONSULTANTS</div>
               <div style={{fontFamily:mono,fontSize:'18px',fontWeight:700,color:NAVY,fontVariantNumeric:'tabular-nums'}}>{fmtN(prv.provider_count_by_role?.consultant||ov.by_role?.consultant||0)}</div>
             </div>
           </div>
@@ -456,32 +450,32 @@ export default function AdminDashboard({onNav}) {
 
       {/* User ecosystem */}
       <Section title="User Ecosystem" subtitle="Growth · roles · churn risk" accent={CYAN}
-        right={<button onClick={()=>onNav?.('users')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>manage users →</button>}>
+        right={<button onClick={()=>onNav?.('users')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>manage users →</button>}>
         <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'8px',marginBottom:'14px'}}>
           {[{l:'Students',k:'student',c:CYAN},{l:'Consultants',k:'consultant',c:PURPLE},{l:'Attorneys',k:'attorney',c:NAVY},{l:'Support',k:'support',c:AMBER}].map(r=>(
-            <div key={r.k} style={{padding:'10px 12px',background:'#F7F5F0',borderRadius:'6px',border:'1px solid #E8E4DC',borderTop:`2px solid ${r.c}`}}>
-              <div style={{fontSize:'9px',color:'#9097A8',fontFamily:mono,letterSpacing:'.08em',marginBottom:'2px'}}>{r.l.toUpperCase()}</div>
+            <div key={r.k} style={{padding:'10px 12px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'6px',border:'1px solid #E8E4DC',borderTop:`2px solid ${r.c}`}}>
+              <div style={{fontSize:'9px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.08em',marginBottom:'2px'}}>{r.l.toUpperCase()}</div>
               <div style={{fontFamily:mono,fontSize:'17px',fontWeight:700,color:NAVY,fontVariantNumeric:'tabular-nums'}}>{fmtN(ov.by_role?.[r.k]||0)}</div>
             </div>
           ))}
         </div>
-        <div style={{padding:'12px 14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
+        <div style={{padding:'12px 14px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
-            <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono}}>NEW USER GROWTH · 30D</span>
+            <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono}}>NEW USER GROWTH · 30D</span>
             <span style={{fontFamily:mono,fontSize:'12px',fontWeight:700,color:GREEN}}>+{ov.new_users_30d||0}</span>
           </div>
           <Spark values={usrGrowth} color={CYAN} height={36}/>
           <div style={{display:'flex',justifyContent:'space-between',marginTop:'10px',paddingTop:'8px',borderTop:'1px solid #E8E4DC'}}>
             <div>
-              <div style={{fontSize:'9px',color:'#9097A8',fontFamily:mono,letterSpacing:'.05em'}}>ACTIVATION</div>
+              <div style={{fontSize:'9px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.05em'}}>ACTIVATION</div>
               <div style={{fontFamily:mono,fontSize:'14px',fontWeight:700,color:NAVY}}>{fmtPct(usr.activation_rate||0)}</div>
             </div>
             <div>
-              <div style={{fontSize:'9px',color:'#9097A8',fontFamily:mono,letterSpacing:'.05em'}}>CHURN RISK</div>
+              <div style={{fontSize:'9px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.05em'}}>CHURN RISK</div>
               <div style={{fontFamily:mono,fontSize:'14px',fontWeight:700,color:usr.churn_risk_count>5?RED:AMBER}}>{fmtN(usr.churn_risk_count||0)}</div>
             </div>
             <div>
-              <div style={{fontSize:'9px',color:'#9097A8',fontFamily:mono,letterSpacing:'.05em'}}>NEW PROVIDERS</div>
+              <div style={{fontSize:'9px',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono,letterSpacing:'.05em'}}>NEW PROVIDERS</div>
               <div style={{fontFamily:mono,fontSize:'14px',fontWeight:700,color:GREEN}}>+{usr.new_providers_30d||0}</div>
             </div>
           </div>
@@ -490,29 +484,29 @@ export default function AdminDashboard({onNav}) {
 
       {/* Gig health */}
       <Section title="Gig Health" subtitle="Status mix · auto-flags · content quality" accent={GOLD}
-        right={<button onClick={()=>onNav?.('gigs')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>service mgmt →</button>}>
+        right={<button onClick={()=>onNav?.('gigs')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>service mgmt →</button>}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'14px'}}>
           <MiniKpi label="Active" value={fmtN(gst.by_status?.active||0)} accent={GREEN}/>
           <MiniKpi label="Pending Review" value={fmtN(gst.by_status?.pending_review||0)} accent="#3B82F6"/>
           <MiniKpi label="Suspended" value={fmtN(gst.by_status?.suspended||0)} accent={AMBER}/>
-          <MiniKpi label="Needs Attention" value={fmtN(gst.gigs_needing_attention||0)} accent={gst.gigs_needing_attention>0?RED:'#9097A8'}/>
+          <MiniKpi label="Needs Attention" value={fmtN(gst.gigs_needing_attention||0)} accent={gst.gigs_needing_attention>0?RED:'var(--portal-ink-soft, #9097A8)'}/>
         </div>
-        <div style={{padding:'12px 14px',background:'#F7F5F0',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
+        <div style={{padding:'12px 14px',background:'var(--portal-bg, #F7F5F0)',borderRadius:'7px',border:'1px solid #E8E4DC'}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:'8px'}}>
-            <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#9097A8',fontFamily:mono}}>PLATFORM AVG SCORES</span>
+            <span style={{fontSize:'9px',fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--portal-ink-soft, #9097A8)',fontFamily:mono}}>PLATFORM AVG SCORES</span>
           </div>
           <Bar value={gst.avg_content_score||0} max={100} color={GOLD} label="Content score"/>
           <div style={{marginTop:'10px'}}>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',marginBottom:'4px'}}>
-              <span style={{color:'#5C6070'}}>Platform CTR</span>
+              <span style={{color:'var(--portal-ink-mid, #5C6070)'}}>Platform CTR</span>
               <span style={{fontFamily:mono,fontWeight:700,color:NAVY}}>{fmtPct(gst.platform_ctr||0)}</span>
             </div>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px',marginBottom:'4px'}}>
-              <span style={{color:'#5C6070'}}>Total impressions</span>
+              <span style={{color:'var(--portal-ink-mid, #5C6070)'}}>Total impressions</span>
               <span style={{fontFamily:mono,fontWeight:700,color:NAVY}}>{fmtN(gst.total_impressions||0,true)}</span>
             </div>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'11px'}}>
-              <span style={{color:'#5C6070'}}>Total clicks</span>
+              <span style={{color:'var(--portal-ink-mid, #5C6070)'}}>Total clicks</span>
               <span style={{fontFamily:mono,fontWeight:700,color:NAVY}}>{fmtN(gst.total_clicks||0,true)}</span>
             </div>
           </div>
@@ -522,7 +516,7 @@ export default function AdminDashboard({onNav}) {
 
     {/* ──────── RECENT ACTIVITY TICKER ──────────────────────────────────────── */}
     <Section title="Recent Activity" subtitle="Live order stream" accent={NAVY}
-      right={<button onClick={()=>onNav?.('orders')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid #DDD8CE',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view all →</button>}>
+      right={<button onClick={()=>onNav?.('orders')} style={{fontSize:'11px',color:NAVY,fontFamily:mono,background:'none',border:'1px solid var(--portal-rule, #DDD8CE)',padding:'5px 10px',borderRadius:'4px',cursor:'pointer'}}>view all →</button>}>
       <div style={{background:TERM,borderRadius:'7px',padding:'12px 14px',color:'#fff'}}>
         <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
           <span style={{width:'6px',height:'6px',borderRadius:'50%',background:GREEN,boxShadow:`0 0 6px ${GREEN}`,animation:'pulse 1.6s ease-in-out infinite'}}/>
@@ -543,27 +537,6 @@ export default function AdminDashboard({onNav}) {
         {(!aor.orders||aor.orders.length===0)&&!loading&&<div style={{padding:'24px',textAlign:'center',color:'rgba(255,255,255,.40)',fontSize:'12px',fontFamily:mono}}>// no orders yet</div>}
       </div>
     </Section>
-
-    {/* ──────── FOOTER SYSTEM STATUS ────────────────────────────────────────── */}
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 18px',background:'#fff',border:'1px solid #DDD8CE',borderRadius:'8px',fontFamily:mono,fontSize:'10px',color:'#9097A8',letterSpacing:'.06em',flexWrap:'wrap',gap:'10px'}}>
-      <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-        <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}>
-          <span style={{width:'5px',height:'5px',borderRadius:'50%',background:GREEN}}/>
-          API: OK
-        </span>
-        <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}>
-          <span style={{width:'5px',height:'5px',borderRadius:'50%',background:GREEN}}/>
-          DB: OK
-        </span>
-        <span style={{display:'inline-flex',alignItems:'center',gap:'5px'}}>
-          <span style={{width:'5px',height:'5px',borderRadius:'50%',background:con.summary?.active>0?GREEN:AMBER}}/>
-          PAYOUTS: {con.summary?.active>0?'OK':'CHECK'}
-        </span>
-      </div>
-      <div>
-        v2.0 · yousafe-portal · {fmtN(allUsers)} active users · {fmtN(ov.total_orders||0)} orders processed
-      </div>
-    </div>
 
     {/* keyframes for pulse animation */}
     <style>{`

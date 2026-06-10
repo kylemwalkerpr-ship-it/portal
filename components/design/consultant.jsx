@@ -1,7 +1,7 @@
 'use client'
 // @ts-nocheck
 import React from 'react'
-import { C, Btn, Badge, Card, Avatar, UserMenu, StatusBadge, NavItem } from './shared'
+import { C, Btn, Badge, Card, Avatar, UserMenu, StatusBadge, NavItem, NavGroupLabel } from './shared'
 import DashboardRightPane from './dashboard-right-pane'
 import CustomOfferDialog from './custom-offer-dialog'
 import { GlobalLanguageBar } from '@/components/GlobalLanguageBar'
@@ -26,14 +26,43 @@ const PAGE_TITLES = {
 
 function ConsultantApp({ onLogout }) {
   const [theme, applyTheme] = usePortalTheme()
-  const initialPage = React.useMemo(() => {
+  // URL-synced navigation (?page=...): sections are deep-linkable,
+  // survive refresh, and the browser back button works — same pattern as
+  // the admin console. Legacy ?goto= links are honored on first read.
+  const ALLOWED_PAGES = ['overview','orders','messages','earnings','profile','settings'];
+  const pageFromUrl = () => {
     if (typeof window === 'undefined') return 'overview';
     const params = new URLSearchParams(window.location.search);
-    const goto = params.get('goto') || params.get('page');
-    const allowed = ['overview','orders','messages','earnings','profile','settings'];
-    return allowed.includes(goto) ? goto : 'overview';
+    const goto = params.get('page') || params.get('goto');
+    return ALLOWED_PAGES.includes(goto) ? goto : 'overview';
+  };
+  const [page, setPageState] = React.useState(pageFromUrl);
+  const setPage = React.useCallback((next) => {
+    setPageState(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', next);
+      url.searchParams.delete('goto');
+      window.history.pushState({}, '', url);
+    } catch { /* SSR / older browsers — state still updates */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [page, setPage] = React.useState(initialPage);
+  React.useEffect(() => {
+    const onPop = () => setPageState(pageFromUrl());
+    window.addEventListener('popstate', onPop);
+    // Strip stale auth-entry params — sign-in routing hints, meaningless
+    // once the app has mounted.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('lane') || url.searchParams.has('vertical')) {
+        url.searchParams.delete('lane');
+        url.searchParams.delete('vertical');
+        window.history.replaceState({}, '', url);
+      }
+    } catch { /* non-fatal */ }
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Order-detail "Open conversation in Messages" dispatches yousafe-open-messages;
   // switch to the Messages page with that thread so all order comms live in the
   // unified messenger.
@@ -611,13 +640,16 @@ function ConsultantApp({ onLogout }) {
         <Badge color="purple" style={{ fontSize: '10px', padding: '2px 8px' }}>Consultant</Badge>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <NavGroupLabel label="Overview" first />
         <NavItem icon="⬛" label="Overview" active={page === 'overview'} onClick={() => setPage('overview')} />
+        <NavGroupLabel label="Work" />
         <NavItem icon="📦" label="Orders" active={page === 'orders'} onClick={() => setPage('orders')} badge={newOrders > 0 ? `${newOrders} new` : null} />
         <NavItem icon="💬" label="Messages" active={page === 'messages'} onClick={() => setPage('messages')} badge={unreadMessages > 0 ? unreadMessages : null} />
+        <NavGroupLabel label="Business" />
         <NavItem icon="💼" label="My Office" active={gigsActive} onClick={() => goToRoute('/dashboard/gigs')} badge={gigsBadge} badgeColor={gigsAtLimit ? 'orange' : 'gray'} />
         <NavItem icon="📊" label="SEO Analytics" active={typeof window !== 'undefined' && window.location.pathname === '/dashboard/seo-analytics'} onClick={() => goToRoute('/dashboard/seo-analytics')} />
-        <div style={{ height: '1px', background: C.border, margin: '8px 6px' }} />
         <NavItem icon="💰" label="Earnings" active={page === 'earnings'} onClick={() => setPage('earnings')} />
+        <NavGroupLabel label="Account" />
         <NavItem icon="👤" label="My Profile" active={page === 'profile'} onClick={() => setPage('profile')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>

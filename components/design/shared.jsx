@@ -30,8 +30,8 @@ export const C = {
   orange:    '#D97706',
   red:       'var(--portal-brick)',
   purple:    '#7C3AED',
-  serif: "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif",
-  sans: "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif",
+  serif: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)",
+  sans: "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
 }
 
 export function Btn({ children, variant = 'primary', size = 'md', onClick = undefined, disabled = false, style = {}, type = 'button', fullWidth = false, ...props }) {
@@ -535,6 +535,17 @@ export function ProgressBar({ value, color = C.cyan, style = {} }) {
   return (
     <div style={{ height: '6px', background: C.surface3, borderRadius: '99px', overflow: 'hidden', ...style }}>
       <div style={{ height: '100%', width: `${value}%`, background: color, borderRadius: '99px', transition: 'width 0.5s' }} />
+    </div>
+  )
+}
+
+// Small uppercase group label between sidebar nav sections — keeps the
+// console scannable as sections grow. Used by the admin/student/attorney/
+// consultant shells.
+export function NavGroupLabel({ label, first = false }) {
+  return (
+    <div style={{ padding: first ? '4px 12px 4px' : '14px 12px 4px', fontSize: '10px', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.textDim }}>
+      {label}
     </div>
   )
 }

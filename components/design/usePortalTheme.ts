@@ -20,6 +20,16 @@ export function usePortalTheme(): [PortalThemeId, (next: PortalThemeId) => void]
   const [theme, setTheme] = useState<PortalThemeId>(DEFAULT_THEME)
 
   useEffect(() => {
+    // 0. Apply saved appearance prefs (font / kerning / background) at boot.
+    //    Every role shell calls usePortalTheme, so this is the one place
+    //    that guarantees appearance is applied before Settings is opened.
+    import('@/lib/portalAppearance').then(({ usePortalAppearance: _unused, applyAppearance, DEFAULT_APPEARANCE }) => {
+      try {
+        const raw = localStorage.getItem('yousafe.portal.appearance')
+        const parsed = raw ? JSON.parse(raw) : null
+        applyAppearance({ ...DEFAULT_APPEARANCE, ...(parsed && typeof parsed === 'object' ? parsed : {}) })
+      } catch { applyAppearance(DEFAULT_APPEARANCE) }
+    }).catch(() => {})
     // 1. Read localStorage first (instant — no flash).
     const cached = localStorage.getItem(STORAGE_KEY)
     if (cached && (THEME_IDS as string[]).includes(cached)) {

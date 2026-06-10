@@ -8,7 +8,7 @@ import AdminWallets from './admin-wallets'
 import AdminWalletLoyalty from './admin-wallet-loyalty'
 
 // ─── constants ────────────────────────────────────────────────────────────────
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)"
 const sans  = C.sans
 
 // ─── canonical ledger hook ──────────────────────────────────────────────────
