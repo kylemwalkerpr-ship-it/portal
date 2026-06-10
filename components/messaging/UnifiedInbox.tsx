@@ -1213,7 +1213,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
   const messages = !activeId ? (
     <div className="cv-empty-full" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
       <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.25 }}>💬</div>
-      <h2 style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontWeight: 500, fontSize: 24, color: 'var(--text)', margin: '0 0 8px' }}>Yousafe Messaging</h2>
+      <h2 style={{ fontFamily: 'var(--font-lora), Georgia, serif', fontWeight: 500, fontSize: 24, color: 'var(--text)', margin: '0 0 8px' }}>YouSafe Messaging</h2>
       <p style={{ maxWidth: '36ch', color: 'var(--text-soft)', lineHeight: 1.6, fontSize: 13, margin: 0 }}>
         Pick a conversation from the left, or start a new one.
       </p>

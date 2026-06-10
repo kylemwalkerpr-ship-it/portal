@@ -91,10 +91,17 @@ export function AuthShell({
           <div className="ys-auth-brand-inner">
             <div className="ys-auth-brand-top">
               <a href="https://yousafeconsultancy.com" className="ys-auth-logo-link">
-                <span className="ys-auth-logo-mark">Y</span>
+                <img
+                  src="/logo.png"
+                  alt="YouSafe Consultancy"
+                  width="44"
+                  height="44"
+                  className="ys-auth-logo-image"
+                />
                 <span>
                   <span className="ys-auth-logo-name">YouSafe</span>
                   <span className="ys-auth-logo-sub">Consultancy</span>
+                  <span className="ys-auth-logo-tagline">Your Safe Path to Success.</span>
                 </span>
               </a>
               <span className="ys-auth-secure-pill">Secure portal</span>

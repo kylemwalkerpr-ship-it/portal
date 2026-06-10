@@ -115,7 +115,7 @@ export default function InquiryComposer({ onClose, onSubmit }: InquiryComposerPr
     }
     const scan = safetyGuard(headline + ' ' + (summary || ''))
     if (!scan.ok) {
-      setError(scan.error || "Contact info isn't allowed — keep it on Yousafe.")
+      setError(scan.error || "Contact info isn't allowed — keep it on YouSafe.")
       setStep(4)
       return
     }

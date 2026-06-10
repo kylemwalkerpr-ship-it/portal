@@ -38,8 +38,22 @@ export function EstateFooter() {
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '48px 24px' }}>
         {/* Brand */}
         <div style={{ marginBottom: '36px' }}>
-          <div style={{ fontFamily: C.serif, fontSize: '19px', fontWeight: 600, color: C.text }}>
-            YouSafe Consultancy
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <img
+              src="/logo.png"
+              alt="YouSafe Consultancy"
+              width="48"
+              height="48"
+              style={{ width: '48px', height: '48px', objectFit: 'contain' }}
+            />
+            <div>
+              <div style={{ fontFamily: C.serif, fontSize: '19px', fontWeight: 600, color: C.text }}>
+                YouSafe Consultancy
+              </div>
+              <div style={{ marginTop: '3px', fontSize: '13px', fontWeight: 600, color: C.accent }}>
+                Your Safe Path to Success.
+              </div>
+            </div>
           </div>
           <p style={{ marginTop: '8px', maxWidth: '36rem', fontSize: '14px', lineHeight: 1.65, color: C.muted }}>
             Study, work, and settle abroad — visa document preparation and a vetted legal marketplace across the US, UK, Canada, and Australia.

@@ -273,22 +273,32 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         >
           {role === null ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{
-                width: 26, height: 26, borderRadius: 4,
-                background: T.indigo, color: '#fff',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: F.display, fontWeight: 600, fontSize: 14,
-              }}>Y</span>
+              <img
+                src="/logo.png"
+                alt="YouSafe Consultancy"
+                width="30"
+                height="30"
+                style={{ width: 30, height: 30, objectFit: 'contain' }}
+              />
               <span style={{
                 fontFamily: F.display, fontSize: 19, fontWeight: 600,
                 color: T.ink, letterSpacing: '0.005em',
               }}>YouSafe</span>
             </div>
           ) : (
-            <div style={{ textAlign: 'left' as const }}>
-              <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
-              <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img
+                src="/logo.png"
+                alt="YouSafe Consultancy"
+                width="30"
+                height="30"
+                style={{ width: 30, height: 30, objectFit: 'contain' }}
+              />
+              <div style={{ textAlign: 'left' as const }}>
+                <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+                <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                  {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
+                </div>
               </div>
             </div>
           )}

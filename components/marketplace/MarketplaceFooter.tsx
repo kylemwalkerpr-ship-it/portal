@@ -111,10 +111,8 @@ export function MarketplaceFooter() {
           gap: 12px;
         }
         .cw-mkt-footer-brand-row .mark {
-          width: 26px; height: 26px; border-radius: 4px;
-          background: ${T.indigo}; color: #fff;
-          display: inline-grid; place-items: center;
-          font-family: ${F.display}; font-weight: 600; font-size: 14px;
+          width: 32px; height: 32px;
+          object-fit: contain;
         }
         .cw-mkt-footer-brand-row .wordmark {
           font-family: ${F.display}; font-weight: 600; font-size: 18px; color: ${T.ink};
@@ -124,9 +122,9 @@ export function MarketplaceFooter() {
         }
       `}</style>
       <div className="cw-mkt-footer-brand-row">
-        <span className="mark">Y</span>
+        <img className="mark" src="/logo.png" alt="YouSafe Consultancy" width="32" height="32" />
         <span className="wordmark">YouSafe Marketplace</span>
-        <span className="tagline">Fixed-fee, escrowed legal briefs across US, UK &amp; CA.</span>
+        <span className="tagline">Your Safe Path to Success.</span>
       </div>
       <div className="cw-mkt-footer-wrap">
         <nav className="cw-mkt-nav">

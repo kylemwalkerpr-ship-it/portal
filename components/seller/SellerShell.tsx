@@ -35,13 +35,20 @@ export default function SellerShell({ title, subtitle, children }: SellerShellPr
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: '8px' }}>
 
           {/* Brand mark */}
-          <div style={{ display: 'flex', alignItems: 'center', paddingRight: '16px', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '16px', marginRight: '4px', borderRight: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+            <img
+              src="/logo.png"
+              alt="YouSafe Consultancy"
+              width="32"
+              height="32"
+              style={{ width: 32, height: 32, objectFit: 'contain', background: '#fff', borderRadius: 4 }}
+            />
             <div>
               <div style={{ fontFamily: serif, fontSize: '17px', fontWeight: 600, color: '#F7F5F0', letterSpacing: '0.01em', lineHeight: 1.1 }}>
                 YouSafe
               </div>
-              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.40)', letterSpacing: '0.14em', textTransform: 'uppercase', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                Provider Portal
+              <div style={{ fontSize: '10px', color: '#C4A45A', marginTop: '1px', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                Your Safe Path to Success.
               </div>
             </div>
           </div>

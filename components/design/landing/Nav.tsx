@@ -57,38 +57,17 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           flex: '0 0 auto',
         }}
       >
-        <span
+        <img
+          src="/logo.png"
+          alt="YouSafe Consultancy"
+          width="42"
+          height="42"
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 10,
-            background: T.indigo,
-            color: '#fff',
-            fontFamily: T.serif,
-            fontWeight: 600,
-            fontSize: 20,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 6px 16px rgba(60,59,110,0.22)',
-            position: 'relative',
+            width: 42,
+            height: 42,
+            objectFit: 'contain',
           }}
-        >
-          Y
-          <span
-            style={{
-              position: 'absolute',
-              top: -2,
-              right: -2,
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: T.gold,
-              border: '2px solid #FAFAF8',
-            }}
-            aria-hidden="true"
-          />
-        </span>
+        />
         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
           <span
             style={{
@@ -102,16 +81,14 @@ export default function Nav({ onOpenSignIn }: NavProps) {
           </span>
           <span
             style={{
-              fontFamily: T.mono,
-              fontSize: 9.5,
-              fontWeight: 600,
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-              color: T.inkSoft,
+              fontFamily: T.sans,
+              fontSize: 11,
+              fontWeight: 700,
+              color: T.moss,
               marginTop: 4,
             }}
           >
-            The Portal
+            Your Safe Path to Success.
           </span>
         </span>
       </a>

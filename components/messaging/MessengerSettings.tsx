@@ -259,7 +259,7 @@ export default function MessengerSettings({
               <div className="settings-row">
                 <div>
                   <b>Escrow protection</b>
-                  <div className="settings-sub">Payments are held by Yousafe until you mark the work complete or 7 days after delivery.</div>
+                  <div className="settings-sub">Payments are held by YouSafe until you mark the work complete or 7 days after delivery.</div>
                 </div>
                 <div className="settings-val">On</div>
               </div>
