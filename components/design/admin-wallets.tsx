@@ -23,14 +23,14 @@ const fmtDate = s => s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric
 const fmtDateTime = s => s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 
 // ─── small primitives (mirror admin-financials.jsx language) ──────────────────
-function KpiCard({ label, value, sub, accent = '#0F172A', icon, onClick }) {
+function KpiCard({ label, value, sub, accent = 'var(--portal-ink, #0F172A)', icon, onClick }: any) {
   const [hov, setHov] = React.useState(false)
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} onClick={onClick}
       style={{
         background: '#fff',
-        border: `1px solid ${hov && onClick ? '#0F172A' : '#DDD8CE'}`,
+        border: `1px solid ${hov && onClick ? 'var(--portal-ink, #0F172A)' : 'var(--portal-rule, #DDD8CE)'}`,
         borderTop: `3px solid ${accent}`,
         borderRadius: '8px',
         padding: '18px 20px',
@@ -40,22 +40,22 @@ function KpiCard({ label, value, sub, accent = '#0F172A', icon, onClick }) {
         display: 'flex', flexDirection: 'column', gap: '6px',
       }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9097A8' }}>{label}</span>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--portal-ink-soft, #9097A8)' }}>{label}</span>
         {icon && <span style={{ fontSize: '14px', opacity: 0.6 }}>{icon}</span>}
       </div>
-      <div style={{ fontWeight: 800, fontSize: '26px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {sub && <div style={{ fontSize: '12px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</div>}
+      <div style={{ fontWeight: 800, fontSize: '26px', color: 'var(--portal-ink, #0F172A)', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.4 }}>{sub}</div>}
     </div>
   )
 }
 
-function Section({ title, sub, action, children }) {
+function Section({ title, sub, action, children }: any) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
         <div>
-          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#0F172A', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
-          {sub && <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</p>}
+          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
+          {sub && <p style={{ margin: '3px 0 0', fontSize: '13px', color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.4 }}>{sub}</p>}
         </div>
         {action}
       </div>
@@ -64,7 +64,7 @@ function Section({ title, sub, action, children }) {
   )
 }
 
-function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
+function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }: any) {
   return (
     <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: '8px', overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
@@ -76,7 +76,7 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
                   padding: '11px 14px', textAlign: c.right ? 'right' : 'left',
                   fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em',
                   textTransform: 'uppercase', color: 'rgba(255,255,255,0.70)',
-                  background: '#0F172A', whiteSpace: 'nowrap',
+                  background: 'var(--portal-ink, #0F172A)', whiteSpace: 'nowrap',
                   borderBottom: '2px solid rgba(255,255,255,0.08)',
                 }}>{c.label}</th>
               ))}
@@ -84,12 +84,12 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={cols.length} style={{ padding: '32px', textAlign: 'center', color: '#9097A8', fontSize: '14px' }}>{emptyMsg}</td></tr>
+              <tr><td colSpan={cols.length} style={{ padding: '32px', textAlign: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: '14px' }}>{emptyMsg}</td></tr>
             ) : rows.map((row, ri) => (
               <tr key={row.__rowKey ?? ri}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   style={{
-                    background: ri % 2 === 0 ? '#fff' : '#FAFAF8',
+                    background: ri % 2 === 0 ? '#fff' : 'var(--portal-surface-2, #FAFAF8)',
                     borderBottom: '1px solid #F2EFE9',
                     cursor: onRowClick ? 'pointer' : 'default',
                   }}>
@@ -97,7 +97,7 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
                   <td key={c.key} style={{
                     padding: '11px 14px', fontSize: '13px',
                     textAlign: c.right ? 'right' : 'left',
-                    color: c.muted ? '#9097A8' : '#1A1F2E',
+                    color: c.muted ? 'var(--portal-ink-soft, #9097A8)' : '#1A1F2E',
                     fontWeight: c.bold ? 700 : 400,
                     whiteSpace: c.wrap ? 'normal' : 'nowrap',
                     fontVariantNumeric: 'tabular-nums',
@@ -115,11 +115,11 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
 // ─── Balance distribution horizontal bars ─────────────────────────────────────
 function DistributionBars({ dist, totalWallets }) {
   const buckets = [
-    { key: 'zero',     label: 'Zero balance',  color: '#9097A8' },
+    { key: 'zero',     label: 'Zero balance',  color: 'var(--portal-ink-soft, #9097A8)' },
     { key: 'lt_50',    label: 'Under $50',     color: '#3D2B6B' },
-    { key: 'lt_500',   label: '$50 – $500',    color: '#0F172A' },
-    { key: 'lt_5000',  label: '$500 – $5,000', color: '#9A7B3B' },
-    { key: 'gte_5000', label: '$5,000+',       color: '#1A6B45' },
+    { key: 'lt_500',   label: '$50 – $500',    color: 'var(--portal-ink, #0F172A)' },
+    { key: 'lt_5000',  label: '$500 – $5,000', color: 'var(--portal-gold, #9A7B3B)' },
+    { key: 'gte_5000', label: '$5,000+',       color: 'var(--portal-moss, #1A6B45)' },
   ]
   const max = Math.max(1, ...buckets.map(b => Number(dist?.[b.key] || 0)))
   return (
@@ -130,12 +130,12 @@ function DistributionBars({ dist, totalWallets }) {
         return (
           <div key={b.key}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '12px' }}>
-              <span style={{ color: '#5C6070' }}>{b.label}</span>
-              <span style={{ fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
-                {fmtN(n)} <span style={{ color: '#9097A8', fontWeight: 400 }}>({pct.toFixed(1)}%)</span>
+              <span style={{ color: 'var(--portal-ink-mid, #5C6070)' }}>{b.label}</span>
+              <span style={{ fontWeight: 700, color: 'var(--portal-ink, #0F172A)', fontVariantNumeric: 'tabular-nums' }}>
+                {fmtN(n)} <span style={{ color: 'var(--portal-ink-soft, #9097A8)', fontWeight: 400 }}>({pct.toFixed(1)}%)</span>
               </span>
             </div>
-            <div style={{ height: '8px', borderRadius: '4px', background: '#F2EFE9', overflow: 'hidden' }}>
+            <div style={{ height: '8px', borderRadius: '4px', background: 'var(--portal-rule-soft, #F2EFE9)', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${(n / max) * 100}%`,
@@ -154,13 +154,13 @@ function DistributionBars({ dist, totalWallets }) {
 // ─── Transaction type badge ──────────────────────────────────────────────────
 function TxnTypeBadge({ type }) {
   const map = {
-    topup:      { bg: '#EAF5EE', color: '#1A6B45' },
-    debit:      { bg: '#FAEAEA', color: '#8B1A1A' },
+    topup:      { bg: '#EAF5EE', color: 'var(--portal-moss, #1A6B45)' },
+    debit:      { bg: '#FAEAEA', color: 'var(--portal-brick, #8B1A1A)' },
     refund:     { bg: '#E6EEF8', color: '#1B2D4F' },
     adjustment: { bg: '#FEF5E4', color: '#8B5E0A' },
     purchase:   { bg: '#EDE7F5', color: '#3D2B6B' },
   }
-  const cfg = map[type] || { bg: '#F2EFE9', color: '#5C6070' }
+  const cfg = map[type] || { bg: 'var(--portal-rule-soft, #F2EFE9)', color: 'var(--portal-ink-mid, #5C6070)' }
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
@@ -259,7 +259,7 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
         onClick={e => e.stopPropagation()}
         style={{
           width: 'min(440px, 100%)',
-          background: '#FAFAF8',
+          background: 'var(--portal-surface-2, #FAFAF8)',
           border: '1px solid #DDD8CE',
           borderRadius: '12px',
           boxShadow: '0 24px 60px rgba(15,23,42,0.28)',
@@ -268,11 +268,11 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
           display: 'flex', flexDirection: 'column',
         }}>
         <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid #DDD8CE', background: '#fff' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9097A8', marginBottom: '4px' }}>Wallet adjustment</div>
-          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '22px', color: '#0F172A', margin: 0, letterSpacing: '-0.012em' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--portal-ink-soft, #9097A8)', marginBottom: '4px' }}>Wallet adjustment</div>
+          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '22px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.012em' }}>
             Top up wallet
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9097A8', lineHeight: 1.4 }}>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.4 }}>
             Credits the student&rsquo;s balance and writes a row to the ledger. Memo is visible to the student.
           </p>
         </div>
@@ -280,11 +280,11 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
         <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Amount */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Amount (USD)</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--portal-ink-mid, #5C6070)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Amount (USD)</span>
             <div style={{ position: 'relative' }}>
               <span style={{
                 position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                color: '#9097A8', fontSize: '14px', fontWeight: 600, pointerEvents: 'none',
+                color: 'var(--portal-ink-soft, #9097A8)', fontSize: '14px', fontWeight: 600, pointerEvents: 'none',
               }}>$</span>
               <input
                 type="text"
@@ -303,14 +303,14 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
                 }} />
             </div>
             {amount && amountCents <= 0 && (
-              <span style={{ fontSize: '12px', color: '#8B1A1A' }}>Enter an amount greater than zero.</span>
+              <span style={{ fontSize: '12px', color: 'var(--portal-brick, #8B1A1A)' }}>Enter an amount greater than zero.</span>
             )}
           </label>
 
           {/* Memo */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Memo <span style={{ color: '#9097A8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(ledger description)</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--portal-ink-mid, #5C6070)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Memo <span style={{ color: 'var(--portal-ink-soft, #9097A8)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(ledger description)</span>
             </span>
             <input
               type="text"
@@ -325,12 +325,12 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
                 background: '#fff', fontSize: '14px', fontFamily: sans, color: '#1A1F2E',
                 boxSizing: 'border-box', outline: 'none',
               }} />
-            <span style={{ fontSize: '11px', color: '#9097A8', textAlign: 'right' }}>{memoTrimmed.length}/120</span>
+            <span style={{ fontSize: '11px', color: 'var(--portal-ink-soft, #9097A8)', textAlign: 'right' }}>{memoTrimmed.length}/120</span>
           </label>
 
           {/* Reason */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#5C6070', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Reason</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--portal-ink-mid, #5C6070)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Reason</span>
             <select
               value={reasonChoice}
               onChange={e => setReasonChoice(e.target.value)}
@@ -363,7 +363,7 @@ function TopUpModal({ profileId, onClose, onSuccess }) {
           {error && (
             <div style={{
               padding: '10px 12px', background: '#FAEAEA', border: '1px solid #E5BFBF',
-              borderRadius: '6px', color: '#8B1A1A', fontSize: '13px',
+              borderRadius: '6px', color: 'var(--portal-brick, #8B1A1A)', fontSize: '13px',
             }}>{error}</div>
           )}
         </div>
@@ -429,7 +429,7 @@ function WalletDrawer({ profileId, onClose }) {
         style={{
           width: 'min(720px, 100%)',
           height: '100%',
-          background: '#FAFAF8',
+          background: 'var(--portal-surface-2, #FAFAF8)',
           boxShadow: '-8px 0 24px rgba(15,23,42,0.18)',
           display: 'flex', flexDirection: 'column',
           fontFamily: sans,
@@ -438,25 +438,25 @@ function WalletDrawer({ profileId, onClose }) {
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #DDD8CE', background: '#fff', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
           <div>
-            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9097A8', marginBottom: '4px' }}>Wallet detail</div>
-            <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '24px', color: '#0F172A', margin: 0, letterSpacing: '-0.012em' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--portal-ink-soft, #9097A8)', marginBottom: '4px' }}>Wallet detail</div>
+            <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '24px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.012em' }}>
               {data?.profile?.full_name || data?.profile?.email || 'Loading…'}
             </h3>
             {data?.profile?.email && (
-              <div style={{ fontSize: '12px', color: '#9097A8', marginTop: '2px' }}>{data.profile.email} · {data.profile.role || '—'}</div>
+              <div style={{ fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', marginTop: '2px' }}>{data.profile.email} · {data.profile.role || '—'}</div>
             )}
           </div>
           <button onClick={onClose} style={{
             background: 'none', border: '1px solid #DDD8CE', borderRadius: '4px',
             padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-            color: '#5C6070', fontFamily: sans,
+            color: 'var(--portal-ink-mid, #5C6070)', fontFamily: sans,
           }}>Close</button>
         </div>
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {loading && <div style={{ color: '#9097A8', fontSize: '13px' }}>Loading wallet…</div>}
-          {error && <div style={{ color: '#8B1A1A', fontSize: '13px' }}>Error: {error}</div>}
+          {loading && <div style={{ color: 'var(--portal-ink-soft, #9097A8)', fontSize: '13px' }}>Loading wallet…</div>}
+          {error && <div style={{ color: 'var(--portal-brick, #8B1A1A)', fontSize: '13px' }}>Error: {error}</div>}
 
           {!loading && !error && data && (
             <>
@@ -464,11 +464,11 @@ function WalletDrawer({ profileId, onClose }) {
               <Card style={{ padding: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                   <div>
-                    <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.10em', color: '#9097A8' }}>Current balance</div>
-                    <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '36px', color: '#0F172A', letterSpacing: '-0.015em', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.10em', color: 'var(--portal-ink-soft, #9097A8)' }}>Current balance</div>
+                    <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '36px', color: 'var(--portal-ink, #0F172A)', letterSpacing: '-0.015em', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>
                       {fmt(data.wallet?.balance_cents || 0)}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#9097A8', marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', marginTop: '2px' }}>
                       {data.wallet?.currency || 'USD'} · updated {fmtDateTime(data.wallet?.updated_at)}
                     </div>
                   </div>
@@ -483,7 +483,7 @@ function WalletDrawer({ profileId, onClose }) {
                     background: '#EAF5EE',
                     border: '1px solid #BFD9C8',
                     borderRadius: '6px',
-                    color: '#1A6B45',
+                    color: 'var(--portal-moss, #1A6B45)',
                     fontSize: '13px',
                     fontWeight: 600,
                   }}>{toast}</div>
@@ -494,8 +494,8 @@ function WalletDrawer({ profileId, onClose }) {
               <Section title="Lifetime totals" sub="Cumulative volume by transaction type">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                   {[
-                    { label: 'Top-ups',     key: 'lifetime_topup_cents',      accent: '#1A6B45' },
-                    { label: 'Debits',      key: 'lifetime_debit_cents',      accent: '#8B1A1A' },
+                    { label: 'Top-ups',     key: 'lifetime_topup_cents',      accent: 'var(--portal-moss, #1A6B45)' },
+                    { label: 'Debits',      key: 'lifetime_debit_cents',      accent: 'var(--portal-brick, #8B1A1A)' },
                     { label: 'Refunds',     key: 'lifetime_refund_cents',     accent: '#1B2D4F' },
                     { label: 'Adjustments', key: 'lifetime_adjustment_cents', accent: '#8B5E0A' },
                     { label: 'Purchases',   key: 'lifetime_purchase_cents',   accent: '#3D2B6B' },
@@ -542,7 +542,7 @@ function WalletDrawer({ profileId, onClose }) {
                     when:    fmtDateTime(t.created_at),
                     type:    <TxnTypeBadge type={t.type} />,
                     amount: (
-                      <span style={{ color: Number(t.signed_cents) < 0 ? '#8B1A1A' : '#1A6B45', fontWeight: 700 }}>
+                      <span style={{ color: Number(t.signed_cents) < 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-moss, #1A6B45)', fontWeight: 700 }}>
                         {Number(t.signed_cents) < 0 ? '−' : '+'}{fmt(Math.abs(Number(t.signed_cents || t.amount_cents || 0)))}
                       </span>
                     ),
@@ -702,14 +702,14 @@ export default function AdminWallets() {
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#9097A8', marginBottom: '4px' }}>Wallets</div>
-          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: '#0F172A', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Wallet Oversight</h2>
-          <p style={{ color: '#9097A8', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--portal-ink-soft, #9097A8)', marginBottom: '4px' }}>Wallets</div>
+          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Wallet Oversight</h2>
+          <p style={{ color: 'var(--portal-ink-soft, #9097A8)', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
             Aggregate platform liability, balance distribution, and full per-wallet ledgers.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {exportMsg && <span style={{ fontSize: '12px', color: '#1A6B45', fontWeight: 600 }}>{exportMsg}</span>}
+          {exportMsg && <span style={{ fontSize: '12px', color: 'var(--portal-moss, #1A6B45)', fontWeight: 600 }}>{exportMsg}</span>}
           <Btn variant="ghost" size="sm" onClick={() => exportCSV(
             (walletList.wallets || []).map(w => ({
               profile_id: w.profile_id,
@@ -731,7 +731,7 @@ export default function AdminWallets() {
       </div>
 
       {error && (
-        <div style={{ padding: '12px 14px', background: '#FAEAEA', border: '1px solid #E5BFBF', borderRadius: '6px', color: '#8B1A1A', fontSize: '13px' }}>
+        <div style={{ padding: '12px 14px', background: '#FAEAEA', border: '1px solid #E5BFBF', borderRadius: '6px', color: 'var(--portal-brick, #8B1A1A)', fontSize: '13px' }}>
           {error}
         </div>
       )}
@@ -769,14 +769,14 @@ export default function AdminWallets() {
       {/* Distribution + Top balances side by side */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '16px' }}>
         <Card style={{ padding: '20px' }}>
-          <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Balance distribution</div>
+          <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: 'var(--portal-ink, #0F172A)', marginBottom: '14px' }}>Balance distribution</div>
           {statsLoading
-            ? <div style={{ color: '#9097A8', fontSize: '13px' }}>Loading…</div>
+            ? <div style={{ color: 'var(--portal-ink-soft, #9097A8)', fontSize: '13px' }}>Loading…</div>
             : <DistributionBars dist={distribution} totalWallets={stats?.total_wallets || 0} />}
         </Card>
 
         <Card style={{ padding: '20px' }}>
-          <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Top balances</div>
+          <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: 'var(--portal-ink, #0F172A)', marginBottom: '14px' }}>Top balances</div>
           <DataTable
             cols={[
               { key: 'rank',    label: '#', muted: true },
@@ -853,7 +853,7 @@ export default function AdminWallets() {
         {/* Pagination */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
           <Btn variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>← Prev</Btn>
-          <span style={{ fontSize: '12px', color: '#9097A8', minWidth: '70px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', minWidth: '70px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
             {walletList.page} / {Math.max(1, walletList.total_pages || 1)}
           </span>
           <Btn variant="ghost" size="sm" disabled={page >= (walletList.total_pages || 1)} onClick={() => setPage(p => p + 1)}>Next →</Btn>

@@ -14,7 +14,7 @@ const sans  = C.sans
 // ─── canonical ledger hook ──────────────────────────────────────────────────
 // Self-healing GET against the unified /api/admin/analytics/ledger endpoint.
 // Every data-driven tab reads from this one source so all KPIs are consistent.
-function useLedgerQuery(view, params = {}) {
+function useLedgerQuery(view: string, params: Record<string, any> = {}) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -69,19 +69,19 @@ function ComingSoonBadge() {
   )
 }
 
-function Legend({ color, label, value, dashed }) {
+function Legend({ color, label, value, dashed }: any) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{
         width: 18, height: 3, borderRadius: 2, background: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 7px)` : color,
       }} />
-      <span style={{ fontSize: 12, color: '#5C6070' }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ fontSize: 12, color: 'var(--portal-ink-mid, #5C6070)' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--portal-ink, #0F172A)', fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   )
 }
 
-function DataWarnings({ items }) {
+function DataWarnings({ items }: any) {
   if (!items?.length) return null
   return (
     <div style={{
@@ -127,11 +127,11 @@ const fmt = (n, compact = false) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n) || 0)
 }
 const pct = (n, d) => d === 0 ? '0%' : `${((n / d) * 100).toFixed(1)}%`
-const monthKey = dateStr => { const d = new Date(dateStr); return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+const monthKey = (dateStr: any) => { const d = new Date(dateStr); return isNaN(d.getTime()) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 const monthLabel = key => { if (!key) return ''; const [y, m] = key.split('-'); return new Date(Number(y), Number(m) - 1, 1).toLocaleString('default', { month: 'short', year: '2-digit' }) }
 
 // ─── SVG chart primitives ─────────────────────────────────────────────────────
-function BarChart({ data, height = 120, barColor = '#0F172A', labelColor = '#9097A8' }) {
+function BarChart({ data, height = 120, barColor = 'var(--portal-ink, #0F172A)', labelColor = 'var(--portal-ink-soft, #9097A8)' }: any) {
   if (!data.length) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: '13px' }}>No data</div>
   const max = Math.max(...data.map(d => d.value), 1)
   const w = 100 / data.length
@@ -155,7 +155,7 @@ function BarChart({ data, height = 120, barColor = '#0F172A', labelColor = '#909
   )
 }
 
-function LineChart({ data, height = 100, color = '#0F172A', fillColor = 'rgba(27,45,79,0.08)' }) {
+function LineChart({ data, height = 100, color = 'var(--portal-ink, #0F172A)', fillColor = 'rgba(27,45,79,0.08)' }: any) {
   if (data.length < 2) return null
   const max = Math.max(...data.map(d => d.value), 1)
   const pts = data.map((d, i) => ({
@@ -177,7 +177,7 @@ function LineChart({ data, height = 100, color = '#0F172A', fillColor = 'rgba(27
   )
 }
 
-function DonutChart({ segments, size = 80 }) {
+function DonutChart({ segments, size = 80 }: any) {
   const total = segments.reduce((s, g) => s + g.value, 0)
   if (total === 0) return <div style={{ width: size, height: size, borderRadius: '50%', background: C.surface3 }} />
   const r = 30, cx = 40, cy = 40, strokeW = 12
@@ -203,7 +203,7 @@ function DonutChart({ segments, size = 80 }) {
   )
 }
 
-function MiniSparkline({ values, color = '#0F172A' }) {
+function MiniSparkline({ values, color = 'var(--portal-ink, #0F172A)' }: any) {
   if (!values || values.length < 2) return null
   const max = Math.max(...values, 1)
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 60},${20 - (v / max) * 18}`).join(' ')
@@ -215,19 +215,19 @@ function MiniSparkline({ values, color = '#0F172A' }) {
 }
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, delta, icon, accent = '#0F172A', onClick, chart }) {
+function KpiCard({ label, value, sub, delta, icon, accent = 'var(--portal-ink, #0F172A)', onClick, chart }: any) {
   const [hov, setHov] = React.useState(false)
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} onClick={onClick}
-      style={{ background: '#fff', border: `1px solid ${hov && onClick ? '#0F172A' : '#DDD8CE'}`, borderTop: `3px solid ${accent}`, borderRadius: '8px', padding: '18px 20px', cursor: onClick ? 'pointer' : 'default', boxShadow: hov && onClick ? '0 4px 12px rgba(27,45,79,0.12)' : '0 1px 3px rgba(27,45,79,0.06)', transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      style={{ background: '#fff', border: `1px solid ${hov && onClick ? 'var(--portal-ink, #0F172A)' : 'var(--portal-rule, #DDD8CE)'}`, borderTop: `3px solid ${accent}`, borderRadius: '8px', padding: '18px 20px', cursor: onClick ? 'pointer' : 'default', boxShadow: hov && onClick ? '0 4px 12px rgba(27,45,79,0.12)' : '0 1px 3px rgba(27,45,79,0.06)', transition: 'all 0.15s', display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9097A8' }}>{label}</span>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--portal-ink-soft, #9097A8)' }}>{label}</span>
         <span style={{ fontSize: '16px', opacity: 0.5 }}>{icon}</span>
       </div>
-      <div style={{ fontWeight: 800, fontSize: '26px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {sub && <div style={{ fontSize: '12px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</div>}
+      <div style={{ fontWeight: 800, fontSize: '26px', color: 'var(--portal-ink, #0F172A)', letterSpacing: '-0.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize: '12px', color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.4 }}>{sub}</div>}
       {delta !== undefined && (
-        <div style={{ fontSize: '12px', fontWeight: 700, color: delta >= 0 ? '#1A6B45' : '#8B1A1A' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: delta >= 0 ? 'var(--portal-moss, #1A6B45)' : 'var(--portal-brick, #8B1A1A)' }}>
           {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}% vs last period
         </div>
       )}
@@ -237,13 +237,13 @@ function KpiCard({ label, value, sub, delta, icon, accent = '#0F172A', onClick, 
 }
 
 // ─── Section shell ─────────────────────────────────────────────────────────────
-function Section({ title, sub, action, children }) {
+function Section({ title, sub, action, children }: any) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' }}>
         <div>
-          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: '#0F172A', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
-          {sub && <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#9097A8', lineHeight: 1.4 }}>{sub}</p>}
+          <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: '20px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.01em' }}>{title}</h3>
+          {sub && <p style={{ margin: '3px 0 0', fontSize: '13px', color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.4 }}>{sub}</p>}
         </div>
         {action}
       </div>
@@ -253,7 +253,7 @@ function Section({ title, sub, action, children }) {
 }
 
 // ─── Table shell ──────────────────────────────────────────────────────────────
-function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
+function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }: any) {
   return (
     <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: '8px', overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
@@ -261,7 +261,7 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
           <thead>
             <tr>
               {cols.map(c => (
-                <th key={c.key} style={{ padding: '11px 14px', textAlign: c.right ? 'right' : 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.70)', background: '#0F172A', whiteSpace: 'nowrap', borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
+                <th key={c.key} style={{ padding: '11px 14px', textAlign: c.right ? 'right' : 'left', fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.70)', background: 'var(--portal-ink, #0F172A)', whiteSpace: 'nowrap', borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
                   {c.label}
                 </th>
               ))}
@@ -269,7 +269,7 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={cols.length} style={{ padding: '32px', textAlign: 'center', color: '#9097A8', fontSize: '14px' }}>{emptyMsg}</td></tr>
+              <tr><td colSpan={cols.length} style={{ padding: '32px', textAlign: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: '14px' }}>{emptyMsg}</td></tr>
             ) : rows.map((row, ri) => {
               // onRowClick is opt-in per-table. When supplied, the row
               // gains hover affordance + a pointer cursor; without it,
@@ -279,15 +279,15 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
                 <tr key={ri}
                   onClick={clickable ? () => onRowClick(row, ri) : undefined}
                   style={{
-                    background: ri % 2 === 0 ? '#fff' : '#FAFAF8',
+                    background: ri % 2 === 0 ? '#fff' : 'var(--portal-surface-2, #FAFAF8)',
                     borderBottom: '1px solid #F2EFE9',
                     cursor: clickable ? 'pointer' : 'default',
                   }}
-                  onMouseEnter={clickable ? e => { e.currentTarget.style.background = '#F2EFE9' } : undefined}
-                  onMouseLeave={clickable ? e => { e.currentTarget.style.background = ri % 2 === 0 ? '#fff' : '#FAFAF8' } : undefined}
+                  onMouseEnter={clickable ? e => { e.currentTarget.style.background = 'var(--portal-rule-soft, #F2EFE9)' } : undefined}
+                  onMouseLeave={clickable ? e => { e.currentTarget.style.background = ri % 2 === 0 ? '#fff' : 'var(--portal-surface-2, #FAFAF8)' } : undefined}
                 >
                   {cols.map(c => (
-                    <td key={c.key} style={{ padding: '11px 14px', fontSize: '13px', textAlign: c.right ? 'right' : 'left', color: c.muted ? '#9097A8' : '#1A1F2E', fontWeight: c.bold ? 700 : 400, whiteSpace: c.wrap ? 'normal' : 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                    <td key={c.key} style={{ padding: '11px 14px', fontSize: '13px', textAlign: c.right ? 'right' : 'left', color: c.muted ? 'var(--portal-ink-soft, #9097A8)' : '#1A1F2E', fontWeight: c.bold ? 700 : 400, whiteSpace: c.wrap ? 'normal' : 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                       {row[c.key]}
                     </td>
                   ))}
@@ -302,14 +302,14 @@ function DataTable({ cols, rows, emptyMsg = 'No data', onRowClick }) {
 }
 
 // ─── Risk badge ───────────────────────────────────────────────────────────────
-function RiskBadge({ level }) {
-  const map = { low: { bg: '#EAF5EE', color: '#1A6B45', label: 'Low' }, medium: { bg: '#FEF5E4', color: '#8B5E0A', label: 'Medium' }, high: { bg: '#FAEAEA', color: '#8B1A1A', label: 'High' } }
+function RiskBadge({ level }: any) {
+  const map = { low: { bg: '#EAF5EE', color: 'var(--portal-moss, #1A6B45)', label: 'Low' }, medium: { bg: '#FEF5E4', color: '#8B5E0A', label: 'Medium' }, high: { bg: '#FAEAEA', color: 'var(--portal-brick, #8B1A1A)', label: 'High' } }
   const cfg = map[level] || map.low
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice }) {
+export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice }: any) {
   const [tab, setTab] = React.useState('overview')
   const [userSort, setUserSort] = React.useState('spent')
   const [exportMsg, setExportMsg] = React.useState('')
@@ -448,8 +448,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
   // ── Per-user financials ──────────────────────────────────────────────────────
   const userFinancials = React.useMemo(() => {
-    const studentMap = {}
-    const providerMap = {}
+    const studentMap: Record<string, any> = {}
+    const providerMap: Record<string, any> = {}
 
     activeOrders.forEach(o => {
       // Student side
@@ -553,14 +553,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#9097A8', marginBottom: '4px' }}>Finance</div>
-          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: '#0F172A', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Financial Intelligence</h2>
-          <p style={{ color: '#9097A8', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--portal-ink-soft, #9097A8)', marginBottom: '4px' }}>Finance</div>
+          <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: '34px', color: 'var(--portal-ink, #0F172A)', margin: 0, letterSpacing: '-0.015em', lineHeight: 1.1 }}>Financial Intelligence</h2>
+          <p style={{ color: 'var(--portal-ink-soft, #9097A8)', fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5 }}>
             Full financial visibility across all users, transactions, liabilities, and projections.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {exportMsg && <span style={{ fontSize: '12px', color: '#1A6B45', fontWeight: 600 }}>{exportMsg}</span>}
+          {exportMsg && <span style={{ fontSize: '12px', color: 'var(--portal-moss, #1A6B45)', fontWeight: 600 }}>{exportMsg}</span>}
           <Btn variant="ghost" size="sm" onClick={() => exportCSV(allOrders.map(o => ({ id: o.id, service: o.service, student: o.student, consultant: o.consultant, amount: o.amountValue, platform_fee: mv(o.adminCut), consultant_pay: mv(o.consultantPay), escrow: o.escrow, status: o.status, date: o.createdAt })), 'orders-export.csv')}>
             ↓ Export Orders CSV
           </Btn>
@@ -573,7 +573,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '10px 18px',
             fontSize: '13px', fontWeight: tab === t.id ? 600 : 400,
-            color: tab === t.id ? '#0F172A' : '#9097A8',
+            color: tab === t.id ? 'var(--portal-ink, #0F172A)' : 'var(--portal-ink-soft, #9097A8)',
             background: 'none', border: 'none',
             borderBottom: tab === t.id ? '2px solid #0F172A' : '2px solid transparent',
             cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: sans,
@@ -617,7 +617,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   sub="Held / partial / disputed / frozen" accent="#D97706" icon="🔒" />
                 <KpiCard label="Refund Rate (30d)" value={fmtPct(od.refund_rate_30d_pct)}
                   sub={`${fmtCents(od.chargeback_dollar_30d_cents, true)} refunded`}
-                  accent={(od.refund_rate_30d_pct || 0) > 10 ? '#8B1A1A' : '#1A6B45'} icon="↩" />
+                  accent={(od.refund_rate_30d_pct || 0) > 10 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-moss, #1A6B45)'} icon="↩" />
               </div>
             </Section>
 
@@ -625,9 +625,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <Section title="30-Day Revenue Flow" sub="Gross collected · platform net · provider payouts">
               <Card style={{ padding: '20px' }}>
                 {ledgerDaily.loading ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
                 ) : daily.length < 2 ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No revenue in last 30 days</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>No revenue in last 30 days</div>
                 ) : (
                   <>
                     <svg viewBox="0 0 100 80" preserveAspectRatio="none" style={{ width: '100%', height: 140 }}>
@@ -658,14 +658,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   accent="#1A6B45" icon="✅" />
                 <KpiCard label="Refunded" value={fmtCents(od.escrow_refunded_cents, true)}
                   sub={`${od.escrow_refunded_count || 0} refunds`}
-                  accent={od.escrow_refunded_count > 0 ? '#8B1A1A' : '#9097A8'} icon="↩" />
+                  accent={od.escrow_refunded_count > 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-ink-soft, #9097A8)'} icon="↩" />
                 <KpiCard label="Net Outstanding" value={fmtCents(od.escrow_net_outstanding_cents, true)}
                   sub="Current liability (held − released − refunded)"
                   accent="#3D2B6B" icon="⚖️" />
                 <KpiCard label="Disputed / Frozen"
                   value={od.escrow_disputed_count || 0}
                   sub={`${fmtCents(od.escrow_disputed_cents, true)} held`}
-                  accent={(od.escrow_disputed_count || 0) > 0 ? '#8B1A1A' : '#9097A8'} icon="⚠️" />
+                  accent={(od.escrow_disputed_count || 0) > 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-ink-soft, #9097A8)'} icon="⚠️" />
               </div>
 
               {/* Mini donut chart showing the escrow distribution
@@ -676,14 +676,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 8 }}>
                   <DonutChart segments={[
                     { label: 'Held',       value: od.escrow_held_cents || 0,       color: '#D97706' },
-                    { label: 'Released',   value: od.escrow_released_cents || 0,   color: '#1A6B45' },
-                    { label: 'Refunded',   value: od.escrow_refunded_cents || 0,   color: '#8B1A1A' },
+                    { label: 'Released',   value: od.escrow_released_cents || 0,   color: 'var(--portal-moss, #1A6B45)' },
+                    { label: 'Refunded',   value: od.escrow_refunded_cents || 0,   color: 'var(--portal-brick, #8B1A1A)' },
                   ]} size={80} />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {[
                       { label: 'Held',       cents: od.escrow_held_cents,       color: '#D97706' },
-                      { label: 'Released',   cents: od.escrow_released_cents,   color: '#1A6B45' },
-                      { label: 'Refunded',   cents: od.escrow_refunded_cents,   color: '#8B1A1A' },
+                      { label: 'Released',   cents: od.escrow_released_cents,   color: 'var(--portal-moss, #1A6B45)' },
+                      { label: 'Refunded',   cents: od.escrow_refunded_cents,   color: 'var(--portal-brick, #8B1A1A)' },
                     ].map(s => (
                       <Legend key={s.label} color={s.color}
                         label={s.label}
@@ -695,14 +695,14 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   </div>
                   <div style={{ flex: 1 }} />
                   {/* Volume trail — show counts as a simple summary */}
-                  <div style={{ fontSize: 12, color: '#9097A8', lineHeight: 1.6, textAlign: 'right' }}>
-                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_held_count}</strong> deposits</div>
-                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_released_count}</strong> releases</div>
-                    <div><strong style={{ color: '#0F172A' }}>{od.escrow_refunded_count}</strong> refunds</div>
+                  <div style={{ fontSize: 12, color: 'var(--portal-ink-soft, #9097A8)', lineHeight: 1.6, textAlign: 'right' }}>
+                    <div><strong style={{ color: 'var(--portal-ink, #0F172A)' }}>{od.escrow_held_count}</strong> deposits</div>
+                    <div><strong style={{ color: 'var(--portal-ink, #0F172A)' }}>{od.escrow_released_count}</strong> releases</div>
+                    <div><strong style={{ color: 'var(--portal-ink, #0F172A)' }}>{od.escrow_refunded_count}</strong> refunds</div>
                   </div>
                 </div>
               ) : (
-                <div style={{ padding: '16px 0', color: '#9097A8', fontSize: 13, textAlign: 'center' }}>
+                <div style={{ padding: '16px 0', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13, textAlign: 'center' }}>
                   No escrow activity in this period
                 </div>
               )}
@@ -717,16 +717,16 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 {(() => {
                   const aging = od.escrow_aging || {}
                   const buckets = [
-                    { key: '0_7',     label: '0–7 days',    color: '#1A6B45', weight: 1 },
+                    { key: '0_7',     label: '0–7 days',    color: 'var(--portal-moss, #1A6B45)', weight: 1 },
                     { key: '8_30',    label: '8–30 days',   color: '#D97706', weight: 2 },
                     { key: '31_60',   label: '31–60 days',  color: '#CD5C1C', weight: 3 },
-                    { key: '60_plus', label: '60+ days',    color: '#8B1A1A', weight: 4 },
+                    { key: '60_plus', label: '60+ days',    color: 'var(--portal-brick, #8B1A1A)', weight: 4 },
                   ]
                   const totalCents = buckets.reduce((s, b) => s + (aging[b.key]?.cents || 0), 0)
                   const maxCents = Math.max(1, ...buckets.map(b => aging[b.key]?.cents || 0))
 
                   if (totalCents === 0) {
-                    return <div style={{ padding: '16px 0', color: '#9097A8', fontSize: 13, textAlign: 'center' }}>No outstanding escrow deposits</div>
+                    return <div style={{ padding: '16px 0', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13, textAlign: 'center' }}>No outstanding escrow deposits</div>
                   }
 
                   return (
@@ -759,27 +759,27 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                                     width: 10, height: 10, borderRadius: '50%',
                                     background: b.color, display: 'inline-block', flexShrink: 0,
                                   }} />
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: b.weight >= 3 ? b.color : '#0F172A' }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: b.weight >= 3 ? b.color : 'var(--portal-ink, #0F172A)' }}>
                                     {b.label}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--portal-ink, #0F172A)', fontVariantNumeric: 'tabular-nums' }}>
                                     {fmtCents(row.cents, true)}
                                   </span>
-                                  <span style={{ fontSize: 12, color: '#9097A8', minWidth: 40, textAlign: 'right' }}>
+                                  <span style={{ fontSize: 12, color: 'var(--portal-ink-soft, #9097A8)', minWidth: 40, textAlign: 'right' }}>
                                     {row.count} order{row.count !== 1 ? 's' : ''}
                                   </span>
                                   <span style={{
                                     fontSize: 11, fontWeight: 700, minWidth: 38, textAlign: 'right',
-                                    color: Number(pct) > 50 ? b.color : '#9097A8',
+                                    color: Number(pct) > 50 ? b.color : 'var(--portal-ink-soft, #9097A8)',
                                   }}>
                                     {pct}%
                                   </span>
                                 </div>
                               </div>
                               {/* Mini inline bar */}
-                              <div style={{ height: 4, background: '#F2EFE9', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ height: 4, background: 'var(--portal-rule-soft, #F2EFE9)', borderRadius: 2, overflow: 'hidden' }}>
                                 <div style={{ width: `${barW}%`, height: '100%', background: b.color, borderRadius: 2, transition: 'width 0.3s' }} />
                               </div>
                             </div>
@@ -789,8 +789,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
 
                       {/* Total row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2EFE9' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#5C6070' }}>Total outstanding</span>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>{fmtCents(totalCents, true)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--portal-ink-mid, #5C6070)' }}>Total outstanding</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--portal-ink, #0F172A)' }}>{fmtCents(totalCents, true)}</span>
                       </div>
                     </>
                   )
@@ -804,13 +804,13 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 <Card style={{ padding: '20px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {[
-                      { label: 'Gross (purchases)', value: fmtCents(od.gross_30d_cents, true), color: '#1A6B45' },
-                      { label: 'Platform net (fees)', value: fmtCents(od.net_take_30d_cents, true), color: '#0F172A' },
-                      { label: 'Provider payouts', value: fmtCents(od.payouts_30d_cents, true), color: '#9A7B3B' },
-                      { label: 'Refunds', value: fmtCents(od.chargeback_dollar_30d_cents, true), color: '#8B1A1A' },
+                      { label: 'Gross (purchases)', value: fmtCents(od.gross_30d_cents, true), color: 'var(--portal-moss, #1A6B45)' },
+                      { label: 'Platform net (fees)', value: fmtCents(od.net_take_30d_cents, true), color: 'var(--portal-ink, #0F172A)' },
+                      { label: 'Provider payouts', value: fmtCents(od.payouts_30d_cents, true), color: 'var(--portal-gold, #9A7B3B)' },
+                      { label: 'Refunds', value: fmtCents(od.chargeback_dollar_30d_cents, true), color: 'var(--portal-brick, #8B1A1A)' },
                     ].map(row => (
-                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
-                        <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
+                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--portal-surface-2, #FAFAF8)', borderRadius: 6 }}>
+                        <span style={{ fontSize: 12, color: 'var(--portal-ink-mid, #5C6070)' }}>{row.label}</span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: row.color }}>{row.value}</span>
                       </div>
                     ))}
@@ -828,9 +828,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                       { label: 'Escrow Liability Ratio', value: pct(heldEscrow, grossRevenue) },
                       { label: 'MRR (6m trailing)', value: fmt(mrr, true) },
                     ].map(row => (
-                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#FAFAF8', borderRadius: 6 }}>
-                        <span style={{ fontSize: 12, color: '#5C6070' }}>{row.label}</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
+                      <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--portal-surface-2, #FAFAF8)', borderRadius: 6 }}>
+                        <span style={{ fontSize: 12, color: 'var(--portal-ink-mid, #5C6070)' }}>{row.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--portal-ink, #0F172A)' }}>{row.value}</span>
                       </div>
                     ))}
                   </div>
@@ -903,9 +903,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #F2EFE9' }}>
                 {last3.map(m => (
                   <div key={m.month} style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '11px', color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthLabel(m.month)}</div>
-                    <div style={{ fontWeight: 700, fontSize: '18px', color: '#0F172A', marginTop: '4px' }}>{fmtCents(m.gross, true)}</div>
-                    <div style={{ fontSize: '11px', color: '#1A6B45', marginTop: '2px' }}>{fmtCents(m.net, true)} net</div>
+                    <div style={{ fontSize: '11px', color: 'var(--portal-ink-soft, #9097A8)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{monthLabel(m.month)}</div>
+                    <div style={{ fontWeight: 700, fontSize: '18px', color: 'var(--portal-ink, #0F172A)', marginTop: '4px' }}>{fmtCents(m.gross, true)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--portal-moss, #1A6B45)', marginTop: '2px' }}>{fmtCents(m.net, true)} net</div>
                   </div>
                 ))}
               </div>
@@ -916,8 +916,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <Card style={{ padding: '20px' }}>
               <LineChart data={cumulativeMonths} height={120} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #F2EFE9' }}>
-                <span style={{ fontSize: '13px', color: '#9097A8' }}>All-time gross (last 6 month view)</span>
-                <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmtCents(grossAllTime)}</span>
+                <span style={{ fontSize: '13px', color: 'var(--portal-ink-soft, #9097A8)' }}>All-time gross (last 6 month view)</span>
+                <span style={{ fontWeight: 700, color: 'var(--portal-ink, #0F172A)' }}>{fmtCents(grossAllTime)}</span>
               </div>
             </Card>
           </Section>
@@ -953,7 +953,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             action={
               <div style={{ display: 'flex', gap: '6px' }}>
                 {['spent', 'orders'].map(s => (
-                  <button key={s} onClick={() => setUserSort(s)} style={{ padding: '5px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: sans, border: `1px solid ${userSort === s ? '#0F172A' : '#DDD8CE'}`, background: userSort === s ? '#0F172A' : '#fff', color: userSort === s ? '#fff' : '#5C6070' }}>
+                  <button key={s} onClick={() => setUserSort(s)} style={{ padding: '5px 12px', borderRadius: '5px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: sans, border: `1px solid ${userSort === s ? 'var(--portal-ink, #0F172A)' : 'var(--portal-rule, #DDD8CE)'}`, background: userSort === s ? 'var(--portal-ink, #0F172A)' : '#fff', color: userSort === s ? '#fff' : 'var(--portal-ink-mid, #5C6070)' }}>
                     {s === 'spent' ? 'By Spend' : 'By Orders'}
                   </button>
                 ))}
@@ -1061,7 +1061,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                       Refund
                     </button>
                   ) : (
-                    <span style={{ fontSize: '11px', color: '#9097A8' }}>Refunded</span>
+                    <span style={{ fontSize: '11px', color: 'var(--portal-ink-soft, #9097A8)' }}>Refunded</span>
                   ),
                 }
               })}
@@ -1222,9 +1222,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <Section title="Forward Band — Next 3 Months" sub="Shaded area is the ±1 SD confidence interval. Single line is the point estimate.">
             <Card style={{ padding: 20 }}>
               {ledgerProj.loading ? (
-                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
               ) : fwd.length < 2 ? (
-                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough run-rate history yet</div>
+                <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Not enough run-rate history yet</div>
               ) : (
                 <>
                   <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 160 }}>
@@ -1241,9 +1241,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid #F2EFE9' }}>
                     {fwd.map(p => (
                       <div key={p.month} style={{ textAlign: 'center', flex: 1 }}>
-                        <div style={{ fontSize: 11, color: '#9097A8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>{p.month}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0F172A', marginTop: 2 }}>{fmtCents(p.point_cents, true)}</div>
-                        <div style={{ fontSize: 11, color: '#9097A8', marginTop: 2 }}>{fmtCents(p.lo_cents, true)} – {fmtCents(p.hi_cents, true)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--portal-ink-soft, #9097A8)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em' }}>{p.month}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--portal-ink, #0F172A)', marginTop: 2 }}>{fmtCents(p.point_cents, true)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--portal-ink-soft, #9097A8)', marginTop: 2 }}>{fmtCents(p.lo_cents, true)} – {fmtCents(p.hi_cents, true)}</div>
                       </div>
                     ))}
                   </div>
@@ -1289,7 +1289,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
           <Section title="Break-Even & ROI" sub="Platform economics at current fee structure">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <Card style={{ padding: '20px' }}>
-                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Platform Economics</div>
+                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: 'var(--portal-ink, #0F172A)', marginBottom: '14px' }}>Platform Economics</div>
                 {[
                   { label: 'Gross Revenue Collected', value: fmt(grossRevenue) },
                   { label: `Platform Fee (${platformPct}%)`, value: fmt(netRevenue) },
@@ -1299,23 +1299,23 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   { label: 'Net Revenue Per Order', value: fmt(activeOrders.length ? netRevenue / activeOrders.length : 0) },
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F2EFE9' }}>
-                    <span style={{ fontSize: '13px', color: '#5C6070' }}>{row.label}</span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>{row.value}</span>
+                    <span style={{ fontSize: '13px', color: 'var(--portal-ink-mid, #5C6070)' }}>{row.label}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--portal-ink, #0F172A)' }}>{row.value}</span>
                   </div>
                 ))}
               </Card>
               <Card style={{ padding: '20px' }}>
-                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: '#0F172A', marginBottom: '14px' }}>Provider Economics</div>
+                <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: 'var(--portal-ink, #0F172A)', marginBottom: '14px' }}>Provider Economics</div>
                 {sortedProviders.slice(0, 6).map(p => (
                   <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F2EFE9' }}>
-                    <span style={{ fontSize: '13px', color: '#5C6070', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{p.name}</span>
+                    <span style={{ fontSize: '13px', color: 'var(--portal-ink-mid, #5C6070)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{p.name}</span>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#1A6B45' }}>{fmt(p.earned, true)}</div>
-                      <div style={{ fontSize: '11px', color: '#9097A8' }}>{fmt(p.pending, true)} pending</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--portal-moss, #1A6B45)' }}>{fmt(p.earned, true)}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--portal-ink-soft, #9097A8)' }}>{fmt(p.pending, true)} pending</div>
                     </div>
                   </div>
                 ))}
-                {sortedProviders.length === 0 && <p style={{ color: '#9097A8', fontSize: '13px' }}>No provider data yet</p>}
+                {sortedProviders.length === 0 && <p style={{ color: 'var(--portal-ink-soft, #9097A8)', fontSize: '13px' }}>No provider data yet</p>}
               </Card>
             </div>
           </Section>
@@ -1414,12 +1414,12 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             {/* ── Date range picker ────────────────────────────────────────── */}
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 4 }}>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9097A8', display: 'block', marginBottom: 4 }}>From</label>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--portal-ink-soft, #9097A8)', display: 'block', marginBottom: 4 }}>From</label>
                 <input type="date" value={ldFrom} onChange={e => setLdFrom(e.target.value)}
                   style={{ padding: '6px 10px', border: '1px solid #DDD8CE', borderRadius: 5, fontSize: 13, fontFamily: sans }} />
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9097A8', display: 'block', marginBottom: 4 }}>To</label>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--portal-ink-soft, #9097A8)', display: 'block', marginBottom: 4 }}>To</label>
                 <input type="date" value={ldTo} onChange={e => setLdTo(e.target.value)}
                   style={{ padding: '6px 10px', border: '1px solid #DDD8CE', borderRadius: 5, fontSize: 13, fontFamily: sans }} />
               </div>
@@ -1457,10 +1457,10 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 on/off. When none are selected, all types are returned. */}
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8' }}>Type filter</span>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft, #9097A8)' }}>Type filter</span>
                 {ldTypes.length > 0 && (
                   <button onClick={() => setLdTypes([])}
-                    style={{ padding: '1px 8px', borderRadius: 4, border: '1px solid #DDD8CE', background: '#F7F5F0', fontSize: 10, fontWeight: 600, color: '#5C6070', cursor: 'pointer', fontFamily: sans }}>
+                    style={{ padding: '1px 8px', borderRadius: 4, border: '1px solid #DDD8CE', background: 'var(--portal-bg, #F7F5F0)', fontSize: 10, fontWeight: 600, color: 'var(--portal-ink-mid, #5C6070)', cursor: 'pointer', fontFamily: sans }}>
                     Clear all
                   </button>
                 )}
@@ -1468,7 +1468,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 {ENTRY_TYPE_GROUPS.map(group => (
                   <div key={group.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#9097A8', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 2 }}>{group.label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--portal-ink-soft, #9097A8)', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 2 }}>{group.label}</span>
                     {group.types.map(t => {
                       const active = ldTypes.length === 0 || ldTypes.includes(t)
                       return (
@@ -1478,8 +1478,8 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                             padding: '3px 10px', borderRadius: 14, fontSize: 11, fontWeight: 600,
                             fontFamily: sans, cursor: 'pointer', whiteSpace: 'nowrap',
                             border: active ? '1px solid rgba(15,23,42,0.25)' : '1px dashed #DDD8CE',
-                            background: active ? '#0F172A' : '#fff',
-                            color: active ? '#fff' : '#9097A8',
+                            background: active ? 'var(--portal-ink, #0F172A)' : '#fff',
+                            color: active ? '#fff' : 'var(--portal-ink-soft, #9097A8)',
                             opacity: ldTypes.length === 0 ? 0.85 : 1,
                             transition: 'all 0.12s',
                           }}>
@@ -1488,7 +1488,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                       )
                     })}
                     {group !== ENTRY_TYPE_GROUPS[ENTRY_TYPE_GROUPS.length - 1] && (
-                      <span style={{ width: 1, height: 20, background: '#DDD8CE', margin: '0 6px', flexShrink: 0 }} />
+                      <span style={{ width: 1, height: 20, background: 'var(--portal-rule, #DDD8CE)', margin: '0 6px', flexShrink: 0 }} />
                     )}
                   </div>
                 ))}
@@ -1508,9 +1508,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                       {['Gross', 'Net', 'Payouts', 'Refunds'].map(l => (
                         <div key={l} style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: 8, padding: '16px 18px' }}>
-                          <div style={{ height: 11, width: '40%', background: '#F2EFE9', borderRadius: 3, marginBottom: 8 }} />
-                          <div style={{ height: 22, width: '55%', background: '#F2EFE9', borderRadius: 3, marginBottom: 6 }} />
-                          <div style={{ height: 10, width: '35%', background: '#F2EFE9', borderRadius: 3 }} />
+                          <div style={{ height: 11, width: '40%', background: 'var(--portal-rule-soft, #F2EFE9)', borderRadius: 3, marginBottom: 8 }} />
+                          <div style={{ height: 22, width: '55%', background: 'var(--portal-rule-soft, #F2EFE9)', borderRadius: 3, marginBottom: 6 }} />
+                          <div style={{ height: 10, width: '35%', background: 'var(--portal-rule-soft, #F2EFE9)', borderRadius: 3 }} />
                         </div>
                       ))}
                     </div>
@@ -1525,43 +1525,43 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 const deltaPct = (cur, prevTotal) => prevTotal === 0 ? null : ((cur - prevTotal) / prevTotal) * 100
 
                 const metrics = [
-                  { label: 'Gross Revenue', cur: totalGross, prev: prevGross, icon: '💵', accent: '#1A6B45' },
-                  { label: 'Platform Net', cur: totalNet, prev: prevNet, icon: '💰', accent: '#0F172A' },
-                  { label: 'Provider Payouts', cur: totalPayouts, prev: prevPayouts, icon: '📤', accent: '#9A7B3B' },
-                  { label: 'Total Refunds', cur: totalRefunds, prev: prevRefunds, icon: '↩', accent: '#8B1A1A' },
+                  { label: 'Gross Revenue', cur: totalGross, prev: prevGross, icon: '💵', accent: 'var(--portal-moss, #1A6B45)' },
+                  { label: 'Platform Net', cur: totalNet, prev: prevNet, icon: '💰', accent: 'var(--portal-ink, #0F172A)' },
+                  { label: 'Provider Payouts', cur: totalPayouts, prev: prevPayouts, icon: '📤', accent: 'var(--portal-gold, #9A7B3B)' },
+                  { label: 'Total Refunds', cur: totalRefunds, prev: prevRefunds, icon: '↩', accent: 'var(--portal-brick, #8B1A1A)' },
                 ]
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {/* Side-by-side metric rows */}
                     <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr 60px', gap: 8, alignItems: 'center', padding: '0 4px', marginBottom: 2 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8' }}>Metric</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#0F172A', textAlign: 'right' }}>This period</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', textAlign: 'right' }}>Previous</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', textAlign: 'right' }}>Change</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft, #9097A8)' }}>Metric</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink, #0F172A)', textAlign: 'right' }}>This period</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft, #9097A8)', textAlign: 'right' }}>Previous</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft, #9097A8)', textAlign: 'right' }}>Change</span>
                     </div>
                     {metrics.map(m => {
                       const delta = deltaPct(m.cur, m.prev)
                       const dir = delta === null ? '' : delta >= 0 ? '▲' : '▼'
                       const isGood = m.label === 'Total Refunds' ? (delta !== null && delta <= 0) : (delta !== null && delta >= 0)
-                      const deltaColor = delta === null ? '#9097A8' : isGood ? '#1A6B45' : '#8B1A1A'
+                      const deltaColor = delta === null ? 'var(--portal-ink-soft, #9097A8)' : isGood ? 'var(--portal-moss, #1A6B45)' : 'var(--portal-brick, #8B1A1A)'
                       return (
                         <div key={m.label}
                           style={{
                             display: 'grid', gridTemplateColumns: '140px 1fr 1fr 60px', gap: 8,
                             alignItems: 'center', padding: '10px 12px',
-                            background: '#FAFAF8', borderRadius: 6,
+                            background: 'var(--portal-surface-2, #FAFAF8)', borderRadius: 6,
                             borderLeft: `3px solid ${m.accent}`,
                           }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 14 }}>{m.icon}</span>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0F172A' }}>{m.label}</span>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--portal-ink, #0F172A)' }}>{m.label}</span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <span style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.cur, true)}</span>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--portal-ink, #0F172A)', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.cur, true)}</span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#5C6070', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.prev, true)}</span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--portal-ink-mid, #5C6070)', fontVariantNumeric: 'tabular-nums' }}>{fmtCents(m.prev, true)}</span>
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             {delta !== null ? (
@@ -1569,7 +1569,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                                 {dir} {Math.abs(delta).toFixed(1)}%
                               </span>
                             ) : (
-                              <span style={{ fontSize: 11, color: '#9097A8' }}>—</span>
+                              <span style={{ fontSize: 11, color: 'var(--portal-ink-soft, #9097A8)' }}>—</span>
                             )}
                           </div>
                         </div>
@@ -1577,15 +1577,15 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                     })}
                     {/* Activity summary row */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, marginTop: 4, padding: '6px 12px' }}>
-                      <span style={{ fontSize: 11, color: '#9097A8' }}>
-                        Active days: <strong style={{ color: '#0F172A' }}>{activeDays}</strong>
-                        <span style={{ color: '#9097A8', margin: '0 4px' }}>vs</span>
-                        <strong style={{ color: prevActiveDays >= activeDays ? '#1A6B45' : '#8B1A1A' }}>{prevActiveDays}</strong>
+                      <span style={{ fontSize: 11, color: 'var(--portal-ink-soft, #9097A8)' }}>
+                        Active days: <strong style={{ color: 'var(--portal-ink, #0F172A)' }}>{activeDays}</strong>
+                        <span style={{ color: 'var(--portal-ink-soft, #9097A8)', margin: '0 4px' }}>vs</span>
+                        <strong style={{ color: prevActiveDays >= activeDays ? 'var(--portal-moss, #1A6B45)' : 'var(--portal-brick, #8B1A1A)' }}>{prevActiveDays}</strong>
                       </span>
-                      <span style={{ fontSize: 11, color: '#9097A8' }}>
-                        Daily avg (active): <strong style={{ color: '#0F172A' }}>{fmtCents(avgDailyGross, true)}</strong>
-                        <span style={{ color: '#9097A8', margin: '0 4px' }}>vs</span>
-                        <strong style={{ color: prevActiveDays >= activeDays ? '#1A6B45' : '#8B1A1A' }}>{fmtCents(prevActiveDays > 0 ? (prevGross / prevActiveDays) : 0, true)}</strong>
+                      <span style={{ fontSize: 11, color: 'var(--portal-ink-soft, #9097A8)' }}>
+                        Daily avg (active): <strong style={{ color: 'var(--portal-ink, #0F172A)' }}>{fmtCents(avgDailyGross, true)}</strong>
+                        <span style={{ color: 'var(--portal-ink-soft, #9097A8)', margin: '0 4px' }}>vs</span>
+                        <strong style={{ color: prevActiveDays >= activeDays ? 'var(--portal-moss, #1A6B45)' : 'var(--portal-brick, #8B1A1A)' }}>{fmtCents(prevActiveDays > 0 ? (prevGross / prevActiveDays) : 0, true)}</strong>
                       </span>
                     </div>
                   </div>
@@ -1606,7 +1606,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                   accent="#9A7B3B" icon="📤" />
                 <KpiCard label="Total Refunds" value={fmtCents(totalRefunds, true)}
                   sub={totalGross > 0 ? `${((totalRefunds / totalGross) * 100).toFixed(1)}% of gross` : '—'}
-                  accent={totalRefunds > 0 ? '#8B1A1A' : '#9097A8'} icon="↩" />
+                  accent={totalRefunds > 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-ink-soft, #9097A8)'} icon="↩" />
               </div>
             </Section>
 
@@ -1615,9 +1615,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <Section title="Daily Gross Revenue" sub="Bar chart of gross cents per day">
                 <Card style={{ padding: 20 }}>
                   {loading ? (
-                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
                   ) : barData.length === 0 ? (
-                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No data</div>
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>No data</div>
                   ) : (
                     <BarChart data={barData} height={140} barColor="#1A6B45" />
                   )}
@@ -1626,15 +1626,15 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
               <Section title="Cumulative Gross" sub="Running total across the period">
                 <Card style={{ padding: 20 }}>
                   {loading ? (
-                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
                   ) : cumData.length < 2 ? (
-                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough data</div>
+                    <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Not enough data</div>
                   ) : (
                     <LineChart data={cumData} height={140} color="#0F172A" fillColor="rgba(15,23,42,0.06)" />
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2EFE9' }}>
-                    <span style={{ fontSize: 12, color: '#9097A8' }}>Total gross over period</span>
-                    <span style={{ fontWeight: 700, color: '#0F172A' }}>{fmtCents(totalGross, true)}</span>
+                    <span style={{ fontSize: 12, color: 'var(--portal-ink-soft, #9097A8)' }}>Total gross over period</span>
+                    <span style={{ fontWeight: 700, color: 'var(--portal-ink, #0F172A)' }}>{fmtCents(totalGross, true)}</span>
                   </div>
                 </Card>
               </Section>
@@ -1644,9 +1644,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <Section title="Revenue Composition" sub="Daily net (platform) · payouts (provider) · refunds — overlay">
               <Card style={{ padding: 20 }}>
                 {loading ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
                 ) : dd.length < 2 ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Not enough daily data</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Not enough daily data</div>
                 ) : (
                   <>
                     <svg viewBox="0 0 100 80" preserveAspectRatio="none" style={{ width: '100%', height: 140 }}>
@@ -1668,9 +1668,9 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <Section title="Daily Refund Rate" sub="Refund cents as % of daily volume — spikes reveal problem orders">
               <Card style={{ padding: 20 }}>
                 {loading ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>Loading…</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>Loading…</div>
                 ) : refundRateDays.length === 0 ? (
-                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9097A8', fontSize: 13 }}>No data</div>
+                  <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--portal-ink-soft, #9097A8)', fontSize: 13 }}>No data</div>
                 ) : (
                   <>
                     <BarChart data={refundRateDays.map(d => ({ label: d.date, value: d.rate, highlight: d.rate > 20 }))}
@@ -1728,17 +1728,11 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
               <KpiCard label="Disputed / Frozen Orders" value={rd.disputed_count ?? 0}
                 sub={`${fmtCents(rd.disputed_dollar_cents, true)} held`}
-                accent={(rd.disputed_count || 0) > 0 ? '#8B1A1A' : '#1A6B45'} icon="⚠️" />
+                accent={(rd.disputed_count || 0) > 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-moss, #1A6B45)'} icon="⚠️" />
               <KpiCard label="Refund Rate (current month)"
                 value={fmtPct(trend.length ? trend[trend.length - 1].refund_rate_pct : 0)}
                 sub={trend.length ? `${trend[trend.length - 1].refunded} of ${trend[trend.length - 1].total_orders} orders` : 'no data'}
-                accent={(trend.length && trend[trend.length - 1].refund_rate_pct > 10) ? '#8B1A1A' : '#D97706'} icon="↩" />
-              <KpiCard label="Auto-Release Overdue" value={overdue.length}
-                sub="Held orders >7d past eligibility"
-                accent={overdue.length > 0 ? '#8B1A1A' : '#1A6B45'} icon="⏰" />
-              <KpiCard label="High-Refund Providers" value={refundProviders.length}
-                sub="≥5 orders, ranked by refund %"
-                accent={refundProviders.length > 0 ? '#D97706' : '#1A6B45'} icon="👤" />
+                accent={(trend.length && trend[trend.length - 1].refund_rate_pct > 10) ? 'var(--portal-brick, #8B1A1A)' : '#D97706'} icon="↩" />
             </div>
           </Section>
 
@@ -1770,12 +1764,12 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
               <KpiCard label="Revenue Concentration" value={`${concentrationRisk.toFixed(1)}%`}
                 sub="Top 3 clients of gross revenue"
-                accent={concentrationRisk > 60 ? '#8B1A1A' : concentrationRisk > 40 ? '#D97706' : '#1A6B45'}
+                accent={concentrationRisk > 60 ? 'var(--portal-brick, #8B1A1A)' : concentrationRisk > 40 ? '#D97706' : 'var(--portal-moss, #1A6B45)'}
                 icon="⚡"
                 chart={<RiskBadge level={concentrationRisk > 60 ? 'high' : concentrationRisk > 40 ? 'medium' : 'low'} />} />
               <KpiCard label="Provider Concentration" value={`${providerConcentration.toFixed(1)}%`}
                 sub="Top provider of all payouts"
-                accent={providerConcentration > 70 ? '#8B1A1A' : providerConcentration > 50 ? '#D97706' : '#1A6B45'}
+                accent={providerConcentration > 70 ? 'var(--portal-brick, #8B1A1A)' : providerConcentration > 50 ? '#D97706' : 'var(--portal-moss, #1A6B45)'}
                 icon="👤"
                 chart={<RiskBadge level={providerConcentration > 70 ? 'high' : providerConcentration > 50 ? 'medium' : 'low'} />} />
               <KpiCard label="Escrow Liability" value={fmt(heldEscrow, true)}
@@ -1783,7 +1777,7 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 accent="#D97706" icon="🔒" />
               <KpiCard label="Churn-Risk Clients" value={churnRisk.length}
                 sub="No order in 60+ days"
-                accent={churnRisk.length > 5 ? '#8B1A1A' : churnRisk.length > 2 ? '#D97706' : '#1A6B45'}
+                accent={churnRisk.length > 5 ? 'var(--portal-brick, #8B1A1A)' : churnRisk.length > 2 ? '#D97706' : 'var(--portal-moss, #1A6B45)'}
                 icon="📉" />
             </div>
           </Section>

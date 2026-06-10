@@ -112,6 +112,17 @@ function AdminApp({ onLogout }) {
   React.useEffect(() => {
     const onPop = () => setPageState(pageFromUrl());
     window.addEventListener('popstate', onPop);
+    // Strip stale auth-entry params (?lane=, ?vertical=) — they're sign-in
+    // routing hints, meaningless once the admin console has mounted, and
+    // otherwise persist through ?page= navigation.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('lane') || url.searchParams.has('vertical')) {
+        url.searchParams.delete('lane');
+        url.searchParams.delete('vertical');
+        window.history.replaceState({}, '', url);
+      }
+    } catch { /* non-fatal */ }
     return () => window.removeEventListener('popstate', onPop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -497,6 +508,11 @@ function AdminApp({ onLogout }) {
   const consultantNames = consultants.map(u => u.name);
 
   // ── SIDEBAR ──
+  const NavGroupLabel = ({ label, first = false }) => (
+    <div style={{ padding: first ? '4px 12px 4px' : '14px 12px 4px', fontSize: '10px', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.textDim }}>
+      {label}
+    </div>
+  );
   const Sidebar = () => (
     <div className="yousafe-sidebar" style={{ width: '240px', flexShrink: 0, background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 }}>
       <div style={{ padding: '20px 18px', borderBottom: `1px solid ${C.border}` }}>
@@ -509,17 +525,23 @@ function AdminApp({ onLogout }) {
         </a>
       </div>
       <div className="yousafe-sidebar-nav" style={{ padding: '12px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {/* Grouped navigation: Overview / People / Commerce / Finance /
+            Support — keeps the console scannable as sections grow.
+            Attorney + Consultant Management live inside My Office as tabs;
+            the combined pending-app badge keeps the count visible. */}
+        <NavGroupLabel label="Overview" first />
         <NavItem icon="⬛" label="Dashboard" active={page === 'dashboard'} onClick={() => setPage('dashboard')} />
-        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
-        {/* Attorney + Consultant Management moved into My Office as tabs.
-            Sidebar shows a combined pending-app badge so admins still see
-            the count without an extra nav item. */}
-        <NavItem icon="🗂️" label="Order Kanban" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
-        <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
-        <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
         <NavItem icon="📊" label="Analytics" active={page === 'analytics'} onClick={() => setPage('analytics')} />
-        <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
+        <NavGroupLabel label="People" />
+        <NavItem icon="👥" label="Users" active={page === 'users'} onClick={() => setPage('users')} badge={pendingApprovals.length || null} />
         <NavItem icon="⭐" label="My Office" active={page === 'gigs'} onClick={() => setPage('gigs')} badge={pendingAttorneyApps.length || null} />
+        <NavGroupLabel label="Commerce" />
+        <NavItem icon="🗂️" label="Order Kanban" active={page === 'orders'} onClick={() => setPage('orders')} badge={pendingOrders > 0 ? pendingOrders : null} />
+        <NavItem icon="📥" label="Inquiries" active={page === 'inquiries'} onClick={() => setPage('inquiries')} />
+        <NavGroupLabel label="Finance" />
+        <NavItem icon="💵" label="Financials" active={page === 'financials'} onClick={() => setPage('financials')} />
+        <NavGroupLabel label="Support" />
+        <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
