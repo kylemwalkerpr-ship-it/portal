@@ -26,21 +26,23 @@ export async function GET(request: NextRequest) {
     out.mymemory_ms = Date.now() - started
     const body: any = await res.json().catch(() => null)
     out.mymemory_response_status = body?.responseStatus
+    out.mymemory_response_status_type = typeof body?.responseStatus
     out.mymemory_translated = body?.responseData?.translatedText ?? null
     out.mymemory_details = body?.responseDetails ?? null
   } catch (e: any) {
     out.mymemory_error = String(e?.message || e)
   }
 
-  // 2. Test Supabase cache write with service role
+  // 2. Persist the findings INTO the table itself so they can be read via
+  //    SQL even when the HTTP response isn't inspectable.
   try {
     const db = createSupabaseAdminClient()
     const { error } = await db.from('translations').upsert({
-      text_hash: 'diag0001',
+      text_hash: `diag${Date.now() % 100000000}`,
       target_lang: 'zz',
       source_lang: 'en',
       source_text: 'diagnostic probe',
-      translated: 'diagnostic probe',
+      translated: JSON.stringify(out).slice(0, 3000),
       provider: 'diag',
       updated_at: new Date().toISOString(),
     })
