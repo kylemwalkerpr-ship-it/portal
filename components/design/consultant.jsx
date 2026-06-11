@@ -774,13 +774,16 @@ function ConsultantApp({ onLogout }) {
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <input ref={headshotInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadHeadshot(e.target.files?.[0])} />
       {Sidebar()}
-      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* WhatsApp-style rule for Messages (mirrors the student dashboard):
+          the page itself must NOT scroll — only the thread list / message
+          list scroll internally. Everywhere else the column scrolls. */}
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: page === 'messages' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
         {page === 'order-detail'
           ? <TopBar title="Order Details" />
           : <TopBar title={PAGE_TITLES[page] || 'Overview'} />
         }
-        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minHeight: 0 }}>
-          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
+        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: page === 'messages' ? 'stretch' : 'flex-start', minHeight: 0 }}>
+          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0, ...(page === 'messages' ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : {}) }}>
             {loadError && <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: 'rgba(220,38,38,0.10)', border: `1px solid rgba(220,38,38,0.25)`, borderRadius: '10px', color: C.red, fontSize: '13px' }}>{loadError}</div>}
             {loading && <div style={{ margin: '16px 28px 0', color: C.textMuted, fontSize: '13px' }}>Loading consultant data…</div>}
             {actionNotice && (
@@ -829,7 +832,7 @@ function ConsultantApp({ onLogout }) {
               />
             )}
             {page === 'messages' && (
-              <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <UnifiedInbox
                   canSendOffer
                   defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}

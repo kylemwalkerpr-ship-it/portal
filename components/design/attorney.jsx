@@ -345,15 +345,18 @@ export default function AttorneyApp({ onLogout, userName }) {
           onChangeHeadshot={() => headshotInputRef.current?.click()}
           uploadingHeadshot={uploadingHeadshot}
         />
-        <div className="yousafe-dashboard-scroll" style={{ flex: 1, overflow: 'auto' }}>
-          <div className="yousafe-dashboard-body" style={{ display: 'flex', alignItems: 'flex-start', gap: '0', minHeight: '100%' }}>
-            <main className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
+        {/* WhatsApp-style rule for Messages (mirrors the student dashboard):
+            the page itself must NOT scroll — only the thread list / message
+            list scroll internally. Everywhere else the column scrolls. */}
+        <div className="yousafe-dashboard-scroll" style={{ flex: 1, overflow: page === 'messages' ? 'hidden' : 'auto', ...(page === 'messages' ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : {}) }}>
+          <div className="yousafe-dashboard-body" style={{ display: 'flex', alignItems: page === 'messages' ? 'stretch' : 'flex-start', gap: '0', ...(page === 'messages' ? { flex: 1, minHeight: 0 } : { minHeight: '100%' }) }}>
+            <main className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0, ...(page === 'messages' ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : {}) }}>
               {page === 'overview' && <AttorneyOverview onJump={setPage} displayName={displayName} />}
               {page === 'queue' && <AttorneyInquiries mode="queue" />}
               {page === 'mine' && <AttorneyInquiries mode="mine" />}
               {page === 'orders' && <OrdersPage openOrderId={pendingOrderId} />}
               {page === 'messages' && (
-                <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <UnifiedInbox
                     canSendOffer
                     defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
