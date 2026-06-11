@@ -612,14 +612,17 @@ const CSS = `
 .cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
 .cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
 
-.cw-market .hero { padding: 40px 0 44px; border-bottom: 1px solid ${T.rule}; }
-.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
+.cw-market .hero { position: relative; padding: 56px 0 60px; border-bottom: 1px solid ${T.rule}; background: linear-gradient(115deg, #0B1023 0%, #141B38 48%, #232A55 100%); overflow: hidden; }
+.cw-market .hero-media { position: absolute; inset: 0; pointer-events: none; }
+.cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cw-market .hero-media-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,11,26,0.92) 0%, rgba(8,11,26,0.78) 46%, rgba(8,11,26,0.45) 100%); }
+.cw-market .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
 @keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: ${T.inkMid}; background: ${T.paper2}; border-radius: 999px; padding: 6px 14px; }
+.cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 6px 14px; }
 .cw-market .flagbar { display: none; }
-.cw-market .hero h1 { font-family: ${F.ui}; font-size: clamp(32px, 3.8vw, 46px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 700; margin: 16px 0 14px; color: ${T.ink}; text-wrap: balance; }
-.cw-market .hero h1 em { font-style: normal; font-weight: 700; color: ${T.indigo}; }
-.cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: ${T.inkSoft}; margin: 0 0 24px; }
+.cw-market .hero h1 { font-family: ${F.ui}; font-size: clamp(32px, 3.8vw, 46px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 700; margin: 16px 0 14px; color: #fff; text-wrap: balance; }
+.cw-market .hero h1 em { font-style: normal; font-weight: 700; color: #A5B4FC; }
+.cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: rgba(255,255,255,0.72); margin: 0 0 24px; }
 .cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 1px solid ${T.rule}; border-radius: 12px; padding: 5px 5px 5px 16px; gap: 10px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -16px rgba(15,23,42,0.12); transition: border-color .15s, box-shadow .15s; }
 .cw-market .hero-search:focus-within { border-color: ${T.inkMid}; box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 12px 28px -16px rgba(15,23,42,0.18); }
 .cw-market .hero-search svg { color: ${T.inkSoft}; flex: 0 0 18px; width: 18px; height: 18px; }
@@ -630,9 +633,9 @@ const CSS = `
 .cw-market .hero-search button.search-go { height: 46px; padding: 0 26px; background: ${T.ink}; color: #fff; border-radius: 9px; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; transition: background .15s; }
 .cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; }
 .cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
-.cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.inkSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
-.cw-market .suggest a { display: inline-flex; align-items: center; padding: 6px 14px; background: #fff; border: 1px solid ${T.rule}; border-radius: 999px; color: ${T.inkMid}; font-weight: 500; transition: all .15s; }
-.cw-market .suggest a:hover { border-color: ${T.inkMid}; color: ${T.ink}; }
+.cw-market .suggest span.lbl { font-family: ${F.ui}; color: rgba(255,255,255,0.6); letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
+.cw-market .suggest a { display: inline-flex; align-items: center; padding: 6px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; color: rgba(255,255,255,0.88); font-weight: 500; transition: all .15s; }
+.cw-market .suggest a:hover { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.4); color: #fff; }
 
 .cw-market .hero-card { position: relative; background: #fff; border: 1px solid ${T.rule}; border-radius: 16px; padding: 20px 22px 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 16px 40px -24px rgba(15,23,42,0.18); transition: transform .15s, box-shadow .15s; }
 .cw-market .hero-card-link:hover .hero-card { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15,23,42,0.06), 0 20px 44px -24px rgba(15,23,42,0.24); }
@@ -672,7 +675,7 @@ const CSS = `
 .cw-market .section-head .meta a { color: ${T.ink}; border-bottom: 1px solid ${T.ink}; padding-bottom: 1px; }
 .cw-market .section-head .meta a:hover { color: ${T.indigo}; border-color: ${T.indigo}; }
 
-.cw-market .featured { padding: 28px 0 28px; border-top: 1px solid ${T.rule}; }
+.cw-market .featured { padding: 28px 0 28px; border-top: 1px solid ${T.rule}; background-image: radial-gradient(${T.paper3} 1px, transparent 1px); background-size: 18px 18px; }
 .cw-market .filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
 .cw-market .filters a { padding: 5px 12px; border: 1px solid ${T.rule}; background: ${T.vellum}; border-radius: 999px; font-size: 12px; font-weight: 500; color: ${T.inkMid}; transition: all .15s; }
 .cw-market .filters a:hover { color: ${T.ink}; border-color: ${T.inkMid}; }
@@ -711,7 +714,8 @@ const CSS = `
   .cw-market .suggest a { padding: 4px 9px; font-size: 11.5px; }
 }
 
-.cw-market .gig { background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform .25s, box-shadow .25s, border-color .25s; }
+.cw-market .gig-link { display: flex; }
+.cw-market .gig { flex: 1; min-width: 0; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform .25s, box-shadow .25s, border-color .25s; }
 .cw-market .gig:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(29,36,51,0.04), 0 18px 38px -28px rgba(29,36,51,0.22); border-color: ${T.ink}; }
 .cw-market .gig .plate { position: relative; aspect-ratio: 16/7; background: ${T.paper2}; border-bottom: 1px solid ${T.rule}; overflow: hidden; }
 .cw-market .gig .plate::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(29,36,51,0.04) 0 14px, transparent 14px 32px), radial-gradient(ellipse at 30% 20%, rgba(60,59,110,0.10), transparent 55%), linear-gradient(180deg, ${T.paper2}, ${T.paper3}); }
@@ -731,7 +735,8 @@ const CSS = `
 .cw-market .gig .seller .info b { font-size: 13px; font-weight: 600; color: ${T.ink}; }
 .cw-market .gig .seller .info span { display: block; margin-top: 2px; font-family: ${F.mono}; font-size: 10.5px; color: ${T.inkSoft}; letter-spacing: 0.06em; text-transform: uppercase; }
 .cw-market .gig .seller .pro { margin-left: auto; padding: 2px 8px; border-radius: 4px; background: rgba(196,164,90,0.18); color: #6c5314; border: 1px solid rgba(196,164,90,0.4); font-family: ${F.mono}; font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
-.cw-market .gig h4 { font-family: ${F.display}; font-weight: 500; font-size: 15px; line-height: 1.3; letter-spacing: -0.005em; margin: 0; color: ${T.ink}; text-wrap: balance; }
+.cw-market .gig h4 { font-family: ${F.display}; font-weight: 500; font-size: 15px; line-height: 1.3; letter-spacing: -0.005em; margin: 0; color: ${T.ink}; text-wrap: balance; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: calc(2 * 1.3em); }
+.cw-market .gig .seller { min-height: 40px; }
 .cw-market .gig h4 a:hover { color: ${T.indigo}; }
 .cw-market .gig .gig-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 10px; border-top: 1px solid ${T.ruleSoft}; }
 .cw-market .gig .price { text-align: right; }
@@ -1005,8 +1010,16 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SERVICE_JSONLD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }} />
 
-      {/* Hero */}
+      {/* Hero — Fiverr-style media hero. Drop a video at /public/hero-bg.mp4
+          and it plays full-bleed behind the dark overlay; until then the
+          gradient background carries the same look with zero payload. */}
       <section className="hero">
+        <div className="hero-media" aria-hidden="true">
+          <video autoPlay muted loop playsInline preload="metadata">
+            <source src="/hero-bg.mp4" type="video/mp4" />
+          </video>
+          <div className="hero-media-overlay" />
+        </div>
         <div className="wrap hero-grid">
           <div>
             <span className="hero-eyebrow">
@@ -1093,7 +1106,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
                   ? `/marketplace/gigs/${g.slug}`
                   : withCountry(`/marketplace?category=${g.category ? (LEGACY_CATEGORY_MAP[g.category] || normalizeCategory(g.category)) : ''}`, active)
                 return (
-                  <a key={g.id} href={href} className="gig-link" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                  <a key={g.id} href={href} className="gig-link" style={{ display: 'flex', textDecoration: 'none', color: 'inherit' }}>
                   <article className="gig" data-c={cardCountry}>
                     <div className={`plate${g.cover_image_url ? ' has-cover' : ''}`}>
                       {g.cover_image_url ? (

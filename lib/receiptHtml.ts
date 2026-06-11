@@ -68,6 +68,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
   .toolbar button.ghost { background: transparent; color: var(--accent); }
   .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
           border-left: 4px solid var(--accent); padding-left: 14px; margin-left: -18px; }
+  .co-logo { width: 64px; height: 64px; display: block; margin-bottom: 10px; border-radius: 8px; }
   .co-name { font-size: 21px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
   .co-sub { font-size: 11px; color: var(--mid); margin-top: 5px; max-width: 320px; line-height: 1.5; }
   .co-contact { font-size: 10.5px; color: var(--soft); margin-top: 4px; }
@@ -140,6 +141,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
   <div class="sheet">
     <div class="head">
       <div>
+        <img class="co-logo" src="/receipt-logo.svg" alt="" width="64" height="64">
         <div class="co-name">${esc(company.name)}</div>
         ${company.address ? `<div class="co-sub">${esc(company.address)}</div>` : ''}
         ${(company.website || company.email || company.phone) ? `<div class="co-contact">${esc([company.website, company.email, company.phone].filter(Boolean).join('  ·  '))}</div>` : ''}
