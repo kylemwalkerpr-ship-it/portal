@@ -736,7 +736,7 @@ const CSS = `
 .cw-market .gig .seller .info b { font-size: 13px; font-weight: 600; color: ${T.ink}; }
 .cw-market .gig .seller .info span { display: block; margin-top: 2px; font-family: ${F.mono}; font-size: 10.5px; color: ${T.inkSoft}; letter-spacing: 0.06em; text-transform: uppercase; }
 .cw-market .gig .seller .pro { margin-left: auto; padding: 2px 8px; border-radius: 4px; background: rgba(196,164,90,0.18); color: #6c5314; border: 1px solid rgba(196,164,90,0.4); font-family: ${F.mono}; font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
-.cw-market .gig h4 { font-family: ${F.display}; font-weight: 500; font-size: 15px; line-height: 1.3; letter-spacing: -0.005em; margin: 0; color: ${T.ink}; text-wrap: balance; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: calc(2 * 1.3em); }
+.cw-market .gig h4 { font-family: ${F.ui}; font-weight: 500; font-size: 14px; line-height: 1.45; letter-spacing: -0.005em; margin: 0; color: ${T.ink}; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: calc(3 * 1.45em); }
 .cw-market .gig .seller { min-height: 40px; }
 .cw-market .gig h4 a:hover { color: ${T.indigo}; }
 .cw-market .gig .gig-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 10px; border-top: 1px solid ${T.ruleSoft}; }
