@@ -48,6 +48,11 @@ const isPublicRoute = createRouteMatcher([
   // "the marketplace redirects to sign-in after I sign out".
   '/api/profile',
   '/api/sellers(.*)',
+  // Public seller profile pages — top of the marketplace funnel. The page
+  // component (app/sellers/[id]) dropped its requirePortalUser gate; this
+  // entry drops the middleware gate to match. Auth-only actions (message,
+  // order) gate themselves downstream.
+  '/sellers(.*)',
 ])
 
 // Origins we permit for cross-origin API calls. The market subdomain
@@ -217,8 +222,10 @@ export default clerkMiddleware(
     // Market domain: rewrite /xyz → /marketplace/xyz (except API, static, and
     // already-prefixed paths). Portal domain: redirect /marketplace/* to market.
     if (hostname === MARKET_HOST) {
-      if (pathname.startsWith('/api/') || pathname.startsWith('/_next/')) {
-        // pass through
+      if (pathname.startsWith('/api/') || pathname.startsWith('/_next/') || pathname.startsWith('/sellers')) {
+        // pass through — /sellers lives at its on-disk path (no /marketplace
+        // prefix) and is now public, so gig-card seller clicks on the market
+        // host serve directly instead of bouncing to portal + sign-in.
       } else if (pathname.startsWith('/marketplace')) {
         // Internal Link emissions in the marketplace components carry
         // the `/marketplace` prefix because that's the on-disk Next.js
@@ -245,8 +252,7 @@ export default clerkMiddleware(
         pathname.startsWith('/dashboard/') ||
         pathname.startsWith('/sign-in') ||
         pathname.startsWith('/sign-up') ||
-        pathname.startsWith('/user') ||
-        pathname.startsWith('/sellers')
+        pathname.startsWith('/user')
       ) {
         const portalUrl = new URL(pathname + search, `https://${PORTAL_HOST}`)
         return withCorsHeaders(NextResponse.redirect(portalUrl, { status: 302 }), req)
