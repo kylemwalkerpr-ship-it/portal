@@ -72,6 +72,9 @@ function formatStartingPrice(cents: number | null | undefined, currency = 'USD')
 
 export interface SellerProfile {
   id: string
+  /** profiles.id — present in the /api/sellers payload; used by the chat
+      pane's unified-messages path (works for attorneys AND consultants). */
+  profile_id?: string | null
   full_name: string
   role?: 'attorney' | 'consultant' | string | null
   headshot_url?: string | null
