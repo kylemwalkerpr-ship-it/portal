@@ -1923,13 +1923,32 @@ function AdminApp({ onLogout }) {
 
 
 const Settings = () => {
-    const [tab, setTab] = React.useState('financial');
     const TABS = [
       { id: 'financial', label: 'Financial', icon: '💰' },
       { id: 'escrow',    label: 'Escrow & policy', icon: '🔒' },
       { id: 'platform',  label: 'Platform info', icon: '🏛' },
       { id: 'appearance', label: 'Appearance', icon: '🎨' },
     ];
+    // Settings is declared inline, so any shell re-render (e.g. a theme
+    // change re-rendering the app) REMOUNTS it and wipes useState. Persist
+    // the active tab in the URL so picking a palette doesn't bounce the
+    // user back to Financial.
+    const tabFromUrl = () => {
+      if (typeof window === 'undefined') return 'financial';
+      try {
+        const t = new URLSearchParams(window.location.search).get('tab');
+        return TABS.some(x => x.id === t) ? t : 'financial';
+      } catch { return 'financial'; }
+    };
+    const [tab, setTabState] = React.useState(tabFromUrl);
+    const setTab = (next) => {
+      setTabState(next);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', next);
+        window.history.replaceState({}, '', url);
+      } catch { /* state still updates */ }
+    };
     const MONO = `'SF Mono', Menlo, Consolas, monospace`;
     return (
     <div style={{ padding: '24px 28px 60px', display: 'flex', flexDirection: 'column', gap: 18, maxWidth: '880px' }}>

@@ -5,8 +5,8 @@ import { C, Card, Btn } from './shared'
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const serif = "'Cormorant Garamond', 'Garamond', Georgia, serif"
 const sans  = C.sans
-const NAVY  = '#0F172A'
-const GOLD  = '#9A7B3B'
+const NAVY = 'var(--portal-ink)'
+const GOLD = 'var(--portal-gold)'
 const GREEN = '#1A6B45'
 const AMBER = '#8B5E0A'
 const RED   = '#8B1A1A'
@@ -101,11 +101,11 @@ function FunnelChart({ steps = [] }) {
                 <span style={{ fontSize: 13, fontWeight: 800, color: NAVY, fontVariantNumeric: 'tabular-nums' }}>{fmtNum(s.count)}</span>
               </div>
             </div>
-            <div style={{ height: 24, borderRadius: 4, background: '#F2EFE9', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ height: 24, borderRadius: 4, background: 'var(--portal-rule-soft)', overflow: 'hidden', position: 'relative' }}>
               <div style={{
                 height: '100%',
                 width: `${pct}%`,
-                background: `linear-gradient(90deg, ${NAVY}, ${NAVY}cc)`,
+                background: `linear-gradient(90deg, ${NAVY}, color-mix(in srgb, ${NAVY} 80%, transparent))`,
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
@@ -127,7 +127,7 @@ function EmptyChart({ height = 80 }) {
   return (
     <div style={{
       height, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#9097A8', fontSize: 13, background: '#FAFAF8', borderRadius: 6,
+      color: 'var(--portal-ink-soft)', fontSize: 13, background: '#FAFAF8', borderRadius: 6,
     }}>No data yet</div>
   )
 }
@@ -137,8 +137,8 @@ function Kpi({ label, value, sub, delta, spark, sparkColor = NAVY, accent = NAVY
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid #DDD8CE',
-      borderTop: `3px solid ${comingSoon ? '#DDD8CE' : accent}`,
+      border: '1px solid var(--portal-rule)',
+      borderTop: `3px solid ${comingSoon ? 'var(--portal-rule)' : accent}`,
       borderRadius: 8,
       padding: '16px 18px',
       boxShadow: '0 1px 3px rgba(27,45,79,0.05)',
@@ -146,13 +146,13 @@ function Kpi({ label, value, sub, delta, spark, sparkColor = NAVY, accent = NAVY
       minHeight: 110,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8' }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft)' }}>{label}</span>
         {comingSoon && <ComingSoonBadge />}
       </div>
-      <div style={{ fontWeight: 800, fontSize: 24, color: comingSoon ? '#9097A8' : NAVY, letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ fontWeight: 800, fontSize: 24, color: comingSoon ? 'var(--portal-ink-soft)' : NAVY, letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
         {comingSoon ? '—' : value}
       </div>
-      {sub && <div style={{ fontSize: 12, color: '#9097A8', lineHeight: 1.4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 12, color: 'var(--portal-ink-soft)', lineHeight: 1.4 }}>{sub}</div>}
       {delta !== undefined && delta !== null && (
         <div style={{ fontSize: 11, fontWeight: 700, color: delta >= 0 ? GREEN : RED }}>
           {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}% vs prior period
@@ -183,7 +183,7 @@ function Sec({ title, sub, right, children }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <h3 style={{ fontFamily: serif, fontWeight: 600, fontSize: 20, color: NAVY, margin: 0, letterSpacing: '-.01em' }}>{title}</h3>
-          {sub && <p style={{ margin: '3px 0 0', fontSize: 13, color: '#9097A8', lineHeight: 1.5 }}>{sub}</p>}
+          {sub && <p style={{ margin: '3px 0 0', fontSize: 13, color: 'var(--portal-ink-soft)', lineHeight: 1.5 }}>{sub}</p>}
         </div>
         {right}
       </div>
@@ -195,7 +195,7 @@ function Sec({ title, sub, right, children }) {
 // ─── Data table ───────────────────────────────────────────────────────────────
 function DT({ cols, rows, empty = 'No data' }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ background: '#fff', border: '1px solid var(--portal-rule)', borderRadius: 8, overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${cols.length * 100}px` }}>
           <thead>
@@ -213,13 +213,13 @@ function DT({ cols, rows, empty = 'No data' }) {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={cols.length} style={{ padding: 32, textAlign: 'center', color: '#9097A8', fontSize: 13 }}>{empty}</td></tr>
+              <tr><td colSpan={cols.length} style={{ padding: 32, textAlign: 'center', color: 'var(--portal-ink-soft)', fontSize: 13 }}>{empty}</td></tr>
             ) : rows.map((row, ri) => (
               <tr key={ri} style={{ background: ri % 2 === 0 ? '#fff' : '#FAFAF8', borderBottom: '1px solid #F2EFE9' }}>
                 {cols.map(c => (
                   <td key={c.key} style={{
                     padding: '10px 13px', fontSize: 13, textAlign: c.r ? 'right' : 'left',
-                    color: c.dim ? '#9097A8' : NAVY, fontWeight: c.bold ? 700 : 400,
+                    color: c.dim ? 'var(--portal-ink-soft)' : NAVY, fontWeight: c.bold ? 700 : 400,
                     whiteSpace: c.wrap ? 'normal' : 'nowrap', fontVariantNumeric: 'tabular-nums',
                   }}>{row[c.key] ?? '—'}</td>
                 ))}
@@ -234,11 +234,11 @@ function DT({ cols, rows, empty = 'No data' }) {
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 function Skeleton({ h = 20, w = '100%', r = 4 }) {
-  return <div style={{ height: h, width: w, background: '#F2EFE9', borderRadius: r, animation: 'pulse 1.5s ease-in-out infinite' }} />
+  return <div style={{ height: h, width: w, background: 'var(--portal-rule-soft)', borderRadius: r, animation: 'pulse 1.5s ease-in-out infinite' }} />
 }
 function KpiSkeleton() {
   return (
-    <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderTop: '3px solid #F2EFE9', borderRadius: 8, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ background: '#fff', border: '1px solid var(--portal-rule)', borderTop: '3px solid #F2EFE9', borderRadius: 8, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <Skeleton h={11} w="55%" />
       <Skeleton h={28} w="40%" />
       <Skeleton h={12} w="70%" />
@@ -310,26 +310,26 @@ export default function AdminAnalyticsPro() {
   const marketplaceHealth = useAnalytics('marketplace-health')
 
   return (
-    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22, fontFamily: sans, minHeight: '100vh', background: '#F7F5F0' }}>
+    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22, fontFamily: sans, minHeight: '100vh', background: 'var(--portal-bg)' }}>
 
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: '#9097A8', marginBottom: 4 }}>Intelligence</div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: 'var(--portal-ink-soft)', marginBottom: 4 }}>Intelligence</div>
           <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: 34, color: NAVY, margin: 0, letterSpacing: '-.015em', lineHeight: 1.1 }}>Site Analytics</h2>
-          <p style={{ color: '#9097A8', fontSize: 13, margin: '5px 0 0', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--portal-ink-soft)', fontSize: 13, margin: '5px 0 0', lineHeight: 1.5 }}>
             Funnel-stage view of every step from signup to a returning, loyal client.
           </p>
         </div>
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #DDD8CE', gap: 0, overflowX: 'auto', background: '#fff', borderRadius: '8px 8px 0 0', boxShadow: '0 1px 3px rgba(27,45,79,0.05)' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--portal-rule)', gap: 0, overflowX: 'auto', background: '#fff', borderRadius: '8px 8px 0 0', boxShadow: '0 1px 3px rgba(27,45,79,0.05)' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '12px 18px',
             fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
-            color: tab === t.id ? NAVY : '#9097A8',
+            color: tab === t.id ? NAVY : 'var(--portal-ink-soft)',
             background: 'none', border: 'none',
             borderBottom: tab === t.id ? `2px solid ${NAVY}` : '2px solid transparent',
             cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: sans, transition: 'color .12s',
@@ -536,11 +536,11 @@ function EngagementTab({ q }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Sec title="Messaging Intensity">
           <Card style={{ padding: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', marginBottom: 6 }}>Avg messages per order</div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft)', marginBottom: 6 }}>Avg messages per order</div>
             <div style={{ fontWeight: 800, fontSize: 36, color: NAVY, letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
               {d.messages_per_order === null ? '—' : (Number(d.messages_per_order) || 0).toFixed(1)}
             </div>
-            <p style={{ fontSize: 12, color: '#9097A8', marginTop: 8 }}>
+            <p style={{ fontSize: 12, color: 'var(--portal-ink-soft)', marginTop: 8 }}>
               Mean across conversations linked to an order in the last 30 days. Higher numbers can mean
               healthy engagement or trouble — drill into orders if it spikes.
             </p>
@@ -548,11 +548,11 @@ function EngagementTab({ q }) {
         </Sec>
         <Sec title="Repeat-Order Health">
           <Card style={{ padding: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', marginBottom: 6 }}>Repeat-order rate (90d)</div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft)', marginBottom: 6 }}>Repeat-order rate (90d)</div>
             <div style={{ fontWeight: 800, fontSize: 36, color: NAVY, letterSpacing: '-.02em', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
               {fmtPct(d.repeat_order_rate_pct)}
             </div>
-            <p style={{ fontSize: 12, color: '#9097A8', marginTop: 8 }}>
+            <p style={{ fontSize: 12, color: 'var(--portal-ink-soft)', marginTop: 8 }}>
               Share of clients with at least one order in 90 days who placed more than one. Loyalty signal.
             </p>
           </Card>
@@ -640,7 +640,7 @@ function RetentionTab({ q }) {
 
       <Sec title="Why this matters">
         <Card style={{ padding: 20 }}>
-          <p style={{ fontSize: 13, color: '#5C6070', lineHeight: 1.6, margin: 0 }}>
+          <p style={{ fontSize: 13, color: 'var(--portal-ink-mid)', lineHeight: 1.6, margin: 0 }}>
             Retention is the single best predictor of long-term platform value. A cohort that hits 30% by
             day 30 and stays there to day 90 indicates product-market fit; a cohort that drops to 5% by
             day 60 is a leak. Compare month-over-month to spot whether changes to onboarding,
@@ -692,14 +692,14 @@ function MarketplaceTab({ q }) {
         <Card style={{ padding: 20 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', marginBottom: 4 }}>Active gigs with 0 views (30d)</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft)', marginBottom: 4 }}>Active gigs with 0 views (30d)</div>
               <div style={{ fontWeight: 800, fontSize: 28, color: d.gigs_zero_views_30d > 0 ? AMBER : GREEN, fontVariantNumeric: 'tabular-nums' }}>{fmtNum(d.gigs_zero_views_30d)}</div>
-              <p style={{ fontSize: 12, color: '#9097A8', marginTop: 4 }}>Listings that exist but nobody is finding. Candidates for SEO push or removal.</p>
+              <p style={{ fontSize: 12, color: 'var(--portal-ink-soft)', marginTop: 4 }}>Listings that exist but nobody is finding. Candidates for SEO push or removal.</p>
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#9097A8', marginBottom: 4 }}>Median time-to-fill</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--portal-ink-soft)', marginBottom: 4 }}>Median time-to-fill</div>
               <div style={{ fontWeight: 800, fontSize: 28, color: NAVY, fontVariantNumeric: 'tabular-nums' }}>{(Number(d.median_time_to_fill_hours) || 0).toFixed(1)}h</div>
-              <p style={{ fontSize: 12, color: '#9097A8', marginTop: 4 }}>From an inquiry being created to an attorney claiming it. Under 4h is great; over 24h is a leak.</p>
+              <p style={{ fontSize: 12, color: 'var(--portal-ink-soft)', marginTop: 4 }}>From an inquiry being created to an attorney claiming it. Under 4h is great; over 24h is a leak.</p>
             </div>
           </div>
         </Card>

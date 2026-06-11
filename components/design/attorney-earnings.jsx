@@ -14,10 +14,10 @@ import { C, Btn, Card, Badge } from './shared'
  * paginated ledger table.
  */
 
-const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
+const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', SURFACE2='var(--portal-surface-2)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`
+const SANS=`var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
 const PAGE_SIZE = 25
 

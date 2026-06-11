@@ -13,10 +13,10 @@ import ThemePicker from './ThemePicker'
  * approval state) and a dedicated Payouts tab wired to Payout setup.
  */
 
-const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
+const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', SURFACE2='var(--portal-surface-2)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`
+const SANS=`var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
 
 const TABS = [
@@ -80,7 +80,26 @@ function PrefRow({ label, sub, value, onChange }) {
 }
 
 export default function AttorneySettings() {
-  const [tab, setTab] = React.useState('profile')
+  // Active tab survives re-renders, remounts, and refreshes (?tab=… in the
+  // URL). Picking a theme in Appearance must NOT bounce the user back to
+  // Profile — the tab only changes when they click another tab themselves.
+  const TAB_IDS = ['profile', 'notifications', 'privacy', 'compliance', 'payouts', 'security', 'appearance']
+  const tabFromUrl = () => {
+    if (typeof window === 'undefined') return 'profile'
+    try {
+      const t = new URLSearchParams(window.location.search).get('tab')
+      return TAB_IDS.includes(t) ? t : 'profile'
+    } catch { return 'profile' }
+  }
+  const [tab, setTabState] = React.useState(tabFromUrl)
+  const setTab = React.useCallback((next) => {
+    setTabState(next)
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', next)
+      window.history.replaceState({}, '', url)
+    } catch { /* SSR / older browsers — state still updates */ }
+  }, [])
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
@@ -452,7 +471,7 @@ function SecurityTab({ data, flash }) {
             </Btn>
           )}
         </div>
-        <div style={{ marginTop: 14, padding: 12, background: `${CYAN}08`, border: `1px solid ${CYAN}33`, borderRadius: 8, fontSize: 12, color: TEXT, lineHeight: 1.55 }}>
+        <div style={{ marginTop: 14, padding: 12, background: `color-mix(in srgb, ${CYAN} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${CYAN} 20%, transparent)`, borderRadius: 8, fontSize: 12, color: TEXT, lineHeight: 1.55 }}>
           <strong>Recommended:</strong> verify your phone, then enable two-factor with an authenticator app. Backup codes let you sign in if you lose your device.
         </div>
       </Section>

@@ -15,10 +15,10 @@ import OrderRatingPrompt from './order-rating-prompt'
  *   currency — display currency for money formatting
  */
 
-const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
+const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', SURFACE2='var(--portal-surface-2)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`
+const SANS=`var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
 
 const fmtMoneyCents = (cents, code = 'USD') =>
@@ -469,8 +469,8 @@ function ActivityTab({ orderId, messages, events, onRefresh, flash }) {
               <div style={{ maxWidth: '70%' }}>
                 <div style={{
                   padding: '10px 14px', borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-                  background: mine ? `${CYAN}15` : SURFACE2, color: TEXT,
-                  border: `1px solid ${mine ? `${CYAN}33` : BORDER}`,
+                  background: mine ? `color-mix(in srgb, ${CYAN} 8%, transparent)` : SURFACE2, color: TEXT,
+                  border: `1px solid ${mine ? `color-mix(in srgb, ${CYAN} 20%, transparent)` : BORDER}`,
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>{m.body}</div>
                 <div style={{ fontSize: 11, color: DIM, marginTop: 4, fontFamily: MONO, textAlign: mine ? 'right' : 'left' }}>
@@ -554,7 +554,7 @@ function FilesTab({ orderId, files, onRefresh, flash }) {
                       flexShrink: 0,
                       fontSize: 10, fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
                       fontFamily: MONO, padding: '2px 7px', borderRadius: 999,
-                      background: mine ? `${CYAN}1A` : `${GREEN}1A`,
+                      background: mine ? `color-mix(in srgb, ${CYAN} 10%, transparent)` : `${GREEN}1A`,
                       color: mine ? CYAN : GREEN,
                     }}>
                       {mine ? '↑ Sent' : '↓ Received'}

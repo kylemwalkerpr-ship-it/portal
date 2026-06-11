@@ -12,10 +12,10 @@ import ChatSidePane from '../marketplace/ChatSidePane'
  * scales to hundreds of attorneys without UI lag.
  */
 
-const NAVY='#0F172A', GOLD='#9A7B3B', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', SURFACE2='#FAFAF7', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`
-const SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
+const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', SURFACE2='var(--portal-surface-2)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`
+const SANS=`var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 const MONO=`'SF Mono', Menlo, Consolas, monospace`
 const PAGE_SIZE = 24
 
@@ -55,7 +55,7 @@ function ChipRow({ label, options, value, onChange, anyLabel = 'Any' }) {
 const chipStyle = (active) => ({
   padding: '5px 11px', borderRadius: 999, fontSize: 12, fontFamily: SANS, fontWeight: 600,
   border: `1px solid ${active ? CYAN : BORDER}`,
-  background: active ? `${CYAN}15` : SURFACE,
+  background: active ? `color-mix(in srgb, ${CYAN} 8%, transparent)` : SURFACE,
   color: active ? CYAN : MUTED, cursor: 'pointer',
 })
 
@@ -246,7 +246,7 @@ export default function StudentFindAttorney() {
           {activeFilters.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {activeFilters.map((f, i) => (
-                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: `${CYAN}15`, color: CYAN, fontSize: 11, fontWeight: 700, borderRadius: 999, border: `1px solid ${CYAN}33` }}>
+                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: `color-mix(in srgb, ${CYAN} 8%, transparent)`, color: CYAN, fontSize: 11, fontWeight: 700, borderRadius: 999, border: `1px solid color-mix(in srgb, ${CYAN} 20%, transparent)` }}>
                   {f.k}: {f.v}
                   <button onClick={f.clear} style={{ background: 'none', border: 'none', color: CYAN, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
                 </span>
@@ -352,7 +352,7 @@ function AttorneyCard({ attorney, onOpen, onContact }) {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         {attorney.headshot_url
           ? <img src={attorney.headshot_url} alt={attorney.full_name || ''} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
-          : <div style={{ width: 56, height: 56, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, fontFamily: SERIF }}>{initials(attorney.full_name)}</div>}
+          : <div style={{ width: 56, height: 56, borderRadius: '50%', background: `color-mix(in srgb, ${NAVY} 6%, transparent)`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, fontFamily: SERIF }}>{initials(attorney.full_name)}</div>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 18, color: TEXT, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attorney.full_name}</div>
           {attorney.rating_avg !== null
@@ -434,7 +434,7 @@ function AttorneyDrawer({ attorneyId, attorneyFallback, onClose, onContact, onCh
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {att.headshot_url
                   ? <img src={att.headshot_url} alt={att.full_name || ''} style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', border: `1px solid ${BORDER}` }} />
-                  : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${NAVY}10`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 26, fontFamily: SERIF }}>{initials(att.full_name)}</div>}
+                  : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `color-mix(in srgb, ${NAVY} 6%, transparent)`, color: NAVY, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 26, fontFamily: SERIF }}>{initials(att.full_name)}</div>}
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {att.rating_avg !== null && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

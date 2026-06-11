@@ -14,9 +14,9 @@ import React from 'react'
  *   • Analytics   — funnel + throughput + decision time
  */
 
-const NAVY='#0F172A', GOLD='#9A7B3B', GOLD2='#C4A45A', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='#0E7C8E', PURPLE='#3D2B6B'
-const BG='#F7F5F0', SURFACE='#FFFFFF', BORDER='#DDD8CE', BORDER2='#F2EFE9', TEXT='#1A1F2E', MUTED='#5C6070', DIM='#9097A8'
-const SERIF=`'Cormorant Garamond', Georgia, serif`, SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`, MONO=`'SF Mono', Menlo, Consolas, monospace`
+const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GOLD2='#C4A45A', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
+const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`, SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`, MONO=`'SF Mono', Menlo, Consolas, monospace`
 
 const fmtN = n => Number(n ?? 0).toLocaleString('en-US')
 const fmtPct = n => `${Number(n ?? 0).toFixed(1)}%`
@@ -91,7 +91,7 @@ function Pill({ active, onClick, children, count }) {
   return (
     <button type="button" onClick={onClick} style={{
       padding: '6px 14px', borderRadius: 999, border: `1px solid ${active ? CYAN : BORDER}`,
-      background: active ? `${CYAN}15` : SURFACE, color: active ? CYAN : MUTED,
+      background: active ? `color-mix(in srgb, ${CYAN} 8%, transparent)` : SURFACE, color: active ? CYAN : MUTED,
       fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: SANS,
       display: 'inline-flex', alignItems: 'center', gap: 6,
     }}>
@@ -942,7 +942,7 @@ export default function AdminAttorneyApplications() {
         >
           {/* Bulk action bar */}
           {selectedIds.size > 0 && (
-            <div style={{ padding: '10px 16px', background: `${CYAN}10`, borderBottom: `1px solid ${BORDER2}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ padding: '10px 16px', background: `color-mix(in srgb, ${CYAN} 6%, transparent)`, borderBottom: `1px solid ${BORDER2}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: CYAN }}>{selectedIds.size} selected</span>
               <button onClick={() => bulkAct('approve')} disabled={decisionPending} style={btnPrimary(GREEN)}>Approve all</button>
               <button onClick={() => bulkAct('decline')} disabled={decisionPending} style={btnPrimary(RED)}>Decline all</button>

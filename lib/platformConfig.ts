@@ -37,6 +37,10 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   allow_admin_force_release: true,
   platform_name: 'YouSafe Consultancy',
   support_email: 'support@yousafeconsultancy.com',
+  // Shown on receipts. Set the registered business address via the admin
+  // Settings panel; when empty the receipt simply omits the address block.
+  platform_address: '',
+  platform_website: 'https://yousafeconsultancy.com',
   primary_currency: 'usd' as PrimaryCurrency,
   // Used by the storefront to display prices in the user's chosen currency.
   // Admin-controlled rather than auto-fetched: each service charges in its
