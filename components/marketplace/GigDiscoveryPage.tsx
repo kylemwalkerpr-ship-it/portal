@@ -6,6 +6,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Card, Btn, Badge, SearchInput } from '../design/shared'
 import { SmartSearchBox, rememberSearch } from './SmartSearchBox'
+import { ContinueBrowsingRail } from './ContinueBrowsingRail'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
@@ -559,6 +560,8 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
   return (
     <div style={pageShell}>
       <main style={inner}>
+        {/* Pick-up-where-you-left-off — hidden during an active search/filter */}
+        <ContinueBrowsingRail hidden={!!searchQuery.trim() || hasActiveFilters} />
         <div style={toolbar}>
           <div>
             <h1 style={titleStyle}>{titleText}</h1>

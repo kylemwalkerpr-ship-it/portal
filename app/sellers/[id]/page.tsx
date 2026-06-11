@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
 import { SellerProfilePage } from '@/components/marketplace/SellerProfilePage'
-import { requirePortalUser } from '@/lib/portalAuth'
-import { redirect } from 'next/navigation'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -38,9 +36,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
-  const auth = await requirePortalUser()
-  if ('error' in auth) redirect('/sign-in/student?return_to=/sellers/[id]')
-
+  // PUBLIC page — seller profiles are the top of the marketplace funnel and
+  // generateMetadata above already indexes them. The previous auth gate
+  // bounced every anonymous visitor (every gig-card seller click) to
+  // sign-in, with a broken literal `return_to=/sellers/[id]` to boot.
+  // Auth-only actions (message, order) gate themselves downstream.
   const { id } = await params
 
   return <SellerProfilePage sellerId={id} />
