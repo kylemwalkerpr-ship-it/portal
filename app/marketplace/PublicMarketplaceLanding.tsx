@@ -11,7 +11,6 @@ import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
 import { CountryPicker } from '@/components/marketplace/CountryTabs'
 import { FaqAccordion } from '@/components/marketplace/FaqAccordion'
 import { AllGigsDrawer } from '@/components/marketplace/AllGigsDrawer'
-import MarketplaceFeed from '@/components/marketplace/MarketplaceFeed'
 import HeroCaseFileSlideshow, { HeroSlide } from '@/components/marketplace/HeroCaseFileSlideshow'
 
 /* ───────────────────────── Design tokens ────────────────────────── */
@@ -1147,12 +1146,9 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
         </section>
       ) : null}
 
-      {/* Live marketplace pulse */}
-      <section style={{ padding: '48px 24px', background: '#F7F5F0', borderTop: '1px solid #F1F5F9' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <MarketplaceFeed />
-        </div>
-      </section>
+      {/* Live case briefs moved to the provider-only "Trending Opportunities"
+          tab in MarketplaceShell (attorneys + consultants). Students no longer
+          see other students' inquiries broadcast on the public landing. */}
 
       {/* How it works */}
       <section className="how" id="how-it-works">

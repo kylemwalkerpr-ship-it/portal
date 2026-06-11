@@ -19,6 +19,9 @@ const MyInquiries   = dynamic(() => import('@/components/design/my-inquiries'), 
 // active" banner the user screenshotted.
 const AttorneyInquiries = dynamic(() => import('@/components/design/attorney-inquiries'), { ssr: false })
 const UnifiedInbox  = dynamic(() => import('@/components/messaging/UnifiedInbox'), { ssr: false })
+// Provider-only (attorney / consultant) Handshake-style feed of open student
+// inquiries. Replaces the public "Live case briefs" strip on the landing.
+const TrendingOpportunities = dynamic(() => import('@/components/marketplace/TrendingOpportunities'), { ssr: false })
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +42,7 @@ const CLIENT_NAV: NavLink[] = [
 
 const ATTORNEY_NAV: NavLink[] = [
   { icon: '🏬', label: 'Marketplace',    view: 'browse'   },
+  { icon: '📈', label: 'Trending Opportunities', view: 'opportunities' },
   { icon: '📥', label: 'Inquiry Queue',  view: 'queue'    },
   { icon: '📂', label: 'My Inquiries',   view: 'mine'     },
   { icon: '📦', label: 'Active Orders',  view: 'orders'   },
@@ -47,6 +51,7 @@ const ATTORNEY_NAV: NavLink[] = [
 
 const CONSULTANT_NAV: NavLink[] = [
   { icon: '🏬', label: 'Marketplace', view: 'browse'   },
+  { icon: '📈', label: 'Trending Opportunities', view: 'opportunities' },
   { icon: '📦', label: 'Orders',      view: 'orders'   },
   { icon: '💬', label: 'Messages',    view: 'messages' },
 ]
@@ -472,6 +477,11 @@ export default function MarketplaceShell({ children }: { children: React.ReactNo
     }
     if (section === 'queue')      return <AttorneyInquiries mode="queue" />
     if (section === 'mine')       return <AttorneyInquiries mode="mine" />
+    if (section === 'opportunities') {
+      // Provider-only: anyone else deep-linking here falls through to browse.
+      if (role === 'attorney' || role === 'consultant') return <TrendingOpportunities role={role} />
+      return null
+    }
     return null // unknown view → fall through to children
   }, [section, role])
 
