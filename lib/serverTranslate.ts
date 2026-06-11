@@ -20,6 +20,52 @@ import { createSupabaseAdminClient } from './supabase'
 
 const MYMEMORY_URL = 'https://api.mymemory.translated.net/get'
 
+// ── Workers AI (primary provider) ───────────────────────────────────
+// @cf/meta/m2m100-1.2b runs natively on the worker — no outbound HTTP,
+// no per-IP rate limits (which permanently killed MyMemory from
+// Cloudflare's shared egress IPs). MyMemory remains as fallback for
+// local dev / non-CF runtimes where the AI binding is absent.
+const AI_MODEL = '@cf/meta/m2m100-1.2b'
+// m2m100 uses plain ISO codes for all our languages (zh, not zh-CN).
+const AI_LANG = (code: string) => (code === 'zh-CN' ? 'zh' : code)
+
+function getAIBinding(): any | null {
+  try {
+    // OpenNext exposes bindings on the Cloudflare context.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getCloudflareContext } = require('@opennextjs/cloudflare')
+    const env = getCloudflareContext()?.env
+    return env?.AI ?? null
+  } catch {
+    return null
+  }
+}
+
+async function callWorkersAI(text: string, sourceLang: string, targetLang: string): Promise<string | null> {
+  try {
+    const ai = getAIBinding()
+    if (!ai) return null
+    const res = await ai.run(AI_MODEL, {
+      text,
+      source_lang: AI_LANG(LANG_MAP[sourceLang] || sourceLang),
+      target_lang: AI_LANG(LANG_MAP[targetLang] || targetLang),
+    })
+    const out = res?.translated_text
+    return typeof out === 'string' && out.trim() ? out : null
+  } catch {
+    return null
+  }
+}
+
+/** Primary → fallback provider chain for one string. */
+async function translateViaProviders(text: string, sourceLang: string, targetLang: string): Promise<{ translated: string; provider: string } | null> {
+  const viaAI = await callWorkersAI(text, sourceLang, targetLang)
+  if (viaAI) return { translated: viaAI, provider: 'workers-ai' }
+  const viaMM = await callMyMemoryChunked(text, sourceLang, targetLang)
+  if (viaMM) return { translated: viaMM, provider: 'mymemory' }
+  return null
+}
+
 const LANG_MAP: Record<string, string> = {
   en: 'en', es: 'es', fr: 'fr', ar: 'ar', zh: 'zh-CN', hi: 'hi', pt: 'pt',
 }
@@ -84,9 +130,9 @@ export async function translateString(
     /* DB miss — fall through */
   }
 
-  // 2. Outbound translate
-  const translated = await callMyMemoryChunked(text, sourceLang, targetLang)
-  if (!translated) return text
+  // 2. Translate: Workers AI first, MyMemory fallback
+  const result = await translateViaProviders(text, sourceLang, targetLang)
+  if (!result) return text
 
   // 3. Cache it (best-effort)
   try {
@@ -96,14 +142,14 @@ export async function translateString(
       target_lang: targetLang,
       source_lang: sourceLang,
       source_text: text.slice(0, 4000),
-      translated,
-      provider:    'mymemory',
+      translated:  result.translated,
+      provider:    result.provider,
       updated_at:  new Date().toISOString(),
     })
   } catch { /* non-blocking */ }
 
-  memoSet(key, translated)
-  return translated
+  memoSet(key, result.translated)
+  return result.translated
 }
 
 function memoSet(key: string, value: string) {
@@ -230,16 +276,16 @@ export async function translateBatch(
   const inserts: any[] = []
   const queue = misses.map(async (h) => {
     const src = uniqueByHash.get(h)!
-    const translated = await callMyMemoryChunked(src, sourceLang, targetLang)
-    if (translated) {
-      cacheMap.set(h, translated)
+    const result = await translateViaProviders(src, sourceLang, targetLang)
+    if (result) {
+      cacheMap.set(h, result.translated)
       inserts.push({
         text_hash: h,
         target_lang: targetLang,
         source_lang: sourceLang,
         source_text: src.slice(0, 4000),
-        translated,
-        provider: 'mymemory',
+        translated: result.translated,
+        provider: result.provider,
         updated_at: new Date().toISOString(),
       })
     }

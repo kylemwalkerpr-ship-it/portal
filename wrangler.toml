@@ -17,6 +17,13 @@ compatibility_flags = ["nodejs_compat"]
 binding = "PAGE_CACHE"
 id = "a60944658f974790acc6c74a35c661aa"
 
+# ── Workers AI ──────────────────────────────────────────────────────────
+# Native translation via @cf/meta/m2m100-1.2b — replaces MyMemory as the
+# primary provider (MyMemory rate-limits per IP, and Cloudflare's shared
+# egress IPs are permanently exhausted, so it never worked from prod).
+[ai]
+binding = "AI"
+
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
