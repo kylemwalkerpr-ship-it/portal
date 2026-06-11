@@ -648,11 +648,16 @@ function AttorneyDetail({ attorneyId, providerRole, onBack, onStartInquiry }) {
         </aside>
       </div>
 
-      {/* Slide-in chat — opens from "Chat with …" CTA above */}
+      {/* Slide-in chat — opens from "Chat with …" CTA above.
+          Consultants have no attorney-chat queue: route them through the
+          unified messages path via counterpartProfileId. Passing a
+          consultant id as attorneyId 404s every attorney endpoint
+          ("Attorney not found"). */}
       <ChatSidePane
         open={chatOpen}
         onClose={() => setChatOpen(false)}
-        attorneyId={a.id}
+        attorneyId={providerRole === 'consultant' ? null : a.id}
+        counterpartProfileId={providerRole === 'consultant' ? (a.profile_id || a.id) : null}
         attorneyName={a.full_name}
         attorneyAvatar={a.headshot_url}
       />

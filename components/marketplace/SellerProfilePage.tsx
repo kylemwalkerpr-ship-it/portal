@@ -155,11 +155,14 @@ export function SellerProfilePage({
         {activeTab === 'reviews' && <SellerReviews reviews={reviews} />}
       </div>
 
-      {/* Side-pane chat — opens from "Chat now" without leaving the profile */}
+      {/* Side-pane chat — opens from "Chat now" without leaving the profile.
+          counterpartProfileId routes through the unified messages path, which
+          works for attorneys AND consultants — passing seller.id as an
+          attorney id 404s ("Attorney not found") for consultant sellers. */}
       <ChatSidePane
         open={chatOpen}
         onClose={() => setChatOpen(false)}
-        attorneyId={seller.id}
+        counterpartProfileId={seller.profile_id || seller.id}
         attorneyName={seller.full_name}
         attorneyAvatar={seller.headshot_url}
       />

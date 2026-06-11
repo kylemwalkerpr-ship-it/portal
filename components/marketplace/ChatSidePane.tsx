@@ -139,6 +139,24 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     return () => { cancelled = true }
   }, [attorneyId, counterpartProfileId, open, contextKind, contextId])
 
+  // Consultant path: once the unified conversation resolves, hydrate the
+  // thread from it (the attorney-chats loader above skipped — no attorneyId).
+  React.useEffect(() => {
+    if (!open || attorneyId || !conversationId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/messages/conversations/${conversationId}`, { credentials: 'include' })
+        const d = await r.json().catch(() => ({}))
+        if (!cancelled && r.ok && Array.isArray(d?.messages)) {
+          setMessages(d.messages.map((m: any) => ({ id: m.id, sender_role: m.sender_id ? 'attorney' : 'client', body: m.body, created_at: m.created_at })))
+        }
+      } catch { /* non-blocking */ }
+      if (!cancelled) setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [open, attorneyId, conversationId])
+
   // Soft poll every 8s while open
   React.useEffect(() => {
     if (!open || !chatId) return
@@ -181,6 +199,36 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
         return
       }
 
+      // Consultant (or any non-attorney) counterpart: there is no
+      // attorney-chat queue, so resolve the unified conversation now if
+      // the open-time resolution hasn't landed yet, then send through it.
+      if (!attorneyId && counterpartProfileId) {
+        const sr = await fetch('/api/messages/start', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ counterpart_profile_id: counterpartProfileId, context_kind: contextKind || 'general', context_id: contextId || null }),
+        })
+        const sd = await sr.json().catch(() => ({}))
+        if (!sr.ok || !sd?.conversation_id) throw new Error(sd?.error || 'Could not start chat.')
+        setConversationId(sd.conversation_id)
+        const mr = await fetch(`/api/messages/conversations/${sd.conversation_id}`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text }),
+        })
+        const md = await mr.json().catch(() => ({}))
+        if (!mr.ok) throw new Error(md?.error || 'Could not send.')
+        setDraft('')
+        try {
+          const tr = await fetch(`/api/messages/conversations/${sd.conversation_id}`, { credentials: 'include' })
+          const td = await tr.json().catch(() => ({}))
+          if (tr.ok && td?.messages) {
+            setMessages(td.messages.map((m: any) => ({ id: m.id, sender_role: m.sender_id ? 'attorney' : 'client', body: m.body, created_at: m.created_at })))
+          }
+        } catch { /* non-blocking */ }
+        return
+      }
+
       if (!chatId) {
         // Create chat via attorney-message endpoint (also returns the
         // unified conversation_id for deep-linking into Messages).
@@ -218,7 +266,7 @@ export default function ChatSidePane({ open, onClose, attorneyId, counterpartPro
     <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: 'flex', alignItems: 'center', gap: 12 }}>
       <Avatar name={attorneyName} src={attorneyAvatar || undefined} size={40} online={presence === 'online'} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>{attorneyName || 'Attorney'}</div>
+        <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 17, letterSpacing: '-0.01em', color: TEXT, lineHeight: 1.15 }}>{attorneyName || 'Specialist'}</div>
         <div style={{ fontSize: 10.5, color: presence === 'online' ? GREEN : DIM, fontFamily: MONO, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 3 }}>
           {presence === 'online' ? '● Online · quick replies likely' : '○ Offline · will respond when available'}
         </div>
