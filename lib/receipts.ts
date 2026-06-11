@@ -36,6 +36,7 @@ export interface ReceiptItem {
 export interface ReceiptTotals {
   subtotalCents: number
   feeCents?: number        // platform/processing fee when known
+  taxCents?: number        // sales tax when applicable (0 renders "Tax (0%)")
   refundCents?: number     // for refund receipts (negative display)
   totalCents: number
 }

@@ -1,13 +1,17 @@
 /**
- * HTML receipt renderer — CPU-light replacement for the pdf-lib engine.
+ * HTML receipt renderer — bank-grade layout, CPU-light.
  *
  * Server-side it is pure string templating (microseconds, safe on CPU-capped
  * runtimes like Workers). The page carries a print stylesheet sized to US
- * Letter, so "Download PDF" simply invokes the browser's native print →
- * Save-as-PDF, which runs on the user's machine, not the server.
+ * Letter, so "Download PDF" invokes the browser's native print → Save-as-PDF,
+ * which runs on the user's machine, not the server.
  *
- * Mirrors the pdf-lib layout in lib/receipts.ts: header band + accent bar,
- * FROM / BILLED TO, itemized table, totals + status stamp, payment details.
+ * Design rules:
+ *   - Single identity block: logo + brand + tagline top-left; RECEIPT meta
+ *     top-right. The remit-from address lives ONLY in the parties row.
+ *   - One type family, strict 8px vertical rhythm, tabular figures for all
+ *     numerals, currency declared once in the table header — not per cell.
+ *   - Explicit Tax line (0% renders too) for clean bookkeeping.
  */
 import type { ReceiptInput } from '@/lib/receipts'
 
@@ -15,11 +19,10 @@ const esc = (s: unknown) =>
   String(s ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
-function money(cents: number, currency: string): string {
-  const cur = (currency || 'usd').toUpperCase()
-  const sign = cents < 0 ? '-' : ''
+function money(cents: number): string {
+  const sign = cents < 0 ? '−' : ''
   const abs = Math.abs(cents) / 100
-  return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`
+  return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 const fmtDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -28,17 +31,18 @@ const fmtDateTime = (d: Date) =>
 
 export function renderReceiptHtml(input: ReceiptInput): string {
   const { company, billedTo, items, totals, meta } = input
-  const cur = meta.currency
+  const cur = (meta.currency || 'usd').toUpperCase()
   const isRefundish = /REFUNDED|CREDITED/i.test(meta.status)
+  const taxCents = typeof totals.taxCents === 'number' ? totals.taxCents : 0
 
   const detailRows: Array<[string, string]> = [
-    ['Type', meta.kind],
+    ['Transaction type', meta.kind],
     ['Transaction date', fmtDateTime(meta.transactionDate)],
     ...(meta.paymentMethod ? [['Payment method', meta.paymentMethod] as [string, string]] : []),
     ...(meta.orderNumber ? [['Order reference', meta.orderNumber] as [string, string]] : []),
     ...(meta.transactionId ? [['Transaction ID', meta.transactionId] as [string, string]] : []),
     ...(meta.gateway ? [['Processor', meta.gateway.toUpperCase()] as [string, string]] : []),
-    ['Currency', cur.toUpperCase()],
+    ['Currency', cur],
   ]
 
   return `<!doctype html>
@@ -49,82 +53,94 @@ export function renderReceiptHtml(input: ReceiptInput): string {
 <title>Receipt ${esc(meta.receiptNumber)} — ${esc(company.name)}</title>
 <style>
   :root {
-    --ink: #121729; --mid: #525e75; --soft: #8c96ab; --rule: #d6dee8;
-    --accent: #41408A; --accent-soft: #ededf7;
-    --paid: #1a6b45; --refund: #8c5e0a;
+    --ink: #131722; --mid: #4b5563; --soft: #9aa3b2; --rule: #e3e7ee; --rule-strong: #131722;
+    --accent: #2f2e63; --wash: #f6f7fa;
+    --paid: #156b43; --paid-wash: #ecf7f1; --refund: #8a5a0a; --refund-wash: #fbf3e3;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #f2f4f8; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: var(--ink); }
-  .sheet {
-    max-width: 760px; margin: 28px auto; background: #fff; padding: 54px;
-    box-shadow: 0 8px 32px rgba(15,23,42,0.12); border-radius: 6px;
+  html, body { margin: 0; padding: 0; background: #eef0f4; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, 'Inter', sans-serif;
+    color: var(--ink); font-size: 13px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
-  .toolbar { max-width: 760px; margin: 18px auto 0; display: flex; justify-content: flex-end; gap: 10px; }
-  .toolbar button {
-    padding: 9px 20px; border-radius: 999px; border: 1.5px solid var(--accent);
-    background: var(--accent); color: #fff; font: 600 13px/1 inherit; cursor: pointer;
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; letter-spacing: 0; }
+  .sheet { width: 8.5in; max-width: 100%; margin: 32px auto; background: #fff; padding: 56px 64px 48px; box-shadow: 0 10px 40px rgba(15,23,42,0.10); }
+  .toolbar { width: 8.5in; max-width: 100%; margin: 20px auto 0; display: flex; justify-content: flex-end; gap: 10px; }
+  .toolbar button { padding: 10px 22px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: 600 13px/1 inherit; cursor: pointer; }
+  .toolbar button.ghost { background: #fff; color: var(--accent); }
+
+  /* ── Identity row ─────────────────────────────────────────────── */
+  .id-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand img { width: 56px; height: 56px; display: block; }
+  .brand .nm { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+  .brand .tag { font-size: 11px; color: var(--mid); margin-top: 2px; letter-spacing: 0.01em; font-style: italic; }
+  .doc { text-align: right; }
+  .doc .t { font-size: 22px; font-weight: 700; letter-spacing: 0.14em; color: var(--ink); }
+  .doc .n { font-size: 12.5px; font-weight: 600; margin-top: 6px; }
+  .doc .d { font-size: 11px; color: var(--mid); margin-top: 2px; }
+  .doc .status { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.10em; }
+  .doc .status.paid { color: var(--paid); background: var(--paid-wash); }
+  .doc .status.refund { color: var(--refund); background: var(--refund-wash); }
+
+  .divider { border: 0; border-top: 2px solid var(--rule-strong); margin: 28px 0 0; }
+
+  /* ── Parties ──────────────────────────────────────────────────── */
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 24px 0; border-bottom: 1px solid var(--rule); }
+  .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; color: var(--soft); text-transform: uppercase; }
+  .party .nm { font-size: 13.5px; font-weight: 700; margin-top: 8px; }
+  .party .ln { font-size: 12px; color: var(--mid); margin-top: 3px; }
+
+  /* ── Items ────────────────────────────────────────────────────── */
+  table.items { width: 100%; border-collapse: collapse; margin-top: 32px; }
+  table.items th {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; color: var(--soft); text-transform: uppercase;
+    text-align: left; padding: 0 12px 10px 0; border-bottom: 1.5px solid var(--rule-strong);
   }
-  .toolbar button.ghost { background: transparent; color: var(--accent); }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
-          border-left: 4px solid var(--accent); padding-left: 14px; margin-left: -18px; }
-  .co-logo { width: 64px; height: 64px; display: block; margin-bottom: 10px; border-radius: 8px; }
-  .co-name { font-size: 21px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
-  .co-sub { font-size: 11px; color: var(--mid); margin-top: 5px; max-width: 320px; line-height: 1.5; }
-  .co-contact { font-size: 10.5px; color: var(--soft); margin-top: 4px; }
-  .r-title { font-size: 19px; font-weight: 700; color: var(--accent); text-align: right; }
-  .r-num { font: 700 13px/1.4 ui-monospace, 'SF Mono', Menlo, monospace; text-align: right; margin-top: 4px; }
-  .r-issued { font-size: 10.5px; color: var(--soft); text-align: right; margin-top: 3px; }
-  hr { border: 0; border-top: 1px solid var(--rule); margin: 22px 0; }
-  .parties { display: flex; gap: 36px; }
-  .party { flex: 1; min-width: 0; }
-  .party .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--soft); }
-  .party .nm { font-size: 14px; font-weight: 700; margin-top: 6px; }
-  .party .ln { font-size: 11.5px; color: var(--mid); margin-top: 4px; line-height: 1.45; }
-  table.items { width: 100%; border-collapse: collapse; margin-top: 4px; }
-  table.items thead th {
-    background: var(--accent-soft); font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
-    color: var(--mid); text-align: left; padding: 8px 10px;
-  }
-  table.items thead th.num, table.items td.num {
-    text-align: right; font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  }
-  table.items tbody td { padding: 11px 10px; font-size: 12.5px; border-bottom: 1px solid var(--rule); vertical-align: top; }
-  .totals { margin-top: 14px; margin-left: auto; width: 300px; }
-  .totals .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--mid); padding: 4px 0; }
-  .totals .row .v { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
-  .totals .grand { border-top: 1.5px solid var(--ink); margin-top: 6px; padding-top: 8px;
-                   font-size: 14.5px; font-weight: 700; color: var(--ink); }
-  .stamp { display: inline-block; margin-top: 18px; padding: 8px 18px; border: 2px solid;
-           font-size: 13px; font-weight: 800; letter-spacing: .06em; }
-  .stamp.paid { color: var(--paid); border-color: var(--paid); }
-  .stamp.refund { color: var(--refund); border-color: var(--refund); }
-  .details { margin-top: 26px; }
-  .details .lbl { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: var(--soft); margin-bottom: 10px; }
-  .details .row { display: flex; font-size: 11.5px; padding: 4px 0; }
-  .details .k { width: 150px; color: var(--soft); flex-shrink: 0; }
-  .details .v { font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: var(--ink); word-break: break-all; }
-  .foot { margin-top: 34px; border-top: 1px solid var(--rule); padding-top: 12px;
-          display: flex; justify-content: space-between; gap: 16px; }
-  .foot .l { font-size: 10px; color: var(--mid); line-height: 1.6; }
-  .foot .r { font: 9.5px ui-monospace, 'SF Mono', Menlo, monospace; color: var(--soft); white-space: nowrap; }
+  table.items th.r, table.items td.r { text-align: right; padding-right: 0; }
+  table.items td { padding: 14px 12px 14px 0; font-size: 12.5px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.items td.desc { width: 56%; color: var(--ink); }
+  table.items td .cat { display: block; font-size: 10.5px; color: var(--soft); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+  /* ── Totals ───────────────────────────────────────────────────── */
+  .totals-wrap { display: flex; justify-content: flex-end; }
+  .totals { width: 320px; margin-top: 16px; }
+  .totals .row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; font-size: 12.5px; color: var(--mid); }
+  .totals .row.grand { border-top: 2px solid var(--rule-strong); margin-top: 8px; padding-top: 12px; font-size: 15px; font-weight: 700; color: var(--ink); }
+  .totals .row.refund { color: var(--refund); }
+
+  /* ── Payment details ──────────────────────────────────────────── */
+  .details { margin-top: 40px; background: var(--wash); border-radius: 8px; padding: 20px 24px; }
+  .details .lbl { margin-bottom: 12px; display: block; }
+  .details .grid { display: grid; grid-template-columns: 170px 1fr; row-gap: 7px; column-gap: 16px; font-size: 12px; }
+  .details .k { color: var(--mid); }
+  .details .v { color: var(--ink); font-weight: 500; word-break: break-word; }
+
+  .foot { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 14px; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+  .foot .l { font-size: 10.5px; color: var(--mid); line-height: 1.65; }
+  .foot .r { font-size: 10px; color: var(--soft); white-space: nowrap; }
+
   @media print {
     html, body { background: #fff; }
-    .sheet { box-shadow: none; margin: 0; max-width: none; border-radius: 0; padding: 28px 34px; }
+    .sheet { box-shadow: none; margin: 0; width: auto; padding: 0.25in 0.2in; }
     .toolbar { display: none; }
-    @page { size: letter; margin: 14mm; }
+    @page { size: letter; margin: 0.55in 0.6in; }
+  }
+  @media (max-width: 700px) {
+    .sheet { padding: 28px 22px; margin: 12px auto; }
+    .parties { grid-template-columns: 1fr; gap: 20px; }
   }
 </style>
 </head>
 <body>
   <div class="toolbar">
-    <button class="ghost" type="button" data-print>🖨 Print</button>
-    <button type="button" data-print>⎙ Download PDF</button>
+    <button class="ghost" type="button" data-print>Print</button>
+    <button type="button" data-print>Download PDF</button>
   </div>
   <script>
-    // Deferred print: Safari can render a blank print preview (and leave the
-    // page blank afterwards) when print() fires before layout settles or from
-    // a popup-window context. Wait for full load + two frames, then print.
+    // Deferred print: Safari can render a blank print preview when print()
+    // fires before layout settles. Wait for full load + two frames.
     (function () {
       function safePrint() {
         var go = function () {
@@ -138,67 +154,86 @@ export function renderReceiptHtml(input: ReceiptInput): string {
       })
     })()
   </script>
+
   <div class="sheet">
-    <div class="head">
-      <div>
-        <img class="co-logo" src="/receipt-logo.svg" alt="" width="64" height="64">
-        <div class="co-name">${esc(company.name)}</div>
-        ${company.address ? `<div class="co-sub">${esc(company.address)}</div>` : ''}
-        ${(company.website || company.email || company.phone) ? `<div class="co-contact">${esc([company.website, company.email, company.phone].filter(Boolean).join('  ·  '))}</div>` : ''}
+
+    <div class="id-row">
+      <div class="brand">
+        <img src="/receipt-logo.svg" alt="">
+        <div>
+          <div class="nm">${esc(company.name)}</div>
+          <div class="tag">Your Safe Path to Success.</div>
+        </div>
       </div>
-      <div>
-        <div class="r-title">RECEIPT</div>
-        <div class="r-num">${esc(meta.receiptNumber)}</div>
-        <div class="r-issued">Issued ${esc(fmtDate(meta.issuedAt))}</div>
+      <div class="doc">
+        <div class="t">RECEIPT</div>
+        <div class="n num">${esc(meta.receiptNumber)}</div>
+        <div class="d">Issued ${esc(fmtDate(meta.issuedAt))}</div>
+        <span class="status ${isRefundish ? 'refund' : 'paid'}">${esc(meta.status.toUpperCase())}</span>
       </div>
     </div>
-    <hr>
+
+    <hr class="divider">
+
     <div class="parties">
       <div class="party">
-        <div class="lbl">FROM</div>
+        <span class="lbl">Remit from</span>
         <div class="nm">${esc(company.name)}</div>
         ${[company.address, company.email, company.phone, company.website].filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
       </div>
       <div class="party">
-        <div class="lbl">BILLED TO</div>
+        <span class="lbl">Billed to</span>
         <div class="nm">${esc(billedTo.name || '—')}</div>
         ${billedTo.lines.filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
       </div>
     </div>
-    <hr>
+
     <table class="items">
       <thead>
-        <tr><th>DESCRIPTION</th><th class="num">QTY</th><th class="num">UNIT PRICE</th><th class="num">AMOUNT</th></tr>
+        <tr>
+          <th>Description</th>
+          <th class="r">Qty</th>
+          <th class="r">Unit price</th>
+          <th class="r">Amount (${esc(cur)})</th>
+        </tr>
       </thead>
       <tbody>
         ${items.map(i => `<tr>
-          <td>${esc(i.description)}</td>
-          <td class="num">${esc(i.quantity)}</td>
-          <td class="num">${esc(money(i.unitCents, cur))}</td>
-          <td class="num">${esc(money(i.amountCents, cur))}</td>
+          <td class="desc">${esc(i.description)}<span class="cat">${esc(meta.kind)}</span></td>
+          <td class="r num">${esc(i.quantity)}</td>
+          <td class="r num">${esc(money(i.unitCents))}</td>
+          <td class="r num">${esc(money(i.amountCents))}</td>
         </tr>`).join('')}
       </tbody>
     </table>
-    <div class="totals">
-      <div class="row"><span>Subtotal</span><span class="v">${esc(money(totals.subtotalCents, cur))}</span></div>
-      ${typeof totals.feeCents === 'number' && totals.feeCents > 0
-        ? `<div class="row"><span>Platform fee</span><span class="v">${esc(money(totals.feeCents, cur))}</span></div>` : ''}
-      ${typeof totals.refundCents === 'number' && totals.refundCents > 0
-        ? `<div class="row" style="color:var(--refund)"><span>Refunded</span><span class="v">${esc(money(-totals.refundCents, cur))}</span></div>` : ''}
-      <div class="row grand"><span>Total</span><span class="v">${esc(money(totals.totalCents, cur))}</span></div>
+
+    <div class="totals-wrap">
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span class="num">${esc(money(totals.subtotalCents))}</span></div>
+        ${typeof totals.feeCents === 'number' && totals.feeCents > 0
+          ? `<div class="row"><span>Platform fee</span><span class="num">${esc(money(totals.feeCents))}</span></div>` : ''}
+        <div class="row"><span>Tax${taxCents === 0 ? ' (0%)' : ''}</span><span class="num">${esc(money(taxCents))}</span></div>
+        ${typeof totals.refundCents === 'number' && totals.refundCents > 0
+          ? `<div class="row refund"><span>Refunded</span><span class="num">${esc(money(-totals.refundCents))}</span></div>` : ''}
+        <div class="row grand"><span>Total ${esc(cur)}</span><span class="num">${esc(money(totals.totalCents))}</span></div>
+      </div>
     </div>
-    <div class="stamp ${isRefundish ? 'refund' : 'paid'}">${esc(meta.status.toUpperCase())}</div>
+
     <div class="details">
-      <div class="lbl">PAYMENT DETAILS</div>
-      ${detailRows.map(([k, v]) => `<div class="row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')}
+      <span class="lbl">Payment details</span>
+      <div class="grid">
+        ${detailRows.map(([k, v]) => `<span class="k">${esc(k)}</span><span class="v num">${esc(v)}</span>`).join('')}
+      </div>
     </div>
+
     <div class="foot">
       <div class="l">
         ${company.email ? `Questions about this receipt? Contact ${esc(company.email)}.<br>` : ''}
         This is a computer-generated receipt and is valid without a signature.
       </div>
-      <div class="r">${esc(meta.receiptNumber)} · 1 of 1</div>
+      <div class="r num">${esc(meta.receiptNumber)} · Page 1 of 1</div>
     </div>
+
   </div>
 </body>
 </html>`
