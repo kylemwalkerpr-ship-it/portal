@@ -612,37 +612,36 @@ const CSS = `
 .cw-cat-detail-cta { margin-top: auto; padding-top: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: ${T.indigo}; border-top: 1px solid ${T.ruleSoft}; }
 .cw-cat-detail-cta:hover { color: ${T.indigoDeep}; }
 
-.cw-market .hero { padding: 24px 0 28px; border-bottom: 1px solid ${T.rule}; }
-.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; align-items: center; }
+.cw-market .hero { padding: 40px 0 44px; border-bottom: 1px solid ${T.rule}; }
+.cw-market .hero-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
 @keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-family: ${F.mono}; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: ${T.inkMid}; }
-.cw-market .flagbar { width: 28px; height: 8px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border: 1px solid ${T.rule}; }
-.cw-market .flagbar.uk { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
-.cw-market .flagbar.ca { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
-.cw-market .hero h1 { font-family: ${F.display}; font-size: clamp(32px, 4.2vw, 52px); line-height: 1.04; letter-spacing: -0.02em; font-weight: 500; margin: 12px 0 12px; color: ${T.ink}; text-wrap: balance; }
-.cw-market .hero h1 em { font-style: italic; font-weight: 500; color: ${T.indigo}; }
-.cw-market .hero p.lede { max-width: 52ch; font-size: 15px; line-height: 1.55; color: ${T.inkMid}; margin: 0 0 20px; }
-.cw-market .hero-search { display: flex; align-items: center; background: ${T.vellum}; border: 1px solid ${T.ink}; border-radius: 12px; padding: 6px 6px 6px 18px; gap: 12px; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 20px 40px -28px rgba(29,36,51,0.22); }
-.cw-market .hero-search svg { color: ${T.ink}; flex: 0 0 20px; }
-.cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 15px; height: 44px; color: ${T.ink}; min-width: 0; }
+.cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: ${T.inkMid}; background: ${T.paper2}; border-radius: 999px; padding: 6px 14px; }
+.cw-market .flagbar { display: none; }
+.cw-market .hero h1 { font-family: ${F.ui}; font-size: clamp(32px, 3.8vw, 46px); line-height: 1.12; letter-spacing: -0.025em; font-weight: 700; margin: 16px 0 14px; color: ${T.ink}; text-wrap: balance; }
+.cw-market .hero h1 em { font-style: normal; font-weight: 700; color: ${T.indigo}; }
+.cw-market .hero p.lede { max-width: 52ch; font-size: 16px; line-height: 1.6; color: ${T.inkSoft}; margin: 0 0 24px; }
+.cw-market .hero-search { display: flex; align-items: center; background: #fff; border: 1px solid ${T.rule}; border-radius: 12px; padding: 5px 5px 5px 16px; gap: 10px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -16px rgba(15,23,42,0.12); transition: border-color .15s, box-shadow .15s; }
+.cw-market .hero-search:focus-within { border-color: ${T.inkMid}; box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 12px 28px -16px rgba(15,23,42,0.18); }
+.cw-market .hero-search svg { color: ${T.inkSoft}; flex: 0 0 18px; width: 18px; height: 18px; }
+.cw-market .hero-search input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 15px; height: 46px; color: ${T.ink}; min-width: 0; }
 .cw-market .hero-search input::placeholder { color: ${T.inkSoft}; }
-.cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; height: 44px; border-left: 1px dashed ${T.rule}; color: ${T.inkMid}; font-size: 12.5px; }
+.cw-market .hero-search .pick { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; height: 46px; border-left: 1px solid ${T.ruleSoft}; color: ${T.inkSoft}; font-size: 13px; white-space: nowrap; }
 .cw-market .hero-search .pick b { color: ${T.ink}; font-weight: 600; }
-.cw-market .hero-search button.search-go { height: 44px; padding: 0 22px; background: ${T.ink}; color: #fff; border-radius: 8px; font-weight: 600; font-size: 13.5px; letter-spacing: 0.01em; }
-.cw-market .hero-search button.search-go:hover { background: #000; }
-.cw-market .suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 12px; }
-.cw-market .suggest span.lbl { font-family: ${F.mono}; color: ${T.inkSoft}; letter-spacing: 0.08em; text-transform: uppercase; font-size: 10.5px; padding-top: 6px; margin-right: 4px; }
-.cw-market .suggest a { display: inline-flex; align-items: center; padding: 5px 11px; background: ${T.paper2}; border: 1px solid ${T.rule}; border-radius: 999px; color: ${T.inkMid}; font-weight: 500; }
-.cw-market .suggest a:hover { background: ${T.paper3}; color: ${T.ink}; }
+.cw-market .hero-search button.search-go { height: 46px; padding: 0 26px; background: ${T.ink}; color: #fff; border-radius: 9px; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; transition: background .15s; }
+.cw-market .hero-search button.search-go:hover { background: ${T.indigoDeep}; }
+.cw-market .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 13px; align-items: center; }
+.cw-market .suggest span.lbl { font-family: ${F.ui}; color: ${T.inkSoft}; letter-spacing: 0; text-transform: none; font-size: 13px; font-weight: 500; padding-top: 0; margin-right: 2px; }
+.cw-market .suggest a { display: inline-flex; align-items: center; padding: 6px 14px; background: #fff; border: 1px solid ${T.rule}; border-radius: 999px; color: ${T.inkMid}; font-weight: 500; transition: all .15s; }
+.cw-market .suggest a:hover { border-color: ${T.inkMid}; color: ${T.ink}; }
 
-.cw-market .hero-card { position: relative; background: ${T.vellum}; border: 1px solid ${T.rule}; border-radius: 14px; padding: 20px 22px 18px; box-shadow: 0 1px 0 rgba(29,36,51,0.05), 0 22px 44px -28px rgba(29,36,51,0.22); transform: rotate(0.5deg); }
-.cw-market .hero-card-link:hover .hero-card { transform: rotate(0) translateY(-2px); }
-.cw-market .hero-card::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 5px; background: linear-gradient(90deg, ${T.indigo} 0 33.3%, #fff 33.3% 66.6%, ${T.brick} 66.6% 100%); border-radius: 0 0 3px 3px; }
-.cw-market .hero-card[data-c="uk"]::before { background: linear-gradient(90deg, #012169 0 33%, #fff 33% 66%, #C8102E 66% 100%); }
-.cw-market .hero-card[data-c="ca"]::before { background: linear-gradient(90deg, #C8102E 0 28%, #fff 28% 72%, #C8102E 72% 100%); }
-.cw-market .hero-card .file-meta { display: flex; justify-content: space-between; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; margin-top: 6px; }
-.cw-market .hero-card h3 { font-family: ${F.display}; font-weight: 500; font-size: 18px; line-height: 1.3; letter-spacing: -0.01em; margin: 10px 0 12px; color: ${T.ink}; }
-.cw-market .hero-card h3 em { color: ${T.indigo}; font-style: italic; }
+.cw-market .hero-card { position: relative; background: #fff; border: 1px solid ${T.rule}; border-radius: 16px; padding: 20px 22px 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 16px 40px -24px rgba(15,23,42,0.18); transition: transform .15s, box-shadow .15s; }
+.cw-market .hero-card-link:hover .hero-card { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15,23,42,0.06), 0 20px 44px -24px rgba(15,23,42,0.24); }
+.cw-market .hero-card .file-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cw-market .hero-card .file-meta .badge { display: inline-flex; align-items: center; gap: 6px; font-family: ${F.ui}; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
+.cw-market .hero-card .file-meta .badge.popular { background: ${T.indigoSoft}; color: ${T.indigo}; }
+.cw-market .hero-card .file-meta .badge.verified { background: #ECFDF5; color: #047857; }
+.cw-market .hero-card h3 { font-family: ${F.ui}; font-weight: 600; font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; margin: 12px 0 12px; color: ${T.ink}; }
+.cw-market .hero-card h3 em { color: ${T.indigo}; font-style: normal; }
 .cw-market .hero-card .attorney { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid ${T.ruleSoft}; }
 .cw-market .hero-card .avatar { width: 36px; height: 36px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-family: ${F.display}; font-weight: 600; font-size: 14px; flex: 0 0 36px; }
 .cw-market .hero-card .attorney-name { line-height: 1.2; flex: 1; }
@@ -654,17 +653,17 @@ const CSS = `
 .cw-market .hero-card .tiers { margin-top: 2px; border-top: 1px solid ${T.ruleSoft}; padding-top: 10px; }
 .cw-market .hero-card .tier-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px dotted ${T.rule}; }
 .cw-market .hero-card .tier-row:last-child { border: 0; padding-bottom: 0; }
-.cw-market .hero-card .tier-row .lbl { font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; width: 70px; }
+.cw-market .hero-card .tier-row .lbl { font-family: ${F.ui}; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: capitalize; color: ${T.inkSoft}; width: 70px; }
 .cw-market .hero-card .tier-row .name { color: ${T.inkMid}; }
-.cw-market .hero-card .tier-row .price { font-family: ${F.display}; font-weight: 600; font-size: 16px; color: ${T.ink}; }
-.cw-market .hero-card .stamp { position: absolute; right: -14px; top: 32px; transform: rotate(8deg); padding: 6px 12px; border: 2px solid ${T.brick}; color: ${T.brick}; font-family: ${F.mono}; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; background: rgba(178,34,52,0.05); border-radius: 3px; }
-.cw-market .hero-empty { background: ${T.vellum}; border: 1px dashed ${T.rule}; border-radius: 18px; padding: 48px 32px; text-align: center; color: ${T.inkSoft}; font-family: ${F.display}; font-style: italic; font-size: 18px; line-height: 1.5; }
+.cw-market .hero-card .tier-row .price { font-family: ${F.ui}; font-weight: 700; font-size: 16px; color: ${T.ink}; }
+.cw-market .hero-card .stamp { display: none; }
+.cw-market .hero-empty { background: #fff; border: 1px dashed ${T.rule}; border-radius: 16px; padding: 48px 32px; text-align: center; color: ${T.inkSoft}; font-family: ${F.ui}; font-size: 15px; line-height: 1.5; }
 
-.cw-market .trust { padding: 12px 0; border-bottom: 1px solid ${T.rule}; font-family: ${F.mono}; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: ${T.inkSoft}; }
+.cw-market .trust { padding: 14px 0; border-bottom: 1px solid ${T.rule}; font-family: ${F.ui}; font-size: 13px; letter-spacing: 0; text-transform: none; color: ${T.inkSoft}; }
 .cw-market .trust-inner { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; justify-content: space-between; }
 .cw-market .trust-inner .label { color: ${T.inkMid}; font-weight: 600; }
 .cw-market .trust-inner .item { display: inline-flex; align-items: center; gap: 8px; }
-.cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: ${T.inkMid}; }
+.cw-market .trust-inner .item .dot { width: 5px; height: 5px; border-radius: 50%; background: #16a34a; }
 
 .cw-market .section-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; gap: 24px; }
 .cw-market .section-head h2 { font-family: ${F.display}; font-weight: 500; font-size: clamp(22px, 2.6vw, 30px); line-height: 1.15; letter-spacing: -0.014em; margin: 0; color: ${T.ink}; max-width: 24ch; }

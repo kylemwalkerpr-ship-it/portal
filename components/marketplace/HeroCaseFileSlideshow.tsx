@@ -152,14 +152,14 @@ export default function HeroCaseFileSlideshow({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 6,
-          padding: '4px 10px',
+          padding: '4px 12px',
           borderRadius: 999,
-          background: INK,
-          color: '#fff',
-          fontFamily: MONO,
-          fontSize: 10,
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
+          background: '#fff',
+          border: `1px solid ${RULE}`,
+          boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+          color: INK,
+          fontFamily: UI,
+          fontSize: 12,
           fontWeight: 600,
         }}
       >
@@ -189,8 +189,10 @@ export default function HeroCaseFileSlideshow({
           style={{ animation: 'slideFadeIn 350ms ease-out' }}
         >
           <div className="file-meta">
-            <span>FILE · MC-{slide.id.slice(0, 4).toUpperCase()}-{(slide.providerCountry || (slide.jx ?? 'XXX')).toUpperCase().slice(0, 3)}</span>
-            <span>{slide.isFallback ? 'GLOBAL · TOP BRIEF' : 'MOST POPULAR'}</span>
+            <span className="badge popular">{slide.isFallback ? 'Top brief' : 'Most popular'}</span>
+            <span className="badge verified">
+              ✓ Verified {slide.provider_type === 'attorney' ? '· J.D.' : '· Regulated'}
+            </span>
           </div>
           <h3>{slide.title}</h3>
           <div className="attorney">
@@ -233,8 +235,6 @@ export default function HeroCaseFileSlideshow({
               ))}
             </div>
           )}
-          {slide.provider_type === 'attorney' && <div className="stamp">Verified · J.D.</div>}
-          {slide.provider_type === 'consultant' && <div className="stamp">Verified · Reg.</div>}
           {slide.isFallback && (
             <div className="hero-fallback-hint" style={{ marginTop: 10, padding: '8px 10px', background: PAPER2, border: `1px dashed ${RULE}`, borderRadius: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: '0.06em', color: INK, textTransform: 'none' } as React.CSSProperties}>
               No <b>{slide.label}</b> briefs yet — showing the platform's top brief.
