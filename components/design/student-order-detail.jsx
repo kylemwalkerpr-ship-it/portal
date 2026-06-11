@@ -237,6 +237,105 @@ export default function StudentOrderDetail({ orderId, onBack, currency = 'usd' }
 }
 
 // ── Overview tab: progress timeline + escrow approval ─────────────────────
+// ── Milestone tracker — visual escrow milestone timeline ──────────────────────
+
+const MILESTONE_CFG = {
+  released:    { color: GREEN,  label: 'Released',    icon: '✓', terminal: true  },
+  approved:    { color: GREEN,  label: 'Approved',    icon: '✓', terminal: true  },
+  submitted:   { color: CYAN,   label: 'In review',   icon: '◉', terminal: false },
+  in_progress: { color: CYAN,   label: 'In progress', icon: '◉', terminal: false },
+  rejected:    { color: RED,    label: 'Changes requested', icon: '!', terminal: false },
+  cancelled:   { color: MUTED,  label: 'Cancelled',   icon: '✕', terminal: true  },
+  pending:     { color: DIM,    label: 'Upcoming',    icon: '',  terminal: false },
+}
+const milestoneDone = m => ['released', 'approved'].includes(m.status)
+
+function MilestoneTracker({ milestones, currency }) {
+  const totalCents    = milestones.reduce((s, m) => s + Math.round(Number(m.amount || 0) * 100), 0)
+  const releasedCents = milestones.filter(milestoneDone).reduce((s, m) => s + Math.round(Number(m.amount || 0) * 100), 0)
+  const doneCount     = milestones.filter(milestoneDone).length
+  const pct           = totalCents > 0 ? Math.round((releasedCents / totalCents) * 100) : 0
+  // First non-terminal, non-pending milestone is "current"; else first pending.
+  const currentIdx = (() => {
+    const active = milestones.findIndex(m => ['in_progress', 'submitted', 'rejected'].includes(m.status))
+    if (active >= 0) return active
+    return milestones.findIndex(m => m.status === 'pending')
+  })()
+
+  return (
+    <Section
+      title={`Milestones · ${doneCount} of ${milestones.length} complete`}
+      right={<span style={{ fontFamily: MONO, fontSize: 12, color: MUTED }}>{fmtMoneyCents(releasedCents, currency)} / {fmtMoneyCents(totalCents, currency)} released</span>}
+    >
+      <div style={{ padding: '16px 18px 18px' }}>
+        {/* Escrow release bar */}
+        <div style={{ height: 6, background: '#F2EFE9', borderRadius: 3, overflow: 'hidden', marginBottom: 18 }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: GREEN, borderRadius: 3, transition: 'width .3s ease' }} />
+        </div>
+
+        {/* Vertical milestone timeline */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {milestones.map((m, i) => {
+            const cfg = MILESTONE_CFG[m.status] || MILESTONE_CFG.pending
+            const done = milestoneDone(m)
+            const isCurrent = i === currentIdx
+            const isLast = i === milestones.length - 1
+            const dateLabel = done && (m.released_at || m.approved_at) ? `Completed ${fmtDateShort(m.released_at || m.approved_at)}`
+              : m.status === 'submitted' && m.submitted_at ? `Submitted ${fmtDateShort(m.submitted_at)}`
+              : m.status === 'rejected' && m.rejected_at   ? `Returned ${fmtDateShort(m.rejected_at)}`
+              : m.due_date ? `Due ${fmtDateShort(m.due_date)}`
+              : null
+            return (
+              <div key={m.id} style={{ display: 'flex', gap: 14 }}>
+                {/* Node + connector */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 26, flexShrink: 0 }}>
+                  <div style={{
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    background: done ? cfg.color : SURFACE,
+                    border: `2px solid ${isCurrent || done || m.status !== 'pending' ? cfg.color : BORDER}`,
+                    boxShadow: isCurrent ? `0 0 0 4px ${cfg.color}22` : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 800, color: done ? '#fff' : cfg.color,
+                  }}>{done ? '✓' : cfg.icon || m.sequence || i + 1}</div>
+                  {!isLast && <div style={{ width: 2, flex: 1, minHeight: 18, background: done ? GREEN : BORDER2 }} />}
+                </div>
+
+                {/* Body */}
+                <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 18 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: m.status === 'pending' && !isCurrent ? MUTED : TEXT }}>
+                        {m.title || `Milestone ${m.sequence ?? i + 1}`}
+                      </div>
+                      {m.description && <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>{m.description}</div>}
+                      {m.status === 'rejected' && m.rejection_reason && (
+                        <div style={{ fontSize: 12, color: RED, marginTop: 4, background: `${RED}08`, border: `1px solid ${RED}22`, borderRadius: 6, padding: '6px 10px' }}>
+                          {m.rejection_reason}
+                        </div>
+                      )}
+                      {dateLabel && <div style={{ fontSize: 11, color: DIM, fontFamily: MONO, marginTop: 4 }}>{dateLabel}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 12, color: done ? GREEN : TEXT, fontWeight: 700 }}>
+                        {fmtMoneyCents(Math.round(Number(m.amount || 0) * 100), currency)}
+                      </div>
+                      <span style={{
+                        display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 4,
+                        fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase',
+                        background: `${cfg.color}15`, color: cfg.color,
+                      }}>{cfg.label}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flash }) {
   const [actionBusy, setActionBusy] = React.useState(false)
   // Wrap a money-affecting action with the shared busy lock.
@@ -297,24 +396,7 @@ function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flas
       </Section>
 
       {/* Milestones (if milestone-based) */}
-      {milestones?.length > 0 && (
-        <Section title={`Milestones · ${milestones.length}`}>
-          <div style={{ padding: '6px 18px 14px' }}>
-            {milestones.map((m, i) => (
-              <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < milestones.length - 1 ? `1px solid ${BORDER2}` : 'none', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: TEXT }}>{m.title || `Milestone ${m.sequence}`}</div>
-                  {m.description && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{m.description}</div>}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: MONO, fontSize: 12, color: TEXT, fontWeight: 700 }}>{fmtMoneyCents(Math.round(Number(m.amount || 0) * 100), currency)}</div>
-                  <Badge color={m.status === 'released' ? 'green' : m.status === 'pending' ? 'orange' : 'gray'} style={{ fontSize: 10, marginTop: 4 }}>{m.status}</Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
+      {milestones?.length > 0 && <MilestoneTracker milestones={milestones} currency={currency} />}
 
       {/* Scope changes awaiting client approval */}
       {scopeChanges?.filter(s => s.status === 'pending').length > 0 && (
