@@ -615,7 +615,8 @@ const CSS = `
 .cw-market .hero { position: relative; padding: 56px 0 60px; border-bottom: 1px solid ${T.rule}; background: linear-gradient(115deg, #0B1023 0%, #141B38 48%, #232A55 100%); overflow: hidden; }
 .cw-market .hero-media { position: absolute; inset: 0; pointer-events: none; }
 .cw-market .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cw-market .hero-media-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,11,26,0.78) 0%, rgba(8,11,26,0.52) 42%, rgba(8,11,26,0.12) 100%), linear-gradient(180deg, rgba(8,11,26,0.25) 0%, transparent 30%, transparent 70%, rgba(8,11,26,0.35) 100%); }
+.cw-market .hero-media-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(13,17,38,0.62) 0%, rgba(13,17,38,0.34) 44%, rgba(13,17,38,0.04) 100%); }
+.cw-market .hero h1, .cw-market .hero p.lede { text-shadow: 0 1px 12px rgba(8,11,26,0.45); }
 .cw-market .hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
 @keyframes slideFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .cw-market .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: ${F.ui}; font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 6px 14px; }
@@ -1015,7 +1016,7 @@ export async function PublicMarketplaceLanding({ country = 'all' as Country }: {
           gradient background carries the same look with zero payload. */}
       <section className="hero">
         <div className="hero-media" aria-hidden="true">
-          <video autoPlay muted loop playsInline preload="metadata">
+          <video autoPlay muted loop playsInline preload="auto" poster="/hero-poster.jpg">
             <source src="/hero-bg.mp4" type="video/mp4" />
           </video>
           <div className="hero-media-overlay" />

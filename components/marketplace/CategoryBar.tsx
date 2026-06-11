@@ -142,7 +142,9 @@ export function CategoryBar({ country }: Props) {
           top: ${TOPNAV_OFFSET_DESKTOP}px;
           z-index: 180;
           border-bottom: 1px solid ${T.rule};
-          background: ${T.vellum};
+          /* Varying tone from the white top menu: a soft slate wash so the
+             category pills read as their own elegant band. */
+          background: #F1F3F8;
         }
         @media (max-width: 720px) {
           .ys-cat-bar { top: ${TOPNAV_OFFSET_MOBILE}px; }
@@ -178,8 +180,8 @@ export function CategoryBar({ country }: Props) {
           opacity: 0;
           transition: opacity 0.15s ease-out;
         }
-        .ys-cat-fade.left  { left: 0;  background: linear-gradient(to right, ${T.vellum} 30%, rgba(0,0,0,0)); }
-        .ys-cat-fade.right { right: 0; background: linear-gradient(to left,  ${T.vellum} 30%, rgba(0,0,0,0)); }
+        .ys-cat-fade.left  { left: 0;  background: linear-gradient(to right, #F1F3F8 30%, rgba(0,0,0,0)); }
+        .ys-cat-fade.right { right: 0; background: linear-gradient(to left,  #F1F3F8 30%, rgba(0,0,0,0)); }
         .ys-cat-fade.on { opacity: 1; }
         .ys-cat-chev {
           position: absolute;
@@ -251,15 +253,16 @@ export function CategoryBar({ country }: Props) {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
-                      padding: '0 14px',
-                      height: '36px',
+                      padding: '0 16px',
+                      height: '34px',
                       borderRadius: '999px',
-                      border: '1px solid transparent',
-                      background: isOpen ? T.ink : 'transparent',
+                      border: `1px solid ${isOpen ? T.ink : isActive ? T.inkMid : T.rule}`,
+                      background: isOpen ? T.ink : '#fff',
+                      boxShadow: isOpen ? 'none' : '0 1px 2px rgba(15,23,42,0.04)',
                       fontFamily: F.ui,
                       fontSize: '13.5px',
-                      fontWeight: isActive ? 600 : 500,
-                      color: isActive ? T.ink : isOpen ? '#fff' : T.inkMid,
+                      fontWeight: isActive || isOpen ? 600 : 500,
+                      color: isOpen ? '#fff' : isActive ? T.ink : T.inkMid,
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
@@ -268,17 +271,16 @@ export function CategoryBar({ country }: Props) {
                     onMouseEnter={(e) => {
                       if (!isOpen) {
                         e.currentTarget.style.color = T.ink
-                        e.currentTarget.style.background = T.paper2
+                        e.currentTarget.style.borderColor = T.inkMid
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!isOpen) {
                         e.currentTarget.style.color = isActive ? T.ink : T.inkMid
-                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.borderColor = isActive ? T.inkMid : T.rule
                       }
                     }}
                   >
-                    <span aria-hidden="true">{cat.icon}</span>
                     <span>{label}</span>
                     <svg
                       width="10"
