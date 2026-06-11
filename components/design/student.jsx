@@ -1324,23 +1324,33 @@ function StudentApp({ onLogout, userId, userName }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Check if user has paid templates (for nav visibility) and store the list
+  // Check if user has paid templates (for nav visibility) and store the list.
+  // STAGGERED: this is not needed for first paint. Firing it concurrently
+  // with home/wallet/unread/chats on every mount (e.g. returning from the
+  // marketplace) stampedes ~8 cold Worker invocations at once — the exact
+  // burst that produces 503/1102 storms. A short delay lets the first
+  // requests warm the isolate before this one rides it.
   React.useEffect(() => {
-    fetch('/api/profile/template-downloads')
-      .then(r => r.json())
-      .then(d => {
-        const items = d.data?.entitlements ?? [];
-        setPaidTemplates(items);
-        setHasPaidTemplates(items.length > 0);
-      })
-      .catch(() => { setHasPaidTemplates(false); setPaidTemplates([]); });
+    let cancelled = false;
+    const id = setTimeout(() => {
+      fetch('/api/profile/template-downloads')
+        .then(r => r.json())
+        .then(d => {
+          if (cancelled) return;
+          const items = d.data?.entitlements ?? [];
+          setPaidTemplates(items);
+          setHasPaidTemplates(items.length > 0);
+        })
+        .catch(() => { if (!cancelled) { setHasPaidTemplates(false); setPaidTemplates([]); } });
+    }, 2500);
+    return () => { cancelled = true; clearTimeout(id); };
   }, []);
 
   const goToRoute = React.useCallback((href) => {
     if (typeof window !== 'undefined') window.location.href = href;
   }, []);
 
-  const loadAttorneyChats = React.useCallback(() => {
+  const loadAttorneyChats = React.useCallback((opts = {}) => {
     return fetch('/api/client/attorney-chats')
       .then(async r => {
         const data = await r.json();
@@ -1349,12 +1359,18 @@ function StudentApp({ onLogout, userId, userName }) {
         return data.chats || [];
       })
       .catch(e => {
-        setActionNotice(e.message);
+        // Background prefetch failures stay silent — a 503 during a cold-start
+        // burst would otherwise flash an error banner the user never asked for.
+        if (!opts.silent) setActionNotice(e.message);
         return [];
       });
   }, []);
 
-  React.useEffect(() => { loadAttorneyChats(); }, [loadAttorneyChats]);
+  // Staggered background prefetch (see template-downloads note above).
+  React.useEffect(() => {
+    const id = setTimeout(() => loadAttorneyChats({ silent: true }), 4000);
+    return () => clearTimeout(id);
+  }, [loadAttorneyChats]);
 
   const loadAttorneyChat = React.useCallback(async chatId => {
     if (!chatId) return;

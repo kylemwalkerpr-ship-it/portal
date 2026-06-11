@@ -1010,10 +1010,20 @@ export default function StudentTemplateFiller({
 </div>
 <script>window.addEventListener('load', function(){ setTimeout(function(){ window.print() }, 250) })</script>
 </body></html>`
-    const win = window.open('', '_blank', 'noopener')
-    if (!win) { showToast('❌ Pop-up blocked — allow pop-ups to download your document.'); return }
-    win.document.write(html)
-    win.document.close()
+    // Blob URL instead of window.open('')+document.write: passing 'noopener'
+    // as a feature makes window.open return null in Safari/Chrome (blank tab,
+    // nothing rendered — the exact bug users hit). A same-origin Blob URL
+    // renders the document and its auto-print script reliably.
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const win = window.open(url, '_blank')
+    if (!win) {
+      URL.revokeObjectURL(url)
+      showToast('❌ Pop-up blocked — allow pop-ups for this site to download your document.')
+      return
+    }
+    // Revoke after the tab has had time to load the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
     showToast(mode === 'blank'
       ? '📄 Blank worksheet opened — use Save as PDF in the print dialog.'
       : '✨ Your completed document opened — use Save as PDF in the print dialog.')

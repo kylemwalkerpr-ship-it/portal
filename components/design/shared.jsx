@@ -563,10 +563,15 @@ export function NavItem({ icon, label, active, onClick, badge, badgeColor = 'red
   React.useEffect(() => {
     if (!active || !ref.current) return
     const id = requestAnimationFrame(() => {
+      // Re-check inside the frame: the node can unmount between the effect
+      // and the rAF firing (rapid page switches, e.g. marketplace → portal),
+      // which crashed with "null is not an object (scrollIntoView)".
+      const el = ref.current
+      if (!el || typeof el.scrollIntoView !== 'function') return
       try {
-        ref.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
       } catch {
-        ref.current.scrollIntoView(false)
+        el.scrollIntoView(false)
       }
     })
     return () => cancelAnimationFrame(id)
