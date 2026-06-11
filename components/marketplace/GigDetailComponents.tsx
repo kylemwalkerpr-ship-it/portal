@@ -320,15 +320,102 @@ export function PricingTiers({ tiers, selectedTierId, onSelectTier }: PricingTie
               </p>
             )}
 
-            {tier.revisions != null && (
+            {/* What's included — every line answers a buyer hesitation */}
+            <div style={{ display: 'grid', gap: 7 }}>
+              {tier.delivery_days != null && (
+                <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ color: T.indigo }}>✓</span>
+                  <span><strong style={{ color: T.ink }}>{tier.delivery_days}-day</strong> delivery</span>
+                </div>
+              )}
+              {tier.revisions != null && (
+                <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ color: T.indigo }}>✓</span>
+                  <span>{tier.revisions === -1 ? 'Unlimited revisions' : `${tier.revisions} revision${tier.revisions !== 1 ? 's' : ''} included`}</span>
+                </div>
+              )}
               <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span style={{ color: T.indigo }}>✓</span>
-                <span>{tier.revisions === -1 ? 'Unlimited revisions' : `${tier.revisions} revision${tier.revisions !== 1 ? 's' : ''}`}</span>
+                <span>Payment held in escrow until you approve</span>
               </div>
-            )}
+              <div style={{ fontFamily: F.ui, fontSize: '13px', color: T.inkMid, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: T.indigo }}>✓</span>
+                <span>Direct chat with your specialist</span>
+              </div>
+            </div>
           </div>
         ))}
+
+      {tiers.length > 1 && <ComparePackages tiers={tiers} selectedTierId={selectedTierId} onSelectTier={onSelectTier} />}
     </Card>
+  )
+}
+
+// ── ComparePackages — Fiverr-style side-by-side table ────────────────────────
+function ComparePackages({ tiers, selectedTierId, onSelectTier }: PricingTiersProps) {
+  const [open, setOpen] = React.useState(false)
+  const cell: CSSProperties = { padding: '8px 10px', fontFamily: F.ui, fontSize: 12.5, color: T.inkMid, borderTop: `1px solid ${T.ruleSoft}`, textAlign: 'center' }
+  const head: CSSProperties = { ...cell, borderTop: 'none', fontWeight: 700, color: T.ink, textTransform: 'capitalize' }
+  const label: CSSProperties = { ...cell, textAlign: 'left', color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }
+  return (
+    <div style={{ marginTop: 16 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: F.ui, fontSize: 12.5, fontWeight: 700, color: T.indigo, padding: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', fontSize: 10 }}>▸</span>
+        Compare packages
+      </button>
+      {open && (
+        <div style={{ overflowX: 'auto', marginTop: 10, border: `1px solid ${T.ruleSoft}`, borderRadius: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 320 }}>
+            <thead>
+              <tr>
+                <th style={{ ...label, borderTop: 'none' }} />
+                {tiers.map((t) => <th key={t.id} style={head}>{t.name || t.tier}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={label}>Price</td>
+                {tiers.map((t) => (
+                  <td key={t.id} style={{ ...cell, fontWeight: 800, color: T.ink }}>{money(t.price, t.currency)}</td>
+                ))}
+              </tr>
+              <tr>
+                <td style={label}>Delivery</td>
+                {tiers.map((t) => <td key={t.id} style={cell}>{t.delivery_days != null ? `${t.delivery_days}d` : '—'}</td>)}
+              </tr>
+              <tr>
+                <td style={label}>Revisions</td>
+                {tiers.map((t) => <td key={t.id} style={cell}>{t.revisions == null ? '—' : t.revisions === -1 ? 'Unlimited' : t.revisions}</td>)}
+              </tr>
+              <tr>
+                <td style={label} />
+                {tiers.map((t) => (
+                  <td key={t.id} style={cell}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTier(t.id)}
+                      style={{
+                        padding: '6px 14px', borderRadius: 999, cursor: 'pointer', fontFamily: F.ui, fontSize: 12, fontWeight: 700,
+                        border: `1.5px solid ${selectedTierId === t.id ? T.indigo : T.rule}`,
+                        background: selectedTierId === t.id ? T.indigo : 'transparent',
+                        color: selectedTierId === t.id ? '#fff' : T.inkMid,
+                      }}
+                    >
+                      {selectedTierId === t.id ? 'Selected' : 'Select'}
+                    </button>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -497,6 +584,12 @@ export function OrderCTA({ selectedTier, onOrder, onSave, onShare, isSaved = fal
       >
         Continue ({selectedTier.name || selectedTier.tier})
       </Btn>
+
+      {/* The two lines that close the sale — security, then recourse */}
+      <div style={{ fontFamily: F.ui, fontSize: 11.5, color: T.inkSoft, lineHeight: 1.6, textAlign: 'center', margin: '0 0 12px' }}>
+        🔒 Payment held in escrow — released only when you approve.<br />
+        ↩ Full refund if your specialist never delivers.
+      </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
         {gigId ? (

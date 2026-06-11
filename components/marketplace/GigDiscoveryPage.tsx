@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Card, Btn, Badge, SearchInput } from '../design/shared'
+import { SmartSearchBox, rememberSearch } from './SmartSearchBox'
 import { LoadingState, ErrorState, EmptyState } from '../design/fiverr-workbench'
 import { FilterSidebar } from './FilterSidebar'
 import { FilterDrawer, SortDropdown, ViewToggle, ActiveFilters, ResultsCount } from './FilterControls'
@@ -188,6 +189,47 @@ async function requestJson(url: string, options: RequestInit = {}) {
 interface GigDiscoveryPageProps {
   categoryId?: string
   categoryName?: string
+}
+
+
+// ── Phase-1 UX primitives ───────────────────────────────────────────
+function GigCardSkeleton() {
+  return (
+    <div style={{ background: T.vellum, border: `1px solid ${T.rule}`, borderRadius: 12, overflow: 'hidden' }}>
+      <div className="ys-shimmer" style={{ height: 140, background: T.paper2 }} />
+      <div style={{ padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div className="ys-shimmer" style={{ width: 22, height: 22, borderRadius: '50%', background: T.paper2 }} />
+          <div className="ys-shimmer" style={{ height: 10, width: '46%', borderRadius: 4, background: T.paper2 }} />
+        </div>
+        <div className="ys-shimmer" style={{ height: 13, width: '92%', borderRadius: 4, background: T.paper2 }} />
+        <div className="ys-shimmer" style={{ height: 13, width: '64%', borderRadius: 4, background: T.paper2 }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+          <div className="ys-shimmer" style={{ height: 16, width: 90, borderRadius: 999, background: T.paper }} />
+          <div className="ys-shimmer" style={{ height: 18, width: 48, borderRadius: 4, background: T.paper2 }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TrustStrip() {
+  const item: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    fontSize: 12, fontWeight: 600, color: T.inkMid, whiteSpace: 'nowrap',
+  }
+  return (
+    <div style={{
+      display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'center',
+      padding: '10px 16px', marginBottom: 16, borderRadius: 10,
+      background: T.vellum, border: `1px solid ${T.ruleSoft}`,
+    }}>
+      <span style={item}>🔒 Payment held in escrow until you approve</span>
+      <span style={item}>✓ Every seller credential-vetted</span>
+      <span style={item}>↩ Refund-backed if no delivery</span>
+      <span style={item}>💬 Direct chat before you buy</span>
+    </div>
+  )
 }
 
 export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageProps) {
@@ -402,11 +444,13 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
       setGigs(data.gigs || [])
       setTotal(data.total || data.gigs?.length || 0)
 
-      // Track impressions
-      for (const gig of data.gigs || []) {
+      // Track impressions — ONE batched request for the whole page, not one
+      // per gig (the per-gig loop was 20 Worker invocations per browse).
+      const impressionIds = (data.gigs || []).map((g: any) => g.id).filter(Boolean)
+      if (impressionIds.length > 0) {
         requestJson('/api/gig-metrics/event', {
           method: 'POST',
-          body: JSON.stringify({ gig_id: gig.id, event_type: 'impression' }),
+          body: JSON.stringify({ gig_ids: impressionIds, event_type: 'impression' }),
         }).catch(() => {})
       }
     } catch (e: any) {
@@ -519,15 +563,15 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
           <div>
             <h1 style={titleStyle}>{titleText}</h1>
             <ResultsCount total={total} showing={gigs.length} />
-            <form onSubmit={handleSearchSubmit} style={searchBar}>
-              <SearchInput
+            <form onSubmit={(e) => { rememberSearch(searchQuery); handleSearchSubmit(e) }} style={searchBar}>
+              <SmartSearchBox
                 value={searchQuery}
                 onChange={value => {
                   setSearchQuery(value)
                   setPage(1)
                 }}
+                onSubmit={() => handleSearchSubmit({ preventDefault: () => {} } as React.FormEvent)}
                 placeholder="Search visas, legal review, business formation..."
-                style={{ flex: 1 }}
               />
               <Btn variant="primary" type="submit">
                 Search
@@ -590,21 +634,28 @@ export function GigDiscoveryPage({ categoryId, categoryName }: GigDiscoveryPageP
 
           <div>
             {loading ? (
-              <LoadingState label="Loading services..." />
+              <>
+                <style>{`@keyframes ysShimmer { 0% { opacity: .55 } 50% { opacity: 1 } 100% { opacity: .55 } } .ys-shimmer { animation: ysShimmer 1.4s ease-in-out infinite }`}</style>
+                <div style={gigGrid} className="ys-gig-grid">
+                  {Array.from({ length: 8 }, (_, i) => <GigCardSkeleton key={i} />)}
+                </div>
+              </>
             ) : error ? (
               <ErrorState message={error} onRetry={loadGigs} />
             ) : gigs.length === 0 ? (
               <EmptyState
-                title="No services match your filters"
-                body="Try adjusting your filters or search for something else."
+                title="Nothing here yet — let's widen the net"
+                body="No services match this exact combination. Clear a filter or two, or tell us what you need and a specialist will respond with an offer."
                 action={
-                  <Btn variant="secondary" onClick={handleClearFilters}>
-                    Clear filters
-                  </Btn>
+                  <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <Btn variant="primary" onClick={handleClearFilters}>Clear filters</Btn>
+                    <Btn variant="secondary" onClick={() => { window.location.href = '/marketplace?view=inquiries' }}>Describe your case instead</Btn>
+                  </div>
                 }
               />
             ) : (
               <>
+                <TrustStrip />
                 {view === 'grid' ? (
                   <div style={gigGrid} className="ys-gig-grid">
                     {gigs.map(gig => (
