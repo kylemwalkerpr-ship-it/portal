@@ -117,15 +117,32 @@ export function renderReceiptHtml(input: ReceiptInput): string {
 </head>
 <body>
   <div class="toolbar">
-    <button class="ghost" onclick="window.print()">🖨 Print</button>
-    <button onclick="window.print()">⎙ Download PDF</button>
+    <button class="ghost" type="button" data-print>🖨 Print</button>
+    <button type="button" data-print>⎙ Download PDF</button>
   </div>
+  <script>
+    // Deferred print: Safari can render a blank print preview (and leave the
+    // page blank afterwards) when print() fires before layout settles or from
+    // a popup-window context. Wait for full load + two frames, then print.
+    (function () {
+      function safePrint() {
+        var go = function () {
+          requestAnimationFrame(function () { requestAnimationFrame(function () { window.print() }) })
+        }
+        if (document.readyState === 'complete') go()
+        else window.addEventListener('load', go, { once: true })
+      }
+      document.querySelectorAll('[data-print]').forEach(function (b) {
+        b.addEventListener('click', safePrint)
+      })
+    })()
+  </script>
   <div class="sheet">
     <div class="head">
       <div>
         <div class="co-name">${esc(company.name)}</div>
         ${company.address ? `<div class="co-sub">${esc(company.address)}</div>` : ''}
-        ${(company.website || company.email) ? `<div class="co-contact">${esc([company.website, company.email].filter(Boolean).join('  ·  '))}</div>` : ''}
+        ${(company.website || company.email || company.phone) ? `<div class="co-contact">${esc([company.website, company.email, company.phone].filter(Boolean).join('  ·  '))}</div>` : ''}
       </div>
       <div>
         <div class="r-title">RECEIPT</div>
@@ -138,7 +155,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
       <div class="party">
         <div class="lbl">FROM</div>
         <div class="nm">${esc(company.name)}</div>
-        ${[company.address, company.email, company.website].filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
+        ${[company.address, company.email, company.phone, company.website].filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
       </div>
       <div class="party">
         <div class="lbl">BILLED TO</div>

@@ -54,7 +54,7 @@ export interface ReceiptMeta {
 }
 
 export interface ReceiptInput {
-  company: { name: string; address?: string; email?: string; website?: string }
+  company: { name: string; address?: string; email?: string; phone?: string; website?: string }
   billedTo: { name: string; lines: string[] }
   items: ReceiptItem[]
   totals: ReceiptTotals

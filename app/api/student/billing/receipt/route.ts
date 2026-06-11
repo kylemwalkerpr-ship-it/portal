@@ -65,10 +65,11 @@ export async function GET(req: Request) {
 
   const settings = await getPlatformSettings()
   const company = {
-    name: String((settings as any).platform_name || 'YouSafe Consultancy'),
-    address: String((settings as any).platform_address || ''),
-    email: String((settings as any).support_email || ''),
-    website: String((settings as any).platform_website || ''),
+    name: String((settings as any).platform_name || 'YouSafe Consultancy LLC'),
+    address: String((settings as any).platform_address || '906 Donne Ct, Virginia Beach, VA 23462'),
+    email: String((settings as any).support_email || 'support@yousafeconsultancy.com'),
+    phone: String((settings as any).platform_phone || '(757) 804-3263'),
+    website: String((settings as any).platform_website || 'https://yousafeconsultancy.com'),
   }
 
   // Student party: pull the full address block (self-healing on old schemas).

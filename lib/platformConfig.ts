@@ -35,11 +35,12 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
-  platform_name: 'YouSafe Consultancy',
+  platform_name: 'YouSafe Consultancy LLC',
   support_email: 'support@yousafeconsultancy.com',
-  // Shown on receipts. Set the registered business address via the admin
-  // Settings panel; when empty the receipt simply omits the address block.
-  platform_address: '',
+  // Shown on receipts. Registered business address — overridable via the
+  // admin Settings panel / platform_settings row.
+  platform_address: '906 Donne Ct, Virginia Beach, VA 23462',
+  platform_phone: '(757) 804-3263',
   platform_website: 'https://yousafeconsultancy.com',
   primary_currency: 'usd' as PrimaryCurrency,
   // Used by the storefront to display prices in the user's chosen currency.

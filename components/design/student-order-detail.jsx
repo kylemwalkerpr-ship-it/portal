@@ -723,7 +723,7 @@ function ReceiptTab({ order, items, services, currency }) {
           <Btn
             variant="primary"
             size="sm"
-            onClick={() => window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(`${order.id}-purchase`)}`, '_blank', 'noopener')}
+            onClick={() => window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(`${order.id}-purchase`)}`, '_blank')}
           >
             ⎙ Download PDF receipt
           </Btn>

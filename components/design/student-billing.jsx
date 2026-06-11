@@ -366,7 +366,7 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
                             )}
                             <Btn variant="secondary" size="sm" onClick={e => {
                               e.stopPropagation()
-                              window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(t.id)}`, '_blank', 'noopener')
+                              window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(t.id)}`, '_blank')
                             }}>
                               ⎙ Open receipt
                             </Btn>
