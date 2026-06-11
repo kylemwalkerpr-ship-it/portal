@@ -165,7 +165,9 @@ async function callMyMemory(text: string, sourceLang: string, targetLang: string
     url.searchParams.set('de', 'info@yousafeconsultancy.com')
 
     const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 2500)
+    // MyMemory routinely takes 3-6s on cache-cold strings; the old 2.5s
+    // abort turned most misses into silent failures.
+    const t = setTimeout(() => controller.abort(), 8000)
     const res = await fetch(url.toString(), { signal: controller.signal })
     clearTimeout(t)
     if (!res.ok) return null
@@ -173,7 +175,10 @@ async function callMyMemory(text: string, sourceLang: string, targetLang: string
     if (!data) return null
     const candidate = data.responseData?.translatedText
     if (typeof candidate !== 'string') return null
-    if (data.responseStatus !== 200) return null
+    // MyMemory returns responseStatus as a NUMBER or a STRING ("200")
+    // depending on endpoint. The old strict `!== 200` check threw away
+    // every successful translation that arrived as "200".
+    if (Number(data.responseStatus) !== 200) return null
     if (/PLEASE SELECT|INVALID|MYMEMORY WARNING/i.test(candidate)) return null
     return candidate
   } catch {
@@ -249,11 +254,14 @@ export async function translateBatch(
     await Promise.all(queue.slice(i, i + CONCURRENCY))
   }
 
-  // 3. Persist new entries (fire-and-forget — don't block the response)
+  // 3. Persist new entries. This MUST be awaited: on Cloudflare Workers a
+  // dangling promise is killed as soon as the response returns, so the old
+  // fire-and-forget upsert never actually committed — the cache stayed
+  // empty forever and every render re-paid the MyMemory round-trip.
   if (inserts.length) {
     try {
       const db = createSupabaseAdminClient()
-      void db.from('translations').upsert(inserts).then(() => null)
+      await db.from('translations').upsert(inserts)
     } catch { /* non-blocking */ }
   }
 
