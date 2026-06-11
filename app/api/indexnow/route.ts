@@ -85,6 +85,14 @@ async function run(req: Request) {
   const hosts = only ? HOSTS.filter(h => h === only) : HOSTS
   const results = []
   for (const h of hosts) results.push(await submitHost(h))
+
+  // Log the run so submissions are auditable via SQL (and so scheduled
+  // runs leave a verifiable trail).
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    await createSupabaseAdminClient().from('indexnow_log').insert({ results })
+  } catch { /* non-blocking */ }
+
   return Response.json({ submitted: results })
 }
 
