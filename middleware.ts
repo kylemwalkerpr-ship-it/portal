@@ -48,6 +48,9 @@ const isPublicRoute = createRouteMatcher([
   // "the marketplace redirects to sign-in after I sign out".
   '/api/profile',
   '/api/sellers(.*)',
+  // IndexNow submission endpoint — self-gates on the IndexNow key, no
+  // session needed (called after content deploys / by schedulers).
+  '/api/indexnow',
   // Public seller profile pages — top of the marketplace funnel. The page
   // component (app/sellers/[id]) dropped its requirePortalUser gate; this
   // entry drops the middleware gate to match. Auth-only actions (message,
