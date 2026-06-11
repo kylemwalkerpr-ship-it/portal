@@ -52,8 +52,35 @@ export async function POST(
 
   if (sessErr || !session) return fail('Session not found.', 404)
   if (session.profile_id !== auth.profile.id) return fail('Forbidden.', 403)
+  if (session.status === 'paid') {
+    return fail('This template is already purchased — re-download it for free.', 409)
+  }
+  if (session.status === 'processing') {
+    return fail('This checkout is already in progress.', 409)
+  }
   if (session.status !== 'completed') {
     return fail('Please complete the form before checking out.', 409)
+  }
+
+  // Concurrency claim: exactly ONE request may transition completed →
+  // processing. A double-click / second tab loses the conditional update and
+  // gets a clean 409 instead of a second wallet debit.
+  const { data: claimed } = await admin
+    .from('template_fill_sessions')
+    .update({ status: 'processing', updated_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('status', 'completed')
+    .select('id')
+  if (!claimed || claimed.length === 0) {
+    return fail('This checkout is already in progress.', 409)
+  }
+  // Any failure below must hand the session back so the student can retry.
+  const release = async () => {
+    await admin
+      .from('template_fill_sessions')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', sessionId)
+      .eq('status', 'processing')
   }
 
   const slug = session.slug
@@ -71,6 +98,7 @@ export async function POST(
   // 2. Check wallet balance BEFORE any work
   const wallet = await getOrCreateWallet(profile.id)
   if (wallet.balance_cents < priceCents) {
+    await release()
     return ok({
       error: 'Insufficient wallet balance',
       balanceCents: wallet.balance_cents,
@@ -114,6 +142,7 @@ export async function POST(
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'PDF generation failed'
+    await release()
     return fail(`Failed to generate filled PDF: ${msg}`, 500)
   }
 
@@ -127,6 +156,7 @@ export async function POST(
     })
 
   if (upErr) {
+    await release()
     return fail(`Failed to store filled PDF: ${upErr.message}`, 500)
   }
 
@@ -145,6 +175,7 @@ export async function POST(
   if (tplErr) {
     // Best-effort: clean up uploaded file
     await admin.storage.from('templates').remove([storagePath]).catch(() => {})
+    await release()
     return fail(`Failed to record order: ${tplErr.message}`, 500)
   }
 
@@ -176,6 +207,7 @@ export async function POST(
       updated_at: new Date().toISOString(),
     })
     .eq('id', sessionId)
+    .eq('status', 'processing')
 
   // 8. DEBIT WALLET — this is the LAST step, so if it fails, all DB writes
   // and storage uploads are already done (the order is recorded).

@@ -819,8 +819,11 @@ function TopUpDialog({ onClose, onSuccess }) {
       });
       let body;
       try { body = await res.json(); } catch { body = { error: `Server returned ${res.status}` }; }
+      // Definitive outcome → consume the key so a retry (e.g. after fixing
+      // the card) is a fresh attempt. Keep it only on 409 in-flight or
+      // network failure, where the first attempt's outcome is unknown.
+      if (res.status !== 409) topupKeyRef.current = null;
       if (!res.ok || body.error) throw new Error(body.error || `Top-up failed (${res.status})`);
-      topupKeyRef.current = null;
       setSuccess(true);
       setTimeout(() => onSuccess(), 1200);
     } catch (e) {
@@ -1198,6 +1201,14 @@ function StudentApp({ onLogout, userId, userName }) {
         setSelectedOrder(null)
       }
       if (e.detail?.page) setPage(e.detail.page)
+      // Deep-open a specific order. If it's already in the loaded orders we
+      // jump straight to the detail view; otherwise select a stub on the
+      // list page and let the orders-sync effect promote it when data lands.
+      if (e.detail?.orderId) {
+        const known = ordersRef.current?.find?.(o => o.id === e.detail.orderId)
+        setSelectedOrder(known || { id: e.detail.orderId })
+        if (known) setPage('order-detail')
+      }
     }
     window.addEventListener('yousafe-navigate', handler)
     return () => window.removeEventListener('yousafe-navigate', handler)
@@ -1252,6 +1263,8 @@ function StudentApp({ onLogout, userId, userName }) {
   }, []);
   const [checkoutRequest, setCheckoutRequest] = React.useState(null);
   const [orders, setOrders] = React.useState([]);
+  const ordersRef = React.useRef([]);
+  React.useEffect(() => { ordersRef.current = orders; }, [orders]);
   // Deep-link to a specific order from the messenger offer card.
   React.useEffect(() => {
     const handler = (e) => {
@@ -2154,36 +2167,87 @@ function StudentApp({ onLogout, userId, userName }) {
     // makes USD and CAD render identically — the most common cause of "the
     // toggle doesn't change anything". Clamp + fallback keeps conversion alive.
     const DEFAULT_USD_CAD = 1.37;
-    const sanitiseRate = React.useCallback(raw => {
+    // Display-only FX map (admin-controlled). Bounds per currency keep a bad
+    // DB value (0 / 1 / NaN) from silently flattening the toggle.
+    const FX_DEFAULTS = { cad: 1.37, gbp: 0.79, aud: 1.52 };
+    const FX_BOUNDS   = { cad: [1.05, 2.5], gbp: [0.45, 1.2], aud: [1.05, 2.6] };
+    const sanitiseFx = React.useCallback((cur, raw) => {
+      const [lo, hi] = FX_BOUNDS[cur] || [0.1, 10];
       const r = Number(raw);
-      return Number.isFinite(r) && r >= 1.05 && r <= 2.5 ? r : DEFAULT_USD_CAD;
+      return Number.isFinite(r) && r >= lo && r <= hi ? r : FX_DEFAULTS[cur];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    const [usdToCadRate, setUsdToCadRateRaw] = React.useState(DEFAULT_USD_CAD);
-    const setUsdToCadRate = React.useCallback(raw => setUsdToCadRateRaw(sanitiseRate(raw)), [sanitiseRate]);
+    const [fxRates, setFxRates] = React.useState(FX_DEFAULTS);
+    const applyRatesPayload = React.useCallback(rates => {
+      if (!rates || typeof rates !== 'object') return;
+      setFxRates(prev => ({
+        cad: sanitiseFx('cad', rates.usd_to_cad ?? prev.cad),
+        gbp: sanitiseFx('gbp', rates.usd_to_gbp ?? prev.gbp),
+        aud: sanitiseFx('aud', rates.usd_to_aud ?? prev.aud),
+      }));
+    }, [sanitiseFx]);
+    // Back-compat aliases — several display strings still reference the CAD rate.
+    const usdToCadRate = fxRates.cad;
+    const sanitiseRate = React.useCallback(raw => sanitiseFx('cad', raw), [sanitiseFx]);
+    const setUsdToCadRate = React.useCallback(raw => applyRatesPayload({ usd_to_cad: raw }), [applyRatesPayload]);
     // displayCurrency persists in localStorage. The initialiser runs on every
     // mount so even when ServicesBrowse remounts (orderPlaced / viewerVertical
     // changing), the toggle rehydrates to the user's last choice.
+    const DISPLAY_CURRENCIES = ['usd', 'cad', 'gbp', 'aud'];
     const [displayCurrency, setDisplayCurrency] = React.useState(() => {
       if (typeof window === 'undefined') return 'usd';
-      try { return window.localStorage.getItem('yousafe.displayCurrency.v2') === 'cad' ? 'cad' : 'usd'; } catch { return 'usd'; }
+      try {
+        const stored = window.localStorage.getItem('yousafe.displayCurrency.v2');
+        return ['usd', 'cad', 'gbp', 'aud'].includes(stored) ? stored : 'usd';
+      } catch { return 'usd'; }
     });
+    // Home (signup-jurisdiction) currency: CA→CAD, UK→GBP, AU→AUD; US and
+    // everyone else → USD. Drives both the DEFAULT display currency for
+    // first-time visitors and which native option the toggle offers.
+    const [homeCurrency, setHomeCurrency] = React.useState('usd');
+    React.useEffect(() => {
+      let cancelled = false;
+      fetch('/api/profile', { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (cancelled) return;
+          const cc = String(d?.profile?.country_code || '').toUpperCase();
+          const native = cc === 'CA' ? 'cad' : (cc === 'GB' || cc === 'UK') ? 'gbp' : cc === 'AU' ? 'aud' : 'usd';
+          setHomeCurrency(native);
+          // First visit (no stored preference): default to the native currency.
+          try {
+            const stored = window.localStorage.getItem('yousafe.displayCurrency.v2');
+            if (!stored && native !== 'usd') {
+              setDisplayCurrency(native);
+              window.localStorage.setItem('yousafe.displayCurrency.v2', native);
+            }
+          } catch { /* ignore */ }
+        })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }, []);
     const effectiveDisplayCurrency = displayCurrency;
     const setAndPersistDisplayCurrency = React.useCallback(c => {
-      const next = String(c || 'usd').toLowerCase() === 'cad' ? 'cad' : 'usd';
+      const next = DISPLAY_CURRENCIES.includes(String(c || 'usd').toLowerCase()) ? String(c).toLowerCase() : 'usd';
       setDisplayCurrency(next);
       try { window.localStorage.setItem('yousafe.displayCurrency.v2', next); } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+    // Toggle shows USD plus the student's native currency (when not USD).
+    const currencyToggleOptions = homeCurrency === 'usd'
+      ? [{ value: 'usd', label: 'USD' }]
+        .concat(effectiveDisplayCurrency !== 'usd' ? [{ value: effectiveDisplayCurrency, label: effectiveDisplayCurrency.toUpperCase() }] : [{ value: 'cad', label: 'CAD' }])
+      : [{ value: homeCurrency, label: homeCurrency.toUpperCase() }, { value: 'usd', label: 'USD' }];
     const convertPrice = (amount, fromCurrency = 'usd') => {
       const from = String(fromCurrency || 'usd').toLowerCase();
       const to = effectiveDisplayCurrency;
       const value = Number(amount || 0);
       if (from === to) return value;
-      // Re-sanitise at use time: state could be stale during a transition or
-      // hot-reload. A rate near 1 silently breaks the toggle.
-      const rate = sanitiseRate(usdToCadRate);
-      if (from === 'usd' && to === 'cad') return value * rate;
-      if (from === 'cad' && to === 'usd') return value / rate;
-      return value;
+      // Pivot through USD with per-use sanitised rates so a stale/broken
+      // rate never flattens the toggle.
+      const rateOf = c => sanitiseFx(c, fxRates[c]);
+      const inUsd = from === 'usd' ? value : value / rateOf(from);
+      return to === 'usd' ? inUsd : inUsd * rateOf(to);
     };
     const [payMethod, setPayMethod] = React.useState('wallet'); // 'wallet' | 'saved_card' | 'new_card'
     const [savedCards, setSavedCards] = React.useState([]);
@@ -2286,8 +2350,7 @@ function StudentApp({ onLogout, userId, userName }) {
           if (!r.ok) throw new Error(d.error || 'Unable to load services');
           setServices(d.services ?? []);
           if (d.primaryCurrency) setPrimaryCurrency(String(d.primaryCurrency).toLowerCase());
-          const rate = Number(d.rates?.usd_to_cad);
-          if (Number.isFinite(rate) && rate > 0) setUsdToCadRate(rate);
+          applyRatesPayload(d.rates);
           setServicesError(null);
         })
         .catch(e => setServicesError(e.message))
@@ -2302,17 +2365,18 @@ function StudentApp({ onLogout, userId, userName }) {
           if (!r.ok) throw new Error(d.error || 'Unable to load templates');
           setTemplates(d.templates ?? []);
           if (d.primaryCurrency) setPrimaryCurrency(String(d.primaryCurrency).toLowerCase());
-          const rate = Number(d.rates?.usd_to_cad);
-          if (Number.isFinite(rate) && rate > 0) setUsdToCadRate(rate);
+          applyRatesPayload(d.rates);
           setTemplatesError(null);
         })
         .catch(e => setTemplatesError(e.message))
         .finally(() => setTemplatesLoading(false));
     }, []);
 
-    // One idempotency key per wallet-pay attempt (see handleWalletPay).
+    // One idempotency key per pay attempt (see handleWalletPay / card pays).
     // Declared here (component top level) to respect the rules of hooks.
+    // Kept across a failed attempt so a retry replays instead of re-charging.
     const walletPayKeyRef = React.useRef(null);
+    const cardPayKeyRef = React.useRef(null);
 
     // Fetch wallet balance when checkout opens
     React.useEffect(() => {
@@ -2357,8 +2421,11 @@ function StudentApp({ onLogout, userId, userName }) {
             body: JSON.stringify({ items: [item], idempotencyKey: walletPayKeyRef.current }),
           });
           const data = await res.json();
+          // Consume the key on any definitive outcome so a later retry (e.g.
+          // after topping up) is a fresh attempt instead of replaying the
+          // stored failure. Keep it only on 409 in-flight / network error.
+          if (res.status !== 409) walletPayKeyRef.current = null;
           if (!res.ok) throw new Error(data.error || 'Payment failed');
-          walletPayKeyRef.current = null;
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
           setActionNotice(cartIsTemplate ? 'Template purchased. Your digital template order is recorded.' : 'Order placed. Payment held in escrow.');
           refreshStudentData();
@@ -2379,6 +2446,7 @@ function StudentApp({ onLogout, userId, userName }) {
         }
 
         setPaying(true); setPayError(null);
+        cardPayKeyRef.current ||= crypto.randomUUID();
         try {
           const item = cartIsTemplate
             ? { slug: cart.slug || cart.id, quantity: 1 }
@@ -2389,9 +2457,14 @@ function StudentApp({ onLogout, userId, userName }) {
             body: JSON.stringify({
               paymentMethodId: selectedCardId,
               items: [item],
+              idempotencyKey: cardPayKeyRef.current,
             }),
           });
           const data = await res.json();
+          // Definitive outcome → consume the key (a retry is a NEW attempt).
+          // Keep it only on 409 in-flight or network failure (throw above),
+          // where the first attempt's outcome is still unknown.
+          if (res.status !== 409) cardPayKeyRef.current = null;
           if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
@@ -2423,6 +2496,7 @@ function StudentApp({ onLogout, userId, userName }) {
           const item = cartIsTemplate
             ? { slug: cart.slug || cart.id, quantity: 1 }
             : { serviceId: cart.id, quantity: 1 };
+          cardPayKeyRef.current ||= crypto.randomUUID();
           const res = await fetch('/api/payments/charge', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2430,9 +2504,11 @@ function StudentApp({ onLogout, userId, userName }) {
               token: result.token,
               gateway: result.gateway,
               items: [item],
+              idempotencyKey: cardPayKeyRef.current,
             }),
           });
           const data = await res.json();
+          if (res.status !== 409) cardPayKeyRef.current = null;
           if (!res.ok) throw new Error(data.message || data.error || 'Payment failed');
 
           setShowCheckout(false); setCart(null); setOrderPlaced(true);
@@ -2773,10 +2849,7 @@ function StudentApp({ onLogout, userId, userName }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>Show prices in</span>
             <div style={{ display: 'inline-flex', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px' }}>
-              {[
-                { value: 'usd', label: 'USD' },
-                { value: 'cad', label: 'CAD' },
-              ].map(opt => (
+              {currencyToggleOptions.map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setAndPersistDisplayCurrency(opt.value)}
@@ -2880,10 +2953,7 @@ function StudentApp({ onLogout, userId, userName }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', color: C.textMuted, fontWeight: 600 }}>Show prices in</span>
               <div style={{ display: 'inline-flex', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px' }}>
-                {[
-                  { value: 'usd', label: 'USD' },
-                  { value: 'cad', label: 'CAD' },
-                ].map(opt => (
+                {currencyToggleOptions.map(opt => (
                   <button
                     key={opt.value}
                     onClick={() => setAndPersistDisplayCurrency(opt.value)}

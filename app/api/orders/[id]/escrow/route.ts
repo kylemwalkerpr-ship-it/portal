@@ -59,9 +59,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId)
+      // Concurrency guard: only transition if the order is STILL in an
+      // approvable state — a simultaneous duplicate request matches zero
+      // rows instead of double-applying the release.
+      .in('status', APPROVABLE)
       .select('id, status, escrow_status')
-      .single() as any
-    if (updErr || !updated) return fail(updErr?.message || 'Could not approve the order.', 500)
+      .maybeSingle() as any
+    if (updErr) return fail(updErr.message, 500)
+    if (!updated) return fail('This order was already approved.', 409)
 
     try {
       await db.from('escrow_events').insert({

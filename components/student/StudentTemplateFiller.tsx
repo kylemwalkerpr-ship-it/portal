@@ -752,6 +752,7 @@ export default function StudentTemplateFiller({
   const [owns, setOwns] = React.useState(false)
   const [priceCents, setPriceCents] = React.useState(0)
   const [autofilling, setAutofilling] = React.useState(false)
+  const [purchasing, setPurchasing] = React.useState(false)
   const [validating, setValidating] = React.useState(false)
   const [issues, setIssues] = React.useState<Array<{ fields: string[]; severity: string; message: string }>>([])
 
@@ -1304,7 +1305,10 @@ export default function StudentTemplateFiller({
             ) : (
               fillSessionId && (
               <button
+                disabled={purchasing}
                 onClick={async () => {
+                  if (purchasing) return
+                  setPurchasing(true)
                   try {
                     // Complete the fill session
                     const completeRes = await fetch('/api/templates/fill', {
@@ -1344,20 +1348,26 @@ export default function StudentTemplateFiller({
                     }, 1000)
                   } catch (e) {
                     showToast(`❌ ${e instanceof Error ? e.message : 'Checkout failed.'}`)
+                  } finally {
+                    setPurchasing(false)
                   }
                 }}
                 style={{
                   ...styles.actionBtnPrimary,
                   background: C.success,
+                  opacity: purchasing ? 0.7 : 1,
+                  cursor: purchasing ? 'wait' : 'pointer',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = '#0F5C36'
+                  if (!purchasing) (e.currentTarget as HTMLElement).style.background = '#0F5C36'
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = C.success
                 }}
               >
-                {priceCents > 0 ? `💳 Pay $${(priceCents / 100).toFixed(2)} & Download` : '💳 Pay & Download'}
+                {purchasing
+                  ? '⏳ Processing…'
+                  : priceCents > 0 ? `💳 Pay $${(priceCents / 100).toFixed(2)} & Download` : '💳 Pay & Download'}
               </button>
               )
             )}

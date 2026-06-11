@@ -20,7 +20,7 @@ export async function GET() {
       return Response.json({
         templates: [],
         primaryCurrency: settings.primary_currency,
-        rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+        rates: { usd_to_cad: Number(settings.usd_to_cad_rate), usd_to_gbp: Number((settings as any).usd_to_gbp_rate || 0.79), usd_to_aud: Number((settings as any).usd_to_aud_rate || 1.52) },
       })
     }
     return Response.json({ error: error.message }, { status: 500 })
@@ -37,6 +37,6 @@ export async function GET() {
       delivery_type: template.delivery_type || 'Digital Template',
     })),
     primaryCurrency: settings.primary_currency,
-    rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+    rates: { usd_to_cad: Number(settings.usd_to_cad_rate), usd_to_gbp: Number((settings as any).usd_to_gbp_rate || 0.79), usd_to_aud: Number((settings as any).usd_to_aud_rate || 1.52) },
   })
 }

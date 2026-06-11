@@ -238,6 +238,13 @@ export default function StudentOrderDetail({ orderId, onBack, currency = 'usd' }
 
 // ── Overview tab: progress timeline + escrow approval ─────────────────────
 function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flash }) {
+  const [actionBusy, setActionBusy] = React.useState(false)
+  // Wrap a money-affecting action with the shared busy lock.
+  const guarded = (fn) => async (...args) => {
+    if (actionBusy) return
+    setActionBusy(true)
+    try { await fn(...args) } finally { setActionBusy(false) }
+  }
   const isTemplate = order.productType === 'template'
 
   const timeline = isTemplate
@@ -321,22 +328,22 @@ function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flas
                   +{fmtMoneyCents(Math.round(Number(s.amount_delta || 0) * 100), currency)} · proposed {fmtDateShort(s.created_at)}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <Btn variant="primary" size="sm" onClick={async () => {
+                  <Btn variant="primary" size="sm" disabled={actionBusy} onClick={guarded(async () => {
                     try {
                       const r = await fetch(`/api/orders/${order.id}/scope-changes/${s.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }), credentials: 'same-origin' })
                       const d = await r.json().catch(() => ({}))
                       if (!r.ok) throw new Error(d?.error?.message || 'Approve failed')
                       flash('ok', 'Scope change approved.'); onAction()
                     } catch (e) { flash('err', e.message) }
-                  }}>Approve</Btn>
-                  <Btn variant="secondary" size="sm" onClick={async () => {
+                  })}>Approve</Btn>
+                  <Btn variant="secondary" size="sm" disabled={actionBusy} onClick={guarded(async () => {
                     try {
                       const r = await fetch(`/api/orders/${order.id}/scope-changes/${s.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }), credentials: 'same-origin' })
                       const d = await r.json().catch(() => ({}))
                       if (!r.ok) throw new Error(d?.error?.message || 'Reject failed')
                       flash('ok', 'Scope change rejected.'); onAction()
                     } catch (e) { flash('err', e.message) }
-                  }}>Reject</Btn>
+                  })}>Reject</Btn>
                 </div>
               </div>
             ))}
@@ -355,23 +362,23 @@ function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flas
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Btn variant="primary" size="sm" onClick={async () => {
+              <Btn variant="primary" size="sm" disabled={actionBusy} onClick={guarded(async () => {
                 try {
                   const r = await fetch(`/api/orders/${order.id}/escrow`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve_delivery' }), credentials: 'same-origin' })
                   const d = await r.json().catch(() => ({}))
                   if (!r.ok) throw new Error(d?.error?.message || 'Approval failed')
                   flash('ok', 'Delivery approved — escrow released.'); onAction()
                 } catch (e) { flash('err', e.message) }
-              }}>✓ Approve & release</Btn>
-              <Btn variant="secondary" size="sm" onClick={async () => {
+              })}>{actionBusy ? 'Working…' : '✓ Approve & release'}</Btn>
+              <Btn variant="secondary" size="sm" disabled={actionBusy} onClick={guarded(async () => {
                 try {
                   const r = await fetch(`/api/orders/${order.id}/escrow`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request_revision' }), credentials: 'same-origin' })
                   const d = await r.json().catch(() => ({}))
                   if (!r.ok) throw new Error(d?.error?.message || 'Request failed')
                   flash('ok', 'Revision requested.'); onAction()
                 } catch (e) { flash('err', e.message) }
-              }}>↻ Request revisions</Btn>
-              <Btn variant="danger" size="sm" onClick={async () => {
+              })}>↻ Request revisions</Btn>
+              <Btn variant="danger" size="sm" disabled={actionBusy} onClick={guarded(async () => {
                 if (!confirm('Open a dispute on this order? An admin will be assigned to review.')) return
                 try {
                   const r = await fetch(`/api/orders/${order.id}/escrow`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'raise_dispute' }), credentials: 'same-origin' })
@@ -379,7 +386,7 @@ function OverviewTab({ order, milestones, scopeChanges, currency, onAction, flas
                   if (!r.ok) throw new Error(d?.error?.message || 'Dispute failed')
                   flash('ok', 'Dispute raised — admin notified.'); onAction()
                 } catch (e) { flash('err', e.message) }
-              }}>⚠ Raise dispute</Btn>
+              })}>⚠ Raise dispute</Btn>
             </div>
             {order.autoReleaseEligibleAt && (
               <div style={{ marginTop: 10, fontSize: 11, color: DIM, fontFamily: MONO }}>

@@ -3,6 +3,7 @@ import { getDefaultGatewayId, getPaymentProvider } from '@/lib/payments'
 import { TEMPLATE_PACKS, getTemplatePack, getTemplatePackPriceCents } from '@/lib/template-packs'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { requirePortalUser } from '@/lib/portalAuth'
+import { claimIdempotencyKey, completeIdempotencyKey, extractIdempotencyKey, recordPaymentIncident } from '@/lib/idempotency'
 import { randomUUID } from 'crypto'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -28,6 +29,7 @@ interface ChargeBody {
    *  and use the gateway pinned on the stored payment method. */
   gateway?: string
   items: Array<{ slug?: string; serviceId?: string; quantity?: number }>
+  idempotencyKey?: string
   customer?: { email?: string; name?: string }
   saveCard?: boolean
   brand?: string
@@ -128,6 +130,23 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = auth.profile
+
+  // Idempotency: same pattern as /api/wallet/debit. A duplicate request
+  // (network retry / refresh-resubmit / second tab) with the same key gets
+  // the stored outcome instead of a second gateway charge.
+  const idemKey = extractIdempotencyKey(request, body as unknown as Record<string, unknown>)
+  if (idemKey) {
+    const claim = await claimIdempotencyKey(db, profile.id, idemKey)
+    if (claim.kind === 'replay') return Response.json(claim.response, { status: claim.statusCode })
+    if (claim.kind === 'in_flight') {
+      return Response.json({ ok: false, message: 'A payment with this key is already in progress.' }, { status: 409 })
+    }
+  }
+  const finish = async (payload: Record<string, unknown>, status: number, orderRef?: string | null) => {
+    if (idemKey) await completeIdempotencyKey(db, profile.id, idemKey, payload, status, orderRef)
+    return Response.json(payload, { status })
+  }
+
   const customer = {
     id: profile.id,
     email: body.customer?.email || profile.email || '',
@@ -155,7 +174,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (cardErr || !cardRow) {
-        return Response.json({ ok: false, message: 'Card not found' }, { status: 404 })
+        return finish({ ok: false, message: 'Card not found' }, 404)
       }
 
       chargeGateway = (cardRow.gateway || chargeGateway).toLowerCase()
@@ -184,21 +203,22 @@ export async function POST(request: NextRequest) {
         metadata: { orderId, profile_id: profile.id, source: 'catalogue_checkout' },
       })
     } else {
-      return Response.json({ ok: false, message: 'Provide either paymentMethodId (saved card) or token (new card)' }, { status: 400 })
+      return finish({ ok: false, message: 'Provide either paymentMethodId (saved card) or token (new card)' }, 400)
     }
   } catch (chargeErr: any) {
     console.error('[payments/charge] charge failed:', chargeErr)
-    return Response.json({ ok: false, message: chargeErr.message || 'Payment processing failed' }, { status: 500 })
+    return finish({ ok: false, message: chargeErr.message || 'Payment processing failed' }, 500)
   }
 
   if (result.status !== 'paid' || !result.ok) {
-    return Response.json(
+    return finish(
       { ok: false, status: result.status, message: result.message || 'Payment could not be processed' },
-      { status: 402 }
+      402
     )
   }
 
   // ── Persist orders ─────────────────────────────────────────────────────────
+  let serviceOrderRef: string | null = null
   try {
     const templateItems = lineItems.filter((i) => i.type === 'template')
     const serviceItems = lineItems.filter((i) => i.type === 'service')
@@ -219,6 +239,7 @@ export async function POST(request: NextRequest) {
     if (serviceItems.length > 0) {
       // Create parent order
       const serviceOrderId = `svc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      serviceOrderRef = serviceOrderId
       const { error: orderErr } = await db.from('orders').insert({
         id: serviceOrderId,
         client_id: profile.id,
@@ -232,6 +253,14 @@ export async function POST(request: NextRequest) {
       })
       if (orderErr) {
         console.error('[payments/charge] orders insert failed:', orderErr)
+        await recordPaymentIncident(db, {
+          profileId: profile.id,
+          kind: 'charge_without_order',
+          gateway: chargeGateway,
+          transactionId: result.transactionId,
+          amountCents,
+          context: { orderId, serviceOrderId, error: orderErr.message },
+        })
       } else {
         const orderItems = serviceItems.map((i) => ({
           order_id: serviceOrderId,
@@ -247,12 +276,20 @@ export async function POST(request: NextRequest) {
     }
   } catch (persistErr) {
     console.error('Failed to persist order:', persistErr)
+    await recordPaymentIncident(db, {
+      profileId: profile.id,
+      kind: 'charge_without_order',
+      gateway: chargeGateway,
+      transactionId: result.transactionId,
+      amountCents,
+      context: { orderId, error: persistErr instanceof Error ? persistErr.message : String(persistErr) },
+    })
   }
 
-  return Response.json({
+  return finish({
     ok: true,
     orderId,
     status: result.status,
     transactionId: result.transactionId,
-  })
+  }, 200, serviceOrderRef ?? orderId)
 }

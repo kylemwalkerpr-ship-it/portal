@@ -38,25 +38,36 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
   const paymentMethod = String(body?.paymentMethod || 'wallet') as 'wallet' | 'saved_card' | 'new_card'
 
   // ── Idempotency / double-pay guard ────────────────────────────────────
-  // Re-read offer status right before any charge to prevent double-payment
-  const { data: freshOffer } = await auth.db
-    .from('offers')
-    .select('status, expires_at')
-    .eq('id', id)
-    .single()
-
-  if (freshOffer?.status !== 'pending') {
-    return fail('Offer already accepted or expired.', 409)
-  }
-  if (freshOffer?.expires_at && new Date(freshOffer.expires_at).getTime() <= Date.now()) {
-    await auth.db.from('offers').update({ status: 'expired' }).eq('id', id)
+  // Atomic claim: exactly ONE request may transition pending → processing.
+  // The previous read-then-charge pattern left a window where two concurrent
+  // accepts could both charge. The loser of the conditional update gets 409.
+  if (offer.expires_at && new Date(offer.expires_at).getTime() <= Date.now()) {
+    await auth.db.from('offers').update({ status: 'expired' }).eq('id', id).eq('status', 'pending')
     return fail('Offer has expired.', 409)
+  }
+  const { data: claimedRows } = await auth.db
+    .from('offers')
+    .update({ status: 'processing', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'pending')
+    .select('id')
+  if (!claimedRows || claimedRows.length === 0) {
+    return fail('Offer already accepted, expired, or payment is in progress.', 409)
+  }
+  // Hand the offer back on any pre-charge failure so the student can retry.
+  const releaseClaim = async () => {
+    await auth.db
+      .from('offers')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'processing')
   }
 
   // ── Branch: wallet ────────────────────────────────────────────────────
   if (paymentMethod === 'wallet') {
     const wallet = await getOrCreateWallet(auth.profileId)
     if (wallet.balance_cents < total) {
+      await releaseClaim()
       return fail('Insufficient wallet balance', 402, { balanceCents: wallet.balance_cents, requiredCents: total })
     }
 
@@ -71,6 +82,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       )
     } catch (debitErr) {
       const msg = debitErr instanceof Error ? debitErr.message : ''
+      await releaseClaim()
       if (/insufficient wallet balance/i.test(msg)) {
         return fail('Insufficient wallet balance', 402, { balanceCents: wallet.balance_cents, requiredCents: total })
       }
@@ -83,6 +95,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       .from('offers')
       .update({ status: 'accepted', accepted_at: acceptedAt, updated_at: acceptedAt })
       .eq('id', id)
+      .eq('status', 'processing')
       .select('*')
       .single()
 
@@ -142,7 +155,10 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
   // ── Branch: saved_card ────────────────────────────────────────────────
   if (paymentMethod === 'saved_card') {
     const paymentMethodId = String(body?.paymentMethodId || '')
-    if (!paymentMethodId) return fail('Payment method ID is required for saved card payment.', 400)
+    if (!paymentMethodId) {
+      await releaseClaim()
+      return fail('Payment method ID is required for saved card payment.', 400)
+    }
 
     const { data: cardRow, error: cardErr } = await auth.db
       .from('student_payment_methods')
@@ -151,7 +167,10 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       .eq('profile_id', auth.profileId)
       .single()
 
-    if (cardErr || !cardRow) return fail('Card not found', 404)
+    if (cardErr || !cardRow) {
+      await releaseClaim()
+      return fail('Card not found', 404)
+    }
 
     const provider = getPaymentProvider(cardRow.gateway)
     const profile = auth.profile
@@ -171,11 +190,13 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       })
     } catch (chargeErr: any) {
       console.error('[offers/accept] chargeVaulted failed for offer', offer.id, ':', chargeErr)
+      await releaseClaim()
       return fail(chargeErr?.message || 'Payment could not be processed', 500, { provider_status: 'error' })
     }
 
     if (result.status !== 'paid') {
       console.error('[offers/accept] chargeVaulted declined for offer', offer.id, ':', result.message)
+      await releaseClaim()
       return fail(result.message || 'Payment could not be processed', 402, { provider_status: result.status })
     }
 
@@ -184,6 +205,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       .from('offers')
       .update({ status: 'accepted', accepted_at: acceptedAt, updated_at: acceptedAt })
       .eq('id', id)
+      .eq('status', 'processing')
       .select('*')
       .single()
 
@@ -233,7 +255,10 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
   // ── Branch: new_card ──────────────────────────────────────────────────
   if (paymentMethod === 'new_card') {
     const token = String(body?.token || '')
-    if (!token) return fail('Card token is required for new card payment.', 400)
+    if (!token) {
+      await releaseClaim()
+      return fail('Card token is required for new card payment.', 400)
+    }
 
     const gateway = typeof body?.gateway === 'string' && body.gateway ? body.gateway : getDefaultGatewayId()
     const provider = getPaymentProvider(gateway)
@@ -260,11 +285,13 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       })
     } catch (chargeErr: any) {
       console.error('[offers/accept] charge failed for offer', offer.id, ':', chargeErr)
+      await releaseClaim()
       return fail(chargeErr?.message || 'Payment could not be processed', 500, { provider_status: 'error' })
     }
 
     if (result.status !== 'paid') {
       console.error('[offers/accept] charge declined for offer', offer.id, ':', result.message)
+      await releaseClaim()
       return fail(result.message || 'Payment could not be processed', 402, { provider_status: result.status })
     }
 
@@ -273,6 +300,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
       .from('offers')
       .update({ status: 'accepted', accepted_at: acceptedAt, updated_at: acceptedAt })
       .eq('id', id)
+      .eq('status', 'processing')
       .select('*')
       .single()
 
@@ -319,6 +347,7 @@ async function handler(req: Request, context: { params: Promise<{ id: string }> 
     })
   }
 
+  await releaseClaim()
   return fail('Invalid payment method.', 400)
 }
 

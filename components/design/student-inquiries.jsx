@@ -96,7 +96,10 @@ export default function StudentInquiries() {
     return () => clearTimeout(t)
   }, [searchInput])
 
+  // Monotonic request seq so a slow earlier response can't clobber newer results.
+  const loadSeqRef = React.useRef(0)
   const load = React.useCallback(async (isInitial) => {
+    const seq = ++loadSeqRef.current
     if (isInitial) setLoading(true)
     setError('')
     try {
@@ -108,6 +111,7 @@ export default function StudentInquiries() {
       p.set('page_size', String(PAGE_SIZE))
       const r = await fetch(`/api/client/inquiries/search?${p}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
+      if (seq !== loadSeqRef.current) return // stale — superseded by a newer load
       if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
       setInquiries(d.inquiries || [])
       setTotal(d.total || 0)
@@ -116,9 +120,9 @@ export default function StudentInquiries() {
       setByStatus(d.byStatus || {})
       setSchemaPending(!!d.schema_pending)
     } catch (e) {
-      setError(e.message || 'Failed to load inquiries.')
+      if (seq === loadSeqRef.current) setError(e.message || 'Failed to load inquiries.')
     } finally {
-      if (isInitial) setLoading(false)
+      if (isInitial && seq === loadSeqRef.current) setLoading(false)
     }
   }, [tab, debouncedQ, urgency, page])
 

@@ -215,7 +215,13 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
     return () => clearTimeout(t)
   }, [searchInput])
 
+  // Monotonic seqs: a slow stale response must never clobber newer state —
+  // especially loadThread, where it would paint the WRONG conversation's
+  // messages into the active view after a quick switch.
+  const listSeqRef = React.useRef(0)
+  const threadSeqRef = React.useRef(0)
   const loadList = React.useCallback(async (silent = false) => {
+    const seq = ++listSeqRef.current
     if (!silent) setListLoading(true)
     setListError('')
     try {
@@ -226,6 +232,7 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       p.set('page_size', String(PAGE_SIZE))
       const r = await fetch(`/api/messages/conversations?${p}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
+      if (seq !== listSeqRef.current) return // stale — superseded
       if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       setConversations(d.conversations || [])
       setCounts(d.counts || {})
@@ -234,9 +241,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         setActiveId(d.conversations[0].id)
       }
     } catch (e) {
-      setListError(e.message || 'Failed to load conversations.')
+      if (seq === listSeqRef.current) setListError(e.message || 'Failed to load conversations.')
     } finally {
-      if (!silent) setListLoading(false)
+      if (!silent && seq === listSeqRef.current) setListLoading(false)
     }
   }, [tab, debouncedQ, page, activeId])
 
@@ -261,11 +268,13 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
       if (!silent) setThreadLoading(false)
       return
     }
+    const seq = ++threadSeqRef.current
     if (!silent) setThreadLoading(true)
     setThreadError('')
     try {
       const r = await fetch(`/api/messages/conversations/${activeId}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
+      if (seq !== threadSeqRef.current) return // stale — user switched conversations
       if (!r.ok) throw new Error(d?.error?.message || `Failed (${r.status})`)
       setActiveConv(d.conversation || null)
       setActiveMsgs(d.messages || [])
@@ -277,9 +286,9 @@ export default function UnifiedInbox({ defaultThreadId, onThreadChange, canSendO
         body: JSON.stringify({ read: true }),
       }).catch(() => null)
     } catch (e) {
-      setThreadError(e.message)
+      if (seq === threadSeqRef.current) setThreadError(e.message)
     } finally {
-      if (!silent) setThreadLoading(false)
+      if (!silent && seq === threadSeqRef.current) setThreadLoading(false)
     }
   }, [activeId, deletedConvId])
 

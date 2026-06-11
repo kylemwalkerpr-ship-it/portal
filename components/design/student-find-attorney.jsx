@@ -36,14 +36,16 @@ function Stars({ value, size = 13 }) {
   )
 }
 
-function ChipRow({ label, options, value, onChange }) {
+function ChipRow({ label, options, value, onChange, anyLabel = 'Any' }) {
+  // Options may be plain strings or { v, l } pairs (value + display label).
+  const norm = options.map(o => (typeof o === 'object' && o !== null ? o : { v: o, l: o }))
   return (
     <div>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: DIM, fontFamily: MONO, marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button onClick={() => onChange('')} style={chipStyle(value === '')}>Any</button>
-        {options.map(o => (
-          <button key={o} onClick={() => onChange(o)} style={chipStyle(value === o)}>{o}</button>
+        {anyLabel !== null && <button onClick={() => onChange('')} style={chipStyle(value === '')}>{anyLabel}</button>}
+        {norm.map(o => (
+          <button key={o.v} onClick={() => onChange(o.v)} style={chipStyle(value === o.v)}>{o.l}</button>
         ))}
       </div>
     </div>
@@ -90,7 +92,11 @@ export default function StudentFindAttorney() {
     return () => clearTimeout(t)
   }, [searchInput])
 
+  // Monotonic request seq: a slow earlier response must never clobber the
+  // results of a newer filter combination.
+  const loadSeqRef = React.useRef(0)
   const load = React.useCallback(async () => {
+    const seq = ++loadSeqRef.current
     setLoading(true); setError('')
     try {
       const p = new URLSearchParams()
@@ -107,6 +113,7 @@ export default function StudentFindAttorney() {
       p.set('page_size', String(PAGE_SIZE))
       const r = await fetch(`/api/attorneys/search?${p}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
+      if (seq !== loadSeqRef.current) return // stale response — a newer load superseded this one
       if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
       setAttorneys(d.attorneys || [])
       setTotal(d.total || 0)
@@ -114,9 +121,9 @@ export default function StudentFindAttorney() {
       setHasMore(!!d.has_more)
       setFacets(d.facets || { jurisdictions: [], practice_areas: [], languages: [], credentials: [] })
     } catch (e) {
-      setError(e.message || 'Failed to load attorneys.')
+      if (seq === loadSeqRef.current) setError(e.message || 'Failed to load attorneys.')
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [debouncedQ, jurisdiction, practiceArea, language, credential, availableOnly, freeOnly, minRating, sort, page])
 
@@ -186,10 +193,10 @@ export default function StudentFindAttorney() {
               </div>
             </div>
 
-            <ChipRow label="Sort" options={[
+            <ChipRow label="Sort" anyLabel={null} options={[
               { v: 'rating', l: 'Top rated' }, { v: 'experience', l: 'Most experienced' },
               { v: 'newest', l: 'Newest' }, { v: 'price_low', l: 'Price ↑' }, { v: 'price_high', l: 'Price ↓' }, { v: 'name', l: 'A → Z' },
-            ].map(s => s.v)} value={sort} onChange={v => { setSort(v || 'rating'); setPage(1) }} />
+            ]} value={sort} onChange={v => { setSort(v || 'rating'); setPage(1) }} />
 
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: DIM, fontFamily: MONO, marginBottom: 6 }}>Availability</div>

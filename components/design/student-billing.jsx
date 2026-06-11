@@ -113,7 +113,10 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
     return () => clearTimeout(t)
   }, [searchInput])
 
+  // Monotonic seq so a slow stale response can't clobber newer filter results.
+  const ledgerSeqRef = React.useRef(0)
   const loadLedger = React.useCallback(async () => {
+    const seq = ++ledgerSeqRef.current
     setLoading(true); setError('')
     try {
       const params = new URLSearchParams()
@@ -125,15 +128,16 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
       params.set('page_size', String(PAGE_SIZE))
       const r = await fetch(`/api/student/billing/transactions?${params}`, { credentials: 'same-origin' })
       const d = await r.json().catch(() => ({}))
+      if (seq !== ledgerSeqRef.current) return // stale — superseded
       if (!r.ok) throw new Error(d?.error || `Failed (${r.status})`)
       setTx(d.transactions || [])
       setTotal(d.total || 0)
       setTotalPages(d.total_pages || 1)
       setHasMore(!!d.has_more)
     } catch (e) {
-      setError(e.message || 'Failed to load transactions.')
+      if (seq === ledgerSeqRef.current) setError(e.message || 'Failed to load transactions.')
     } finally {
-      setLoading(false)
+      if (seq === ledgerSeqRef.current) setLoading(false)
     }
   }, [tab, debouncedQ, from, to, page])
 

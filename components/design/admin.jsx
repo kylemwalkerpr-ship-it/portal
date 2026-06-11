@@ -2134,6 +2134,7 @@ const Settings = () => {
       {/* Appearance tab */}
       {tab === 'appearance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <AdminAvatarCard setActionNotice={setActionNotice} />
           <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.5, marginBottom: 4 }}>
             Choose your view — your saved theme follows you on every device.
           </div>
@@ -2998,6 +2999,71 @@ function ApplicationField({ label, value, link, multiline }) {
         <div style={{ color: C.text, fontSize: '13px', whiteSpace: multiline ? 'pre-wrap' : 'normal', wordBreak: 'break-word' }}>{display}</div>
       )}
     </div>
+  );
+}
+
+// ── Admin profile photo ──────────────────────────────────────────────────
+// Same /api/profile/avatar endpoint students use; writes profiles.avatar_url
+// so the photo shows wherever the admin's profile renders.
+function AdminAvatarCard({ setActionNotice }) {
+  const [avatarUrl, setAvatarUrl] = React.useState(null);
+  const [name, setName] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    fetch('/api/profile', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.profile) {
+          setAvatarUrl(d.profile.avatar_url || null);
+          setName(d.profile.full_name || d.profile.email || 'Admin');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const upload = async (file) => {
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Upload failed.');
+      setAvatarUrl(d.avatar_url);
+      setActionNotice?.('Profile photo updated.');
+    } catch (e) { setActionNotice?.(e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      <Avatar name={name || 'Admin'} src={avatarUrl || undefined} size={56} color={C.red} />
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>Profile photo</div>
+        <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>Shown across the console and to users you message. JPG, PNG, WebP or GIF.</div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) upload(f); }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Btn variant="secondary" size="sm" disabled={busy} onClick={() => inputRef.current?.click()}>
+          {busy ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+        </Btn>
+        {avatarUrl && (
+          <Btn variant="ghost" size="sm" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try {
+              const res = await fetch('/api/profile/avatar', { method: 'DELETE', credentials: 'same-origin' });
+              if (!res.ok) throw new Error('Could not remove photo.');
+              setAvatarUrl(null);
+              setActionNotice?.('Photo removed.');
+            } catch (e) { setActionNotice?.(e.message); }
+            finally { setBusy(false); }
+          }}>Remove</Btn>
+        )}
+      </div>
+    </Card>
   );
 }
 

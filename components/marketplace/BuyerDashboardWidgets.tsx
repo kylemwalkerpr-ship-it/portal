@@ -10,12 +10,13 @@ interface SavedGig {
   gig_id: string
   title?: string
   avg_rating?: number | null
-  gig?: { title?: string; avg_rating?: number | null }
+  gig?: { title?: string; slug?: string; avg_rating?: number | null }
 }
 
 interface Order {
   id: string
   title?: string
+  orderNumber?: string | null
   status?: string
   created_at?: string
 }
@@ -167,7 +168,7 @@ function SavedGigsWidget() {
             return (
               <Link
                 key={item.id}
-                href="https://market.yousafeconsultancy.com/"
+                href={item.gig?.slug ? `/marketplace/gigs/${item.gig.slug}` : 'https://market.yousafeconsultancy.com/'}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -236,7 +237,7 @@ function RecentOrdersWidget() {
   return (
     <WidgetCard
       title={`Recent Orders${suffix}`}
-      viewAllHref="/dashboard/orders"
+      viewAllHref="/dashboard?page=orders"
       viewAllLabel="View all orders"
     >
       {loading ? (
@@ -286,22 +287,37 @@ function RecentOrdersWidget() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {orders.map((order) => (
-            <div
+            <button
               key={order.id}
+              type="button"
+              onClick={() => {
+                // Open this exact order inside My Orders. StudentApp listens
+                // for yousafe-navigate and resolves orderId → selectedOrder.
+                window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'orders', orderId: order.id } }))
+              }}
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                gap: '10px',
                 padding: '10px 12px',
                 background: '#f9fafb',
                 borderRadius: '10px',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                width: '100%',
+                fontFamily: 'inherit',
               }}
             >
+              <span style={{ fontFamily: 'monospace', fontSize: '12px', color: '#6b7280', flexShrink: 0 }}>
+                {order.orderNumber || `#${order.id.slice(0, 8)}`}
+              </span>
               <span style={{ fontSize: '14px', fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#111827' }}>
-                {order.title || `Order #${order.id.slice(0, 8)}`}
+                {order.title || 'Order'}
               </span>
               <StatusBadge status={order.status} />
-            </div>
+            </button>
           ))}
         </div>
       )}

@@ -4,6 +4,7 @@ import React from 'react'
 import { C, Btn, Badge, Card } from './shared'
 import IntakeForm from './inquiry-intake-form'
 import ChatScreen from '../messaging/ChatScreen'
+import { OfferPaymentModal } from '../messaging/OfferPaymentModal'
 import MessageBubble from '../messaging/MessageBubble'
 import { dateLabel, sameDay } from '@/lib/messaging/format'
 import { COUNTRIES } from '@/lib/intake-questions'
@@ -565,6 +566,7 @@ export function InquiryDetail({ inquiryId, onBack }) {
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [decidingId, setDecidingId] = React.useState(null)
+  const [payOfferId, setPayOfferId] = React.useState(null)
   const [expandedAnswers, setExpandedAnswers] = React.useState(new Set())
 
   const load = React.useCallback((isInitial) => {
@@ -612,23 +614,12 @@ export function InquiryDetail({ inquiryId, onBack }) {
     }
   }
 
-  async function acceptOffer(offerId) {
+  // Accept opens the shared payment modal (wallet / saved card / new card).
+  // The previous implementation POSTed to /api/offers/:id/checkout, an
+  // endpoint that does not exist — accept-from-inquiry always failed.
+  function acceptOffer(offerId) {
     if (decidingId) return
-    setDecidingId(offerId)
-    try {
-      const res = await fetch(`/api/offers/${offerId}/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({}),
-      })
-      const payload = await res.json().catch(() => null)
-      if (!res.ok || !payload?.url) throw new Error(payload?.error || 'Could not start checkout.')
-      window.location.href = payload.url
-    } catch (e) {
-      setError(e.message)
-      setDecidingId(null)
-    }
+    setPayOfferId(offerId)
   }
 
   async function declineOffer(offerId) {
@@ -913,6 +904,13 @@ export function InquiryDetail({ inquiryId, onBack }) {
       {inquiry.archived_at && (
         <Notice tone="muted">This inquiry is archived — new messages cannot be sent.</Notice>
       )}
+
+      <OfferPaymentModal
+        offerId={payOfferId || ''}
+        open={!!payOfferId}
+        onClose={() => setPayOfferId(null)}
+        onPaid={() => { setPayOfferId(null); load(false) }}
+      />
     </div>
   )
 }

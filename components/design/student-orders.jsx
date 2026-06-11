@@ -333,11 +333,14 @@ function OrderRow({ order, currency, onClick }) {
             {isTemplate && <Badge color="purple" style={{ fontSize: 10 }}>Template</Badge>}
             {isReview && <Badge color="orange" style={{ fontSize: 10, fontWeight: 700 }}>⚠ Awaiting your approval</Badge>}
           </div>
-          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 18, color: TEXT, lineHeight: 1.2, letterSpacing: '-.006em', marginBottom: 2 }}>
-            {order.service}
+          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 18, color: TEXT, lineHeight: 1.2, letterSpacing: '-.006em', marginBottom: 2, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: CYAN, letterSpacing: '.02em', padding: '2px 8px', borderRadius: 4, background: 'rgba(14,124,142,0.08)', whiteSpace: 'nowrap' }}>
+              {order.orderNumber || `#${order.id.slice(0, 8)}`}
+            </span>
+            <span>{order.service}</span>
           </div>
           <div style={{ color: MUTED, fontSize: 12, fontFamily: MONO }}>
-            {order.orderNumber || order.id.slice(0, 8)} · {isTemplate ? 'Digital delivery' : `with ${order.consultant}`} · {fmtRelative(order.createdAt)}
+            {isTemplate ? 'Digital delivery' : `with ${order.consultant}`} · {fmtRelative(order.createdAt)}
             {order.fileCount > 0 && <> · 📎 {order.fileCount} file{order.fileCount === 1 ? '' : 's'}</>}
           </div>
           {!isTemplate && (

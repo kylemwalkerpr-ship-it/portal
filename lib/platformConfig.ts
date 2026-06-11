@@ -42,6 +42,10 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   // Admin-controlled rather than auto-fetched: each service charges in its
   // own native currency at checkout, so this is purely a display conversion.
   usd_to_cad_rate: 1.37,
+  // Display-only conversion rates for UK/AU students (same model as CAD:
+  // admin-controlled, checkout always charges the service's native currency).
+  usd_to_gbp_rate: 0.79,
+  usd_to_aud_rate: 1.52,
 }
 
 /**

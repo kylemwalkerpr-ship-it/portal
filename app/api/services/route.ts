@@ -43,7 +43,7 @@ export async function GET(req: Request) {
           currency: service.currency || 'usd',
         })),
         primaryCurrency: settings.primary_currency,
-        rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+        rates: { usd_to_cad: Number(settings.usd_to_cad_rate), usd_to_gbp: Number((settings as any).usd_to_gbp_rate || 0.79), usd_to_aud: Number((settings as any).usd_to_aud_rate || 1.52) },
         vertical,
       })
     }
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
           currency: service.currency || 'usd',
         })),
         primaryCurrency: settings.primary_currency,
-        rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+        rates: { usd_to_cad: Number(settings.usd_to_cad_rate), usd_to_gbp: Number((settings as any).usd_to_gbp_rate || 0.79), usd_to_aud: Number((settings as any).usd_to_aud_rate || 1.52) },
         vertical,
       })
     }
@@ -79,7 +79,7 @@ export async function GET(req: Request) {
       currency: service.currency || 'usd',
     })),
     primaryCurrency: settings.primary_currency,
-    rates: { usd_to_cad: Number(settings.usd_to_cad_rate) },
+    rates: { usd_to_cad: Number(settings.usd_to_cad_rate), usd_to_gbp: Number((settings as any).usd_to_gbp_rate || 0.79), usd_to_aud: Number((settings as any).usd_to_aud_rate || 1.52) },
     vertical,
   })
 }

@@ -12,11 +12,23 @@ export async function GET() {
   if (!userId) return Response.json({ profile: null })
 
   const db = createSupabaseAdminClient()
-  const { data: profile, error } = await db
+  let { data: profile, error } = await db
     .from('profiles')
-    .select('id, role, status, email, full_name')
+    .select('id, role, status, email, full_name, country_code, avatar_url')
     .eq('clerk_user_id', userId)
     .single()
+
+  // Self-heal: country_code / avatar_url columns may not exist in every
+  // environment yet — retry with the base column set.
+  if (error && /column .*(country_code|avatar_url)/i.test(error.message || '')) {
+    const retry = await db
+      .from('profiles')
+      .select('id, role, status, email, full_name')
+      .eq('clerk_user_id', userId)
+      .single()
+    profile = retry.data as typeof profile
+    error = retry.error
+  }
 
   if (error || !profile) return Response.json({ profile: null })
   return Response.json({ profile })

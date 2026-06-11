@@ -51,10 +51,13 @@ export async function PATCH(req: Request) {
     ? 'never'
     : Math.min(90, Math.max(1, Number(body.auto_release_days ?? DEFAULT_PLATFORM_SETTINGS.auto_release_days)))
 
-  const rawRate = Number(body.usd_to_cad_rate ?? DEFAULT_PLATFORM_SETTINGS.usd_to_cad_rate)
-  const usdToCadRate = Number.isFinite(rawRate) && rawRate > 0
-    ? Math.min(10, Math.max(0.1, Number(rawRate.toFixed(4))))
-    : DEFAULT_PLATFORM_SETTINGS.usd_to_cad_rate
+  const sanitizeRate = (raw: unknown, fallback: number) => {
+    const n = Number(raw ?? fallback)
+    return Number.isFinite(n) && n > 0 ? Math.min(10, Math.max(0.1, Number(n.toFixed(4)))) : fallback
+  }
+  const usdToCadRate = sanitizeRate(body.usd_to_cad_rate, DEFAULT_PLATFORM_SETTINGS.usd_to_cad_rate)
+  const usdToGbpRate = sanitizeRate(body.usd_to_gbp_rate, DEFAULT_PLATFORM_SETTINGS.usd_to_gbp_rate)
+  const usdToAudRate = sanitizeRate(body.usd_to_aud_rate, DEFAULT_PLATFORM_SETTINGS.usd_to_aud_rate)
 
   const settings = {
     ...DEFAULT_PLATFORM_SETTINGS,
@@ -66,6 +69,8 @@ export async function PATCH(req: Request) {
     allow_admin_force_release: Boolean(body.allow_admin_force_release),
     primary_currency: normalizePrimaryCurrency(body.primary_currency ?? DEFAULT_PLATFORM_SETTINGS.primary_currency),
     usd_to_cad_rate: usdToCadRate,
+    usd_to_gbp_rate: usdToGbpRate,
+    usd_to_aud_rate: usdToAudRate,
   }
 
   const { data, error } = await auth.db

@@ -176,6 +176,8 @@ function ProfileTab({ data, setData, userName, flash }) {
     country_code:  data.profile.country_code || '',
   })
   const [saving, setSaving] = React.useState(false)
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const avatarInputRef = React.useRef(null);
 
   const save = async () => {
     setSaving(true)
@@ -219,7 +221,45 @@ function ProfileTab({ data, setData, userName, flash }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 15 }}>{data.profile.full_name || 'Add your name'}</div>
             <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>{data.profile.email}</div>
-            <Btn variant="secondary" size="sm" style={{ marginTop: 8 }} onClick={() => flash('ok', 'Avatar upload coming soon.')}>Change photo</Btn>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  setAvatarBusy(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const d = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(d.error || 'Upload failed.');
+                    setData(prev => ({ ...prev, profile: { ...prev.profile, avatar_url: d.avatar_url } }));
+                    flash('ok', 'Profile photo updated.');
+                  } catch (err) { flash('err', err.message); }
+                  finally { setAvatarBusy(false); }
+                }}
+              />
+              <Btn variant="secondary" size="sm" disabled={avatarBusy} onClick={() => avatarInputRef.current?.click()}>
+                {avatarBusy ? 'Uploading…' : data.profile.avatar_url ? 'Change photo' : 'Upload photo'}
+              </Btn>
+              {data.profile.avatar_url && (
+                <Btn variant="ghost" size="sm" disabled={avatarBusy} onClick={async () => {
+                  setAvatarBusy(true);
+                  try {
+                    const res = await fetch('/api/profile/avatar', { method: 'DELETE', credentials: 'same-origin' });
+                    if (!res.ok) throw new Error('Could not remove photo.');
+                    setData(prev => ({ ...prev, profile: { ...prev.profile, avatar_url: null } }));
+                    flash('ok', 'Photo removed.');
+                  } catch (err) { flash('err', err.message); }
+                  finally { setAvatarBusy(false); }
+                }}>Remove</Btn>
+              )}
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
