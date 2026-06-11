@@ -3452,14 +3452,17 @@ function StudentApp({ onLogout, userId, userName }) {
   return (
     <div className="yousafe-dashboard-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: C.bg }}>
       <Sidebar />
-      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* WhatsApp-style rule for Messages: the page itself must NOT scroll —
+          only the thread list / message list scroll internally. Everywhere
+          else the main column scrolls as before. */}
+      <div className="yousafe-dashboard-main" style={{ flex: 1, overflow: page === 'messages' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column' }}>
         <TopBar title={{
           dashboard: 'Dashboard', orders: 'My Orders', services: 'Services & Templates',
           messages: 'Messages', documents: 'Documents', billing: 'Billing', settings: 'Settings',
           'order-detail': 'Order Details',
         }[page] || 'Dashboard'} />
-        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: 'flex-start', minWidth: 0 }}>
-          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0 }}>
+        <div className="yousafe-dashboard-body" style={{ flex: 1, display: 'flex', alignItems: page === 'messages' ? 'stretch' : 'flex-start', minWidth: 0, minHeight: 0 }}>
+          <div className="yousafe-dashboard-content" style={{ flex: 1, minWidth: 0, ...(page === 'messages' ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : {}) }}>
           {actionNotice && (
             <div style={{ margin: '16px 28px 0', padding: '12px 14px', background: `${C.cyan}10`, border: `1px solid ${C.cyan}33`, borderRadius: '10px', color: C.cyan, fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
               <span>{actionNotice}</span>
@@ -3504,7 +3507,7 @@ function StudentApp({ onLogout, userId, userName }) {
           {page === 'billing' && <BillingWithNmi />}
           {page === 'settings' && <StudentSettings userName={userName} />}
           {page === 'messages' && (
-            <div style={{ height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <UnifiedInbox
                 defaultThreadId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('thread') : null}
                 onThreadChange={(id) => {

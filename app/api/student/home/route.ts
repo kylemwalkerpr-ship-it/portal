@@ -128,23 +128,37 @@ export async function GET() {
   } catch { /* inquiries schema may be pending */ }
 
   // ── Conversations (unread) ─────────────────────────────────────────────
-  // Approximated as messages from non-clients in the last 30 days on the
-  // student's orders (matches /conversations endpoint's signal).
+  // TRUE unread state, mirroring /api/messages/conversations: a message is
+  // unread only if it arrived AFTER the student's conversation_reads marker.
+  // The previous heuristic ("any consultant message in the last 30 days")
+  // kept showing phantom unread counts after the student had read everything.
   let unreadConversations = 0
-  if (orders.length > 0) {
-    const ids = orders.map(o => o.id)
-    const { data: msgs } = await db
-      .from('order_messages')
-      .select('order_id, sender_role, created_at')
-      .in('order_id', ids)
-      .neq('sender_role', 'client')
-      .gte('created_at', new Date(now - 30 * 86_400_000).toISOString())
-    const perOrder = new Map<string, number>()
-    for (const m of msgs ?? []) {
-      perOrder.set((m as any).order_id, (perOrder.get((m as any).order_id) || 0) + 1)
+  try {
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id')
+      .or(`participant_a.eq.${profile.id},participant_b.eq.${profile.id}`)
+      .limit(200)
+    const convIds = (convs ?? []).map((c: any) => c.id)
+    if (convIds.length > 0) {
+      const [readsRes, msgsRes] = await Promise.all([
+        db.from('conversation_reads').select('conversation_id, last_read_at').eq('profile_id', profile.id).in('conversation_id', convIds),
+        db.from('conversation_messages')
+          .select('conversation_id, created_at')
+          .in('conversation_id', convIds)
+          .neq('sender_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(500),
+      ])
+      const readMap = new Map((readsRes.data ?? []).map((r: any) => [r.conversation_id, new Date(r.last_read_at).getTime()]))
+      const unreadConvs = new Set<string>()
+      for (const m of msgsRes.data ?? []) {
+        const since = readMap.get((m as any).conversation_id) || 0
+        if (new Date((m as any).created_at).getTime() > since) unreadConvs.add((m as any).conversation_id)
+      }
+      unreadConversations = unreadConvs.size
     }
-    unreadConversations = perOrder.size
-  }
+  } catch { /* messaging schema may be pending — leave at 0 */ }
 
   // ── Documents ──────────────────────────────────────────────────────────
   let docStats = { total: 0, last7d: 0 }
