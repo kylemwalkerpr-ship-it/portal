@@ -46,7 +46,7 @@ const TEXT = "#1A1F2E"
 const MUTED = "#5C6070"
 const DIM = "#9097A8"
 const INDIGO = "#3C3B6E"
-const SANS = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const SANS = `var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 const MONO = `'SF Mono', Menlo, Consolas, monospace`
 
 interface CreatedTOTP {

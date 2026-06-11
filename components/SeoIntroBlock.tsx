@@ -50,13 +50,13 @@ export async function SeoIntroBlock({
 
   if (tone === 'plain') {
     return (
-      <header data-no-translate style={{ padding: '32px 24px 16px', maxWidth: 980, margin: '0 auto', fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" }}>
+      <header data-no-translate style={{ padding: '32px 24px 16px', maxWidth: 980, margin: '0 auto', fontFamily: "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)" }}>
         {tEyebrow && (
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9A7B3B', marginBottom: 6, fontFamily: "'SF Mono', Menlo, Consolas, monospace" }}>
             {tEyebrow}
           </div>
         )}
-        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 600, color: '#1A1F2E', margin: '0 0 10px', letterSpacing: '-.012em', lineHeight: 1.1 }}>{tTitle}</h2>
+        <h2 style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 600, color: '#1A1F2E', margin: '0 0 10px', letterSpacing: '-.012em', lineHeight: 1.1 }}>{tTitle}</h2>
         <p style={{ fontSize: 16, color: '#5C6070', lineHeight: 1.6, margin: 0, maxWidth: 720 }}>{tDesc}</p>
       </header>
     )
@@ -69,7 +69,7 @@ export async function SeoIntroBlock({
         background: 'linear-gradient(135deg, #0F172A 0%, #0d2060 100%)',
         color: '#FFF',
         padding: '40px 24px 28px',
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
+        fontFamily: "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)",
       }}
     >
       <div style={{ maxWidth: 980, margin: '0 auto' }}>
@@ -78,7 +78,7 @@ export async function SeoIntroBlock({
             {tEyebrow}
           </div>
         )}
-        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05 }}>{tTitle}</h2>
+        <h2 style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05 }}>{tTitle}</h2>
         <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.78)', lineHeight: 1.6, margin: 0, maxWidth: 720 }}>{tDesc}</p>
       </div>
     </header>

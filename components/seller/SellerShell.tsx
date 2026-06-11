@@ -18,8 +18,8 @@ const NAV_LINKS = [
   { label: 'Compliance', href: '/dashboard/compliance' },
 ]
 
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
 
 export default function SellerShell({ title, subtitle, children }: SellerShellProps) {
   const pathname = usePathname()

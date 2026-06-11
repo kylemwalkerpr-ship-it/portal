@@ -7,6 +7,21 @@ import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/cat
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
+
+  // CPU-budget ordering (CF 1102): anonymous visitors (no Clerk session
+  // cookie) go straight to KV before any auth parsing or DB client creation.
+  const cookieHeader = req.headers.get('cookie') || ''
+  const hasSessionCookie =
+    cookieHeader.includes('__session') ||
+    /(?:^|;\s*)__client_uat=(?!0(?:;|$))/.test(cookieHeader)
+  if (!hasSessionCookie) {
+    const { getCached } = await import('@/lib/cache')
+    const { generateVersionedCacheKey } = await import('@/lib/cache')
+    const cacheKey = await generateVersionedCacheKey('gigs', '/api/gigs', 'public')
+    const cached = await getCached<Record<string, unknown>>(cacheKey, 60)
+    if (cached) return ok(cached)
+  }
+
   const auth = await getOptionalPortalUser()
   const db = auth ? auth.db : createSupabaseAdminClient()
 

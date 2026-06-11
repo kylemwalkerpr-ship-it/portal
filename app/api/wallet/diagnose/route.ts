@@ -4,6 +4,7 @@
  * payment provider connectivity.
  */
 import { getClerkUserId } from '@/lib/auth'
+import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getPaymentProvider } from '@/lib/payments'
 
@@ -13,6 +14,14 @@ function prefix(v: string | undefined) {
 }
 
 export async function GET() {
+  // ADMIN-ONLY: this report fingerprints secrets (key prefixes + lengths)
+  // and probes the payment provider. It was publicly reachable — that is a
+  // production security defect, not a diagnostics convenience.
+  const adminAuth = await requireAdminUser()
+  if ('error' in adminAuth) {
+    return Response.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const report: Record<string, unknown> = {}
 
   // 1. Environment

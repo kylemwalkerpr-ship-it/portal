@@ -14,7 +14,6 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/api/webhooks(.*)',
   '/api/articles/feed',
-  '/api/wallet/diagnose',
   '/api/translate(.*)',
   '/api/chat(.*)',
   // Public marketplace (brief 29). Pages and GET reads serve unauthenticated
@@ -286,6 +285,13 @@ export default clerkMiddleware(
     }
 
     if (!userId) {
+      if (pathname === '/api/wallet/diagnose') {
+        const body = JSON.stringify({ error: 'Not found' })
+        return new NextResponse(body, {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeadersFor(req) },
+        })
+      }
       // Cross-origin (or any) fetch to a non-public API path with no
       // session: return 401 JSON. Redirecting to /sign-in breaks
       // browser fetches — preflight to the redirect target fails

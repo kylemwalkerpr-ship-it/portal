@@ -22,28 +22,30 @@ async function aiSuggest(slug: string, fieldId: string, fieldLabel: string, curr
 }
 
 // ── Design tokens ──────────────────────────────────────────────────
+// Themed via portal CSS variables so the active appearance (palette + fonts)
+// applies here exactly like every other dashboard section.
 const C = {
-  bg: '#F7F5F0',
-  surface: '#FFFFFF',
-  surfaceHover: '#FAF9F5',
-  border: '#E8E4DC',
-  borderFocus: '#3C3B6E',
-  text: '#1A1F2E',
-  textMuted: '#5C6070',
-  textDim: '#9097A8',
-  brand: '#3C3B6E',
-  brandLight: '#EBEAF3',
-  accent: '#9A7B3B',
-  accentLight: '#F5F0E7',
+  bg: 'var(--portal-bg)',
+  surface: 'var(--portal-surface)',
+  surfaceHover: 'var(--portal-surface-2)',
+  border: 'var(--portal-rule)',
+  borderFocus: 'var(--portal-accent)',
+  text: 'var(--portal-ink)',
+  textMuted: 'var(--portal-ink-mid)',
+  textDim: 'var(--portal-ink-soft)',
+  brand: 'var(--portal-accent)',
+  brandLight: 'var(--portal-accent-soft)',
+  accent: 'var(--portal-gold)',
+  accentLight: 'var(--portal-surface-2)',
   success: '#1A6B45',
   successBg: '#E8F5EE',
   danger: '#8B1A1A',
   dangerBg: '#FAEAEA',
-  rule: '#DDD8CE',
+  rule: 'var(--portal-rule)',
 }
 
-const SANS = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const SERIF = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const SANS = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const SERIF = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -800,17 +802,36 @@ export default function StudentTemplateFiller({
       .finally(() => setCatalogLoading(false))
   }, [])
 
-  // Fetch profile data once for AI suggestions
+  // Fetch profile data once for AI suggestions — the richer the grounding,
+  // the more fields the AI can actually fill. Preferences carries the full
+  // address block; home is the fallback for older schemas.
   React.useEffect(() => {
-    fetch('/api/student/home', { credentials: 'same-origin' })
+    fetch('/api/student/preferences', { credentials: 'same-origin' })
       .then((r) => r.json().catch(() => ({})))
       .then((d) => {
-        if (d?.profile) {
-          const p = d.profile
-          setProfileDataForAI(
-            `Full name: ${p.full_name || ''}\nEmail: ${p.email || ''}\nCountry: ${p.country_code || p.country || ''}\nPhone: ${p.phone || ''}`
-          )
+        const p = d?.profile
+        if (p && (p.full_name || p.email)) {
+          setProfileDataForAI([
+            `Full name: ${p.full_name || ''}`,
+            `Email: ${p.email || ''}`,
+            `Phone: ${p.phone || ''}`,
+            `Address line 1: ${p.address_line1 || ''}`,
+            `Address line 2: ${p.address_line2 || ''}`,
+            `City: ${p.city || ''}`,
+            `Postal code: ${p.postal_code || ''}`,
+            `Country: ${p.country || p.country_code || ''}`,
+            `Timezone: ${p.timezone || ''}`,
+            `Preferred language: ${p.language || ''}`,
+          ].filter((l) => !/:\s*$/.test(l)).join('\n'))
+          return
         }
+        // Fallback: minimal profile from the home endpoint
+        return fetch('/api/student/home', { credentials: 'same-origin' })
+          .then((r) => r.json().catch(() => ({})))
+          .then((h) => {
+            const hp = h?.profile
+            if (hp) setProfileDataForAI(`Full name: ${hp.full_name || ''}\nEmail: ${hp.email || ''}\nCountry: ${hp.country_code || hp.country || ''}\nPhone: ${hp.phone || ''}`)
+          })
       })
       .catch(() => {})
   }, [])
@@ -910,6 +931,9 @@ export default function StudentTemplateFiller({
       if (suggestion) {
         setValues((prev) => ({ ...prev, [fieldId]: suggestion }))
         showToast('✨ AI suggestion applied')
+      } else {
+        // Never fail silently — the previous behaviour looked broken.
+        showToast(`No suggestion available for "${fieldLabel}" — add more detail to your profile, or fill it manually.`)
       }
     } finally {
       setSuggesting(null)
@@ -931,53 +955,68 @@ export default function StudentTemplateFiller({
     setTimeout(() => setToast(null), 3500)
   }
 
-  const handleDownload = async (mode: 'filled' | 'blank') => {
+  // Lightweight, browser-native document generation: build a print-perfect
+  // HTML rendering of the template (manifest sections + the student's
+  // answers) and invoke the browser's print → Save-as-PDF. Zero server CPU,
+  // no pdf-lib — same approach as the billing receipts.
+  const esc = (s: unknown) =>
+    String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+
+  const handleDownload = (mode: 'filled' | 'blank') => {
     if (!selectedSlug) return
-    setGenerating(mode)
-
-    try {
-      const body: { slug: string; blank?: boolean; formValues?: Record<string, string> } = {
-        slug: selectedSlug,
-        blank: mode === 'blank',
-      }
-      if (mode === 'filled') {
-        // Convert boolean values back to strings for the render endpoint
-        body.formValues = Object.fromEntries(
-          Object.entries(values).map(([k, v]) => [k, String(v)]),
-        )
-      }
-
-      const res = await fetch('/api/student/templates/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: { message: 'Download failed.' } }))
-        throw new Error(err.error?.message || 'Download failed.')
-      }
-
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = mode === 'blank'
-        ? `${selectedSlug}-blank.pdf`
-        : `${selectedSlug}-filled.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-
-      showToast(mode === 'blank'
-        ? '✅ Blank PDF downloaded — fill it by hand or in your PDF reader.'
-        : '✅ Filled PDF downloaded — your entries have been embedded.')
-    } catch (e) {
-      showToast(`❌ ${e instanceof Error ? e.message : 'Download failed.'}`)
-    } finally {
-      setGenerating(null)
+    const tpl = allTemplates.find((t) => t.slug === selectedSlug)
+    const title = tpl?.name || selectedSlug
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const fieldHtml = (f: any) => {
+      const raw = mode === 'blank' ? '' : values[f.id]
+      const val = typeof raw === 'boolean' ? (raw ? '☑ Yes' : '☐ No') : String(raw ?? '').trim()
+      return `<div class="fld">
+        <div class="lbl">${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ''}</div>
+        ${val
+          ? `<div class="val">${esc(val).replace(/\n/g, '<br>')}</div>`
+          : `<div class="val blank">${f.type === 'multiline' ? '<br><br>' : '&nbsp;'}</div>`}
+      </div>`
     }
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}${mode === 'blank' ? ' (blank)' : ''}</title>
+<style>
+  * { box-sizing: border-box; } body { font-family: Georgia, 'Times New Roman', serif; color: #14181f; margin: 0; background: #eee; }
+  .toolbar { max-width: 740px; margin: 16px auto 0; display: flex; justify-content: flex-end; }
+  .toolbar button { padding: 9px 22px; border-radius: 999px; border: none; background: #41408A; color: #fff; font: 600 13px/1 -apple-system, sans-serif; cursor: pointer; }
+  .doc { max-width: 740px; margin: 16px auto 40px; background: #fff; padding: 52px 58px; box-shadow: 0 6px 28px rgba(0,0,0,.14); }
+  .brand { font: 700 11px/1 -apple-system, sans-serif; letter-spacing: .2em; text-transform: uppercase; color: #41408A; border-left: 4px solid #41408A; padding-left: 10px; }
+  h1 { font-size: 27px; margin: 14px 0 4px; letter-spacing: -.01em; }
+  .meta { font: 11px -apple-system, sans-serif; color: #6a7383; margin-bottom: 26px; }
+  h2 { font-size: 16px; margin: 30px 0 4px; padding-bottom: 6px; border-bottom: 1.5px solid #14181f; }
+  .intro { font: 12px -apple-system, sans-serif; color: #6a7383; margin: 0 0 12px; }
+  .fld { margin: 13px 0; page-break-inside: avoid; }
+  .lbl { font: 700 11px -apple-system, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: #444c5c; margin-bottom: 4px; }
+  .req { color: #8B1A1A; }
+  .val { font-size: 14px; line-height: 1.55; border-bottom: 1px solid #c9cfd9; padding: 2px 0 5px; min-height: 20px; }
+  .val.blank { border-bottom: 1px solid #9aa2b1; }
+  .foot { margin-top: 36px; padding-top: 12px; border-top: 1px solid #c9cfd9; font: 9.5px -apple-system, sans-serif; color: #8a93a3; line-height: 1.6; }
+  @media print { body { background: #fff; } .toolbar { display: none; } .doc { box-shadow: none; margin: 0; max-width: none; padding: 0; } @page { size: letter; margin: 16mm; } }
+</style></head><body>
+<div class="toolbar"><button onclick="window.print()">⎙ Save as PDF</button></div>
+<div class="doc">
+  <div class="brand">YouSafe Consultancy</div>
+  <h1>${esc(title)}</h1>
+  <div class="meta">${tpl?.category ? esc(tpl.category) + ' · ' : ''}${mode === 'blank' ? 'Blank worksheet' : 'Completed worksheet'} · generated ${esc(today)}</div>
+  ${sections.map((s: any) => `<section>
+    <h2>${esc(s.title)}</h2>
+    ${s.intro ? `<p class="intro">${esc(s.intro)}</p>` : ''}
+    ${(s.fields || []).map(fieldHtml).join('')}
+  </section>`).join('')}
+  <div class="foot">Digital preparation aid only — not legal advice and not an official government form. Review every entry before submitting through official channels.<br>© ${new Date().getFullYear()} YouSafe Consultancy</div>
+</div>
+<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print() }, 250) })</script>
+</body></html>`
+    const win = window.open('', '_blank', 'noopener')
+    if (!win) { showToast('❌ Pop-up blocked — allow pop-ups to download your document.'); return }
+    win.document.write(html)
+    win.document.close()
+    showToast(mode === 'blank'
+      ? '📄 Blank worksheet opened — use Save as PDF in the print dialog.'
+      : '✨ Your completed document opened — use Save as PDF in the print dialog.')
   }
 
   // One-click AI auto-fill: fills every still-empty field from the student's
@@ -1041,6 +1080,45 @@ export default function StudentTemplateFiller({
       showToast('❌ Consistency check failed. Please try again.')
     } finally {
       setValidating(false)
+    }
+  }
+
+  // Pay (wallet) then generate the completed document client-side.
+  const handlePayAndDownload = async () => {
+    if (!fillSessionId || purchasing) return
+    setPurchasing(true)
+    try {
+      const completeRes = await fetch('/api/templates/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', sessionId: fillSessionId }),
+      })
+      const completeData = await completeRes.json()
+      if (!completeRes.ok) {
+        showToast(`❌ ${completeData?.error || 'Failed to complete form.'}`)
+        return
+      }
+      const checkoutRes = await fetch(`/api/templates/fill/${fillSessionId}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethod: 'wallet' }),
+      })
+      const checkoutData = await checkoutRes.json()
+      if (checkoutData?.data?.needsTopUp) {
+        showToast(`⚠️ Insufficient wallet balance. Needs $${(checkoutData.data.requiredCents / 100).toFixed(2)} — top up in Billing.`)
+        return
+      }
+      if (!checkoutRes.ok) {
+        showToast(`❌ ${checkoutData?.error || 'Checkout failed.'}`)
+        return
+      }
+      setOwns(true)
+      showToast('✅ Template purchased! Generating your document…')
+      setTimeout(() => handleDownload('filled'), 400)
+    } catch (e) {
+      showToast(`❌ ${e instanceof Error ? e.message : 'Checkout failed.'}`)
+    } finally {
+      setPurchasing(false)
     }
   }
 
@@ -1132,29 +1210,71 @@ export default function StudentTemplateFiller({
               </div>
             </div>
 
-            {/* Manifest sections form */}
-            {manifestLoading ? (
-              <div style={styles.loadingDots}>Loading form…</div>
-            ) : sections.length === 0 && selectedSlug ? (
-              <div style={styles.emptyState}>
-                <div style={{ fontSize: '28px', marginBottom: '10px' }}>📝</div>
-                <h3 style={{ fontFamily: SERIF, fontSize: '18px', fontWeight: 600, color: C.text, margin: '0 0 6px' }}>
-                  No fillable form available
-                </h3>
-                <p style={{ fontSize: '13px', color: C.textMuted, margin: '0 0 16px' }}>
-                  This template doesn&apos;t have a structured worksheet yet. You can still download the blank pack.
-                </p>
-                <a
-                  href={selected?.downloadHref ?? '#'}
-                  style={styles.emptyLink}
-                >
-                  ↓ Download pack
-                </a>
+            {/* The fill form opens in a popup (rendered below) so the
+                template gallery stays visible behind it. */}
+          </>
+        )}
+      </div>
+
+      {/* ── Fill popup — opens whenever a template is selected ─────────── */}
+      {selectedSlug && (
+        <div
+          onClick={() => setSelectedSlug(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(15,18,32,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Fill ${selectedTemplate?.name || 'template'}`}
+            style={{
+              background: C.bg, borderRadius: 16, width: 'min(860px, 100%)', maxHeight: 'calc(100vh - 48px)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.35)', border: `1px solid ${C.border}`,
+            }}
+          >
+            {/* Header */}
+            <div style={{ padding: '18px 24px', borderBottom: `1px solid ${C.border}`, background: C.surface, display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: C.accent, fontFamily: SANS }}>
+                  {owns ? 'Owned template' : 'Free to fill · pay only to download'}
+                </div>
+                <h2 style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, color: C.text, margin: '4px 0 0', lineHeight: 1.15 }}>
+                  {selectedTemplate?.name || selectedSlug}
+                </h2>
+                {selectedTemplate?.short_description && (
+                  <div style={{ fontSize: 12.5, color: C.textMuted, marginTop: 4, fontFamily: SANS }}>{selectedTemplate.short_description}</div>
+                )}
               </div>
-            ) : sections.length > 0 && selectedSlug ? (
-              <>
-                {/* Form sections */}
-                {sections.map((section, i) => (                    <SectionCard
+              <button
+                type="button"
+                onClick={() => setSelectedSlug(null)}
+                aria-label="Close"
+                style={{ border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, borderRadius: 999, width: 34, height: 34, cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px' }}>
+              {manifestLoading ? (
+                <div style={styles.loadingDots}>Loading form…</div>
+              ) : sections.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <div style={{ fontSize: '28px', marginBottom: '10px' }}>📝</div>
+                  <h3 style={{ fontFamily: SERIF, fontSize: '18px', fontWeight: 600, color: C.text, margin: '0 0 6px' }}>
+                    No fillable form available
+                  </h3>
+                  <p style={{ fontSize: '13px', color: C.textMuted, margin: '0 0 16px' }}>
+                    This template doesn&apos;t have a structured worksheet yet. You can still download the blank pack.
+                  </p>
+                  <a href={selected?.downloadHref ?? '#'} style={styles.emptyLink}>↓ Download pack</a>
+                </div>
+              ) : (
+                <>
+                  {sections.map((section, i) => (
+                    <SectionCard
                       key={section.title}
                       section={section}
                       index={i}
@@ -1162,218 +1282,81 @@ export default function StudentTemplateFiller({
                       onFieldChange={handleFieldChange}
                       onAiSuggest={handleAiSuggest}
                       suggesting={suggesting}
-                      defaultOpen={i < 2} // First 2 sections open by default
-                  />
-                ))}
-
-                {/* Selected template info summary */}
-                {selected && (
-                  <details
-                    style={{
-                      background: C.surface,
-                      border: `1px solid ${C.border}`,
-                      borderRadius: '10px',
-                      padding: '14px 20px',
-                      marginTop: '20px',
-                      fontSize: '13px',
-                      color: C.textMuted,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.text, fontSize: '13px' }}>
-                      About &ldquo;{selected.name}&rdquo;
-                    </summary>
-                    <div style={{ marginTop: '10px' }}>
-                      <p style={{ margin: '0 0 8px' }}>{selected.short_description}</p>
-                      {selected.includes.length > 0 && (
-                        <>
-                          <strong style={{ color: C.text, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                            What&apos;s included ({selected.includes.length} items):
-                          </strong>
-                          <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                            {selected.includes.map((inc, i) => (
-                              <li key={i} style={{ lineHeight: 1.6 }}>{inc}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
+                      defaultOpen={i < 2}
+                    />
+                  ))}
+                  {issues.length > 0 && (
+                    <div style={{ margin: '14px 0 0', padding: '12px 14px', borderRadius: '10px', background: '#FFF8EC', border: '1px solid #F0D9A8' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <strong style={{ fontSize: '13px', color: '#8A6D1F' }}>
+                          🔍 {issues.length} thing{issues.length === 1 ? '' : 's'} to review before you download
+                        </strong>
+                        <button onClick={() => setIssues([])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9097A8', fontSize: '16px', lineHeight: 1 }} aria-label="Dismiss consistency check">×</button>
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {issues.map((it, i) => (
+                          <li key={i} style={{ fontSize: '12.5px', color: it.severity === 'warning' ? '#8A4B1F' : '#5C6070', lineHeight: 1.5 }}>{it.message}</li>
+                        ))}
+                      </ul>
                     </div>
-                  </details>
+                  )}
+                  {selected && (
+                    <details style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '14px 20px', marginTop: '16px', fontSize: '13px', color: C.textMuted, lineHeight: 1.6 }}>
+                      <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.text, fontSize: '13px' }}>About &ldquo;{selected.name}&rdquo;</summary>
+                      <div style={{ marginTop: '10px' }}>
+                        <p style={{ margin: '0 0 8px' }}>{selected.short_description}</p>
+                        {selected.includes.length > 0 && (
+                          <>
+                            <strong style={{ color: C.text, fontSize: '12px', display: 'block', marginBottom: '4px' }}>What&apos;s included ({selected.includes.length} items):</strong>
+                            <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                              {selected.includes.map((inc, i) => (<li key={i} style={{ lineHeight: 1.6 }}>{inc}</li>))}
+                            </ul>
+                          </>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer — AI tools + save & download */}
+            {sections.length > 0 && (
+              <div style={{ padding: '14px 24px', borderTop: `1px solid ${C.border}`, background: C.surface, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, fontSize: 12, color: C.textMuted, fontFamily: SANS, minWidth: 140 }}>
+                  {sections.reduce((acc, s) => acc + s.fields.length, 0)} fields
+                  {owns ? ' · owned — downloads are free' : priceCents > 0 ? ` · $${(priceCents / 100).toFixed(2)} to download` : ''}
+                </div>
+                <button onClick={handleAutofill} disabled={autofilling}
+                  style={{ ...styles.actionBtnSecondary, opacity: autofilling ? 0.6 : 1, cursor: autofilling ? 'wait' : 'pointer' }}>
+                  {autofilling ? '✨ Filling…' : '✨ Auto-fill with AI'}
+                </button>
+                <button onClick={handleValidate} disabled={validating}
+                  style={{ ...styles.actionBtnSecondary, opacity: validating ? 0.6 : 1, cursor: validating ? 'wait' : 'pointer' }}>
+                  {validating ? '🔍 Checking…' : '🔍 Check answers'}
+                </button>
+                {owns ? (
+                  <>
+                    <button onClick={() => handleDownload('blank')} style={styles.actionBtnSecondary}>📄 Blank PDF</button>
+                    <button onClick={() => handleDownload('filled')} style={styles.actionBtnPrimary}>✨ Save &amp; download</button>
+                  </>
+                ) : (
+                  fillSessionId && (
+                    <button
+                      disabled={purchasing}
+                      onClick={handlePayAndDownload}
+                      style={{ ...styles.actionBtnPrimary, background: C.success, opacity: purchasing ? 0.7 : 1, cursor: purchasing ? 'wait' : 'pointer' }}
+                    >
+                      {purchasing ? '⏳ Processing…' : priceCents > 0 ? `💳 Save & download — $${(priceCents / 100).toFixed(2)}` : '💳 Save & download'}
+                    </button>
+                  )
                 )}
-              </>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      {/* AI consistency-check results */}
-      {issues.length > 0 && (
-        <div style={{
-          margin: '0 0 12px', padding: '12px 14px', borderRadius: '10px',
-          background: '#FFF8EC', border: '1px solid #F0D9A8',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <strong style={{ fontSize: '13px', color: '#8A6D1F' }}>
-              🔍 {issues.length} thing{issues.length === 1 ? '' : 's'} to review before you download
-            </strong>
-            <button
-              onClick={() => setIssues([])}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9097A8', fontSize: '16px', lineHeight: 1 }}
-              aria-label="Dismiss consistency check"
-            >
-              ×
-            </button>
-          </div>
-          <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {issues.map((it, i) => (
-              <li key={i} style={{ fontSize: '12.5px', color: it.severity === 'warning' ? '#8A4B1F' : '#5C6070', lineHeight: 1.5 }}>
-                {it.message}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Fixed action bar */}
-      {selectedSlug && sections.length > 0 && (
-        <div style={styles.actionBar}>
-          <div style={{ fontSize: '13px', color: C.textMuted }}>
-            <strong style={{ color: C.text }}>{selectedTemplate?.name || selectedSlug}</strong>
-            {' · '}{sections.reduce((acc, s) => acc + s.fields.length, 0)} fields
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* AI auto-fill — free for everyone, the core friction-killer */}
-            <button
-              onClick={handleAutofill}
-              disabled={autofilling}
-              style={{
-                ...styles.actionBtnSecondary,
-                opacity: autofilling ? 0.6 : 1,
-                cursor: autofilling ? 'wait' : 'pointer',
-              }}
-            >
-              {autofilling ? '✨ Filling…' : '✨ Auto-fill with AI'}
-            </button>
-            <button
-              onClick={handleValidate}
-              disabled={validating}
-              style={{
-                ...styles.actionBtnSecondary,
-                opacity: validating ? 0.6 : 1,
-                cursor: validating ? 'wait' : 'pointer',
-              }}
-            >
-              {validating ? '🔍 Checking…' : '🔍 Check answers'}
-            </button>
-
-            {owns && selectedTemplate?.downloadHref ? (
-              <a
-                href={selectedTemplate.downloadHref}
-                style={styles.actionBtnLink}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                ↓ Download pack
-              </a>
-            ) : null}
-
-            {owns ? (
-              <>
-                <button
-                  onClick={() => handleDownload('blank')}
-                  disabled={generating !== null}
-                  style={{
-                    ...styles.actionBtnSecondary,
-                    opacity: generating !== null ? 0.6 : 1,
-                    cursor: generating !== null ? 'wait' : 'pointer',
-                  }}
-                >
-                  {generating === 'blank' ? '⏳ Generating…' : '📄 Download blank PDF'}
-                </button>
-                <button
-                  onClick={() => handleDownload('filled')}
-                  disabled={generating !== null}
-                  style={{
-                    ...styles.actionBtnPrimary,
-                    opacity: generating !== null ? 0.7 : 1,
-                    cursor: generating !== null ? 'wait' : 'pointer',
-                  }}
-                >
-                  {generating === 'filled' ? '⏳ Generating…' : '✨ Download filled PDF'}
-                </button>
-              </>
-            ) : (
-              fillSessionId && (
-              <button
-                disabled={purchasing}
-                onClick={async () => {
-                  if (purchasing) return
-                  setPurchasing(true)
-                  try {
-                    // Complete the fill session
-                    const completeRes = await fetch('/api/templates/fill', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        action: 'complete',
-                        sessionId: fillSessionId,
-                      }),
-                    })
-                    const completeData = await completeRes.json()
-                    if (!completeRes.ok) {
-                      showToast(`❌ ${completeData?.error || 'Failed to complete form.'}`)
-                      return
-                    }
-                    // Process checkout
-                    const checkoutRes = await fetch(`/api/templates/fill/${fillSessionId}/checkout`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ paymentMethod: 'wallet' }),
-                    })
-                    const checkoutData = await checkoutRes.json()
-                    if (checkoutData?.data?.needsTopUp) {
-                      showToast(`⚠️ Insufficient wallet balance. Needs $${(checkoutData.data.requiredCents / 100).toFixed(2)}`)
-                      return
-                    }
-                    if (!checkoutRes.ok) {
-                      showToast(`❌ ${checkoutData?.error || 'Checkout failed.'}`)
-                      return
-                    }
-                    // Success — flip to owner mode (free re-downloads, no
-                    // double-charge) and redirect to the download.
-                    setOwns(true)
-                    showToast('✅ Template purchased! Redirecting to download…')
-                    setTimeout(() => {
-                      window.location.href = `/api/templates/download/${encodeURIComponent(selectedSlug!)}`
-                    }, 1000)
-                  } catch (e) {
-                    showToast(`❌ ${e instanceof Error ? e.message : 'Checkout failed.'}`)
-                  } finally {
-                    setPurchasing(false)
-                  }
-                }}
-                style={{
-                  ...styles.actionBtnPrimary,
-                  background: C.success,
-                  opacity: purchasing ? 0.7 : 1,
-                  cursor: purchasing ? 'wait' : 'pointer',
-                }}
-                onMouseEnter={(e) => {
-                  if (!purchasing) (e.currentTarget as HTMLElement).style.background = '#0F5C36'
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = C.success
-                }}
-              >
-                {purchasing
-                  ? '⏳ Processing…'
-                  : priceCents > 0 ? `💳 Pay $${(priceCents / 100).toFixed(2)} & Download` : '💳 Pay & Download'}
-              </button>
-              )
+              </div>
             )}
           </div>
         </div>
       )}
+
     </div>
   )
 }

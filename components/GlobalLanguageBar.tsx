@@ -47,7 +47,7 @@ export function GlobalLanguageBar() {
       style={{
         position: "relative",
         display: "inline-flex",
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
+        fontFamily: "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)",
       }}
     >
       <button

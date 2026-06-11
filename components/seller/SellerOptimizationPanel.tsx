@@ -38,8 +38,8 @@ interface Props {
   gigId: string
 }
 
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
 
 const FIX_SECTION_MAP: Record<string, string> = {
   title: 'overview',

@@ -6,8 +6,8 @@ import type { ComplianceItem, ComplianceStatus } from '@/lib/complianceItems'
 import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
 import { TwoFactorCard } from '@/components/TwoFactorCard'
 
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 interface SellerComplianceViewProps {
   role: 'attorney' | 'consultant'

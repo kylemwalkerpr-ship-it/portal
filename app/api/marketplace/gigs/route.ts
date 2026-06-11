@@ -8,22 +8,33 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 const CACHE_TTL_SECONDS = 60
 
 export async function GET(req: Request) {
-  // Auth is optional for this public endpoint — do not require it
-  const auth = await getOptionalPortalUser()
+  const url = new URL(req.url)
+
+  // CPU-budget ordering (CF 1102): for anonymous traffic, hit the KV cache
+  // BEFORE any Clerk cookie parsing or Supabase client creation. The cheap
+  // session-cookie sniff routes visitors without a session straight to KV.
+  const cookieHeader = req.headers.get('cookie') || ''
+  const hasSessionCookie =
+    cookieHeader.includes('__session') ||
+    /(?:^|;\s*)__client_uat=(?!0(?:;|$))/.test(cookieHeader)
+  let auth: Awaited<ReturnType<typeof getOptionalPortalUser>> = null
+  let cacheKey: string | null = null
+  if (!hasSessionCookie) {
+    cacheKey = await generateVersionedCacheKey('gigs', '/api/marketplace/gigs', url.searchParams.toString())
+    const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+    if (cached) return ok(cached)
+  } else {
+    // Has a session cookie — resolve it (responses may include is_saved).
+    auth = await getOptionalPortalUser()
+    if (!auth) {
+      cacheKey = await generateVersionedCacheKey('gigs', '/api/marketplace/gigs', url.searchParams.toString())
+      const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
+      if (cached) return ok(cached)
+    }
+  }
 
   // Use authenticated db when available, otherwise create a shared admin client
   const db = auth ? auth.db : createSupabaseAdminClient()
-
-  const url = new URL(req.url)
-
-  // Anonymous responses contain nothing user-specific (is_saved is always
-  // false), so serve them from KV — this is the hottest public endpoint and
-  // the cache keeps marketplace browsing off the DB + CPU-heavy shaping path.
-  const cacheKey = auth ? null : await generateVersionedCacheKey('gigs', '/api/marketplace/gigs', url.searchParams.toString())
-  if (cacheKey) {
-    const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
-    if (cached) return ok(cached)
-  }
   const q = (url.searchParams.get('q') || '').trim()
   const categories = url.searchParams.getAll('category').filter(Boolean)
   const providerTypes = url.searchParams.getAll('provider_type').filter(Boolean)

@@ -153,8 +153,8 @@ const GUIDES: Record<Role, GuideConfig> = {
   },
 }
 
-const sans  = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans  = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 function storageKey(role: Role) { return `ys_guide_dismissed_v1_${role}` }
 

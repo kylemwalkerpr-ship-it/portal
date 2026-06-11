@@ -4,8 +4,8 @@ import React from 'react'
 import Link from 'next/link'
 import { getCategoriesForRole, type Role } from '@/lib/categories'
 
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 interface GalleryImage { url?: string }
 interface MarketplaceGig {

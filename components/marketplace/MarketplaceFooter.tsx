@@ -23,7 +23,7 @@ const T = {
 
 const F = {
   display: "var(--font-lora), 'Lora', Georgia, serif",
-  ui: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  ui: "var(--font-inter), var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
   mono: "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace",
 }
 

@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { getOptionalPortalUser } from '@/lib/portalAuth'
 import { PublicMarketplaceLanding } from './PublicMarketplaceLanding'
 import { GigDiscoveryPage } from '@/components/marketplace/GigDiscoveryPage'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
@@ -75,8 +74,10 @@ export default async function Page({
   // clicking "Marketplace" in their dashboard nav to see their own
   // listings or competing services and getting bounced straight back.
   // Role-specific surfaces (buy flow, listing edit) gate themselves
-  // downstream; the landing itself is public read-only.
-  await getOptionalPortalUser() // touch session for any side effects (no return value used)
+  // downstream; the landing itself is public read-only. NOTE: no auth call
+  // here — the previous getOptionalPortalUser() invocation parsed Clerk
+  // cookies + hit Supabase on EVERY anonymous landing render for no used
+  // return value, pure Worker CPU burn (CF error 1102 contributor).
 
   return <PublicMarketplaceLanding country={country} />
 }

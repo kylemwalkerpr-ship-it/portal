@@ -205,6 +205,13 @@ export async function GET(req: Request) {
   // matches an order id we just synthesized).
   try {
     const orderIdSet = new Set(orderIds)
+    // Orders that already produced an order-derived refund / wallet-credit
+    // entry above — their wallet-side refund row would be a DOUBLE entry.
+    const refundedOrderIds = new Set(
+      (orderRows ?? [])
+        .filter((o: any) => dollarsToCents(o.refunded_amount) > 0 || dollarsToCents(o.wallet_credit_amount) > 0)
+        .map((o: any) => o.id),
+    )
     const { data: walletRows, error: wErr } = await db
       .from('wallet_transactions')
       .select('id, type, amount_cents, signed_cents, balance_after_cents, description, reference, metadata, created_at')
@@ -230,6 +237,10 @@ export async function GET(req: Request) {
         else if (rawType === 'credit' || rawType === 'adjustment' || kind === 'admin_topup' || kind === 'loyalty_credit') mapped = 'wallet_credit'
         else if (rawType === 'debit' || rawType === 'purchase') mapped = 'purchase'
         else mapped = 'wallet_credit'
+        // Skip wallet refund rows already represented by the order-derived
+        // refund entry — otherwise admin refunds show twice and the ledger
+        // appears to credit money that doesn't exist.
+        if (mapped === 'refund' && w.reference && refundedOrderIds.has(w.reference)) continue
         // Event context: what triggered this movement, in plain language.
         const event =
           mapped === 'refund'

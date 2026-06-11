@@ -37,7 +37,7 @@ const C = {
   text: '#1F2937',
   textMuted: '#6B7280',
   textDim: '#9CA3AF',
-  serif: "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif",
+  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)",
 }
 
 const adminSectionHeading = {

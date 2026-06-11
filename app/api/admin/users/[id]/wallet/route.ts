@@ -94,13 +94,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   try {
     const { data: allTxns, error } = await db
       .from('wallet_transactions')
-      .select('type, amount_cents')
+      .select('type, amount_cents, description, metadata')
       .eq('profile_id', profileId)
     if (error) throw error
     for (const t of (allTxns ?? []) as any[]) {
-      if (ALLOWED_TYPES.includes(t.type)) {
-        totals[`lifetime_${t.type}_cents`] += Number(t.amount_cents || 0)
-      }
+      if (!ALLOWED_TYPES.includes(t.type)) continue
+      // Refunds ride the wallet_credit RPC and arrive typed 'topup' — the
+      // truth is metadata.kind. Counting them as deposits inflated
+      // lifetime_topup and made refunds look like money the customer paid in.
+      const meta = t.metadata && typeof t.metadata === 'object' ? t.metadata : {}
+      const isRefund = t.type === 'topup' && (meta.kind === 'refund' || !!meta.refund_method || /^\s*refund/i.test(String(t.description || '')))
+      const bucket = isRefund ? 'refund' : t.type
+      totals[`lifetime_${bucket}_cents`] += Number(t.amount_cents || 0)
     }
   } catch (e: any) {
     warnings.push(`totals_unavailable: ${e?.message || 'unknown'}`)

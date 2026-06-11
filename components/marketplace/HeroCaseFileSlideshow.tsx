@@ -76,7 +76,7 @@ const MOSS = '#5F6B3A'
 const STAR = '#C68B27'
 const SERIF = "var(--font-lora), 'Lora', Georgia, 'Times New Roman', serif"
 const MONO = "var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace"
-const UI = "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+const UI = "var(--font-inter), var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)"
 
 export default function HeroCaseFileSlideshow({
   slides,

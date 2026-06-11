@@ -2,6 +2,7 @@
 import React from 'react'
 import { Card, Btn, Badge, Avatar, Input, Select } from './shared'
 import { PhoneVerificationCard } from '../PhoneVerificationCard'
+import { TwoFactorCard } from '../TwoFactorCard'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
 
@@ -455,24 +456,15 @@ function SecurityTab({ data, flash }) {
       {/* Inline phone verification — no Clerk modal, no redirect */}
       <PhoneVerificationCard />
 
-      <Section title="Two-factor & advanced" sub="Set up an authenticator app (Authy, Google Authenticator, 1Password), generate backup codes, change your password, and review active sessions.">
+      {/* Inline TOTP enrollment — real authenticator-app 2FA (QR + verify +
+          backup codes), no redirect. Same component as the security hub. */}
+      <TwoFactorCard />
+
+      <Section title="Password & sessions" sub="Change your password and review active sessions in the full security panel.">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <Btn variant="primary" size="md" onClick={() => window.location.href = '/user/security'}>
-            🛡️ Open security panel
+          <Btn variant="secondary" size="md" onClick={() => window.location.href = '/user/security'}>
+            🛡️ Open full security panel
           </Btn>
-          {!security.phone_verified && data.profile.phone && (
-            <Btn variant="secondary" size="md" onClick={() => window.location.href = '/user/security#/phone-numbers'}>
-              📱 Verify phone via SMS
-            </Btn>
-          )}
-          {!security.two_factor_enabled && (
-            <Btn variant="secondary" size="md" onClick={() => window.location.href = '/user/security#/mfa'}>
-              ✨ Enable two-factor auth
-            </Btn>
-          )}
-        </div>
-        <div style={{ marginTop: 14, padding: 12, background: `color-mix(in srgb, ${CYAN} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${CYAN} 20%, transparent)`, borderRadius: 8, fontSize: 12, color: TEXT, lineHeight: 1.55 }}>
-          <strong>Recommended:</strong> verify your phone, then enable two-factor with an authenticator app. Backup codes let you sign in if you lose your device.
         </div>
       </Section>
     </div>

@@ -45,8 +45,8 @@ const SORT_LABELS: Record<SortKey, string> = {
 }
 
 const FALLBACK_LIMIT = 5
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 async function requestJson(url: string, options: RequestInit = {}) {
   const res = await fetch(url, {

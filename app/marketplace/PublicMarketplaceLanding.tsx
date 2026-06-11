@@ -5,6 +5,7 @@ import {
   LEGACY_CATEGORY_MAP,
   normalizeCategory,
 } from '@/lib/categories'
+import { unstable_cache } from 'next/cache'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeGallery, resolveCoverUrl } from '@/lib/galleryImages'
 import { MarketplaceFooter } from '@/components/marketplace/MarketplaceFooter'
@@ -920,8 +921,15 @@ const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; le
   },
 }
 
+// Cached: the landing inventory fan-out (gigs + tiers + reviews + headshots)
+// used to run on EVERY anonymous request inside the Worker — a major CPU-time
+// (CF 1102) contributor. One 5-minute cache entry serves all visitors.
+const loadLandingDataCached = unstable_cache(loadLandingData, ['marketplace-landing-v1'], {
+  revalidate: 300,
+})
+
 export async function PublicMarketplaceLanding({ country = 'all' as Country }: { country?: Country }) {
-  const data = await loadLandingData()
+  const data = await loadLandingDataCached()
   const active: Country = (['all', 'us', 'uk', 'ca', 'au'] as Country[]).includes(country) ? country : 'all'
   const slice = data.slices[active]
   const { reviews } = data

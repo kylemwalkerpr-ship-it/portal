@@ -63,6 +63,36 @@ function cacheTranslation(key: string, source: string, translated: string): stri
   return translated
 }
 
+
+// ── Last-resort direct fallback ─────────────────────────────────────
+// Call MyMemory straight from the browser (free, CORS-enabled). Used ONLY
+// when every YouSafe translate endpoint fails — e.g. the portal Worker
+// hitting its CPU limit (CF 1102) — so pages never silently stay English.
+// Small concurrency pool: MyMemory rate-limits aggressive parallelism.
+async function myMemoryDirect(text: string, targetLang: string): Promise<string> {
+  try {
+    const u = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(targetLang)}`
+    const r = await fetch(u)
+    if (!r.ok) return text
+    const d = await r.json()
+    const out = d?.responseData?.translatedText
+    return typeof out === "string" && out && !/^MYMEMORY WARNING/i.test(out) ? out : text
+  } catch { return text }
+}
+
+async function myMemoryBatch(texts: string[], targetLang: string): Promise<string[]> {
+  const results: string[] = new Array(texts.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(4, texts.length) }, async () => {
+    while (next < texts.length) {
+      const idx = next++
+      results[idx] = await myMemoryDirect(texts[idx], targetLang)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
 export async function translateTexts(texts: string[], targetLang: string): Promise<string[]> {
   if (!texts.length || targetLang === "en") return [...texts]
   hydrateFromStorage()
@@ -121,10 +151,14 @@ export async function translateTexts(texts: string[], targetLang: string): Promi
     } catch {}
   }
 
-  // Batch failed — fall back to per-string translateText for the missing entries.
-  const fallback = await Promise.all(missingTexts.map((t) => translateText(t, targetLang)))
+  // Every YouSafe endpoint failed (Worker down / rate-limited). Go straight
+  // to MyMemory from the browser instead of re-hitting dead endpoints
+  // per-string — the page translates even during a portal outage.
+  const fallback = await myMemoryBatch(missingTexts, targetLang)
   for (let k = 0; k < missingIndices.length; k++) {
-    results[missingIndices[k]] = fallback[k]
+    const idx = missingIndices[k]
+    const source = missingTexts[k]
+    results[idx] = cacheTranslation(`${targetLang}:${source}`, source, fallback[k])
   }
   return results
 }
@@ -163,7 +197,9 @@ export async function translateText(text: string, targetLang: string): Promise<s
           return cacheTranslation(cacheKey, normalized, result)
         } catch {}
       }
-      return normalized
+      // Endpoints all failed — last resort: direct MyMemory.
+      const direct = await myMemoryDirect(normalized, targetLang)
+      return cacheTranslation(cacheKey, normalized, direct)
     } finally {
       translationQueue.delete(cacheKey)
     }

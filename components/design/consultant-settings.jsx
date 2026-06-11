@@ -2,6 +2,7 @@
 import React from 'react'
 import { C, Btn, Card, Input, Avatar } from './shared'
 import { PhoneVerificationCard } from '@/components/PhoneVerificationCard'
+import { TwoFactorCard } from '@/components/TwoFactorCard'
 import ProfileAIDraftButton from '../profile/ProfileAIDraftButton'
 import { usePortalTheme } from './usePortalTheme'
 import ThemePicker from './ThemePicker'
@@ -184,6 +185,9 @@ export default function ConsultantSettings({
 
       {/* Phone verification */}
       <PhoneVerificationCard />
+
+      {/* Authenticator-app 2FA — inline TOTP enrollment with backup codes */}
+      <TwoFactorCard />
     </div>
   );
 }

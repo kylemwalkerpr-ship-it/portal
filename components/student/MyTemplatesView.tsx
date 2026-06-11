@@ -3,8 +3,8 @@
 import React from 'react'
 import Link from 'next/link'
 
-const sans = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
+const sans = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
 
 interface TemplateItem {
   slug: string

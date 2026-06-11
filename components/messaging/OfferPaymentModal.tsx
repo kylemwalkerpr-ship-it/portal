@@ -23,8 +23,8 @@ const BORDER2  = 'rgba(0,0,0,0.12)'
 const TEXT  = '#1A1F2E'
 const MUTED = '#5C6070'
 const DIM   = '#9097A8'
-const SERIF = `'Cormorant Garamond', Georgia, serif`
-const SANS  = `-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`
+const SERIF = `var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`
+const SANS  = `var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`
 
 const TERMS_URL = 'https://usa.yousafeconsultancy.com/terms-of-service'
 const REFUND_POLICY_URL = 'https://yousafeconsultancy.com/refund-policy'

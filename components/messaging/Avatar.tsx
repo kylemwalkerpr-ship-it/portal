@@ -62,7 +62,7 @@ export default function Avatar({ name, src, userId, size = 32, online = null, cl
             justifyContent: 'center',
             fontWeight: 700,
             fontSize: Math.max(10, size * 0.38),
-            fontFamily: "'Cormorant Garamond', Georgia, serif",
+            fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)",
           }}
         >
           {label || '?'}

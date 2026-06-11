@@ -16,7 +16,7 @@ import React from 'react'
 
 const NAVY='var(--portal-ink)', GOLD='var(--portal-gold)', GOLD2='#C4A45A', GREEN='#1A6B45', RED='#8B1A1A', AMBER='#8B5E0A', CYAN='var(--portal-accent)', PURPLE='#3D2B6B'
 const BG='var(--portal-bg)', SURFACE='var(--portal-surface)', BORDER='var(--portal-rule)', BORDER2='var(--portal-rule-soft)', TEXT='var(--portal-ink)', MUTED='var(--portal-ink-mid)', DIM='var(--portal-ink-soft)'
-const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`, SANS=`-apple-system, BlinkMacSystemFont, 'Inter', sans-serif`, MONO=`'SF Mono', Menlo, Consolas, monospace`
+const SERIF=`var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)`, SANS=`var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)`, MONO=`'SF Mono', Menlo, Consolas, monospace`
 
 const fmtN = n => Number(n ?? 0).toLocaleString('en-US')
 const fmtPct = n => `${Number(n ?? 0).toFixed(1)}%`

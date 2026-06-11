@@ -12,8 +12,8 @@ interface SellerLevelResponse { level?: string }
 
 // Dynamic limit — resolved from /api/gigs response (varies by seller level)
 const FALLBACK_LIMIT = 5
-const serif = "'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif"
-const sans  = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif"
+const serif = "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)"
+const sans  = "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif)"
 
 async function safeJson<T>(url: string): Promise<T | null> {
   try {

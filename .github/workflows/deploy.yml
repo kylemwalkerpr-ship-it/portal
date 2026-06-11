@@ -174,7 +174,10 @@ jobs:
           # If CLOUDFLARE_AI_TOKEN is unset the third provider is dropped
           # from the chain (put_secret is a no-op on empty value).
           put_secret CLOUDFLARE_ACCOUNT_ID     "$CLOUDFLARE_ACCOUNT_ID"
-          put_secret CLOUDFLARE_API_TOKEN      "$CLOUDFLARE_API_TOKEN"
+          # NOTE: the deploy token (CLOUDFLARE_API_TOKEN) is deliberately NOT
+          # uploaded as a runtime secret — lib/chatProvider.ts only reads the
+          # scoped CLOUDFLARE_AI_TOKEN, and runtime should never hold deploy
+          # credentials.
           put_secret CLOUDFLARE_AI_TOKEN       "$CLOUDFLARE_AI_TOKEN"
           # OpenRouter — fourth fallback. The free models have their own
           # per-day quota separate from every other provider, so the chain

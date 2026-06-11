@@ -71,7 +71,6 @@ function isOnboarded(row: { headshot_url: string | null; tagline: string | null;
 }
 
 export async function GET(req: Request) {
-  const db = createSupabaseAdminClient()
   const { searchParams } = new URL(req.url)
   const requested = (searchParams.get('role') || 'all').trim().toLowerCase() as Role
   const role: Role = requested === 'attorney' || requested === 'consultant' ? requested : 'all'
@@ -82,6 +81,10 @@ export async function GET(req: Request) {
   const cacheKey = generateCacheKey('/api/providers', `role=${role}`)
   const cached = await getCached<Record<string, unknown>>(cacheKey, CACHE_TTL_SECONDS)
   if (cached) return Response.json(cached)
+
+  // DB client only AFTER the cache miss — creating it per-request on a
+  // cache hit was pure CPU waste on the hottest directory endpoint.
+  const db = createSupabaseAdminClient()
 
   const wantAttorneys = role === 'all' || role === 'attorney'
   const wantConsultants = role === 'all' || role === 'consultant'

@@ -12,7 +12,7 @@
  */
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { credit } from '@/lib/wallet'
+import { refundToWallet } from '@/lib/wallet'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
 async function authViaServiceToken(req: Request) {
@@ -89,15 +89,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const newEscrowStatus = isFullRefund ? 'refunded' : 'partial_released'
   const refundCents = Math.round(requestedAmount * 100)
 
-  // Credit buyer wallet if we have a client_id
+  // Refund to buyer wallet if we have a client_id. MUST go through
+  // refundToWallet — a raw credit() gets typed 'topup' by the RPC, which
+  // (a) shows the refund as a top-up in the student ledger, (b) inflates
+  // lifetime deposit totals, and (c) raises the refund ceiling so repeated
+  // refunds could mint money that was never deposited. refundToWallet tags
+  // the row kind:'refund' and caps it at the order's captured amount.
   if (order.client_id && refundCents > 0) {
     try {
-      await credit(
+      await refundToWallet(
         order.client_id,
         refundCents,
         `Refund for order ${orderId}`,
-        orderId,
-        { reason, adminId: profileId }
+        {
+          reference: orderId,
+          orderCapCents: refundCents,
+          metadata: { reason, adminId: profileId, orderId },
+        }
       )
     } catch (err: any) {
       warnings.push(`wallet_credit_failed: ${err.message}`)

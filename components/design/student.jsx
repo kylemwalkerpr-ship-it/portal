@@ -964,14 +964,14 @@ function Billing() {
     <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div>
         <div style={{ color: C.textMuted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700, marginBottom: '4px' }}>Money</div>
-        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Billing.</h2>
+        <h2 style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: '32px', fontWeight: 500, color: C.text, letterSpacing: '-0.012em', margin: '0 0 6px' }}>Billing.</h2>
       </div>
 
       <Card style={{ background: `linear-gradient(135deg, ${C.surface}, rgba(60,59,110,0.06))`, border: `1px solid rgba(60,59,110,0.18)` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
           <div>
             <div style={{ fontSize: '11px', color: C.textMuted, marginBottom: '6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em' }}>Wallet balance</div>
-            <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: '40px', fontWeight: 500, color: C.text, lineHeight: 1, letterSpacing: '-0.012em' }}>
+            <div style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: '40px', fontWeight: 500, color: C.text, lineHeight: 1, letterSpacing: '-0.012em' }}>
               {walletBal === null ? '—' : `$${Number(walletBal).toFixed(2)}`}
             </div>
             <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '6px' }}>Available to spend on services</div>
