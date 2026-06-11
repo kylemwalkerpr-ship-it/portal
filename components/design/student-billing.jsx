@@ -39,11 +39,20 @@ const fmtRelative = s => {
 }
 
 const TYPE_CONFIG = {
-  purchase:      { label: 'Purchase',      icon: '🛒', color: NAVY,   sign: '-' },
-  refund:        { label: 'Refund',        icon: '↩',  color: GREEN,  sign: '+' },
-  wallet_credit: { label: 'Wallet credit', icon: '💳', color: PURPLE, sign: '+' },
-  release:       { label: 'Escrow release',icon: '🔓', color: AMBER,  sign: '·' },
-  topup:         { label: 'Top up',        icon: '➕', color: GREEN,  sign: '+' },
+  purchase:      { label: 'Purchase',       icon: '🛒', color: NAVY,   sign: '-' },
+  refund:        { label: 'Refund',         icon: '↩',  color: GREEN,  sign: '+' },
+  wallet_credit: { label: 'Wallet credit',  icon: '💳', color: PURPLE, sign: '+' },
+  release:       { label: 'Escrow release', icon: '🔓', color: AMBER,  sign: '·' },
+  topup:         { label: 'Top up',         icon: '➕', color: GREEN,  sign: '+' },
+}
+
+// Fallback event copy for rows from servers that predate the `event` field.
+const TYPE_EVENT_FALLBACK = {
+  purchase:      'Payment for an order or accepted offer.',
+  refund:        'Money returned to you.',
+  wallet_credit: 'Credit applied to your wallet.',
+  release:       'Escrow released to your consultant — no new charge to you.',
+  topup:         'You added funds to your wallet.',
 }
 
 const TABS = [
@@ -102,6 +111,7 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
   const [to, setTo] = React.useState('')
 
   const [tx, setTx] = React.useState([])
+  const [expandedId, setExpandedId] = React.useState(null)
   const [total, setTotal] = React.useState(0)
   const [totalPages, setTotalPages] = React.useState(1)
   const [hasMore, setHasMore] = React.useState(false)
@@ -266,8 +276,13 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
               {tx.map(t => {
                 const cfg = TYPE_CONFIG[t.type] || { label: t.type, icon: '·', color: MUTED, sign: '' }
                 const cur = String(t.currency || 'usd').toUpperCase()
+                const isOpen = expandedId === t.id
                 return (
-                  <tr key={t.id} style={{ borderTop: `1px solid ${BORDER2}` }}>
+                  <React.Fragment key={t.id}>
+                  <tr
+                    onClick={() => setExpandedId(isOpen ? null : t.id)}
+                    style={{ borderTop: `1px solid ${BORDER2}`, cursor: 'pointer', background: isOpen ? SURFACE2 : 'transparent' }}
+                  >
                     <Td>
                       <div style={{ fontSize: 12, color: TEXT }}>{fmtDate(t.date)}</div>
                       <div style={{ fontSize: 10, color: DIM, fontFamily: MONO }}>{fmtRelative(t.date)}</div>
@@ -294,18 +309,73 @@ export default function StudentBilling({ currency = 'usd', onTopUpClick, payment
                         {cfg.sign === '·' ? '' : cfg.sign}{fmtMoneyCents(t.amountCents, cur)}
                       </span>
                     </Td>
-                    <Td style={{ textAlign: 'right' }}>
+                    <Td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <a
                         href={`/api/student/billing/receipt?tx=${encodeURIComponent(t.id)}`}
                         target="_blank"
                         rel="noreferrer"
-                        title="Open PDF receipt"
+                        title="Open receipt"
+                        onClick={e => e.stopPropagation()}
                         style={{ color: CYAN, fontSize: 12, fontWeight: 700, textDecoration: 'none', fontFamily: MONO }}
                       >
                         ⎙ PDF
                       </a>
+                      <span style={{ marginLeft: 10, color: DIM, fontSize: 11, display: 'inline-block', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▸</span>
                     </Td>
                   </tr>
+                  {isOpen && (
+                    <tr style={{ background: SURFACE2 }}>
+                      <td colSpan={6} style={{ padding: '0 14px 16px' }}>
+                        <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '16px 18px', display: 'grid', gap: 12 }}>
+                          {/* What happened */}
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                            <span style={{ fontSize: 18, lineHeight: 1 }}>{cfg.icon}</span>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{cfg.label} — what happened</div>
+                              <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.55, marginTop: 3 }}>
+                                {t.event || TYPE_EVENT_FALLBACK[t.type] || 'Account movement.'}
+                              </div>
+                            </div>
+                          </div>
+                          {/* Facts grid */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '8px 20px', borderTop: `1px solid ${BORDER2}`, paddingTop: 12 }}>
+                            {[
+                              ['When', new Date(t.date).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })],
+                              ['Amount', `${cfg.sign === '·' ? '' : cfg.sign}${fmtMoneyCents(t.amountCents, cur)}`],
+                              ['Status', String(t.status).replace(/_/g, ' ')],
+                              ...(typeof t.balanceAfterCents === 'number' ? [['Wallet balance after', fmtMoneyCents(t.balanceAfterCents, cur)]] : []),
+                              ...(t.orderNumber || t.orderId ? [['Order reference', t.orderNumber || String(t.orderId).slice(0, 12)]] : []),
+                              ...(t.reference && !t.orderId ? [['Reference', String(t.reference).slice(0, 18)]] : []),
+                              ...(t.transactionId ? [['Transaction ID', String(t.transactionId).slice(0, 18)]] : []),
+                            ].map(([k, v]) => (
+                              <div key={k}>
+                                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: DIM, fontFamily: MONO }}>{k}</div>
+                                <div style={{ fontSize: 13, color: TEXT, fontFamily: MONO, marginTop: 2, wordBreak: 'break-all' }}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Actions */}
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: `1px solid ${BORDER2}`, paddingTop: 12 }}>
+                            {t.orderId && (
+                              <Btn variant="secondary" size="sm" onClick={e => {
+                                e.stopPropagation()
+                                window.dispatchEvent(new CustomEvent('yousafe-navigate', { detail: { page: 'orders', orderId: t.orderId } }))
+                              }}>
+                                📦 View order →
+                              </Btn>
+                            )}
+                            <Btn variant="secondary" size="sm" onClick={e => {
+                              e.stopPropagation()
+                              window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(t.id)}`, '_blank', 'noopener')
+                            }}>
+                              ⎙ Open receipt
+                            </Btn>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 )
               })}
             </tbody>

@@ -10,7 +10,12 @@
  */
 import { getCurrentStudent } from '@/lib/student'
 import { getPlatformSettings } from '@/lib/platformConfig'
-import { generateReceiptPdf, ReceiptInput, ReceiptItem } from '@/lib/receipts'
+// Type-only import — erased at compile time, so pdf-lib never loads here.
+// The receipt is rendered as print-perfect HTML (string templating, ~zero
+// CPU) and the browser's native print → Save-as-PDF does the heavy work
+// client-side. pdf-lib's doc.save() was blowing the host's CPU budget.
+import type { ReceiptInput, ReceiptItem } from '@/lib/receipts'
+import { renderReceiptHtml } from '@/lib/receiptHtml'
 import { COUNTRY_LIST } from '@/lib/countryList'
 
 function dollarsToCents(d: unknown) { return Math.round(Number(d || 0) * 100) }
@@ -42,11 +47,10 @@ function receiptNumber(seed: string, date: Date): string {
   return `R-${ym}-${tail}`
 }
 
-const pdfResponse = (bytes: Uint8Array, filename: string) =>
-  new Response(Buffer.from(bytes), {
+const receiptResponse = (input: ReceiptInput) =>
+  new Response(renderReceiptHtml(input), {
     headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${filename}"`,
+      'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'private, no-store',
     },
   })
@@ -127,8 +131,7 @@ export async function GET(req: Request) {
         orderNumber: w.reference ? String(w.reference).slice(0, 18) : null,
       },
     }
-    const bytes = await generateReceiptPdf(input)
-    return pdfResponse(bytes, `${input.meta.receiptNumber}.pdf`)
+    return receiptResponse(input)
   }
 
   // ── Order-derived entries: {orderId}-purchase|refund|wallet ──────────
@@ -245,6 +248,5 @@ export async function GET(req: Request) {
     },
   }
 
-  const bytes = await generateReceiptPdf(input)
-  return pdfResponse(bytes, `${input.meta.receiptNumber}.pdf`)
+  return receiptResponse(input)
 }

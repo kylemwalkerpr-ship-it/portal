@@ -27,6 +27,16 @@ type Tx = {
   signedCents: number
   status: string
   currency: string
+  /** Where this entry came from: derived from an order vs the wallet ledger. */
+  source?: 'order' | 'wallet'
+  /** Plain-language description of the event that triggered the movement. */
+  event?: string
+  /** Wallet balance after this movement (wallet-side rows only). */
+  balanceAfterCents?: number | null
+  /** Underlying reference (order / offer / session id) when known. */
+  reference?: string | null
+  /** Stable id of the underlying row, quotable to support. */
+  transactionId?: string | null
 }
 
 function dollarsToCents(d: unknown) { return Math.round(Number(d || 0) * 100) }
@@ -116,6 +126,10 @@ export async function GET(req: Request) {
         signedCents: -purchaseCents, // money out
         status: o.status || 'completed',
         currency: cur,
+        source: 'order',
+        event: 'You placed this order. Payment is held in escrow until you approve delivery.',
+        reference: o.id,
+        transactionId: o.id,
       })
     }
 
@@ -133,6 +147,10 @@ export async function GET(req: Request) {
         signedCents: +refundCents, // money in
         status: o.refund_status || 'refunded',
         currency: cur,
+        source: 'order',
+        event: 'This order was refunded to you.',
+        reference: o.id,
+        transactionId: o.id,
       })
     }
 
@@ -150,6 +168,10 @@ export async function GET(req: Request) {
         signedCents: +creditCents,
         status: o.refund_status,
         currency: cur,
+        source: 'order',
+        event: 'A refund for this order was credited to your wallet instead of your card.',
+        reference: o.id,
+        transactionId: o.id,
       })
     }
 
@@ -167,6 +189,10 @@ export async function GET(req: Request) {
         signedCents: 0, // not a cash movement
         status: 'released',
         currency: cur,
+        source: 'order',
+        event: 'You approved delivery — escrow was released to your consultant. No new charge to you.',
+        reference: o.id,
+        transactionId: o.id,
       })
     }
   }
@@ -190,24 +216,47 @@ export async function GET(req: Request) {
         const isOrderDebit = (w.type === 'debit' || w.type === 'purchase') && w.reference && orderIdSet.has(w.reference)
         if (isOrderDebit) continue
         const rawType = String(w.type || '').toLowerCase()
-        const kind = (w.metadata && typeof w.metadata === 'object' ? (w.metadata as any).kind : null) as string | null
+        const meta = (w.metadata && typeof w.metadata === 'object' ? (w.metadata as any) : {}) as Record<string, any>
+        const kind = (meta.kind ?? null) as string | null
+        const desc = String(w.description || '')
         let mapped: Tx['type']
-        if (rawType === 'topup') mapped = 'topup'
-        else if (rawType === 'refund') mapped = 'refund'
+        // Refunds FIRST: refundToWallet routes through the wallet_credit RPC,
+        // which stamps the row `type='topup'` — the truth lives in
+        // metadata.kind. Without this check refunds render as "Top up".
+        // The description heuristic catches legacy rows written before
+        // kind tagging existed.
+        if (kind === 'refund' || rawType === 'refund' || /^refund\b/i.test(desc)) mapped = 'refund'
+        else if (rawType === 'topup') mapped = 'topup'
         else if (rawType === 'credit' || rawType === 'adjustment' || kind === 'admin_topup' || kind === 'loyalty_credit') mapped = 'wallet_credit'
         else if (rawType === 'debit' || rawType === 'purchase') mapped = 'purchase'
         else mapped = 'wallet_credit'
+        // Event context: what triggered this movement, in plain language.
+        const event =
+          mapped === 'refund'
+            ? (meta.reason === 'order_create_failed'
+                ? 'Automatic refund — your payment was returned because the order could not be created.'
+                : 'Refund returned to your wallet.')
+            : mapped === 'topup' ? 'You added funds to your wallet.'
+            : mapped === 'purchase' ? (meta.offerId ? 'Wallet payment for an accepted offer.' : 'Wallet payment.')
+            : kind === 'admin_topup' ? 'Credit added by YouSafe support.'
+            : kind === 'loyalty_credit' ? 'Loyalty credit from YouSafe.'
+            : 'Credit applied to your wallet.'
         ledger.push({
           id: `wt-${w.id}`,
           date: w.created_at,
           type: mapped,
-          description: w.description || (mapped === 'topup' ? 'Wallet top-up' : mapped === 'wallet_credit' ? 'Wallet credit' : 'Wallet activity'),
+          description: desc || (mapped === 'topup' ? 'Wallet top-up' : mapped === 'refund' ? 'Refund to wallet' : mapped === 'wallet_credit' ? 'Wallet credit' : 'Wallet activity'),
           orderId: w.reference && orderIdSet.has(w.reference) ? w.reference : null,
           orderNumber: null,
           amountCents: Math.abs(Number(w.amount_cents || w.signed_cents || 0)),
           signedCents: Number(w.signed_cents || 0),
           status: 'posted',
           currency: 'usd',
+          source: 'wallet',
+          event,
+          balanceAfterCents: w.balance_after_cents != null ? Number(w.balance_after_cents) : null,
+          reference: w.reference || meta.offerId || null,
+          transactionId: String(w.id),
         })
       }
     }

@@ -636,8 +636,16 @@ function ReceiptTab({ order, items, services, currency }) {
           {order.refundPolicyAcceptedAt && <>Refund policy accepted {fmtDateShort(order.refundPolicyAcceptedAt)}</>}
         </div>
 
-        <div style={{ marginTop: 14 }}>
-          <Btn variant="secondary" size="sm" onClick={() => window.print()}>🖨 Print receipt</Btn>
+        <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Official PDF from the receipt engine (bank-grade, both parties, itemized) */}
+          <Btn
+            variant="primary"
+            size="sm"
+            onClick={() => window.open(`/api/student/billing/receipt?tx=${encodeURIComponent(`${order.id}-purchase`)}`, '_blank', 'noopener')}
+          >
+            ⎙ Download PDF receipt
+          </Btn>
+          <Btn variant="secondary" size="sm" onClick={() => window.print()}>🖨 Print this page</Btn>
         </div>
       </div>
     </Section>
