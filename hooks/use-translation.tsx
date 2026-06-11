@@ -69,7 +69,33 @@ function cacheTranslation(key: string, source: string, translated: string): stri
 // when every YouSafe translate endpoint fails — e.g. the portal Worker
 // hitting its CPU limit (CF 1102) — so pages never silently stay English.
 // Small concurrency pool: MyMemory rate-limits aggressive parallelism.
-async function myMemoryDirect(text: string, targetLang: string): Promise<string> {
+const MM_MAX_CHARS = 450
+
+// MyMemory hard-rejects queries over ~500 chars. Long paragraphs (FAQ
+// answers, resource articles) must be split on sentence boundaries and
+// rejoined, or they silently stay English.
+function splitForMyMemory(text: string): string[] {
+  if (text.length <= MM_MAX_CHARS) return [text]
+  const parts: string[] = []
+  let buf = ""
+  for (const seg of text.split(/(?<=[.!?؟。])\s+/)) {
+    if ((buf ? buf.length + 1 : 0) + seg.length > MM_MAX_CHARS) {
+      if (buf) parts.push(buf)
+      if (seg.length > MM_MAX_CHARS) {
+        for (let i = 0; i < seg.length; i += MM_MAX_CHARS) parts.push(seg.slice(i, i + MM_MAX_CHARS))
+        buf = ""
+      } else {
+        buf = seg
+      }
+    } else {
+      buf = buf ? `${buf} ${seg}` : seg
+    }
+  }
+  if (buf) parts.push(buf)
+  return parts.filter(Boolean)
+}
+
+async function myMemoryOne(text: string, targetLang: string): Promise<string> {
   try {
     const u = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${encodeURIComponent(targetLang)}`
     const r = await fetch(u)
@@ -78,6 +104,20 @@ async function myMemoryDirect(text: string, targetLang: string): Promise<string>
     const out = d?.responseData?.translatedText
     return typeof out === "string" && out && !/^MYMEMORY WARNING/i.test(out) ? out : text
   } catch { return text }
+}
+
+async function myMemoryDirect(text: string, targetLang: string): Promise<string> {
+  const chunks = splitForMyMemory(text)
+  if (chunks.length === 1) return myMemoryOne(text, targetLang)
+  const out: string[] = []
+  for (const chunk of chunks) {
+    const translated = await myMemoryOne(chunk, targetLang)
+    // If a chunk comes back unchanged (failure), return the source whole —
+    // never emit a half-translated paragraph.
+    if (translated === chunk) return text
+    out.push(translated)
+  }
+  return out.join(" ")
 }
 
 async function myMemoryBatch(texts: string[], targetLang: string): Promise<string[]> {

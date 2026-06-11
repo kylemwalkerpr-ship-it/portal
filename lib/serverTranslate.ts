@@ -85,7 +85,7 @@ export async function translateString(
   }
 
   // 2. Outbound translate
-  const translated = await callMyMemory(text, sourceLang, targetLang)
+  const translated = await callMyMemoryChunked(text, sourceLang, targetLang)
   if (!translated) return text
 
   // 3. Cache it (best-effort)
@@ -113,6 +113,48 @@ function memoSet(key: string, value: string) {
     if (first) memo.delete(first)
   }
   memo.set(key, value)
+}
+
+
+// ── Long-text chunking ──────────────────────────────────────────────
+// MyMemory hard-rejects queries over ~500 chars ("QUERY LENGTH LIMIT
+// EXCEEDED"). The old code truncated to 500, so long paragraphs (FAQ
+// answers, resource articles) silently failed back to English. Split on
+// sentence boundaries, translate each chunk, and rejoin — if ANY chunk
+// fails we return null rather than emit a half-translated paragraph.
+const MM_MAX_CHARS = 450
+
+function splitForMyMemory(text: string): string[] {
+  if (text.length <= MM_MAX_CHARS) return [text]
+  const parts: string[] = []
+  let buf = ''
+  for (const seg of text.split(/(?<=[.!?؟。])\s+/)) {
+    if ((buf ? buf.length + 1 : 0) + seg.length > MM_MAX_CHARS) {
+      if (buf) parts.push(buf)
+      if (seg.length > MM_MAX_CHARS) {
+        for (let i = 0; i < seg.length; i += MM_MAX_CHARS) parts.push(seg.slice(i, i + MM_MAX_CHARS))
+        buf = ''
+      } else {
+        buf = seg
+      }
+    } else {
+      buf = buf ? `${buf} ${seg}` : seg
+    }
+  }
+  if (buf) parts.push(buf)
+  return parts.filter(Boolean)
+}
+
+async function callMyMemoryChunked(text: string, sourceLang: string, targetLang: string): Promise<string | null> {
+  const chunks = splitForMyMemory(text)
+  if (chunks.length === 1) return callMyMemory(text, sourceLang, targetLang)
+  const out: string[] = []
+  for (const chunk of chunks) {
+    const translated = await callMyMemory(chunk, sourceLang, targetLang)
+    if (translated === null) return null
+    out.push(translated)
+  }
+  return out.join(' ')
 }
 
 async function callMyMemory(text: string, sourceLang: string, targetLang: string): Promise<string | null> {
@@ -183,7 +225,7 @@ export async function translateBatch(
   const inserts: any[] = []
   const queue = misses.map(async (h) => {
     const src = uniqueByHash.get(h)!
-    const translated = await callMyMemory(src, sourceLang, targetLang)
+    const translated = await callMyMemoryChunked(src, sourceLang, targetLang)
     if (translated) {
       cacheMap.set(h, translated)
       inserts.push({

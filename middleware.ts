@@ -324,5 +324,11 @@ export default clerkMiddleware(
 )
 
 export const config = {
-  matcher: ['/((?!_next|.*\\..*).*)'],
+  // /api/translate(/batch) and /api/webhooks are excluded from the middleware
+  // entirely: they never call Clerk auth(), they set their own CORS headers,
+  // and they absorb high-volume anonymous traffic from all five estate sites.
+  // Running clerkMiddleware (cookie parsing + session resolution) on every
+  // translation batch was pure CPU burn on the hottest shared Worker —
+  // a direct CF 1102 contributor.
+  matcher: ['/((?!_next|api/translate|api/webhooks|.*\\..*).*)'],
 }
