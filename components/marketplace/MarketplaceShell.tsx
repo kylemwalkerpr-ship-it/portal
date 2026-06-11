@@ -259,11 +259,11 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         position: 'sticky',
         top: 0,
         zIndex: 200,
-        background: 'rgba(251,250,247,0.92)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
+        background: 'rgba(255,255,255,0.94)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${T.rule}`,
-        boxShadow: scrolled ? '0 2px 16px rgba(29,36,51,0.10)' : '0 1px 0 rgba(29,36,51,0.04)',
+        boxShadow: scrolled ? '0 2px 16px rgba(15,23,42,0.08)' : 'none',
         transition: 'box-shadow 0.2s',
         fontFamily: F.ui,
       }}
@@ -286,8 +286,8 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
                 style={{ width: 30, height: 30, objectFit: 'contain' }}
               />
               <span style={{
-                fontFamily: F.display, fontSize: 19, fontWeight: 600,
-                color: T.ink, letterSpacing: '0.005em',
+                fontFamily: F.ui, fontSize: 19, fontWeight: 800,
+                color: T.ink, letterSpacing: '-0.02em',
               }}>YouSafe</span>
             </div>
           ) : (
@@ -300,7 +300,7 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
                 style={{ width: 30, height: 30, objectFit: 'contain' }}
               />
               <div style={{ textAlign: 'left' as const }}>
-                <div style={{ fontFamily: F.display, fontSize: '15px', fontWeight: 600, color: T.ink, letterSpacing: '0.01em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
+                <div style={{ fontFamily: F.ui, fontSize: '15px', fontWeight: 800, color: T.ink, letterSpacing: '-0.015em', lineHeight: 1.1, whiteSpace: 'nowrap' }}>YouSafe</div>
                 <div className="ys-shell-brand-sub" style={{ fontSize: '9px', color: T.inkSoft, letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginTop: '1px', whiteSpace: 'nowrap' }}>
                   {role === 'client' ? 'Marketplace' : role === 'attorney' ? 'Attorney Portal' : role === 'consultant' ? 'Consultant Portal' : 'Marketplace'}
                 </div>
@@ -348,7 +348,7 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
         <nav
           ref={navScrollRef}
           className="ys-market-nav"
-          style={{ display: 'flex', alignItems: 'center', flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, overflowX: 'auto' as const, scrollbarWidth: 'none' as const }}
         >
           {links.map(link => {
             const active = link.view === activeView
@@ -357,22 +357,23 @@ function TopNav({ role, activeView, onNav, country }: { role: Role; activeView: 
                 key={link.view}
                 ref={(el) => { if (active) activeNavRef.current = el }}
                 onClick={() => onNav(link.view as Section)}
+                onMouseEnter={(e) => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.color = T.ink; el.style.background = T.paper2 } }}
+                onMouseLeave={(e) => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.color = T.inkMid; el.style.background = 'none' } }}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '0 18px',
-                  fontSize: '13.5px', fontWeight: active ? 600 : 500,
-                  color: active ? T.ink : T.inkSoft,
+                  display: 'inline-flex', alignItems: 'center',
+                  padding: '9px 16px',
+                  borderRadius: 9,
+                  fontSize: '14px', fontWeight: active ? 700 : 500,
+                  color: active ? T.indigo : T.inkMid,
                   background: active ? T.indigoSoft : 'none',
                   border: 'none',
-                  borderBottom: active ? `2px solid ${T.gold}` : '2px solid transparent',
                   cursor: 'pointer', whiteSpace: 'nowrap' as const,
-                  letterSpacing: active ? '0.01em' : '0',
+                  letterSpacing: '-0.005em',
                   flexShrink: 0,
-                  transition: 'color 0.12s, border-color 0.12s, background 0.12s',
+                  transition: 'color 0.12s, background 0.12s',
                   fontFamily: F.ui,
                 }}
               >
-                <span style={{ fontSize: '13px', opacity: active ? 1 : 0.7 }}>{link.icon}</span>
                 {link.label}
               </button>
             )
