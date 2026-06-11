@@ -890,7 +890,7 @@ const CSS = `
 
 const HERO_HEADLINES: Record<Country, { eyebrow: string; h1: React.ReactNode; lede: string }> = {
   all: {
-    eyebrow: 'US · UK · CA — fixed-fee, no consultation traps',
+    eyebrow: 'US · UK · CA · AU — fixed-fee, no consultation traps',
     h1: <>Talk to an attorney about your case — <em>by the brief, not the hour.</em></>,
     lede:
       'A vetted marketplace of licensed immigration attorneys, regulated consultants and tenancy specialists. ' +
