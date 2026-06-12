@@ -69,7 +69,10 @@ export default async function Page() {
       <link
         rel="preload"
         as="image"
-        href="/seo-intro-hero-poster.jpg"
+        href="/landing-slides/airport-terminal-900.webp"
+        imageSrcSet="/landing-slides/airport-terminal-900.webp 900w, /landing-slides/airport-terminal-1600.webp 1600w"
+        imageSizes="100vw"
+        type="image/webp"
         fetchPriority="high"
       />
       <script
