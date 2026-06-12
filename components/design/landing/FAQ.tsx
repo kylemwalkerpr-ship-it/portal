@@ -2,6 +2,7 @@
 import React from 'react'
 import { T } from './tokens'
 import { Plus, ArrowUR } from './icons'
+import SectionVideoBackdrop from './SectionVideoBackdrop'
 
 const SUPPORT = 'https://support.yousafeconsultancy.com/'
 
@@ -16,7 +17,7 @@ const ITEMS = [
   },
   {
     q: 'What countries do you cover?',
-    a: 'Today: United States, United Kingdom and Canada. Country-specific compliance (ABA Rule 5.4 in the US, SRA in the UK, Law Society rules in Canada) is enforced at the platform level.',
+    a: 'Today: United States, United Kingdom, Canada and Australia. Country-specific compliance (ABA Rule 5.4 in the US, SRA in the UK, Law Society rules in Canada, and Australian legal profession rules) is enforced at the platform level.',
   },
   {
     q: 'Is my information secure?',
@@ -36,7 +37,19 @@ export default function FAQ() {
   const [openIdx, setOpenIdx] = React.useState<number | null>(null)
 
   return (
-    <section id="faq" style={{ background: T.surface, padding: '88px 40px' }}>
+    <section
+      id="faq"
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        background: T.surface,
+        padding: '88px 40px',
+      }}
+    >
+      <SectionVideoBackdrop
+        overlay="linear-gradient(135deg, rgba(255,255,255,0.72), rgba(241,238,230,0.56))"
+        opacity={0.64}
+      />
       <style>{`
         .ys-faq-grid {
           display: grid;
@@ -51,7 +64,25 @@ export default function FAQ() {
         /* Two-column desktop pins the left column so the heading and
            Talk-to-support CTA stay visible while the reader scrolls the
            question list. */
-        .ys-faq-aside { position: sticky; top: 96px; align-self: start; }
+        .ys-faq-aside {
+          position: sticky;
+          top: 96px;
+          align-self: start;
+          background: rgba(255,255,255,0.84);
+          border: 1px solid rgba(255,255,255,0.52);
+          border-radius: 18px;
+          padding: 28px;
+          box-shadow: 0 24px 70px -52px rgba(15,23,42,0.44);
+          backdrop-filter: blur(10px);
+        }
+        .ys-faq-items {
+          background: rgba(255,255,255,0.84);
+          border: 1px solid rgba(255,255,255,0.52);
+          border-radius: 18px;
+          padding: 8px 28px;
+          box-shadow: 0 24px 70px -52px rgba(15,23,42,0.44);
+          backdrop-filter: blur(10px);
+        }
         @media (max-width: 980px) {
           .ys-faq-grid { grid-template-columns: 1fr; gap: 32px; }
           .ys-faq-items { grid-template-columns: 1fr; }
@@ -61,13 +92,14 @@ export default function FAQ() {
              user scrolls and the visible text starts overlapping (the
              bug the user screenshotted). Un-stick it on mobile. */
           .ys-faq-aside { position: static; top: auto; }
+          .ys-faq-items { padding: 8px 22px; }
         }
         /* The questions section is also sticky-free on the section
            background — make sure no parent sets overflow:clip that
            would re-create a stacking context bug. */
       `}</style>
 
-      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1240, margin: '0 auto' }}>
         <div className="ys-faq-grid">
           <div className="ys-faq-aside">
             <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.inkSoft }}>

@@ -2,6 +2,7 @@
 import React from 'react'
 import { T } from './tokens'
 import { Cap, Scale, Check, Arrow } from './icons'
+import SectionVideoBackdrop from './SectionVideoBackdrop'
 
 const MARKET_CATEGORIES = 'https://market.yousafeconsultancy.com/categories'
 
@@ -31,7 +32,7 @@ const PRACTICES: PracticeCard[] = [
   },
   {
     eyebrow: 'Legal document prep',
-    title: 'US, UK & Canada legal review',
+    title: 'US, UK, Canada & AU legal review',
     body: 'Licensed attorneys claim your case from a vetted panel, message you directly, then send a custom offer. Their fee is paid in full to them; the platform fee is disclosed separately, per ABA Rule 5.4.',
     bullets: ['Document review & preparation', 'Attorney consultation', 'Compliance check'],
     linkText: 'Browse legal services',
@@ -47,10 +48,13 @@ export default function TwoPractices() {
     <section
       id="practices"
       style={{
+        position: 'relative',
+        overflow: 'hidden',
         background: T.surface2,
         padding: '80px 40px',
       }}
     >
+      <SectionVideoBackdrop />
       <style>{`
         .ys-practices-grid {
           display: grid;
@@ -66,6 +70,8 @@ export default function TwoPractices() {
 
       <div
         style={{
+          position: 'relative',
+          zIndex: 1,
           maxWidth: 1240,
           margin: '0 auto',
         }}
@@ -76,10 +82,12 @@ export default function TwoPractices() {
               key={p.eyebrow}
               style={{
                 position: 'relative',
-                background: T.surface,
+                background: 'rgba(255,255,255,0.88)',
+                backdropFilter: 'blur(10px)',
                 borderRadius: 18,
                 padding: 38,
                 overflow: 'hidden',
+                boxShadow: '0 24px 70px -48px rgba(15,23,42,0.38)',
               }}
             >
               {/* Accent top-left bar */}

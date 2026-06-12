@@ -2,6 +2,7 @@
 import React from 'react'
 import { T } from './tokens'
 import { Doc, Spark, Coin, Check } from './icons'
+import SectionVideoBackdrop from './SectionVideoBackdrop'
 
 const STEPS = [
   {
@@ -35,20 +36,31 @@ export default function HowItWorks() {
     <section
       id="how"
       style={{
+        position: 'relative',
+        overflow: 'hidden',
         background: T.paper,
         padding: '88px 40px',
       }}
     >
+      <SectionVideoBackdrop
+        overlay="linear-gradient(135deg, rgba(250,250,248,0.68), rgba(241,238,230,0.54))"
+        opacity={0.66}
+      />
       <style>{`
         .ys-how-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 0;
+          gap: 14px;
           position: relative;
         }
         .ys-how-step {
-          padding: 0 24px;
+          padding: 22px 24px 24px;
           position: relative;
+          background: rgba(255,255,255,0.82);
+          border: 1px solid rgba(255,255,255,0.5);
+          border-radius: 16px;
+          box-shadow: 0 22px 60px -50px rgba(15,23,42,0.42);
+          backdrop-filter: blur(10px);
         }
         .ys-how-step::after {
           content: '';
@@ -61,13 +73,13 @@ export default function HowItWorks() {
         }
         .ys-how-step:last-child::after { display: none; }
         @media (max-width: 720px) {
-          .ys-how-grid { grid-template-columns: 1fr; gap: 32px; }
+          .ys-how-grid { grid-template-columns: 1fr; gap: 18px; }
           .ys-how-step::after { display: none; }
-          .ys-how-step { padding: 0; }
+          .ys-how-step { padding: 22px; }
         }
       `}</style>
 
-      <div style={{ maxWidth: 1240, margin: '0 auto' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 1240, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
           <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: T.inkSoft }}>
             How it works
