@@ -114,7 +114,6 @@ async function submitHost(host: string): Promise<{ host: string; urls: number; s
 }
 
 async function run(req: Request) {
-  const { after } = await import('next/server')
   const url = new URL(req.url)
   if (url.searchParams.get('key') !== INDEXNOW_KEY) {
     return Response.json({ error: 'not found' }, { status: 404 })
@@ -122,25 +121,23 @@ async function run(req: Request) {
   const only = url.searchParams.get('host')
   const hosts = only ? HOSTS.filter(h => h === only) : HOSTS
 
-  // Do the actual work post-response via after() → ctx.waitUntil on
-  // Workers. Sitemap crawls + submissions can exceed an impatient
-  // client's timeout; without this, a client disconnect cancels the
-  // request context mid-run and nothing gets submitted or logged.
-  after(async () => {
-    const results = []
-    for (const h of hosts) {
-      results.push(await submitHost(h))
-      // Space per-host submissions — all 7 POSTs come from the same worker
-      // egress IP, and back-to-back requests tripped IndexNow's 429s.
-      if (h !== hosts[hosts.length - 1]) await sleep(2000)
-    }
-    try {
-      const { createSupabaseAdminClient } = await import('@/lib/supabase')
-      await createSupabaseAdminClient().from('indexnow_log').insert({ results })
-    } catch { /* non-blocking */ }
-  })
+  // Runs INLINE deliberately. next/server after() never fires under this
+  // OpenNext setup (verified 2026-06-12: after()-wrapped runs left no log
+  // rows; the synchronous version completed and logged even when the
+  // client disconnected early). All waits are network/timer — no CPU.
+  const results = []
+  for (const h of hosts) {
+    results.push(await submitHost(h))
+    // Space per-host submissions — all POSTs come from the same worker
+    // egress IP, and back-to-back requests tripped IndexNow's 429s.
+    if (h !== hosts[hosts.length - 1]) await sleep(2000)
+  }
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    await createSupabaseAdminClient().from('indexnow_log').insert({ results })
+  } catch { /* non-blocking */ }
 
-  return Response.json({ started: true, hosts })
+  return Response.json({ submitted: results })
 }
 
 export async function GET(req: Request) { return run(req) }
