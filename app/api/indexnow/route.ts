@@ -77,23 +77,28 @@ async function submitHost(host: string): Promise<{ host: string; urls: number; s
 }
 
 async function run(req: Request) {
+  const { after } = await import('next/server')
   const url = new URL(req.url)
   if (url.searchParams.get('key') !== INDEXNOW_KEY) {
     return Response.json({ error: 'not found' }, { status: 404 })
   }
   const only = url.searchParams.get('host')
   const hosts = only ? HOSTS.filter(h => h === only) : HOSTS
-  const results = []
-  for (const h of hosts) results.push(await submitHost(h))
 
-  // Log the run so submissions are auditable via SQL (and so scheduled
-  // runs leave a verifiable trail).
-  try {
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    await createSupabaseAdminClient().from('indexnow_log').insert({ results })
-  } catch { /* non-blocking */ }
+  // Do the actual work post-response via after() → ctx.waitUntil on
+  // Workers. Sitemap crawls + submissions can exceed an impatient
+  // client's timeout; without this, a client disconnect cancels the
+  // request context mid-run and nothing gets submitted or logged.
+  after(async () => {
+    const results = []
+    for (const h of hosts) results.push(await submitHost(h))
+    try {
+      const { createSupabaseAdminClient } = await import('@/lib/supabase')
+      await createSupabaseAdminClient().from('indexnow_log').insert({ results })
+    } catch { /* non-blocking */ }
+  })
 
-  return Response.json({ submitted: results })
+  return Response.json({ started: true, hosts })
 }
 
 export async function GET(req: Request) { return run(req) }
