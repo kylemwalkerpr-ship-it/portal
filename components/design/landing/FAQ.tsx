@@ -46,10 +46,7 @@ export default function FAQ() {
         padding: '88px 40px',
       }}
     >
-      <SectionVideoBackdrop
-        overlay="linear-gradient(135deg, rgba(255,255,255,0.72), rgba(241,238,230,0.56))"
-        opacity={0.64}
-      />
+      <SectionVideoBackdrop opacity={0.82} />
       <style>{`
         .ys-faq-grid {
           display: grid;

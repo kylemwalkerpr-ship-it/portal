@@ -42,10 +42,7 @@ export default function HowItWorks() {
         padding: '88px 40px',
       }}
     >
-      <SectionVideoBackdrop
-        overlay="linear-gradient(135deg, rgba(250,250,248,0.68), rgba(241,238,230,0.54))"
-        opacity={0.66}
-      />
+      <SectionVideoBackdrop opacity={0.82} />
       <style>{`
         .ys-how-grid {
           display: grid;

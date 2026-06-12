@@ -4,15 +4,11 @@ import React from 'react'
 const HERO_VIDEO = '/seo-intro-hero.mp4'
 const HERO_POSTER = '/seo-intro-hero-poster.jpg'
 
-interface SectionVideoBackdropProps {
-  overlay?: string
-  opacity?: number
-}
-
 export default function SectionVideoBackdrop({
-  overlay = 'linear-gradient(135deg, rgba(250,250,248,0.72), rgba(241,238,230,0.58))',
-  opacity = 0.62,
-}: SectionVideoBackdropProps) {
+  opacity = 0.82,
+}: {
+  opacity?: number
+}) {
   return (
     <>
       <video
@@ -39,15 +35,6 @@ export default function SectionVideoBackdrop({
       >
         <source src={HERO_VIDEO} type="video/mp4" />
       </video>
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: overlay,
-          pointerEvents: 'none',
-        }}
-      />
     </>
   )
 }

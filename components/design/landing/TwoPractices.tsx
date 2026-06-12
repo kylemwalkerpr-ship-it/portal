@@ -54,7 +54,7 @@ export default function TwoPractices() {
         padding: '80px 40px',
       }}
     >
-      <SectionVideoBackdrop />
+      <SectionVideoBackdrop opacity={0.82} />
       <style>{`
         .ys-practices-grid {
           display: grid;

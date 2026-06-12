@@ -31,26 +31,17 @@ export default function HomeClient({ gigs }: HomeClientProps) {
   return (
     <>
       <Nav onOpenSignIn={() => setSignInOpen(true)} />
-      {/* Sticky cascade: every section below pins under the nav as the
-          user scrolls; later sections paint over earlier ones, producing
-          a card-stack effect. Inner sections keep their full-bleed
-          backgrounds, so each one occludes the previous one cleanly.
-          Section list deliberately lean — the original 13-section deck
-          read as filler and density. Order: intro → product → pillars →
-          process → proof → FAQ → CTA.
-          The .stack-wrapper bounds the cascade: position: sticky pins
-          only while its containing block is in view, so when the wrapper
-          scrolls past, the last section releases and the footer (a
-          sibling of HomeClient in page.tsx) flows in normally instead
-          of being covered by a perpetually-pinned FinalCTA. */}
+      {/* Keep the sticky cascade only for the opening handoff into Featured
+          Services. Practices onward scrolls normally so the rest of the page
+          reads as a progressive landing page instead of a stacked deck. */}
       <div className="stack-wrapper">
         <div className="stack-section"><Hero onSignup={() => { window.location.href = '/sign-up/student' }} /></div>
         <div className="stack-section"><FeaturedServices gigs={gigs} /></div>
-        <div className="stack-section"><TwoPractices /></div>
-        <div className="stack-section"><HowItWorks /></div>
-        <div className="stack-section"><FAQ /></div>
-        <div className="stack-section"><FinalCTA /></div>
       </div>
+      <TwoPractices />
+      <HowItWorks />
+      <FAQ />
+      <FinalCTA />
       <MemberSignInModal open={signInOpen} onClose={() => setSignInOpen(false)} />
     </>
   )
