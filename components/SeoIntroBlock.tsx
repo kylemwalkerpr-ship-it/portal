@@ -94,8 +94,8 @@ export async function SeoIntroBlock({
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          opacity: 0.42,
-          filter: 'saturate(0.8) contrast(1.05) brightness(0.72)',
+          opacity: 0.9,
+          filter: 'saturate(0.95) contrast(1.04) brightness(0.96)',
           pointerEvents: 'none',
         }}
       >
@@ -107,17 +107,17 @@ export async function SeoIntroBlock({
           position: 'absolute',
           inset: 0,
           background:
-            'linear-gradient(90deg, rgba(15,23,42,0.92) 0%, rgba(13,32,96,0.82) 54%, rgba(13,32,96,0.62) 100%)',
+            'linear-gradient(90deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.58) 46%, rgba(13,32,96,0.26) 100%)',
         }}
       />
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 980, margin: '0 auto' }}>
         {tEyebrow && (
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(196,164,90,0.95)', marginBottom: 6, fontFamily: "'SF Mono', Menlo, Consolas, monospace" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(236,206,137,0.98)', marginBottom: 6, fontFamily: "'SF Mono', Menlo, Consolas, monospace", textShadow: '0 1px 8px rgba(3,7,18,0.68)' }}>
             {tEyebrow}
           </div>
         )}
-        <h2 style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05 }}>{tTitle}</h2>
-        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.78)', lineHeight: 1.6, margin: 0, maxWidth: 720 }}>{tDesc}</p>
+        <h2 style={{ fontFamily: "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)", fontSize: 'clamp(28px, 4.5vw, 44px)', fontWeight: 600, color: '#FFF', margin: '0 0 12px', letterSpacing: '-.012em', lineHeight: 1.05, textShadow: '0 2px 18px rgba(3,7,18,0.82)' }}>{tTitle}</h2>
+        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6, margin: 0, maxWidth: 720, textShadow: '0 1px 12px rgba(3,7,18,0.72)' }}>{tDesc}</p>
       </div>
     </header>
   )
