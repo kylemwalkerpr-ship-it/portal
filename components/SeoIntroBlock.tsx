@@ -32,6 +32,9 @@ interface SeoIntroBlockProps {
   tone?: 'navy' | 'plain'
 }
 
+const SEO_INTRO_VIDEO = '/seo-intro-hero.mp4'
+const SEO_INTRO_POSTER = '/seo-intro-hero-poster.jpg'
+
 export async function SeoIntroBlock({
   title,
   description,
@@ -66,13 +69,48 @@ export async function SeoIntroBlock({
     <header
       data-no-translate
       style={{
+        position: 'relative',
+        overflow: 'hidden',
         background: 'linear-gradient(135deg, #0F172A 0%, #0d2060 100%)',
         color: '#FFF',
         padding: '40px 24px 28px',
         fontFamily: "var(--portal-font-body, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif)",
       }}
     >
-      <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      <video
+        aria-hidden="true"
+        className="ys-bg-video"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        poster={SEO_INTRO_POSTER}
+        disablePictureInPicture
+        controls={false}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          opacity: 0.42,
+          filter: 'saturate(0.8) contrast(1.05) brightness(0.72)',
+          pointerEvents: 'none',
+        }}
+      >
+        <source src={SEO_INTRO_VIDEO} type="video/mp4" />
+      </video>
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(90deg, rgba(15,23,42,0.92) 0%, rgba(13,32,96,0.82) 54%, rgba(13,32,96,0.62) 100%)',
+        }}
+      />
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 980, margin: '0 auto' }}>
         {tEyebrow && (
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(196,164,90,0.95)', marginBottom: 6, fontFamily: "'SF Mono', Menlo, Consolas, monospace" }}>
             {tEyebrow}

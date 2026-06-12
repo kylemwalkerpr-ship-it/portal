@@ -69,7 +69,7 @@ export default async function Page() {
       <link
         rel="preload"
         as="image"
-        href="https://media.yousafeconsultancy.com/hero/student-working.poster.jpg?v=20260524"
+        href="/seo-intro-hero-poster.jpg"
         fetchPriority="high"
       />
       <script
