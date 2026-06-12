@@ -31,7 +31,31 @@ function extractLocs(xml: string): string[] {
   return out
 }
 
+// Hosts served by THIS worker. A Cloudflare Worker cannot fetch() its own
+// zone (error 1042), so https://<own host>/sitemap.xml always throws from
+// inside the worker — observed as "no sitemap urls" on every run while the
+// same URL worked fine from a browser. Source those URLs by invoking the
+// sitemap module directly instead of going over HTTP.
+const OWN_HOSTS = new Set([
+  'market.yousafeconsultancy.com',
+  'portal.yousafeconsultancy.com',
+])
+
+async function urlsForOwnHost(host: string): Promise<string[]> {
+  try {
+    const { default: sitemap } = await import('@/app/sitemap')
+    const entries = await sitemap()
+    return entries
+      .map(e => e.url)
+      .filter(u => { try { return new URL(u).host === host } catch { return false } })
+      .slice(0, 10000)
+  } catch {
+    return []
+  }
+}
+
 async function urlsForHost(host: string): Promise<string[]> {
+  if (OWN_HOSTS.has(host)) return urlsForOwnHost(host)
   try {
     const r = await fetch(`https://${host}/sitemap.xml`, { signal: AbortSignal.timeout(10000) })
     if (!r.ok) return []
@@ -55,9 +79,9 @@ async function urlsForHost(host: string): Promise<string[]> {
   }
 }
 
-async function submitHost(host: string): Promise<{ host: string; urls: number; status: number | string }> {
-  const urlList = await urlsForHost(host)
-  if (!urlList.length) return { host, urls: 0, status: 'no sitemap urls' }
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+async function postIndexNow(host: string, urlList: string[]): Promise<number | string> {
   try {
     const r = await fetch('https://api.indexnow.org/indexnow', {
       method: 'POST',
@@ -70,10 +94,23 @@ async function submitHost(host: string): Promise<{ host: string; urls: number; s
       }),
       signal: AbortSignal.timeout(15000),
     })
-    return { host, urls: urlList.length, status: r.status }
+    return r.status
   } catch (e: any) {
-    return { host, urls: urlList.length, status: String(e?.message || 'fetch failed') }
+    return String(e?.message || 'fetch failed')
   }
+}
+
+async function submitHost(host: string): Promise<{ host: string; urls: number; status: number | string }> {
+  const urlList = await urlsForHost(host)
+  if (!urlList.length) return { host, urls: 0, status: 'no sitemap urls' }
+  let status = await postIndexNow(host, urlList)
+  // 429 = rate limited, 503 = IndexNow busy — both transient. One bounded
+  // retry after a pause recovers most of them (observed on 2026-06-12 run).
+  if (status === 429 || status === 503) {
+    await sleep(10000)
+    status = await postIndexNow(host, urlList)
+  }
+  return { host, urls: urlList.length, status }
 }
 
 async function run(req: Request) {
@@ -91,7 +128,12 @@ async function run(req: Request) {
   // request context mid-run and nothing gets submitted or logged.
   after(async () => {
     const results = []
-    for (const h of hosts) results.push(await submitHost(h))
+    for (const h of hosts) {
+      results.push(await submitHost(h))
+      // Space per-host submissions — all 7 POSTs come from the same worker
+      // egress IP, and back-to-back requests tripped IndexNow's 429s.
+      if (h !== hosts[hosts.length - 1]) await sleep(2000)
+    }
     try {
       const { createSupabaseAdminClient } = await import('@/lib/supabase')
       await createSupabaseAdminClient().from('indexnow_log').insert({ results })
