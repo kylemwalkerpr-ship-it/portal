@@ -55,33 +55,43 @@ function SparkLine({ values = [], color = NAVY, height = 30, width = 90 }) {
   )
 }
 
+// HTML/CSS bar chart. (The prior SVG used preserveAspectRatio="none" with a
+// width-100 viewBox stretched across the full pixel width — an ~11x
+// horizontal scale that smeared the bars and rendered the date labels as
+// unreadable distorted glyphs.) Plain flex bars + labels stay crisp.
 function BarChart({ data = [], height = 110, color = NAVY }) {
   if (!data.length) return <EmptyChart height={height} />
   const max = Math.max(...data.map(d => d.value), 1)
-  const w = 100 / data.length
-  // Thin x-labels when there are many bars so they don't overlap.
-  // Roughly target 8-12 visible labels regardless of series length.
+  // Thin x-labels when crowded so they don't collide.
   const stride = data.length > 14 ? Math.ceil(data.length / 8) : 1
   return (
-    <svg viewBox={`0 0 100 ${height + 18}`} preserveAspectRatio="none" style={{ width: '100%', height: height + 18, overflow: 'visible' }}>
-      {data.map((d, i) => {
-        const bh = (d.value / max) * height
-        const x = i * w + w * 0.1
-        const bw = w * 0.8
-        const showLabel = i === 0 || i === data.length - 1 || i % stride === 0
-        return (
-          <g key={i}>
-            <title>{d.label}: {fmtNum(d.value)}</title>
-            <rect x={x} y={height - bh} width={bw} height={bh} fill={d.highlight ? GOLD : color} rx="1.5" opacity={0.92} />
-            {showLabel && (
-              <text x={x + bw / 2} y={height + 12} textAnchor="middle" fontSize="4.5" fill="#9097A8" fontFamily={sans}>
-                {d.shortLabel || d.label}
-              </text>
-            )}
-          </g>
-        )
-      })}
-    </svg>
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: data.length > 20 ? 2 : 4, height }}>
+        {data.map((d, i) => {
+          const bh = Math.max((d.value / max) * height, d.value > 0 ? 2 : 0)
+          return (
+            <div key={i} title={`${d.label}: ${fmtNum(d.value)}`}
+              style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <div style={{
+                width: '100%', maxWidth: 28, height: bh,
+                background: d.highlight ? GOLD : color, borderRadius: '2px 2px 0 0',
+                opacity: 0.92, minHeight: d.value > 0 ? 2 : 0,
+              }} />
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: data.length > 20 ? 2 : 4, marginTop: 6 }}>
+        {data.map((d, i) => {
+          const showLabel = i === 0 || i === data.length - 1 || i % stride === 0
+          return (
+            <div key={i} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 9.5, color: '#9097A8', fontFamily: sans, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              {showLabel ? (d.shortLabel || d.label) : ''}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
