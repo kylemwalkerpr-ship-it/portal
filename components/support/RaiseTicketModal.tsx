@@ -122,7 +122,7 @@ export function RaiseTicketModal({
             <textarea
               rows={3} value={detail} maxLength={4000}
               onChange={(e) => setDetail(e.target.value)}
-              placeholder="Stripe acknowledgment ID, prior conversation excerpt, etc."
+              placeholder="Payment reference, prior conversation excerpt, etc."
               style={input}
             />
           </label>
