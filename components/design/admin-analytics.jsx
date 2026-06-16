@@ -22,6 +22,7 @@ const TABS = [
   { id: 'engagement',   label: 'Engagement'   },
   { id: 'retention',    label: 'Retention'    },
   { id: 'marketplace',  label: 'Marketplace'  },
+  { id: 'search',       label: 'Search & Traffic' },
 ]
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -308,6 +309,7 @@ export default function AdminAnalyticsPro() {
   const engagement        = useAnalytics('engagement')
   const retention         = useAnalytics('retention')
   const marketplaceHealth = useAnalytics('marketplace-health')
+  const searchConsole     = useAnalytics('search-console')
 
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 22, fontFamily: sans, minHeight: '100vh', background: 'var(--portal-bg)' }}>
@@ -318,7 +320,7 @@ export default function AdminAnalyticsPro() {
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.14em', color: 'var(--portal-ink-soft)', marginBottom: 4 }}>Intelligence</div>
           <h2 style={{ fontFamily: serif, fontWeight: 600, fontSize: 34, color: NAVY, margin: 0, letterSpacing: '-.015em', lineHeight: 1.1 }}>Site Analytics</h2>
           <p style={{ color: 'var(--portal-ink-soft)', fontSize: 13, margin: '5px 0 0', lineHeight: 1.5 }}>
-            Funnel-stage view of every step from signup to a returning, loyal client.
+            Funnel-stage view from signup to a returning client, plus live search &amp; traffic performance.
           </p>
         </div>
       </div>
@@ -351,7 +353,101 @@ export default function AdminAnalyticsPro() {
 
       {/* ── MARKETPLACE HEALTH ─────────────────────────────────────────────── */}
       {tab === 'marketplace' && <MarketplaceTab q={marketplaceHealth} />}
+
+      {/* ── SEARCH & TRAFFIC (Google Search Console) ───────────────────────── */}
+      {tab === 'search' && <SearchTab q={searchConsole} />}
     </div>
+  )
+}
+
+// ─── SEARCH & TRAFFIC ─────────────────────────────────────────────────────────
+function SearchTab({ q }) {
+  const d = q.data || {}
+  const totals = d.totals || {}
+  const prev = d.totalsPrev || null
+  const clicksDelta = prev && prev.clicks ? ((totals.clicks - prev.clicks) / prev.clicks) * 100 : null
+  const imprDelta = prev && prev.impressions ? ((totals.impressions - prev.impressions) / prev.impressions) * 100 : null
+  const dailyClicks = (d.daily || []).map(x => x.clicks)
+  const dailyImpr = (d.daily || []).map(x => x.impressions)
+
+  const shortUrl = (u) => { try { const p = new URL(u); return (p.host.replace(/^www\./, '') + p.pathname).replace(/\/$/, '') || p.host } catch { return u } }
+  const queryRows = (d.topQueries || []).map(r => ({
+    query: r.key,
+    clicks: fmtNum(r.clicks),
+    impressions: fmtNum(r.impressions),
+    ctr: fmtPct((r.ctr || 0) * 100),
+    position: (r.position || 0).toFixed(1),
+  }))
+  const pageRows = (d.topPages || []).map(r => ({
+    page: shortUrl(r.key),
+    clicks: fmtNum(r.clicks),
+    impressions: fmtNum(r.impressions),
+    ctr: fmtPct((r.ctr || 0) * 100),
+    position: (r.position || 0).toFixed(1),
+  }))
+
+  // Not-configured state — surfaced clearly so an operator knows it's a
+  // credentials gap, not zero traffic.
+  if (!q.loading && d.configured === false) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 28, textAlign: 'center' }}>
+        <div style={{ fontFamily: serif, fontSize: 20, color: NAVY, marginBottom: 6 }}>Search Console not connected</div>
+        <p style={{ color: 'var(--portal-ink-soft)', fontSize: 13, lineHeight: 1.6, maxWidth: 520, margin: '0 auto' }}>
+          Set <code>GSC_SITE_URL</code> and the <code>GSC_OAUTH_*</code> secrets on the portal worker to surface live
+          search clicks, impressions, and top queries here.
+        </p>
+        <DataWarnings items={d.warnings} />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <DataWarnings items={d.warnings} />
+      <p style={{ color: 'var(--portal-ink-soft)', fontSize: 12.5, margin: '-6px 0 0', lineHeight: 1.5 }}>
+        Google Search Console · {d.range?.startDate} → {d.range?.endDate} ({d.range?.days || 28}-day window).
+        Organic-search clicks are the dominant traffic channel for the consultancy estate.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(195px, 1fr))', gap: 12 }}>
+        {q.loading ? [1, 2, 3, 4].map(i => <KpiSkeleton key={i} />) : (
+          <>
+            <Kpi label="Clicks" value={fmtNum(totals.clicks, true)} sub={prev ? `vs ${fmtNum(prev.clicks, true)} prior` : 'organic visits'} delta={clicksDelta} spark={dailyClicks} sparkColor={GREEN} accent={GREEN} />
+            <Kpi label="Impressions" value={fmtNum(totals.impressions, true)} sub={prev ? `vs ${fmtNum(prev.impressions, true)} prior` : 'search appearances'} delta={imprDelta} spark={dailyImpr} sparkColor={NAVY} accent={NAVY} />
+            <Kpi label="Avg CTR" value={fmtPct((totals.ctr || 0) * 100)} sub="clicks ÷ impressions" accent={PURPLE} />
+            <Kpi label="Avg Position" value={(totals.position || 0).toFixed(1)} sub="lower is better" accent={GOLD} />
+          </>
+        )}
+      </div>
+
+      <Sec title="Clicks by Day" sub={`Daily organic clicks · ${d.range?.days || 28}-day window`}>
+        <Card style={{ padding: 20 }}>
+          {q.loading ? <Skeleton h={120} /> : (
+            <BarChart data={(d.daily || []).map(x => ({ label: fmtDate(x.date), shortLabel: fmtDate(x.date).split(' ')[0], value: x.clicks }))} height={110} color={GREEN} />
+          )}
+        </Card>
+      </Sec>
+
+      <Sec title="Top Queries" sub="Highest-impression search terms" right={<ExportBtn rows={queryRows} filename="search-top-queries.csv" />}>
+        <DT cols={[
+          { key: 'query',       label: 'Query', wrap: true },
+          { key: 'clicks',      label: 'Clicks', r: true, bold: true },
+          { key: 'impressions', label: 'Impressions', r: true },
+          { key: 'ctr',         label: 'CTR', r: true, dim: true },
+          { key: 'position',    label: 'Pos.', r: true, dim: true },
+        ]} rows={queryRows} empty="No query data in this window" />
+      </Sec>
+
+      <Sec title="Top Pages" sub="Most-surfaced URLs across the estate" right={<ExportBtn rows={pageRows} filename="search-top-pages.csv" />}>
+        <DT cols={[
+          { key: 'page',        label: 'Page', wrap: true },
+          { key: 'clicks',      label: 'Clicks', r: true, bold: true },
+          { key: 'impressions', label: 'Impressions', r: true },
+          { key: 'ctr',         label: 'CTR', r: true, dim: true },
+          { key: 'position',    label: 'Pos.', r: true, dim: true },
+        ]} rows={pageRows} empty="No page data in this window" />
+      </Sec>
+    </>
   )
 }
 
