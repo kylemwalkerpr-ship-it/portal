@@ -44,7 +44,7 @@ export async function GET() {
     const { data, error } = await db
       .from('profiles')
       .select('id, role, created_at')
-      .eq('role', 'student')
+      .eq('role', 'client')   // buyers carry role 'client' (shown as "students" in admin)
       .gte('created_at', ago90)
     if (error) throw error
     cohort = data ?? []

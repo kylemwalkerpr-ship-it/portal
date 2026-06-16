@@ -66,9 +66,13 @@ export async function GET() {
   const signups30 = profiles.filter(p => p.created_at >= ago30)
   const signupsPrev = profiles.filter(p => p.created_at < ago30 && p.created_at >= ago60)
 
+  // Buyers carry role 'client' in the DB (the admin Users tab surfaces them
+  // as "students"); map it into the student bucket so the main segment isn't
+  // dumped into "other".
   const signups_by_role_30d: Record<string, number> = { student: 0, consultant: 0, attorney: 0, support: 0, other: 0 }
   for (const p of signups30) {
-    if (p.role && p.role in signups_by_role_30d) signups_by_role_30d[p.role]++
+    const role = p.role === 'client' ? 'student' : p.role
+    if (role && role in signups_by_role_30d) signups_by_role_30d[role]++
     else signups_by_role_30d.other++
   }
 

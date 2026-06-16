@@ -99,7 +99,7 @@ export async function GET() {
 
   return ok({
     total_users: {
-      student:    byRole['student']    ?? 0,
+      student:    byRole['client']     ?? byRole['student'] ?? 0,
       consultant: byRole['consultant'] ?? 0,
       attorney:   byRole['attorney']   ?? 0,
       support:    byRole['support']    ?? 0,

@@ -82,7 +82,7 @@ export async function GET(req: Request) {
   } catch (e: any) {
     data_warnings.push(`orders (activation): ${e.message}`)
   }
-  const students = allProfiles.filter(p => p.role === 'student')
+  const students = allProfiles.filter(p => p.role === 'client' || p.role === 'student')
   const activated = students.filter(p => studentOrderSet.has(p.id)).length
   const activation_rate = students.length ? (activated / students.length) * 100 : 0
 
