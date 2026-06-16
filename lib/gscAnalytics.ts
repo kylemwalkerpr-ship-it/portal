@@ -10,12 +10,12 @@
  * keyword path (GSC_OAUTH_* + GSC_SITE_URL). Edge-safe: plain fetch only.
  */
 
+import { getGscConfig } from '@/lib/gscConfig'
+
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
-async function getAccessToken(): Promise<string | null> {
-  const refreshToken = process.env.GSC_OAUTH_REFRESH_TOKEN
-  const clientId = process.env.GSC_OAUTH_CLIENT_ID
-  const clientSecret = process.env.GSC_OAUTH_CLIENT_SECRET
+async function getAccessToken(cfg: { refreshToken: string | null; clientId: string | null; clientSecret: string | null }): Promise<string | null> {
+  const { refreshToken, clientId, clientSecret } = cfg
   if (!refreshToken || !clientId || !clientSecret) return null
   try {
     const res = await fetch(TOKEN_URL, {
@@ -80,7 +80,8 @@ async function query(token: string, site: string, body: Record<string, unknown>)
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
 export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics> {
-  const site = process.env.GSC_SITE_URL
+  const cfg = await getGscConfig()
+  const site = cfg.siteUrl
   const warnings: string[] = []
   const endMs = Date.now()
   const startMs = endMs - days * 86400_000
@@ -98,9 +99,9 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     warnings,
   }
 
-  if (!site) { warnings.push('GSC_SITE_URL not set'); return empty }
-  const token = await getAccessToken()
+  const token = await getAccessToken(cfg)
   if (!token) { warnings.push('GSC OAuth credentials not configured'); return empty }
+  if (!site) { warnings.push('GSC property URL not set'); return empty }
 
   const settled = await Promise.allSettled([
     query(token, site, { startDate: range.startDate, endDate: range.endDate }),                                   // totals

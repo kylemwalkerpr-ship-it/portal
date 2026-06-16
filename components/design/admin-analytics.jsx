@@ -309,7 +309,17 @@ function DataWarnings({ items }) {
 // MAIN COMPONENT
 // ═════════════════════════════════════════════════════════════════════════════
 export default function AdminAnalyticsPro() {
-  const [tab, setTab] = React.useState('acquisition')
+  const initialTab = (() => {
+    if (typeof window === 'undefined') return 'acquisition'
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return TABS.some(x => x.id === t) ? t : 'acquisition'
+  })()
+  const [tab, setTab] = React.useState(initialTab)
+  // Surface the OAuth round-trip result from the GSC connect flow.
+  const gscResult = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('gsc')
+    : null
+  const [gscNotice, setGscNotice] = React.useState(gscResult)
 
   // Per-tab data hooks. Only the active tab actually triggers a re-fetch
   // because each hook fires on mount; we mount all to keep tab-switching
@@ -334,6 +344,20 @@ export default function AdminAnalyticsPro() {
           </p>
         </div>
       </div>
+
+      {/* GSC connect result banner */}
+      {gscNotice && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+          padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          background: gscNotice === 'connected' ? '#ECF7F1' : '#FEF5E4',
+          border: `1px solid ${gscNotice === 'connected' ? '#BfE3CF' : '#F0E2C0'}`,
+          color: gscNotice === 'connected' ? GREEN : AMBER,
+        }}>
+          <span>{gscNotice === 'connected' ? '✓ Search Console connected. Live data below.' : '⚠ Search Console connection failed. Check the redirect URI and try again.'}</span>
+          <button onClick={() => setGscNotice(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 800, fontSize: 15 }}>×</button>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--portal-rule)', gap: 0, overflowX: 'auto', background: '#fff', borderRadius: '8px 8px 0 0', boxShadow: '0 1px 3px rgba(27,45,79,0.05)' }}>
@@ -402,11 +426,15 @@ function SearchTab({ q }) {
     return (
       <div style={{ background: '#fff', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 28, textAlign: 'center' }}>
         <div style={{ fontFamily: serif, fontSize: 20, color: NAVY, marginBottom: 6 }}>Search Console not connected</div>
-        <p style={{ color: 'var(--portal-ink-soft)', fontSize: 13, lineHeight: 1.6, maxWidth: 520, margin: '0 auto' }}>
-          Set <code>GSC_SITE_URL</code> and the <code>GSC_OAUTH_*</code> secrets on the portal worker to surface live
-          search clicks, impressions, and top queries here.
+        <p style={{ color: 'var(--portal-ink-soft)', fontSize: 13, lineHeight: 1.6, maxWidth: 520, margin: '0 auto 16px' }}>
+          Connect Google Search Console to surface live search clicks, impressions, CTR, and top
+          queries across the estate. You'll authorize with the Google account that owns the property.
         </p>
-        <DataWarnings items={d.warnings} />
+        <a href="/api/admin/analytics/gsc/connect" style={{
+          display: 'inline-block', padding: '10px 22px', borderRadius: 8, background: NAVY,
+          color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+        }}>Connect Search Console</a>
+        <div style={{ marginTop: 14 }}><DataWarnings items={d.warnings} /></div>
       </div>
     )
   }
