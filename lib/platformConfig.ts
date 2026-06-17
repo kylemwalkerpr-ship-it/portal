@@ -35,6 +35,10 @@ export const DEFAULT_PLATFORM_SETTINGS = {
   attorney_platform_fee_percent: 25,
   auto_release_days: 14,
   allow_admin_force_release: true,
+  // Master switch for student wallet card top-ups. Flip to false to
+  // temporarily disable card billing via the top-up feature (server-enforced
+  // in /api/wallet/topup; the UI hides the form when off).
+  wallet_topup_enabled: true,
   platform_name: 'YouSafe Consultancy LLC',
   support_email: 'support@yousafeconsultancy.com',
   // Shown on receipts. Registered business address — overridable via the

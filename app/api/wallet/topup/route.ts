@@ -22,6 +22,20 @@ export async function POST(req: Request) {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
+  // Master switch — card top-ups can be temporarily disabled platform-wide.
+  // Authoritative gate; the UI also hides the form, but this protects the
+  // charge path regardless of client state.
+  try {
+    const { getPlatformSettings } = await import('@/lib/platformConfig')
+    const settings = await getPlatformSettings()
+    if ((settings as any)?.wallet_topup_enabled === false) {
+      return Response.json(
+        { error: 'Wallet top-ups are temporarily unavailable. Please try again later.' },
+        { status: 403 },
+      )
+    }
+  } catch { /* settings read failed — fall through rather than lock everyone out */ }
+
   let body: Record<string, unknown>
   try {
     body = await req.json()

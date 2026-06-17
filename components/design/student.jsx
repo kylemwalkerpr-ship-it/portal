@@ -781,6 +781,16 @@ function TopUpDialog({ onClose, onSuccess }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [errMsg, setErrMsg] = React.useState(null);
   const [success, setSuccess] = React.useState(false);
+  // Master switch — when the platform has card top-ups disabled, show a
+  // notice instead of the charge form. Server enforces this regardless.
+  const [topupEnabled, setTopupEnabled] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/wallet/balance')
+      .then(r => r.json())
+      .then(d => { if (d && d.topupEnabled === false) setTopupEnabled(false); })
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     fetch('/api/wallet/payment-methods')
@@ -850,7 +860,16 @@ function TopUpDialog({ onClose, onSuccess }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: C.textMuted, lineHeight: 1 }}>×</button>
         </div>
 
-        {success ? (
+        {!topupEnabled ? (
+          <div style={{ background: C.surface2, border: `1px solid ${C.border2}`, borderRadius: '12px', padding: '22px', textAlign: 'center' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>⏸</div>
+            <div style={{ fontWeight: 700, color: C.text }}>Top-ups are temporarily unavailable</div>
+            <div style={{ fontSize: '13px', color: C.textMuted, marginTop: '6px', lineHeight: 1.5 }}>
+              Card top-ups are paused right now. Your existing wallet balance is unaffected and can still be used to pay.
+            </div>
+            <button onClick={onClose} style={{ marginTop: '16px', padding: '9px 20px', borderRadius: '10px', border: 'none', background: C.text, color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
+          </div>
+        ) : success ? (
           <div style={{ background: `${C.green}15`, border: `1px solid ${C.green}33`, borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
             <div style={{ fontSize: '32px', marginBottom: '8px' }}>✓</div>
             <div style={{ fontWeight: 700, color: C.green }}>Top-up successful!</div>
