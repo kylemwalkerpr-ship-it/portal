@@ -67,6 +67,9 @@ export async function PATCH(req: Request) {
     attorney_platform_fee_percent: attorneyPlatformFee,
     auto_release_days: autoReleaseDays,
     allow_admin_force_release: Boolean(body.allow_admin_force_release),
+    // Card top-ups: only disabled when explicitly false (fail-open so a
+    // missing field never silently kills billing).
+    wallet_topup_enabled: body.wallet_topup_enabled !== false,
     primary_currency: normalizePrimaryCurrency(body.primary_currency ?? DEFAULT_PLATFORM_SETTINGS.primary_currency),
     usd_to_cad_rate: usdToCadRate,
     usd_to_gbp_rate: usdToGbpRate,

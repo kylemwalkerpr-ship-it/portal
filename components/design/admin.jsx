@@ -190,6 +190,7 @@ function AdminApp({ onLogout }) {
   const [attorneyPlatformFee, setAttorneyPlatformFee] = React.useState(DEFAULT_SETTINGS.attorney_platform_fee_percent);
   const [autoReleaseDays, setAutoReleaseDays] = React.useState(String(DEFAULT_SETTINGS.auto_release_days));
   const [allowForceRelease, setAllowForceRelease] = React.useState(DEFAULT_SETTINGS.allow_admin_force_release);
+  const [walletTopupEnabled, setWalletTopupEnabled] = React.useState(true);
   const [primaryCurrency, setPrimaryCurrency] = React.useState(DEFAULT_SETTINGS.primary_currency);
   const [usdToCadRate, setUsdToCadRate] = React.useState(String(DEFAULT_SETTINGS.usd_to_cad_rate));
   const [connectByProfile, setConnectByProfile] = React.useState({});
@@ -293,6 +294,7 @@ function AdminApp({ onLogout }) {
     setAttorneyPlatformFee(Number(settings.attorney_platform_fee_percent || DEFAULT_SETTINGS.attorney_platform_fee_percent));
     setAutoReleaseDays(String(settings.auto_release_days || DEFAULT_SETTINGS.auto_release_days));
     setAllowForceRelease(Boolean(settings.allow_admin_force_release));
+    setWalletTopupEnabled(settings.wallet_topup_enabled !== false);
     setPrimaryCurrency(normalizeCurrency(settings.primary_currency));
     setUsdToCadRate(String(Number(settings.usd_to_cad_rate || DEFAULT_SETTINGS.usd_to_cad_rate)));
     setPlatformName(settings.platform_name || '');
@@ -461,6 +463,7 @@ function AdminApp({ onLogout }) {
     setAttorneyPlatformFee(Number(data.settings.attorney_platform_fee_percent || DEFAULT_SETTINGS.attorney_platform_fee_percent));
     setAutoReleaseDays(String(data.settings.auto_release_days));
     setAllowForceRelease(Boolean(data.settings.allow_admin_force_release));
+    setWalletTopupEnabled(data.settings.wallet_topup_enabled !== false);
     setPrimaryCurrency(normalizeCurrency(data.settings.primary_currency));
     setUsdToCadRate(String(Number(data.settings.usd_to_cad_rate || DEFAULT_SETTINGS.usd_to_cad_rate)));
     setPlatformName(data.settings.platform_name || '');
@@ -2127,6 +2130,30 @@ const Settings = () => {
               setActionNotice(e.message || 'Escrow rules update failed.');
             }
           }}>Save rules</Btn>
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Wallet Top-ups</div>
+        <div style={{ fontSize: '12px', color: C.textMuted, marginBottom: '20px' }}>Card billing through the student wallet top-up feature.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>Allow card top-ups</div>
+              <div style={{ fontSize: '12px', color: C.textMuted }}>When off, students can't add funds by card. Existing balances stay spendable.</div>
+            </div>
+            <button onClick={() => setWalletTopupEnabled(v => !v)} style={{ width: '44px', height: '24px', borderRadius: '99px', border: 'none', cursor: 'pointer', background: walletTopupEnabled ? C.cyan : C.surface3, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: '3px', left: walletTopupEnabled ? '22px' : '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#fff' }} />
+            </button>
+          </div>
+          <Btn variant="primary" size="sm" style={{ alignSelf: 'flex-start' }} onClick={async () => {
+            try {
+              await savePlatformSettings({ wallet_topup_enabled: walletTopupEnabled });
+              setActionNotice(`Card top-ups ${walletTopupEnabled ? 'enabled' : 'disabled'}.`);
+            } catch (e) {
+              setActionNotice(e.message || 'Top-up setting update failed.');
+            }
+          }}>Save top-up setting</Btn>
         </div>
       </Card>
       </>)}
