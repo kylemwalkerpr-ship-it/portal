@@ -6,16 +6,24 @@
  * Each host serves its verification file at https://<host>/<key>.txt,
  * committed to the corresponding repo's public/ directory.
  *
- * CPU profile: a handful of sitemap fetches + one POST per host — all
- * network-bound (fetch await), negligible CPU, no 1102 exposure. Run it
- * after content deploys; safe to call repeatedly (IndexNow dedupes).
+ * Execution model: the submission loop is network-bound (sitemap fetches +
+ * one POST per host, with backoff sleeps for 429/503) and can run for a few
+ * minutes. It is handed to ctx.waitUntil() so it completes in the background
+ * regardless of whether the HTTP caller stays connected — the endpoint
+ * returns 202 immediately and the run logs to public.indexnow_log when done.
+ * Verify a run by polling that table, NOT by reading the HTTP response body.
  */
+import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 const INDEXNOW_KEY = '647bf2aebddc03fc34c265f475f8a3a3'
 
+// portal.yousafeconsultancy.com is intentionally NOT submitted: it is the
+// authenticated app and has no public sitemap of its own. app/sitemap.ts
+// emits only market.* URLs, so the portal host always produced zero URLs
+// ("no sitemap urls") — a permanent false alarm, now removed. Re-add it only
+// if a portal-specific public sitemap is introduced.
 const HOSTS = [
   'market.yousafeconsultancy.com',
-  'portal.yousafeconsultancy.com',
   'legal.yousafeconsultancy.com',
   'usa.yousafeconsultancy.com',
   'uk.yousafeconsultancy.com',
@@ -100,17 +108,40 @@ async function postIndexNow(host: string, urlList: string[]): Promise<number | s
   }
 }
 
+// All POSTs leave from the same shared Cloudflare egress IP, so IndexNow's
+// per-IP throttle returns 429 (and 503 when its backend is briefly busy).
+// A single 10s retry was not enough — the whole 2026-06-12 run came back
+// 429/503. Retry up to 3 times with exponential backoff (10s, 20s, 40s);
+// since the run is in waitUntil() the extra wall-clock time is harmless.
+const TRANSIENT = new Set([429, 502, 503, 504])
+
 async function submitHost(host: string): Promise<{ host: string; urls: number; status: number | string }> {
   const urlList = await urlsForHost(host)
   if (!urlList.length) return { host, urls: 0, status: 'no sitemap urls' }
   let status = await postIndexNow(host, urlList)
-  // 429 = rate limited, 503 = IndexNow busy — both transient. One bounded
-  // retry after a pause recovers most of them (observed on 2026-06-12 run).
-  if (status === 429 || status === 503) {
-    await sleep(10000)
+  let delay = 10000
+  for (let attempt = 0; attempt < 3 && typeof status === 'number' && TRANSIENT.has(status); attempt++) {
+    await sleep(delay)
+    delay *= 2
     status = await postIndexNow(host, urlList)
   }
   return { host, urls: urlList.length, status }
+}
+
+async function runSubmission(hosts: string[]) {
+  const results = []
+  for (const h of hosts) {
+    results.push(await submitHost(h))
+    // Space per-host submissions — all POSTs come from the same worker
+    // egress IP, and back-to-back requests tripped IndexNow's 429s. Widened
+    // from 2s to 6s after the 2026-06-12 run was rate-limited across hosts.
+    if (h !== hosts[hosts.length - 1]) await sleep(6000)
+  }
+  try {
+    const { createSupabaseAdminClient } = await import('@/lib/supabase')
+    await createSupabaseAdminClient().from('indexnow_log').insert({ results })
+  } catch { /* non-blocking */ }
+  return results
 }
 
 async function run(req: Request) {
@@ -121,23 +152,24 @@ async function run(req: Request) {
   const only = url.searchParams.get('host')
   const hosts = only ? HOSTS.filter(h => h === only) : HOSTS
 
-  // Runs INLINE deliberately. next/server after() never fires under this
-  // OpenNext setup (verified 2026-06-12: after()-wrapped runs left no log
-  // rows; the synchronous version completed and logged even when the
-  // client disconnected early). All waits are network/timer — no CPU.
-  const results = []
-  for (const h of hosts) {
-    results.push(await submitHost(h))
-    // Space per-host submissions — all POSTs come from the same worker
-    // egress IP, and back-to-back requests tripped IndexNow's 429s.
-    if (h !== hosts[hosts.length - 1]) await sleep(2000)
-  }
+  // Run in the background so the submission completes and logs even when the
+  // caller disconnects. The previous "inline" version was cancelled mid-loop
+  // by the Cloudflare runtime as soon as the client (e.g. a 30s-capped fetch)
+  // went away, so the per-host POSTs and the indexnow_log insert never ran —
+  // every recent trigger left no row. next/server after() does not fire under
+  // this OpenNext setup; getCloudflareContext().ctx.waitUntil() does.
+  const work = runSubmission(hosts)
   try {
-    const { createSupabaseAdminClient } = await import('@/lib/supabase')
-    await createSupabaseAdminClient().from('indexnow_log').insert({ results })
-  } catch { /* non-blocking */ }
+    getCloudflareContext().ctx.waitUntil(work)
+  } catch {
+    // No Cloudflare context (e.g. local dev) — fall back to awaiting inline.
+    await work
+  }
 
-  return Response.json({ submitted: results })
+  return Response.json(
+    { accepted: true, hosts, note: 'Submission runs in the background; verify via public.indexnow_log.' },
+    { status: 202 },
+  )
 }
 
 export async function GET(req: Request) { return run(req) }
