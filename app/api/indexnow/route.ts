@@ -110,33 +110,44 @@ async function postIndexNow(host: string, urlList: string[]): Promise<number | s
 
 // All POSTs leave from the same shared Cloudflare egress IP, so IndexNow's
 // per-IP throttle returns 429 (and 503 when its backend is briefly busy).
-// A single 10s retry was not enough — the whole 2026-06-12 run came back
-// 429/503. Retry up to 3 times with exponential backoff (10s, 20s, 40s);
-// since the run is in waitUntil() the extra wall-clock time is harmless.
 const TRANSIENT = new Set([429, 502, 503, 504])
 
-async function submitHost(host: string): Promise<{ host: string; urls: number; status: number | string }> {
+// The whole submission runs inside ctx.waitUntil(), which the Cloudflare
+// runtime only keeps alive for a bounded wall-clock window. The previous
+// version chained 3 exponential backoffs (10+20+40s) per host plus 6s
+// inter-host spacing; when several hosts were throttled the run took ~6-7
+// minutes and the worker was TERMINATED before the final indexnow_log insert
+// ran — so every throttled week logged nothing at all (observed 2026-06-18:
+// repeated triggers produced no new row). Heavier in-run retries also buy
+// little: 429s are per-egress-IP and reliably clear on the next weekly run.
+// Cap the entire run well inside the waitUntil budget and ALWAYS log, even
+// partial/throttled results, so every run is verifiable via the table.
+const RUN_BUDGET_MS = 120_000 // 2 min hard ceiling for the whole submission
+
+async function submitHost(host: string, deadline: number): Promise<{ host: string; urls: number; status: number | string }> {
   const urlList = await urlsForHost(host)
   if (!urlList.length) return { host, urls: 0, status: 'no sitemap urls' }
   let status = await postIndexNow(host, urlList)
-  let delay = 10000
-  for (let attempt = 0; attempt < 3 && typeof status === 'number' && TRANSIENT.has(status); attempt++) {
-    await sleep(delay)
-    delay *= 2
+  // One short retry for transient throttling, and only if there is comfortably
+  // enough time left before the run budget — never start a wait that could push
+  // the run past the deadline and lose the log write.
+  if (typeof status === 'number' && TRANSIENT.has(status) && Date.now() + 25_000 < deadline) {
+    await sleep(8000)
     status = await postIndexNow(host, urlList)
   }
   return { host, urls: urlList.length, status }
 }
 
 async function runSubmission(hosts: string[]) {
+  const deadline = Date.now() + RUN_BUDGET_MS
   const results = []
   for (const h of hosts) {
-    results.push(await submitHost(h))
-    // Space per-host submissions — all POSTs come from the same worker
-    // egress IP, and back-to-back requests tripped IndexNow's 429s. Widened
-    // from 2s to 6s after the 2026-06-12 run was rate-limited across hosts.
-    if (h !== hosts[hosts.length - 1]) await sleep(6000)
+    results.push(await submitHost(h, deadline))
+    // Light spacing between hosts (same egress IP) — skip once near deadline.
+    if (h !== hosts[hosts.length - 1] && Date.now() + 5_000 < deadline) await sleep(3000)
   }
+  // Guaranteed within budget, so the insert is always reached. Logging every
+  // run (even all-throttled) is the whole point — it is how the run is verified.
   try {
     const { createSupabaseAdminClient } = await import('@/lib/supabase')
     await createSupabaseAdminClient().from('indexnow_log').insert({ results })
