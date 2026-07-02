@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import { C, Card, Badge, Btn } from './shared'
+import ManualCreditModal from './admin-manual-credit-modal'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const serif = "var(--portal-font-display, 'Cormorant Garamond', Georgia, serif)"
@@ -154,11 +155,12 @@ function DistributionBars({ dist, totalWallets }) {
 // ─── Transaction type badge ──────────────────────────────────────────────────
 function TxnTypeBadge({ type }) {
   const map = {
-    topup:      { bg: '#EAF5EE', color: 'var(--portal-moss, #1A6B45)' },
-    debit:      { bg: '#FAEAEA', color: 'var(--portal-brick, #8B1A1A)' },
-    refund:     { bg: '#E6EEF8', color: '#1B2D4F' },
-    adjustment: { bg: '#FEF5E4', color: '#8B5E0A' },
-    purchase:   { bg: '#EDE7F5', color: '#3D2B6B' },
+    topup:         { bg: '#EAF5EE', color: 'var(--portal-moss, #1A6B45)' },
+    debit:         { bg: '#FAEAEA', color: 'var(--portal-brick, #8B1A1A)' },
+    refund:        { bg: '#E6EEF8', color: '#1B2D4F' },
+    adjustment:    { bg: '#FEF5E4', color: '#8B5E0A' },
+    purchase:      { bg: '#EDE7F5', color: '#3D2B6B' },
+    manual_credit: { bg: '#F0E6FF', color: '#6B21A8' },
   }
   const cfg = map[type] || { bg: 'var(--portal-rule-soft, #F2EFE9)', color: 'var(--portal-ink-mid, #5C6070)' }
   return (
@@ -390,6 +392,7 @@ function WalletDrawer({ profileId, onClose }) {
   const [typeFilter, setTypeFilter] = React.useState('all')
   const [reloadKey, setReloadKey] = React.useState(0)
   const [topUpOpen, setTopUpOpen] = React.useState(false)
+  const [manualCreditOpen, setManualCreditOpen] = React.useState(false)
   const [toast, setToast] = React.useState(null)
 
   React.useEffect(() => {
@@ -472,9 +475,14 @@ function WalletDrawer({ profileId, onClose }) {
                       {data.wallet?.currency || 'USD'} · updated {fmtDateTime(data.wallet?.updated_at)}
                     </div>
                   </div>
-                  <Btn variant="primary" size="sm" onClick={() => setTopUpOpen(true)}>
-                    Top up
-                  </Btn>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Btn variant="ghost" size="sm" onClick={() => setManualCreditOpen(true)}>
+                      + Credit (Off-Platform)
+                    </Btn>
+                    <Btn variant="primary" size="sm" onClick={() => setTopUpOpen(true)}>
+                      Top up
+                    </Btn>
+                  </div>
                 </div>
                 {toast && (
                   <div style={{
@@ -494,11 +502,12 @@ function WalletDrawer({ profileId, onClose }) {
               <Section title="Lifetime totals" sub="Cumulative volume by transaction type">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                   {[
-                    { label: 'Top-ups',     key: 'lifetime_topup_cents',      accent: 'var(--portal-moss, #1A6B45)' },
-                    { label: 'Debits',      key: 'lifetime_debit_cents',      accent: 'var(--portal-brick, #8B1A1A)' },
-                    { label: 'Refunds',     key: 'lifetime_refund_cents',     accent: '#1B2D4F' },
-                    { label: 'Adjustments', key: 'lifetime_adjustment_cents', accent: '#8B5E0A' },
-                    { label: 'Purchases',   key: 'lifetime_purchase_cents',   accent: '#3D2B6B' },
+                    { label: 'Top-ups',        key: 'lifetime_topup_cents',         accent: 'var(--portal-moss, #1A6B45)' },
+                    { label: 'Manual Credits', key: 'lifetime_manual_credit_cents', accent: '#6B21A8' },
+                    { label: 'Debits',         key: 'lifetime_debit_cents',         accent: 'var(--portal-brick, #8B1A1A)' },
+                    { label: 'Refunds',        key: 'lifetime_refund_cents',        accent: '#1B2D4F' },
+                    { label: 'Adjustments',    key: 'lifetime_adjustment_cents',    accent: '#8B5E0A' },
+                    { label: 'Purchases',      key: 'lifetime_purchase_cents',      accent: '#3D2B6B' },
                   ].map(t => (
                     <KpiCard key={t.key} label={t.label} value={fmt(data.totals?.[t.key] || 0, true)} accent={t.accent} />
                   ))}
@@ -517,6 +526,7 @@ function WalletDrawer({ profileId, onClose }) {
                     }}>
                     <option value="all">All types</option>
                     <option value="topup">Top-ups</option>
+                    <option value="manual_credit">Manual Credits</option>
                     <option value="debit">Debits</option>
                     <option value="refund">Refunds</option>
                     <option value="adjustment">Adjustments</option>
@@ -533,14 +543,15 @@ function WalletDrawer({ profileId, onClose }) {
                     { key: 'actions', label: 'Actions' },
                   ]}
                   rows={(data.transactions || []).map(t => {
-                    // Refund is only offered on debit/purchase type entries
-                    // and only if the transaction hasn't already been refunded (voided).
+                    // Use display_type when the API enriches it (e.g. manual_credit
+                    // entries stored as 'topup' in the DB but surfaced as 'manual_credit').
+                    const effectiveType = t.display_type || t.type
                     const alreadyRefunded = t.metadata?.refunded_at != null
                     const canRefund = (t.type === 'debit' || t.type === 'purchase') && !alreadyRefunded
                     return {
                     __rowKey: t.id,
                     when:    fmtDateTime(t.created_at),
-                    type:    <TxnTypeBadge type={t.type} />,
+                    type:    <TxnTypeBadge type={effectiveType} />,
                     amount: (
                       <span style={{ color: Number(t.signed_cents) < 0 ? 'var(--portal-brick, #8B1A1A)' : 'var(--portal-moss, #1A6B45)', fontWeight: 700 }}>
                         {Number(t.signed_cents) < 0 ? '−' : '+'}{fmt(Math.abs(Number(t.signed_cents || t.amount_cents || 0)))}
@@ -609,6 +620,20 @@ function WalletDrawer({ profileId, onClose }) {
             onSuccess={({ creditedCents, balanceCents }) => {
               setTopUpOpen(false)
               setToast(`Credited ${fmt(creditedCents)} · new balance ${fmt(balanceCents)}`)
+              setReloadKey(k => k + 1)
+            }}
+          />
+        )}
+        {manualCreditOpen && (
+          <ManualCreditModal
+            profileId={profileId}
+            currentBalance={data?.wallet?.balance_cents || 0}
+            profileName={data?.profile?.full_name}
+            profileEmail={data?.profile?.email}
+            onClose={() => setManualCreditOpen(false)}
+            onSuccess={({ creditedCents, balanceCents }) => {
+              setManualCreditOpen(false)
+              setToast(`Credited $${(creditedCents / 100).toFixed(2)} · new balance $${(balanceCents / 100).toFixed(2)}`)
               setReloadKey(k => k + 1)
             }}
           />

@@ -234,7 +234,7 @@ export async function GET(req: Request) {
         // kind tagging existed.
         if (kind === 'refund' || rawType === 'refund' || /^refund\b/i.test(desc)) mapped = 'refund'
         else if (rawType === 'topup') mapped = 'topup'
-        else if (rawType === 'credit' || rawType === 'adjustment' || kind === 'admin_topup' || kind === 'loyalty_credit') mapped = 'wallet_credit'
+        else if (rawType === 'credit' || rawType === 'adjustment' || kind === 'admin_topup' || kind === 'loyalty_credit' || kind === 'manual_credit') mapped = 'wallet_credit'
         else if (rawType === 'debit' || rawType === 'purchase') mapped = 'purchase'
         else mapped = 'wallet_credit'
         // Skip wallet refund rows already represented by the order-derived
@@ -251,6 +251,7 @@ export async function GET(req: Request) {
             : mapped === 'purchase' ? (meta.offerId ? 'Wallet payment for an accepted offer.' : 'Wallet payment.')
             : kind === 'admin_topup' ? 'Credit added by YouSafe support.'
             : kind === 'loyalty_credit' ? 'Loyalty credit from YouSafe.'
+            : kind === 'manual_credit' ? 'Manual credit recorded by support.'
             : 'Credit applied to your wallet.'
         ledger.push({
           id: `wt-${w.id}`,

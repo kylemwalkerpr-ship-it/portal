@@ -7,8 +7,11 @@
  * which runs on the user's machine, not the server.
  *
  * Design rules:
- *   - Single identity block: logo + brand + tagline top-left; RECEIPT meta
- *     top-right. The remit-from address lives ONLY in the parties row.
+ *   - Watermark background: "YouSafe Consultancy" repeated diagonally as a
+ *     subtle security feature.
+ *   - Header band: full-width accent bar with company identity left, receipt
+ *     meta right, separated by a thin rule.
+ *   - Three-column footer: support contact, registered address, legal notice.
  *   - One type family, strict 8px vertical rhythm, tabular figures for all
  *     numerals, currency declared once in the table header — not per cell.
  *   - Explicit Tax line (0% renders too) for clean bookkeeping.
@@ -54,7 +57,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
 <style>
   :root {
     --ink: #131722; --mid: #4b5563; --soft: #9aa3b2; --rule: #e3e7ee; --rule-strong: #131722;
-    --accent: #2f2e63; --wash: #f6f7fa;
+    --accent: #2f2e63; --accent-light: #41408a; --wash: #f6f7fa;
     --paid: #156b43; --paid-wash: #ecf7f1; --refund: #8a5a0a; --refund-wash: #fbf3e3;
   }
   * { box-sizing: border-box; }
@@ -65,26 +68,82 @@ export function renderReceiptHtml(input: ReceiptInput): string {
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
   .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; letter-spacing: 0; }
-  .sheet { width: 8.5in; max-width: 100%; margin: 32px auto; background: #fff; padding: 56px 64px 48px; box-shadow: 0 10px 40px rgba(15,23,42,0.10); }
+
+  /* ── Watermark ────────────────────────────────────────────────── */
+  .sheet {
+    position: relative;
+    width: 8.5in;
+    max-width: 100%;
+    margin: 32px auto;
+    background: #fff;
+    padding: 0;
+    box-shadow: 0 10px 40px rgba(15,23,42,0.10);
+    overflow: hidden;
+  }
+  .sheet-watermark {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .sheet-watermark span {
+    position: absolute;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    color: rgba(47,46,99,0.035);
+    text-transform: uppercase;
+    white-space: nowrap;
+    transform: rotate(-30deg);
+    user-select: none;
+  }
+  .sheet-watermark span:nth-child(1)  { top: 5%;  left: -5%; }
+  .sheet-watermark span:nth-child(2)  { top: 5%;  left: 28%; }
+  .sheet-watermark span:nth-child(3)  { top: 5%;  left: 61%; }
+  .sheet-watermark span:nth-child(4)  { top: 28%; left: -5%; }
+  .sheet-watermark span:nth-child(5)  { top: 28%; left: 28%; }
+  .sheet-watermark span:nth-child(6)  { top: 28%; left: 61%; }
+  .sheet-watermark span:nth-child(7)  { top: 51%; left: -5%; }
+  .sheet-watermark span:nth-child(8)  { top: 51%; left: 28%; }
+  .sheet-watermark span:nth-child(9)  { top: 51%; left: 61%; }
+  .sheet-watermark span:nth-child(10) { top: 74%; left: -5%; }
+  .sheet-watermark span:nth-child(11) { top: 74%; left: 28%; }
+  .sheet-watermark span:nth-child(12) { top: 74%; left: 61%; }
+
+  .sheet-content {
+    position: relative;
+    z-index: 2;
+    padding: 56px 64px 48px;
+  }
+
   .toolbar { width: 8.5in; max-width: 100%; margin: 20px auto 0; display: flex; justify-content: flex-end; gap: 10px; }
   .toolbar button { padding: 10px 22px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: 600 13px/1 inherit; cursor: pointer; }
   .toolbar button.ghost { background: #fff; color: var(--accent); }
 
-  /* ── Identity row ─────────────────────────────────────────────── */
-  .id-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .brand img { width: 56px; height: 56px; display: block; }
-  .brand .nm { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
-  .brand .tag { font-size: 11px; color: var(--mid); margin-top: 2px; letter-spacing: 0.01em; font-style: italic; }
-  .doc { text-align: right; }
-  .doc .t { font-size: 22px; font-weight: 700; letter-spacing: 0.14em; color: var(--ink); }
-  .doc .n { font-size: 12.5px; font-weight: 600; margin-top: 6px; }
-  .doc .d { font-size: 11px; color: var(--mid); margin-top: 2px; }
-  .doc .status { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.10em; }
-  .doc .status.paid { color: var(--paid); background: var(--paid-wash); }
-  .doc .status.refund { color: var(--refund); background: var(--refund-wash); }
+  /* ── Header band ──────────────────────────────────────────────── */
+  .header-band {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+    margin: -56px -64px 32px;
+    padding: 32px 64px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 32px;
+  }
+  .header-band .brand { display: flex; align-items: center; gap: 16px; }
+  .header-band .brand img { width: 52px; height: 52px; display: block; border-radius: 6px; background: #fff; padding: 4px; }
+  .header-band .brand .nm { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; color: #fff; }
+  .header-band .brand .tag { font-size: 11px; color: rgba(255,255,255,0.70); margin-top: 2px; letter-spacing: 0.02em; }
+  .header-band .doc { text-align: right; }
+  .header-band .doc .t { font-size: 13px; font-weight: 700; letter-spacing: 0.18em; color: rgba(255,255,255,0.60); text-transform: uppercase; }
+  .header-band .doc .n { font-size: 24px; font-weight: 700; color: #fff; margin-top: 2px; letter-spacing: -0.01em; }
+  .header-band .doc .d { font-size: 11px; color: rgba(255,255,255,0.60); margin-top: 2px; }
+  .header-band .doc .status { display: inline-block; margin-top: 10px; padding: 4px 14px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .header-band .doc .status.paid { color: var(--paid); background: var(--paid-wash); }
+  .header-band .doc .status.refund { color: var(--refund); background: var(--refund-wash); }
 
-  .divider { border: 0; border-top: 2px solid var(--rule-strong); margin: 28px 0 0; }
+  .header-rule { border: 0; border-top: 1px solid var(--rule); margin: 0 0 24px; }
 
   /* ── Parties ──────────────────────────────────────────────────── */
   .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 24px 0; border-bottom: 1px solid var(--rule); }
@@ -117,19 +176,34 @@ export function renderReceiptHtml(input: ReceiptInput): string {
   .details .k { color: var(--mid); }
   .details .v { color: var(--ink); font-weight: 500; word-break: break-word; }
 
-  .foot { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 14px; display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
-  .foot .l { font-size: 10.5px; color: var(--mid); line-height: 1.65; }
-  .foot .r { font-size: 10px; color: var(--soft); white-space: nowrap; }
+  /* ── Footer ───────────────────────────────────────────────────── */
+  .foot {
+    margin-top: 44px;
+    border-top: 2px solid var(--accent);
+    padding-top: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+  }
+  .foot-col { font-size: 10px; color: var(--mid); line-height: 1.6; }
+  .foot-col .hd { font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: var(--soft); margin-bottom: 4px; }
+  .foot-col a { color: var(--accent); text-decoration: none; }
+  .foot-col .r { text-align: right; }
 
   @media print {
     html, body { background: #fff; }
-    .sheet { box-shadow: none; margin: 0; width: auto; padding: 0.25in 0.2in; }
+    .sheet { box-shadow: none; margin: 0; width: auto; }
+    .sheet-content { padding: 0.25in 0.2in; }
+    .header-band { margin: -0.25in -0.2in 32px; padding: 28px 0.2in 24px; }
     .toolbar { display: none; }
     @page { size: letter; margin: 0.55in 0.6in; }
   }
   @media (max-width: 700px) {
-    .sheet { padding: 28px 22px; margin: 12px auto; }
+    .sheet-content { padding: 28px 22px; }
+    .header-band { margin: -28px -22px 24px; padding: 24px 22px 20px; flex-direction: column; gap: 16px; }
+    .header-band .doc { text-align: left; }
     .parties { grid-template-columns: 1fr; gap: 20px; }
+    .foot { grid-template-columns: 1fr; gap: 16px; }
   }
 </style>
 </head>
@@ -156,84 +230,124 @@ export function renderReceiptHtml(input: ReceiptInput): string {
   </script>
 
   <div class="sheet">
+    <!-- Watermark pattern -->
+    <div class="sheet-watermark">
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+      <span>YouSafe Consultancy</span>
+    </div>
 
-    <div class="id-row">
-      <div class="brand">
-        <img src="/receipt-logo.svg" alt="">
-        <div>
-          <div class="nm">${esc(company.name)}</div>
-          <div class="tag">Your Safe Path to Success.</div>
+    <div class="sheet-content">
+
+      <!-- Header band -->
+      <div class="header-band">
+        <div class="brand">
+          <img src="/receipt-logo.svg" alt="">
+          <div>
+            <div class="nm">${esc(company.name)}</div>
+            <div class="tag">Your Safe Path to Success.</div>
+          </div>
+        </div>
+        <div class="doc">
+          <div class="t">Receipt</div>
+          <div class="n num">${esc(meta.receiptNumber)}</div>
+          <div class="d">Issued ${esc(fmtDate(meta.issuedAt))}</div>
+          <span class="status ${isRefundish ? 'refund' : 'paid'}">${esc(meta.status.toUpperCase())}</span>
         </div>
       </div>
-      <div class="doc">
-        <div class="t">RECEIPT</div>
-        <div class="n num">${esc(meta.receiptNumber)}</div>
-        <div class="d">Issued ${esc(fmtDate(meta.issuedAt))}</div>
-        <span class="status ${isRefundish ? 'refund' : 'paid'}">${esc(meta.status.toUpperCase())}</span>
+
+      <hr class="header-rule">
+
+      <div class="parties">
+        <div class="party">
+          <span class="lbl">Remit from</span>
+          <div class="nm">${esc(company.name)}</div>
+          ${[company.address, company.email, company.phone, company.website].filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
+        </div>
+        <div class="party">
+          <span class="lbl">Billed to</span>
+          <div class="nm">${esc(billedTo.name || '—')}</div>
+          ${billedTo.lines.filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
+        </div>
       </div>
+
+      <table class="items">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="r">Qty</th>
+            <th class="r">Unit price</th>
+            <th class="r">Amount (${esc(cur)})</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(i => `<tr>
+            <td class="desc">${esc(i.description)}<span class="cat">${esc(meta.kind)}</span></td>
+            <td class="r num">${esc(i.quantity)}</td>
+            <td class="r num">${esc(money(i.unitCents))}</td>
+            <td class="r num">${esc(money(i.amountCents))}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="totals-wrap">
+        <div class="totals">
+          <div class="row"><span>Subtotal</span><span class="num">${esc(money(totals.subtotalCents))}</span></div>
+          ${typeof totals.feeCents === 'number' && totals.feeCents > 0
+            ? `<div class="row"><span>Platform fee</span><span class="num">${esc(money(totals.feeCents))}</span></div>` : ''}
+          <div class="row"><span>Tax${taxCents === 0 ? ' (0%)' : ''}</span><span class="num">${esc(money(taxCents))}</span></div>
+          ${typeof totals.refundCents === 'number' && totals.refundCents > 0
+            ? `<div class="row refund"><span>Refunded</span><span class="num">${esc(money(-totals.refundCents))}</span></div>` : ''}
+          <div class="row grand"><span>Total ${esc(cur)}</span><span class="num">${esc(money(totals.totalCents))}</span></div>
+        </div>
+      </div>
+
+      <div class="details">
+        <span class="lbl">Payment details</span>
+        <div class="grid">
+          ${detailRows.map(([k, v]) => `<span class="k">${esc(k)}</span><span class="v num">${esc(v)}</span>`).join('')}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="foot">
+        <div class="foot-col">
+          <div class="hd">Support</div>
+          ${company.email
+            ? `<a href="mailto:${esc(company.email)}">${esc(company.email)}</a><br>`
+            : ''}
+          ${company.phone ? esc(company.phone) : ''}
+          ${company.website ? `<br><a href="${esc(company.website)}">${esc(company.website)}</a>` : ''}
+        </div>
+        <div class="foot-col">
+          <div class="hd">Registered Address</div>
+          ${esc(company.address || 'N/A')}
+        </div>
+        <div class="foot-col">
+          <div class="hd">Legal</div>
+          This is a computer-generated receipt and is valid without a signature.<br>
+          <span class="num">${esc(meta.receiptNumber)} · Page 1 of 1</span>
+        </div>
+      </div>
+
     </div>
-
-    <hr class="divider">
-
-    <div class="parties">
-      <div class="party">
-        <span class="lbl">Remit from</span>
-        <div class="nm">${esc(company.name)}</div>
-        ${[company.address, company.email, company.phone, company.website].filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
-      </div>
-      <div class="party">
-        <span class="lbl">Billed to</span>
-        <div class="nm">${esc(billedTo.name || '—')}</div>
-        ${billedTo.lines.filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
-      </div>
-    </div>
-
-    <table class="items">
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="r">Qty</th>
-          <th class="r">Unit price</th>
-          <th class="r">Amount (${esc(cur)})</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${items.map(i => `<tr>
-          <td class="desc">${esc(i.description)}<span class="cat">${esc(meta.kind)}</span></td>
-          <td class="r num">${esc(i.quantity)}</td>
-          <td class="r num">${esc(money(i.unitCents))}</td>
-          <td class="r num">${esc(money(i.amountCents))}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-
-    <div class="totals-wrap">
-      <div class="totals">
-        <div class="row"><span>Subtotal</span><span class="num">${esc(money(totals.subtotalCents))}</span></div>
-        ${typeof totals.feeCents === 'number' && totals.feeCents > 0
-          ? `<div class="row"><span>Platform fee</span><span class="num">${esc(money(totals.feeCents))}</span></div>` : ''}
-        <div class="row"><span>Tax${taxCents === 0 ? ' (0%)' : ''}</span><span class="num">${esc(money(taxCents))}</span></div>
-        ${typeof totals.refundCents === 'number' && totals.refundCents > 0
-          ? `<div class="row refund"><span>Refunded</span><span class="num">${esc(money(-totals.refundCents))}</span></div>` : ''}
-        <div class="row grand"><span>Total ${esc(cur)}</span><span class="num">${esc(money(totals.totalCents))}</span></div>
-      </div>
-    </div>
-
-    <div class="details">
-      <span class="lbl">Payment details</span>
-      <div class="grid">
-        ${detailRows.map(([k, v]) => `<span class="k">${esc(k)}</span><span class="v num">${esc(v)}</span>`).join('')}
-      </div>
-    </div>
-
-    <div class="foot">
-      <div class="l">
-        ${company.email ? `Questions about this receipt? Contact ${esc(company.email)}.<br>` : ''}
-        This is a computer-generated receipt and is valid without a signature.
-      </div>
-      <div class="r num">${esc(meta.receiptNumber)} · Page 1 of 1</div>
-    </div>
-
   </div>
 </body>
 </html>`

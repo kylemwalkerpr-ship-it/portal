@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import { C } from './shared'
+import ManualCreditModal from './admin-manual-credit-modal'
 
 /**
  * AdminStudentFinancialDrawer
@@ -66,11 +67,12 @@ function EscrowPill({ status }) {
 }
 
 const TX_TYPE_CFG = {
-  topup:      { bg: '#EAF5EE', color: GREEN,  label: 'Top-up' },
-  debit:      { bg: '#FEF5E4', color: AMBER,  label: 'Debit' },
-  purchase:   { bg: '#E0F3F7', color: CYAN,   label: 'Purchase' },
-  refund:     { bg: '#F5F3FF', color: PURPLE, label: 'Refund' },
-  adjustment: { bg: '#F2EFE9', color: '#5C6070', label: 'Adjustment' },
+  topup:         { bg: '#EAF5EE', color: GREEN,   label: 'Top-up' },
+  debit:         { bg: '#FEF5E4', color: AMBER,   label: 'Debit' },
+  purchase:      { bg: '#E0F3F7', color: CYAN,    label: 'Purchase' },
+  refund:        { bg: '#F5F3FF', color: PURPLE,  label: 'Refund' },
+  adjustment:    { bg: '#F2EFE9', color: '#5C6070', label: 'Adjustment' },
+  manual_credit: { bg: '#F0E6FF', color: '#6B21A8', label: 'Manual Credit' },
 }
 function TxTypeBadge({ type }) {
   const c = TX_TYPE_CFG[type] || { bg: '#F2EFE9', color: '#5C6070', label: type || '—' }
@@ -143,6 +145,8 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
   const [data, setData] = React.useState(null)
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
+  const [creditModalOpen, setCreditModalOpen] = React.useState(false)
+  const [creditToast, setCreditToast] = React.useState(null)
 
   // Reset to overview each time a different student is opened
   React.useEffect(() => {
@@ -182,6 +186,13 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
   const refunds  = data?.refunds  || []
   const ledger   = data?.wallet_ledger || []
   const events   = data?.recent_events || []
+
+  // Auto-dismiss toast after 6s
+  React.useEffect(() => {
+    if (!creditToast) return
+    const t = setTimeout(() => setCreditToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [creditToast])
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', justifyContent: 'flex-end', fontFamily: sans }}>
@@ -250,12 +261,52 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
           {!loading && !error && data && (
             <>
               {/* Top metric row — always visible */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <MetricCard label="Wallet Balance" value={fmtCents(totals.current_wallet_balance_cents)} sub={wallet.updated_at ? `as of ${fmtDate(wallet.updated_at)}` : ''} accent={GREEN} />
                 <MetricCard label="Lifetime Spent" value={fmtCents(totals.lifetime_spent_cents)} sub={`${totals.total_orders || 0} orders`} accent={NAVY} />
                 <MetricCard label="Lifetime Refunded" value={fmtCents(totals.lifetime_refunded_cents)} sub={`${refunds.length} refund(s)`} accent={RED} />
                 <MetricCard label="Open Escrow" value={fmtCents(totals.open_escrow_cents)} sub="Held + disputed + frozen" accent={AMBER} />
               </div>
+
+              {/* Global toast — visible on any tab */}
+              {creditToast && (
+                <div style={{
+                  marginBottom: '12px',
+                  padding: '10px 14px',
+                  background: '#EAF5EE',
+                  border: '1px solid #BFD9C8',
+                  borderRadius: '6px',
+                  color: '#1A6B45',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}>
+                  <span>{creditToast}</span>
+                  <button onClick={() => setCreditToast(null)}
+                    style={{ background: 'none', border: 'none', color: '#1A6B45', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: '0 4px' }}>✕</button>
+                </div>
+              )}
+
+              {/* Credit wallet action bar — visible on Overview and Wallet tabs */}
+              {(section === 'overview' || section === 'wallet') && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
+                  <button
+                    onClick={() => setCreditModalOpen(true)}
+                    disabled={!data}
+                    style={{
+                      padding: '8px 16px', borderRadius: '6px',
+                      border: 'none', background: '#0F172A',
+                      color: '#fff', cursor: 'pointer',
+                      fontSize: '12px', fontWeight: 600, fontFamily: sans, lineHeight: 1,
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      transition: 'opacity 0.12s', opacity: data ? 1 : 0.5,
+                    }}>
+                    <span>+</span> Credit Wallet (Off-Platform)
+                  </button>
+                </div>
+              )}
 
               {/* OVERVIEW */}
               {section === 'overview' && (
@@ -277,11 +328,12 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
                   <div style={{ background: '#fff', border: '1px solid #DDD8CE', borderRadius: '8px', padding: '16px' }}>
                     <div style={{ fontFamily: serif, fontWeight: 600, fontSize: '16px', color: NAVY, marginBottom: '10px' }}>Money Summary</div>
                     {[
-                      { l: 'Lifetime spent',   v: fmtCents(totals.lifetime_spent_cents) },
-                      { l: 'Lifetime refunded', v: fmtCents(totals.lifetime_refunded_cents), color: RED },
-                      { l: 'Wallet balance',   v: fmtCents(totals.current_wallet_balance_cents), color: GREEN },
-                      { l: 'Wallet top-ups',   v: fmtCents(totals.lifetime_wallet_topup_cents) },
-                      { l: 'Pending refund',   v: fmtCents(totals.pending_refund_cents), color: AMBER },
+                      { l: 'Lifetime spent',      v: fmtCents(totals.lifetime_spent_cents) },
+                      { l: 'Lifetime refunded',   v: fmtCents(totals.lifetime_refunded_cents), color: RED },
+                      { l: 'Wallet balance',      v: fmtCents(totals.current_wallet_balance_cents), color: GREEN },
+                      { l: 'Wallet top-ups',      v: fmtCents(totals.lifetime_wallet_topup_cents) },
+                      { l: 'Manual credits',      v: fmtCents(totals.lifetime_manual_credit_cents), color: '#6B21A8' },
+                      { l: 'Pending refund',      v: fmtCents(totals.pending_refund_cents), color: AMBER },
                     ].map(row => (
                       <div key={row.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #F2EFE9' }}>
                         <span style={{ fontSize: '13px', color: '#5C6070' }}>{row.l}</span>
@@ -380,7 +432,17 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
               {/* WALLET ACTIVITY */}
               {section === 'wallet' && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '8px' }}>
+                    <button
+                      onClick={() => setCreditModalOpen(true)}
+                      style={{
+                        padding: '6px 12px', borderRadius: '5px',
+                        border: 'none', background: '#0F172A',
+                        color: '#fff', cursor: 'pointer',
+                        fontSize: '11px', fontWeight: 600, fontFamily: sans, lineHeight: 1,
+                      }}>
+                      + Record Off-Platform Payment
+                    </button>
                     <button onClick={() => downloadCSV(
                       ledger.map(t => ({
                         date: t.created_at,
@@ -406,10 +468,11 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
                     rows={ledger.map(t => {
                       const signed = Number(t.signed_cents || 0)
                       const positive = signed >= 0
+                      const effectiveType = t.display_type || t.type
                       return {
                         _key:        t.id,
                         date:        fmtDate(t.created_at),
-                        type:        <TxTypeBadge type={t.type} />,
+                        type:        <TxTypeBadge type={effectiveType} />,
                         amount:      <span style={{ color: positive ? GREEN : RED }}>{positive ? '+' : ''}{fmtCents(signed)}</span>,
                         balance:     fmtCents(t.balance_after_cents),
                         description: t.description || '—',
@@ -462,6 +525,21 @@ export default function AdminStudentFinancialDrawer({ studentId, onClose }) {
           )}
         </div>
       </div>
+
+      {/* Manual Credit Modal */}
+      {creditModalOpen && (
+        <ManualCreditModal
+          profileId={studentId}
+          currentBalance={totals.current_wallet_balance_cents}
+          profileName={profile.full_name}
+          profileEmail={profile.email}
+          onClose={() => setCreditModalOpen(false)}
+          onSuccess={({ creditedCents, balanceCents }) => {
+            setCreditModalOpen(false)
+            setCreditToast(`✓ Credited $${(creditedCents / 100).toFixed(2)} · New balance $${(balanceCents / 100).toFixed(2)}`)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -263,16 +263,23 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   })
 
   // 6. Full ledger — preserve cents + signed_cents for accurate UI colouring.
-  const ledgerOut = walletLedger.map(r => ({
-    id: r.id,
-    type: r.type,
-    amount_cents: Number(r.amount_cents || 0),
-    signed_cents: Number(r.signed_cents || 0),
-    balance_after_cents: Number(r.balance_after_cents || 0),
-    description: r.description || '',
-    reference: r.reference || null,
-    created_at: r.created_at,
-  }))
+  //     Enrich each entry with display_type for semantic metadata overrides.
+  const ledgerOut = walletLedger.map(r => {
+    const meta = r.metadata && typeof r.metadata === 'object' ? (r.metadata as Record<string, unknown>) : {}
+    let displayType: string | null = null
+    if (r.type === 'topup' && meta.kind === 'manual_credit') displayType = 'manual_credit'
+    return {
+      id: r.id,
+      type: r.type,
+      display_type: displayType,
+      amount_cents: Number(r.amount_cents || 0),
+      signed_cents: Number(r.signed_cents || 0),
+      balance_after_cents: Number(r.balance_after_cents || 0),
+      description: r.description || '',
+      reference: r.reference || null,
+      created_at: r.created_at,
+    }
+  })
 
   // 7. Lifetime totals. We compute these from the *unbounded* sources where
   // possible — orders is already capped at order_limit (default 50) so the
@@ -284,6 +291,9 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   const lifetime_refunded_cents    = refundsOut.reduce((s, r) => s + r.amount_cents, 0)
   const lifetime_wallet_topup_cents = ledgerOut
     .filter(t => t.type === 'topup')
+    .reduce((s, t) => s + t.amount_cents, 0)
+  const lifetime_manual_credit_cents = ledgerOut
+    .filter(t => t.type === 'topup' && t.display_type === 'manual_credit')
     .reduce((s, t) => s + t.amount_cents, 0)
   const open_escrow_cents          = ordersOut
     .filter(o => ['held','partial_released','disputed','frozen'].includes(o.escrow_status))
@@ -299,6 +309,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
     lifetime_spent_cents,
     lifetime_refunded_cents,
     lifetime_wallet_topup_cents,
+    lifetime_manual_credit_cents,
     current_wallet_balance_cents: Number(wallet?.balance_cents || 0),
     open_escrow_cents,
     pending_refund_cents,

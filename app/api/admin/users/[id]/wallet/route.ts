@@ -21,7 +21,7 @@
 import { ok, fail } from '@/lib/apiEnvelope'
 import { requireAdminUser } from '@/lib/portalAuth'
 
-const ALLOWED_TYPES = ['topup', 'debit', 'refund', 'adjustment', 'purchase']
+const ALLOWED_TYPES = ['topup', 'debit', 'refund', 'adjustment', 'purchase', 'manual_credit']
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminUser()
@@ -90,6 +90,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     lifetime_refund_cents: 0,
     lifetime_adjustment_cents: 0,
     lifetime_purchase_cents: 0,
+    lifetime_manual_credit_cents: 0,
   }
   try {
     const { data: allTxns, error } = await db
@@ -104,7 +105,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       // lifetime_topup and made refunds look like money the customer paid in.
       const meta = t.metadata && typeof t.metadata === 'object' ? t.metadata : {}
       const isRefund = t.type === 'topup' && (meta.kind === 'refund' || !!meta.refund_method || /^\s*refund/i.test(String(t.description || '')))
-      const bucket = isRefund ? 'refund' : t.type
+      const isManualCredit = t.type === 'topup' && meta.kind === 'manual_credit'
+      const bucket = isRefund ? 'refund' : isManualCredit ? 'manual_credit' : t.type
       totals[`lifetime_${bucket}_cents`] += Number(t.amount_cents || 0)
     }
   } catch (e: any) {
@@ -123,11 +125,28 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     .range((page - 1) * pageSize, page * pageSize - 1)
 
   if (typeFilter !== 'all' && ALLOWED_TYPES.includes(typeFilter)) {
-    txnQuery = txnQuery.eq('type', typeFilter)
+    // manual_credit is stored as type='topup' with metadata->>'kind'='manual_credit' —
+    // filter by metadata instead of the raw type column.
+    if (typeFilter === 'manual_credit') {
+      txnQuery = txnQuery.eq('type', 'topup').filter('metadata->>kind', 'eq', 'manual_credit')
+    } else {
+      txnQuery = txnQuery.eq('type', typeFilter)
+    }
   }
 
   const { data: transactions, error: txnErr, count: txnTotal } = await txnQuery as any
   if (txnErr) return fail(txnErr.message, 500)
+
+  // Enrich each transaction with a display_type that overrides the raw DB
+  // type for entries that carry semantic metadata (e.g. wallet_credit RPC
+  // stores everything as 'topup', but a manual-credit entry should show as
+  // 'manual_credit' not 'topup'). The frontend uses t.display_type ?? t.type.
+  const enriched = ((transactions ?? []) as any[]).map(t => {
+    const meta = t.metadata && typeof t.metadata === 'object' ? (t.metadata as Record<string, string>) : {}
+    let displayType: string | null = null
+    if (t.type === 'topup' && meta.kind === 'manual_credit') displayType = 'manual_credit'
+    return { ...t, display_type: displayType }
+  })
 
   return ok(
     {
@@ -137,7 +156,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         email: profile.email || null,
         role: profile.role || null,
       },
-      transactions: transactions ?? [],
+      transactions: enriched,
       transactions_total: txnTotal ?? 0,
       page,
       page_size: pageSize,

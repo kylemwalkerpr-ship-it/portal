@@ -2,23 +2,24 @@
  * Receipt engine — bank-grade PDF receipts for student transactions.
  *
  * Layout (US Letter):
- *   ┌──────────────────────────────────────────────┐
- *   │ ▌COMPANY NAME            RECEIPT  #R-XXXXXX  │  header band + accent bar
- *   │  address · website        issued  date       │
- *   ├──────────────────────────────────────────────┤
- *   │  FROM (company block)     BILLED TO (student)│  both parties
- *   ├──────────────────────────────────────────────┤
- *   │  DESCRIPTION        QTY   UNIT      AMOUNT   │  itemized table
- *   │  …                                           │
- *   │                       Subtotal / Total  PAID │  totals + status stamp
- *   ├──────────────────────────────────────────────┤
- *   │  Payment details (method, txn id, order #)   │
- *   │  footer: support contact + generated notice  │
- *   └──────────────────────────────────────────────┘
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │  ██ HEADER BAND (accent gradient)                   │
+ *   │  ██ logo + company name     RECEIPT          #R-X   │
+ *   ├──────────────────────────────────────────────────────┤
+ *   │  FROM (company block)          BILLED TO (student)  │
+ *   ├──────────────────────────────────────────────────────┤
+ *   │  DESCRIPTION        QTY   UNIT      AMOUNT          │
+ *   │  …                                                   │
+ *   │                       Subtotal / Total  PAID        │
+ *   ├──────────────────────────────────────────────────────┤
+ *   │  Payment details (method, txn id, order #)          │
+ *   ├──────────────────────────────────────────────────────┤
+ *   │  Support    │  Registered Address  │  Legal          │
+ *   └──────────────────────────────────────────────────────┘
  *
  * Pure pdf-lib (no fontkit) so it runs in any server runtime.
  */
-import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from 'pdf-lib'
+import { PDFDocument, StandardFonts, rgb, degrees, PDFFont, PDFPage } from 'pdf-lib'
 
 export interface ReceiptParty {
   label: string            // 'FROM' | 'BILLED TO'
@@ -67,8 +68,10 @@ const INK = rgb(0.07, 0.09, 0.16)        // near-black slate
 const MID = rgb(0.32, 0.37, 0.46)
 const SOFT = rgb(0.55, 0.59, 0.67)
 const RULE = rgb(0.84, 0.87, 0.91)
+const ACCENT_DARK = rgb(0.184, 0.176, 0.427) // #2F2E63 — darker accent for header
 const ACCENT = rgb(0.255, 0.251, 0.541)  // #41408A — matches portal accent
 const ACCENT_SOFT = rgb(0.93, 0.93, 0.97)
+const WATERMARK = rgb(0.93, 0.92, 0.95)
 const PAID_GREEN = rgb(0.10, 0.42, 0.27)
 const REFUND_AMBER = rgb(0.55, 0.37, 0.04)
 
@@ -130,33 +133,59 @@ export async function generateReceiptPdf(input: ReceiptInput): Promise<Uint8Arra
   const right = PAGE_W - MARGIN
   let y = PAGE_H - MARGIN
 
-  // ── Header band ──────────────────────────────────────────────────────
-  // Accent bar down the left edge of the header block.
-  page.drawRectangle({ x: MARGIN - 14, y: y - 46, width: 4, height: 52, color: ACCENT })
-
-  page.drawText(input.company.name.toUpperCase(), { x: MARGIN, y: y - 6, size: 19, font: bold, color: INK })
-  let headLine = y - 24
-  if (input.company.address) {
-    const used = drawWrapped(page, input.company.address, MARGIN, headLine, helv, 9, MID, 280, 12)
-    headLine -= used * 12
+  // ── Watermark ────────────────────────────────────────────────────────
+  // Repeated "YouSafe Consultancy" diagonally across the page as a
+  // subtle security feature.
+  const wmText = 'YouSafe Consultancy'
+  const wmSize = 10
+  for (let row = 0; row < 6; row++) {
+    for (let col = 0; col < 4; col++) {
+      const wx = MARGIN - 20 + col * 160
+      const wy = 40 + row * 120
+      page.drawText(wmText, {
+        x: wx, y: wy, size: wmSize, font: helv, color: WATERMARK,
+        rotate: degrees(-30),
+      })
+    }
   }
-  const contact = [input.company.website, input.company.email].filter(Boolean).join('  ·  ')
-  if (contact) {
-    page.drawText(contact, { x: MARGIN, y: headLine, size: 9, font: helv, color: SOFT })
-    headLine -= 12
-  }
 
-  // Right side: RECEIPT + number + issue date, right-aligned.
+  // ── Header band (accent background) ─────────────────────────────────
+  const HEADER_H = 70
+  page.drawRectangle({
+    x: 0, y: y - HEADER_H + 10,
+    width: PAGE_W, height: HEADER_H,
+    color: ACCENT_DARK,
+  })
+
+  // Left side: company name + tagline on the dark band
+  page.drawText(input.company.name, {
+    x: MARGIN, y: y - 12, size: 18, font: bold, color: rgb(1, 1, 1),
+  })
+  const tagline = 'Your Safe Path to Success.'
+  page.drawText(tagline, {
+    x: MARGIN, y: y - 32, size: 9.5, font: helv, color: rgb(0.75, 0.73, 0.85),
+  })
+
+  // Right side: RECEIPT + number + issue date, white text on dark band
   const rTitle = 'RECEIPT'
-  page.drawText(rTitle, { x: right - bold.widthOfTextAtSize(rTitle, 17), y: y - 6, size: 17, font: bold, color: ACCENT })
+  page.drawText(rTitle, {
+    x: right - bold.widthOfTextAtSize(rTitle, 12), y: y - 6,
+    size: 12, font: bold, color: rgb(0.60, 0.58, 0.75),
+  })
   const numLine = input.meta.receiptNumber
-  page.drawText(numLine, { x: right - monoBold.widthOfTextAtSize(numLine, 11), y: y - 24, size: 11, font: monoBold, color: INK })
+  page.drawText(numLine, {
+    x: right - monoBold.widthOfTextAtSize(numLine, 15), y: y - 24,
+    size: 15, font: monoBold, color: rgb(1, 1, 1),
+  })
   const issued = `Issued ${fmtDate(input.meta.issuedAt)}`
-  page.drawText(issued, { x: right - helv.widthOfTextAtSize(issued, 9), y: y - 38, size: 9, font: helv, color: SOFT })
+  page.drawText(issued, {
+    x: right - helv.widthOfTextAtSize(issued, 9), y: y - 44,
+    size: 9, font: helv, color: rgb(0.65, 0.63, 0.78),
+  })
 
-  y = Math.min(headLine, y - 52) - 16
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: right, y }, thickness: 1, color: RULE })
-  y -= 24
+  y = y - HEADER_H + 10 - 20
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: right, y }, thickness: 0.5, color: RULE })
+  y -= 20
 
   // ── Parties ──────────────────────────────────────────────────────────
   const colW = (right - MARGIN - 30) / 2
@@ -229,6 +258,12 @@ export async function generateReceiptPdf(input: ReceiptInput): Promise<Uint8Arra
   if (typeof input.totals.feeCents === 'number' && input.totals.feeCents > 0) {
     totalRow('Platform fee', input.totals.feeCents)
   }
+  // Tax line — always shown for clean bookkeeping (0% renders too).
+  {
+    const taxCents = typeof input.totals.taxCents === 'number' ? input.totals.taxCents : 0
+    const taxLabel = taxCents === 0 ? 'Tax (0%)' : 'Tax'
+    totalRow(taxLabel, taxCents)
+  }
   if (typeof input.totals.refundCents === 'number' && input.totals.refundCents > 0) {
     totalRow('Refunded', -input.totals.refundCents, { color: REFUND_AMBER })
   }
@@ -268,18 +303,58 @@ export async function generateReceiptPdf(input: ReceiptInput): Promise<Uint8Arra
   }
 
   // ── Footer ───────────────────────────────────────────────────────────
-  const footY = MARGIN - 6
-  page.drawLine({ start: { x: MARGIN, y: footY + 26 }, end: { x: right, y: footY + 26 }, thickness: 0.5, color: RULE })
-  const f1 = input.company.email
-    ? `Questions about this receipt? Contact ${input.company.email}.`
-    : 'Keep this receipt for your records.'
-  page.drawText(f1, { x: MARGIN, y: footY + 12, size: 8.5, font: helv, color: MID })
+  const footY = MARGIN - 4
+  // Footer accent rule
+  page.drawRectangle({
+    x: MARGIN, y: footY + 30,
+    width: right - MARGIN, height: 2,
+    color: ACCENT,
+  })
+
+  // Three-column footer
+  const footColW = (right - MARGIN - 32) / 3
+  const footColX = (i: number) => MARGIN + i * (footColW + 16)
+
+  // Col 1: Support
+  const col1 = footColX(0)
+  page.drawText('SUPPORT', { x: col1, y: footY + 22, size: 7.5, font: bold, color: SOFT })
+  if (input.company.email) {
+    page.drawText(input.company.email, { x: col1, y: footY + 10, size: 8, font: helv, color: MID })
+  }
+  if (input.company.phone) {
+    page.drawText(input.company.phone, { x: col1, y: footY - 2, size: 8, font: helv, color: MID })
+  }
+  if (input.company.website) {
+    page.drawText(input.company.website, { x: col1, y: footY - 14, size: 8, font: helv, color: ACCENT })
+  }
+
+  // Col 2: Registered Address
+  const col2 = footColX(1)
+  page.drawText('REGISTERED ADDRESS', { x: col2, y: footY + 22, size: 7.5, font: bold, color: SOFT })
+  const addrLines = (input.company.address || '').split(',').map(s => s.trim()).filter(Boolean)
+  let addrY = footY + 10
+  for (const line of addrLines) {
+    page.drawText(line, { x: col2, y: addrY, size: 8, font: helv, color: MID })
+    addrY -= 12
+  }
+
+  // Col 3: Legal
+  const col3 = footColX(2)
+  page.drawText('LEGAL', { x: col3, y: footY + 22, size: 7.5, font: bold, color: SOFT })
   page.drawText(
-    'This is a computer-generated receipt and is valid without a signature.',
-    { x: MARGIN, y: footY, size: 8, font: helv, color: SOFT },
+    'This is a computer-generated receipt',
+    { x: col3, y: footY + 10, size: 8, font: helv, color: MID },
+  )
+  page.drawText(
+    'and is valid without a signature.',
+    { x: col3, y: footY - 2, size: 8, font: helv, color: MID },
   )
   const pageTag = `${input.meta.receiptNumber} · 1 of 1`
-  page.drawText(pageTag, { x: right - mono.widthOfTextAtSize(pageTag, 8), y: footY, size: 8, font: mono, color: SOFT })
+  page.drawText(pageTag, {
+    x: col3 + footColW - mono.widthOfTextAtSize(pageTag, 7.5),
+    y: footY - 16,
+    size: 7.5, font: mono, color: SOFT,
+  })
 
   return doc.save()
 }

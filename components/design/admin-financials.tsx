@@ -308,6 +308,26 @@ function RiskBadge({ level }: any) {
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
 }
 
+// ─── Wallet transaction type badge (for the Wallet Transaction History table) ─
+const WALLET_TX_BADGE_CFG: Record<string, { bg: string; color: string }> = {
+  topup:         { bg: '#EAF5EE', color: '#1A6B45' },
+  debit:         { bg: '#FAEAEA', color: '#8B1A1A' },
+  refund:        { bg: '#E6EEF8', color: '#1B2D4F' },
+  adjustment:    { bg: '#FEF5E4', color: '#8B5E0A' },
+  purchase:      { bg: '#EDE7F5', color: '#3D2B6B' },
+  manual_credit: { bg: '#F0E6FF', color: '#6B21A8' },
+}
+function WalletTxBadge({ type }: { type: string }) {
+  const cfg = WALLET_TX_BADGE_CFG[type] || { bg: '#F2EFE9', color: '#5C6070' }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
+      fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '0.04em', background: cfg.bg, color: cfg.color,
+    }}>{type === 'manual_credit' ? 'Manual Credit' : (type || '—')}</span>
+  )
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function AdminFinancials({ orders = [], users = [], settings = {}, setPage, formatPrimary, templateOrders = [], walletTransactions = [], setActionNotice, initialTab = null }: any) {
   const [tab, setTab] = React.useState(initialTab || 'overview')
@@ -1383,15 +1403,20 @@ export default function AdminFinancials({ orders = [], users = [], settings = {}
                 { key: 'description', label: 'Description', wrap: true },
                 { key: 'reference',   label: 'Reference', muted: true },
               ]}
-              rows={walletTransactions.slice(0, 100).map(w => ({
+              rows={walletTransactions.slice(0, 100).map(w => {
+                // Derive display type from metadata for manual_credit entries
+                // (stored as 'topup' in the DB but should show distinctively).
+                const meta = w.metadata && typeof w.metadata === 'object' ? w.metadata : {}
+                const wType = (meta.kind === 'manual_credit') ? 'manual_credit' : (w.display_type || w.type || '—')
+                return {
                 date:        w.created_at ? new Date(w.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—',
                 profile_id:  w.profile_id ? w.profile_id.slice(0, 8) + '…' : '—',
-                type:        w.type || '—',
+                type:        <WalletTxBadge type={wType} />,
                 amount:      fmtCents(w.signed_cents),
                 balance:     fmtCents(w.balance_after_cents),
                 description: w.description || '—',
                 reference:   w.reference ? w.reference.slice(0, 16) : '—',
-              }))}
+              }})}
               emptyMsg="No wallet transactions yet"
             />
           </Section>
