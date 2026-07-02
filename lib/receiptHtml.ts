@@ -192,12 +192,51 @@ export function renderReceiptHtml(input: ReceiptInput): string {
   .foot-col .r { text-align: right; }
 
   @media print {
+    /* Bank-grade single-page receipt: tighter margins, compact spacing,
+       no orphan/widow breaks, forced single page via page-break. */
     html, body { background: #fff; }
-    .sheet { box-shadow: none; margin: 0; width: auto; }
-    .sheet-content { padding: 0.25in 0.2in; }
-    .header-band { margin: -0.25in -0.2in 32px; padding: 28px 0.2in 24px; }
+    .sheet {
+      box-shadow: none; margin: 0; width: auto;
+    }
+    .sheet-content { padding: 0.15in 0in; }
+    .header-band {
+      margin: -0.15in 0 18px; padding: 16px 0 14px;
+      page-break-after: avoid;
+    }
+    .header-band .brand img { width: 42px; height: 42px; }
+    .header-band .brand .nm { font-size: 17px; }
+    .header-band .brand .tag { font-size: 10px; }
+    .header-band .doc .n { font-size: 20px; }
+    .header-band .doc .d { font-size: 10px; }
+
+    .header-rule { margin: 0 0 14px; }
+
+    .parties {
+      padding: 14px 0; gap: 32px;
+      page-break-after: avoid;
+    }
+    .party .nm { font-size: 12px; margin-top: 6px; }
+    .party .ln { font-size: 10.5px; margin-top: 2px; }
+
+    table.items { margin-top: 18px; }
+    table.items th { font-size: 8.5px; padding: 0 8px 6px 0; }
+    table.items td { padding: 8px 8px 8px 0; font-size: 11px; }
+    table.items td .cat { font-size: 8.5px; margin-top: 1px; }
+
+    .totals { margin-top: 10px; }
+    .totals .row { padding: 4px 0; font-size: 11px; }
+    .totals .row.grand { padding-top: 8px; font-size: 13px; }
+
+    .details { margin-top: 18px; padding: 12px 18px; }
+    .details .lbl { margin-bottom: 8px; font-size: 8.5px; }
+    .details .grid { grid-template-columns: 140px 1fr; row-gap: 4px; column-gap: 12px; font-size: 10px; }
+
+    .foot { margin-top: 20px; padding-top: 12px; gap: 16px; }
+    .foot-col { font-size: 8.5px; }
+    .foot-col .hd { font-size: 8px; }
+
     .toolbar { display: none; }
-    @page { size: letter; margin: 0.55in 0.6in; }
+    @page { size: letter; margin: 0.4in 0.5in; }
   }
   @media (max-width: 700px) {
     .sheet-content { padding: 28px 22px; }
