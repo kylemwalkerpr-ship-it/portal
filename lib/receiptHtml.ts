@@ -92,7 +92,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
     font-size: 11px;
     font-weight: 400;
     letter-spacing: 0.18em;
-    color: rgba(47,46,99,0.035);
+    color: rgba(47,46,99,0.10);
     text-transform: uppercase;
     white-space: nowrap;
     transform: rotate(-30deg);
@@ -158,6 +158,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
     text-align: left; padding: 0 12px 10px 0; border-bottom: 1.5px solid var(--rule-strong);
   }
   table.items th.r, table.items td.r { text-align: right; padding-right: 0; }
+  table.items tbody tr:nth-child(even) td { background: var(--wash); }
   table.items td { padding: 14px 12px 14px 0; font-size: 12.5px; border-bottom: 1px solid var(--rule); vertical-align: top; }
   table.items td.desc { width: 56%; color: var(--ink); }
   table.items td .cat { display: block; font-size: 10.5px; color: var(--soft); margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -299,7 +300,7 @@ export function renderReceiptHtml(input: ReceiptInput): string {
         </thead>
         <tbody>
           ${items.map(i => `<tr>
-            <td class="desc">${esc(i.description)}<span class="cat">${esc(meta.kind)}</span></td>
+            <td class="desc">${esc(i.description)}<span class="cat">${esc(meta.kind.toUpperCase())} · ${esc(meta.receiptNumber)}</span></td>
             <td class="r num">${esc(i.quantity)}</td>
             <td class="r num">${esc(money(i.unitCents))}</td>
             <td class="r num">${esc(money(i.amountCents))}</td>

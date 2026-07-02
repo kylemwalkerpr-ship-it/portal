@@ -203,7 +203,7 @@ export async function POST(req: Request) {
         id: serviceOrderId,
         client_id: profile.id,
         status: 'pending',
-        total_cents: serviceItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0),
+        total_amount: serviceItems.reduce((sum, i) => sum + i.unitCents * i.quantity, 0) / 100,
         currency: 'usd',
         payment_method: 'wallet',
         transaction_id: null,

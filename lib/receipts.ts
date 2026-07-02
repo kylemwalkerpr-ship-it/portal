@@ -71,9 +71,10 @@ const RULE = rgb(0.84, 0.87, 0.91)
 const ACCENT_DARK = rgb(0.184, 0.176, 0.427) // #2F2E63 — darker accent for header
 const ACCENT = rgb(0.255, 0.251, 0.541)  // #41408A — matches portal accent
 const ACCENT_SOFT = rgb(0.93, 0.93, 0.97)
-const WATERMARK = rgb(0.93, 0.92, 0.95)
+const WATERMARK = rgb(0.80, 0.77, 0.88)
 const PAID_GREEN = rgb(0.10, 0.42, 0.27)
 const REFUND_AMBER = rgb(0.55, 0.37, 0.04)
+const ROW_ALT = rgb(0.98, 0.98, 0.99)
 
 const PAGE_W = 612
 const PAGE_H = 792
@@ -135,13 +136,14 @@ export async function generateReceiptPdf(input: ReceiptInput): Promise<Uint8Arra
 
   // ── Watermark ────────────────────────────────────────────────────────
   // Repeated "YouSafe Consultancy" diagonally across the page as a
-  // subtle security feature.
+  // subtle security feature. Darkened enough to be visible on screen
+  // but still unobtrusive in print.
   const wmText = 'YouSafe Consultancy'
-  const wmSize = 10
-  for (let row = 0; row < 6; row++) {
-    for (let col = 0; col < 4; col++) {
-      const wx = MARGIN - 20 + col * 160
-      const wy = 40 + row * 120
+  const wmSize = 11
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 5; col++) {
+      const wx = MARGIN - 40 + col * 140
+      const wy = 20 + row * 100
       page.drawText(wmText, {
         x: wx, y: wy, size: wmSize, font: helv, color: WATERMARK,
         rotate: degrees(-30),
@@ -228,17 +230,41 @@ export async function generateReceiptPdf(input: ReceiptInput): Promise<Uint8Arra
   page.drawText(amtH, { x: C_AMT - bold.widthOfTextAtSize(amtH, 8), y, size: 8, font: bold, color: MID })
   y -= 24
 
-  for (const item of input.items) {
-    const used = drawWrapped(page, item.description, C_DESC, y, helv, 10.5, INK, C_QTY - C_DESC - 16, 14)
+  // Draw a thin rule under the header for clear demarcation.
+  page.drawLine({ start: { x: MARGIN - 4, y: y + 4 }, end: { x: right + 4, y: y + 4 }, thickness: 1, color: INK })
+  y -= 10
+
+  for (let ii = 0; ii < input.items.length; ii++) {
+    const item = input.items[ii]
+    // Alternating row background for visual separation.
+    const rowH = Math.max(40, 16 + input.items.length > 1 ? 24 : 0)
+    // Compute row height from the wrapped description
+    const descUsed = drawWrapped(page, item.description, C_DESC, y, helv, 10.5, INK, C_QTY - C_DESC - 16, 14)
+    // Add a category line under the description for breakdown context.
+    const catText = `${input.meta.kind.toUpperCase()} · ${input.meta.receiptNumber}`
+    const catUsed = drawWrapped(page, catText, C_DESC, y - descUsed * 14 + 2, helv, 7.5, SOFT, C_QTY - C_DESC - 16, 10)
+    const totalUsed = descUsed + catUsed + 1
+    const rowHt = totalUsed * 14 + 12
+
+    // Alternating row background
+    if (ii % 2 === 1) {
+      page.drawRectangle({
+        x: MARGIN - 8, y: y - rowHt + 10,
+        width: right - MARGIN + 16, height: rowHt,
+        color: ROW_ALT,
+      })
+    }
+
     const qty = String(item.quantity)
     page.drawText(qty, { x: C_QTY, y, size: 10, font: mono, color: INK })
     const unit = money(item.unitCents, input.meta.currency)
     page.drawText(unit, { x: C_UNIT, y, size: 10, font: mono, color: INK })
     const amt = money(item.amountCents, input.meta.currency)
-    page.drawText(amt, { x: C_AMT - mono.widthOfTextAtSize(amt, 10), y, size: 10, font: mono, color: INK })
-    y -= used * 14 + 8
+    page.drawText(amt, { x: C_AMT - mono.widthOfTextAtSize(amt, 10), y, size: 10, font: monoBold, color: INK })
+    y -= rowHt
+    // Thin separator rule between items.
     page.drawLine({ start: { x: MARGIN, y: y + 4 }, end: { x: right, y: y + 4 }, thickness: 0.5, color: RULE })
-    y -= 10
+    y -= 8
   }
 
   // ── Totals ───────────────────────────────────────────────────────────
