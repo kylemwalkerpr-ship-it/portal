@@ -90,6 +90,56 @@ const MAP: Record<string, CaseworksCategoryMapping> = {
       { title: 'UK NHS surcharge 2026', path: '/uk/nhs-surcharge-2026' },
     ],
   },
+  business: {
+    cluster: 'Business immigration and entrepreneurship',
+    items: [
+      { title: 'E-2 Investor Visa guide', path: '/us/e2-investor-visa' },
+      { title: 'Canada Startup Visa pathway', path: '/ca/startup-visa-pathway' },
+      { title: 'UK Innovator Founder visa guide', path: '/uk/innovator-founder-visa' },
+    ],
+  },
+  credentials: {
+    cluster: 'Credentials and professional qualifications',
+    items: [
+      { title: 'Express Entry credential & document checklist', path: '/ca/express-entry-document-checklist-2026' },
+      { title: 'EB-1A self-petition guide', path: '/us/eb1a-self-petition' },
+      { title: 'Marriage green card document preparation', path: '/us/marriage-green-card-document-prep' },
+    ],
+  },
+  mentorship: {
+    cluster: 'Student guidance and academic mentorship',
+    items: [
+      { title: 'Statement of Purpose writing guide', path: '/compare/statement-of-purpose-guide' },
+      { title: 'Letter of recommendation guide', path: '/compare/letter-of-recommendation-guide' },
+      { title: 'Best study destination for 2026', path: '/compare/best-country-students-2026' },
+    ],
+  },
+  career: {
+    cluster: 'Career pathways and professional growth',
+    items: [
+      { title: 'OPT vs PGWP: which pathway fits you?', path: '/blog/opt-vs-pgwp-2026' },
+      { title: 'Green card after OPT guide', path: '/blog/green-card-after-opt' },
+      { title: 'STEM OPT extension 2026 guide', path: '/blog/stem-opt-extension-2026' },
+    ],
+  },
+  legal: {
+    cluster: 'Legal rights and protections',
+    items: [
+      { title: 'F-1 reinstatement checklist', path: '/us/f1-reinstatement-checklist' },
+      { title: 'F-1 status violation: what to do', path: '/us/f1-status-violation' },
+      { title: 'Asylum I-589 application guide', path: '/us/asylum-i589' },
+      { title: 'DACA renewal 2026 guide', path: '/us/daca-renewal-2026' },
+    ],
+  },
+  'academic-writing': {
+    cluster: 'Academic writing and applications',
+    items: [
+      { title: 'Statement of Purpose writing guide', path: '/compare/statement-of-purpose-guide' },
+      { title: 'Letter of recommendation guide', path: '/compare/letter-of-recommendation-guide' },
+      { title: 'Best study destination for 2026', path: '/compare/best-country-students-2026' },
+    ],
+  },
+
 }
 
 export function getCaseworksMapping(categoryId: string): CaseworksCategoryMapping | null {
