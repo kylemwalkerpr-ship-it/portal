@@ -6,7 +6,16 @@ import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 // ISR: revalidate at most once per hour
 export const revalidate = 3600
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}): Promise<Metadata> {
+  const sp = (await searchParams) ?? {}
+  const filterParams = ['q', 'category', 'sort', 'jurisdiction', 'provider_type', 'min_price', 'max_price', 'min_rating', 'delivery_days']
+  const hasFilters = filterParams.some((k) => sp[k] !== undefined)
+  const hasUtm = Object.keys(sp).some((k) => k.startsWith('utm_'))
+
   const title = 'YouSafe Marketplace — Verified Immigration & Tenancy Help'
   const description =
     'Browse vetted US, UK, Canada, and Australia immigration consultants and attorneys, plus tenancy-law help. Compare pricing, languages and reviews. Free to browse.'
@@ -15,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     alternates: { canonical: canonicalUrl },
-    robots: { index: true, follow: true },
+    robots: hasFilters || hasUtm ? { index: false, follow: true } : { index: true, follow: true },
     openGraph: {
       url: canonicalUrl,
       title,
@@ -24,6 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
   }
 }
+
 
 type Country = 'all' | 'us' | 'uk' | 'ca' | 'au'
 

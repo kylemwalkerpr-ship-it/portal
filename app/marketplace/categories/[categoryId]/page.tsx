@@ -13,8 +13,10 @@ interface CategoryPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export async function generateMetadata({ params }: CategoryPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CategoryPageProps): Promise<Metadata> {
   const { categoryId } = await params
+  const sp = await searchParams
+  const hasUtm = sp && Object.keys(sp).some(k => k.startsWith('utm_'))
   const resolved = resolveCategoryOrSubcategory(categoryId)
   // notFound() in generateMetadata triggers Next's 404 boundary cleanly.
   // Returning a thin noindex Metadata + letting the page-level notFound()
@@ -47,7 +49,7 @@ export async function generateMetadata({ params }: CategoryPageProps): Promise<M
     description,
     alternates: { canonical: canonicalUrl },
     openGraph: { url: canonicalUrl, title, description, type: 'website' },
-    robots: { index: true, follow: true },
+    robots: hasUtm ? { index: false, follow: true } : { index: true, follow: true },
   }
 }
 
