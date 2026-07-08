@@ -18,6 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: 'YouSafe Portal — Study Abroad & Legal Services',
     description:
       'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.',
+    robots: { index: false, follow: true },
     openGraph: { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.', type: 'website' },
     twitter:   { title: 'YouSafe Portal — Study Abroad & Legal Services', description: 'Members portal for YouSafe Consultancy. Study-abroad consulting and US, UK, Canada, and Australia legal document review — students, attorneys, consultants, and admins in one secure portal.', card: 'summary_large_image' },
   }

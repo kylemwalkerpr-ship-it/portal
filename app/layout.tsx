@@ -54,20 +54,11 @@ export const metadata = {
   title: 'YouSafe Portal — Study & Legal Services',
   description:
     'YouSafe members portal — study-abroad consulting + US / UK / Canada legal document review. Students, attorneys, consultants and admins in one secure portal.',
-  // Portal is a members area — keep it OUT of Google. The marketing surfaces
-  // (yousafeconsultancy.com landing, usa.*, ca.*, checkout.*, legal.*) carry
-  // the SEO weight. Per-page generateMetadata can opt back in for any future
-  // public route.
-  robots: {
-    index: false,
-    follow: true,
-  },
-  // Canonical omitted — portal is already `index: false` sitewide, so
-  // individual pages' canonical doesn't affect indexing. A hardcoded
-  // `canonical: '/'` here was inherited by ?lang= query-param variants
-  // crawled by Google, triggering "Alternate page with proper canonical
-  // tag" listings in Search Console (88 pages). Since the portal is
-  // noindex, removing it is the cleanest signal.
+  // Portal members area pages (dashboard, sign-in, sign-up) opt into
+  // noindex individually via per-page generateMetadata. The marketing
+  // subdomains (usa.*, ca.*, legal.*, uk.*, market.*) must remain
+  // indexable for SEO — they carry the content Google ranks.
+  // Canonical omitted to avoid polluting ?lang= query-param variants.
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
