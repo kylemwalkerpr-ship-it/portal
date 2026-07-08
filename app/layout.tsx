@@ -62,9 +62,12 @@ export const metadata = {
     index: false,
     follow: true,
   },
-  alternates: {
-    canonical: '/',
-  },
+  // Canonical omitted — portal is already `index: false` sitewide, so
+  // individual pages' canonical doesn't affect indexing. A hardcoded
+  // `canonical: '/'` here was inherited by ?lang= query-param variants
+  // crawled by Google, triggering "Alternate page with proper canonical
+  // tag" listings in Search Console (88 pages). Since the portal is
+  // noindex, removing it is the cleanest signal.
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
