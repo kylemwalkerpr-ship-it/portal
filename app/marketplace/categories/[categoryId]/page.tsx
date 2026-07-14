@@ -40,8 +40,17 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
     count = c || 0
   } catch { /* count is best-effort */ }
 
-  const title = `${display.name}${count ? ` (${count} services)` : ''} | YouSafe Marketplace`
-  const description = (display.description || `Browse ${display.name} services on YouSafe Consultancy.`).slice(0, 155)
+  // Empty shelves should not rank (2026-07-14 SEO deep strategy §5.2).
+  // Keep crawlable with follow so inbound caseworks links still pass equity
+  // once supply is listed; remove from sitemap when count is 0.
+  const emptyShelf = count < 1
+  const title = emptyShelf
+    ? `${display.name} | YouSafe Marketplace`
+    : `${display.name} (${count} services) | YouSafe Marketplace`
+  const description = (
+    display.description ||
+    `Browse vetted ${display.name} services on YouSafe Marketplace. Compare fixed-price briefs from consultants and licensed attorneys.`
+  ).slice(0, 155)
   const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
 
   return {
@@ -49,7 +58,9 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
     description,
     alternates: { canonical: canonicalUrl },
     openGraph: { url: canonicalUrl, title, description, type: 'website' },
-    robots: hasUtm ? { index: false, follow: true } : { index: true, follow: true },
+    robots: hasUtm || emptyShelf
+      ? { index: false, follow: true }
+      : { index: true, follow: true },
   }
 }
 
@@ -71,8 +82,26 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   // shows the right gigs for caseworks-linked subcategory URLs.
   const filterId = subcategory?.id ?? category.id
 
+  // Active-gig count for empty-shelf UI + indexing policy (matches generateMetadata).
+  let activeCount = 0
+  try {
+    const db = createSupabaseAdminClient()
+    let query = db
+      .from('gigs')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active')
+    query = subcategory
+      ? query.eq('subcategory', subcategory.id)
+      : query.eq('category', category.id)
+    const { count: c } = await query
+    activeCount = c || 0
+  } catch { /* best-effort */ }
+
   const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/categories/${categoryId}/`)
   const host = new URL(canonicalUrl).origin
+  const displayDescription =
+    (subcategory?.description || category.description || '').trim() ||
+    `Fixed-price ${displayName} help from vetted consultants and licensed attorneys.`
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -143,6 +172,32 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           <li aria-current="page" style={{ fontWeight: 600 }}>{displayName}</li>
         </ol>
       </nav>
+      {/* Editorial intro — category pages were listing-only shells (~170w).
+          Visible body copy + H1 context for indexable categories with supply. */}
+      <header className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 10px' }}>{displayName}</h1>
+        <p style={{ fontSize: '16px', lineHeight: 1.55, maxWidth: '48rem', margin: 0, opacity: 0.9 }}>
+          {displayDescription}
+        </p>
+        {activeCount < 1 ? (
+          <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
+            No active services in this category right now. Browse{' '}
+            <Link href="/categories" style={{ textDecoration: 'underline' }}>
+              all categories
+            </Link>
+            , read free guides on{' '}
+            <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline' }}>
+              MyCaseworks
+            </a>
+            , or check back soon as providers list new briefs.
+          </p>
+        ) : (
+          <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
+            {activeCount} active service{activeCount === 1 ? '' : 's'} — compare price, turnaround, and
+            provider role before you order.
+          </p>
+        )}
+      </header>
       <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
       {/* Sibling-subcategories rail — gives this page real outlinks
           (HTML anchors, not JSON-LD) AND gives every sibling page a

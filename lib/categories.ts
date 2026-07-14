@@ -46,7 +46,8 @@ export const CATEGORIES: Category[] = [
   {
     id: 'immigration',
     name: 'Immigration Services',
-    description: 'Visa applications, permits, and immigration support',
+    description:
+      'Compare fixed-price immigration briefs from licensed attorneys: study permits, work authorisation, PR pathways, and family sponsorship across the US, UK, Canada, and Australia.',
     icon: '🛂',
     vertical: 'study-abroad',
     popular: true,
@@ -56,7 +57,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'study-permits',
         name: 'Study Permits',
-        description: 'F-1, student visas, and study permit applications',
+        description:
+          'F-1, UK Student Route, Canadian study permits, and Australian Subclass 500 document prep — checklists, CAS/I-20 packets, and refusal recovery briefs.',
         keywords: ['f1', 'f-1', 'student visa', 'study permit', 'cas', 'dli'],
         popular: true,
         order: 1,
@@ -64,7 +66,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'work-permits',
         name: 'Work Permits',
-        description: 'OPT, CPT, H-1B, LMIA, and work authorization',
+        description:
+          'OPT, STEM OPT, CPT, H-1B, LMIA, Graduate Route, and skilled-worker filings — training plans, employer letters, and petition document packs.',
         keywords: ['opt', 'cpt', 'h1b', 'h-1b', 'lmi', 'work permit', 'tn', 'e3'],
         popular: true,
         order: 2,
@@ -80,7 +83,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'family-sponsorship',
         name: 'Family Sponsorship',
-        description: 'Spousal, parent, and family-based immigration',
+        description:
+          'Spousal, partner, parent, and family-based petitions — evidence indexes, financial requirements, and attorney-reviewed document packages.',
         keywords: ['spouse', 'partner', 'family', 'sponsorship', 'k1', 'fiance'],
         popular: false,
         order: 4,

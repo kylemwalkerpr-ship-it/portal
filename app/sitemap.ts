@@ -23,20 +23,51 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}${mp('/marketplace/categories/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.6 },
   ]
 
-  // Emit one entry per top-level category AND per subcategory (the
-  // /marketplace/categories/[categoryId] route now resolves both — see
-  // lib/categories.ts/resolveCategoryOrSubcategory). Ahrefs flagged
-  // /categories/work-permits, /categories/family-sponsorship,
-  // /categories/study-permits and /categories/citizenship as "pages to
-  // submit" because they had inbound links but weren't enumerated here.
+  // Category URLs: only emit when we can prove ≥1 active gig (empty shelves
+  // are noindex in generateMetadata — keep them out of the sitemap too).
+  // If the DB query fails at build time, fall back to enumerating all
+  // categories so the build never blanks the market map entirely.
+  const categoryIds: string[] = []
   for (const cat of CATEGORIES) {
-    entries.push({
-      url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
-      lastModified: new Date(),
-      changeFrequency: 'weekly',
-      priority: 0.6,
-    })
+    categoryIds.push(cat.id)
+    for (const sub of cat.subcategories) categoryIds.push(sub.id)
+  }
+
+  let categoriesWithSupply: Set<string> | null = null
+  try {
+    const db = createSupabaseAdminClient()
+    const { data: gigRows } = await db
+      .from('gigs')
+      .select('category, subcategory')
+      .eq('status', 'active')
+      .not('provider_id', 'is', null)
+      .limit(5000)
+    const supply = new Set<string>()
+    for (const row of gigRows ?? []) {
+      if (row.category) supply.add(String(row.category))
+      if (row.subcategory) supply.add(String(row.subcategory))
+    }
+    // If we got a successful query (even zero rows), trust it.
+    categoriesWithSupply = supply
+  } catch {
+    categoriesWithSupply = null
+  }
+
+  for (const cat of CATEGORIES) {
+    const includeCat =
+      categoriesWithSupply === null || categoriesWithSupply.has(cat.id)
+    if (includeCat) {
+      entries.push({
+        url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
+        lastModified: new Date(),
+        changeFrequency: 'weekly',
+        priority: 0.6,
+      })
+    }
     for (const sub of cat.subcategories) {
+      const includeSub =
+        categoriesWithSupply === null || categoriesWithSupply.has(sub.id)
+      if (!includeSub) continue
       entries.push({
         url: `${base}${mp(`/marketplace/categories/${sub.id}/`)}`,
         lastModified: new Date(),
