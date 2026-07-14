@@ -1,6 +1,8 @@
 import type { MetadataRoute } from 'next'
+import { headers } from 'next/headers'
 
-const SITE_URL = 'https://portal.yousafeconsultancy.com'
+const PORTAL_HOST = 'portal.yousafeconsultancy.com'
+const MARKET_HOST = 'market.yousafeconsultancy.com'
 
 /**
  * Portal is the authenticated members area. Everything except /api/ is
@@ -11,22 +13,35 @@ const SITE_URL = 'https://portal.yousafeconsultancy.com'
  * Important: do NOT add `/sign-in`, `/sign-up`, `/dashboard`, or any
  * other portal route here. Blocking those in robots.txt prevents
  * Googlebot from seeing their noindex meta tag, AND it kills the link
- * signal flowing in from the marketing tier (yousafeconsultancy.com,
- * usa.*, ca.* — they collectively link to /sign-up/student 156 times,
- * /sign-in/student 111 times, etc.). Crawl-blocking those pages
- * stranded the link equity. The noindex meta does the actual work.
+ * signal flowing in from the marketing tier.
  *
- * /api/ stays disallowed — those are JSON endpoints with no SEO value
- * and we don't want crawlers exercising them.
+ * Host-aware: the same app serves market.yousafeconsultancy.com. Never
+ * emit a non-standard `host:` field (Bing can misread it; Google ignores
+ * it). Sitemap must match the request host so market does not advertise
+ * portal as preferred host (2026-07-14 SEO audit T2).
+ *
+ * /api/ stays disallowed — JSON endpoints with no SEO value.
  */
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  let host = PORTAL_HOST
+  try {
+    const h = await headers()
+    const raw = h.get('host')?.split(':')[0]?.toLowerCase()
+    if (raw === MARKET_HOST || raw === PORTAL_HOST) host = raw
+  } catch {
+    // Build-time / static generation fallback — portal is the default app host.
+  }
+
+  const base = `https://${host}`
+
   return {
     rules: {
       userAgent: '*',
       allow: '/',
       disallow: ['/api/', '/_next/static/'],
     },
-    sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
+    // Sitemap body already emits market.* URLs; both hosts may list it.
+    // Prefer the request host so crawlers on market do not see portal Host.
+    sitemap: `${base}/sitemap.xml`,
   }
 }
