@@ -65,6 +65,22 @@ export default function CartPage() {
   const [payMethod, setPayMethod] = useState<'wallet' | 'card' | 'saved_card'>('wallet')
   const [hasSetDefaultPayMethod, setHasSetDefaultPayMethod] = useState(false)
 
+  // Ensure the canonical URL always points to the clean /marketplace/cart
+  // path, so any ?add=* query-param variant is consolidated under the
+  // base URL. Screaming Frog flagged 10+ cart?add=... URLs as indexable
+  // query-param duplicates; this canonical prevents them from competing.
+  useEffect(() => {
+    const existing = document.querySelector('link[rel="canonical"]')
+    if (existing) {
+      existing.setAttribute('href', '/marketplace/cart')
+    } else {
+      const link = document.createElement('link')
+      link.rel = 'canonical'
+      link.href = '/marketplace/cart'
+      document.head.appendChild(link)
+    }
+  }, [])
+
   // Handle ?add=slug from product pages
   useEffect(() => {
     const addSlug = searchParams?.get('add')
