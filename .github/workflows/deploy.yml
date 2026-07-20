@@ -58,6 +58,13 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npm run build
 
+      - name: SEO audit guard (report-only)
+        continue-on-error: true
+        run: |
+          echo "::group::Portal SEO Audit Guard"
+          node scripts/seo-audit-guard.mjs
+          echo "::endgroup::"
+
       # Worker secrets (RESEND_API_KEY, CLERK_SECRET_KEY,
       # SUPABASE_SERVICE_ROLE_KEY, NMI_SECURITY_KEY) live on the worker itself,
       # set once via `wrangler versions secret put`. CI does not push them.
