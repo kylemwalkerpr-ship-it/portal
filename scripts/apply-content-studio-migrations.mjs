@@ -23,7 +23,9 @@ const PROJECT_REF = process.env.SUPABASE_PROJECT_REF || 'krggzrxxnqfsbbklatxl'
 const sql =
   readFileSync(join(root, 'supabase/migrations/content_jobs.sql'), 'utf8') +
   '\n\n' +
-  readFileSync(join(root, 'supabase/migrations/gsc_tokens.sql'), 'utf8')
+  readFileSync(join(root, 'supabase/migrations/gsc_tokens.sql'), 'utf8') +
+  '\n\n' +
+  readFileSync(join(root, 'supabase/migrations/seo_factory_columns.sql'), 'utf8')
 
 async function viaManagementApi(token) {
   const res = await fetch(

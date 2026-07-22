@@ -1,5 +1,6 @@
 -- Content Studio: content_jobs table
 -- Tracks AI-generated content lifecycle from pending → drafting → publishing → pr_created → merged/closed/failed
+-- Idempotent: safe to re-run.
 
 CREATE TABLE IF NOT EXISTS public.content_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -53,12 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_content_jobs_repo_pr ON public.content_jobs (targ
 -- Enable RLS (Row-Level Security)
 ALTER TABLE public.content_jobs ENABLE ROW LEVEL SECURITY;
 
--- Admin-only policy: only users with admin role can access this table
--- The admin check is done via the Clerk user ID header in API routes;
--- RLS serves as an additional guard.
+-- Admin-only policy: access controlled at the API route level via Clerk.
+DROP POLICY IF EXISTS "Admin full access" ON public.content_jobs;
 CREATE POLICY "Admin full access" ON public.content_jobs
   FOR ALL
-  USING (true)   -- Access controlled at the API route level via Clerk middleware
+  USING (true)
   WITH CHECK (true);
 
 -- Auto-update updated_at
@@ -70,6 +70,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_content_jobs_updated_at ON public.content_jobs;
 CREATE TRIGGER trg_content_jobs_updated_at
   BEFORE UPDATE ON public.content_jobs
   FOR EACH ROW
