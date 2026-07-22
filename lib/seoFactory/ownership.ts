@@ -1,7 +1,23 @@
 /**
- * Estate ownership resolver — enforces one primary intent → one indexable owner.
- * Source: SEO strategies/ownership-registry-v1.csv → public/seo-data/ownership-registry.json
- * (loaded at runtime so it does not inflate the Worker script size).
+ * Estate ownership resolver — SEO strategies registry is source of truth.
+ *
+ * Source of truth:
+ *   Documents/GitHub/SEO strategies/ownership-registry-v1.csv
+ *   → public/seo-data/ownership-registry.json (runtime asset)
+ *   → OWNERSHIP_REGISTRY.md standing rules
+ *
+ * Standing rules:
+ *   1. Procedural / YMYL → legal (caseworks)
+ *   2. Geo "from {country}" → regional /from/ (yousafe-consultancy)
+ *   3. University modifiers → regional universities graph by default
+ *   4. Blog → news/summary on legal or apex, always links to legal pillar
+ *   5. Transactional → market (portal), supply_first when blocked
+ *   6. Hubs own cluster nav; spokes own long-tail procedure
+ *
+ * Repo map (never invent hosts outside this table):
+ *   legal → caseworks
+ *   usa|uk|ca|au|apex → yousafe-consultancy
+ *   market → portal
  */
 
 import { loadOwnershipRegistry } from '@/lib/seoDataLoaders'
@@ -18,6 +34,8 @@ export type IntentClass =
   | 'news_summary'
   | 'hub'
 
+export type ContentRepo = 'caseworks' | 'yousafe-consultancy' | 'portal'
+
 export interface OwnershipRow {
   id: number
   primary_keyword: string
@@ -33,20 +51,25 @@ export interface OwnershipRow {
 
 export interface OwnerPlan {
   matched: OwnershipRow | null
+  matchScore: number
   host: OwnerHost
-  repo: 'caseworks' | 'yousafe-consultancy' | 'portal'
+  repo: ContentRepo
   /** Repo-relative file path to write */
   filePath: string
   /** Public URL after deploy */
   canonicalUrl: string
   indexable: boolean
   action: string
+  intentClass: string
   warnings: string[]
   blockers: string[]
   ymy: boolean
+  /** How routing was decided */
+  routingSource: 'registry_owner_url' | 'registry_host' | 'standing_rules' | 'content_type_default'
 }
 
-const HOST_REPO: Record<string, OwnerPlan['repo']> = {
+/** Host → GitHub repo (immutable estate contract). */
+export const HOST_REPO: Record<OwnerHost, ContentRepo> = {
   legal: 'caseworks',
   apex: 'yousafe-consultancy',
   usa: 'yousafe-consultancy',
@@ -56,7 +79,7 @@ const HOST_REPO: Record<string, OwnerPlan['repo']> = {
   market: 'portal',
 }
 
-const HOST_PUBLIC: Record<string, string> = {
+export const HOST_PUBLIC: Record<OwnerHost, string> = {
   legal: 'https://legal.yousafeconsultancy.com',
   apex: 'https://yousafeconsultancy.com',
   usa: 'https://usa.yousafeconsultancy.com',
@@ -64,6 +87,18 @@ const HOST_PUBLIC: Record<string, string> = {
   ca: 'https://ca.yousafeconsultancy.com',
   au: 'https://au.yousafeconsultancy.com',
   market: 'https://market.yousafeconsultancy.com',
+}
+
+const HOST_FROM_HOSTNAME: Record<string, OwnerHost> = {
+  'legal.yousafeconsultancy.com': 'legal',
+  'usa.yousafeconsultancy.com': 'usa',
+  'uk.yousafeconsultancy.com': 'uk',
+  'ca.yousafeconsultancy.com': 'ca',
+  'au.yousafeconsultancy.com': 'au',
+  'yousafeconsultancy.com': 'apex',
+  'www.yousafeconsultancy.com': 'apex',
+  'market.yousafeconsultancy.com': 'market',
+  'portal.yousafeconsultancy.com': 'market',
 }
 
 function normalize(s: string): string {
@@ -74,7 +109,7 @@ function normalize(s: string): string {
     .trim()
 }
 
-function slugify(s: string): string {
+export function slugify(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFKD')
@@ -89,33 +124,197 @@ function scoreMatch(keyword: string, primary: string): number {
   const b = normalize(primary)
   if (!a || !b) return 0
   if (a === b) return 100
-  if (a.includes(b) || b.includes(a)) return 80
-  const aw = new Set(a.split(' ').filter((w) => w.length > 2))
+  // phrase containment
+  if (a.includes(b) || b.includes(a)) return 85
+  const aw = a.split(' ').filter((w) => w.length > 2)
   const bw = b.split(' ').filter((w) => w.length > 2)
-  const overlap = bw.filter((w) => aw.has(w)).length
+  if (!aw.length || !bw.length) return 0
+  const aset = new Set(aw)
+  const overlap = bw.filter((w) => aset.has(w)).length
   if (overlap === 0) return 0
-  return Math.round((overlap / Math.max(bw.length, 1)) * 60)
+  // Jaccard-ish
+  const union = new Set([...aw, ...bw]).size
+  const j = overlap / union
+  const coverage = overlap / bw.length
+  return Math.round(Math.max(j, coverage) * 90)
 }
 
-function defaultHostForContentType(
-  contentType: string,
-  region: string,
-): OwnerHost {
-  if (contentType === 'marketplace_gig') return 'market'
-  if (contentType === 'regional_page' || contentType === 'regional_university' || contentType === 'regional_from') {
-    const r = region.toLowerCase()
-    if (r === 'us') return 'usa'
-    if (r === 'uk') return 'uk'
-    if (r === 'ca') return 'ca'
-    if (r === 'au') return 'au'
-    return 'apex'
+/** Derive owner host from absolute URL hostname (authoritative when present). */
+export function hostFromUrl(url: string | null | undefined): OwnerHost | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    return HOST_FROM_HOSTNAME[host] || HOST_FROM_HOSTNAME[u.hostname] || null
+  } catch {
+    return null
   }
-  if (contentType === 'blog_summary' || contentType === 'blog_post') return 'legal'
-  // legal_guide, article, default
-  return 'legal'
 }
 
-function pathForHost(
+/**
+ * Map a public owner URL → repo-relative file path for the correct monorepo.
+ * Paths mirror live estate layout (caseworks app/*, consultancy {region}/content/*).
+ */
+export function filePathFromOwnerUrl(
+  ownerUrl: string,
+  host: OwnerHost,
+): { filePath: string; urlPath: string } | null {
+  let u: URL
+  try {
+    u = new URL(ownerUrl)
+  } catch {
+    return null
+  }
+  let path = u.pathname.replace(/\/+$/, '') || '/'
+  if (path !== '/') path = path.replace(/\/+$/, '')
+  const urlPath = path.endsWith('/') ? path : `${path}/`
+  const segments = path.split('/').filter(Boolean)
+
+  if (host === 'legal') {
+    // caseworks: /us/foo → app/us/foo/page.tsx
+    if (segments.length === 0) {
+      return { filePath: 'app/page.tsx', urlPath: '/' }
+    }
+    // guide dynamic may use [slug] but static dirs exist for many guides
+    return {
+      filePath: `app/${segments.join('/')}/page.tsx`,
+      urlPath,
+    }
+  }
+
+  if (host === 'market') {
+    if (segments[0] === 'gigs' && segments[1]) {
+      return { filePath: `catalogue/${segments[1]}.mdx`, urlPath }
+    }
+    if (segments[0] === 'categories' && segments[1]) {
+      return { filePath: `catalogue/categories/${segments[1]}.mdx`, urlPath }
+    }
+    return {
+      filePath: `catalogue/${slugify(segments.join('-') || 'gig')}.mdx`,
+      urlPath,
+    }
+  }
+
+  // Regional / apex (yousafe-consultancy monorepo)
+  const app =
+    host === 'apex' ? 'landing-page' : host === 'usa' ? 'usa' : host
+
+  if (segments[0] === 'from' && segments[1]) {
+    return {
+      filePath: `${app}/content/from/${segments[1]}.md`,
+      urlPath,
+    }
+  }
+  if (segments[0] === 'universities' && segments[1]) {
+    return {
+      filePath: `${app}/content/universities/${segments[1]}.md`,
+      urlPath,
+    }
+  }
+  if (segments[0] === 'blog' && segments[1]) {
+    return {
+      filePath: `${app}/content/blog/${segments[1]}.md`,
+      urlPath,
+    }
+  }
+  if (segments.length === 0) {
+    return { filePath: `${app}/content/index.md`, urlPath: '/' }
+  }
+  return {
+    filePath: `${app}/content/${segments.join('/')}.md`,
+    urlPath,
+  }
+}
+
+/**
+ * Standing-rules fallback when no registry row matches.
+ * Never routes YMYL procedure to regional or market by accident.
+ */
+export function standingRulesHost(opts: {
+  primaryKeyword: string
+  contentType: string
+  region: string
+  intentHint?: string
+}): { host: OwnerHost; contentType: string; reason: string } {
+  const kw = normalize(opts.primaryKeyword)
+  const region = opts.region.toUpperCase()
+  let contentType = opts.contentType
+
+  // Transactional / marketplace
+  if (
+    contentType === 'marketplace_gig' ||
+    /hire|marketplace|gig|attorney near me|consultant fee/i.test(kw)
+  ) {
+    return { host: 'market', contentType: 'marketplace_gig', reason: 'transactional → market' }
+  }
+
+  // Geo from-country
+  if (
+    contentType === 'regional_from' ||
+    /\bfrom (nigeria|india|kenya|ghana|pakistan|bangladesh|china|philippines|sri lanka|uae|united arab)\b/i.test(
+      kw,
+    ) ||
+    /\bvisa from\b/i.test(kw)
+  ) {
+    let host: OwnerHost = 'usa'
+    if (/uk|british|student route/i.test(kw) || region === 'UK') host = 'uk'
+    else if (/canada|study permit|pgwp|ircc/i.test(kw) || region === 'CA') host = 'ca'
+    else if (/australia|485|subclass/i.test(kw) || region === 'AU') host = 'au'
+    else if (region === 'US') host = 'usa'
+    return { host, contentType: 'regional_from', reason: 'geo_modifier from-country → regional' }
+  }
+
+  // University modifier → regional campus graph (strategy default)
+  if (
+    contentType === 'regional_university' ||
+    (/\buniversity\b|\bcollege\b|\bmit\b|\bnyu\b|\bharvard\b/i.test(kw) &&
+      !/housing|tenant|rent/i.test(kw))
+  ) {
+    let host: OwnerHost = 'usa'
+    if (/uk|london|kcl|ucl|manchester|edinburgh/i.test(kw) || region === 'UK') host = 'uk'
+    else if (/canada|toronto|ubc|mcgill/i.test(kw) || region === 'CA') host = 'ca'
+    else if (/australia|melbourne|sydney|monash/i.test(kw) || region === 'AU') host = 'au'
+    return {
+      host,
+      contentType: 'regional_university',
+      reason: 'university_modifier → regional universities graph',
+    }
+  }
+
+  // Housing guides often stay legal (many are legal/guide/*)
+  if (/housing|tenant|renters? rights|section 21|deposit dispute/i.test(kw)) {
+    return { host: 'legal', contentType: contentType || 'legal_guide', reason: 'housing/tenant rights → legal' }
+  }
+
+  // Blog / news
+  if (contentType === 'blog_post' || contentType === 'blog_summary' || /news|update 2026|overview/i.test(kw)) {
+    return { host: 'legal', contentType: contentType || 'blog_summary', reason: 'news_summary → legal blog' }
+  }
+
+  // Cross-country compare
+  if (contentType === 'regional_page' && region === 'COMPARE') {
+    return { host: 'legal', contentType: 'legal_guide', reason: 'comparison → legal/compare' }
+  }
+
+  // Explicit regional landing (non-YMYL soft pages)
+  if (contentType === 'regional_page') {
+    const r = region.toLowerCase()
+    if (r === 'us') return { host: 'usa', contentType, reason: 'regional_page US → usa' }
+    if (r === 'uk') return { host: 'uk', contentType, reason: 'regional_page UK → uk' }
+    if (r === 'ca') return { host: 'ca', contentType, reason: 'regional_page CA → ca' }
+    if (r === 'au') return { host: 'au', contentType, reason: 'regional_page AU → au' }
+    return { host: 'apex', contentType, reason: 'regional_page default → apex' }
+  }
+
+  // Default YMYL / procedural / checklist → legal (caseworks)
+  return {
+    host: 'legal',
+    contentType: contentType === 'article' ? 'legal_guide' : contentType || 'legal_guide',
+    reason: 'procedural/YMYL default → legal (caseworks)',
+  }
+}
+
+function pathForHostFallback(
   host: OwnerHost,
   region: string,
   slug: string,
@@ -125,42 +324,52 @@ function pathForHost(
 
   if (host === 'legal') {
     if (contentType === 'blog_post' || contentType === 'blog_summary') {
-      return {
-        filePath: `app/blog/${slug}/page.tsx`,
-        urlPath: `/blog/${slug}/`,
-      }
+      return { filePath: `app/blog/${slug}/page.tsx`, urlPath: `/blog/${slug}/` }
     }
-    // Procedural / pillar pages live under regional trees
-    return {
-      filePath: `app/${reg}/${slug}/page.tsx`,
-      urlPath: `/${reg}/${slug}/`,
-    }
+    // Prefer region tree matching keyword region
+    return { filePath: `app/${reg}/${slug}/page.tsx`, urlPath: `/${reg}/${slug}/` }
   }
 
   if (host === 'market') {
-    return {
-      filePath: `catalogue/${slug}.mdx`,
-      urlPath: `/marketplace/gigs/${slug}/`,
-    }
+    return { filePath: `catalogue/${slug}.mdx`, urlPath: `/marketplace/gigs/${slug}/` }
   }
 
-  // Regional apps (yousafe-consultancy monorepo)
   const app = host === 'apex' ? 'landing-page' : host === 'usa' ? 'usa' : host
   if (contentType === 'regional_from') {
-    return {
-      filePath: `${app}/content/from-${slug}.md`,
-      urlPath: `/from/${slug}/`,
-    }
+    return { filePath: `${app}/content/from/${slug}.md`, urlPath: `/from/${slug}/` }
   }
   if (contentType === 'regional_university') {
     return {
-      filePath: `${app}/content/universities-${slug}.md`,
+      filePath: `${app}/content/universities/${slug}.md`,
       urlPath: `/universities/${slug}/`,
     }
   }
-  return {
-    filePath: `${app}/content/${slug}.md`,
-    urlPath: `/${slug}/`,
+  return { filePath: `${app}/content/${slug}.md`, urlPath: `/${slug}/` }
+}
+
+/**
+ * Infer content type from registry intent when caller passes a generic type.
+ */
+export function contentTypeFromIntent(
+  intent: string,
+  fallback: string,
+): string {
+  switch (intent) {
+    case 'geo_modifier':
+      return 'regional_from'
+    case 'university_modifier':
+      return 'regional_university'
+    case 'transactional':
+      return 'marketplace_gig'
+    case 'news_summary':
+      return 'blog_summary'
+    case 'hub':
+    case 'procedural':
+    case 'checklist':
+    case 'comparison':
+      return 'legal_guide'
+    default:
+      return fallback || 'legal_guide'
   }
 }
 
@@ -180,76 +389,174 @@ export async function resolveOwner(opts: {
   let best: { row: OwnershipRow; score: number } | null = null
   for (const row of rows) {
     const score = scoreMatch(keyword, row.primary_keyword)
-    if (score < 40) continue
+    if (score < 45) continue
     if (!best || score > best.score) best = { row, score }
   }
 
   const matched = best?.row ?? null
-  let host = (matched?.owner_host as OwnerHost) || defaultHostForContentType(opts.contentType, opts.region)
-  if (!HOST_REPO[host]) host = 'legal'
+  const matchScore = best?.score ?? 0
 
-  const slug = opts.slug || slugify(keyword || opts.contentType + '-' + Date.now())
-  const { filePath, urlPath } = pathForHost(host, opts.region, slug, opts.contentType)
-  const publicBase = HOST_PUBLIC[host] || HOST_PUBLIC.legal
-  const canonicalUrl = matched?.owner_url || `${publicBase}${urlPath}`
-
-  let indexable = opts.indexable ?? true
-  let action = matched?.action || 'build'
+  let contentType = opts.contentType || 'legal_guide'
+  let host: OwnerHost
+  let routingSource: OwnerPlan['routingSource']
+  let filePath: string
+  let urlPath: string
+  let canonicalUrl: string
+  let action = 'build'
+  let intentClass = 'procedural'
 
   if (matched) {
-    if (matched.action === 'noindex') {
-      indexable = false
-      warnings.push(`Registry action=noindex for "${matched.primary_keyword}"`)
+    intentClass = String(matched.intent_class || 'procedural')
+    contentType = contentTypeFromIntent(intentClass, contentType)
+    action = matched.action || 'build'
+
+    // Host: prefer owner_url hostname (ground truth), then owner_host column
+    const fromUrl = hostFromUrl(matched.owner_url)
+    const fromCol = matched.owner_host as OwnerHost
+    host = fromUrl || (HOST_REPO[fromCol] ? fromCol : 'legal')
+    if (fromUrl && fromCol && fromUrl !== fromCol) {
+      warnings.push(
+        `Registry host mismatch: owner_host=${fromCol} but owner_url host=${fromUrl}; using URL host (strategy path wins)`,
+      )
+      host = fromUrl
+    }
+
+    // Path: always prefer owner_url path so ships land on the strategy URL tree
+    const fromOwner = filePathFromOwnerUrl(matched.owner_url, host)
+    if (fromOwner) {
+      filePath = fromOwner.filePath
+      urlPath = fromOwner.urlPath
+      routingSource = 'registry_owner_url'
+    } else {
+      const slug = opts.slug || slugify(keyword)
+      const fb = pathForHostFallback(host, opts.region, slug, contentType)
+      filePath = fb.filePath
+      urlPath = fb.urlPath
+      routingSource = 'registry_host'
+      warnings.push('Could not parse owner_url path; used host fallback path')
+    }
+    canonicalUrl = matched.owner_url || `${HOST_PUBLIC[host]}${urlPath}`
+  } else {
+    const rules = standingRulesHost({
+      primaryKeyword: keyword,
+      contentType,
+      region: opts.region,
+    })
+    host = rules.host
+    contentType = rules.contentType
+    routingSource = 'standing_rules'
+    intentClass = contentType === 'regional_from' ? 'geo_modifier' : contentType === 'regional_university' ? 'university_modifier' : 'procedural'
+    const slug = opts.slug || slugify(keyword || contentType)
+    const fb = pathForHostFallback(host, opts.region, slug, contentType)
+    filePath = fb.filePath
+    urlPath = fb.urlPath
+    canonicalUrl = `${HOST_PUBLIC[host]}${urlPath}`
+    warnings.push(`No registry match — standing rules: ${rules.reason}`)
+  }
+
+  if (!HOST_REPO[host]) {
+    warnings.push(`Unknown host ${host}; forcing legal/caseworks`)
+    host = 'legal'
+  }
+
+  const repo = HOST_REPO[host]
+  let indexable = opts.indexable ?? true
+
+  if (matched) {
+    if (matched.action === 'noindex' || matched.action === 'supply_first') {
+      if (matched.action === 'noindex') indexable = false
+      warnings.push(`Registry action=${matched.action} for "${matched.primary_keyword}"`)
     }
     if (matched.action === '301' || matched.action === 'merge') {
       blockers.push(
         `Registry says ${matched.action} for "${matched.primary_keyword}" → expand existing ${matched.owner_url}, do not create sibling`,
       )
     }
-    if (matched.action === 'blocked_on_supply') {
+    if (matched.action === 'blocked_on_supply' || matched.status === 'blocked_on_supply') {
       blockers.push(`blocked_on_supply: ${matched.notes || 'wait for market inventory'}`)
     }
     if (matched.status === 'needs_decision') {
       warnings.push(`Ownership needs_decision: ${matched.notes}`)
     }
-    // Existing confirmed owner with keep — creating new indexable URL is cannibal risk
-    if (matched.action === 'keep' && matched.status === 'confirmed' && best && best.score >= 80) {
-      if (opts.contentType !== 'blog_summary') {
-        blockers.push(
-          `Strong match to existing owner "${matched.primary_keyword}" at ${matched.owner_url}. Expand that URL instead of shipping a new indexable page.`,
+    // Strong keep match: do not invent a new indexable URL — ship expands owner path
+    if (
+      (matched.action === 'keep' || matched.action === 'expand') &&
+      matched.status === 'confirmed' &&
+      matchScore >= 80
+    ) {
+      if (matched.action === 'keep' && contentType !== 'blog_summary') {
+        warnings.push(
+          `Strong registry match — shipping expands owner URL ${matched.owner_url} (repo ${repo}), not a new sibling`,
         )
-      } else {
-        warnings.push(`Blog summary must link to owner ${matched.owner_url}`)
-        indexable = true // blog can be indexable as news_summary if distinct
       }
     }
-  } else {
-    warnings.push('No registry match — using default host routing; add a registry row after ship')
+    if (matched.action === 'keep' && matchScore >= 90 && contentType !== 'blog_summary' && matched.status === 'confirmed') {
+      // Soft blocker only when intent is exact keep and we're not expanding
+      // Allow ship to owner path; block only if path would diverge
+      const expected = filePathFromOwnerUrl(matched.owner_url, host)
+      if (expected && expected.filePath !== filePath) {
+        blockers.push(
+          `Path divergence from strategy owner ${matched.owner_url}. Expand that URL only.`,
+        )
+      }
+    }
   }
 
   const ymy =
     host === 'legal' ||
-    /visa|immigration|permit|asylum|green.?card|ilr|opt|i-20|uscis/i.test(keyword + opts.contentType)
+    /visa|immigration|permit|asylum|green.?card|ilr|opt|i-20|uscis|ukvi|pgwp|485/i.test(
+      keyword + contentType,
+    )
 
   if (ymy && indexable) {
     warnings.push('YMYL legal content: prefer ship_mode=pr unless audit ≥ 80')
   }
 
+  // Final invariant: repo must match host table
+  if (HOST_REPO[host] !== repo) {
+    blockers.push(`Internal error: host ${host} repo mismatch`)
+  }
+
   return {
     matched,
+    matchScore,
     host,
-    repo: HOST_REPO[host],
+    repo,
     filePath,
     canonicalUrl,
     indexable,
     action,
+    intentClass,
     warnings,
     blockers,
     ymy,
+    routingSource,
   }
 }
 
 export async function listRegistry(): Promise<OwnershipRow[]> {
   const registry = await loadOwnershipRegistry()
   return (registry.rows ?? []) as OwnershipRow[]
+}
+
+/** Assert plan is shippable to the strategy repo (throws if inconsistent). */
+export function assertPlanRepoConsistency(plan: OwnerPlan): void {
+  const expected = HOST_REPO[plan.host]
+  if (plan.repo !== expected) {
+    throw new Error(
+      `Ownership invariant violated: host=${plan.host} expects repo=${expected} but plan.repo=${plan.repo}`,
+    )
+  }
+  if (plan.host === 'legal' && !plan.filePath.startsWith('app/')) {
+    throw new Error(`Legal/caseworks path must start with app/: got ${plan.filePath}`)
+  }
+  if (
+    (plan.host === 'usa' || plan.host === 'uk' || plan.host === 'ca' || plan.host === 'au' || plan.host === 'apex') &&
+    plan.repo !== 'yousafe-consultancy'
+  ) {
+    throw new Error(`Regional host ${plan.host} must ship to yousafe-consultancy`)
+  }
+  if (plan.host === 'market' && plan.repo !== 'portal') {
+    throw new Error('Market host must ship to portal')
+  }
 }

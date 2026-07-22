@@ -4,6 +4,7 @@
 
 import { Buffer } from 'node:buffer'
 import type { OwnerPlan } from './ownership'
+import { assertPlanRepoConsistency, HOST_REPO } from './ownership'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile } from './renderTarget'
@@ -104,6 +105,14 @@ export async function shipContent(opts: {
   dryRun?: boolean
   jobId?: string
 }): Promise<ShipResult> {
+  // Hard gate: strategy host → repo must match HOST_REPO table
+  assertPlanRepoConsistency(opts.plan)
+  if (HOST_REPO[opts.plan.host] !== opts.plan.repo) {
+    throw new Error(
+      `Refusing ship: host ${opts.plan.host} is not mapped to repo ${opts.plan.repo}`,
+    )
+  }
+
   const owner = process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it'
   const repo = opts.plan.repo
   const branchMain = 'main'

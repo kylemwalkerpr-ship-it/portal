@@ -3,7 +3,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { resolveOwner, type OwnerPlan } from './ownership'
+import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './ownership'
 import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
@@ -80,18 +80,18 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const primaryKeyword = (input.primaryKeyword || topic).trim()
   const title = (input.title || topic || primaryKeyword).trim()
   const region = (input.region || 'US').toUpperCase()
-  const contentType = input.contentType || 'legal_guide'
+  let contentType = input.contentType || 'legal_guide'
   const tone = input.tone || 'educational'
   const indexable = input.indexable !== false
   const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
   const minAudit = Math.min(95, Math.max(40, Number(input.minAuditScore) || 55))
   const maxRefine = Math.min(3, Math.max(0, Number(input.maxRefine ?? 2)))
-  const minWords = minWordsForType(contentType)
 
   if (!topic) {
     throw new Error('topic required')
   }
 
+  // Resolve ownership FIRST from SEO strategies registry — content type may be adjusted
   const plan = await resolveOwner({
     primaryKeyword,
     contentType,
@@ -99,6 +99,16 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     indexable,
     slug: input.slug,
   })
+  // Prefer strategy-driven content type (geo → regional_from, etc.)
+  if (plan.intentClass === 'geo_modifier') contentType = 'regional_from'
+  else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
+  else if (plan.intentClass === 'transactional') contentType = 'marketplace_gig'
+  else if (plan.intentClass === 'news_summary') contentType = 'blog_summary'
+  else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
+    contentType = 'legal_guide'
+  }
+  assertPlanRepoConsistency(plan)
+  const minWords = minWordsForType(contentType)
 
   const gscBrief = await buildGscContentBrief({
     topic,
