@@ -584,6 +584,7 @@ function AdminApp({ onLogout }) {
         <NavGroupLabel label="Support" />
         <NavItem icon="🎫" label="Support Tickets" active={page === 'tickets'} onClick={() => setPage('tickets')} />
         <NavItem icon="⚙️" label="Settings" active={page === 'settings'} onClick={() => setPage('settings')} />
+<NavItem icon="📝" label="Content Studio" active={page === 'content'} onClick={() => setPage('content')} />
       </div>
       <div className="yousafe-sidebar-user" style={{ padding: '12px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '10px', background: C.surface2 }}>
@@ -2561,6 +2562,7 @@ const Settings = () => {
           
           
           {page === 'settings' && <Settings />}
+{page === 'content' && <AdminContentStudio refreshAdminData={refreshAdminData} setActionNotice={setActionNotice} services={services} />}
           </React.Suspense>
         </div>
       </div>
