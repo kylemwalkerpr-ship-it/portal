@@ -1,0 +1,49 @@
+name: Apply SEO Factory Migrations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Run Supabase SQL migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply content_jobs + gsc_tokens + seo_factory_columns
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::Missing SUPABASE_ACCESS_TOKEN repository secret"
+            exit 1
+          fi
+          REF="${SUPABASE_PROJECT_REF:-krggzrxxnqfsbbklatxl}"
+          SQL="$(cat \
+            supabase/migrations/content_jobs.sql \
+            supabase/migrations/gsc_tokens.sql \
+            supabase/migrations/seo_factory_columns.sql)"
+
+          # Management API: run SQL
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://api.supabase.com/v1/projects/${REF}/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg q "$SQL" '{query:$q}')")
+
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -n1)
+          echo "HTTP $CODE"
+          echo "$BODY" | head -c 2000
+          echo
+
+          if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
+            echo "::error::Migration failed (HTTP $CODE). Check SUPABASE_ACCESS_TOKEN scopes / validity."
+            exit 1
+          fi
+          echo "Migrations applied successfully."
