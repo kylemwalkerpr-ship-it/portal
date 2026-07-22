@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { generateText } from 'ai'
+import { generateText, type LanguageModel } from 'ai'
 import { deepSeek } from '@ai-sdk/deepseek'
 import { createOpenAI } from '@ai-sdk/openai'
-import { createXai } from '@ai-sdk/xai'
 import { Buffer } from 'node:buffer'
 
 // ── Types ──
@@ -34,7 +33,7 @@ function todayStamp(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-function pickModel() {
+function pickModel(): { model: LanguageModel; label: string } {
   const provider = (process.env.AI_PROVIDER ?? 'deepseek').toLowerCase()
 
   // ── Plug-and-play: any OpenAI-compatible endpoint ──
@@ -46,31 +45,37 @@ function pickModel() {
       apiKey: process.env.CUSTOM_AI_API_KEY,
     })
     const modelId = process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini'
-    return { model: custom(modelId), label: `custom (${modelId})` }
+    return { model: custom(modelId) as LanguageModel, label: `custom (${modelId})` }
   }
 
   if (provider === 'openai') {
     if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set')
     const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
     return {
-      model: openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini'),
+      model: openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini') as LanguageModel,
       label: 'openai',
     }
   }
 
-  // ── Grok (xAI / SuperGrok) ──
+  // ── Grok (xAI / SuperGrok) via OpenAI-compatible API ──
+  // Prefer this over @ai-sdk/xai so we stay on LanguageModel types that match
+  // ai@7 (the older @ai-sdk/xai major returned LanguageModelV1 and failed tsc).
   // Set XAI_API_KEY + optionally XAI_MODEL (default: grok-3)
-  if (process.env.XAI_API_KEY) {
-    const xai = createXai({ apiKey: process.env.XAI_API_KEY })
+  if (process.env.XAI_API_KEY || provider === 'xai' || provider === 'grok') {
+    if (!process.env.XAI_API_KEY) throw new Error('XAI_API_KEY not set')
+    const xai = createOpenAI({
+      baseURL: process.env.XAI_BASE_URL ?? 'https://api.x.ai/v1',
+      apiKey: process.env.XAI_API_KEY,
+    })
     return {
-      model: xai(process.env.XAI_MODEL ?? 'grok-3'),
+      model: xai(process.env.XAI_MODEL ?? 'grok-3') as LanguageModel,
       label: 'grok',
     }
   }
 
   if (!process.env.DEEPSEEK_API_KEY) throw new Error('DEEPSEEK_API_KEY not set')
   return {
-    model: deepSeek(process.env.DEEPSEEK_MODEL ?? 'deepseek-chat'),
+    model: deepSeek(process.env.DEEPSEEK_MODEL ?? 'deepseek-chat') as LanguageModel,
     label: 'deepseek',
   }
 }

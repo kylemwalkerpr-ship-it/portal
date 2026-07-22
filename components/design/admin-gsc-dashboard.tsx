@@ -295,9 +295,9 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
           <option value="query">By Search Query</option>
           <option value="page">By Page URL</option>
         </select>
-        <select value={`${dateRange.start}|${dateRange.end}`} onChange={e => {
-          const [s, e] = e.target.value.split('|')
-          setDateRange({ start: s, end: e })
+        <select value={`${dateRange.start}|${dateRange.end}`} onChange={(ev) => {
+          const [s, end] = ev.target.value.split('|')
+          setDateRange({ start: s, end })
         }} style={selStyle}>
           <option value="7daysAgo|today">Last 7 days</option>
           <option value="30daysAgo|today">Last 30 days</option>
