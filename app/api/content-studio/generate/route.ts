@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateText } from 'ai'
 import { deepSeek } from '@ai-sdk/deepseek'
 import { createOpenAI } from '@ai-sdk/openai'
+import { Buffer } from "node:buffer"
 
 // ── Types ──
 interface GenerateRequest {
