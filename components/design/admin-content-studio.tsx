@@ -48,6 +48,8 @@ interface ContentStudioProps {
   setActionNotice: (msg: string) => void
 }
 
+type Tab = 'generate' | 'gsc'
+
 // ── Helpers ──
 
 const REGION_OPTIONS: { value: Region; label: string; flag: string }[] = [
@@ -403,6 +405,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generating, setGenerating] = React.useState(false)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [activeTab, setActiveTab] = React.useState<Tab>('generate')
+  const [GscDashboard, setGscDashboard] = React.useState<any>(null)
+  const [gscSiteUrl, setGscSiteUrl] = React.useState('https://caseworks.com/')
+
+  // Lazy-load GSC dashboard when user switches to GSC tab
+  React.useEffect(() => {
+    if (activeTab === 'gsc' && !GscDashboard) {
+      import('./admin-gsc-dashboard').then(m => setGscDashboard(() => m.default))
+    }
+  }, [activeTab, GscDashboard])
 
   // Fetch jobs on mount
   const fetchJobs = React.useCallback(async () => {
@@ -479,6 +491,28 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </p>
       </div>
 
+      {/* Tab navigation */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: `2px solid ${C.border}` }}>
+        {([
+          { key: 'generate' as Tab, label: '⚡ Generate', desc: 'AI content + PRs' },
+          { key: 'gsc' as Tab, label: '🔍 GSC Analytics', desc: 'Search Console data' },
+        ]).map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+            padding: '10px 20px', border: 'none', background: 'none',
+            borderBottom: activeTab === tab.key ? `2px solid ${C.gold}` : '2px solid transparent',
+            color: activeTab === tab.key ? C.text : C.textDim,
+            fontWeight: activeTab === tab.key ? 600 : 400,
+            cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+            transition: 'all 0.15s ease',
+          }}>
+            <div>{tab.label}</div>
+            <div style={{ fontSize: 10, color: C.textDim, marginTop: 1 }}>{tab.desc}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Generate Tab ── */}
+      {activeTab === 'generate' && <>
       {/* Summary cards */}
       {!loading && jobs.length > 0 && <SummaryCards jobs={jobs} />}
 
@@ -534,6 +568,44 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
       {/* Detail modal */}
       {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} />}
+      </>
+      )}
+
+      {/* ── GSC Analytics Tab ── */}
+      {activeTab === 'gsc' && (
+        <div>
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
+            padding: 16, marginBottom: 20,
+          }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, display: 'block', marginBottom: 6 }}>
+              Site URL (Search Console property)
+            </label>
+            <input value={gscSiteUrl} onChange={e => setGscSiteUrl(e.target.value)}
+              placeholder="https://caseworks.com/"
+              style={{
+                width: '100%', maxWidth: 400, padding: '8px 10px', borderRadius: 6,
+                border: `1px solid ${C.border}`, background: C.surface, color: C.text,
+                fontSize: 13, fontFamily: 'inherit',
+              }} />
+          </div>
+          {React.createElement(GscDashboard || 'div', {
+            siteUrl: gscSiteUrl,
+            onConnect: async () => {
+              try {
+                const res = await fetch('/api/content-studio/gsc/auth')
+                const { authUrl } = await res.json()
+                if (authUrl) window.location.href = authUrl
+              } catch (err) {
+                setActionNotice('GSC auth failed')
+              }
+            },
+            onDisconnect: async () => {
+              setActionNotice('To disconnect GSC, remove the token from Supabase gsc_tokens table')
+            },
+          })}
+        </div>
+      )}
     </div>
   )
 }
