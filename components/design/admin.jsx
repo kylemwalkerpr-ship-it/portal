@@ -16,6 +16,7 @@ const AdminAttorneyApplications = React.lazy(() => import('./admin-attorney-appl
 const AdminConsultantManagement = React.lazy(() => import('./admin-consultant-management'))
 const AdminTemplates = React.lazy(() => import('./admin-templates'))
 const UserDetailDrawer = React.lazy(() => import('./admin-user-detail'))
+const AdminContentStudio = React.lazy(() => import('./admin-content-studio'))
 import { usePortalTheme } from './usePortalTheme'
 import { COUNTRY_LIST, countryNameForCode } from '../../lib/countryList'
 import ThemePicker from './ThemePicker'
@@ -96,7 +97,7 @@ function AdminApp({ onLogout }) {
   // app/dashboard/admin/[section]/page.tsx); the legacy /dashboard?page=...
   // form is still read for old bookmarks. escrow / payouts / wallets /
   // loyalty are aliases for the matching Financials tab.
-  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'settings'];
+  const ADMIN_PAGES = ['dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics', 'financials', 'gigs', 'content', 'settings'];
   const FINANCIAL_TAB_ALIASES = { escrow: 'escrow', payouts: 'payouts', wallets: 'wallets', loyalty: 'loyalty' };
   const [financialsTab, setFinancialsTab] = React.useState(null);
   const rawSectionFromUrl = () => {
