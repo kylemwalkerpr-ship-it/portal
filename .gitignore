@@ -9,3 +9,4 @@ next-env.d.ts
 .wrangler/
 pnpm-lock.yaml
 playwright-report/
+.wrangler/
