@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { Buffer } from "node:buffer"
 
 function verifySignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
   if (!signatureHeader?.startsWith('sha256=')) return false
