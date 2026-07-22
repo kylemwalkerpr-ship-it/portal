@@ -28,12 +28,15 @@ async function gh(path: string, init: RequestInit = {}): Promise<any> {
   const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
   if (!token) throw new Error('GITHUB_TOKEN (or CONTENT_STUDIO_GITHUB_TOKEN) not set')
   const base = process.env.GITHUB_API_BASE ?? 'https://api.github.com'
+  // GitHub requires a User-Agent on every REST call. Cloudflare Workers'
+  // default fetch UA is rejected with 403 "Request forbidden by administrative rules".
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'yousafe-portal-seo-factory',
       ...(init.headers ?? {}),
     },
   })
