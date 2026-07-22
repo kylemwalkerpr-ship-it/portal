@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { detectGscAuthMode, serviceAccountEmail } from '@/lib/gscAuth'
-import snapshot from '@/data/gsc/snapshot.json'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 
 /**
  * GET /api/content-studio/gsc/status
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       /* table may not exist yet */
     }
 
-    const snap = snapshot as { totals?: { queryCount?: number; pageCount?: number }; generatedAt?: string }
+    const snap = await loadGscSnapshot()
 
     return NextResponse.json({
       connected: mode !== null || oauthConnected,

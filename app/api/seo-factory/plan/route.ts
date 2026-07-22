@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'topic or primaryKeyword required' }, { status: 400 })
     }
 
-    const plan = resolveOwner({
+    const plan = await resolveOwner({
       primaryKeyword: primaryKeyword || topic,
       contentType,
       region,

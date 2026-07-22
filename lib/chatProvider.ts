@@ -353,16 +353,14 @@ export function getChatProvider(): ChatProvider | null {
   const groqKey = (process.env.GROQ_API_KEY || '').trim()
   const geminiKey = ((process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY) || '').trim()
   const cfAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim()
-  // CLOUDFLARE_AI_TOKEN is a SCOPED token with only Workers AI : Read
-  // permission. CLOUDFLARE_API_TOKEN (the deploy token) does NOT have
-  // Workers AI scope and returns 401 "Authentication error" code 10000
-  // when used against the AI REST endpoint. We prefer the scoped token
-  // and fall back to the deploy token only if it's explicitly opted
-  // into via the scoped slot (so a misconfigured deploy token doesn't
-  // silently break the AI chain).
+  // Prefer a scoped Workers AI token. Also accept CLOUDFLARE_API_TOKEN when
+  // it was created with Workers AI Read (dashboard custom token). A deploy
+  // token *without* AI scope still 401s — in that case create a dedicated
+  // AI token and set CLOUDFLARE_AI_TOKEN (or replace CLOUDFLARE_API_TOKEN).
   const cfAiToken = (
     process.env.CLOUDFLARE_AI_TOKEN ||
     process.env.CLOUDFLARE_WORKERS_AI_TOKEN ||
+    process.env.CLOUDFLARE_API_TOKEN ||
     ''
   ).trim()
   const openRouterKey = (process.env.OPENROUTER_API_KEY || '').trim()

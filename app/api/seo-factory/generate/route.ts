@@ -5,79 +5,11 @@ import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { shipContent, type ShipMode } from '@/lib/seoFactory/ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
-
-// Reuse lightweight chat from content-studio generate (inline to avoid circular deps)
-async function chatComplete(opts: {
-  baseURL: string
-  apiKey: string
-  model: string
-  system: string
-  prompt: string
-}): Promise<string> {
-  const url = opts.baseURL.replace(/\/$/, '') + '/chat/completions'
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: 0.65,
-      max_tokens: 6000,
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.prompt },
-      ],
-    }),
-  })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`AI provider error ${res.status}: ${body.slice(0, 400)}`)
-  }
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  const text = json.choices?.[0]?.message?.content
-  if (!text?.trim()) throw new Error('AI provider returned empty content')
-  return text.trim()
-}
-
-function resolveProvider() {
-  if (process.env.CUSTOM_AI_BASE_URL && process.env.CUSTOM_AI_API_KEY) {
-    return {
-      baseURL: process.env.CUSTOM_AI_BASE_URL,
-      apiKey: process.env.CUSTOM_AI_API_KEY,
-      model: process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini',
-      label: 'custom',
-    }
-  }
-  if (process.env.XAI_API_KEY) {
-    return {
-      baseURL: process.env.XAI_BASE_URL ?? 'https://api.x.ai/v1',
-      apiKey: process.env.XAI_API_KEY,
-      model: process.env.XAI_MODEL ?? 'grok-3',
-      label: 'grok',
-    }
-  }
-  if ((process.env.AI_PROVIDER || '').toLowerCase() === 'openai' && process.env.OPENAI_API_KEY) {
-    return {
-      baseURL: 'https://api.openai.com/v1',
-      apiKey: process.env.OPENAI_API_KEY,
-      model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-      label: 'openai',
-    }
-  }
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error('No AI provider configured (XAI_API_KEY / DEEPSEEK_API_KEY / OPENAI_API_KEY)')
-  return {
-    baseURL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com/v1',
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-    label: 'deepseek',
-  }
-}
+import { generateContentText } from '@/lib/contentAiProvider'
 
 /**
  * POST /api/seo-factory/generate
- * Full factory generate: plan → GSC brief → AI → audit → optional ship
+ * Full factory generate: plan → GSC brief → Cloudflare AI → audit → optional ship
  */
 export async function POST(request: NextRequest) {
   try {
@@ -101,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'topic required' }, { status: 400 })
     }
 
-    const plan = resolveOwner({
+    const plan = await resolveOwner({
       primaryKeyword,
       contentType,
       region,
@@ -116,7 +48,6 @@ export async function POST(request: NextRequest) {
     })
     const gscBlock = formatGscBriefForPrompt(gscBrief)
 
-    const provider = resolveProvider()
     const system = [
       'You are an SEO content factory for YouSafe / MyCaseworks immigration estate.',
       'Write authoritative, plain-English content. No banned marketing fluff.',
@@ -127,6 +58,8 @@ export async function POST(request: NextRequest) {
         : 'robots: noindex,follow — supporting/thin page.',
       `Canonical must be: ${plan.canonicalUrl}`,
       `Owner host: ${plan.host}. Do not cannibalize other estate hosts.`,
+      'Target length: legal_guide/article ≥1200 words; blog ≥700; regional ≥800.',
+      'Do NOT wrap output in ``` fences. Emit raw markdown only.',
     ].join('\n')
 
     const prompt = [
@@ -145,13 +78,8 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join('\n')
 
-    const content = await chatComplete({
-      baseURL: provider.baseURL,
-      apiKey: provider.apiKey,
-      model: provider.model,
-      system,
-      prompt,
-    })
+    const ai = await generateContentText({ system, prompt, maxTokens: 5000 })
+    const content = ai.text
 
     const audit = auditContent({
       content,
@@ -176,7 +104,6 @@ export async function POST(request: NextRequest) {
           dryRun: Boolean(body.dryRun),
         })
       } catch (shipErr) {
-        // Return content + audit even if ship fails
         return NextResponse.json(
           {
             ok: false,
@@ -185,14 +112,14 @@ export async function POST(request: NextRequest) {
             plan,
             audit,
             gsc: gscBrief,
-            provider: provider.label,
+            provider: ai.provider,
+            model: ai.model,
           },
           { status: 422 },
         )
       }
     }
 
-    // Persist job (best-effort)
     let jobId: string | null = null
     try {
       const supabase = createClient(
@@ -202,23 +129,30 @@ export async function POST(request: NextRequest) {
       const { data: job } = await supabase
         .from('content_jobs')
         .insert({
-          user_id: (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile?.clerk_user_id
-            || (auth as { profileId?: string }).profileId
-            || 'admin',
+          user_id:
+            (auth as { profile?: { clerk_user_id?: string }; profileId?: string }).profile
+              ?.clerk_user_id ||
+            (auth as { profileId?: string }).profileId ||
+            'admin',
           title,
           topic,
           content_type: contentType === 'legal_guide' ? 'article' : contentType,
           tone,
           region,
           target_repo: plan.repo,
-          status: shipResult?.status === 'deployed' ? 'merged' : shipResult?.status === 'pr_created' ? 'pr_created' : 'drafting',
+          status:
+            shipResult?.status === 'deployed'
+              ? 'merged'
+              : shipResult?.status === 'pr_created'
+                ? 'pr_created'
+                : 'drafting',
           slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
           content,
           branch_name: shipResult?.branch || null,
           content_path: shipResult?.path || plan.filePath,
           pr_url: shipResult?.prUrl || null,
           pr_number: shipResult?.prNumber || null,
-          ai_provider: provider.label,
+          ai_provider: ai.provider,
           word_count: audit.wordCount,
           seo_score: audit.score,
           ship_mode: autoShip ? shipMode : 'pr',
@@ -257,7 +191,8 @@ export async function POST(request: NextRequest) {
         opportunityKeywords: gscBrief.opportunityKeywords.slice(0, 6),
         warnings: gscBrief.warnings,
       },
-      provider: provider.label,
+      provider: ai.provider,
+      model: ai.model,
     })
   } catch (err) {
     console.error('[seo-factory/generate]', err)

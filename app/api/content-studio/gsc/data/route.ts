@@ -3,7 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { getGscAccess } from '@/lib/gscAuth'
 import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
 import { buildGscContentBrief } from '@/lib/gscContentBrief'
-import snapshot from '@/data/gsc/snapshot.json'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 
 /**
  * POST /api/content-studio/gsc/data
@@ -63,14 +63,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Snapshot fallback from Downloads/SEO CSV exports
-    const snap = snapshot as {
-      topQueries: Array<{ term: string; clicks: number; impressions: number; ctr: number; position: number }>
-      topPages: Array<{ url: string; clicks: number; impressions: number; ctr: number; position: number }>
-      opportunities: Record<string, unknown>
-      totals: Record<string, number>
-      generatedAt: string
-    }
+    // Snapshot fallback from public/seo-data (CSV export distilled)
+    const snap = await loadGscSnapshot()
 
     const rows = (snap.topQueries ?? []).map((q) => ({
       keys: [q.term],

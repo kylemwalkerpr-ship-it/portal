@@ -18,14 +18,23 @@ https://portal.yousafeconsultancy.com/dashboard/admin/content
 | SQL migrations | `supabase/migrations/content_jobs.sql`, `gsc_tokens.sql` |
 | Apply helper | `scripts/apply-content-studio-migrations.mjs` |
 
-### AI provider priority
+### AI provider priority (content generation)
 
-1. `CUSTOM_AI_BASE_URL` + `CUSTOM_AI_API_KEY` (+ optional `CUSTOM_AI_MODEL`)
-2. `XAI_API_KEY` → Grok (`XAI_MODEL` default `grok-3`)
-3. `AI_PROVIDER=openai` + `OPENAI_API_KEY`
-4. `DEEPSEEK_API_KEY`
+**Primary:** Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) via
+`lib/contentAiProvider.ts`.
 
-Uses lightweight OpenAI-compatible `fetch` (no Vercel AI SDK) so the Worker stays under Cloudflare size limits.
+**Auth (account `48f2c5185be44e14fea1df7d0591932a`):**
+- `CLOUDFLARE_ACCOUNT_ID`
+- Token (first match): `CLOUDFLARE_AI_TOKEN` → `CLOUDFLARE_WORKERS_AI_TOKEN` → `CLOUDFLARE_API_TOKEN`
+- Token must include **Workers AI — Read** (create at [Account API Tokens](https://dash.cloudflare.com/48f2c5185be44e14fea1df7d0591932a/api-tokens))
+
+**REST:** prefers `POST .../accounts/{id}/ai/v1/chat/completions`, falls back to `/ai/run/{model}`.
+
+**Fallbacks (in order):** custom OpenAI-compatible → xAI/Grok → OpenAI → DeepSeek → Groq.
+
+Override with `CONTENT_AI_PROVIDER` or `AI_PROVIDER` if needed (`cloudflare` default).
+
+Uses lightweight `fetch` (no Vercel AI SDK) so the Worker stays under Cloudflare size limits.
 
 ### GSC OAuth
 
@@ -65,8 +74,15 @@ URL: `https://krggzrxxnqfsbbklatxl.supabase.co`
 Set in GitHub Actions secrets (synced on deploy) or:
 
 ```bash
+# Content generation (preferred) — account 48f2c5185be44e14fea1df7d0591932a
+npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+npx wrangler secret put CLOUDFLARE_AI_TOKEN   # custom token: Workers AI Read
+# OR (if the API token already has Workers AI Read):
+# npx wrangler secret put CLOUDFLARE_API_TOKEN
+
+# Fallbacks (optional)
 npx wrangler secret put XAI_API_KEY
-npx wrangler secret put DEEPSEEK_API_KEY   # optional fallback
+npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put GITHUB_TOKEN       # repo-scoped PAT for Content Studio PRs
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
@@ -141,12 +157,24 @@ Admin: **Content Studio → SEO Factory** tab
 
 ### APIs
 - `POST /api/seo-factory/plan` — ownership + GSC brief
-- `POST /api/seo-factory/generate` — generate + audit + optional ship
+- `POST /api/seo-factory/generate` — Cloudflare AI generate + audit + optional ship
+- `POST /api/seo-factory/auto-run` — **low-input:** top N GSC opps → generate → audit gates → PR/autodeploy
 - `POST /api/seo-factory/ship` — PR or autodeploy to main
 - `POST /api/seo-factory/audit` — scorecard
 - `GET /api/seo-factory/opportunities` — ranked GSC opportunities
 - `GET /api/seo-factory/metrics` — factory KPIs + GSC visibility
 - `POST /api/seo-factory/llms/preview` — llms.txt / llms-full snippets
+
+### Auto-Pilot (minimal input)
+
+In **Content Studio → SEO Factory → Auto-Pilot**:
+
+1. Choose count (1–5) and ship mode (`auto` / `pr` / `autodeploy`)
+2. Optional dry-run
+3. Click **Generate & ship**
+
+Pipeline: GSC opportunities → Workers AI draft → ownership + SEO audit → ship.
+`shipMode=auto` opens a PR unless audit ≥70 (YMYL ≥80) and no ownership blockers, then autodeploys.
 
 ### Ship modes
 - `pr` — branch + PR (default for YMYL)

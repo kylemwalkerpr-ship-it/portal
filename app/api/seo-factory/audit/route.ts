@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const region = String(body.region || 'US')
     const indexable = body.indexable !== false
 
-    const plan = resolveOwner({
+    const plan = await resolveOwner({
       primaryKeyword: primaryKeyword || 'untitled',
       contentType,
       region,

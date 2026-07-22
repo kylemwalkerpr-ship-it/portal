@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
-import snapshot from '@/data/gsc/snapshot.json'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 
 /**
  * GET /api/seo-factory/metrics
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     const live = await fetchSiteSearchAnalytics(28)
-    const snap = snapshot as { totals?: { totalClicks?: number; totalImpressions?: number } }
+    const snap = await loadGscSnapshot()
 
     const avgSeo =
       jobs.length > 0

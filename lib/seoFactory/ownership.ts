@@ -1,9 +1,10 @@
 /**
  * Estate ownership resolver — enforces one primary intent → one indexable owner.
- * Source: SEO strategies/ownership-registry-v1.csv → data/seo/ownership-registry.json
+ * Source: SEO strategies/ownership-registry-v1.csv → public/seo-data/ownership-registry.json
+ * (loaded at runtime so it does not inflate the Worker script size).
  */
 
-import registry from '@/data/seo/ownership-registry.json'
+import { loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 
 export type OwnerHost = 'legal' | 'usa' | 'ca' | 'uk' | 'au' | 'apex' | 'market'
 export type IntentClass =
@@ -163,16 +164,17 @@ function pathForHost(
   }
 }
 
-export function resolveOwner(opts: {
+export async function resolveOwner(opts: {
   primaryKeyword: string
   contentType: string
   region: string
   slug?: string
   indexable?: boolean
-}): OwnerPlan {
+}): Promise<OwnerPlan> {
   const warnings: string[] = []
   const blockers: string[] = []
-  const rows = (registry as { rows: OwnershipRow[] }).rows ?? []
+  const registry = await loadOwnershipRegistry()
+  const rows = (registry.rows ?? []) as OwnershipRow[]
   const keyword = opts.primaryKeyword || ''
 
   let best: { row: OwnershipRow; score: number } | null = null
@@ -247,6 +249,7 @@ export function resolveOwner(opts: {
   }
 }
 
-export function listRegistry(): OwnershipRow[] {
-  return (registry as { rows: OwnershipRow[] }).rows ?? []
+export async function listRegistry(): Promise<OwnershipRow[]> {
+  const registry = await loadOwnershipRegistry()
+  return (registry.rows ?? []) as OwnershipRow[]
 }

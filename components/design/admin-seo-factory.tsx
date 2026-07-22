@@ -7,25 +7,29 @@ const C = {
   textDim: '#9CA3AF', green: '#166534', red: '#DC2626', orange: '#D97706',
 }
 
-type ShipMode = 'none' | 'pr' | 'autodeploy'
+type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto'
 
 export default function AdminSeoFactory({
   setActionNotice,
 }: {
   setActionNotice: (msg: string) => void
 }) {
-  const [tab, setTab] = React.useState<'factory' | 'opportunities' | 'metrics'>('factory')
+  const [tab, setTab] = React.useState<'autopilot' | 'factory' | 'opportunities' | 'metrics'>('autopilot')
   const [topic, setTopic] = React.useState('')
   const [primaryKeyword, setPrimaryKeyword] = React.useState('')
   const [region, setRegion] = React.useState('US')
   const [contentType, setContentType] = React.useState('legal_guide')
-  const [shipMode, setShipMode] = React.useState<ShipMode>('pr')
+  const [shipMode, setShipMode] = React.useState<ShipMode>('auto')
   const [indexable, setIndexable] = React.useState(true)
   const [busy, setBusy] = React.useState(false)
   const [plan, setPlan] = React.useState<any>(null)
   const [result, setResult] = React.useState<any>(null)
   const [opps, setOpps] = React.useState<any>(null)
   const [metrics, setMetrics] = React.useState<any>(null)
+  const [autoLimit, setAutoLimit] = React.useState(3)
+  const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy'>('auto')
+  const [autoResult, setAutoResult] = React.useState<any>(null)
+  const [dryRun, setDryRun] = React.useState(false)
 
   const runPlan = async () => {
     setBusy(true)
@@ -55,21 +59,30 @@ export default function AdminSeoFactory({
     }
   }
 
-  const runGenerate = async () => {
+  const runGenerate = async (override?: {
+    topic?: string
+    keyword?: string
+    region?: string
+    contentType?: string
+    shipMode?: ShipMode
+  }) => {
     setBusy(true)
     try {
+      const t = override?.topic || topic || primaryKeyword
+      const k = override?.keyword || primaryKeyword || topic
+      const sm = override?.shipMode || shipMode
       const res = await fetch('/api/seo-factory/generate', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: topic || primaryKeyword,
-          primaryKeyword: primaryKeyword || topic,
-          region,
-          contentType,
-          shipMode,
+          topic: t,
+          primaryKeyword: k,
+          region: override?.region || region,
+          contentType: override?.contentType || contentType,
+          shipMode: sm === 'auto' ? 'pr' : sm,
           indexable,
-          title: topic || primaryKeyword,
+          title: t,
         }),
       })
       const data = await res.json()
@@ -78,11 +91,38 @@ export default function AdminSeoFactory({
       setPlan({ plan: data.plan, gsc: data.gsc, shipRecommendation: null })
       setActionNotice(
         data.ship
-          ? `Shipped: ${data.ship.status} ${data.ship.prUrl || data.ship.commitSha || ''}`
-          : `Generated (audit ${data.audit?.score}). Ship separately if needed.`,
+          ? `Shipped via ${data.provider}: ${data.ship.status} ${data.ship.prUrl || data.ship.commitSha || ''}`
+          : `Generated via ${data.provider} (audit ${data.audit?.score}).`,
       )
     } catch (e) {
       setActionNotice(e instanceof Error ? e.message : 'Generate failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runAutoPilot = async () => {
+    setBusy(true)
+    setAutoResult(null)
+    try {
+      const res = await fetch('/api/seo-factory/auto-run', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          limit: autoLimit,
+          shipMode: autoMode,
+          dryRun,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Auto-run failed')
+      setAutoResult(data)
+      setActionNotice(data.message || `Auto-run: ${data.shipped}/${data.candidateCount} shipped`)
+      // refresh metrics after run
+      setMetrics(null)
+    } catch (e) {
+      setActionNotice(e instanceof Error ? e.message : 'Auto-run failed')
     } finally {
       setBusy(false)
     }
@@ -126,11 +166,17 @@ export default function AdminSeoFactory({
     <div style={{ padding: 24, maxWidth: 1100 }}>
       <h1 style={{ margin: '0 0 8px', fontSize: 28, color: C.cyan, fontWeight: 700 }}>SEO Factory</h1>
       <p style={{ margin: '0 0 20px', color: C.textMuted, fontSize: 14 }}>
-        Plan → generate with GSC demand → audit → ship PR or autodeploy to estate repos.
+        Cloudflare Workers AI generates articles from GSC demand → audit gates → PR or autodeploy.
+        Default path: one click, almost no form filling.
       </p>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-        {(['factory', 'opportunities', 'metrics'] as const).map((t) => (
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+        {([
+          ['autopilot', 'Auto-Pilot'],
+          ['factory', 'Manual'],
+          ['opportunities', 'Opportunities'],
+          ['metrics', 'Metrics'],
+        ] as const).map(([t, label]) => (
           <button
             key={t}
             type="button"
@@ -143,13 +189,128 @@ export default function AdminSeoFactory({
               borderBottom: tab === t ? `2px solid ${C.gold}` : '2px solid transparent',
               fontWeight: tab === t ? 600 : 400,
               color: tab === t ? C.text : C.textDim,
-              textTransform: 'capitalize',
             }}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>
+
+      {tab === 'autopilot' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: 24,
+            borderTop: `4px solid ${C.gold}`,
+          }}>
+            <div style={{ fontSize: 12, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+              Cloudflare AI · Low input
+            </div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 20, color: C.cyan }}>Publish from GSC demand</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 640 }}>
+              Pulls top Search Console opportunities, drafts full articles with Workers AI
+              (Llama 3.3 70B), audits SEO/ownership, then opens a PR — or commits to main when
+              score and gates allow. You only choose how many and whether to dry-run.
+            </p>
+
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 16 }}>
+              <label style={{ fontSize: 13, color: C.textMuted }}>
+                Articles this run
+                <select
+                  value={autoLimit}
+                  onChange={(e) => setAutoLimit(Number(e.target.value))}
+                  style={inputStyle}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: 13, color: C.textMuted }}>
+                Ship mode
+                <select
+                  value={autoMode}
+                  onChange={(e) => setAutoMode(e.target.value as typeof autoMode)}
+                  style={inputStyle}
+                >
+                  <option value="auto">Auto (PR, or main if audit passes)</option>
+                  <option value="pr">Always open PR</option>
+                  <option value="autodeploy">Prefer autodeploy to main</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 13, color: C.textMuted, display: 'flex', alignItems: 'center', gap: 8, marginTop: 28 }}>
+                <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+                Dry run (no GitHub write)
+              </label>
+            </div>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={runAutoPilot}
+              style={{
+                ...btnPrimary,
+                fontSize: 15,
+                padding: '14px 22px',
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              {busy ? 'Running Cloudflare AI…' : dryRun ? `Dry-run top ${autoLimit}` : `Generate & ship top ${autoLimit}`}
+            </button>
+
+            <p style={{ margin: '14px 0 0', fontSize: 12, color: C.textDim }}>
+              Requires <code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_AI_TOKEN</code> (or{' '}
+              <code>CLOUDFLARE_API_TOKEN</code> with Workers AI Read) and <code>GITHUB_TOKEN</code>.
+              Falls back to xAI/OpenAI/DeepSeek if CF AI is unavailable.
+            </p>
+          </div>
+
+          {autoResult && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: '0 0 8px', color: C.cyan }}>
+                Run result · GSC {autoResult.source} · {autoResult.shipped}/{autoResult.candidateCount} shipped
+              </h3>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: C.textMuted }}>{autoResult.message}</p>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(autoResult.results || []).map((r: any, i: number) => (
+                  <div
+                    key={r.term + i}
+                    style={{
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 8,
+                      padding: 12,
+                      fontSize: 13,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <strong style={{ color: C.text }}>{r.term}</strong>
+                      <span style={{ color: r.ok ? C.green : C.red }}>
+                        {r.ok ? 'ok' : 'failed'}
+                        {r.provider ? ` · ${r.provider}` : ''}
+                        {r.audit?.score != null ? ` · audit ${r.audit.score}` : ''}
+                      </span>
+                    </div>
+                    {r.plan && (
+                      <div style={{ color: C.textMuted, marginTop: 4, fontSize: 12 }}>
+                        {r.plan.host} → {r.plan.repo} · {r.shipMode}
+                        {r.ship?.prUrl && (
+                          <> · <a href={r.ship.prUrl} target="_blank" rel="noreferrer">PR</a></>
+                        )}
+                        {r.ship?.commitSha && <> · sha {String(r.ship.commitSha).slice(0, 8)}</>}
+                      </div>
+                    )}
+                    {(r.error || r.shipError) && (
+                      <div style={{ color: C.red, marginTop: 4, fontSize: 12 }}>{r.error || r.shipError}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'factory' && (
         <div style={{ display: 'grid', gap: 16 }}>
@@ -193,6 +354,7 @@ export default function AdminSeoFactory({
               <label style={{ fontSize: 13, color: C.textMuted }}>
                 Ship mode
                 <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={inputStyle}>
+                  <option value="auto">Auto → PR (use Auto-Pilot for smart main)</option>
                   <option value="pr">PR (review → merge → deploy)</option>
                   <option value="autodeploy">Autodeploy (commit to main)</option>
                   <option value="none">Generate only</option>
@@ -203,12 +365,12 @@ export default function AdminSeoFactory({
                 Indexable (allow search engines)
               </label>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
               <button type="button" disabled={busy} onClick={runPlan} style={btnSecondary}>
                 1. Plan
               </button>
-              <button type="button" disabled={busy || (!topic && !primaryKeyword)} onClick={runGenerate} style={btnPrimary}>
-                2. Generate {shipMode !== 'none' ? `& ${shipMode}` : ''}
+              <button type="button" disabled={busy || (!topic && !primaryKeyword)} onClick={() => runGenerate()} style={btnPrimary}>
+                2. Generate {shipMode !== 'none' ? `& ship` : ''} (Cloudflare AI)
               </button>
             </div>
           </div>
@@ -246,6 +408,7 @@ export default function AdminSeoFactory({
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
               <h3 style={{ margin: '0 0 12px', color: C.cyan }}>
                 Result · Audit {result.audit?.score} ({result.audit?.grade}) · {result.provider}
+                {result.model ? ` · ${result.model}` : ''}
               </h3>
               {result.ship && (
                 <div style={{ marginBottom: 12, fontSize: 13 }}>
@@ -276,7 +439,7 @@ export default function AdminSeoFactory({
 
       {tab === 'opportunities' && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ fontSize: 13, color: C.textMuted }}>
               Source: {opps?.source || '—'} · {opps?.count ?? 0} opportunities
             </div>
@@ -303,18 +466,42 @@ export default function AdminSeoFactory({
                     <td style={td}>{(o.ctr * 100).toFixed(2)}%</td>
                     <td style={td}>{o.action}</td>
                     <td style={td}>
-                      <button
-                        type="button"
-                        style={btnSmall}
-                        onClick={() => {
-                          setPrimaryKeyword(o.term)
-                          setTopic(o.term)
-                          setTab('factory')
-                          setActionNotice(`Loaded opportunity: ${o.term}`)
-                        }}
-                      >
-                        Plan
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          style={btnSmall}
+                          disabled={busy}
+                          onClick={() => {
+                            setPrimaryKeyword(o.term)
+                            setTopic(o.term)
+                            if (o.region) setRegion(o.region)
+                            if (o.suggestedContentType) setContentType(o.suggestedContentType)
+                            setTab('factory')
+                            setActionNotice(`Loaded opportunity: ${o.term}`)
+                          }}
+                        >
+                          Plan
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...btnSmall, background: C.cyan, color: '#fff', border: 'none' }}
+                          disabled={busy || o.action === 'ignore'}
+                          onClick={() => {
+                            setPrimaryKeyword(o.term)
+                            setTopic(o.term)
+                            if (o.region) setRegion(o.region)
+                            runGenerate({
+                              topic: o.term,
+                              keyword: o.term,
+                              region: o.region,
+                              contentType: o.suggestedContentType || 'legal_guide',
+                              shipMode: 'pr',
+                            })
+                          }}
+                        >
+                          Ship PR
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

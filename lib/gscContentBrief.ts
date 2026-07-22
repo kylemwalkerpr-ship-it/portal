@@ -7,7 +7,7 @@
  */
 
 import { getGscAccess } from '@/lib/gscAuth'
-import snapshot from '@/data/gsc/snapshot.json'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 
 export interface GscQuerySignal {
   term: string
@@ -194,11 +194,7 @@ export async function buildGscContentBrief(opts: {
   }
 
   if (source === 'snapshot') {
-    const snap = snapshot as {
-      topQueries: GscQuerySignal[]
-      topPages: GscPageSignal[]
-      opportunities?: { highImpressionLowCtr?: GscQuerySignal[]; highImpressionDeepRank?: GscQuerySignal[] }
-    }
+    const snap = await loadGscSnapshot()
     queries = snap.topQueries ?? []
     pages = snap.topPages ?? []
     // Prefer opportunity lists when topic matching is weak

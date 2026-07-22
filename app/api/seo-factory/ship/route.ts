@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'shipMode must be pr or autodeploy' }, { status: 400 })
     }
 
-    const plan = resolveOwner({
+    const plan = await resolveOwner({
       primaryKeyword,
       contentType,
       region,

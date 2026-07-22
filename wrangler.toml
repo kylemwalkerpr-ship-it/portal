@@ -2,6 +2,7 @@ name = "yousafe-portal"
 main = ".open-next/worker.js"
 compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
+minify = true
 
 # [limits] cpu_ms requires the Workers Paid plan. Re-add this block — with
 # something like cpu_ms = 300000 — the moment the account is upgraded.
