@@ -13,7 +13,10 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
-  '/api/content-studio/gsc(.*)',
+  // Only the OAuth callback is anonymous (Google redirects without a Clerk
+  // session). /auth, /status, and /data require an admin session; handlers
+  // also self-enforce admin via requireAdminUser.
+  '/api/content-studio/gsc/callback(.*)',
   // Cron endpoints authenticate with a Bearer CRON_SECRET (no Clerk session),
   // so they must bypass Clerk middleware to reach their own auth check.
   // Each handler enforces CRON_SECRET internally.

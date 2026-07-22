@@ -32,7 +32,7 @@ function GscConnect({ siteUrl, onConnect }: { siteUrl: string; onConnect: () => 
   const handleConnect = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/content-studio/gsc/auth')
+      const res = await fetch('/api/content-studio/gsc/auth', { credentials: 'same-origin' })
       const { authUrl, error } = await res.json()
       if (error) throw new Error(error)
       window.location.href = authUrl
@@ -221,7 +221,7 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
 
   // Check GSC connection status
   React.useEffect(() => {
-    fetch('/api/content-studio/gsc/status')
+    fetch('/api/content-studio/gsc/status', { credentials: 'same-origin' })
       .then(r => r.json())
       .then(s => setStatus(s))
       .catch(() => setStatus({ connected: false }))
@@ -235,6 +235,7 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
     try {
       const res = await fetch('/api/content-studio/gsc/data', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           siteUrl,

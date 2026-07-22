@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAdminUser } from '@/lib/portalAuth'
 
 /**
  * POST /api/content-studio/gsc/data
@@ -10,6 +11,11 @@ import { createClient } from '@supabase/supabase-js'
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
     const body = await request.json()
     const { siteUrl, startDate = '30daysAgo', endDate = 'today', dimensions = ['query'], rowLimit = 100 } = body
 

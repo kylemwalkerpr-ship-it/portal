@@ -592,7 +592,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             siteUrl: gscSiteUrl,
             onConnect: async () => {
               try {
-                const res = await fetch('/api/content-studio/gsc/auth')
+                const res = await fetch('/api/content-studio/gsc/auth', { credentials: 'same-origin' })
                 const { authUrl } = await res.json()
                 if (authUrl) window.location.href = authUrl
               } catch (err) {

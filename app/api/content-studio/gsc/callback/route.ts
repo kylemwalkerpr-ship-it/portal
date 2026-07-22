@@ -11,15 +11,17 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const error = searchParams.get('error')
 
+  const portalOrigin = process.env.GSC_PORTAL_ORIGIN ?? 'https://portal.yousafeconsultancy.com'
+
   if (error) {
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=${encodeURIComponent(error)}`
+      `${portalOrigin}/dashboard/admin/content?gsc_error=${encodeURIComponent(error)}`
     )
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=no_code`
+      `${portalOrigin}/dashboard/admin/content?gsc_error=no_code`
     )
   }
 
@@ -87,13 +89,13 @@ export async function GET(request: NextRequest) {
     if (dbError) throw new Error(`Supabase upsert failed: ${dbError.message}`)
 
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content?gsc_connected=true&email=${encodeURIComponent(email)}`
+      `${portalOrigin}/dashboard/admin/content?gsc_connected=true&email=${encodeURIComponent(email)}`
     )
   } catch (err) {
     console.error('[gsc/callback]', err)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=${encodeURIComponent(msg)}`
+      `${portalOrigin}/dashboard/admin/content?gsc_error=${encodeURIComponent(msg)}`
     )
   }
 }
