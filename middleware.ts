@@ -13,6 +13,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
+  '/api/content-studio/gsc(.*)',
   // Cron endpoints authenticate with a Bearer CRON_SECRET (no Clerk session),
   // so they must bypass Clerk middleware to reach their own auth check.
   // Each handler enforces CRON_SECRET internally.
