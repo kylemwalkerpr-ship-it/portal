@@ -8,6 +8,7 @@ import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 import { generateContentText } from '@/lib/contentAiProvider'
+import { formatStrategyForPrompt } from '@/lib/seoDataLoaders'
 import {
   auditToRefineNotes,
   buildFactorySystemPrompt,
@@ -116,8 +117,17 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
   })
   const gscBlock = formatGscBriefForPrompt(gscBrief)
+  const strategyBlock = await formatStrategyForPrompt({
+    topic: `${topic} ${primaryKeyword}`,
+    maxChars: 4200,
+  })
 
-  const system = buildFactorySystemPrompt({ plan, contentType, minWords })
+  const system = buildFactorySystemPrompt({
+    plan,
+    contentType,
+    minWords,
+    strategyBlock,
+  })
 
   let content = ''
   let provider = 'unknown'

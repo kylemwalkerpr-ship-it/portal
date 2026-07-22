@@ -9,7 +9,7 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto'
-type Tab = 'autopilot' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health'
+type Tab = 'autopilot' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies'
 
 export default function AdminSeoFactory({
   setActionNotice,
@@ -41,6 +41,8 @@ export default function AdminSeoFactory({
   const [skipRecent, setSkipRecent] = React.useState(true)
   const [regionFilter, setRegionFilter] = React.useState('')
   const [preview, setPreview] = React.useState<string | null>(null)
+  const [strategies, setStrategies] = React.useState<any>(null)
+  const [strategyDoc, setStrategyDoc] = React.useState<{ title: string; content: string } | null>(null)
 
   const loadHealth = async () => {
     try {
@@ -97,6 +99,12 @@ export default function AdminSeoFactory({
     if (tab === 'metrics' && !metrics) loadMetrics()
     if (tab === 'queue') loadJobs()
     if (tab === 'health') loadHealth()
+    if (tab === 'strategies' && !strategies) {
+      fetch('/api/seo-factory/strategies?pack=index', { credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((d) => { if (d.ok) setStrategies(d.index) })
+        .catch(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -256,9 +264,24 @@ export default function AdminSeoFactory({
     ['factory', 'Manual'],
     ['opportunities', 'Opportunities'],
     ['queue', 'Job queue'],
+    ['strategies', 'Strategies'],
     ['metrics', 'Metrics'],
     ['health', 'System'],
   ]
+
+  const openStrategyDoc = async (path: string, title: string) => {
+    try {
+      const res = await fetch(
+        `/api/seo-factory/strategies?pack=doc&path=${encodeURIComponent(path)}`,
+        { credentials: 'same-origin' },
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load doc')
+      setStrategyDoc({ title, content: data.content || '' })
+    } catch (e) {
+      setActionNotice(e instanceof Error ? e.message : 'Failed to load strategy doc')
+    }
+  }
 
   return (
     <div style={{ padding: 24, maxWidth: 1140 }}>
@@ -638,6 +661,71 @@ export default function AdminSeoFactory({
           <div style={{ gridColumn: '1 / -1', fontSize: 12, color: C.textMuted }}>
             Visibility: {metrics.visibility?.source}
           </div>
+        </div>
+      )}
+
+      {/* ── Strategies corpus ── */}
+      {tab === 'strategies' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+            <h3 style={{ margin: '0 0 8px', color: C.cyan }}>SEO strategies corpus</h3>
+            <p style={{ margin: 0, fontSize: 13, color: C.textMuted, lineHeight: 1.5 }}>
+              Synced from <code>Documents/GitHub/SEO strategies</code> into <code>public/seo-data</code>.
+              Ownership registry, standing rules, GSC expansion, dual-graph university map, and full plan docs
+              feed Auto-Pilot prompts and host→repo routing. Re-sync: <code>npm run sync:seo-strategies</code>
+              (also runs on <code>prebuild</code> when the source folder is present).
+            </p>
+            {strategies && (
+              <div style={{ display: 'flex', gap: 16, marginTop: 14, flexWrap: 'wrap', fontSize: 13 }}>
+                <span><strong>{strategies.ownershipRows ?? '—'}</strong> ownership rows</span>
+                <span><strong>{strategies.universityRows ?? '—'}</strong> university map rows</span>
+                <span><strong>{strategies.documents?.length ?? 0}</strong> documents</span>
+                <span style={{ color: C.textDim }}>synced {strategies.updatedAt || '—'}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <h4 style={{ margin: '0 0 10px', color: C.cyan }}>Runtime packs</h4>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {(strategies?.packs || []).map((p: any) => (
+                <div key={p.id} style={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
+                  <strong>{p.id}</strong>
+                  <code style={{ fontSize: 11, color: C.textMuted }}>{p.path}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+            <h4 style={{ margin: '0 0 10px', color: C.cyan }}>Strategy documents</h4>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {(strategies?.documents || []).map((d: any) => (
+                <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', fontSize: 13, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{d.title}</strong>
+                    <div style={{ fontSize: 11, color: C.textDim }}>
+                      {Math.round((d.bytes || 0) / 1024)} KB · {d.sectionCount || 0} sections · {d.category || 'core'}
+                    </div>
+                  </div>
+                  <button type="button" style={btnSmall} onClick={() => openStrategyDoc(d.path, d.title)}>
+                    View
+                  </button>
+                </div>
+              ))}
+              {!strategies && <div style={{ color: C.textMuted, fontSize: 13 }}>Loading strategies index…</div>}
+            </div>
+          </div>
+
+          {strategyDoc && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <strong style={{ color: C.cyan }}>{strategyDoc.title}</strong>
+                <button type="button" style={btnSmall} onClick={() => setStrategyDoc(null)}>Close</button>
+              </div>
+              <pre style={{ ...preStyle, maxHeight: 480 }}>{strategyDoc.content.slice(0, 30000)}</pre>
+            </div>
+          )}
         </div>
       )}
 

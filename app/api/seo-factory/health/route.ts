@@ -3,6 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { isCloudflareAiConfigured, generateContentText } from '@/lib/contentAiProvider'
 import { getGscAccess } from '@/lib/gscAuth'
 import { createClient } from '@supabase/supabase-js'
+import { loadStrategiesIndex, loadStrategyPromptPack } from '@/lib/seoDataLoaders'
 
 /**
  * GET /api/seo-factory/health
@@ -157,6 +158,27 @@ export async function GET() {
       ok: fallbacks.length > 0 || cfOk,
       detail: fallbacks.length ? fallbacks.join(', ') : 'None (CF AI only)',
     })
+
+    // SEO strategies corpus
+    try {
+      const index = await loadStrategiesIndex()
+      const pack = await loadStrategyPromptPack()
+      const docs = index.documents?.length || 0
+      const rules = pack.standingRules?.length || 0
+      checks.push({
+        id: 'seo_strategies',
+        label: 'SEO strategies corpus',
+        ok: docs > 0 && rules > 0,
+        detail: `${docs} docs · ${index.ownershipRows ?? 0} ownership rows · prompt-pack ${rules} rules · synced ${index.updatedAt || '—'}`,
+      })
+    } catch (e) {
+      checks.push({
+        id: 'seo_strategies',
+        label: 'SEO strategies corpus',
+        ok: false,
+        detail: e instanceof Error ? e.message.slice(0, 140) : 'Not loaded — run npm run sync:seo-strategies',
+      })
+    }
 
     const ready = checks
       .filter((c) => ['cloudflare_ai', 'github', 'supabase'].includes(c.id))

@@ -1,9 +1,8 @@
 /**
- * Load SEO factory data from static assets (public/seo-data/*).
+ * Load SEO factory + strategies corpus from static assets (public/seo-data/*).
  *
- * These files used to be statically imported into the Worker bundle, which
- * pushed gzip size over Cloudflare Free's 3 MiB limit. Serving them via
- * ASSETS / same-origin fetch keeps them out of the script upload.
+ * Never statically import large strategy markdown into the Worker bundle —
+ * always fetch via ASSETS / public URL / local filesystem.
  */
 
 export type GscSnapshot = {
@@ -33,6 +32,7 @@ export type GscSnapshot = {
 export type OwnershipRegistryFile = {
   version?: string
   updatedAt?: string
+  source?: string
   rows: Array<{
     id: number
     primary_keyword: string
@@ -47,6 +47,37 @@ export type OwnershipRegistryFile = {
   }>
 }
 
+export type StrategiesIndex = {
+  updatedAt?: string
+  sourceDir?: string
+  ownershipRows?: number
+  universityRows?: number
+  documents?: Array<{
+    id: string
+    title: string
+    path: string
+    bytes: number
+    sectionCount?: number
+    category?: string
+  }>
+  packs?: Array<{ id: string; path: string }>
+}
+
+export type StrategyPromptPack = {
+  updatedAt?: string
+  standingRules?: string[]
+  houseStyle?: {
+    voice?: string
+    bannedWords?: string[]
+    rules?: string[]
+    structure?: string[]
+  }
+  hostRepo?: Record<string, string>
+  deepStrategyHighlights?: Array<{ title: string; body: string }>
+  gscExpansionHighlights?: Array<{ title: string; body: string }>
+  masterPlanHighlights?: Array<{ title: string; body: string }>
+}
+
 const EMPTY_SNAPSHOT: GscSnapshot = {
   topQueries: [],
   topPages: [],
@@ -55,8 +86,12 @@ const EMPTY_SNAPSHOT: GscSnapshot = {
 
 let snapshotCache: GscSnapshot | null = null
 let registryCache: OwnershipRegistryFile | null = null
+let strategiesIndexCache: StrategiesIndex | null = null
+let promptPackCache: StrategyPromptPack | null = null
 let snapshotInflight: Promise<GscSnapshot> | null = null
 let registryInflight: Promise<OwnershipRegistryFile> | null = null
+let strategiesInflight: Promise<StrategiesIndex> | null = null
+let promptPackInflight: Promise<StrategyPromptPack> | null = null
 
 function siteOrigin(): string {
   return (
@@ -67,7 +102,6 @@ function siteOrigin(): string {
 }
 
 async function fetchJson<T>(path: string): Promise<T | null> {
-  // 1) Cloudflare ASSETS binding (OpenNext / Workers)
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const g = globalThis as any
@@ -81,10 +115,8 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     /* fall through */
   }
 
-  // 2) Same-origin / absolute public URL
   try {
     const res = await fetch(`${siteOrigin()}${path}`, {
-      // edge cache friendly
       headers: { Accept: 'application/json' },
     })
     if (res.ok) return (await res.json()) as T
@@ -92,13 +124,40 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     /* fall through */
   }
 
-  // 3) Local filesystem (next dev / node test)
   try {
     const { readFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
     const filePath = join(process.cwd(), 'public', path.replace(/^\//, ''))
     const text = await readFile(filePath, 'utf8')
     return JSON.parse(text) as T
+  } catch {
+    return null
+  }
+}
+
+async function fetchText(path: string): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = globalThis as any
+    const env = g[Symbol.for('__cloudflare-context__')]?.env || g.__env__
+    const assets = env?.ASSETS
+    if (assets?.fetch) {
+      const res = await assets.fetch(new Request(`https://assets.local${path}`))
+      if (res.ok) return await res.text()
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const res = await fetch(`${siteOrigin()}${path}`)
+    if (res.ok) return await res.text()
+  } catch {
+    /* fall through */
+  }
+  try {
+    const { readFile } = await import('node:fs/promises')
+    const { join } = await import('node:path')
+    return await readFile(join(process.cwd(), 'public', path.replace(/^\//, '')), 'utf8')
   } catch {
     return null
   }
@@ -126,4 +185,93 @@ export async function loadOwnershipRegistry(): Promise<OwnershipRegistryFile> {
     })()
   }
   return registryInflight
+}
+
+export async function loadStrategiesIndex(): Promise<StrategiesIndex> {
+  if (strategiesIndexCache) return strategiesIndexCache
+  if (!strategiesInflight) {
+    strategiesInflight = (async () => {
+      const data = await fetchJson<StrategiesIndex>('/seo-data/strategies/index.json')
+      strategiesIndexCache = data ?? { documents: [], packs: [] }
+      return strategiesIndexCache
+    })()
+  }
+  return strategiesInflight
+}
+
+export async function loadStrategyPromptPack(): Promise<StrategyPromptPack> {
+  if (promptPackCache) return promptPackCache
+  if (!promptPackInflight) {
+    promptPackInflight = (async () => {
+      const data = await fetchJson<StrategyPromptPack>('/seo-data/strategies/prompt-pack.json')
+      promptPackCache = data ?? {}
+      return promptPackCache
+    })()
+  }
+  return promptPackInflight
+}
+
+export async function loadStrategyDocument(relPath: string): Promise<string | null> {
+  // only allow paths under /seo-data/strategies/
+  const path = relPath.startsWith('/') ? relPath : `/${relPath}`
+  if (!path.startsWith('/seo-data/strategies/')) return null
+  if (path.includes('..')) return null
+  return fetchText(path)
+}
+
+/**
+ * Compact strategy block for LLM system prompts (token-budget aware).
+ */
+export async function formatStrategyForPrompt(opts?: {
+  maxChars?: number
+  topic?: string
+}): Promise<string> {
+  const maxChars = opts?.maxChars ?? 4500
+  const pack = await loadStrategyPromptPack()
+  const lines: string[] = [
+    '## Estate SEO strategy (authoritative — do not violate)',
+    '',
+    '### Standing rules',
+    ...(pack.standingRules || []).map((r) => `- ${r}`),
+    '',
+    '### House style',
+    pack.houseStyle?.voice ? `- Voice: ${pack.houseStyle.voice}` : '',
+    ...(pack.houseStyle?.rules || []).map((r) => `- ${r}`),
+    pack.houseStyle?.bannedWords?.length
+      ? `- Banned words: ${pack.houseStyle.bannedWords.join(', ')}`
+      : '',
+    '',
+    '### Host → repo',
+    ...Object.entries(pack.hostRepo || {}).map(([h, r]) => `- ${h} → ${r}`),
+  ]
+
+  const topic = (opts?.topic || '').toLowerCase()
+  const pickHighlights = (
+    label: string,
+    sections?: Array<{ title: string; body: string }>,
+    limit = 4,
+  ) => {
+    if (!sections?.length) return
+    const ranked = [...sections].sort((a, b) => {
+      const score = (s: { title: string; body: string }) => {
+        let n = 0
+        if (topic && (s.title + s.body).toLowerCase().includes(topic.slice(0, 24))) n += 5
+        if (/ownership|ymyl|host|gsc|ctr|from |university|hub/i.test(s.title)) n += 2
+        return n
+      }
+      return score(b) - score(a)
+    })
+    lines.push('', `### ${label}`)
+    for (const s of ranked.slice(0, limit)) {
+      lines.push(`#### ${s.title}`, s.body.slice(0, 600), '')
+    }
+  }
+
+  pickHighlights('Deep strategy highlights', pack.deepStrategyHighlights, 4)
+  pickHighlights('GSC expansion highlights', pack.gscExpansionHighlights, 3)
+  pickHighlights('Master plan highlights', pack.masterPlanHighlights, 2)
+
+  let text = lines.filter(Boolean).join('\n')
+  if (text.length > maxChars) text = text.slice(0, maxChars) + '\n…'
+  return text
 }

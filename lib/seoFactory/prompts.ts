@@ -1,5 +1,6 @@
 /**
  * SEO Factory prompt builders — structured, quality-first generation.
+ * Strategy corpus is injected via strategyBlock (from formatStrategyForPrompt).
  */
 
 import type { OwnerPlan } from './ownership'
@@ -8,8 +9,10 @@ export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
   contentType: string
   minWords: number
+  /** Compact pack from SEO strategies directory */
+  strategyBlock?: string
 }): string {
-  const { plan, contentType, minWords } = opts
+  const { plan, contentType, minWords, strategyBlock } = opts
   return [
     'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
@@ -17,9 +20,19 @@ export function buildFactorySystemPrompt(opts: {
     'BANNED: delve, streamline, game-changer, revolutionize, leverage (verb), robust, seamless, holistic, bespoke, unpack, navigate the complexities, "In today\'s fast-paced".',
     'Cite official sources with full https URLs: USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP as relevant.',
     '',
+    'OWNERSHIP (must follow):',
+    `- Host: ${plan.host} → repo ${plan.repo}`,
+    `- Canonical: ${plan.canonicalUrl}`,
+    `- File path: ${plan.filePath}`,
+    `- Routing: ${plan.routingSource}${plan.matched ? ` · registry "${plan.matched.primary_keyword}"` : ''}`,
+    `- Intent: ${plan.intentClass} · action: ${plan.action}`,
+    'Do not write content that belongs on another estate host.',
+    '',
+    strategyBlock || '',
+    '',
     'OUTPUT FORMAT (strict):',
     '1) YAML front matter between --- fences with fields:',
-    '   title, description (140-160 chars), primaryKeyword, robots, date (YYYY-MM-DD), region, content_type',
+    '   title, description (140-160 chars), primaryKeyword, robots, date (YYYY-MM-DD), region, content_type, ownerHost',
     plan.indexable
       ? '2) robots: index,follow'
       : '2) robots: noindex,follow',
@@ -36,7 +49,9 @@ export function buildFactorySystemPrompt(opts: {
     `6) Minimum ${minWords} words of body prose (not counting JSON-LD).`,
     `7) Content type: ${contentType}`,
     '8) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function buildFactoryUserPrompt(opts: {
