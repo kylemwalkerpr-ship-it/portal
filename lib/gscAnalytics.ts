@@ -10,31 +10,7 @@
  * keyword path (GSC_OAUTH_* + GSC_SITE_URL). Edge-safe: plain fetch only.
  */
 
-import { getGscConfig } from '@/lib/gscConfig'
-
-const TOKEN_URL = 'https://oauth2.googleapis.com/token'
-
-async function getAccessToken(cfg: { refreshToken: string | null; clientId: string | null; clientSecret: string | null }): Promise<string | null> {
-  const { refreshToken, clientId, clientSecret } = cfg
-  if (!refreshToken || !clientId || !clientSecret) return null
-  try {
-    const res = await fetch(TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
-      }).toString(),
-    })
-    if (!res.ok) return null
-    const json = (await res.json()) as { access_token?: string }
-    return json.access_token ?? null
-  } catch {
-    return null
-  }
-}
+import { getGscAccess } from '@/lib/gscAuth'
 
 export interface GscRow {
   key: string
@@ -80,8 +56,8 @@ async function query(token: string, site: string, body: Record<string, unknown>)
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 
 export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics> {
-  const cfg = await getGscConfig()
-  const site = cfg.siteUrl
+  const access = await getGscAccess()
+  const site = access?.siteUrl ?? process.env.GSC_SITE_URL ?? null
   const warnings: string[] = []
   const endMs = Date.now()
   const startMs = endMs - days * 86400_000
@@ -99,9 +75,15 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     warnings,
   }
 
-  const token = await getAccessToken(cfg)
-  if (!token) { warnings.push('GSC OAuth credentials not configured'); return empty }
-  if (!site) { warnings.push('GSC property URL not set'); return empty }
+  const token = access?.accessToken ?? null
+  if (!token) {
+    warnings.push('GSC credentials not configured (set GSC_SERVICE_ACCOUNT_JSON or OAuth bundle)')
+    return empty
+  }
+  if (!site) {
+    warnings.push('GSC property URL not set (GSC_SITE_URL, e.g. sc-domain:yousafeconsultancy.com)')
+    return empty
+  }
 
   const settled = await Promise.allSettled([
     query(token, site, { startDate: range.startDate, endDate: range.endDate }),                                   // totals

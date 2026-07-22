@@ -1,0 +1,2356 @@
+{
+  "generatedAt": "2026-07-22T13:52:28.068Z",
+  "source": "GSC CSV exports under Downloads/SEO (yousafeconsultancy-13..16)",
+  "serviceAccount": "gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com",
+  "note": "Live API requires adding the SA as a user on each GSC property. Snapshot seeds Content Studio until then.",
+  "totals": {
+    "queryCount": 212,
+    "pageCount": 546,
+    "totalImpressions": 3012,
+    "totalClicks": 0
+  },
+  "topQueries": [
+    {
+      "term": "yousafeconsultancy.com",
+      "clicks": 0,
+      "impressions": 96,
+      "ctr": 0,
+      "position": 16.35,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "auburn university housing",
+      "clicks": 0,
+      "impressions": 68,
+      "ctr": 0,
+      "position": 37.12,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "administrative review letter template uk",
+      "clicks": 0,
+      "impressions": 64,
+      "ctr": 0,
+      "position": 47.97,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "yousafe",
+      "clicks": 0,
+      "impressions": 62,
+      "ctr": 0,
+      "position": 7.6,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student living university of missouri",
+      "clicks": 0,
+      "impressions": 62,
+      "ctr": 0,
+      "position": 44.39,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing university of missouri",
+      "clicks": 0,
+      "impressions": 61,
+      "ctr": 0,
+      "position": 37.82,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student rentals university of missouri",
+      "clicks": 0,
+      "impressions": 50,
+      "ctr": 0,
+      "position": 38.46,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student insurance comparison",
+      "clicks": 0,
+      "impressions": 47,
+      "ctr": 0,
+      "position": 53.77,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "tier 5 to tier 2",
+      "clicks": 0,
+      "impressions": 47,
+      "ctr": 0,
+      "position": 70.28,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of michigan housing",
+      "clicks": 0,
+      "impressions": 46,
+      "ctr": 0,
+      "position": 33.52,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "www.yousafeconsultancy.com",
+      "clicks": 0,
+      "impressions": 45,
+      "ctr": 0,
+      "position": 38.13,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "dependent visa",
+      "clicks": 0,
+      "impressions": 43,
+      "ctr": 0,
+      "position": 70.51,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "dependent visa uk",
+      "clicks": 0,
+      "impressions": 40,
+      "ctr": 0,
+      "position": 78.88,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "uk dependent visa",
+      "clicks": 0,
+      "impressions": 40,
+      "ctr": 0,
+      "position": 79.1,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "status violation immigration advice",
+      "clicks": 0,
+      "impressions": 40,
+      "ctr": 0,
+      "position": 53.45,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "san francisco university housing",
+      "clicks": 0,
+      "impressions": 34,
+      "ctr": 0,
+      "position": 35.15,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "umich student housing",
+      "clicks": 0,
+      "impressions": 34,
+      "ctr": 0,
+      "position": 40.53,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "k state off campus housing",
+      "clicks": 0,
+      "impressions": 31,
+      "ctr": 0,
+      "position": 17,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student living university of maine",
+      "clicks": 0,
+      "impressions": 31,
+      "ctr": 0,
+      "position": 44.1,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "apartments near portland state university",
+      "clicks": 0,
+      "impressions": 30,
+      "ctr": 0,
+      "position": 32.9,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing university of arizona",
+      "clicks": 0,
+      "impressions": 30,
+      "ctr": 0,
+      "position": 38.3,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "ou off campus housing",
+      "clicks": 0,
+      "impressions": 30,
+      "ctr": 0,
+      "position": 45.83,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student dependant visa uk",
+      "clicks": 0,
+      "impressions": 28,
+      "ctr": 0,
+      "position": 92.39,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "auburn student housing",
+      "clicks": 0,
+      "impressions": 28,
+      "ctr": 0,
+      "position": 38.54,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "ministerial direction 111",
+      "clicks": 0,
+      "impressions": 27,
+      "ctr": 0,
+      "position": 26.7,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "uofsc housing",
+      "clicks": 0,
+      "impressions": 27,
+      "ctr": 0,
+      "position": 45.85,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of washington student housing",
+      "clicks": 0,
+      "impressions": 27,
+      "ctr": 0,
+      "position": 51.04,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "difference between skilled worker visa and health care visa",
+      "clicks": 0,
+      "impressions": 26,
+      "ctr": 0,
+      "position": 78.42,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "appendix fm se documents checklist",
+      "clicks": 0,
+      "impressions": 23,
+      "ctr": 0,
+      "position": 48.78,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "auburn university student housing",
+      "clicks": 0,
+      "impressions": 23,
+      "ctr": 0,
+      "position": 27.83,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing near university of arizona",
+      "clicks": 0,
+      "impressions": 23,
+      "ctr": 0,
+      "position": 64.65,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "marriage based green card timeline",
+      "clicks": 0,
+      "impressions": 22,
+      "ctr": 0,
+      "position": 48.27,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "visa appeal consultant",
+      "clicks": 0,
+      "impressions": 21,
+      "ctr": 0,
+      "position": 85.1,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "child dependant visa uk documents",
+      "clicks": 0,
+      "impressions": 21,
+      "ctr": 0,
+      "position": 76.14,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of arizona student housing",
+      "clicks": 0,
+      "impressions": 21,
+      "ctr": 0,
+      "position": 35.48,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "housing mizzou",
+      "clicks": 0,
+      "impressions": 21,
+      "ctr": 0,
+      "position": 47.1,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "housing in ut",
+      "clicks": 0,
+      "impressions": 20,
+      "ctr": 0,
+      "position": 44.1,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "checklist for spousal sponsorship in canada",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 60.16,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "dependant visa uk",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 77.89,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "uk student visa process for warwick university",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 21.53,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "apartments in milwaukee near marquette university",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 31.84,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of oklahoma housing",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 36.05,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of michigan student housing",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 41.16,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of oklahoma off campus housing",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 42.11,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing mizzou",
+      "clicks": 0,
+      "impressions": 19,
+      "ctr": 0,
+      "position": 50.47,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "child dependant visa uk requirements",
+      "clicks": 0,
+      "impressions": 18,
+      "ctr": 0,
+      "position": 84.78,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "gonzaga apartments",
+      "clicks": 0,
+      "impressions": 18,
+      "ctr": 0,
+      "position": 26.06,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing university of washington",
+      "clicks": 0,
+      "impressions": 18,
+      "ctr": 0,
+      "position": 50.67,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing close to university of arizona",
+      "clicks": 0,
+      "impressions": 18,
+      "ctr": 0,
+      "position": 57.67,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "founder visa support",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 84.35,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "innovator founder visa endorsement support",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 82.41,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student dependent visa uk",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 91.76,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "uk business founder visa support",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 75.47,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "f1 visa las vegas",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 26.24,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "mu student living",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 44.94,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of utah student housing",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 49.47,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments near university of arizona",
+      "clicks": 0,
+      "impressions": 17,
+      "ctr": 0,
+      "position": 63.47,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "innovator founder visa advice",
+      "clicks": 0,
+      "impressions": 16,
+      "ctr": 0,
+      "position": 86.94,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "marriage green card timeline",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 56.67,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "is warwick safe for international students",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 29.6,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "housing near portland state university",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 39.07,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "mu student housing",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 39.13,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of oklahoma student apartments",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 41.93,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments for rent university of arizona",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 47.8,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments close to university of arizona",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 57.4,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student rentals near university of south carolina",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 72.53,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "cornell university apartments",
+      "clicks": 0,
+      "impressions": 15,
+      "ctr": 0,
+      "position": 78.73,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "kansas state university housing",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 16.29,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student rentals near university of arizona",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 67.07,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments for rent university of south carolina",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 70.07,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing near university of south carolina",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 70.36,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments close to university of pittsburgh",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 74.57,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing raleigh north carolina",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 84.43,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "dependent visa for parents",
+      "clicks": 0,
+      "impressions": 14,
+      "ctr": 0,
+      "position": 89.36,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "international+student+storage+cornell",
+      "clicks": 0,
+      "impressions": 13,
+      "ctr": 0,
+      "position": 38.69,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "university of denver room & board",
+      "clicks": 0,
+      "impressions": 13,
+      "ctr": 0,
+      "position": 16.31,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "housing uofsc",
+      "clicks": 0,
+      "impressions": 13,
+      "ctr": 0,
+      "position": 43.85,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student housing close to university of south carolina",
+      "clicks": 0,
+      "impressions": 13,
+      "ctr": 0,
+      "position": 75.38,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "student apartments close to university of south carolina",
+      "clicks": 0,
+      "impressions": 13,
+      "ctr": 0,
+      "position": 76.77,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "term": "f2 visa requirements",
+      "clicks": 0,
+      "impressions": 12,
+      "ctr": 0,
+      "position": 90.33,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    }
+  ],
+  "topPages": [
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/dependent-visa-uk-international-students/",
+      "clicks": 0,
+      "impressions": 415,
+      "ctr": 0,
+      "position": 77.88,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-startup-self-employment-rules",
+      "clicks": 1,
+      "impressions": 387,
+      "ctr": 0.26,
+      "position": 8.07,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/uk-king-s-college-london-international-student-guide/",
+      "clicks": 0,
+      "impressions": 355,
+      "ctr": 0,
+      "position": 10.26,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-missouri-student-housing/",
+      "clicks": 0,
+      "impressions": 317,
+      "ctr": 0,
+      "position": 40.36,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/international-student-llc-on-opt-guide/",
+      "clicks": 7,
+      "impressions": 314,
+      "ctr": 0.0223,
+      "position": 8.59,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-michigan-student-housing/",
+      "clicks": 0,
+      "impressions": 277,
+      "ctr": 0,
+      "position": 37.59,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/marquette-university-student-housing/",
+      "clicks": 0,
+      "impressions": 276,
+      "ctr": 0,
+      "position": 15.03,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/uk/skilled-worker-switching-jobs/",
+      "clicks": 0,
+      "impressions": 249,
+      "ctr": 0,
+      "position": 12.36,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-arizona-student-housing/",
+      "clicks": 0,
+      "impressions": 245,
+      "ctr": 0,
+      "position": 46.19,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://yousafeconsultancy.com/",
+      "clicks": 10,
+      "impressions": 235,
+      "ctr": 0.0426,
+      "position": 5.33,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/ca/express-entry-stem-category-2026/",
+      "clicks": 0,
+      "impressions": 202,
+      "ctr": 0,
+      "position": 31.07,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/au/english-language-requirements-student-485/",
+      "clicks": 0,
+      "impressions": 201,
+      "ctr": 0,
+      "position": 39.84,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/auburn-university-student-housing/",
+      "clicks": 0,
+      "impressions": 199,
+      "ctr": 0,
+      "position": 37.25,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/kansas-state-university-student-housing/",
+      "clicks": 0,
+      "impressions": 197,
+      "ctr": 0,
+      "position": 13.82,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-utah-student-housing/",
+      "clicks": 0,
+      "impressions": 187,
+      "ctr": 0,
+      "position": 41.04,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/uk-university-of-warwick-international-student-guide/",
+      "clicks": 0,
+      "impressions": 172,
+      "ctr": 0,
+      "position": 13.9,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/stem-opt-job-change-rules/",
+      "clicks": 0,
+      "impressions": 160,
+      "ctr": 0,
+      "position": 10.73,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-self-employment-and-startup/",
+      "clicks": 0,
+      "impressions": 156,
+      "ctr": 0,
+      "position": 8.74,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-south-carolina-student-housing/",
+      "clicks": 0,
+      "impressions": 148,
+      "ctr": 0,
+      "position": 60.99,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-startup-self-employment-rules/",
+      "clicks": 0,
+      "impressions": 145,
+      "ctr": 0,
+      "position": 8.02,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/opt-travel-reentry-rules/",
+      "clicks": 0,
+      "impressions": 137,
+      "ctr": 0,
+      "position": 9.58,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/harvard-university-student-housing/",
+      "clicks": 0,
+      "impressions": 136,
+      "ctr": 0,
+      "position": 13.15,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/marriage-gc-timeline-service-centers/",
+      "clicks": 0,
+      "impressions": 132,
+      "ctr": 0,
+      "position": 58.34,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-oklahoma-student-housing/",
+      "clicks": 0,
+      "impressions": 132,
+      "ctr": 0,
+      "position": 39.98,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/depaul-university-student-housing/",
+      "clicks": 0,
+      "impressions": 125,
+      "ctr": 0,
+      "position": 13.22,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/american-university-student-housing/",
+      "clicks": 1,
+      "impressions": 119,
+      "ctr": 0.84,
+      "position": 13.66,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/ca/family/canada-spousal-sponsorship-document-checklist-2026/",
+      "clicks": 1,
+      "impressions": 114,
+      "ctr": 0.88,
+      "position": 49.75,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/chapman-university-international-student-guide/",
+      "clicks": 0,
+      "impressions": 113,
+      "ctr": 0,
+      "position": 11.73,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/gonzaga-university-student-housing/",
+      "clicks": 0,
+      "impressions": 113,
+      "ctr": 0,
+      "position": 17.28,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/stem-opt-everify-requirements/",
+      "clicks": 0,
+      "impressions": 112,
+      "ctr": 0,
+      "position": 10.22,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/f2-dependent-visa-spouse-children/",
+      "clicks": 0,
+      "impressions": 108,
+      "ctr": 0,
+      "position": 71.46,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-denver-student-housing/",
+      "clicks": 0,
+      "impressions": 103,
+      "ctr": 0,
+      "position": 17.86,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/f1-school-transfer-mid-program/",
+      "clicks": 1,
+      "impressions": 102,
+      "ctr": 0.98,
+      "position": 14.32,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/uk-national-insurance-number-students/",
+      "clicks": 0,
+      "impressions": 100,
+      "ctr": 0,
+      "position": 62.28,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/f1-visa-status-violation-what-to-do/",
+      "clicks": 0,
+      "impressions": 100,
+      "ctr": 0,
+      "position": 35.91,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/virginia-tech-international-student-guide/",
+      "clicks": 0,
+      "impressions": 97,
+      "ctr": 0,
+      "position": 18.82,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://usa.yousafeconsultancy.com/universities/duke-university/",
+      "clicks": 0,
+      "impressions": 96,
+      "ctr": 0,
+      "position": 9.33,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://usa.yousafeconsultancy.com/contact/",
+      "clicks": 1,
+      "impressions": 96,
+      "ctr": 0.0104,
+      "position": 44.15,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-wisconsin-madison-student-housing/",
+      "clicks": 0,
+      "impressions": 93,
+      "ctr": 0,
+      "position": 13.8,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/creighton-university-student-housing/",
+      "clicks": 1,
+      "impressions": 92,
+      "ctr": 0.0109,
+      "position": 10.46,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/drake-university-student-housing/",
+      "clicks": 0,
+      "impressions": 90,
+      "ctr": 0,
+      "position": 13.84,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/student-visas/i-765-opt-common-mistakes/",
+      "clicks": 0,
+      "impressions": 90,
+      "ctr": 0,
+      "position": 17.03,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/uk/skilled-worker-healthcare-pathway/",
+      "clicks": 0,
+      "impressions": 87,
+      "ctr": 0,
+      "position": 56.83,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/sublet-rules-international-students-us/",
+      "clicks": 0,
+      "impressions": 86,
+      "ctr": 0,
+      "position": 10.87,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/us/renting-chicago-students/",
+      "clicks": 0,
+      "impressions": 86,
+      "ctr": 0,
+      "position": 7.88,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/ca/express-entry-healthcare-category-2026/",
+      "clicks": 0,
+      "impressions": 85,
+      "ctr": 0,
+      "position": 33.78,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/university-of-the-pacific-student-housing/",
+      "clicks": 0,
+      "impressions": 83,
+      "ctr": 0,
+      "position": 12.12,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/cornell-university-student-housing/",
+      "clicks": 0,
+      "impressions": 83,
+      "ctr": 0,
+      "position": 45.55,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://legal.yousafeconsultancy.com/guide/uk-tier-2-visa-after-study/",
+      "clicks": 0,
+      "impressions": 81,
+      "ctr": 0,
+      "position": 68.02,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    },
+    {
+      "url": "https://usa.yousafeconsultancy.com/universities/harvard-university/",
+      "clicks": 0,
+      "impressions": 80,
+      "ctr": 0,
+      "position": 11.6,
+      "sources": [
+        "yousafeconsultancy-16"
+      ]
+    }
+  ],
+  "opportunities": {
+    "highImpressionLowCtr": [
+      {
+        "term": "auburn university housing",
+        "clicks": 0,
+        "impressions": 68,
+        "ctr": 0,
+        "position": 37.12,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student housing university of missouri",
+        "clicks": 0,
+        "impressions": 61,
+        "ctr": 0,
+        "position": 37.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student rentals university of missouri",
+        "clicks": 0,
+        "impressions": 50,
+        "ctr": 0,
+        "position": 38.46,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "university of michigan housing",
+        "clicks": 0,
+        "impressions": 46,
+        "ctr": 0,
+        "position": 33.52,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "san francisco university housing",
+        "clicks": 0,
+        "impressions": 34,
+        "ctr": 0,
+        "position": 35.15,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "k state off campus housing",
+        "clicks": 0,
+        "impressions": 31,
+        "ctr": 0,
+        "position": 17,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "apartments near portland state university",
+        "clicks": 0,
+        "impressions": 30,
+        "ctr": 0,
+        "position": 32.9,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student housing university of arizona",
+        "clicks": 0,
+        "impressions": 30,
+        "ctr": 0,
+        "position": 38.3,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "auburn student housing",
+        "clicks": 0,
+        "impressions": 28,
+        "ctr": 0,
+        "position": 38.54,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "ministerial direction 111",
+        "clicks": 0,
+        "impressions": 27,
+        "ctr": 0,
+        "position": 26.7,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "auburn university student housing",
+        "clicks": 0,
+        "impressions": 23,
+        "ctr": 0,
+        "position": 27.83,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "university of arizona student housing",
+        "clicks": 0,
+        "impressions": 21,
+        "ctr": 0,
+        "position": 35.48,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      }
+    ],
+    "highImpressionDeepRank": [
+      {
+        "term": "auburn university housing",
+        "clicks": 0,
+        "impressions": 68,
+        "ctr": 0,
+        "position": 37.12,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "administrative review letter template uk",
+        "clicks": 0,
+        "impressions": 64,
+        "ctr": 0,
+        "position": 47.97,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student living university of missouri",
+        "clicks": 0,
+        "impressions": 62,
+        "ctr": 0,
+        "position": 44.39,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student housing university of missouri",
+        "clicks": 0,
+        "impressions": 61,
+        "ctr": 0,
+        "position": 37.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student rentals university of missouri",
+        "clicks": 0,
+        "impressions": 50,
+        "ctr": 0,
+        "position": 38.46,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student insurance comparison",
+        "clicks": 0,
+        "impressions": 47,
+        "ctr": 0,
+        "position": 53.77,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "tier 5 to tier 2",
+        "clicks": 0,
+        "impressions": 47,
+        "ctr": 0,
+        "position": 70.28,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "university of michigan housing",
+        "clicks": 0,
+        "impressions": 46,
+        "ctr": 0,
+        "position": 33.52,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "dependent visa",
+        "clicks": 0,
+        "impressions": 43,
+        "ctr": 0,
+        "position": 70.51,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "dependent visa uk",
+        "clicks": 0,
+        "impressions": 40,
+        "ctr": 0,
+        "position": 78.88,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "uk dependent visa",
+        "clicks": 0,
+        "impressions": 40,
+        "ctr": 0,
+        "position": 79.1,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "status violation immigration advice",
+        "clicks": 0,
+        "impressions": 40,
+        "ctr": 0,
+        "position": 53.45,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "san francisco university housing",
+        "clicks": 0,
+        "impressions": 34,
+        "ctr": 0,
+        "position": 35.15,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "umich student housing",
+        "clicks": 0,
+        "impressions": 34,
+        "ctr": 0,
+        "position": 40.53,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student living university of maine",
+        "clicks": 0,
+        "impressions": 31,
+        "ctr": 0,
+        "position": 44.1,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "apartments near portland state university",
+        "clicks": 0,
+        "impressions": 30,
+        "ctr": 0,
+        "position": 32.9,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student housing university of arizona",
+        "clicks": 0,
+        "impressions": 30,
+        "ctr": 0,
+        "position": 38.3,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "ou off campus housing",
+        "clicks": 0,
+        "impressions": 30,
+        "ctr": 0,
+        "position": 45.83,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student dependant visa uk",
+        "clicks": 0,
+        "impressions": 28,
+        "ctr": 0,
+        "position": 92.39,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "auburn student housing",
+        "clicks": 0,
+        "impressions": 28,
+        "ctr": 0,
+        "position": 38.54,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "uofsc housing",
+        "clicks": 0,
+        "impressions": 27,
+        "ctr": 0,
+        "position": 45.85,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "university of washington student housing",
+        "clicks": 0,
+        "impressions": 27,
+        "ctr": 0,
+        "position": 51.04,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "difference between skilled worker visa and health care visa",
+        "clicks": 0,
+        "impressions": 26,
+        "ctr": 0,
+        "position": 78.42,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "appendix fm se documents checklist",
+        "clicks": 0,
+        "impressions": 23,
+        "ctr": 0,
+        "position": 48.78,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "student housing near university of arizona",
+        "clicks": 0,
+        "impressions": 23,
+        "ctr": 0,
+        "position": 64.65,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "marriage based green card timeline",
+        "clicks": 0,
+        "impressions": 22,
+        "ctr": 0,
+        "position": 48.27,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "visa appeal consultant",
+        "clicks": 0,
+        "impressions": 21,
+        "ctr": 0,
+        "position": 85.1,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "child dependant visa uk documents",
+        "clicks": 0,
+        "impressions": 21,
+        "ctr": 0,
+        "position": 76.14,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "university of arizona student housing",
+        "clicks": 0,
+        "impressions": 21,
+        "ctr": 0,
+        "position": 35.48,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "housing mizzou",
+        "clicks": 0,
+        "impressions": 21,
+        "ctr": 0,
+        "position": 47.1,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "term": "housing in ut",
+        "clicks": 0,
+        "impressions": 20,
+        "ctr": 0,
+        "position": 44.1,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      }
+    ],
+    "nearWinPagesLowCtr": [
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-king-s-college-london-international-student-guide/",
+        "clicks": 0,
+        "impressions": 355,
+        "ctr": 0,
+        "position": 10.26,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/international-student-llc-on-opt-guide/",
+        "clicks": 7,
+        "impressions": 314,
+        "ctr": 0.0223,
+        "position": 8.59,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/marquette-university-student-housing/",
+        "clicks": 0,
+        "impressions": 276,
+        "ctr": 0,
+        "position": 15.03,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/uk/skilled-worker-switching-jobs/",
+        "clicks": 0,
+        "impressions": 249,
+        "ctr": 0,
+        "position": 12.36,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/kansas-state-university-student-housing/",
+        "clicks": 0,
+        "impressions": 197,
+        "ctr": 0,
+        "position": 13.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-university-of-warwick-international-student-guide/",
+        "clicks": 0,
+        "impressions": 172,
+        "ctr": 0,
+        "position": 13.9,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/stem-opt-job-change-rules/",
+        "clicks": 0,
+        "impressions": 160,
+        "ctr": 0,
+        "position": 10.73,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-self-employment-and-startup/",
+        "clicks": 0,
+        "impressions": 156,
+        "ctr": 0,
+        "position": 8.74,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-startup-self-employment-rules/",
+        "clicks": 0,
+        "impressions": 145,
+        "ctr": 0,
+        "position": 8.02,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/opt-travel-reentry-rules/",
+        "clicks": 0,
+        "impressions": 137,
+        "ctr": 0,
+        "position": 9.58,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/harvard-university-student-housing/",
+        "clicks": 0,
+        "impressions": 136,
+        "ctr": 0,
+        "position": 13.15,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/depaul-university-student-housing/",
+        "clicks": 0,
+        "impressions": 125,
+        "ctr": 0,
+        "position": 13.22,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/chapman-university-international-student-guide/",
+        "clicks": 0,
+        "impressions": 113,
+        "ctr": 0,
+        "position": 11.73,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/gonzaga-university-student-housing/",
+        "clicks": 0,
+        "impressions": 113,
+        "ctr": 0,
+        "position": 17.28,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/stem-opt-everify-requirements/",
+        "clicks": 0,
+        "impressions": 112,
+        "ctr": 0,
+        "position": 10.22,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-denver-student-housing/",
+        "clicks": 0,
+        "impressions": 103,
+        "ctr": 0,
+        "position": 17.86,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/virginia-tech-international-student-guide/",
+        "clicks": 0,
+        "impressions": 97,
+        "ctr": 0,
+        "position": 18.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://usa.yousafeconsultancy.com/universities/duke-university/",
+        "clicks": 0,
+        "impressions": 96,
+        "ctr": 0,
+        "position": 9.33,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-wisconsin-madison-student-housing/",
+        "clicks": 0,
+        "impressions": 93,
+        "ctr": 0,
+        "position": 13.8,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/creighton-university-student-housing/",
+        "clicks": 1,
+        "impressions": 92,
+        "ctr": 0.0109,
+        "position": 10.46,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/drake-university-student-housing/",
+        "clicks": 0,
+        "impressions": 90,
+        "ctr": 0,
+        "position": 13.84,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/i-765-opt-common-mistakes/",
+        "clicks": 0,
+        "impressions": 90,
+        "ctr": 0,
+        "position": 17.03,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/sublet-rules-international-students-us/",
+        "clicks": 0,
+        "impressions": 86,
+        "ctr": 0,
+        "position": 10.87,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/renting-chicago-students/",
+        "clicks": 0,
+        "impressions": 86,
+        "ctr": 0,
+        "position": 7.88,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-the-pacific-student-housing/",
+        "clicks": 0,
+        "impressions": 83,
+        "ctr": 0,
+        "position": 12.12,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://usa.yousafeconsultancy.com/universities/harvard-university/",
+        "clicks": 0,
+        "impressions": 80,
+        "ctr": 0,
+        "position": 11.6,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/miami-dade-college-international-student-guide/",
+        "clicks": 0,
+        "impressions": 77,
+        "ctr": 0,
+        "position": 10.58,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/pima-community-college-international-student-guide/",
+        "clicks": 0,
+        "impressions": 74,
+        "ctr": 0,
+        "position": 11.65,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/dallas-college-international-student-guide/",
+        "clicks": 0,
+        "impressions": 73,
+        "ctr": 0,
+        "position": 14.75,
+        "sources": [
+          "yousafeconsultancy-15"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-durham-university-international-student-guide/",
+        "clicks": 1,
+        "impressions": 69,
+        "ctr": 0.014499999999999999,
+        "position": 14.58,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      }
+    ],
+    "zeroClickHighImpressionPages": [
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/dependent-visa-uk-international-students/",
+        "clicks": 0,
+        "impressions": 415,
+        "ctr": 0,
+        "position": 77.88,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-king-s-college-london-international-student-guide/",
+        "clicks": 0,
+        "impressions": 355,
+        "ctr": 0,
+        "position": 10.26,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-missouri-student-housing/",
+        "clicks": 0,
+        "impressions": 317,
+        "ctr": 0,
+        "position": 40.36,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-michigan-student-housing/",
+        "clicks": 0,
+        "impressions": 277,
+        "ctr": 0,
+        "position": 37.59,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/marquette-university-student-housing/",
+        "clicks": 0,
+        "impressions": 276,
+        "ctr": 0,
+        "position": 15.03,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/uk/skilled-worker-switching-jobs/",
+        "clicks": 0,
+        "impressions": 249,
+        "ctr": 0,
+        "position": 12.36,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-arizona-student-housing/",
+        "clicks": 0,
+        "impressions": 245,
+        "ctr": 0,
+        "position": 46.19,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/ca/express-entry-stem-category-2026/",
+        "clicks": 0,
+        "impressions": 202,
+        "ctr": 0,
+        "position": 31.07,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/au/english-language-requirements-student-485/",
+        "clicks": 0,
+        "impressions": 201,
+        "ctr": 0,
+        "position": 39.84,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/auburn-university-student-housing/",
+        "clicks": 0,
+        "impressions": 199,
+        "ctr": 0,
+        "position": 37.25,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/kansas-state-university-student-housing/",
+        "clicks": 0,
+        "impressions": 197,
+        "ctr": 0,
+        "position": 13.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-utah-student-housing/",
+        "clicks": 0,
+        "impressions": 187,
+        "ctr": 0,
+        "position": 41.04,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-university-of-warwick-international-student-guide/",
+        "clicks": 0,
+        "impressions": 172,
+        "ctr": 0,
+        "position": 13.9,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/stem-opt-job-change-rules/",
+        "clicks": 0,
+        "impressions": 160,
+        "ctr": 0,
+        "position": 10.73,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-self-employment-and-startup/",
+        "clicks": 0,
+        "impressions": 156,
+        "ctr": 0,
+        "position": 8.74,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-south-carolina-student-housing/",
+        "clicks": 0,
+        "impressions": 148,
+        "ctr": 0,
+        "position": 60.99,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/stem-opt-startup-self-employment-rules/",
+        "clicks": 0,
+        "impressions": 145,
+        "ctr": 0,
+        "position": 8.02,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/opt-travel-reentry-rules/",
+        "clicks": 0,
+        "impressions": 137,
+        "ctr": 0,
+        "position": 9.58,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/harvard-university-student-housing/",
+        "clicks": 0,
+        "impressions": 136,
+        "ctr": 0,
+        "position": 13.15,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/marriage-gc-timeline-service-centers/",
+        "clicks": 0,
+        "impressions": 132,
+        "ctr": 0,
+        "position": 58.34,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-oklahoma-student-housing/",
+        "clicks": 0,
+        "impressions": 132,
+        "ctr": 0,
+        "position": 39.98,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/depaul-university-student-housing/",
+        "clicks": 0,
+        "impressions": 125,
+        "ctr": 0,
+        "position": 13.22,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/chapman-university-international-student-guide/",
+        "clicks": 0,
+        "impressions": 113,
+        "ctr": 0,
+        "position": 11.73,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/gonzaga-university-student-housing/",
+        "clicks": 0,
+        "impressions": 113,
+        "ctr": 0,
+        "position": 17.28,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/stem-opt-everify-requirements/",
+        "clicks": 0,
+        "impressions": 112,
+        "ctr": 0,
+        "position": 10.22,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/f2-dependent-visa-spouse-children/",
+        "clicks": 0,
+        "impressions": 108,
+        "ctr": 0,
+        "position": 71.46,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/university-of-denver-student-housing/",
+        "clicks": 0,
+        "impressions": 103,
+        "ctr": 0,
+        "position": 17.86,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/uk-national-insurance-number-students/",
+        "clicks": 0,
+        "impressions": 100,
+        "ctr": 0,
+        "position": 62.28,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/us/student-visas/f1-visa-status-violation-what-to-do/",
+        "clicks": 0,
+        "impressions": 100,
+        "ctr": 0,
+        "position": 35.91,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      },
+      {
+        "url": "https://legal.yousafeconsultancy.com/guide/virginia-tech-international-student-guide/",
+        "clicks": 0,
+        "impressions": 97,
+        "ctr": 0,
+        "position": 18.82,
+        "sources": [
+          "yousafeconsultancy-16"
+        ]
+      }
+    ]
+  }
+}

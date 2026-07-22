@@ -1,100 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getGscAccessToken } from '@/lib/gsc-service-account'
+import { requireAdminUser } from '@/lib/portalAuth'
+import { getGscAccess } from '@/lib/gscAuth'
+import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
+import { buildGscContentBrief } from '@/lib/gscContentBrief'
+import snapshot from '@/data/gsc/snapshot.json'
 
 /**
  * POST /api/content-studio/gsc/data
- * Pulls Google Search Console search analytics data using service account auth.
- * Body: { siteUrl, startDate, endDate, dimensions?, rowLimit? }
  *
- * Uses the GSC_SERVICE_ACCOUNT_KEY Cloudflare secret — no OAuth tokens needed.
+ * Body (optional):
+ *   { siteUrl?, startDate?, endDate?, dimensions?, rowLimit?, topic?, region? }
+ *
+ * Auth: service account (GSC_SERVICE_ACCOUNT_JSON | GSC_SERVICE_ACCOUNT_KEY)
+ *       or OAuth bundle; falls back to CSV snapshot for Content Studio.
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const {
-      siteUrl,
-      startDate = '30daysAgo',
-      endDate = 'today',
-      dimensions = ['query'],
-      rowLimit = 100,
-    } = body
-
-    if (!siteUrl) {
-      return NextResponse.json(
-        { error: 'siteUrl is required (e.g. https://caseworks.com/)' },
-        { status: 400 },
-      )
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    const serviceAccountKey = process.env.GSC_SERVICE_ACCOUNT_KEY
-    if (!serviceAccountKey) {
-      return NextResponse.json(
-        {
-          error: 'GSC not configured. Set GSC_SERVICE_ACCOUNT_KEY in Cloudflare secrets.',
-          connected: false,
-        },
-        { status: 401 },
-      )
-    }
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const topic = typeof body.topic === 'string' ? body.topic : ''
+    const region = typeof body.region === 'string' ? body.region : 'US'
+    const siteUrlOverride = typeof body.siteUrl === 'string' ? body.siteUrl : null
 
-    // Get access token from service account JWT
-    const accessToken = await getGscAccessToken(serviceAccountKey)
+    const access = await getGscAccess()
+    const siteUrl = siteUrlOverride || access?.siteUrl || process.env.GSC_SITE_URL || null
 
-    // Query GSC search analytics
-    const encodedSite = encodeURIComponent(siteUrl)
-    const gscUrl = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`
-
-    const gscRes = await fetch(gscUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        startDate,
-        endDate,
-        dimensions,
-        rowLimit,
-        aggregationType: 'auto',
-      }),
+    // Content brief always available (live or snapshot) for generator / UI
+    const brief = await buildGscContentBrief({
+      topic: topic || 'immigration international students visas housing',
+      region,
     })
 
-    if (!gscRes.ok) {
-      const err = await gscRes.text()
-      let message = `GSC API error (${gscRes.status}): ${err.slice(0, 200)}`
+    // Prefer full analytics when credentials + site work
+    const live = await fetchSiteSearchAnalytics(90)
 
-      if (err.includes('403') || err.includes('forbidden')) {
-        message = `Access denied. Add gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com as a user in Search Console → Settings → Users for "${siteUrl}".`
-      } else if (err.includes('404') || err.includes('not found')) {
-        message = `Site "${siteUrl}" not found in Search Console. Register it first.`
-      }
-
-      return NextResponse.json({ error: message }, { status: gscRes.status })
+    if (live.configured && live.topQueries.length > 0) {
+      return NextResponse.json({
+        source: 'live',
+        mode: access?.mode ?? 'unknown',
+        siteUrl: siteUrl,
+        range: live.range,
+        dateRange: live.range,
+        totals: live.totals,
+        totalsPrev: live.totalsPrev,
+        daily: live.daily,
+        totalRows: live.topQueries.length,
+        // Dashboard shape (ctr as percent for display)
+        rows: live.topQueries.map((q) => ({
+          keys: [q.key],
+          clicks: q.clicks,
+          impressions: q.impressions,
+          ctr: Math.round(q.ctr * 10000) / 100,
+          position: Math.round(q.position * 10) / 10,
+        })),
+        pages: live.topPages,
+        brief,
+        warnings: live.warnings,
+      })
     }
 
-    const data = await gscRes.json()
+    // Snapshot fallback from Downloads/SEO CSV exports
+    const snap = snapshot as {
+      topQueries: Array<{ term: string; clicks: number; impressions: number; ctr: number; position: number }>
+      topPages: Array<{ url: string; clicks: number; impressions: number; ctr: number; position: number }>
+      opportunities: Record<string, unknown>
+      totals: Record<string, number>
+      generatedAt: string
+    }
 
-    // Transform into a usable shape for the dashboard
-    const rows = (data.rows ?? []).map((row: any) => ({
-      keys: row.keys,
-      clicks: row.clicks,
-      impressions: row.impressions,
-      ctr: Math.round(row.ctr * 10000) / 100, // e.g. 4.52%
-      position: Math.round(row.position * 10) / 10, // e.g. 3.2
+    const rows = (snap.topQueries ?? []).map((q) => ({
+      keys: [q.term],
+      clicks: q.clicks,
+      impressions: q.impressions,
+      ctr: Math.round(q.ctr * 10000) / 100,
+      position: Math.round(q.position * 10) / 10,
     }))
 
     return NextResponse.json({
+      source: 'snapshot',
+      mode: access?.mode ?? null,
       siteUrl,
-      dateRange: { startDate, endDate },
+      connected: Boolean(access),
+      range: { note: 'CSV snapshot (Downloads/SEO yousafeconsultancy-13..16)', generatedAt: snap.generatedAt },
+      dateRange: { startDate: 'snapshot', endDate: snap.generatedAt },
+      totals: {
+        clicks: snap.totals?.totalClicks ?? 0,
+        impressions: snap.totals?.totalImpressions ?? 0,
+      },
       totalRows: rows.length,
       rows,
+      pages: snap.topPages ?? [],
+      opportunities: snap.opportunities ?? {},
+      brief,
+      warnings: [
+        ...(brief.warnings ?? []),
+        access?.mode === 'service_account'
+          ? 'Service account authenticates but has no property access yet — add gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com as Full user on each GSC property (Search Console → Settings → Users).'
+          : 'Serving CSV snapshot until live GSC credentials can read the property.',
+      ],
     })
   } catch (err) {
-    console.error('[gsc/data]', err)
+    console.error('[content-studio/gsc/data]', err)
     return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : 'Internal error',
-      },
+      { error: err instanceof Error ? err.message : 'Failed to load GSC data' },
       { status: 500 },
     )
   }

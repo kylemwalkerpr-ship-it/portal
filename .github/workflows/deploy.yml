@@ -118,6 +118,7 @@ jobs:
           GSC_OAUTH_CLIENT_SECRET: ${{ secrets.GSC_OAUTH_CLIENT_SECRET }}
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
           # Content Studio AI providers (app/api/content-studio/generate)
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -213,6 +214,9 @@ jobs:
           put_secret GSC_OAUTH_CLIENT_SECRET   "$GSC_OAUTH_CLIENT_SECRET"
           put_secret GSC_OAUTH_REFRESH_TOKEN   "$GSC_OAUTH_REFRESH_TOKEN"
           put_secret GSC_SITE_URL              "$GSC_SITE_URL"
+          # Service account JSON (gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com).
+          # Must be added as Full user on each Search Console property for live queries.
+          put_secret GSC_SERVICE_ACCOUNT_JSON  "$GSC_SERVICE_ACCOUNT_JSON"
           # Content Studio — AI providers (priority: custom → xAI/Grok → OpenAI → DeepSeek)
           put_secret XAI_API_KEY               "$XAI_API_KEY"
           put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Buffer } from 'node:buffer'
+import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 
 // ── Types ──
 interface GenerateRequest {
@@ -123,7 +124,10 @@ function resolveProvider(): {
   }
 }
 
-function buildPrompt(data: GenerateRequest): { system: string; prompt: string } {
+function buildPrompt(
+  data: GenerateRequest,
+  gscBlock: string,
+): { system: string; prompt: string } {
   const isArticle = data.content_type === 'article'
   const isRegional = data.content_type === 'regional_page'
   const isGig = data.content_type === 'marketplace_gig'
@@ -165,8 +169,16 @@ function buildPrompt(data: GenerateRequest): { system: string; prompt: string } 
     `Region context: ${regionContext[data.region] ?? 'General immigration content.'}`,
     `Internal linking requirements: ${internalLinks}.`,
     '',
+    'SEO demand rules (from Google Search Console):',
+    '- Treat the GSC keyword/page block as ground truth for demand. Prefer those queries over invented keywords.',
+    '- Put the #1 primary query (or closest natural variant) in the title and first H2 where accurate.',
+    '- Use secondary GSC queries as H2/H3 or FAQ questions when they match intent.',
+    '- When GSC shows high impressions + deep position, expand with concrete local/legal detail (not fluff).',
+    '- When GSC shows pos 4–20 + low CTR, write a click-worthy title/meta description (include year, place, and action).',
+    '- Prefer internal links to related estate URLs listed in the GSC block when relevant.',
+    '',
     'Output format:',
-    '- YAML front matter: title, date (today), slug, region, tags (array), content_type',
+    '- YAML front matter: title, date (today), slug, region, tags (array), content_type, gsc_primary_keyword',
     '- H2 sections with concrete, actionable information',
     '- Strong opening (no rhetorical questions) and a concise closing with a marketplace CTA',
     '- Inline SOURCES section at the bottom citing official .gov/.edu URLs',
@@ -176,11 +188,13 @@ function buildPrompt(data: GenerateRequest): { system: string; prompt: string } 
   ].join('\n')
 
   const prompt = [
-    `Title: ${data.title || '(derive a strong, SEO-optimized title from the topic)'}`,
+    `Title: ${data.title || '(derive a strong, SEO-optimized title from the topic AND the #1 GSC primary keyword)'}`,
     `Topic: ${data.topic}`,
     `Tone: ${data.tone}`,
     data.audience ? `Target audience: ${data.audience}` : '',
-    data.keywords?.length ? `Naturally weave in these keywords: ${data.keywords.join(', ')}` : '',
+    data.keywords?.length ? `Editor-supplied keywords (secondary to GSC list): ${data.keywords.join(', ')}` : '',
+    '',
+    gscBlock,
     '',
     `Word count target: ${wordCount}.`,
     `Return valid Markdown${isArticle || isRegional ? ' (MDX-compatible)' : ''} with YAML front matter.`,
@@ -350,9 +364,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Topic is required' }, { status: 400 })
     }
 
-    // ── 1. AI Generation ──
+    // ── 1. GSC demand brief (live SA/OAuth or CSV snapshot) ──
+    const gscBrief = await buildGscContentBrief({
+      topic: body.topic,
+      region: body.region,
+      keywords: body.keywords,
+    })
+    const gscBlock = formatGscBriefForPrompt(gscBrief)
+
+    // ── 2. AI Generation ──
     const provider = resolveProvider()
-    const { system, prompt } = buildPrompt(body)
+    const { system, prompt } = buildPrompt(body, gscBlock)
     const label = provider.label
 
     const content = await chatComplete({
@@ -370,7 +392,7 @@ export async function POST(request: NextRequest) {
     const seoScore = computeSeoScore(content, body)
     const eeatScore = computeEeatScore(content, body)
 
-    // ── 2. GitHub PR ──
+    // ── 3. GitHub PR ──
     const target = resolveTargetRepo(body.content_type, body.region)
     const stamp = todayStamp()
     const jobSuffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -399,6 +421,10 @@ export async function POST(request: NextRequest) {
       `- **AI Provider:** ${label}`,
       `- **Word Count:** ${wordCount}`,
       `- **SEO Score:** ${seoScore}%`,
+      `- **GSC source:** ${gscBrief.source}/${gscBrief.mode}`,
+      gscBrief.primaryKeywords[0]
+        ? `- **GSC primary keyword:** ${gscBrief.primaryKeywords[0].term} (${gscBrief.primaryKeywords[0].impressions} imp)`
+        : '',
       `- **File:** \`${filePath}\``,
       '',
       '---',
@@ -407,7 +433,7 @@ export async function POST(request: NextRequest) {
 
     const pr = await openPR(target.owner, target.repo, branchName, target.defaultBranch, prTitle, prBody)
 
-    // ── 3. Save to Supabase ──
+    // ── 4. Save to Supabase ──
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -451,6 +477,13 @@ export async function POST(request: NextRequest) {
         content_path: filePath,
         word_count: wordCount,
         seo_score: seoScore,
+        gsc: {
+          source: gscBrief.source,
+          mode: gscBrief.mode,
+          primaryKeywords: gscBrief.primaryKeywords.slice(0, 6),
+          opportunityKeywords: gscBrief.opportunityKeywords.slice(0, 6),
+          warnings: gscBrief.warnings,
+        },
       },
     }, { status: 201 })
 

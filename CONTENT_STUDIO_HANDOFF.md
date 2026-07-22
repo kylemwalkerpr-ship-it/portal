@@ -103,3 +103,34 @@ https://portal.yousafeconsultancy.com/api/content-studio/gsc/callback
 - Do not commit API tokens / secrets to git or chat long-term; rotate if exposed.
 - `gsc_tokens` + `content_jobs` RLS policies are open at DB level; API routes enforce admin via Clerk (`requireAdminUser` / session).
 - Prefer rotating any secrets pasted into chat (Supabase `sbp_` / `sb_secret_`, Cloudflare tokens).
+
+## GSC service account + Content Studio demand feed (2026-07-22)
+
+**Service account:** `gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com`  
+**Worker secrets set:** `GSC_SERVICE_ACCOUNT_JSON`, `GSC_SITE_URL=sc-domain:yousafeconsultancy.com`
+
+### Required one-time GSC UI step (403 until done)
+
+For **each** Search Console property (domain + URL-prefix as needed):
+
+1. Open https://search.google.com/search-console  
+2. Settings → Users and permissions → Add user  
+3. Email: `gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com`  
+4. Permission: **Full**
+
+Until that is done, live API returns 403. Content Studio still generates using the **CSV snapshot** at `data/gsc/snapshot.json` (imported from `Downloads/SEO`).
+
+### Content generator integration
+
+`app/api/content-studio/generate` calls `buildGscContentBrief()` which:
+
+1. Tries live GSC (SA or OAuth)
+2. Falls back to snapshot opportunities (high-imp / weak CTR / deep rank)
+3. Injects primary keywords, related queries, estate pages, and strategy rules into the LLM prompt
+
+### Refresh snapshot from new CSV exports
+
+```bash
+# Place exports under ~/Downloads/SEO/yousafeconsultancy-* then re-run the import
+# (script logic lives in the session that wrote data/gsc/snapshot.json)
+```
