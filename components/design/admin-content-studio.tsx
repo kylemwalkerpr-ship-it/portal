@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+const AdminSeoFactory = React.lazy(() => import('./admin-seo-factory'))
 
 // ── Color tokens (match admin-templates.tsx) ──
 const C = {
@@ -48,7 +49,7 @@ interface ContentStudioProps {
   setActionNotice: (msg: string) => void
 }
 
-type Tab = 'generate' | 'gsc'
+type Tab = 'generate' | 'gsc' | 'factory'
 
 // ── Helpers ──
 
@@ -405,7 +406,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generating, setGenerating] = React.useState(false)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [activeTab, setActiveTab] = React.useState<Tab>('generate')
+  const [activeTab, setActiveTab] = React.useState<Tab>('factory')
   const [GscDashboard, setGscDashboard] = React.useState<any>(null)
   const [gscSiteUrl, setGscSiteUrl] = React.useState('https://caseworks.com/')
 
@@ -494,6 +495,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* Tab navigation */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: `2px solid ${C.border}` }}>
         {([
+          { key: 'factory' as Tab, label: '🏭 SEO Factory', desc: 'Plan · generate · ship' },
           { key: 'generate' as Tab, label: '⚡ Generate', desc: 'AI content + PRs' },
           { key: 'gsc' as Tab, label: '🔍 GSC Analytics', desc: 'Search Console data' },
         ]).map(tab => (
@@ -570,6 +572,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
       </>}
+      {/* ── SEO Factory Tab ── */}
+      {activeTab === 'factory' && (
+        <React.Suspense fallback={<div style={{ padding: 24 }}>Loading factory…</div>}>
+          <AdminSeoFactory setActionNotice={setActionNotice} />
+        </React.Suspense>
+      )}
+
       {/* ── GSC Analytics Tab ── */}
       {activeTab === 'gsc' && (
         <div>

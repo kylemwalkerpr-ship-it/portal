@@ -134,3 +134,26 @@ Until that is done, live API returns 403. Content Studio still generates using t
 # Place exports under ~/Downloads/SEO/yousafeconsultancy-* then re-run the import
 # (script logic lives in the session that wrote data/gsc/snapshot.json)
 ```
+
+## SEO Factory (Sprint 1 shipped)
+
+Admin: **Content Studio → SEO Factory** tab
+
+### APIs
+- `POST /api/seo-factory/plan` — ownership + GSC brief
+- `POST /api/seo-factory/generate` — generate + audit + optional ship
+- `POST /api/seo-factory/ship` — PR or autodeploy to main
+- `POST /api/seo-factory/audit` — scorecard
+- `GET /api/seo-factory/opportunities` — ranked GSC opportunities
+- `GET /api/seo-factory/metrics` — factory KPIs + GSC visibility
+- `POST /api/seo-factory/llms/preview` — llms.txt / llms-full snippets
+
+### Ship modes
+- `pr` — branch + PR (default for YMYL)
+- `autodeploy` — commit to `main` (requires audit gates; triggers existing CF deploys)
+
+### Migration
+Run `supabase/migrations/seo_factory_columns.sql` after base `content_jobs.sql`.
+
+### Required secret
+`GITHUB_TOKEN` with `contents:write` + `pull_requests:write` on caseworks, yousafe-consultancy, portal.
