@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateText } from 'ai'
 import { deepSeek } from '@ai-sdk/deepseek'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createXai } from '@ai-sdk/xai'
 import { Buffer } from 'node:buffer'
 
 // ── Types ──
@@ -54,6 +55,16 @@ function pickModel() {
     return {
       model: openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini'),
       label: 'openai',
+    }
+  }
+
+  // ── Grok (xAI / SuperGrok) ──
+  // Set XAI_API_KEY + optionally XAI_MODEL (default: grok-3)
+  if (process.env.XAI_API_KEY) {
+    const xai = createXai({ apiKey: process.env.XAI_API_KEY })
+    return {
+      model: xai(process.env.XAI_MODEL ?? 'grok-3'),
+      label: 'grok',
     }
   }
 
