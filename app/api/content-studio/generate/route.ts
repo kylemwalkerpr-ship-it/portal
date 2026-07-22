@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateText } from 'ai'
 import { deepSeek } from '@ai-sdk/deepseek'
 import { createOpenAI } from '@ai-sdk/openai'
-import { Buffer } from "node:buffer"
+import { Buffer } from 'node:buffer'
 
 // ── Types ──
 interface GenerateRequest {
@@ -36,6 +36,18 @@ function todayStamp(): string {
 function pickModel() {
   const provider = (process.env.AI_PROVIDER ?? 'deepseek').toLowerCase()
 
+  // ── Plug-and-play: any OpenAI-compatible endpoint ──
+  // Set CUSTOM_AI_BASE_URL + CUSTOM_AI_API_KEY + CUSTOM_AI_MODEL to use any provider.
+  // Just paste your API key and endpoint — no code changes needed.
+  if (process.env.CUSTOM_AI_BASE_URL && process.env.CUSTOM_AI_API_KEY) {
+    const custom = createOpenAI({
+      baseURL: process.env.CUSTOM_AI_BASE_URL,
+      apiKey: process.env.CUSTOM_AI_API_KEY,
+    })
+    const modelId = process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini'
+    return { model: custom(modelId), label: `custom (${modelId})` }
+  }
+
   if (provider === 'openai') {
     if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set')
     const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -45,7 +57,6 @@ function pickModel() {
     }
   }
 
-  // Default: DeepSeek
   if (!process.env.DEEPSEEK_API_KEY) throw new Error('DEEPSEEK_API_KEY not set')
   return {
     model: deepSeek(process.env.DEEPSEEK_MODEL ?? 'deepseek-chat'),
@@ -119,38 +130,65 @@ function buildPrompt(data: GenerateRequest): { system: string; prompt: string } 
   return { system, prompt }
 }
 
+function computeEeatScore(content: string, data: GenerateRequest): number {
+  // Google E-E-A-T compliance scoring (Experience, Expertise, Authoritativeness, Trustworthiness)
+  let score = 0
+  const max = 12
+  const words = content.split(/\s+/).length
+
+  // Experience: first-hand knowledge signals
+  if (/according to|based on|in our experience|we found|our analysis/i.test(content)) score += 1
+  if (/case study|example|scenario|real.world/i.test(content)) score += 1
+
+  // Expertise: depth and accuracy
+  const h2s = (content.match(/^## /gm) ?? []).length
+  if (h2s >= 5) score += 1  // comprehensive coverage
+  if (words >= 1200) score += 1  // substantive content
+
+  // Authoritativeness: citations and credentials
+  if (/\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk/i.test(content)) score += 2
+  if (/according to (the )?[A-Z][a-z]+ [A-Z]|official|regulation|statute|section \d/i.test(content)) score += 1
+
+  // Trustworthiness: transparency and accuracy
+  if (/last updated|published|disclaimer|not legal advice|consult an? (attorney|lawyer|solicitor)/i.test(content)) score += 1
+  if (/source|reference|citation|footnote/i.test(content)) score += 1
+
+  // Structured data completeness
+  if (/"@type":\s*"Article"/.test(content)) score += 1
+  if (/"@type":\s*"FAQPage"/.test(content)) score += 1
+  if (/datePublished|dateModified/.test(content)) score += 1
+
+  // No banned words (penalty)
+  const banned = /\b(delve|streamline|game.changer|revolutionize|cutting.edge|leverage|robust|seamless|holistic|bespoke|curated|unpack)\b/gi
+  if (!banned.test(content)) score += 1
+
+  return Math.min(Math.round((score / max) * 100), 100)
+}
+
 function computeSeoScore(content: string, data: GenerateRequest): number {
   let score = 0
   const max = 10
 
-  // Length scoring
   const words = content.split(/\s+/).length
   if (words >= 1800) score += 2
   else if (words >= 900) score += 1
 
-  // Front matter
   if (content.startsWith('---')) score += 1
 
-  // H2 sections
   const h2Count = (content.match(/^## /gm) ?? []).length
   if (h2Count >= 4) score += 1
 
-  // Keyword presence
   if (data.keywords?.length) {
     const keywordHits = data.keywords.filter(kw => content.toLowerCase().includes(kw.toLowerCase())).length
     if (keywordHits >= data.keywords.length * 0.7) score += 1
   }
 
-  // Official citations
   if (/\.gov|\.edu|uscis|ircc|homeaffairs|ukvi/i.test(content)) score += 2
 
-  // Marketplace CTA
   if (/marketplace|yousafeconsultancy\.com|gig|template|consultation/i.test(content)) score += 1
 
-  // Schema
   if (/application\/ld\+json/.test(content)) score += 1
 
-  // Readability (paragraph length)
   const avgParaLen = words / Math.max(1, (content.match(/\n\n/g) ?? []).length)
   if (avgParaLen >= 25 && avgParaLen <= 100) score += 1
 
@@ -270,6 +308,7 @@ export async function POST(request: NextRequest) {
     const safeSlug = slug || `post-${Date.now()}`
     const wordCount = content.split(/\s+/).length
     const seoScore = computeSeoScore(content, body)
+    const eeatScore = computeEeatScore(content, body)
 
     // ── 2. GitHub PR ──
     const target = resolveTargetRepo(body.content_type, body.region)
