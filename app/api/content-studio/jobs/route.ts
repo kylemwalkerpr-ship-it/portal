@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAdminUser } from '@/lib/portalAuth'
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-clerk-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     const supabase = createClient(
@@ -34,8 +35,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ jobs: data ?? [] })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Internal error',
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Internal error',
+      },
+      { status: 500 },
+    )
   }
 }

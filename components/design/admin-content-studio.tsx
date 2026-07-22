@@ -421,9 +421,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const fetchJobs = React.useCallback(async () => {
     try {
       const res = await fetch('/api/content-studio/jobs', { credentials: 'same-origin' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setJobs(data.jobs ?? [])
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(
+          (data as { error?: string }).error ||
+            `Jobs request failed (HTTP ${res.status})`,
+        )
+      }
+      setJobs((data as { jobs?: ContentJob[] }).jobs ?? [])
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load jobs')
     } finally {

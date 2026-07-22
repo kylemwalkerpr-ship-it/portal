@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Buffer } from 'node:buffer'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 import { generateContentText } from '@/lib/contentAiProvider'
+import { requireAdminUser } from '@/lib/portalAuth'
 
 // ── Types ──
 interface GenerateRequest {
@@ -262,12 +263,14 @@ function resolveTargetRepo(contentType: string, region: string): { owner: string
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth: Clerk middleware already enforces admin role on /dashboard/admin routes.
-    // Belt-and-braces: re-check via Clerk headers.
-    const userId = request.headers.get('x-clerk-user-id')
-    if (!userId) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
+    const userId =
+      (auth.profile as { clerk_user_id?: string } | undefined)?.clerk_user_id ||
+      auth.profileId ||
+      'admin'
 
     const body: GenerateRequest = await request.json()
 
