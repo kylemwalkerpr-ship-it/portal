@@ -23,7 +23,8 @@
     "react-easy-crop": "^5.5.7",
     "ai": "^7.0.34",
     "@ai-sdk/deepseek": "^3.0.13",
-    "@ai-sdk/openai": "^4.0.17"
+    "@ai-sdk/openai": "^4.0.17",
+    "@ai-sdk/xai": "^1.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
