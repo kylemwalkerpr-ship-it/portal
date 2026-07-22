@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
  * The user clicks this link to grant Search Console read-only access.
  */
 export async function GET(request: NextRequest) {
-  const clientId = process.env.GOOGLE_CLIENT_ID
+  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.GSC_OAUTH_CLIENT_ID)
   if (!clientId) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID not configured' }, { status: 500 })
   }

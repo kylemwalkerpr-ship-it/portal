@@ -118,6 +118,19 @@ jobs:
           GSC_OAUTH_CLIENT_SECRET: ${{ secrets.GSC_OAUTH_CLIENT_SECRET }}
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          # Content Studio AI providers (app/api/content-studio/generate)
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CUSTOM_AI_BASE_URL: ${{ secrets.CUSTOM_AI_BASE_URL }}
+          CUSTOM_AI_API_KEY: ${{ secrets.CUSTOM_AI_API_KEY }}
+          CUSTOM_AI_MODEL: ${{ secrets.CUSTOM_AI_MODEL }}
+          # Content Studio GSC OAuth (also accepts GOOGLE_CLIENT_* names)
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # GitHub PAT for Content Studio PR creation (repo scope)
+          CONTENT_STUDIO_GITHUB_TOKEN: ${{ secrets.CONTENT_STUDIO_GITHUB_TOKEN }}
+          GITHUB_TOKEN_CONTENT: ${{ secrets.GITHUB_TOKEN_CONTENT }}
           # Shared secret the weekly-payouts cron route checks (Bearer). Same
           # value as the CRON_SECRET repo secret used by weekly-payouts.yml.
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -200,5 +213,17 @@ jobs:
           put_secret GSC_OAUTH_CLIENT_SECRET   "$GSC_OAUTH_CLIENT_SECRET"
           put_secret GSC_OAUTH_REFRESH_TOKEN   "$GSC_OAUTH_REFRESH_TOKEN"
           put_secret GSC_SITE_URL              "$GSC_SITE_URL"
+          # Content Studio — AI providers (priority: custom → xAI/Grok → OpenAI → DeepSeek)
+          put_secret XAI_API_KEY               "$XAI_API_KEY"
+          put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
+          put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
+          put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"
+          put_secret CUSTOM_AI_API_KEY         "$CUSTOM_AI_API_KEY"
+          put_secret CUSTOM_AI_MODEL           "$CUSTOM_AI_MODEL"
+          # Content Studio GSC OAuth (routes accept GOOGLE_CLIENT_* or GSC_OAUTH_*)
+          put_secret GOOGLE_CLIENT_ID          "${GOOGLE_CLIENT_ID:-$GSC_OAUTH_CLIENT_ID}"
+          put_secret GOOGLE_CLIENT_SECRET      "${GOOGLE_CLIENT_SECRET:-$GSC_OAUTH_CLIENT_SECRET}"
+          # Prefer dedicated Content Studio GitHub token; fall back to GITHUB_TOKEN_CONTENT
+          put_secret GITHUB_TOKEN              "${CONTENT_STUDIO_GITHUB_TOKEN:-$GITHUB_TOKEN_CONTENT}"
           # Weekly payout cron auth — POST /api/cron/weekly-payouts checks this.
           put_secret CRON_SECRET               "$CRON_SECRET"

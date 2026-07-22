@@ -13,19 +13,19 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content-studio?gsc_error=${encodeURIComponent(error)}`
+      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=${encodeURIComponent(error)}`
     )
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content-studio?gsc_error=no_code`
+      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=no_code`
     )
   }
 
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.GSC_OAUTH_CLIENT_ID)
+    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || process.env.GSC_OAUTH_CLIENT_SECRET)
     if (!clientId || !clientSecret) {
       throw new Error('Google OAuth credentials not configured')
     }
@@ -87,13 +87,13 @@ export async function GET(request: NextRequest) {
     if (dbError) throw new Error(`Supabase upsert failed: ${dbError.message}`)
 
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content-studio?gsc_connected=true&email=${encodeURIComponent(email)}`
+      `${request.nextUrl.origin}/dashboard/admin/content?gsc_connected=true&email=${encodeURIComponent(email)}`
     )
   } catch (err) {
     console.error('[gsc/callback]', err)
     const msg = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.redirect(
-      `${request.nextUrl.origin}/dashboard/admin/content-studio?gsc_error=${encodeURIComponent(msg)}`
+      `${request.nextUrl.origin}/dashboard/admin/content?gsc_error=${encodeURIComponent(msg)}`
     )
   }
 }

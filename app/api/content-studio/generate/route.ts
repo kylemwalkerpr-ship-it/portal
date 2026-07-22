@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { generateText, type LanguageModel } from 'ai'
-import { deepSeek } from '@ai-sdk/deepseek'
-import { createOpenAI } from '@ai-sdk/openai'
 import { Buffer } from 'node:buffer'
 
 // ── Types ──
@@ -33,49 +30,95 @@ function todayStamp(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
-function pickModel(): { model: LanguageModel; label: string } {
+/**
+ * Lightweight OpenAI-compatible chat completion.
+ * Avoids the Vercel AI SDK (~14MB) so the OpenNext Worker stays under
+ * Cloudflare size limits. All providers below speak the same protocol.
+ */
+async function chatComplete(opts: {
+  baseURL: string
+  apiKey: string
+  model: string
+  system: string
+  prompt: string
+  maxTokens?: number
+  temperature?: number
+}): Promise<string> {
+  const url = opts.baseURL.replace(/\/$/, '') + '/chat/completions'
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${opts.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: opts.model,
+      temperature: opts.temperature ?? 0.65,
+      max_tokens: opts.maxTokens ?? 6000,
+      messages: [
+        { role: 'system', content: opts.system },
+        { role: 'user', content: opts.prompt },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`AI provider error ${res.status}: ${body.slice(0, 400)}`)
+  }
+  const json = await res.json() as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const text = json.choices?.[0]?.message?.content
+  if (!text?.trim()) throw new Error('AI provider returned empty content')
+  return text.trim()
+}
+
+function resolveProvider(): {
+  baseURL: string
+  apiKey: string
+  model: string
+  label: string
+} {
   const provider = (process.env.AI_PROVIDER ?? 'deepseek').toLowerCase()
 
-  // ── Plug-and-play: any OpenAI-compatible endpoint ──
-  // Set CUSTOM_AI_BASE_URL + CUSTOM_AI_API_KEY + CUSTOM_AI_MODEL to use any provider.
-  // Just paste your API key and endpoint — no code changes needed.
+  // 1. Plug-and-play custom OpenAI-compatible endpoint
   if (process.env.CUSTOM_AI_BASE_URL && process.env.CUSTOM_AI_API_KEY) {
-    const custom = createOpenAI({
+    return {
       baseURL: process.env.CUSTOM_AI_BASE_URL,
       apiKey: process.env.CUSTOM_AI_API_KEY,
-    })
-    const modelId = process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini'
-    return { model: custom(modelId) as LanguageModel, label: `custom (${modelId})` }
-  }
-
-  if (provider === 'openai') {
-    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set')
-    const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    return {
-      model: openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini') as LanguageModel,
-      label: 'openai',
+      model: process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini',
+      label: `custom (${process.env.CUSTOM_AI_MODEL ?? 'gpt-4o-mini'})`,
     }
   }
 
-  // ── Grok (xAI / SuperGrok) via OpenAI-compatible API ──
-  // Prefer this over @ai-sdk/xai so we stay on LanguageModel types that match
-  // ai@7 (the older @ai-sdk/xai major returned LanguageModelV1 and failed tsc).
-  // Set XAI_API_KEY + optionally XAI_MODEL (default: grok-3)
+  // 2. Grok / xAI (OpenAI-compatible)
   if (process.env.XAI_API_KEY || provider === 'xai' || provider === 'grok') {
     if (!process.env.XAI_API_KEY) throw new Error('XAI_API_KEY not set')
-    const xai = createOpenAI({
+    return {
       baseURL: process.env.XAI_BASE_URL ?? 'https://api.x.ai/v1',
       apiKey: process.env.XAI_API_KEY,
-    })
-    return {
-      model: xai(process.env.XAI_MODEL ?? 'grok-3') as LanguageModel,
+      model: process.env.XAI_MODEL ?? 'grok-3',
       label: 'grok',
     }
   }
 
+  // 3. OpenAI
+  if (provider === 'openai') {
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set')
+    return {
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+      label: 'openai',
+    }
+  }
+
+  // 4. DeepSeek
   if (!process.env.DEEPSEEK_API_KEY) throw new Error('DEEPSEEK_API_KEY not set')
   return {
-    model: deepSeek(process.env.DEEPSEEK_MODEL ?? 'deepseek-chat') as LanguageModel,
+    baseURL: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com/v1',
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
     label: 'deepseek',
   }
 }
@@ -308,18 +351,19 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 1. AI Generation ──
-    const { model, label } = pickModel()
+    const provider = resolveProvider()
     const { system, prompt } = buildPrompt(body)
+    const label = provider.label
 
-    const aiResult = await generateText({
-      model,
+    const content = await chatComplete({
+      baseURL: provider.baseURL,
+      apiKey: provider.apiKey,
+      model: provider.model,
       system,
       prompt,
-      maxOutputTokens: 6000,
+      maxTokens: 6000,
       temperature: 0.65,
     })
-
-    const content = aiResult.text.trim()
     const slug = slugify(body.title || body.topic)
     const safeSlug = slug || `post-${Date.now()}`
     const wordCount = content.split(/\s+/).length
