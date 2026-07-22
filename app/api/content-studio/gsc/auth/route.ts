@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdminUser } from '@/lib/portalAuth'
 
 /**
  * GET /api/content-studio/gsc/auth
@@ -7,18 +6,13 @@ import { requireAdminUser } from '@/lib/portalAuth'
  * The user clicks this link to grant Search Console read-only access.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdminUser()
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
-
-  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.GSC_OAUTH_CLIENT_ID)
+  const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) {
     return NextResponse.json({ error: 'GOOGLE_CLIENT_ID not configured' }, { status: 500 })
   }
 
   const redirectUri = process.env.GSC_REDIRECT_URI ??
-    'https://portal.yousafeconsultancy.com/api/content-studio/gsc/callback'
+    `${request.nextUrl.origin}/api/content-studio/gsc/callback`
 
   const scope = 'https://www.googleapis.com/auth/webmasters.readonly'
 
