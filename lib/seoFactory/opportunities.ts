@@ -153,8 +153,14 @@ export function pickAutoRunCandidates(
   opps: FactoryOpportunity[],
   limit: number,
 ): FactoryOpportunity[] {
-  return opps
+  const eligible = opps
     .filter((o) => o.action === 'expand_or_build' || o.action === 'title_rewrite')
     .filter((o) => o.term.length >= 4)
-    .slice(0, Math.max(1, Math.min(limit, 10)))
+    .filter((o) => o.impressions >= 8)
+  // Prefer net-new expansion over title rewrites; then by score
+  eligible.sort((a, b) => {
+    const rank = (x: FactoryOpportunity) => (x.action === 'expand_or_build' ? 2 : 1)
+    return rank(b) - rank(a) || b.score - a.score
+  })
+  return eligible.slice(0, Math.max(1, Math.min(limit, 40)))
 }
