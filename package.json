@@ -21,9 +21,9 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-easy-crop": "^5.5.7",
-    "ai": "^4.0.0",
-    "@ai-sdk/deepseek": "^0.1.0",
-    "@ai-sdk/openai": "^1.0.0"
+    "ai": "^7.0.34",
+    "@ai-sdk/deepseek": "^3.0.13",
+    "@ai-sdk/openai": "^4.0.17"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
