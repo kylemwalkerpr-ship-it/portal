@@ -569,6 +569,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* Detail modal */}
       {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
+      </>}
       {/* ── GSC Analytics Tab ── */}
       {activeTab === 'gsc' && (
         <div>
