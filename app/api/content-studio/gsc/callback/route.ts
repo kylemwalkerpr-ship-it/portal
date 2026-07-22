@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     }
 
     const redirectUri = process.env.GSC_REDIRECT_URI ??
-      `${request.nextUrl.origin}/api/content-studio/gsc/callback`
+      'https://portal.yousafeconsultancy.com/api/content-studio/gsc/callback'
 
     // Exchange code for tokens
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
