@@ -11,6 +11,7 @@ import {
   runSeoFactoryPipeline,
   type RequestedShipMode,
 } from '@/lib/seoFactory/pipeline'
+import { buildKeywordPlan, planTermsForAutoRun } from '@/lib/seoFactory/keywordPlanner'
 
 /**
  * POST /api/seo-factory/auto-run
@@ -27,6 +28,8 @@ import {
  *   skipRecent?: boolean (default true) — skip keywords already shipped recently
  *   regionFilter?: 'US'|'UK'|'CA'|'AU'
  *   minImpressions?: number
+ *   useKeywordPlan?: boolean (default true) — balanced GSC plan (refresh/expand/new)
+ *   planMix?: { refresh, expand, build_new }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest) {
     const skipRecent = body.skipRecent !== false
     const regionFilter = body.regionFilter ? String(body.regionFilter).toUpperCase() : null
     const minImpressions = Number(body.minImpressions) || 0
+    const useKeywordPlan = body.useKeywordPlan !== false
     const explicitTerms: string[] = Array.isArray(body.terms)
       ? body.terms.map((t: unknown) => String(t).trim()).filter(Boolean)
       : []
@@ -52,6 +56,8 @@ export async function POST(request: NextRequest) {
     const recent = skipRecent ? await loadRecentPrimaryKeywords(45) : new Set<string>()
 
     let candidates: FactoryOpportunity[]
+    let planMeta: Record<string, unknown> | null = null
+
     if (explicitTerms.length) {
       candidates = []
       for (const term of explicitTerms.slice(0, limit)) {
@@ -78,6 +84,45 @@ export async function POST(request: NextRequest) {
           ownerHint: await resolveOwner({ primaryKeyword: term, contentType, region }),
         })
       }
+    } else if (useKeywordPlan) {
+      // Balanced research plan: refresh (CTR) + expand owners + limited net-new
+      const kwPlan = await buildKeywordPlan({
+        planLimit: Math.max(limit * 4, 16),
+        boardLimit: 100,
+        regionFilter: regionFilter || undefined,
+        minImpressions: minImpressions || 5,
+        targetMix: body.planMix || { refresh: 0.4, expand: 0.35, build_new: 0.25 },
+      })
+      planMeta = {
+        summary: kwPlan.summary,
+        mix: kwPlan.mix,
+        targetMix: kwPlan.targetMix,
+        source: kwPlan.source,
+      }
+      const terms = planTermsForAutoRun(kwPlan.plan, limit)
+      candidates = []
+      for (const term of terms) {
+        const item = kwPlan.plan.find((p) => p.term === term)
+        const region = item?.region || 'US'
+        const contentType = item?.contentType || 'legal_guide'
+        const ownerHint = await resolveOwner({
+          primaryKeyword: term,
+          contentType,
+          region,
+        })
+        candidates.push({
+          term,
+          impressions: item?.impressions || 0,
+          clicks: 0,
+          ctr: item?.ctr || 0,
+          position: item?.position || 50,
+          score: item?.demandScore || 0,
+          action: item?.lane === 'refresh' ? 'title_rewrite' : 'expand_or_build',
+          suggestedContentType: contentType,
+          region,
+          ownerHint,
+        })
+      }
     } else {
       let pool = pickAutoRunCandidates(opportunities, 40)
       if (regionFilter) pool = pool.filter((o) => o.region === regionFilter)
@@ -85,7 +130,6 @@ export async function POST(request: NextRequest) {
       if (skipRecent) {
         pool = pool.filter((o) => !recent.has(o.term.toLowerCase()))
       }
-      // Prefer expand_or_build, then title_rewrite; skip heavy ownership blockers when possible
       pool = pool.filter(
         (o) => !o.ownerHint?.blockers?.some((b) => /blocked_on_supply|301|merge/i.test(b)),
       )
@@ -180,7 +224,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      source,
+      source: (planMeta?.source as string) || source,
       siteUrl,
       dryRun,
       requestedMode,
@@ -190,10 +234,11 @@ export async function POST(request: NextRequest) {
       shipped,
       avgAuditScore: avgScore,
       skippedRecent: recent.size,
+      keywordPlan: planMeta,
       results,
       message: dryRun
         ? `Dry-run complete: ${results.length} drafts (no GitHub writes)`
-        : `Auto-run complete: ${shipped}/${results.length} shipped · avg audit ${avgScore ?? '—'}`,
+        : `Auto-run complete: ${shipped}/${results.length} shipped · avg audit ${avgScore ?? '—'}${planMeta ? ' · GSC-balanced plan' : ''}`,
     })
   } catch (err) {
     console.error('[seo-factory/auto-run]', err)

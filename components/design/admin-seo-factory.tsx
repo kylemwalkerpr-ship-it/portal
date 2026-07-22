@@ -9,7 +9,7 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto'
-type Tab = 'autopilot' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies'
+type Tab = 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies'
 
 export default function AdminSeoFactory({
   setActionNotice,
@@ -43,6 +43,11 @@ export default function AdminSeoFactory({
   const [preview, setPreview] = React.useState<string | null>(null)
   const [strategies, setStrategies] = React.useState<any>(null)
   const [strategyDoc, setStrategyDoc] = React.useState<{ title: string; content: string } | null>(null)
+  const [kwPlan, setKwPlan] = React.useState<any>(null)
+  const [kwLaneFilter, setKwLaneFilter] = React.useState<string>('all')
+  const [mixRefresh, setMixRefresh] = React.useState(40)
+  const [mixExpand, setMixExpand] = React.useState(35)
+  const [mixNew, setMixNew] = React.useState(25)
 
   const loadHealth = async () => {
     try {
@@ -105,8 +110,73 @@ export default function AdminSeoFactory({
         .then((d) => { if (d.ok) setStrategies(d.index) })
         .catch(() => {})
     }
+    if (tab === 'keywords' && !kwPlan) loadKeywordPlan()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
+
+  const loadKeywordPlan = async () => {
+    setBusy(true)
+    try {
+      const qs = new URLSearchParams({
+        planLimit: '15',
+        boardLimit: '80',
+        refresh: String(mixRefresh / 100),
+        expand: String(mixExpand / 100),
+        build_new: String(mixNew / 100),
+      })
+      if (regionFilter) qs.set('region', regionFilter)
+      const res = await fetch(`/api/seo-factory/keyword-plan?${qs}`, { credentials: 'same-origin' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Keyword plan failed')
+      setKwPlan(data)
+      setActionNotice(data.summary || 'Keyword plan ready')
+    } catch (e) {
+      setActionNotice(e instanceof Error ? e.message : 'Keyword plan failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const executeKeywordPlan = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/seo-factory/keyword-plan', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          limit: autoLimit,
+          dryRun,
+          shipMode: autoMode === 'none' ? 'none' : autoMode,
+          minAuditScore: minAudit,
+          maxRefine,
+          targetMix: {
+            refresh: mixRefresh / 100,
+            expand: mixExpand / 100,
+            build_new: mixNew / 100,
+          },
+          lanes: kwLaneFilter === 'all' ? ['refresh', 'expand', 'build_new'] : [kwLaneFilter],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Execute failed')
+      setAutoResult({
+        source: data.source,
+        shipped: data.shipped,
+        candidateCount: data.results?.length || 0,
+        message: data.message,
+        results: data.results,
+        avgAuditScore: null,
+      })
+      setActionNotice(data.message || 'Plan executed')
+      setTab('autopilot')
+      loadJobs()
+    } catch (e) {
+      setActionNotice(e instanceof Error ? e.message : 'Execute failed')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const runPlan = async () => {
     setBusy(true)
@@ -261,6 +331,7 @@ export default function AdminSeoFactory({
   const healthReady = health?.ready
   const tabs: [Tab, string][] = [
     ['autopilot', 'Auto-Pilot'],
+    ['keywords', 'Keywords'],
     ['factory', 'Manual'],
     ['opportunities', 'Opportunities'],
     ['queue', 'Job queue'],
@@ -325,6 +396,149 @@ export default function AdminSeoFactory({
         ))}
       </div>
 
+      {/* ── Keywords research + plan ── */}
+      {tab === 'keywords' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+            padding: 24, borderTop: `4px solid ${C.blue}`,
+          }}>
+            <div style={{ fontSize: 11, color: C.blue, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              GSC demand · ownership · balance
+            </div>
+            <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Keyword research & planning</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 720 }}>
+              Pulls live Search Console (or snapshot), classifies every query into
+              <strong> refresh</strong> (pos 4–20 weak CTR), <strong>expand</strong> (deep rank + owner),
+              or <strong>build new</strong> (demand without owner), then builds a balanced editorial plan
+              so we ship refreshing content alongside net-new — never only greenfield.
+            </p>
+
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', marginBottom: 14 }}>
+              <label style={labelStyle}>
+                Refresh %
+                <input type="number" min={0} max={100} value={mixRefresh} onChange={(e) => setMixRefresh(Number(e.target.value))} style={inputStyle} />
+              </label>
+              <label style={labelStyle}>
+                Expand %
+                <input type="number" min={0} max={100} value={mixExpand} onChange={(e) => setMixExpand(Number(e.target.value))} style={inputStyle} />
+              </label>
+              <label style={labelStyle}>
+                New %
+                <input type="number" min={0} max={100} value={mixNew} onChange={(e) => setMixNew(Number(e.target.value))} style={inputStyle} />
+              </label>
+              <label style={labelStyle}>
+                Region
+                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} style={inputStyle}>
+                  <option value="">All</option>
+                  {['US', 'UK', 'CA', 'AU'].map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Lane filter
+                <select value={kwLaneFilter} onChange={(e) => setKwLaneFilter(e.target.value)} style={inputStyle}>
+                  <option value="all">All actionable</option>
+                  <option value="refresh">Refresh only</option>
+                  <option value="expand">Expand only</option>
+                  <option value="build_new">New only</option>
+                </select>
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" disabled={busy} onClick={loadKeywordPlan} style={btnPrimary}>
+                {busy ? 'Researching…' : 'Run research + plan'}
+              </button>
+              <button type="button" disabled={busy || !kwPlan?.plan?.length} onClick={executeKeywordPlan} style={btnSecondary}>
+                Execute top {autoLimit} from plan
+              </button>
+            </div>
+            {kwPlan?.summary && (
+              <p style={{ margin: '14px 0 0', fontSize: 13, color: C.textMuted }}>{kwPlan.summary}</p>
+            )}
+          </div>
+
+          {kwPlan && (
+            <>
+              <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))' }}>
+                {[
+                  ['Refresh', kwPlan.mix?.refresh, C.orange],
+                  ['Expand', kwPlan.mix?.expand, C.blue],
+                  ['New', kwPlan.mix?.build_new, C.green],
+                  ['Monitor', kwPlan.mix?.monitor, C.textDim],
+                  ['Defer', kwPlan.mix?.defer, C.red],
+                ].map(([label, n, color]) => (
+                  <div key={String(label)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 11, color: C.textDim }}>{label}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: color as string }}>{n ?? 0}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Editorial plan (balanced)</h3>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(kwPlan.plan || []).map((p: any) => (
+                    <div key={p.term} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                        <strong>#{p.priority} {p.term}</strong>
+                        <span style={{
+                          color: p.lane === 'refresh' ? C.orange : p.lane === 'expand' ? C.blue : C.green,
+                          fontWeight: 600, textTransform: 'uppercase', fontSize: 10,
+                        }}>{p.lane}</span>
+                      </div>
+                      <div style={{ color: C.textMuted, marginTop: 4 }}>
+                        {p.impressions} imp · pos {Number(p.position).toFixed(1)} · CTR {(p.ctr * 100).toFixed(2)}%
+                        · {p.host} → {p.repo}
+                      </div>
+                      <div style={{ color: C.textDim, marginTop: 2 }}>{p.rationale}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                <h3 style={{ margin: '0 0 10px', color: C.cyan }}>
+                  Research board · GSC {kwPlan.source} · {kwPlan.board?.length || 0} keywords
+                </h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', color: C.textDim }}>
+                        <th style={th}>Keyword</th>
+                        <th style={th}>Lane</th>
+                        <th style={th}>Imp</th>
+                        <th style={th}>Pos</th>
+                        <th style={th}>CTR</th>
+                        <th style={th}>Host</th>
+                        <th style={th}>Why</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(kwPlan.board || [])
+                        .filter((b: any) => kwLaneFilter === 'all' || b.lane === kwLaneFilter || (kwLaneFilter === 'all' && true))
+                        .filter((b: any) => kwLaneFilter === 'all' ? true : b.lane === kwLaneFilter)
+                        .slice(0, 60)
+                        .map((b: any) => (
+                          <tr key={b.term} style={{ borderTop: `1px solid ${C.border}` }}>
+                            <td style={td}>{b.term}</td>
+                            <td style={td}>{b.lane}</td>
+                            <td style={td}>{b.impressions}</td>
+                            <td style={td}>{Number(b.position).toFixed(1)}</td>
+                            <td style={td}>{(b.ctr * 100).toFixed(2)}%</td>
+                            <td style={td}>{b.owner?.host}</td>
+                            <td style={{ ...td, maxWidth: 220, color: C.textMuted }}>{b.laneReason}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Auto-Pilot ── */}
       {tab === 'autopilot' && (
         <div style={{ display: 'grid', gap: 16 }}>
@@ -337,8 +551,9 @@ export default function AdminSeoFactory({
             </div>
             <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from GSC demand</h2>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 680 }}>
-              Pulls ranked Search Console opportunities, drafts with Workers AI, auto-refines until audit threshold,
-              skips keywords already covered recently, then opens a PR — or commits to main when gates pass.
+              Uses the <strong>GSC keyword plan</strong> by default: balanced mix of refresh (CTR fixes), expand
+              (deepen owners), and limited net-new. Drafts with Workers AI, refines to audit threshold, routes by
+              SEO strategies ownership, then PR / autodeploy.
             </p>
 
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 14 }}>
