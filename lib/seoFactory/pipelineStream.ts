@@ -174,7 +174,7 @@ export async function* runSeoFactoryPipelineStream(
       for await (const ev of generateContentTextStream({
         system,
         prompt,
-        maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 12000 : 10000,
+        maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
         temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
       })) {
         if (ev.type === 'provider') {
@@ -266,7 +266,7 @@ export async function* runSeoFactoryPipelineStream(
               currentWords,
               draft: content,
             }),
-            maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 16384,
             temperature: 0.42,
           })
           if (countBodyWords(ai.text) > currentWords) {

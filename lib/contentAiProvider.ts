@@ -1,17 +1,18 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * Default PRIMARY: Cloudflare Workers AI (long-form capacity).
- * FALLBACKS match gig-creation / consultant·attorney AI (`lib/chatProvider.ts`):
- *   Groq → Gemini → OpenRouter (:free) → custom → xAI → OpenAI → DeepSeek
- *   then getChatProvider() as a last-resort bridge (same chain gigs use).
+ * Default PRIMARY when NVIDIA_API_KEY is set:
+ *   NVIDIA Integrate → deepseek-ai/deepseek-v4-pro (up to 16k output tokens)
+ * Else PRIMARY: Cloudflare Workers AI.
+ * FALLBACKS (gig-creation chain):
+ *   Groq → Gemini → OpenRouter (:free) → custom → xAI → OpenAI → DeepSeek.com
+ *   then getChatProvider() bridge.
  *
- * CF auth (first match):
- *   CLOUDFLARE_AI_TOKEN | CLOUDFLARE_WORKERS_AI_TOKEN | CLOUDFLARE_API_TOKEN
- *   + CLOUDFLARE_ACCOUNT_ID
+ * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
+ * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
  *
- * Override order with CONTENT_AI_PROVIDER / AI_PROVIDER:
- *   cloudflare | auto | groq | gemini | openrouter | grok | openai | deepseek | custom
+ * Override with CONTENT_AI_PROVIDER / AI_PROVIDER:
+ *   nvidia | nvidia-deepseek | deepseek-v4 | cloudflare | auto | groq | …
  */
 
 const CF_AI_MODEL =
@@ -20,7 +21,16 @@ const CF_AI_MODEL =
 
 /** Default output budget — long-form guides need ~2k words (~3–4k tokens). */
 const DEFAULT_MAX_TOKENS = 8192
+/** NVIDIA DeepSeek V4 Pro supports large completions — use for depth floors. */
+const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
+
+const NVIDIA_INTEGRATE_BASE =
+  process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1'
+const NVIDIA_DEEPSEEK_MODEL =
+  process.env.NVIDIA_DEEPSEEK_MODEL?.trim() ||
+  process.env.NVIDIA_MODEL?.trim() ||
+  'deepseek-ai/deepseek-v4-pro'
 
 export interface ContentAiResult {
   text: string
@@ -46,6 +56,11 @@ type OpenAiCompat = {
   baseURL: string
   apiKey: string
   model: string
+  /** Extra JSON fields on the chat.completions body (e.g. NVIDIA chat_template_kwargs). */
+  extraBody?: Record<string, unknown>
+  topP?: number
+  /** Cap max_tokens for this provider (NVIDIA allows 16384). */
+  maxTokensCap?: number
 }
 
 function env(name: string): string {
@@ -83,6 +98,29 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
+function resolveMaxTokens(p: OpenAiCompat | null | undefined, opts: ContentAiOptions): number {
+  const requested = opts.maxTokens ?? (p?.maxTokensCap ?? DEFAULT_MAX_TOKENS)
+  if (p?.maxTokensCap) return Math.min(requested, p.maxTokensCap)
+  return requested
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === 'string') return content.trim()
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part
+        if (part && typeof part === 'object' && 'text' in part) {
+          return String((part as { text?: string }).text || '')
+        }
+        return ''
+      })
+      .join('')
+      .trim()
+  }
+  return ''
+}
+
 async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
@@ -98,29 +136,87 @@ async function openAiCompatibleComplete(
       headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
       headers['X-Title'] = 'YouSafe Content Studio'
     }
+    const maxTokens = resolveMaxTokens(p, opts)
+    const body: Record<string, unknown> = {
+      model: p.model,
+      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: opts.system },
+        { role: 'user', content: opts.prompt },
+      ],
+      ...(p.topP != null ? { top_p: p.topP } : {}),
+      ...(p.extraBody || {}),
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        model: p.model,
-        temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-        max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-        messages: [
-          { role: 'system', content: opts.system },
-          { role: 'user', content: opts.prompt },
-        ],
-      }),
+      body: JSON.stringify(body),
     })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`${p.label} ${res.status}: ${body.slice(0, 400)}`)
+      const errBody = await res.text().catch(() => '')
+      throw new Error(`${p.label} ${res.status}: ${errBody.slice(0, 400)}`)
     }
     const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
+      choices?: Array<{ message?: { content?: unknown; reasoning_content?: string } }>
     }
-    const text = json.choices?.[0]?.message?.content
-    if (!text?.trim()) throw new Error(`${p.label} returned empty content`)
-    return { text: text.trim(), provider: p.label, model: p.model }
+    const msg = json.choices?.[0]?.message
+    let text = extractMessageText(msg?.content)
+    // Some thinking models put draft in reasoning; prefer content, fallback reasoning if empty
+    if (!text && msg?.reasoning_content) {
+      text = String(msg.reasoning_content).trim()
+    }
+    if (!text) throw new Error(`${p.label} returned empty content`)
+    return { text, provider: p.label, model: p.model }
+  })
+}
+
+/** NVIDIA Integrate API key for DeepSeek V4 Pro (long-form primary). */
+export function resolveNvidiaApiKey(): string {
+  return (
+    env('NVIDIA_API_KEY') ||
+    env('NVAPI_KEY') ||
+    env('NVIDIA_NIM_API_KEY') ||
+    env('NVIDIA_DEEPSEEK_API_KEY') ||
+    ''
+  )
+}
+
+export function isNvidiaDeepseekConfigured(): boolean {
+  return Boolean(resolveNvidiaApiKey())
+}
+
+/** NVIDIA-hosted DeepSeek V4 Pro — 16k max tokens, OpenAI-compatible. */
+export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
+  const apiKey = resolveNvidiaApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'nvidia-deepseek',
+    baseURL: NVIDIA_INTEGRATE_BASE,
+    apiKey,
+    model: NVIDIA_DEEPSEEK_MODEL,
+    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
+    maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
+    // Disable thinking mode so output is final prose (factory expects markdown page)
+    extraBody: {
+      chat_template_kwargs: { thinking: false },
+    },
+  }
+}
+
+async function nvidiaDeepseekComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getNvidiaDeepseekProvider()
+  if (!p) throw new Error('NVIDIA DeepSeek not configured (NVIDIA_API_KEY)')
+  // Prefer high budget for factory long-form
+  const maxTokens = Math.min(
+    opts.maxTokens ?? NVIDIA_DEEPSEEK_MAX_TOKENS,
+    NVIDIA_DEEPSEEK_MAX_TOKENS,
+  )
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens,
+    // NVIDIA sample uses temperature=1; slightly lower for factual legal content
+    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
   })
 }
 
@@ -268,6 +364,7 @@ async function* openAiCompatibleStream(
     headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
     headers['X-Title'] = 'YouSafe Content Studio'
   }
+  const maxTokens = resolveMaxTokens(p, opts)
   const res = await fetch(url, {
     method: 'POST',
     headers,
@@ -275,11 +372,13 @@ async function* openAiCompatibleStream(
       model: p.model,
       stream: true,
       temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-      max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+      max_tokens: maxTokens,
       messages: [
         { role: 'system', content: opts.system },
         { role: 'user', content: opts.prompt },
       ],
+      ...(p.topP != null ? { top_p: p.topP } : {}),
+      ...(p.extraBody || {}),
     }),
   })
   if (!res.ok) {
@@ -562,23 +661,50 @@ export function listConfiguredContentProviders(): Array<{
   configured: boolean
   role: 'primary' | 'fallback'
 }> {
+  const nvidiaPrimary = isNvidiaDeepseekConfigured()
   return [
-    { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: isCloudflareAiConfigured(), role: 'primary' },
+    {
+      id: 'nvidia-deepseek',
+      label: 'NVIDIA DeepSeek V4 Pro (16k)',
+      configured: nvidiaPrimary,
+      role: nvidiaPrimary ? 'primary' : 'fallback',
+    },
+    {
+      id: 'cloudflare-ai',
+      label: 'Cloudflare Workers AI',
+      configured: isCloudflareAiConfigured(),
+      role: nvidiaPrimary ? 'fallback' : 'primary',
+    },
     { id: 'groq', label: 'Groq (Llama 3.3 70B)', configured: Boolean(env('GROQ_API_KEY')), role: 'fallback' },
     { id: 'gemini', label: 'Google Gemini', configured: isGeminiConfigured(), role: 'fallback' },
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
     { id: 'openai', label: 'OpenAI', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
-    { id: 'deepseek', label: 'DeepSeek', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
+    { id: 'deepseek', label: 'DeepSeek.com', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
   ]
 }
 
 function preferProvider(): string {
-  return (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || 'cloudflare').toLowerCase()
+  const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase()
+  if (explicit) return explicit
+  // Long-form factory: prefer NVIDIA DeepSeek when keyed (16k tokens vs CF thin caps)
+  if (isNvidiaDeepseekConfigured()) return 'nvidia-deepseek'
+  return 'cloudflare'
+}
+
+function isNvidiaPrefer(prefer: string): boolean {
+  return (
+    prefer === 'nvidia' ||
+    prefer === 'nvidia-deepseek' ||
+    prefer === 'deepseek-v4' ||
+    prefer === 'deepseek-v4-pro' ||
+    prefer === 'nim'
+  )
 }
 
 function tryCloudflareFirst(prefer: string): boolean {
+  if (isNvidiaPrefer(prefer)) return false
   return (
     prefer === 'cloudflare' ||
     prefer === 'cloudflare-ai' ||
@@ -593,6 +719,11 @@ type CompleteFn = () => Promise<ContentAiResult>
 function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
   const items: Array<{ label: string; run: CompleteFn }> = []
 
+  const pushNvidia = () => {
+    if (isNvidiaDeepseekConfigured()) {
+      items.push({ label: 'nvidia-deepseek', run: () => nvidiaDeepseekComplete(opts) })
+    }
+  }
   const pushCf = () => {
     if (isCloudflareAiConfigured()) {
       items.push({ label: 'cloudflare-ai', run: () => cloudflareAiComplete(opts) })
@@ -619,7 +750,18 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   }
 
   // Preferred-first
-  if (prefer === 'groq' || prefer === 'gemini' || prefer === 'openrouter' || prefer === 'xai' || prefer === 'grok' || prefer === 'openai' || prefer === 'deepseek' || prefer === 'custom') {
+  if (isNvidiaPrefer(prefer)) {
+    pushNvidia()
+  } else if (
+    prefer === 'groq' ||
+    prefer === 'gemini' ||
+    prefer === 'openrouter' ||
+    prefer === 'xai' ||
+    prefer === 'grok' ||
+    prefer === 'openai' ||
+    prefer === 'deepseek' ||
+    prefer === 'custom'
+  ) {
     if (prefer === 'groq') pushGroq()
     else if (prefer === 'gemini') pushGemini()
     else if (prefer === 'openrouter') pushOpenRouter()
@@ -632,16 +774,28 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     }
   }
 
-  // Default / remaining order mirrors gigs after CF primary:
-  // CF → Groq → Gemini → OpenRouter → other OpenAI-compat → chatProvider bridge
-  if (tryCloudflareFirst(prefer) || prefer === 'cloudflare' || prefer === 'auto') {
+  // Default order for factory long-form:
+  // NVIDIA DeepSeek (16k) → CF → Groq → Gemini → OpenRouter → rest → chat bridge
+  if (isNvidiaPrefer(prefer) || prefer === 'auto' || !prefer || prefer === 'cloudflare') {
+    // When prefer is cloudflare, still allow nvidia early if not exclusive
+    if (!isNvidiaPrefer(prefer) && prefer !== 'cloudflare' && prefer !== 'cloudflare-ai') {
+      pushNvidia()
+    } else if (isNvidiaPrefer(prefer)) {
+      // already pushed
+    } else if (prefer === 'auto' || !prefer) {
+      pushNvidia()
+    }
+  }
+  if (tryCloudflareFirst(prefer) || prefer === 'cloudflare' || prefer === 'auto' || !prefer) {
     pushCf()
   }
+  // Always try NVIDIA somewhere near front if not already first
+  pushNvidia()
   pushGroq()
   pushGemini()
   pushOpenRouter()
   pushRest()
-  if (!tryCloudflareFirst(prefer)) pushCf()
+  if (!tryCloudflareFirst(prefer) && !isNvidiaPrefer(prefer)) pushCf()
   pushChatBridge()
 
   // Dedupe by label
@@ -655,8 +809,8 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
 
 /**
  * Generate long-form content.
- * Cloudflare AI first (default), then the same free-tier fallbacks as
- * consultant/attorney gig drafting (Groq, Gemini, OpenRouter, …).
+ * NVIDIA DeepSeek V4 Pro first when NVIDIA_API_KEY is set (16k tokens),
+ * then Cloudflare AI, then gig free-tier fallbacks.
  */
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   const prefer = preferProvider()
@@ -679,7 +833,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   }
 
   throw new Error(
-    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}`,
+    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}. Configure NVIDIA_API_KEY (DeepSeek V4 Pro) and/or Cloudflare / Groq / Gemini.`,
   )
 }
 
@@ -701,6 +855,21 @@ export async function* generateContentTextStream(
   }
 
   const candidates: Candidate[] = []
+
+  // NVIDIA DeepSeek first when configured (long-form / depth)
+  const nvidia = getNvidiaDeepseekProvider()
+  if (nvidia) {
+    candidates.push({
+      label: 'nvidia-deepseek',
+      stream: () =>
+        openAiCompatibleStream(nvidia, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? NVIDIA_DEEPSEEK_MAX_TOKENS, NVIDIA_DEEPSEEK_MAX_TOKENS),
+          temperature: opts.temperature ?? 0.7,
+        }),
+      complete: () => nvidiaDeepseekComplete(opts),
+    })
+  }
 
   // Streaming-capable OpenAI-compat providers
   if (isCloudflareAiConfigured()) {

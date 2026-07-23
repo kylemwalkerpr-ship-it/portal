@@ -23,12 +23,12 @@ import { countBodyWords, targetWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 
-/** Token budget: long-form needs room; many models hard-cap ~8k–16k output. */
+/** Token budget: NVIDIA DeepSeek V4 Pro allows 16k — use it for depth floors. */
 function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'): number {
   if (contentType === 'marketplace_gig') return phase === 'append' ? 2500 : 4000
-  if (phase === 'append') return 6000
-  if (phase === 'expand') return 12000
-  return 10000
+  if (phase === 'append') return 8000
+  if (phase === 'expand') return 16384
+  return 16384
 }
 
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
