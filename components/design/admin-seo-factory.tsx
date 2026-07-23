@@ -60,8 +60,8 @@ export default function AdminSeoFactory({
   const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy' | 'merge' | 'none'>('merge')
   const [autoResult, setAutoResult] = React.useState<any>(null)
   const [dryRun, setDryRun] = React.useState(false)
-  const [minAudit, setMinAudit] = React.useState(55)
-  const [maxRefine, setMaxRefine] = React.useState(2)
+  const [minAudit, setMinAudit] = React.useState(65)
+  const [maxRefine, setMaxRefine] = React.useState(3)
   const [skipRecent, setSkipRecent] = React.useState(true)
   const [confirmApprove, setConfirmApprove] = React.useState(true)
   const [regionFilter, setRegionFilter] = React.useState('')
@@ -1411,8 +1411,8 @@ export default function AdminSeoFactory({
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
           Min audit
-          <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>
-            {[45, 55, 65, 70, 80].map((n) => <option key={n} value={n}>{n}</option>)}
+          <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${C.border}` }} title="Min SEO audit score; depth floor (e.g. 1800 words for guides) is always enforced">
+            {[55, 65, 70, 80, 85].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
@@ -1897,8 +1897,8 @@ export default function AdminSeoFactory({
               </label>
               <label style={labelStyle}>
                 Min audit score
-                <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={inputStyle}>
-                  {[45, 55, 65, 70, 80].map((n) => <option key={n} value={n}>{n}+</option>)}
+                <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={inputStyle} title="Guides need ≥1800 body words regardless of score">
+                  {[55, 65, 70, 80, 85].map((n) => <option key={n} value={n}>{n}+</option>)}
                 </select>
               </label>
               <label style={labelStyle}>
@@ -2363,8 +2363,8 @@ export default function AdminSeoFactory({
               </label>
               <label style={labelStyle}>
                 Min audit score
-                <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={inputStyle}>
-                  {[45, 55, 65, 70, 80].map((n) => <option key={n} value={n}>{n}+</option>)}
+                <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={inputStyle} title="Guides need ≥1800 body words regardless of score">
+                  {[55, 65, 70, 80, 85].map((n) => <option key={n} value={n}>{n}+</option>)}
                 </select>
               </label>
               <label style={labelStyle}>

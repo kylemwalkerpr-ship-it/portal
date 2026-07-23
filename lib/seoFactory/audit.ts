@@ -1,6 +1,14 @@
 /**
  * SEO Factory audit scorecard — Ahrefs-lite, estate-specific.
+ * Word-count floors come from contentDepth (Google helpful-content / anti-thin).
  */
+
+import {
+  checkContentDepth,
+  countBodyWords,
+  minWordsForType,
+  targetWordsForType,
+} from './contentDepth'
 
 export interface AuditFinding {
   code: string
@@ -56,7 +64,8 @@ export function auditContent(opts: {
   const content = opts.content || ''
   const fm = extractFrontMatter(content)
   const body = content.replace(/^---[\s\S]*?---\r?\n/, '')
-  const words = body.split(/\s+/).filter(Boolean).length
+  // Prose-only count (excludes JSON-LD / fences) — Google-aligned depth
+  const words = countBodyWords(content)
   const primary = (opts.primaryKeyword || fm.primaryKeyword || fm.title || '').toLowerCase()
   const wantIndexable = opts.indexable !== false
 
@@ -87,21 +96,37 @@ export function auditContent(opts: {
     })
   }
 
-  // Word count by type
-  const minWords =
-    opts.contentType === 'article' || opts.contentType === 'legal_guide'
-      ? 1200
-      : opts.contentType === 'regional_page'
-        ? 800
-        : opts.contentType === 'marketplace_gig'
-          ? 400
-          : 700
-  add(words >= minWords, {
-    code: 'word_count',
-    severity: words < minWords * 0.6 ? 'blocker' : 'warning',
-    message: `Word count ${words} (min ${minWords} for ${opts.contentType})`,
-    fix: `Expand to at least ${minWords} words with concrete procedures and examples`,
-  }, 2)
+  // Word count — HARD blocker under Google depth floor (unattended ships)
+  const minWords = minWordsForType(opts.contentType)
+  const targetWords = targetWordsForType(opts.contentType)
+  const depth = checkContentDepth({
+    content,
+    contentType: opts.contentType,
+    indexable: wantIndexable,
+  })
+  if (depth.thin || depth.belowMin) {
+    blockers.push({
+      code: depth.thin ? 'thin_content' : 'word_count',
+      severity: 'blocker',
+      message: depth.errors[0] || `Word count ${words} < min ${minWords}`,
+      fix: `Expand body prose to ≥${minWords} words (target ~${targetWords}): procedures, document checklists, eligibility, risks, timelines, 4–6 FAQs with full answers. No fluff padding.`,
+    })
+  } else if (words < targetWords) {
+    warnings.push({
+      code: 'word_count_target',
+      severity: 'warning',
+      message: `Word count ${words} meets floor ${minWords} but under target ${targetWords}`,
+      fix: `Add another H2 section or expand FAQs toward ~${targetWords} words for competitive depth`,
+    })
+    // Partial points for meeting the floor
+    points += 1
+  } else {
+    add(true, {
+      code: 'word_count',
+      severity: 'pass',
+      message: `Word count ${words} (min ${minWords}, target ${targetWords})`,
+    }, 2)
+  }
 
   // Title
   const title = fm.title || body.match(/^#\s+(.+)$/m)?.[1] || ''
@@ -226,21 +251,20 @@ export function auditContent(opts: {
     fix: 'Add short disclaimer: educational only, not legal advice',
   }, 1)
 
-  // Thin content noindex recommendation
-  let indexableRecommended = wantIndexable && blockers.length === 0 && words >= minWords * 0.85
-  if (words < 400) {
-    indexableRecommended = false
-    blockers.push({
-      code: 'thin_content',
-      severity: 'blocker',
-      message: 'Content too thin for indexable ship',
-      fix: 'Expand substantially or ship as noindex draft',
-    })
-  }
+  // Never recommend index for under-floor depth
+  const indexableRecommended =
+    wantIndexable &&
+    blockers.length === 0 &&
+    words >= minWords &&
+    !depth.thin &&
+    !depth.belowMin
 
   const score = Math.min(100, Math.round((points / max) * 100))
-  // Penalize blockers hard
-  const finalScore = Math.max(0, score - blockers.length * 12)
+  // Penalize blockers hard (thin content especially)
+  const thinPenalty = blockers.some((b) => b.code === 'thin_content' || b.code === 'word_count')
+    ? 20
+    : 0
+  const finalScore = Math.max(0, score - blockers.length * 12 - thinPenalty)
 
   return {
     score: finalScore,
@@ -257,7 +281,14 @@ export function auditContent(opts: {
 
 export function canAutodeploy(audit: SeoFactoryAudit, ymy: boolean, threshold = 70): boolean {
   if (audit.blockers.length > 0) return false
+  // Depth floor is non-negotiable even if score looks high
+  if (audit.blockers.some((b) => b.code === 'word_count' || b.code === 'thin_content')) return false
   if (audit.score < threshold) return false
   if (ymy && audit.score < 80) return false
   return true
+}
+
+/** True when audit has no depth/word-count blockers (safe for unattended publish). */
+export function meetsDepthFloor(audit: SeoFactoryAudit): boolean {
+  return !audit.blockers.some((b) => b.code === 'word_count' || b.code === 'thin_content')
 }

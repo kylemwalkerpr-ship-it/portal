@@ -35,7 +35,7 @@ type Candidate = FactoryOpportunity & {
  *   shipMode?: 'auto' | 'pr' | 'autodeploy' | 'none' | 'merge'
  *   dryRun?: boolean
  *   terms?: string[]
- *   minAuditScore?: number (default 55)
+ *   minAuditScore?: number (default 65)
  *   maxRefine?: number (default 2)
  *   skipRecent?: boolean (default true)
  *   regionFilter?: 'US'|'UK'|'CA'|'AU'
@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
     const limit = Math.min(5, Math.max(1, Number(body.limit) || 3))
     const requestedMode = String(body.shipMode || body.ship_mode || 'auto').toLowerCase() as RequestedShipMode
     const dryRun = Boolean(body.dryRun)
-    const minAuditScore = body.minAuditScore != null ? Number(body.minAuditScore) : 55
-    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 2
+    const minAuditScore = body.minAuditScore != null ? Number(body.minAuditScore) : 65
+    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 3
     const skipRecent = body.skipRecent !== false
     const regionFilter = body.regionFilter ? String(body.regionFilter).toUpperCase() : null
     const minImpressions = Number(body.minImpressions) || 0

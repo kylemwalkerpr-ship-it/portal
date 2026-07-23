@@ -5,6 +5,11 @@
  */
 
 import type { OwnerPlan } from './ownership'
+import {
+  depthPromptClause,
+  minWordsForType as depthMinWords,
+  targetWordsForType,
+} from './contentDepth'
 
 export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
@@ -14,6 +19,7 @@ export function buildFactorySystemPrompt(opts: {
   strategyBlock?: string
 }): string {
   const { plan, contentType, minWords, strategyBlock } = opts
+  const target = targetWordsForType(contentType)
   return [
     'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
@@ -22,11 +28,14 @@ export function buildFactorySystemPrompt(opts: {
     'Cite official sources with full https URLs: USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP as relevant.',
     '',
     'RANKING OBJECTIVE (beat SERP with substance, not tricks):',
+    '- Google Helpful Content: fully satisfy the query — thin stubs will be rejected by our audit and will NOT ship.',
     '- Google: clear primary intent match, entity coverage, helpful depth, crawlable structure, E-E-A-T signals (who this is for, what steps, which official rules).',
     '- CTR: title + meta must earn the click honestly (concrete action, year when accurate, audience/region).',
     '- AEO / AI Overviews: definition-first, self-contained FAQ answers, citable facts, official URLs.',
     '- GEO: short factual sentences with named agencies/forms; lists and tables over fluff.',
-    '- NEVER keyword-stuff, NEVER invent stats, NEVER fake case results.',
+    '- NEVER keyword-stuff, NEVER invent stats, NEVER fake case results, NEVER pad with filler to hit word count.',
+    '',
+    depthPromptClause(contentType),
     '',
     'OWNERSHIP (must follow):',
     `- Host: ${plan.host} → repo ${plan.repo}`,
@@ -58,10 +67,11 @@ export function buildFactorySystemPrompt(opts: {
     '   - Short disclaimer: educational only, not legal advice',
     '6) Authority: use precise immigration entities (forms, visas, agencies, subclasses). No fluff.',
     '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
-    `8) Minimum ${minWords} words of body prose (not counting JSON-LD).`,
+    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words.`,
     `9) Content type: ${contentType}`,
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
+    '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
   ]
     .filter(Boolean)
     .join('\n')
@@ -172,13 +182,9 @@ export function buildFactoryUserPrompt(opts: {
   return parts.filter(Boolean).join('\n')
 }
 
+/** Re-export depth floors so pipeline/audit share one Google-aligned table. */
 export function minWordsForType(contentType: string): number {
-  if (contentType === 'article' || contentType === 'legal_guide') return 1200
-  if (contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university')
-    return 800
-  if (contentType === 'marketplace_gig') return 400
-  if (contentType === 'blog_summary' || contentType === 'blog_post') return 700
-  return 900
+  return depthMinWords(contentType)
 }
 
 /** Turn audit failures into revision instructions for a refine pass. */
@@ -187,10 +193,20 @@ export function auditToRefineNotes(audit: {
   warnings: Array<{ message: string; fix?: string }>
   wordCount: number
   score: number
+  /** When known, force expansion language */
+  minWords?: number
+  targetWords?: number
 }): string {
+  const min = audit.minWords ?? 1800
+  const target = audit.targetWords ?? Math.round(min * 1.2)
   const lines: string[] = [
-    `Previous score: ${audit.score}. Word count was ${audit.wordCount}.`,
+    `Previous score: ${audit.score}. Body word count was ${audit.wordCount} (HARD MIN ${min}, target ~${target}).`,
   ]
+  if (audit.wordCount < min) {
+    lines.push(
+      `- BLOCKER: Expand the BODY to at least ${min} words of real prose (aim ${target}). Add concrete steps, document checklists, eligibility nuances, risks, timelines, and 4–6 full FAQ answers. Do NOT pad with repetition or fluff. Do NOT count JSON-LD toward the total.`,
+    )
+  }
   for (const b of audit.blockers.slice(0, 8)) {
     lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
   }
@@ -198,7 +214,7 @@ export function auditToRefineNotes(audit: {
     lines.push(`- WARNING: ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`)
   }
   lines.push(
-    'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal.',
+    'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal, and body word count ≥ hard minimum.',
   )
   return lines.join('\n')
 }

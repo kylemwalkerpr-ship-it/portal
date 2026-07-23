@@ -7,7 +7,7 @@ import { runSeoFactoryPipeline, type RequestedShipMode } from '@/lib/seoFactory/
  * Full factory: plan → GSC → Cloudflare AI (+ refine) → audit → optional ship
  *
  * Body extras:
- *   minAuditScore?: number (default 55)
+ *   minAuditScore?: number (default 65)
  *   maxRefine?: number (default 2)
  *   shipMode?: 'pr' | 'autodeploy' | 'none' | 'auto'
  */
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       indexable: body.indexable !== false,
       shipMode: (body.shipMode || body.ship_mode || 'pr') as RequestedShipMode,
       dryRun: Boolean(body.dryRun),
-      minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
+      minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 2,
       opportunityAction: body.opportunityAction,
       userId,

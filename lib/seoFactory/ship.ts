@@ -11,6 +11,7 @@ import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile } from './renderTarget'
 import { assertShipAllowed } from './shipGate'
+import { assertContentDepth } from './contentDepth'
 import {
   createBranchFrom,
   getBranchHeadSha,
@@ -107,6 +108,14 @@ export async function shipContent(opts: {
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
     canonicalUrl: opts.plan.canonicalUrl,
+  })
+
+  // Hard gate: Google-aligned body depth — approve cannot bypass thin content.
+  // Counts prose only (excludes JSON-LD / front matter).
+  assertContentDepth({
+    content: opts.content,
+    contentType: opts.contentType,
+    indexable: opts.plan.indexable,
   })
 
   // Hard gate: host subdomain · content type · path layout · rendered format

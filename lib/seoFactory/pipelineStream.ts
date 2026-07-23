@@ -16,6 +16,8 @@ import {
   buildFactoryUserPrompt,
   minWordsForType,
 } from './prompts'
+import { targetWordsForType } from './contentDepth'
+import { meetsDepthFloor } from './audit'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 
 export type PipelineStreamEvent =
@@ -56,8 +58,8 @@ export async function* runSeoFactoryPipelineStream(
     const tone = input.tone || 'educational'
     const indexable = input.indexable !== false
     const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
-    const minAudit = Math.min(95, Math.max(40, Number(input.minAuditScore) || 55))
-    const maxRefine = Math.min(3, Math.max(0, Number(input.maxRefine ?? 2)))
+    const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
+    const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 3)))
 
     if (!topic) {
       yield { type: 'error', error: 'topic required' }
@@ -81,11 +83,12 @@ export async function* runSeoFactoryPipelineStream(
     }
     assertPlanRepoConsistency(plan)
     const minWords = minWordsForType(contentType)
+    const targetWords = targetWordsForType(contentType)
 
     yield {
       type: 'progress',
       stage: 'plan',
-      message: `Owner ${plan.host} · ${plan.repo} · ${plan.filePath}`,
+      message: `Owner ${plan.host} · ${plan.repo} · ${plan.filePath} · depth ≥${minWords} words`,
     }
 
     yield { type: 'progress', stage: 'gsc', message: 'Building GSC content brief…' }
@@ -149,8 +152,8 @@ export async function* runSeoFactoryPipelineStream(
       for await (const ev of generateContentTextStream({
         system,
         prompt,
-        maxTokens: 5500,
-        temperature: i === 0 ? 0.55 : 0.4,
+        maxTokens: contentType === 'marketplace_gig' ? 3500 : 8000,
+        temperature: i === 0 ? 0.55 : 0.35,
       })) {
         if (ev.type === 'provider') {
           provider = ev.provider
@@ -177,6 +180,7 @@ export async function* runSeoFactoryPipelineStream(
 
       const goodEnough =
         audit.score >= minAudit &&
+        meetsDepthFloor(audit) &&
         audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
       yield {
@@ -188,23 +192,30 @@ export async function* runSeoFactoryPipelineStream(
       }
 
       if (goodEnough || i === maxRefine) break
-      refineNotes = auditToRefineNotes(audit)
+      refineNotes = auditToRefineNotes({ ...audit, minWords, targetWords })
       yield {
         type: 'progress',
         stage: 'refine',
-        message: `Audit ${audit.score} < ${minAudit} — refining…`,
+        message: !meetsDepthFloor(audit)
+          ? `Depth ${audit.wordCount}/${minWords} words — expanding…`
+          : `Audit ${audit.score} < ${minAudit} — refining…`,
       }
     }
 
     let shipMode = resolveShipMode(requestedMode, audit, plan)
+    if (!meetsDepthFloor(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+      shipMode = 'none'
+    }
     if (
       input.skipShipIfBelowScore !== false &&
       shipMode !== 'none' &&
-      audit.score < minAudit &&
+      (audit.score < minAudit || !meetsDepthFloor(audit)) &&
       requestedMode !== 'pr'
     ) {
-      if (requestedMode === 'auto' || requestedMode === 'autodeploy') {
-        shipMode = audit.score >= 40 ? 'pr' : 'none'
+      if (!meetsDepthFloor(audit)) {
+        shipMode = 'none'
+      } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
+        shipMode = audit.score >= 50 ? 'pr' : 'none'
       }
     }
 

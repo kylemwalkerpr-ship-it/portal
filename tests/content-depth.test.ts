@@ -1,0 +1,149 @@
+/**
+ * Google-aligned depth floors — thin content must never ship unattended.
+ */
+import {
+  checkContentDepth,
+  countBodyWords,
+  minWordsForType,
+  targetWordsForType,
+} from '@/lib/seoFactory/contentDepth'
+import { auditContent } from '@/lib/seoFactory/audit'
+
+describe('minWordsForType (Google depth floors)', () => {
+  it('requires comprehensive depth for legal guides / articles', () => {
+    expect(minWordsForType('legal_guide')).toBe(1800)
+    expect(minWordsForType('article')).toBe(1800)
+    expect(targetWordsForType('legal_guide')).toBeGreaterThanOrEqual(2000)
+  })
+
+  it('requires solid blogs and regionals', () => {
+    expect(minWordsForType('blog_summary')).toBe(1000)
+    expect(minWordsForType('blog_post')).toBe(1000)
+    expect(minWordsForType('regional_from')).toBe(1200)
+  })
+
+  it('keeps gigs scannable but not stubs', () => {
+    expect(minWordsForType('marketplace_gig')).toBe(500)
+  })
+})
+
+describe('countBodyWords', () => {
+  it('excludes front matter and JSON-LD from the count', () => {
+    const md = `---
+title: Test
+description: ${'x'.repeat(150)}
+---
+
+# Hello
+
+${'word '.repeat(100)}
+
+\`\`\`json
+{"@context":"https://schema.org","@type":"Article","text":"${'pad '.repeat(500)}"}
+\`\`\`
+
+<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[]}</script>
+`
+    const n = countBodyWords(md)
+    expect(n).toBeLessThan(150)
+    expect(n).toBeGreaterThan(90)
+  })
+})
+
+describe('checkContentDepth + auditContent', () => {
+  it('blocks thin legal guides', () => {
+    const thin = `---
+title: Thin Guide About Visas Here
+description: ${'A concrete meta description with enough characters for the audit band xx.'.repeat(2)}
+primaryKeyword: student visa
+robots: index,follow
+---
+
+# Thin Guide
+
+## In 60 seconds
+- one
+
+## Steps
+Short.
+
+## Documents  
+Short.
+
+## Risks
+Short.
+
+## FAQ
+### Q1?
+A1.
+
+## Sources
+- https://www.uscis.gov/
+
+Not legal advice. Consult an attorney.
+`
+    const depth = checkContentDepth({ content: thin, contentType: 'legal_guide' })
+    expect(depth.ok).toBe(false)
+    expect(depth.belowMin || depth.thin).toBe(true)
+
+    const audit = auditContent({
+      content: thin,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa',
+      indexable: true,
+    })
+    expect(audit.blockers.some((b) => b.code === 'word_count' || b.code === 'thin_content')).toBe(
+      true,
+    )
+    expect(audit.indexableRecommended).toBe(false)
+  })
+
+  it('passes when body meets floor', () => {
+    const body = Array.from({ length: 1900 }, (_, i) => `word${i}`).join(' ')
+    const md = `---
+title: Comprehensive Student Visa Guide 2026
+description: ${'Practical steps documents and timelines for F-1 applicants seeking clear next actions. '.slice(0, 155)}
+primaryKeyword: student visa
+robots: index,follow
+---
+
+# Comprehensive Student Visa Guide 2026
+
+## In 60 seconds
+- step one of the process
+- documents you need ready
+
+${body}
+
+## Eligibility steps
+Details with https://www.uscis.gov/ example.
+
+## Documents checklist
+List of items.
+
+## Common risks
+Risks.
+
+## FAQ
+### What is the first step?
+You gather documents and confirm eligibility against official rules.
+
+### How long does it take?
+Timelines vary; check USCIS for current processing.
+
+### What if I am refused?
+You may have review options depending on the decision.
+
+### Can family join?
+Dependents may have separate pathways.
+
+## Sources
+- https://www.uscis.gov/
+
+This is educational only, not legal advice. Consult an attorney for your case.
+`
+    const depth = checkContentDepth({ content: md, contentType: 'legal_guide' })
+    expect(depth.ok).toBe(true)
+    expect(depth.wordCount).toBeGreaterThanOrEqual(1800)
+  })
+})

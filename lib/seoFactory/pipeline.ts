@@ -15,6 +15,8 @@ import {
   buildFactoryUserPrompt,
   minWordsForType,
 } from './prompts'
+import { targetWordsForType } from './contentDepth'
+import { meetsDepthFloor } from './audit'
 
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
@@ -31,9 +33,9 @@ export interface PipelineInput {
   indexable?: boolean
   shipMode?: RequestedShipMode
   dryRun?: boolean
-  /** Min audit score before shipping (default 55). Refine if below. */
+  /** Min audit score before shipping (default 65). Refine if below. */
   minAuditScore?: number
-  /** Max AI refine attempts after first draft (default 2). */
+  /** Max AI refine attempts after first draft (default 3 — depth expands need room). */
   maxRefine?: number
   opportunityAction?: string
   writeHint?: string
@@ -91,8 +93,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const tone = input.tone || 'educational'
   const indexable = input.indexable !== false
   const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
-  const minAudit = Math.min(95, Math.max(40, Number(input.minAuditScore) || 55))
-  const maxRefine = Math.min(3, Math.max(0, Number(input.maxRefine ?? 2)))
+  const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
+  const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 3)))
 
   if (!topic) {
     throw new Error('topic required')
@@ -116,6 +118,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
   assertPlanRepoConsistency(plan)
   const minWords = minWordsForType(contentType)
+  const targetWords = targetWordsForType(contentType)
 
   const gscBrief = await buildGscContentBrief({
     topic,
@@ -164,11 +167,12 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       refineNotes,
     })
 
+    // Higher token budget so 1.8k–2.2k word guides can complete
     const ai = await generateContentText({
       system,
       prompt,
-      maxTokens: 5500,
-      temperature: i === 0 ? 0.55 : 0.4,
+      maxTokens: contentType === 'marketplace_gig' ? 3500 : 8000,
+      temperature: i === 0 ? 0.55 : 0.35,
     })
     content = ai.text
     provider = ai.provider
@@ -182,24 +186,36 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       ownershipBlockers: plan.blockers,
     })
 
+    // Depth floor is mandatory for unattended publish — keep refining until met
     const goodEnough =
       audit.score >= minAudit &&
+      meetsDepthFloor(audit) &&
       audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
     if (goodEnough || i === maxRefine) break
-    refineNotes = auditToRefineNotes(audit)
+    refineNotes = auditToRefineNotes({
+      ...audit,
+      minWords,
+      targetWords,
+    })
   }
 
   let shipMode = resolveShipMode(requestedMode, audit, plan)
+  // Never ship thin content to main — even if score clears threshold
+  if (!meetsDepthFloor(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+    shipMode = 'none'
+  }
   if (
     input.skipShipIfBelowScore !== false &&
     shipMode !== 'none' &&
-    audit.score < minAudit &&
-    requestedMode !== 'pr' // still allow explicit PR of weak drafts
+    (audit.score < minAudit || !meetsDepthFloor(audit)) &&
+    requestedMode !== 'pr'
   ) {
-    // Keep PR for review when auto/autodeploy quality is weak
-    if (requestedMode === 'auto' || requestedMode === 'autodeploy') {
-      shipMode = audit.score >= 40 ? 'pr' : 'none'
+    // Keep PR only when depth is OK but score is soft; thin → no ship
+    if (!meetsDepthFloor(audit)) {
+      shipMode = 'none'
+    } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
+      shipMode = audit.score >= 50 ? 'pr' : 'none'
     }
   }
 

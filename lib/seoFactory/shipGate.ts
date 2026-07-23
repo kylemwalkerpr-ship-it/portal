@@ -362,11 +362,18 @@ export function validateRenderedPayload(opts: {
         }
       }
     }
-    // Body not empty after FM (ship-time quality floor; full SEO audit is separate)
+    // Body depth — align with Google floor table (contentDepth). Soft floor here;
+    // assertContentDepth in ship.ts is the hard gate using type-specific mins.
     const body = content.replace(/^---[\s\S]*?---\s*/, '').trim()
-    const bodyWords = body.split(/\s+/).filter(Boolean).length
-    if (bodyWords < 80) {
-      errors.push(`Markdown body too thin (${bodyWords} words; min 80 for ship)`)
+    const bodyWords = body
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .split(/\s+/)
+      .filter(Boolean).length
+    if (bodyWords < 500) {
+      errors.push(
+        `Markdown body too thin (${bodyWords} words; absolute min 500 before type-specific Google depth gate)`,
+      )
     }
   } else if (content.length < 200) {
     errors.push('Rendered payload too short to ship')
