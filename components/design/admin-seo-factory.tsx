@@ -1240,10 +1240,28 @@ export default function AdminSeoFactory({
 
           {plan?.plan && (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, fontSize: 13 }}>
-              <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Ownership plan</h3>
+              <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Ownership plan · estate gate</h3>
               <div><strong>Host:</strong> {plan.plan.host} → <strong>Repo:</strong> {plan.plan.repo}</div>
               <div><strong>Path:</strong> <code>{plan.plan.filePath}</code></div>
               <div><strong>Canonical:</strong> {plan.plan.canonicalUrl}</div>
+              {plan.shipGate && (
+                <div style={{
+                  marginTop: 10, padding: 10, borderRadius: 8,
+                  background: plan.shipGate.ok ? 'rgba(22,101,52,0.08)' : 'rgba(220,38,38,0.08)',
+                  border: `1px solid ${plan.shipGate.ok ? C.green : C.red}`,
+                }}>
+                  <strong style={{ color: plan.shipGate.ok ? C.green : C.red }}>
+                    {plan.shipGate.ok ? 'Ship allowed' : 'Ship blocked'}
+                  </strong>
+                  <span style={{ color: C.textMuted }}> · {plan.shipGate.kind} on {plan.shipGate.host}</span>
+                  {(plan.shipGate.errors || []).map((e: string) => (
+                    <div key={e} style={{ color: C.red, marginTop: 4, fontSize: 12 }}>⛔ {e}</div>
+                  ))}
+                  {plan.shipRecommendation?.reason && (
+                    <div style={{ color: C.textMuted, marginTop: 6, fontSize: 12 }}>{plan.shipRecommendation.reason}</div>
+                  )}
+                </div>
+              )}
               {(plan.plan.blockers || []).map((b: string) => (
                 <div key={b} style={{ color: C.red, marginTop: 4 }}>⛔ {b}</div>
               ))}
