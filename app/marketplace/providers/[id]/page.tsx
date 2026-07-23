@@ -58,22 +58,100 @@ export async function generateMetadata({ params }: ProviderPageProps): Promise<M
 
   const { data: profile } = await db
     .from('profiles')
-    .select('full_name, username')
+    .select('full_name, username, status')
     .eq('id', profileId)
     .maybeSingle()
 
-  const name = profile?.full_name || 'Provider'
-  const canonicalToken = profile?.username || id
+  if (!profile || profile.status !== 'active') {
+    return { title: 'Provider | YouSafe', robots: { index: false } }
+  }
+
+  // Pull seller editorial fields so meta description is not a thin template
+  // string (GSC "Crawled - currently not indexed" / quality exclusions).
+  let attorney: any = null
+  let consultant: any = null
+  let nGigs = 0
+  try {
+    const [aRes, cRes, gRes] = await Promise.all([
+      db
+        .from('attorneys')
+        .select('tagline, bio, intro, practice_areas, jurisdictions, years_experience')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .from('consultants')
+        .select('tagline, bio, intro, specialties, years_experience')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .from('gigs')
+        .select('id', { count: 'exact', head: true })
+        .eq('provider_id', profileId)
+        .eq('status', 'active'),
+    ])
+    attorney = aRes.data
+    consultant = cRes.data
+    nGigs = gRes.count || 0
+  } catch {
+    /* best-effort enrichment */
+  }
+
+  const seller = attorney || consultant
+  const name = profile.full_name || 'Provider'
+  const roleLabel = attorney ? 'Immigration attorney' : consultant ? 'Consultant' : 'Provider'
+  const areas = Array.isArray((attorney as any)?.practice_areas)
+    ? (attorney as any).practice_areas.filter(Boolean).slice(0, 4).join(', ')
+    : Array.isArray((consultant as any)?.specialties)
+      ? (consultant as any).specialties.filter(Boolean).slice(0, 4).join(', ')
+      : ''
+  const jurisdictions = Array.isArray((attorney as any)?.jurisdictions)
+    ? (attorney as any).jurisdictions.filter(Boolean).slice(0, 3).join(', ')
+    : ''
+  const editorial = (
+    (seller as any)?.tagline ||
+    (seller as any)?.intro ||
+    (seller as any)?.bio ||
+    ''
+  )
+    .toString()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const parts: string[] = []
+  if (editorial) parts.push(editorial)
+  else {
+    parts.push(`${roleLabel} ${name} on YouSafe Marketplace.`)
+    if (areas) parts.push(`Focus: ${areas}.`)
+    if (jurisdictions) parts.push(`Jurisdictions: ${jurisdictions}.`)
+  }
+  if (nGigs > 0) parts.push(`${nGigs} active service${nGigs === 1 ? '' : 's'}.`)
+  const years = (seller as any)?.years_experience
+  if (typeof years === 'number' && years > 0) parts.push(`${years}+ years experience.`)
+  const description = parts.join(' ').slice(0, 160)
+
+  // Thin profiles without bio/tagline/gigs should not compete for index budget.
+  const allowIndex = Boolean(editorial) || nGigs > 0 || Boolean(areas)
+
+  const canonicalToken = profile.username || id
   const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/providers/${canonicalToken}/`)
+  const title = `${name} — ${roleLabel} | YouSafe Marketplace`
   return {
-    title: `${name} | YouSafe Marketplace`,
-    description: `Browse services by ${name} on YouSafe Marketplace.`,
+    title,
+    description:
+      description ||
+      `Browse fixed-price services from ${name} on YouSafe Marketplace. Compare scope, delivery, and request secure checkout.`,
     alternates: { canonical: canonicalUrl },
-    robots: { index: true, follow: true },
+    robots: allowIndex ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       url: canonicalUrl,
-      title: `${name} | YouSafe Marketplace`,
-      description: `Browse services by ${name} on YouSafe Marketplace.`,
+      title,
+      description:
+        description ||
+        `Browse fixed-price services from ${name} on YouSafe Marketplace.`,
       type: 'profile',
     },
   }

@@ -11,11 +11,6 @@ import { getCategoryById, getSubcategoryById, type CategoryId, type SubcategoryI
 export const revalidate = 3600
 
 /**
- * Defensive per-page SEO. Gig detail is auth-walled and noindex today, so
- * `robots: { index: false }` stays on — but the metadata is wired up so when
- * the gig surface is flipped to public we just remove that one line.
- */
-/**
  * Check if a slug has been redirected (via gig_slug_redirects table)
  * and return the new slug, or null if no redirect exists.
  * This is separated so both generateMetadata and Page can use it.
@@ -60,13 +55,15 @@ function titleFromSlug(slug: string): string {
 const loadGigForSeo = cache(async (slug: string): Promise<any | null> => {
   try {
     const db = createSupabaseAdminClient()
-    // Primary path: lean select without joins. Nested joins have failed in
-    // OpenNext/Workers metadata generation (FK name / PostgREST shape),
-    // which forced the noindex fallback and kept real gigs out of Google.
+    // Primary path: only columns that exist on public.gigs. A single bad
+    // column name (e.g. starting_price — price lives on gig_tiers) makes
+    // PostgREST reject the whole select → null → noindex fallback and
+    // keeps real active gigs out of Google.
+    // Nested joins have also failed in OpenNext/Workers metadata generation.
     const { data: gig, error } = await db
       .from('gigs')
       .select(
-        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, starting_price, gallery_images, faq, provider_id, provider_type, status',
+        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, gallery_images, faq, provider_id, provider_type, status, pitch, tags',
       )
       .eq('slug', slug)
       .eq('status', 'active')
@@ -89,9 +86,18 @@ const loadGigForSeo = cache(async (slug: string): Promise<any | null> => {
           ? db.from('profiles').select('id, full_name, username').eq('id', gig.provider_id).maybeSingle()
           : Promise.resolve({ data: null }),
       ])
-      return { ...gig, tiers: tiers || [], provider: provider || null } as any
+      const lowestTier = (tiers || [])
+        .map((t: any) => (typeof t?.price === 'number' ? t.price : null))
+        .filter((n: number | null): n is number => n != null && n > 0)
+        .sort((a: number, b: number) => a - b)[0]
+      return {
+        ...gig,
+        starting_price: lowestTier ?? null,
+        tiers: tiers || [],
+        provider: provider || null,
+      } as any
     } catch {
-      return { ...gig, tiers: [], provider: null } as any
+      return { ...gig, starting_price: null, tiers: [], provider: null } as any
     }
   } catch (e) {
     console.warn('[gigs/seo] loadGigForSeo fatal', slug, e)
