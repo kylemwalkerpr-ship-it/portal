@@ -1625,7 +1625,7 @@ export default function AdminSeoFactory({
             padding: 24, borderTop: `4px solid ${C.gold}`,
           }}>
             <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              Technician engine · CTR curve · Strike distance · Cannibal · AEO
+              Technician engine · CTR curve · Strike distance · Cannibal · AEO · Daily auto 12:00 EAT
             </div>
             <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>SEO War Room</h2>
             <p style={{ margin: '0 0 16px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 720 }}>
@@ -1633,7 +1633,24 @@ export default function AdminSeoFactory({
               Noise (brand, meal-plan spam, thin garbage) is filtered. Plays drive generation prompts:
               title/CTR rewrites for positions 4–15, strike-distance expands for page-2, AEO entity hubs
               for answer engines, cannibal merges when multi-URL.
+              <br />
+              <strong style={{ color: C.cyan }}>Auto:</strong> every day at <strong>12:00 Africa/Nairobi</strong> the
+              top <strong>5</strong> wins generate → quality gates → merge, then email a work log with live URLs.
             </p>
+            {warRoom?.dailyAutomation?.lastRun && (
+              <div style={{
+                marginBottom: 14, padding: 12, borderRadius: 8, fontSize: 12,
+                background: '#ECFDF5', border: `1px solid ${C.border}`, color: C.textMuted, lineHeight: 1.5,
+              }}>
+                <strong style={{ color: C.green }}>Last daily run</strong>
+                {' · '}{warRoom.dailyAutomation.lastRun.scheduledFor || '—'}
+                {' · '}shipped {warRoom.dailyAutomation.lastRun.shippedCount}
+                {' · '}failed {warRoom.dailyAutomation.lastRun.failedCount}
+                <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                  {(warRoom.dailyAutomation.lastRun.reportUrls || []).slice(0, 5).join(' · ') || 'No URLs yet'}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
               <button type="button" disabled={busy} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1 }}>

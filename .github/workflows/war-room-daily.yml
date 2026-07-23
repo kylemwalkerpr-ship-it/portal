@@ -1,0 +1,179 @@
+name: SEO War Room Daily (midday Kenya)
+
+# Midday Africa/Nairobi = 12:00 EAT = 09:00 UTC
+# Top 5 War Room ranking-gain plays → generate → quality gates → ship → email report + URLs.
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no GitHub ship)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      limit:
+        description: 'Number of biggest wins (default 5)'
+        required: false
+        default: '5'
+
+jobs:
+  war-room-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Plan top 5 wins, run each, email URL report
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          LIMIT: ${{ github.event.inputs.limit || '5' }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          BASE="${PORTAL_URL:-https://portal.yousafeconsultancy.com}"
+          URL="${BASE}/api/cron/war-room-daily"
+          export URL
+          export CRON_SECRET
+          export DRY_RUN
+          export LIMIT
+          export STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export RUN_ID="wr-daily-$(date -u +%Y-%m-%d)-${GITHUB_RUN_ID}"
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET is not set in repo secrets"
+            exit 1
+          fi
+
+          echo "== Plan phase (midday Kenya / 09:00 UTC schedule) =="
+          code=$(curl -sS -o /tmp/plan.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"phase\":\"plan\",\"limit\":${LIMIT}}")
+          echo "HTTP $code"
+          cat /tmp/plan.json
+          test "$code" = "200"
+
+          python3 <<'PY'
+          import json, os, subprocess, sys
+
+          url = os.environ["URL"]
+          secret = os.environ["CRON_SECRET"]
+          dry = os.environ.get("DRY_RUN", "false").lower() == "true"
+          started = os.environ["STARTED"]
+          run_id = os.environ["RUN_ID"]
+
+          with open("/tmp/plan.json") as f:
+              plan = json.load(f)
+          if not plan.get("ok"):
+              print("Plan failed", plan)
+              sys.exit(1)
+
+          wins = plan.get("wins") or []
+          print(f"Wins selected: {len(wins)}")
+          work = []
+
+          for w in wins:
+              rank = w.get("rank") or (len(work) + 1)
+              payload = {
+                  "phase": "run",
+                  "rank": rank,
+                  "dryRun": dry,
+                  "shipMode": "none" if dry else "merge",
+                  "minAuditScore": 65,
+                  "maxRefine": 3,
+                  "skipRecent": True,
+                  "win": w,
+              }
+              print(f"\n== Run #{rank}: {w.get('term')} [{w.get('play')}] ==")
+              out_path = f"/tmp/run-{rank}.json"
+              r = subprocess.run(
+                  [
+                      "curl", "-sS", "-o", out_path, "-w", "%{http_code}",
+                      "-X", "POST", url,
+                      "-H", f"Authorization: Bearer {secret}",
+                      "-H", "Content-Type: application/json",
+                      "-d", json.dumps(payload),
+                      "--max-time", "1200",
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+              code = (r.stdout or "").strip()
+              print("HTTP", code)
+              try:
+                  with open(out_path) as f:
+                      data = json.load(f)
+              except Exception as e:
+                  print("Bad JSON", e, r.stderr)
+                  work.append({
+                      "rank": rank,
+                      "term": w.get("term"),
+                      "play": w.get("play"),
+                      "priorityScore": w.get("priorityScore") or 0,
+                      "estimatedGainClicks": w.get("estimatedGainClicks") or 0,
+                      "region": w.get("region") or "US",
+                      "contentType": w.get("contentType") or "legal_guide",
+                      "ok": False,
+                      "error": f"HTTP {code} / parse error",
+                      "canonicalUrl": w.get("ownerUrl"),
+                      "liveUrl": w.get("ownerUrl"),
+                  })
+                  continue
+              print(json.dumps(data, indent=2)[:2500])
+              item = data.get("item") or {}
+              work.append(item)
+
+          fin = {
+              "phase": "finalize",
+              "notify": True,
+              "runId": run_id,
+              "startedAt": started,
+              "scheduledFor": started,
+              "gscSource": plan.get("source"),
+              "siteUrl": plan.get("siteUrl"),
+              "summary": plan.get("summary"),
+              "work": work,
+          }
+          print("\n== Finalize report + email ==")
+          r = subprocess.run(
+              [
+                  "curl", "-sS", "-o", "/tmp/final.json", "-w", "%{http_code}",
+                  "-X", "POST", url,
+                  "-H", f"Authorization: Bearer {secret}",
+                  "-H", "Content-Type: application/json",
+                  "-d", json.dumps(fin),
+                  "--max-time", "120",
+              ],
+              capture_output=True,
+              text=True,
+          )
+          print("HTTP", (r.stdout or "").strip())
+          with open("/tmp/final.json") as f:
+              final = json.load(f)
+          text = final.get("text") or json.dumps(final, indent=2)
+          print(text[:6000])
+          # Write artifact-friendly summary for Actions log
+          with open("/tmp/war-room-report.txt", "w") as f:
+              f.write(text if isinstance(text, str) else json.dumps(final, indent=2))
+
+          if not final.get("ok"):
+              sys.exit(1)
+
+          items = [w for w in work if not w.get("skipped")]
+          if items and all(not w.get("ok") for w in items):
+              print("All non-skipped runs failed")
+              sys.exit(1)
+          print("\nDaily War Room complete.")
+          PY
+
+      - name: Upload daily report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: war-room-daily-report
+          path: /tmp/war-room-report.txt
+          if-no-files-found: ignore

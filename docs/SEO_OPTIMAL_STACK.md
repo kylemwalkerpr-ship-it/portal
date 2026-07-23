@@ -33,6 +33,27 @@ End-state architecture for Content Studio + GSC + agent MCP.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+## Daily automation (midday Kenya)
+
+| Item | Value |
+|------|--------|
+| Schedule | **12:00 Africa/Nairobi** (`0 9 * * *` UTC) |
+| Workflow | `.github/workflows/war-room-daily.yml` |
+| Endpoint | `POST /api/cron/war-room-daily` (Bearer `CRON_SECRET`) |
+| Volume | **Top 5** War Room plays by estimated ranking gain |
+| Ship | `merge` → main (quality + depth gates still apply) |
+| Report | Email + `war_room_daily_runs` table + Actions artifact |
+
+**Secrets / vars**
+
+- `CRON_SECRET` — required (same as weekly payouts)
+- `WAR_ROOM_REPORT_EMAIL` or `SEO_REPORT_EMAIL` or `ADMIN_EMAIL` — comma-separated recipients for the daily URL report
+- `vars.PORTAL_URL` — optional override (default `https://portal.yousafeconsultancy.com`)
+
+**Manual run:** GitHub → Actions → “SEO War Room Daily (midday Kenya)” → Run workflow (optional dry-run).
+
+Phases (timeout-safe): `plan` → `run` ×5 → `finalize` (persist + email list of work + URLs).
+
 ## War Room plays (technician ranking)
 
 | Play | When | Action |
