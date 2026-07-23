@@ -197,11 +197,53 @@ function withPathHeaders(res: NextResponse, pathname: string, search: string, la
 const MARKET_HOST = 'market.yousafeconsultancy.com'
 const PORTAL_HOST = 'portal.yousafeconsultancy.com'
 
+/** Tracking/query junk that must never create distinct indexable URLs. */
+const STRIP_QUERY_KEYS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'utm_id',
+  'gclid',
+  'fbclid',
+  'msclkid',
+  'mc_cid',
+  'mc_eid',
+  '_ga',
+])
+
+function stripTrackingParams(url: URL): string | null {
+  let changed = false
+  for (const key of [...url.searchParams.keys()]) {
+    if (STRIP_QUERY_KEYS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
+      url.searchParams.delete(key)
+      changed = true
+    }
+  }
+  return changed ? url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') : null
+}
+
 export default clerkMiddleware(
   async (auth, req) => {
     const { pathname, search } = req.nextUrl
     const hostname = req.headers.get('host')?.split(':')[0] || req.nextUrl.hostname || ''
     const lang = resolveLanguage(req)
+
+    // ── Strip tracking params (301) ──────────────────────────────────────
+    // Caseworks cluster CTAs append utm_* to market category URLs. Google
+    // indexes those variants as distinct "Excluded by noindex" rows (100+
+    // of the GSC noindex count). Always consolidate to the clean canonical.
+    if (
+      (hostname === MARKET_HOST || hostname === PORTAL_HOST) &&
+      req.nextUrl.searchParams.size > 0
+    ) {
+      const cleaned = stripTrackingParams(new URL(req.url))
+      if (cleaned !== null) {
+        const dest = new URL(cleaned, req.url)
+        return withCorsHeaders(NextResponse.redirect(dest, { status: 301 }), req)
+      }
+    }
 
     // ── CORS preflight ───────────────────────────────────────────────────
     // OPTIONS from an allowed cross-origin gets a 204 with the right

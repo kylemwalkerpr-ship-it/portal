@@ -23,10 +23,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}${mp('/marketplace/categories/')}`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.6 },
   ]
 
-  // Category URLs: only emit when we can prove ≥1 active gig (empty shelves
-  // are noindex in generateMetadata — keep them out of the sitemap too).
-  // If the DB query fails at build time, fall back to enumerating all
-  // categories so the build never blanks the market map entirely.
+  // Category URLs: emit top-level hubs always (they may be indexable with
+  // editorial copy); subcategories only when supply is present. If the DB
+  // query fails at build time, fall back to enumerating all categories so
+  // the build never blanks the market map entirely.
   const categoryIds: string[] = []
   for (const cat of CATEGORIES) {
     categoryIds.push(cat.id)
@@ -54,16 +54,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const cat of CATEGORIES) {
-    const includeCat =
-      categoriesWithSupply === null || categoriesWithSupply.has(cat.id)
-    if (includeCat) {
-      entries.push({
-        url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly',
-        priority: 0.6,
-      })
-    }
+    // Top-level category hubs are always listed (indexable with description).
+    entries.push({
+      url: `${base}${mp(`/marketplace/categories/${cat.id}/`)}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    })
     for (const sub of cat.subcategories) {
       const includeSub =
         categoriesWithSupply === null || categoriesWithSupply.has(sub.id)
@@ -91,27 +88,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const db = createSupabaseAdminClient()
 
+    // Lean select — nested provider joins have failed in Workers metadata /
+    // sitemap generation and silently dropped active gigs from the map.
     const { data: gigs } = await db
       .from('gigs')
-      .select('slug, updated_at, provider_id, profiles!gigs_provider_id_fkey(id)')
+      .select('slug, updated_at, provider_id')
       .eq('status', 'active')
       .not('provider_id', 'is', null)
-      // Per SEO master plan v2.0 §R5: graduate to a sharded sitemap-index
-      // (sitemap-gigs-N.xml) once active row counts cross ~4,000. Bumped
-      // from 500 to 5,000 on 2026-05-29 to remove the silent cap risk
-      // while gig + provider volume is still well below the limit.
       .limit(5000)
 
     for (const gig of gigs ?? []) {
-      if (!gig.slug) continue
-      // Provider join must resolve — the gig page filters by
-      // status='active' AND the provider profile must exist, so the
-      // sitemap mirrors that to prevent §5.5 violations (noindex
-      // pages in the sitemap). 3 inactive-provider gigs leaked into
-      // the 2026-06-02 audit because the original query didn't
-      // verify the provider join.
-      const provider = Array.isArray((gig as any).profiles) ? (gig as any).profiles[0] : (gig as any).profiles
-      if (!provider?.id) continue
+      if (!gig.slug || !gig.provider_id) continue
       entries.push({
         url: `${base}${mp(`/marketplace/gigs/${gig.slug}`)}`,
         lastModified: gig.updated_at ? new Date(gig.updated_at) : new Date(),

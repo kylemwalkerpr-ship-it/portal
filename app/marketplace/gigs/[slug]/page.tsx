@@ -60,20 +60,41 @@ function titleFromSlug(slug: string): string {
 const loadGigForSeo = cache(async (slug: string): Promise<any | null> => {
   try {
     const db = createSupabaseAdminClient()
-    const { data: gig } = await db
+    // Primary path: lean select without joins. Nested joins have failed in
+    // OpenNext/Workers metadata generation (FK name / PostgREST shape),
+    // which forced the noindex fallback and kept real gigs out of Google.
+    const { data: gig, error } = await db
       .from('gigs')
       .select(
-        // Everything the JSON-LD builder needs: identifiers, copy, pricing
-        // signals, gallery, FAQ, jurisdiction, plus the tier + provider joins.
-        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, starting_price, gallery_images, faq, provider_id, provider_type, ' +
-          'tiers:gig_tiers(tier, title, description, price, delivery_days, revisions, is_active), ' +
-          'provider:profiles!gigs_provider_id_fkey(id, full_name, username)',
+        'id, slug, title, description, seo_title, seo_description, category, subcategory, jurisdiction, avg_rating, review_count, order_count, starting_price, gallery_images, faq, provider_id, provider_type, status',
       )
       .eq('slug', slug)
       .eq('status', 'active')
       .maybeSingle()
-    return gig as any
-  } catch {
+    if (error) {
+      console.warn('[gigs/seo] loadGigForSeo', slug, error.message)
+      return null
+    }
+    if (!gig) return null
+
+    // Best-effort enrich for JSON-LD — never let join failure drop indexability.
+    try {
+      const [{ data: tiers }, { data: provider }] = await Promise.all([
+        db
+          .from('gig_tiers')
+          .select('tier, title, description, price, delivery_days, revisions, is_active')
+          .eq('gig_id', gig.id)
+          .eq('is_active', true),
+        gig.provider_id
+          ? db.from('profiles').select('id, full_name, username').eq('id', gig.provider_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      return { ...gig, tiers: tiers || [], provider: provider || null } as any
+    } catch {
+      return { ...gig, tiers: [], provider: null } as any
+    }
+  } catch (e) {
+    console.warn('[gigs/seo] loadGigForSeo fatal', slug, e)
     return null
   }
 })

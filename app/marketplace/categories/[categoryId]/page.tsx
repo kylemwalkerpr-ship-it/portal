@@ -40,10 +40,14 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
     count = c || 0
   } catch { /* count is best-effort */ }
 
-  // Empty shelves should not rank (2026-07-14 SEO deep strategy §5.2).
-  // Keep crawlable with follow so inbound caseworks links still pass equity
-  // once supply is listed; remove from sitemap when count is 0.
+  // Empty shelves: keep follow so caseworks inbound equity is not wasted, but
+  // do NOT index pure empty category shells (SEO deep strategy §5.2).
+  // Hub categories with real editorial copy + Caseworks rail still index when
+  // they have ≥1 active gig OR when they are top-level category hubs with a
+  // non-empty description (commercial hub, not a thin filter URL).
   const emptyShelf = count < 1
+  const isTopLevelHub = !subcategory && Boolean((display.description || '').trim())
+  const allowIndex = !hasUtm && (!emptyShelf || isTopLevelHub)
   const title = emptyShelf
     ? `${display.name} | YouSafe Marketplace`
     : `${display.name} (${count} services) | YouSafe Marketplace`
@@ -58,9 +62,9 @@ export async function generateMetadata({ params, searchParams }: CategoryPagePro
     description,
     alternates: { canonical: canonicalUrl },
     openGraph: { url: canonicalUrl, title, description, type: 'website' },
-    robots: hasUtm || emptyShelf
-      ? { index: false, follow: true }
-      : { index: true, follow: true },
+    robots: allowIndex
+      ? { index: true, follow: true }
+      : { index: false, follow: true },
   }
 }
 
