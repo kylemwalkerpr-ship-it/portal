@@ -472,7 +472,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   }
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: activeTab === 'factory' ? '8px 12px 24px' : '24px 28px', maxWidth: activeTab === 'factory' ? '100%' : 1200, margin: '0 auto' }}>
       {/* Error banner */}
       {error && (
         <div style={{
@@ -488,7 +488,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — compact when factory command center is open */}
+      {activeTab !== 'factory' && (
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontFamily: C.serif, fontSize: 26, fontWeight: 700, color: C.text }}>
           Content Studio
@@ -497,12 +498,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           AI-drafted SEO content → GitHub PRs → caseworks / consultancy / portal — all from the admin dashboard.
         </p>
       </div>
+      )}
 
       {/* Tab navigation */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: `2px solid ${C.border}` }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: activeTab === 'factory' ? 8 : 24, borderBottom: `2px solid ${C.border}` }}>
         {([
-          { key: 'factory' as Tab, label: '🏭 SEO Factory', desc: 'Plan · generate · ship' },
-          { key: 'generate' as Tab, label: '⚡ Generate', desc: 'AI content + PRs' },
+          { key: 'factory' as Tab, label: '🏭 Command Center', desc: 'Plan · generate · editor · PRs' },
+          { key: 'generate' as Tab, label: '⚡ Quick Generate', desc: 'Simple AI + job history' },
           { key: 'gsc' as Tab, label: '🔍 GSC Analytics', desc: 'Search Console data' },
         ]).map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{

@@ -68,9 +68,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/content-studio/jobs
- * Actions on a job: reship | regenerate | abandon
+ * Actions: reship | regenerate | abandon | save | refresh_pr
  *
- * Body: { id, action: 'reship'|'regenerate'|'abandon', shipMode?, minAuditScore? }
+ * Body: {
+ *   id,
+ *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr',
+ *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?
+ * }
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -107,6 +111,132 @@ export async function PATCH(request: NextRequest) {
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
+    }
+
+    if (action === 'save') {
+      const content = body.content != null ? String(body.content) : job.content
+      if (content == null || !String(content).trim()) {
+        return NextResponse.json({ error: 'content required' }, { status: 400 })
+      }
+      const title = body.title != null ? String(body.title).trim() : job.title
+      const words = String(content).trim().split(/\s+/).filter(Boolean).length
+      const contentType =
+        job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
+      const primaryKeyword = job.primary_keyword || job.topic
+      let audit: any = job.audit_json
+      try {
+        audit = auditContent({
+          content: String(content),
+          contentType,
+          primaryKeyword,
+          indexable: job.indexable !== false,
+          ownershipBlockers: [],
+        })
+      } catch { /* keep previous audit */ }
+
+      const { data: updated, error: upErr } = await supabase
+        .from('content_jobs')
+        .update({
+          content: String(content),
+          title: title || job.title,
+          word_count: words,
+          seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
+          audit_json: audit || job.audit_json,
+          error_message: null,
+          // Keep terminal states; otherwise mark as drafting after manual edit
+          status:
+            job.status === 'merged' || job.status === 'closed'
+              ? job.status
+              : job.status === 'pr_created'
+                ? 'pr_created'
+                : 'drafting',
+        })
+        .eq('id', id)
+        .select()
+        .single()
+      if (upErr) throw upErr
+      return NextResponse.json({ ok: true, job: updated, audit })
+    }
+
+    if (action === 'refresh_pr') {
+      const prNumber = job.pr_number
+      const repo = String(job.target_repo || '').replace(/^https?:\/\/github\.com\//, '')
+      if (!prNumber || !repo.includes('/')) {
+        return NextResponse.json({
+          ok: true,
+          job,
+          prStatus: null,
+          message: 'No PR number/repo on this job yet',
+        })
+      }
+      const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
+      if (!token) {
+        return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 503 })
+      }
+      const [owner, name] = repo.split('/')
+      const ghRes = await fetch(
+        `https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`,
+        {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${token}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'yousafe-portal-seo-factory',
+          },
+        },
+      )
+      if (!ghRes.ok) {
+        const text = await ghRes.text().catch(() => '')
+        return NextResponse.json(
+          { error: `GitHub ${ghRes.status}: ${text.slice(0, 200)}`, job },
+          { status: 502 },
+        )
+      }
+      const pr = await ghRes.json()
+      const prStatus = {
+        number: pr.number as number,
+        state: pr.state as string, // open | closed
+        merged: Boolean(pr.merged),
+        merged_at: pr.merged_at as string | null,
+        html_url: pr.html_url as string,
+        title: pr.title as string,
+        draft: Boolean(pr.draft),
+        head: pr.head?.ref as string | undefined,
+        base: pr.base?.ref as string | undefined,
+        user: pr.user?.login as string | undefined,
+        created_at: pr.created_at as string,
+        updated_at: pr.updated_at as string,
+        mergeable_state: pr.mergeable_state as string | undefined,
+      }
+
+      // Sync local status when PR is merged/closed on GitHub
+      let nextStatus = job.status
+      const patch: Record<string, unknown> = {
+        pr_url: pr.html_url || job.pr_url,
+      }
+      if (pr.merged) {
+        nextStatus = 'merged'
+        patch.status = 'merged'
+        patch.merged_at = pr.merged_at || new Date().toISOString()
+        patch.error_message = null
+      } else if (pr.state === 'closed' && !pr.merged) {
+        nextStatus = 'closed'
+        patch.status = 'closed'
+        patch.closed_at = new Date().toISOString()
+      }
+
+      const { data: updated } = await supabase
+        .from('content_jobs')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single()
+
+      return NextResponse.json({
+        ok: true,
+        job: updated || { ...job, status: nextStatus },
+        prStatus,
+      })
     }
 
     if (action === 'reship') {

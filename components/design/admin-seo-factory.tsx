@@ -1,5 +1,11 @@
 'use client'
 import React from 'react'
+import ContentStudioWorkspace, {
+  createLog,
+  type PrStatus,
+  type StudioJob,
+  type StudioLogEntry,
+} from './content-studio-workspace'
 
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', border: 'rgba(0,0,0,0.08)',
@@ -49,6 +55,34 @@ export default function AdminSeoFactory({
   const [mixExpand, setMixExpand] = React.useState(35)
   const [mixNew, setMixNew] = React.useState(25)
 
+  // ── Command-center workspace state ──
+  const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null)
+  const [editorContent, setEditorContent] = React.useState('')
+  const [logs, setLogs] = React.useState<StudioLogEntry[]>([])
+  const [prStatus, setPrStatus] = React.useState<PrStatus | null>(null)
+  const [activityLine, setActivityLine] = React.useState<string | null>(null)
+  const [workspaceOpen, setWorkspaceOpen] = React.useState(true)
+
+  const pushLog = React.useCallback((
+    level: StudioLogEntry['level'],
+    source: string,
+    message: string,
+    detail?: string,
+  ) => {
+    setLogs((prev) => [...prev.slice(-199), createLog(level, source, message, detail)])
+  }, [])
+
+  const selectedJob = React.useMemo(
+    () => (jobs as StudioJob[]).find((j) => j.id === selectedJobId) || null,
+    [jobs, selectedJobId],
+  )
+
+  const selectJob = React.useCallback((id: string) => {
+    setSelectedJobId(id)
+    setWorkspaceOpen(true)
+    setPrStatus(null)
+  }, [])
+
   const loadHealth = async () => {
     try {
       const res = await fetch('/api/seo-factory/health', { credentials: 'same-origin' })
@@ -59,11 +93,133 @@ export default function AdminSeoFactory({
 
   const loadJobs = async () => {
     try {
-      const qs = jobQ ? `?q=${encodeURIComponent(jobQ)}&limit=40` : '?limit=40'
+      const qs = jobQ ? `?q=${encodeURIComponent(jobQ)}&limit=50` : '?limit=50'
       const res = await fetch(`/api/content-studio/jobs${qs}`, { credentials: 'same-origin' })
       const data = await res.json()
-      if (res.ok) setJobs(data.jobs || [])
-    } catch { /* ignore */ }
+      if (res.ok) {
+        setJobs(data.jobs || [])
+        // Keep editor in sync if selected job updated from server (unless local dirty)
+        if (selectedJobId) {
+          const j = (data.jobs || []).find((x: any) => x.id === selectedJobId)
+          if (j?.content != null) {
+            setEditorContent((prev) => {
+              // Only auto-fill when empty or matches previous server content length baseline
+              if (!prev.trim() || prev === (selectedJob?.content || '')) return j.content
+              return prev
+            })
+          }
+        }
+      }
+    } catch (e) {
+      pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
+    }
+  }
+
+  // Always keep job list fresh for the workspace queue
+  React.useEffect(() => {
+    loadJobs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Poll while work is in flight or a non-terminal job is selected
+  React.useEffect(() => {
+    const active = jobs.some((j) => !['merged', 'closed', 'failed'].includes(j.status || ''))
+    if (!active && !busy) return
+    const t = setInterval(() => { loadJobs() }, 3500)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs, busy, jobQ])
+
+  // When selecting a job, load full content via id if needed
+  React.useEffect(() => {
+    if (!selectedJobId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(selectedJobId)}`, {
+          credentials: 'same-origin',
+        })
+        const data = await res.json()
+        if (!res.ok || !data.job || cancelled) return
+        setJobs((prev) => {
+          const others = prev.filter((j) => j.id !== data.job.id)
+          return [data.job, ...others]
+        })
+        setEditorContent(data.job.content || '')
+        pushLog('info', 'workspace', `Opened job ${data.job.title || data.job.topic || data.job.id.slice(0, 8)}`)
+      } catch (e) {
+        pushLog('error', 'workspace', e instanceof Error ? e.message : 'Failed to open job')
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJobId])
+
+  const saveJobContent = async () => {
+    if (!selectedJobId) return
+    setBusy(true)
+    setActivityLine('Saving draft…')
+    pushLog('info', 'editor', 'Saving draft content')
+    try {
+      const res = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedJobId, action: 'save', content: editorContent }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Save failed')
+      if (data.job) {
+        setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+        setEditorContent(data.job.content || editorContent)
+      }
+      pushLog('success', 'editor', `Draft saved · SEO ${data.audit?.score ?? data.job?.seo_score ?? '—'} · ${data.job?.word_count ?? '—'} words`)
+      setActionNotice('Draft saved')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Save failed'
+      pushLog('error', 'editor', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
+  }
+
+  const refreshPrStatus = async () => {
+    if (!selectedJobId) return
+    setBusy(true)
+    setActivityLine('Refreshing GitHub PR…')
+    pushLog('info', 'github', 'Refreshing PR status from GitHub')
+    try {
+      const res = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedJobId, action: 'refresh_pr' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'PR refresh failed')
+      if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+      setPrStatus(data.prStatus || null)
+      if (data.prStatus) {
+        pushLog(
+          'success',
+          'github',
+          `PR #${data.prStatus.number}: ${data.prStatus.merged ? 'merged' : data.prStatus.state}`,
+          JSON.stringify(data.prStatus, null, 2),
+        )
+      } else {
+        pushLog('warn', 'github', data.message || 'No PR on this job')
+      }
+      setActionNotice(data.prStatus ? `PR #${data.prStatus.number} · ${data.prStatus.merged ? 'merged' : data.prStatus.state}` : 'No PR yet')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'PR refresh failed'
+      pushLog('error', 'github', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
   }
 
   const loadOpps = async () => {
@@ -139,6 +295,9 @@ export default function AdminSeoFactory({
 
   const executeKeywordPlan = async () => {
     setBusy(true)
+    setWorkspaceOpen(true)
+    setActivityLine('Executing keyword plan…')
+    pushLog('info', 'keywords', 'Execute balanced keyword plan')
     try {
       const res = await fetch('/api/seo-factory/keyword-plan', {
         method: 'POST',
@@ -168,19 +327,35 @@ export default function AdminSeoFactory({
         results: data.results,
         avgAuditScore: null,
       })
+      const last = (data.results || []).slice().reverse().find((r: any) => r.jobId || r.content)
+      if (last?.jobId) selectJob(last.jobId)
+      if (last?.content) setEditorContent(last.content)
+      for (const r of data.results || []) {
+        pushLog(
+          r.error ? 'error' : 'success',
+          'keywords',
+          `${r.lane || r.action || 'item'}: ${r.term || r.keyword || '—'} → ${r.ship?.status || r.status || (r.error ? 'failed' : 'ok')}`,
+          r.ship?.prUrl || r.error,
+        )
+      }
       setActionNotice(data.message || 'Plan executed')
       setTab('autopilot')
-      loadJobs()
+      await loadJobs()
     } catch (e) {
-      setActionNotice(e instanceof Error ? e.message : 'Execute failed')
+      const msg = e instanceof Error ? e.message : 'Execute failed'
+      pushLog('error', 'keywords', msg)
+      setActionNotice(msg)
     } finally {
       setBusy(false)
+      setActivityLine(null)
     }
   }
 
   const runPlan = async () => {
     setBusy(true)
     setResult(null)
+    setActivityLine('Planning ownership…')
+    pushLog('info', 'plan', `Plan · ${primaryKeyword || topic}`)
     try {
       const res = await fetch('/api/seo-factory/plan', {
         method: 'POST',
@@ -197,11 +372,15 @@ export default function AdminSeoFactory({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Plan failed')
       setPlan(data)
+      pushLog('success', 'plan', `${data.plan.host} → ${data.plan.repo}`, data.plan.filePath)
       setActionNotice(`Plan ready → ${data.plan.host} / ${data.plan.repo}`)
     } catch (e) {
-      setActionNotice(e instanceof Error ? e.message : 'Plan failed')
+      const msg = e instanceof Error ? e.message : 'Plan failed'
+      pushLog('error', 'plan', msg)
+      setActionNotice(msg)
     } finally {
       setBusy(false)
+      setActivityLine(null)
     }
   }
 
@@ -213,10 +392,13 @@ export default function AdminSeoFactory({
     shipMode?: ShipMode
   }) => {
     setBusy(true)
+    setWorkspaceOpen(true)
+    const t = override?.topic || topic || primaryKeyword
+    const k = override?.keyword || primaryKeyword || topic
+    const sm = override?.shipMode || shipMode
+    setActivityLine(`Generating: ${k || t}…`)
+    pushLog('info', 'generate', `Start generate · ${k || t}`, JSON.stringify({ region: override?.region || region, contentType: override?.contentType || contentType, shipMode: sm }, null, 2))
     try {
-      const t = override?.topic || topic || primaryKeyword
-      const k = override?.keyword || primaryKeyword || topic
-      const sm = override?.shipMode || shipMode
       const res = await fetch('/api/seo-factory/generate', {
         method: 'POST',
         credentials: 'same-origin',
@@ -238,7 +420,23 @@ export default function AdminSeoFactory({
       if (!res.ok && !data.content) throw new Error(data.error || 'Generate failed')
       setResult(data)
       setPlan({ plan: data.plan, gsc: data.gsc, shipRecommendation: null })
-      if (data.content) setPreview(data.content)
+      if (data.content) {
+        setEditorContent(data.content)
+        setPreview(null)
+      }
+      if (data.jobId) selectJob(data.jobId)
+      if (data.ship?.prUrl) {
+        pushLog('success', 'github', `PR opened: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
+      }
+      if (data.shipError) pushLog('error', 'ship', data.shipError)
+      pushLog(
+        data.shipError ? 'warn' : 'success',
+        'generate',
+        data.ship
+          ? `Shipped via ${data.provider} · audit ${data.audit?.score} · ${data.ship.status}`
+          : `Generated via ${data.provider} · audit ${data.audit?.score}`,
+        data.content ? data.content.slice(0, 500) : undefined,
+      )
       setActionNotice(
         data.ship
           ? `Shipped via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s): ${data.ship.status}`
@@ -246,17 +444,23 @@ export default function AdminSeoFactory({
             ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
             : `Generated via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s)`,
       )
-      loadJobs()
+      await loadJobs()
     } catch (e) {
-      setActionNotice(e instanceof Error ? e.message : 'Generate failed')
+      const msg = e instanceof Error ? e.message : 'Generate failed'
+      pushLog('error', 'generate', msg)
+      setActionNotice(msg)
     } finally {
       setBusy(false)
+      setActivityLine(null)
     }
   }
 
   const runAutoPilot = async (terms?: string[]) => {
     setBusy(true)
     setAutoResult(null)
+    setWorkspaceOpen(true)
+    setActivityLine('Auto-Pilot running…')
+    pushLog('info', 'autopilot', `Start auto-run · limit ${terms?.length || autoLimit} · mode ${autoMode}`)
     try {
       const res = await fetch('/api/seo-factory/auto-run', {
         method: 'POST',
@@ -276,19 +480,41 @@ export default function AdminSeoFactory({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Auto-run failed')
       setAutoResult(data)
+      // Surface last shipped job into editor
+      const last = (data.results || []).slice().reverse().find((r: any) => r.jobId || r.content || r.ship?.prUrl)
+      if (last?.jobId) selectJob(last.jobId)
+      if (last?.content) setEditorContent(last.content)
+      for (const r of data.results || []) {
+        pushLog(
+          r.ok === false || r.error ? 'error' : 'success',
+          'autopilot',
+          `${r.term || r.keyword || r.topic || 'item'}: ${r.ship?.status || r.status || (r.error ? 'failed' : 'ok')}`,
+          r.error || r.ship?.prUrl || r.contentPreview,
+        )
+      }
       setActionNotice(data.message || `Auto-run: ${data.shipped}/${data.candidateCount}`)
+      pushLog('success', 'autopilot', data.message || `Shipped ${data.shipped}/${data.candidateCount}`)
       setMetrics(null)
-      loadJobs()
+      await loadJobs()
     } catch (e) {
-      setActionNotice(e instanceof Error ? e.message : 'Auto-run failed')
+      const msg = e instanceof Error ? e.message : 'Auto-run failed'
+      pushLog('error', 'autopilot', msg)
+      setActionNotice(msg)
     } finally {
       setBusy(false)
+      setActivityLine(null)
     }
   }
 
   const jobAction = async (id: string, action: 'reship' | 'regenerate' | 'abandon') => {
     setBusy(true)
+    setActivityLine(`${action}…`)
+    pushLog('info', 'jobs', `${action} · ${id.slice(0, 8)}`)
     try {
+      // If reshiping selected job, save editor first when dirty
+      if (action === 'reship' && id === selectedJobId && editorContent && editorContent !== (selectedJob?.content || '')) {
+        await saveJobContent()
+      }
       const res = await fetch('/api/content-studio/jobs', {
         method: 'PATCH',
         credentials: 'same-origin',
@@ -304,6 +530,10 @@ export default function AdminSeoFactory({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Action failed')
+      if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+      if (data.ship?.prUrl) pushLog('success', 'github', `PR: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
+      if (data.result?.jobId) selectJob(data.result.jobId)
+      if (data.result?.content) setEditorContent(data.result.content)
       setActionNotice(
         action === 'abandon'
           ? 'Job closed'
@@ -311,11 +541,15 @@ export default function AdminSeoFactory({
             ? `Reship: ${data.ship?.status || 'ok'}`
             : `Regenerated → ${data.result?.jobId || 'new job'}`,
       )
-      loadJobs()
+      pushLog('success', 'jobs', action === 'abandon' ? 'Job closed' : action === 'reship' ? `Reship ${data.ship?.status}` : `Regenerated`)
+      await loadJobs()
     } catch (e) {
-      setActionNotice(e instanceof Error ? e.message : 'Job action failed')
+      const msg = e instanceof Error ? e.message : 'Job action failed'
+      pushLog('error', 'jobs', msg)
+      setActionNotice(msg)
     } finally {
       setBusy(false)
+      setActivityLine(null)
     }
   }
 
@@ -355,31 +589,53 @@ export default function AdminSeoFactory({
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1140 }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: workspaceOpen ? 'minmax(0, 1fr) minmax(340px, 42%)' : '1fr',
+      gap: 0,
+      minHeight: 'calc(100vh - 120px)',
+      margin: '0 -8px',
+    }}>
+      {/* ── Left: command surface ── */}
+      <div style={{ padding: 20, maxWidth: workspaceOpen ? 'none' : 1140, overflow: 'auto', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 28, color: C.cyan, fontWeight: 700 }}>SEO Factory</h1>
-          <p style={{ margin: '0 0 12px', color: C.textMuted, fontSize: 14, maxWidth: 640 }}>
-            Cloudflare Workers AI · GSC demand · quality refine loop · ownership audit · PR / autodeploy.
-            Advanced pipeline with dedupe, reship, and system health.
+          <h1 style={{ margin: '0 0 8px', fontSize: 26, color: C.cyan, fontWeight: 700 }}>SEO Command Center</h1>
+          <p style={{ margin: '0 0 12px', color: C.textMuted, fontSize: 13, maxWidth: 640 }}>
+            Keyword research → plan → generate → audit → GitHub PR → maintain.
+            Live editor, PR status, and debug log stay open in the workspace pane.
           </p>
         </div>
-        {health && (
-          <div style={{
-            padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}`,
-            background: healthReady ? '#ECFDF5' : '#FEF3C7', fontSize: 12, minWidth: 160,
-          }}>
-            <div style={{ fontWeight: 700, color: healthReady ? C.green : C.orange }}>
-              {healthReady ? 'System ready' : 'Setup incomplete'}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setWorkspaceOpen((v) => !v)} style={btnSecondary}>
+            {workspaceOpen ? 'Hide workspace' : 'Show workspace'}
+          </button>
+          {health && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}`,
+              background: healthReady ? '#ECFDF5' : '#FEF3C7', fontSize: 12, minWidth: 140,
+            }}>
+              <div style={{ fontWeight: 700, color: healthReady ? C.green : C.orange }}>
+                {healthReady ? 'System ready' : 'Setup incomplete'}
+              </div>
+              <div style={{ color: C.textMuted, marginTop: 4 }}>
+                {(health.checks || []).filter((c: any) => !c.ok).length} issues · System tab
+              </div>
             </div>
-            <div style={{ color: C.textMuted, marginTop: 4 }}>
-              {(health.checks || []).filter((c: any) => !c.ok).length} issues · click System
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+      {busy && (
+        <div style={{
+          marginBottom: 12, padding: '10px 14px', borderRadius: 8,
+          background: '#EFF6FF', border: '1px solid #BFDBFE', color: C.blue, fontSize: 13, fontWeight: 600,
+        }}>
+          {activityLine || 'Working…'} — watch the workspace editor & debug log for output.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         {tabs.map(([t, label]) => (
           <button
             key={t}
@@ -828,19 +1084,29 @@ export default function AdminSeoFactory({
           <div style={{ display: 'grid', gap: 10 }}>
             {jobs.length === 0 && <div style={{ color: C.textMuted, fontSize: 13 }}>No jobs yet.</div>}
             {jobs.map((j) => (
-              <div key={j.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, fontSize: 13 }}>
+              <div
+                key={j.id}
+                style={{
+                  border: `1px solid ${selectedJobId === j.id ? C.gold : C.border}`,
+                  borderRadius: 8, padding: 12, fontSize: 13,
+                  background: selectedJobId === j.id ? '#FFFBEB' : C.surface,
+                  cursor: 'pointer',
+                }}
+                onClick={() => selectJob(j.id)}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                   <strong>{j.title || j.topic}</strong>
                   <span style={{ color: C.textDim }}>{j.status} · SEO {j.seo_score ?? '—'} · {j.ai_provider || '—'}</span>
                 </div>
                 <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>
                   {j.primary_keyword || j.topic} · {j.region} · {j.target_repo}
-                  {j.pr_url && <> · <a href={j.pr_url} target="_blank" rel="noreferrer">PR</a></>}
+                  {j.pr_url && <> · <a href={j.pr_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PR</a></>}
                   {j.error_message && <span style={{ color: C.red }}> · {j.error_message}</span>}
                 </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open in workspace</button>
                   {j.content && (
-                    <button type="button" style={btnSmall} onClick={() => setPreview(j.content)}>Preview</button>
+                    <button type="button" style={btnSmall} onClick={() => { selectJob(j.id); setEditorContent(j.content || '') }}>Edit</button>
                   )}
                   {j.content && j.status !== 'merged' && (
                     <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'reship')}>Reship</button>
@@ -964,7 +1230,7 @@ export default function AdminSeoFactory({
         </div>
       )}
 
-      {/* Preview modal */}
+      {/* Preview modal (legacy) — prefer workspace editor */}
       {preview && (
         <div
           role="dialog"
@@ -981,12 +1247,41 @@ export default function AdminSeoFactory({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
               <strong style={{ color: C.cyan }}>Content preview</strong>
-              <button type="button" onClick={() => setPreview(null)} style={btnSmall}>Close</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" style={btnSmall} onClick={() => { setEditorContent(preview); setWorkspaceOpen(true); setPreview(null) }}>
+                  Open in editor
+                </button>
+                <button type="button" onClick={() => setPreview(null)} style={btnSmall}>Close</button>
+              </div>
             </div>
             <pre style={{ ...preStyle, maxHeight: 'none' }}>{preview}</pre>
           </div>
+        </div>
+      )}
+      </div>
+
+      {/* ── Right: live workspace ── */}
+      {workspaceOpen && (
+        <div style={{ minHeight: 0, maxHeight: 'calc(100vh - 100px)', position: 'sticky', top: 0, alignSelf: 'start' }}>
+          <ContentStudioWorkspace
+            job={selectedJob}
+            jobs={jobs as StudioJob[]}
+            editorContent={editorContent}
+            onEditorChange={setEditorContent}
+            onSelectJob={selectJob}
+            onSave={saveJobContent}
+            onShip={() => selectedJobId && jobAction(selectedJobId, 'reship')}
+            onRegenerate={() => selectedJobId && jobAction(selectedJobId, 'regenerate')}
+            onRefreshPr={refreshPrStatus}
+            onCloseJob={() => { setSelectedJobId(null); setEditorContent(''); setPrStatus(null) }}
+            busy={busy}
+            logs={logs}
+            onClearLogs={() => setLogs([])}
+            prStatus={prStatus}
+            activityLine={activityLine}
+          />
         </div>
       )}
     </div>
