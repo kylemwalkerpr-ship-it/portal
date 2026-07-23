@@ -15,7 +15,7 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
-type Tab = 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls'
+type Tab = 'warroom' | 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls'
 
 const STUDIO_PREFS_KEY = 'yousafe.contentStudio.prefs.v1'
 
@@ -35,7 +35,7 @@ export default function AdminSeoFactory({
 }: {
   setActionNotice: (msg: string) => void
 }) {
-  const [tab, setTab] = React.useState<Tab>('autopilot')
+  const [tab, setTab] = React.useState<Tab>('warroom')
   const [topic, setTopic] = React.useState('')
   const [primaryKeyword, setPrimaryKeyword] = React.useState('')
   const [region, setRegion] = React.useState('US')
@@ -70,6 +70,9 @@ export default function AdminSeoFactory({
   const [strategyDoc, setStrategyDoc] = React.useState<{ title: string; content: string } | null>(null)
   const [kwPlan, setKwPlan] = React.useState<any>(null)
   const [optimalPlan, setOptimalPlan] = React.useState<any>(null)
+  const [warRoom, setWarRoom] = React.useState<any>(null)
+  const [warPlayFilter, setWarPlayFilter] = React.useState<string>('all')
+  const [selectedWar, setSelectedWar] = React.useState<Set<string>>(new Set())
   const [kwLaneFilter, setKwLaneFilter] = React.useState<string>('all')
   const [mixRefresh, setMixRefresh] = React.useState(40)
   const [mixExpand, setMixExpand] = React.useState(35)
@@ -418,6 +421,7 @@ export default function AdminSeoFactory({
         .catch(() => {})
     }
     if (tab === 'keywords' && !kwPlan) loadKeywordPlan()
+    if (tab === 'warroom' && !warRoom) loadWarRoom()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -444,10 +448,95 @@ export default function AdminSeoFactory({
     }
   }
 
+  const loadWarRoom = async () => {
+    setBusy(true)
+    setActivityLine('Building SEO War Room…')
+    pushLog('info', 'warroom', 'Build war room (CTR gap · strike · cannibal · AEO)')
+    try {
+      const res = await fetch('/api/seo-factory/war-room', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          days: 90,
+          limit: 50,
+          minImpressions: 2,
+          regionFilter: regionFilter || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'War room failed')
+      setWarRoom(data)
+      for (const w of data.warnings || []) pushLog('warn', 'warroom', w)
+      pushLog(
+        'success',
+        'warroom',
+        data.summary || `War room · ${data.queue?.length || 0} actions`,
+        JSON.stringify({ kpis: data.kpis, autoRunTerms: data.autoRunTerms }, null, 2),
+      )
+      setActionNotice(
+        data.kpis?.liveGsc
+          ? `War Room ready (live GSC) · ${data.kpis.actionable} plays · ~${data.kpis.estimatedGainClicksSum} est. clicks`
+          : `War Room ready (snapshot) · ${data.kpis?.actionable || 0} plays — wire SA for live`,
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'War room failed'
+      pushLog('error', 'warroom', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
+  }
+
+  const runWarRoomStrike = async (terms?: string[]) => {
+    let feed = terms?.length
+      ? terms
+      : selectedWar.size
+        ? [...selectedWar]
+        : (warRoom?.autoRunTerms as string[]) || []
+    if (!feed.length) {
+      await loadWarRoom()
+      // re-read via fetch result is async; use latest from state after load is awkward — re-fetch
+      try {
+        const res = await fetch('/api/seo-factory/war-room', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            days: 90,
+            limit: 40,
+            minImpressions: 2,
+            regionFilter: regionFilter || undefined,
+          }),
+        })
+        const data = await res.json()
+        if (res.ok) {
+          setWarRoom(data)
+          feed = data.autoRunTerms || []
+        }
+      } catch { /* handled below */ }
+    }
+    if (!feed.length) {
+      setActionNotice('War Room has no auto-run terms yet')
+      return
+    }
+    await runAutoPilot(feed.slice(0, autoLimit))
+  }
+
+  const toggleWarTerm = (term: string) => {
+    setSelectedWar((prev) => {
+      const n = new Set(prev)
+      if (n.has(term)) n.delete(term)
+      else n.add(term)
+      return n
+    })
+  }
+
   const loadOptimalPlan = async () => {
     setBusy(true)
-    setActivityLine('Building optimal GSC × authority plan…')
-    pushLog('info', 'optimal', 'Build optimal plan (GSC + AEO/SEO/GEO + estate)')
+    setActivityLine('Building optimal GSC × War Room plan…')
+    pushLog('info', 'optimal', 'Build optimal plan (war-room + AEO/SEO/GEO + estate)')
     try {
       const res = await fetch('/api/seo-factory/optimal-plan', {
         method: 'POST',
@@ -460,12 +549,29 @@ export default function AdminSeoFactory({
           mixRefresh,
           mixExpand,
           mixNew,
-          minImpressions: 5,
+          minImpressions: 2,
+          useWarRoom: true,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Optimal plan failed')
       setOptimalPlan(data)
+      if (data.warRoom?.queue) {
+        setWarRoom({
+          ...(warRoom || {}),
+          queue: data.warRoom.queue,
+          kpis: data.warRoom.kpis,
+          autoRunTerms: data.autoRunTerms,
+          summary: data.summary,
+          source: data.gscSource,
+          siteUrl: data.siteUrl,
+          buckets: data.warRoom.buckets
+            ? Object.fromEntries(
+                Object.entries(data.warRoom.buckets).map(([k, n]) => [k, Array(n as number).fill(null)]),
+              )
+            : undefined,
+        })
+      }
       // Mirror into keyword plan UI shape where useful
       setKwPlan({
         source: data.gscSource,
@@ -485,10 +591,10 @@ export default function AdminSeoFactory({
       )
       setActionNotice(
         data.gscLive
-          ? `Optimal plan ready (live GSC) · ${data.autoRunTerms?.length || 0} auto-run terms`
-          : `Optimal plan ready (snapshot GSC) · ${data.autoRunTerms?.length || 0} terms — wire SA for live`,
+          ? `Optimal plan ready (live GSC + War Room) · ${data.autoRunTerms?.length || 0} auto-run terms`
+          : `Optimal plan ready (snapshot) · ${data.autoRunTerms?.length || 0} terms — wire SA for live`,
       )
-      setTab('keywords')
+      setTab('warroom')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Optimal plan failed'
       pushLog('error', 'optimal', msg)
@@ -866,6 +972,8 @@ export default function AdminSeoFactory({
           skipRecent,
           regionFilter: regionFilter || undefined,
           terms: terms?.length ? terms : undefined,
+          useWarRoom: true,
+          minImpressions: 2,
         }),
       })
       const data = await res.json()
@@ -1192,6 +1300,7 @@ export default function AdminSeoFactory({
 
   const healthReady = health?.ready
   const tabs: [Tab, string][] = [
+    ['warroom', 'War Room'],
     ['autopilot', 'Auto-Pilot'],
     ['keywords', 'Keywords'],
     ['factory', 'Manual'],
@@ -1202,6 +1311,35 @@ export default function AdminSeoFactory({
     ['metrics', 'Metrics'],
     ['health', 'System'],
   ]
+
+  const warQueueFiltered = React.useMemo(() => {
+    const q = (warRoom?.queue || []) as Array<Record<string, unknown>>
+    if (warPlayFilter === 'all') return q
+    return q.filter((o) => o.play === warPlayFilter)
+  }, [warRoom, warPlayFilter])
+
+  const playLabel = (play: string) => {
+    const map: Record<string, string> = {
+      title_ctr_rewrite: 'CTR rewrite',
+      strike_distance: 'Strike distance',
+      deep_demand_build: 'Deep build',
+      cannibal_merge: 'Cannibal merge',
+      aeo_entity_hub: 'AEO hub',
+      page1_defend: 'Page-1 defend',
+      decay_refresh: 'Decay refresh',
+    }
+    return map[play] || play
+  }
+
+  const playColor = (play: string) => {
+    if (play === 'title_ctr_rewrite') return C.gold
+    if (play === 'strike_distance') return C.blue
+    if (play === 'deep_demand_build') return C.cyan
+    if (play === 'cannibal_merge') return C.red
+    if (play === 'aeo_entity_hub') return '#7C3AED'
+    if (play === 'page1_defend') return C.green
+    return C.textMuted
+  }
 
   const filteredJobsClient = React.useMemo(() => {
     // Server already filters; keep client fallback for multi-status chips
@@ -1234,10 +1372,10 @@ export default function AdminSeoFactory({
       <div style={{ padding: 20, maxWidth: workspaceOpen ? 'none' : 1140, overflow: 'auto', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 26, color: C.cyan, fontWeight: 700 }}>SEO Command Center</h1>
-          <p style={{ margin: '0 0 12px', color: C.textMuted, fontSize: 13, maxWidth: 640 }}>
-            Keyword research → plan → generate → audit → GitHub PR → maintain.
-            Live editor, PR status, and debug log stay open in the workspace pane.
+          <h1 style={{ margin: '0 0 8px', fontSize: 26, color: C.cyan, fontWeight: 700 }}>SEO War Room · Command Center</h1>
+          <p style={{ margin: '0 0 12px', color: C.textMuted, fontSize: 13, maxWidth: 680 }}>
+            Live GSC → CTR-gap / strike-distance / cannibal / AEO plays → generate → audit → estate-gated ship → main.
+            Rank by estimated ranking gain, not vanity volume. Workspace pane stays open for editor + log.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1479,6 +1617,249 @@ export default function AdminSeoFactory({
         </div>
       )}
 
+      {/* ── War Room ── */}
+      {tab === 'warroom' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+            padding: 24, borderTop: `4px solid ${C.gold}`,
+          }}>
+            <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Technician engine · CTR curve · Strike distance · Cannibal · AEO
+            </div>
+            <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>SEO War Room</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 720 }}>
+              Rank what to ship by <strong>estimated ranking gain</strong>, not raw impressions.
+              Noise (brand, meal-plan spam, thin garbage) is filtered. Plays drive generation prompts:
+              title/CTR rewrites for positions 4–15, strike-distance expands for page-2, AEO entity hubs
+              for answer engines, cannibal merges when multi-URL.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              <button type="button" disabled={busy} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1 }}>
+                {busy ? 'Scanning GSC…' : 'Refresh War Room'}
+              </button>
+              <button type="button" disabled={busy} onClick={() => runWarRoomStrike()} style={{ ...btnPrimary, opacity: busy ? 0.7 : 1 }}>
+                {dryRun ? `Dry-run top × ${autoLimit}` : `Execute top plays × ${autoLimit}`}
+              </button>
+              <button
+                type="button"
+                disabled={busy || selectedWar.size === 0}
+                onClick={() => runWarRoomStrike([...selectedWar])}
+                style={btnSecondary}
+              >
+                Run selected ({selectedWar.size})
+              </button>
+              <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={btnSecondary}>
+                Full optimal stack
+              </button>
+              <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                Play filter
+                <select value={warPlayFilter} onChange={(e) => setWarPlayFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
+                  <option value="all">All plays</option>
+                  <option value="title_ctr_rewrite">CTR rewrite</option>
+                  <option value="strike_distance">Strike distance</option>
+                  <option value="deep_demand_build">Deep build</option>
+                  <option value="page1_defend">Page-1 defend</option>
+                  <option value="aeo_entity_hub">AEO hub</option>
+                  <option value="cannibal_merge">Cannibal merge</option>
+                </select>
+              </label>
+              <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                Region
+                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
+                  <option value="">All</option>
+                  {['US', 'UK', 'CA', 'AU'].map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+            </div>
+
+            {warRoom?.kpis && (
+              <div style={{
+                display: 'grid', gap: 10,
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                marginBottom: 16,
+              }}>
+                {[
+                  { label: 'Queries analyzed', value: warRoom.kpis.queriesAnalyzed },
+                  { label: 'Actionable plays', value: warRoom.kpis.actionable },
+                  { label: 'Est. click gain', value: `~${warRoom.kpis.estimatedGainClicksSum}` },
+                  { label: 'Avg authority', value: `${warRoom.kpis.avgAuthority}/100` },
+                  { label: 'GSC', value: warRoom.kpis.liveGsc ? 'LIVE' : 'snapshot' },
+                  { label: 'Window', value: `${warRoom.rangeDays || 90}d` },
+                ].map((k) => (
+                  <div key={k.label} style={{
+                    padding: '10px 12px', borderRadius: 8, background: C.surface2,
+                    border: `1px solid ${C.border}`,
+                  }}>
+                    <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: C.cyan, marginTop: 4 }}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {warRoom?.summary && (
+              <div style={{
+                marginBottom: 14, padding: 12, borderRadius: 8, fontSize: 12,
+                background: warRoom.kpis?.liveGsc ? '#ECFDF5' : '#FFFBEB',
+                border: `1px solid ${C.border}`, color: C.textMuted, lineHeight: 1.5,
+              }}>
+                {warRoom.summary}
+                {warRoom.siteUrl && (
+                  <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                    {warRoom.siteUrl}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {warRoom?.buckets && typeof warRoom.buckets.title_ctr_rewrite === 'object' && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
+                {([
+                  'title_ctr_rewrite',
+                  'strike_distance',
+                  'deep_demand_build',
+                  'page1_defend',
+                  'aeo_entity_hub',
+                  'cannibal_merge',
+                ] as const).map((p) => {
+                  const n = Array.isArray(warRoom.buckets[p])
+                    ? warRoom.buckets[p].length
+                    : Number(warRoom.buckets[p]) || 0
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setWarPlayFilter(p === warPlayFilter ? 'all' : p)}
+                      style={{
+                        ...btnSmall,
+                        borderColor: playColor(p),
+                        color: playColor(p),
+                        background: warPlayFilter === p ? 'rgba(0,0,0,0.04)' : '#fff',
+                      }}
+                    >
+                      {playLabel(p)} · {n}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {!warRoom && !busy && (
+              <div style={{ color: C.textMuted, fontSize: 13 }}>Load War Room to rank live GSC opportunities.</div>
+            )}
+
+            {warQueueFiltered.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textMuted }}>
+                      <th style={th}></th>
+                      <th style={th}>Priority</th>
+                      <th style={th}>Play</th>
+                      <th style={th}>Query</th>
+                      <th style={th}>Impr</th>
+                      <th style={th}>CTR</th>
+                      <th style={th}>Pos</th>
+                      <th style={th}>+Clicks</th>
+                      <th style={th}>Auth</th>
+                      <th style={th}>Host</th>
+                      <th style={th}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {warQueueFiltered.map((o: any) => (
+                      <tr key={o.id || o.term} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td style={td}>
+                          <input
+                            type="checkbox"
+                            checked={selectedWar.has(o.term)}
+                            onChange={() => toggleWarTerm(o.term)}
+                            disabled={o.play === 'cannibal_merge'}
+                          />
+                        </td>
+                        <td style={{ ...td, fontWeight: 700, color: C.cyan }}>{o.priorityScore}</td>
+                        <td style={td}>
+                          <span style={{
+                            display: 'inline-block', padding: '2px 6px', borderRadius: 4,
+                            fontSize: 10, fontWeight: 700, color: '#fff',
+                            background: playColor(o.play),
+                          }}>
+                            {playLabel(o.play)}
+                          </span>
+                        </td>
+                        <td style={{ ...td, maxWidth: 220 }}>
+                          <strong style={{ color: C.text }}>{o.term}</strong>
+                          <div style={{ fontSize: 10, color: C.textDim, marginTop: 2, lineHeight: 1.35 }}>
+                            {(o.rationale || '').slice(0, 120)}{(o.rationale || '').length > 120 ? '…' : ''}
+                          </div>
+                        </td>
+                        <td style={td}>{o.impressions}</td>
+                        <td style={td}>
+                          {((o.ctr || 0) * 100).toFixed(1)}%
+                          {o.expectedCtr != null && (
+                            <div style={{ fontSize: 10, color: C.textDim }}>
+                              exp {((o.expectedCtr || 0) * 100).toFixed(1)}%
+                            </div>
+                          )}
+                        </td>
+                        <td style={td}>{Number(o.position).toFixed(1)}</td>
+                        <td style={{ ...td, color: C.green, fontWeight: 600 }}>~{o.estimatedGainClicks}</td>
+                        <td style={td}>{o.authorityScore}</td>
+                        <td style={{ ...td, fontSize: 11, color: C.textMuted }}>
+                          {o.host || '—'}
+                          {o.shipHint && <div style={{ fontSize: 10 }}>ship:{o.shipHint}</div>}
+                        </td>
+                        <td style={td}>
+                          {o.play !== 'cannibal_merge' && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              style={btnSmall}
+                              onClick={() => runWarRoomStrike([o.term])}
+                            >
+                              Ship play
+                            </button>
+                          )}
+                          {o.play === 'cannibal_merge' && (
+                            <span style={{ fontSize: 10, color: C.orange }} title={JSON.stringify(o.pages || [])}>
+                              review URLs
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {autoResult && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: '0 0 8px', color: C.cyan }}>
+                Last run · {autoResult.shipped}/{autoResult.candidateCount} shipped
+                {autoResult.avgAuditScore != null ? ` · avg audit ${autoResult.avgAuditScore}` : ''}
+              </h3>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: C.textMuted }}>{autoResult.message}</p>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {(autoResult.results || []).map((r: any, i: number) => (
+                  <div key={(r.term || '') + i} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
+                    <strong>{r.term}</strong>
+                    {r.play && <span style={{ color: playColor(String(r.play)), marginLeft: 8 }}>{playLabel(String(r.play))}</span>}
+                    <span style={{ color: r.ok ? C.green : C.red, marginLeft: 8 }}>
+                      {r.ok ? 'ok' : 'failed'}{r.audit?.score != null ? ` · audit ${r.audit.score}` : ''}
+                    </span>
+                    {r.ship?.prUrl && <> · <a href={r.ship.prUrl} target="_blank" rel="noreferrer">PR</a></>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Auto-Pilot ── */}
       {tab === 'autopilot' && (
         <div style={{ display: 'grid', gap: 16 }}>
@@ -1487,15 +1868,14 @@ export default function AdminSeoFactory({
             padding: 24, borderTop: `4px solid ${C.gold}`,
           }}>
             <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              CF AI + gig fallbacks · Quality refine · Dedupe
+              War Room feed · CF AI + gig fallbacks · Quality refine · Dedupe
             </div>
-            <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from GSC demand</h2>
+            <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from ranked GSC demand</h2>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 680 }}>
-              Topics ranked by the <strong>AEO / SEO / GEO authority algorithm</strong> (discipline entities,
-              Q&amp;A intent, LLM-citable structure, cluster fill) plus GSC demand. Drafts with Cloudflare AI
-              and the same free-tier cascade as gig creation (Groq → Gemini → OpenRouter), then audit + estate
-              ship. Default: <strong>merge → main</strong>. Use workspace <strong>Approve → main</strong> for
-              human-reviewed content.
+              Default feed is the <strong>War Room</strong> (CTR gap, strike distance, AEO hubs) plus
+              AEO/SEO/GEO authority scoring. Drafts via Cloudflare AI and the free cascade
+              (Groq → Gemini → OpenRouter), then audit + estate ship. Default: <strong>merge → main</strong>.
+              Use workspace <strong>Approve → main</strong> for human-reviewed content.
             </p>
 
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 14 }}>
@@ -1548,7 +1928,10 @@ export default function AdminSeoFactory({
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}>
+              <button type="button" disabled={busy} onClick={() => { setTab('warroom'); if (!warRoom) loadWarRoom() }} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}>
+                Open War Room
+              </button>
+              <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={{ ...btnPrimary, opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}>
                 {busy ? 'Planning…' : '① Optimal GSC plan'}
               </button>
               <button
@@ -1560,7 +1943,7 @@ export default function AdminSeoFactory({
                 {busy ? 'Running…' : dryRun ? `② Dry-run optimal × ${autoLimit}` : `② Generate optimal × ${autoLimit}`}
               </button>
               <button type="button" disabled={busy} onClick={() => runAutoPilot()} style={btnSecondary}>
-                Classic top demand
+                War Room auto-run
               </button>
               <button type="button" disabled={busy || selectedOpp.size === 0} onClick={() => runAutoPilot([...selectedOpp])} style={btnSecondary}>
                 Run selected ({selectedOpp.size})

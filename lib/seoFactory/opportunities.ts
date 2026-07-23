@@ -7,7 +7,16 @@ import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { resolveOwner, type OwnerPlan } from '@/lib/seoFactory/ownership'
 import { scoreTopicAuthority } from '@/lib/seoFactory/authorityScoring'
 
-export type OpportunityAction = 'title_rewrite' | 'expand_or_build' | 'ignore'
+export type OpportunityAction =
+  | 'title_rewrite'
+  | 'expand_or_build'
+  | 'ignore'
+  | 'strike_distance'
+  | 'page1_defend'
+  | 'deep_demand_build'
+  | 'cannibal_merge'
+  | 'aeo_entity_hub'
+  | 'decay_refresh'
 
 export interface FactoryOpportunity {
   term: string

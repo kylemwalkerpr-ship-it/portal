@@ -5,19 +5,23 @@ End-state architecture for Content Studio + GSC + agent MCP.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  AGENT LAYER (Grok / Cursor / Claude)                            │
-│  MCP: mcp-gsc (AminForou)  → live GSC queries, inspect, sitemaps │
+│  MCP: mcp-gsc  → live GSC queries, inspect, sitemaps             │
 │  Skills: weekly report · cannibalization · opportunities · index │
 └─────────────────────────────┬────────────────────────────────────┘
                               │ terms / diagnostics
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  PORTAL CONTENT STUDIO  (portal.yousafeconsultancy.com)          │
-│  1. GET/POST /api/seo-factory/optimal-plan                       │
-│     GSC live/snapshot + authority (AEO/SEO/GEO) + lanes          │
-│  2. Auto-Pilot / Keywords / Manual generate (stream)             │
-│  3. Estate shipGate (host·path·format) before any Git write      │
-│  4. Approve → main + deploy monitor (Workers AI)                 │
+│  PORTAL SEO WAR ROOM  (portal.yousafeconsultancy.com)            │
+│  1. GET/POST /api/seo-factory/war-room                           │
+│     CTR curve gap · strike distance · cannibal · AEO hubs        │
+│     Noise filter · estimated gain ranking · playbook writeHints  │
+│  2. GET/POST /api/seo-factory/optimal-plan                       │
+│     War Room first + keyword lanes + authority + estate          │
+│  3. Auto-Pilot (useWarRoom:true) / Keywords / Manual stream      │
+│  4. Estate shipGate (host·path·format) before any Git write      │
+│  5. Approve → main + deploy monitor (Workers AI)                 │
 │  AI: CF primary → Groq → Gemini → OpenRouter (gig chain)         │
+│  Prompts: play-specific SERP/AEO tactics (title CTR, strike…)    │
 └─────────────────────────────┬────────────────────────────────────┘
                               │ PR / commit
                               ▼
@@ -29,14 +33,28 @@ End-state architecture for Content Studio + GSC + agent MCP.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+## War Room plays (technician ranking)
+
+| Play | When | Action |
+|------|------|--------|
+| `title_ctr_rewrite` | Pos 4–15, CTR ≪ expected | Rewrite title/meta/H1 + expand depth |
+| `strike_distance` | Pos 11–20, solid impr | Expand to page-1 (checklist, FAQ, entities) |
+| `page1_defend` | Pos ≤10 | Refresh FAQ/schema/TL;DR — protect rank |
+| `deep_demand_build` | Pos >20, real impr | Full guide / net-new pillar |
+| `cannibal_merge` | Same query → multi URLs | One canonical pillar (human merge path) |
+| `aeo_entity_hub` | Mid demand, entity-rich | Definition-first + FAQ for AI Overviews |
+
+Priority = estimated gain clicks × authority × play weight. Brand/meal-plan/noise queries are dropped.
+
 ## Why this combination (not alternatives)
 
 | Layer | Choice | Why max optimal |
 |-------|--------|-----------------|
 | First-party demand | **GSC** (not Ahrefs free trials) | Free, truthful, already authorized for yousafe |
 | Agent GSC tools | **mcp-gsc** (uvx `mcp-search-console`) | Free MIT, 20 tools, inspect + analytics |
-| Planner / ranking | **Studio optimal-plan** (authority + GSC lanes) | Estate-aware; paid MCPs don’t know legal vs usa host |
-| Generation | **CF AI + gig fallbacks** | Same free cascade as marketplace AI |
+| Ranking engine | **War Room** (CTR gap · strike · cannibal) | Ranks by *gain*, not vanity volume |
+| Planner feed | **optimal-plan** (war-room first + lanes) | Estate-aware; paid MCPs don’t know legal vs usa host |
+| Generation | **CF AI + gig fallbacks** + play prompts | Same free cascade; SERP-tactic writeHints |
 | Ship | **shipGate + Approve→main** | Prevents broken caseworks pages / wrong subdomain |
 
 Paid SEO MCPs (Ahrefs, Semrush, DataForSEO) add **competitor** volume only. Layer them later if you buy API access — never replace GSC + estate gate.
