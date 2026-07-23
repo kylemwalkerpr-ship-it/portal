@@ -25,7 +25,9 @@ const sql =
   '\n\n' +
   readFileSync(join(root, 'supabase/migrations/gsc_tokens.sql'), 'utf8') +
   '\n\n' +
-  readFileSync(join(root, 'supabase/migrations/seo_factory_columns.sql'), 'utf8')
+  readFileSync(join(root, 'supabase/migrations/seo_factory_columns.sql'), 'utf8') +
+  '\n\n' +
+  readFileSync(join(root, 'supabase/migrations/content_jobs_event_log.sql'), 'utf8')
 
 async function viaManagementApi(token) {
   const res = await fetch(

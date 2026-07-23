@@ -12,11 +12,19 @@ https://portal.yousafeconsultancy.com/dashboard/admin/content
 | Area | Location |
 |------|----------|
 | Generate API (Grok / OpenAI / DeepSeek / custom) | `app/api/content-studio/generate/route.ts` |
+| SEO Factory generate + **SSE stream** | `app/api/seo-factory/generate`, `generate-stream` |
 | Jobs / metrics / GitHub webhook | `app/api/content-studio/{jobs,metrics,webhook}/route.ts` |
 | GSC OAuth + analytics | `app/api/content-studio/gsc/{auth,callback,data,status}/route.ts` |
-| Admin UI | `components/design/admin-content-studio.tsx`, `admin-gsc-dashboard.tsx` |
-| SQL migrations | `supabase/migrations/content_jobs.sql`, `gsc_tokens.sql` |
+| Admin UI (command center workspace) | `components/design/admin-seo-factory.tsx`, `content-studio-workspace.tsx` |
+| SQL migrations | `supabase/migrations/content_jobs.sql`, `gsc_tokens.sql`, `seo_factory_columns.sql`, `content_jobs_event_log.sql` |
 | Apply helper | `scripts/apply-content-studio-migrations.mjs` |
+
+### Command-center upgrades (2026-07-23)
+
+1. **Streaming generation** — Manual generate uses `POST /api/seo-factory/generate-stream` (SSE). Tokens land live in the workspace editor; falls back to classic JSON generate if stream fails.
+2. **Markdown split preview** — Editor modes: Write / Split / Preview (`lib/markdownLite.tsx`, no extra deps).
+3. **PR CI status** — `refresh_pr` loads check-runs + combined commit status for the PR head SHA.
+4. **Durable debug logs** — `content_jobs.event_log` JSONB; client debounces `append_log`; job open hydrates history.
 
 ### AI provider priority (content generation)
 

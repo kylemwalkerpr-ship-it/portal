@@ -66,14 +66,26 @@ export async function GET(request: NextRequest) {
   }
 }
 
+type GhHeaders = Record<string, string>
+
+function ghHeaders(token: string): GhHeaders {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'yousafe-portal-seo-factory',
+  }
+}
+
 /**
  * PATCH /api/content-studio/jobs
- * Actions: reship | regenerate | abandon | save | refresh_pr
+ * Actions: reship | regenerate | abandon | save | refresh_pr | append_log
  *
  * Body: {
  *   id,
- *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr',
- *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?
+ *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr'|'append_log',
+ *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?,
+ *   entries?: StudioLogEntry[]  // for append_log
  * }
  */
 export async function PATCH(request: NextRequest) {
@@ -101,6 +113,48 @@ export async function PATCH(request: NextRequest) {
         ?.clerk_user_id ||
       (auth as { profileId?: string }).profileId ||
       'admin'
+
+    if (action === 'append_log') {
+      const entries = Array.isArray(body.entries) ? body.entries : body.entry ? [body.entry] : []
+      if (!entries.length) {
+        return NextResponse.json({ error: 'entries required' }, { status: 400 })
+      }
+      const normalized = entries
+        .slice(0, 50)
+        .map((e: any) => ({
+          id: String(e.id || `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+          ts: Number(e.ts) || Date.now(),
+          level: String(e.level || 'info'),
+          source: String(e.source || 'client').slice(0, 64),
+          message: String(e.message || '').slice(0, 2000),
+          detail: e.detail != null ? String(e.detail).slice(0, 4000) : undefined,
+        }))
+        .filter((e: { message: string }) => e.message)
+
+      const prev = Array.isArray(job.event_log) ? job.event_log : []
+      // Cap at 300 entries, keep newest
+      const next = [...prev, ...normalized].slice(-300)
+
+      const { data: updated, error: upErr } = await supabase
+        .from('content_jobs')
+        .update({ event_log: next })
+        .eq('id', id)
+        .select('id, event_log')
+        .single()
+
+      // If column missing, soft-fail so UI still works pre-migration
+      if (upErr) {
+        if (/event_log|column/i.test(upErr.message || '')) {
+          return NextResponse.json({
+            ok: false,
+            skipped: true,
+            message: 'event_log column missing — run content_jobs_event_log.sql',
+          })
+        }
+        throw upErr
+      }
+      return NextResponse.json({ ok: true, job: updated, count: next.length })
+    }
 
     if (action === 'abandon') {
       const { data: updated, error: upErr } = await supabase
@@ -174,16 +228,10 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 503 })
       }
       const [owner, name] = repo.split('/')
+      const headers = ghHeaders(token)
       const ghRes = await fetch(
         `https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`,
-        {
-          headers: {
-            Accept: 'application/vnd.github+json',
-            Authorization: `Bearer ${token}`,
-            'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'yousafe-portal-seo-factory',
-          },
-        },
+        { headers },
       )
       if (!ghRes.ok) {
         const text = await ghRes.text().catch(() => '')
@@ -193,6 +241,115 @@ export async function PATCH(request: NextRequest) {
         )
       }
       const pr = await ghRes.json()
+      const headSha: string | undefined = pr.head?.sha
+      const headRef: string | undefined = pr.head?.ref
+
+      // CI: check-runs + combined status for the PR head commit
+      let checks: Array<{
+        name: string
+        status: string
+        conclusion: string | null
+        html_url?: string
+        started_at?: string
+        completed_at?: string
+      }> = []
+      let checkSummary = {
+        total: 0,
+        success: 0,
+        failure: 0,
+        pending: 0,
+        neutral: 0,
+        state: 'unknown' as string,
+      }
+      let commitStatus: {
+        state: string
+        total_count: number
+        statuses: Array<{ context: string; state: string; description?: string; target_url?: string }>
+      } | null = null
+
+      if (headSha) {
+        const [checksRes, statusRes] = await Promise.all([
+          fetch(
+            `https://api.github.com/repos/${owner}/${name}/commits/${headSha}/check-runs?per_page=50`,
+            {
+              headers: {
+                ...headers,
+                Accept: 'application/vnd.github+json',
+              },
+            },
+          ),
+          fetch(
+            `https://api.github.com/repos/${owner}/${name}/commits/${headSha}/status`,
+            { headers },
+          ),
+        ])
+
+        if (checksRes.ok) {
+          const checksJson = await checksRes.json()
+          const runs = Array.isArray(checksJson.check_runs) ? checksJson.check_runs : []
+          checks = runs.map((r: any) => ({
+            name: String(r.name || r.app?.name || 'check'),
+            status: String(r.status || 'queued'),
+            conclusion: r.conclusion != null ? String(r.conclusion) : null,
+            html_url: r.html_url || r.details_url || undefined,
+            started_at: r.started_at || undefined,
+            completed_at: r.completed_at || undefined,
+          }))
+          const success = checks.filter(
+            (c) => c.conclusion === 'success' || c.conclusion === 'neutral' || c.conclusion === 'skipped',
+          ).length
+          const failure = checks.filter(
+            (c) =>
+              c.conclusion === 'failure' ||
+              c.conclusion === 'timed_out' ||
+              c.conclusion === 'cancelled' ||
+              c.conclusion === 'action_required',
+          ).length
+          const pending = checks.filter(
+            (c) => c.status !== 'completed' || c.conclusion == null,
+          ).length
+          const neutral = checks.filter(
+            (c) => c.conclusion === 'neutral' || c.conclusion === 'skipped',
+          ).length
+          checkSummary = {
+            total: checks.length,
+            success,
+            failure,
+            pending,
+            neutral,
+            state:
+              failure > 0
+                ? 'failure'
+                : pending > 0
+                  ? 'pending'
+                  : checks.length > 0
+                    ? 'success'
+                    : 'none',
+          }
+        }
+
+        if (statusRes.ok) {
+          const st = await statusRes.json()
+          commitStatus = {
+            state: String(st.state || 'unknown'),
+            total_count: Number(st.total_count || 0),
+            statuses: Array.isArray(st.statuses)
+              ? st.statuses.slice(0, 20).map((s: any) => ({
+                  context: String(s.context || 'status'),
+                  state: String(s.state || 'unknown'),
+                  description: s.description || undefined,
+                  target_url: s.target_url || undefined,
+                }))
+              : [],
+          }
+          // Prefer combined status when check-runs empty
+          if (checkSummary.total === 0 && commitStatus.total_count > 0) {
+            checkSummary.state = commitStatus.state
+            checkSummary.total = commitStatus.total_count
+          }
+        }
+      }
+
       const prStatus = {
         number: pr.number as number,
         state: pr.state as string, // open | closed
@@ -201,12 +358,16 @@ export async function PATCH(request: NextRequest) {
         html_url: pr.html_url as string,
         title: pr.title as string,
         draft: Boolean(pr.draft),
-        head: pr.head?.ref as string | undefined,
+        head: headRef,
+        head_sha: headSha,
         base: pr.base?.ref as string | undefined,
         user: pr.user?.login as string | undefined,
         created_at: pr.created_at as string,
         updated_at: pr.updated_at as string,
         mergeable_state: pr.mergeable_state as string | undefined,
+        checks,
+        check_summary: checkSummary,
+        commit_status: commitStatus,
       }
 
       // Sync local status when PR is merged/closed on GitHub

@@ -62,6 +62,26 @@ export default function AdminSeoFactory({
   const [prStatus, setPrStatus] = React.useState<PrStatus | null>(null)
   const [activityLine, setActivityLine] = React.useState<string | null>(null)
   const [workspaceOpen, setWorkspaceOpen] = React.useState(true)
+  const logPersistQueue = React.useRef<StudioLogEntry[]>([])
+  const logPersistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const selectedJobIdRef = React.useRef<string | null>(null)
+  React.useEffect(() => { selectedJobIdRef.current = selectedJobId }, [selectedJobId])
+
+  const flushLogPersist = React.useCallback(async () => {
+    const jobId = selectedJobIdRef.current
+    const batch = logPersistQueue.current.splice(0, logPersistQueue.current.length)
+    if (!jobId || !batch.length) return
+    try {
+      await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: jobId, action: 'append_log', entries: batch }),
+      })
+    } catch {
+      /* soft-fail persist */
+    }
+  }, [])
 
   const pushLog = React.useCallback((
     level: StudioLogEntry['level'],
@@ -69,8 +89,15 @@ export default function AdminSeoFactory({
     message: string,
     detail?: string,
   ) => {
-    setLogs((prev) => [...prev.slice(-199), createLog(level, source, message, detail)])
-  }, [])
+    const entry = createLog(level, source, message, detail)
+    setLogs((prev) => [...prev.slice(-199), entry])
+    // Persist to DB when a job is selected (debounced)
+    if (selectedJobIdRef.current) {
+      logPersistQueue.current.push(entry)
+      if (logPersistTimer.current) clearTimeout(logPersistTimer.current)
+      logPersistTimer.current = setTimeout(() => { void flushLogPersist() }, 800)
+    }
+  }, [flushLogPersist])
 
   const selectedJob = React.useMemo(
     () => (jobs as StudioJob[]).find((j) => j.id === selectedJobId) || null,
@@ -130,7 +157,7 @@ export default function AdminSeoFactory({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs, busy, jobQ])
 
-  // When selecting a job, load full content via id if needed
+  // When selecting a job, load full content + persisted event_log
   React.useEffect(() => {
     if (!selectedJobId) return
     let cancelled = false
@@ -146,7 +173,29 @@ export default function AdminSeoFactory({
           return [data.job, ...others]
         })
         setEditorContent(data.job.content || '')
-        pushLog('info', 'workspace', `Opened job ${data.job.title || data.job.topic || data.job.id.slice(0, 8)}`)
+        // Hydrate durable logs for this job (keep session noise, prepend job history)
+        const stored: StudioLogEntry[] = Array.isArray(data.job.event_log)
+          ? data.job.event_log.map((e: any) => ({
+              id: String(e.id || `${e.ts}-h`),
+              ts: Number(e.ts) || Date.now(),
+              level: (e.level || 'info') as StudioLogEntry['level'],
+              source: String(e.source || 'job'),
+              message: String(e.message || ''),
+              detail: e.detail != null ? String(e.detail) : undefined,
+            }))
+          : []
+        if (stored.length) {
+          setLogs((prev) => {
+            const ids = new Set(stored.map((s) => s.id))
+            const sessionOnly = prev.filter((p) => !ids.has(p.id))
+            return [...stored, ...sessionOnly].slice(-200)
+          })
+        }
+        // Don't re-persist the "opened" line as noise — local only
+        setLogs((prev) => [
+          ...prev.slice(-199),
+          createLog('info', 'workspace', `Opened job ${data.job.title || data.job.topic || data.job.id.slice(0, 8)}`),
+        ])
       } catch (e) {
         pushLog('error', 'workspace', e instanceof Error ? e.message : 'Failed to open job')
       }
@@ -202,16 +251,31 @@ export default function AdminSeoFactory({
       if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
       setPrStatus(data.prStatus || null)
       if (data.prStatus) {
+        const cs = data.prStatus.check_summary
+        const ciLine = cs
+          ? ` · CI ${cs.state} (${cs.success}/${cs.total} ok, ${cs.failure} fail, ${cs.pending} pending)`
+          : ''
         pushLog(
           'success',
           'github',
-          `PR #${data.prStatus.number}: ${data.prStatus.merged ? 'merged' : data.prStatus.state}`,
-          JSON.stringify(data.prStatus, null, 2),
+          `PR #${data.prStatus.number}: ${data.prStatus.merged ? 'merged' : data.prStatus.state}${ciLine}`,
+          JSON.stringify({
+            state: data.prStatus.state,
+            merged: data.prStatus.merged,
+            mergeable_state: data.prStatus.mergeable_state,
+            check_summary: cs,
+            checks: (data.prStatus.checks || []).slice(0, 15),
+          }, null, 2),
         )
       } else {
         pushLog('warn', 'github', data.message || 'No PR on this job')
       }
-      setActionNotice(data.prStatus ? `PR #${data.prStatus.number} · ${data.prStatus.merged ? 'merged' : data.prStatus.state}` : 'No PR yet')
+      const notice = data.prStatus
+        ? `PR #${data.prStatus.number} · ${data.prStatus.merged ? 'merged' : data.prStatus.state}${
+            data.prStatus.check_summary ? ` · CI ${data.prStatus.check_summary.state}` : ''
+          }`
+        : 'No PR yet'
+      setActionNotice(notice)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'PR refresh failed'
       pushLog('error', 'github', msg)
@@ -397,54 +461,173 @@ export default function AdminSeoFactory({
     const k = override?.keyword || primaryKeyword || topic
     const sm = override?.shipMode || shipMode
     setActivityLine(`Generating: ${k || t}…`)
-    pushLog('info', 'generate', `Start generate · ${k || t}`, JSON.stringify({ region: override?.region || region, contentType: override?.contentType || contentType, shipMode: sm }, null, 2))
+    setEditorContent('') // live stream into empty editor
+    setPreview(null)
+    pushLog('info', 'generate', `Start stream · ${k || t}`, JSON.stringify({ region: override?.region || region, contentType: override?.contentType || contentType, shipMode: sm }, null, 2))
+
+    const body = {
+      topic: t,
+      primaryKeyword: k,
+      region: override?.region || region,
+      contentType: override?.contentType || contentType,
+      shipMode: sm === 'auto' ? 'auto' : sm,
+      indexable,
+      title: t,
+      minAuditScore: minAudit,
+      maxRefine,
+      dryRun,
+    }
+
     try {
-      const res = await fetch('/api/seo-factory/generate', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: t,
-          primaryKeyword: k,
-          region: override?.region || region,
-          contentType: override?.contentType || contentType,
-          shipMode: sm === 'auto' ? 'auto' : sm,
-          indexable,
-          title: t,
-          minAuditScore: minAudit,
-          maxRefine,
-          dryRun,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok && !data.content) throw new Error(data.error || 'Generate failed')
-      setResult(data)
-      setPlan({ plan: data.plan, gsc: data.gsc, shipRecommendation: null })
-      if (data.content) {
-        setEditorContent(data.content)
-        setPreview(null)
+      // Prefer SSE stream; fall back to classic JSON generate
+      let usedStream = false
+      try {
+        const res = await fetch('/api/seo-factory/generate-stream', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+          body: JSON.stringify(body),
+        })
+        const ct = res.headers.get('content-type') || ''
+        // OpenNext/CF may omit content-type; treat 200 + body as SSE when Accept requested it
+        if (res.ok && res.body && (ct.includes('text/event-stream') || ct.includes('stream') || !ct.includes('application/json'))) {
+          usedStream = true
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let streamText = ''
+          let currentAttempt = 1
+          let finalResult: any = null
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const chunks = buffer.split('\n\n')
+            buffer = chunks.pop() || ''
+            for (const chunk of chunks) {
+              const line = chunk.split('\n').find((l) => l.startsWith('data:'))
+              if (!line) continue
+              const payload = line.slice(5).trim()
+              if (!payload || payload === '[DONE]') continue
+              let ev: any
+              try { ev = JSON.parse(payload) } catch { continue }
+
+              if (ev.type === 'progress') {
+                setActivityLine(ev.message || ev.stage)
+                pushLog('info', 'generate', ev.message || ev.stage)
+              } else if (ev.type === 'provider') {
+                pushLog('debug', 'generate', `Provider ${ev.provider} · ${ev.model}`)
+              } else if (ev.type === 'delta') {
+                // Reset buffer when a refine attempt starts fresh
+                if (ev.attempt && ev.attempt !== currentAttempt) {
+                  streamText = ''
+                  currentAttempt = ev.attempt
+                }
+                streamText += ev.text || ''
+                setEditorContent(streamText)
+                setActivityLine(`Streaming attempt ${currentAttempt}… ${streamText.trim().split(/\s+/).filter(Boolean).length} words`)
+              } else if (ev.type === 'attempt') {
+                pushLog(
+                  ev.goodEnough ? 'success' : 'warn',
+                  'audit',
+                  `Attempt ${ev.attempt}: SEO ${ev.score} · ${ev.wordCount} words${ev.goodEnough ? ' ✓' : ' (refine)'}`,
+                )
+              } else if (ev.type === 'ship') {
+                if (ev.ship?.prUrl) {
+                  pushLog('success', 'github', `PR opened: ${ev.ship.prUrl}`, JSON.stringify(ev.ship, null, 2))
+                }
+                if (ev.shipError) pushLog('error', 'ship', ev.shipError)
+              } else if (ev.type === 'final') {
+                finalResult = ev.result
+              } else if (ev.type === 'error') {
+                throw new Error(ev.error || 'Stream error')
+              }
+            }
+          }
+
+          if (!finalResult) throw new Error('Stream ended without final result')
+          const data = finalResult
+          setResult(data)
+          setPlan({ plan: data.plan, gsc: data.gsc, shipRecommendation: null })
+          if (data.content) setEditorContent(data.content)
+          if (data.jobId) {
+            // Attach stream session logs to the new job, then open it
+            selectedJobIdRef.current = data.jobId
+            setSelectedJobId(data.jobId)
+            setWorkspaceOpen(true)
+            setPrStatus(null)
+            // Persist recent generate/audit/ship logs onto the job
+            setLogs((prev) => {
+              const recent = prev.slice(-40)
+              logPersistQueue.current.push(...recent)
+              void flushLogPersist()
+              return prev
+            })
+          }
+          pushLog(
+            data.shipError ? 'warn' : 'success',
+            'generate',
+            data.ship
+              ? `Shipped via ${data.provider} · audit ${data.audit?.score} · ${data.ship.status}`
+              : `Generated via ${data.provider} · audit ${data.audit?.score}`,
+            data.content ? data.content.slice(0, 500) : undefined,
+          )
+          setActionNotice(
+            data.ship
+              ? `Shipped via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s): ${data.ship.status}`
+              : data.shipError
+                ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
+                : `Generated via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s)`,
+          )
+          await loadJobs()
+        } else if (!res.ok) {
+          // Non-stream error JSON
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || `Stream ${res.status}`)
+        }
+      } catch (streamErr) {
+        if (usedStream) throw streamErr
+        pushLog('warn', 'generate', `Stream unavailable — classic generate: ${streamErr instanceof Error ? streamErr.message : 'fallback'}`)
       }
-      if (data.jobId) selectJob(data.jobId)
-      if (data.ship?.prUrl) {
-        pushLog('success', 'github', `PR opened: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
+
+      if (!usedStream) {
+        const res = await fetch('/api/seo-factory/generate', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok && !data.content) throw new Error(data.error || 'Generate failed')
+        setResult(data)
+        setPlan({ plan: data.plan, gsc: data.gsc, shipRecommendation: null })
+        if (data.content) {
+          setEditorContent(data.content)
+          setPreview(null)
+        }
+        if (data.jobId) selectJob(data.jobId)
+        if (data.ship?.prUrl) {
+          pushLog('success', 'github', `PR opened: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
+        }
+        if (data.shipError) pushLog('error', 'ship', data.shipError)
+        pushLog(
+          data.shipError ? 'warn' : 'success',
+          'generate',
+          data.ship
+            ? `Shipped via ${data.provider} · audit ${data.audit?.score} · ${data.ship.status}`
+            : `Generated via ${data.provider} · audit ${data.audit?.score}`,
+          data.content ? data.content.slice(0, 500) : undefined,
+        )
+        setActionNotice(
+          data.ship
+            ? `Shipped via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s): ${data.ship.status}`
+            : data.shipError
+              ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
+              : `Generated via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s)`,
+        )
+        await loadJobs()
       }
-      if (data.shipError) pushLog('error', 'ship', data.shipError)
-      pushLog(
-        data.shipError ? 'warn' : 'success',
-        'generate',
-        data.ship
-          ? `Shipped via ${data.provider} · audit ${data.audit?.score} · ${data.ship.status}`
-          : `Generated via ${data.provider} · audit ${data.audit?.score}`,
-        data.content ? data.content.slice(0, 500) : undefined,
-      )
-      setActionNotice(
-        data.ship
-          ? `Shipped via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s): ${data.ship.status}`
-          : data.shipError
-            ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
-            : `Generated via ${data.provider} (audit ${data.audit?.score}, ${data.attempts || 1} attempt/s)`,
-      )
-      await loadJobs()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Generate failed'
       pushLog('error', 'generate', msg)
@@ -452,6 +635,7 @@ export default function AdminSeoFactory({
     } finally {
       setBusy(false)
       setActivityLine(null)
+      void flushLogPersist()
     }
   }
 

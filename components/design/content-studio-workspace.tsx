@@ -4,6 +4,7 @@
  * Complements SEO Factory automation so operators see and control output.
  */
 import React from 'react'
+import { MarkdownLite } from '@/lib/markdownLite'
 
 const C = {
   bg: '#0B1220',
@@ -55,9 +56,19 @@ export interface StudioJob {
   owner_host?: string | null
   canonical_url?: string | null
   deploy_sha?: string | null
+  event_log?: StudioLogEntry[] | null
   created_at?: string
   updated_at?: string
   merged_at?: string | null
+}
+
+export interface PrCheckRun {
+  name: string
+  status: string
+  conclusion: string | null
+  html_url?: string
+  started_at?: string
+  completed_at?: string
 }
 
 export interface PrStatus {
@@ -69,14 +80,35 @@ export interface PrStatus {
   title: string
   draft: boolean
   head?: string
+  head_sha?: string
   base?: string
   user?: string
   created_at: string
   updated_at: string
   mergeable_state?: string
+  checks?: PrCheckRun[]
+  check_summary?: {
+    total: number
+    success: number
+    failure: number
+    pending: number
+    neutral: number
+    state: string
+  }
+  commit_status?: {
+    state: string
+    total_count: number
+    statuses: Array<{
+      context: string
+      state: string
+      description?: string
+      target_url?: string
+    }>
+  } | null
 }
 
 type PaneTab = 'editor' | 'pr' | 'log' | 'meta'
+type EditorMode = 'write' | 'preview' | 'split'
 
 export function createLog(
   level: StudioLogLevel,
@@ -144,8 +176,10 @@ export default function ContentStudioWorkspace({
   activityLine?: string | null
 }) {
   const [pane, setPane] = React.useState<PaneTab>('editor')
+  const [editorMode, setEditorMode] = React.useState<EditorMode>('write')
   const [find, setFind] = React.useState('')
   const logEndRef = React.useRef<HTMLDivElement>(null)
+  const editorScrollRef = React.useRef<HTMLTextAreaElement>(null)
   const words = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0
   const chars = editorContent.length
   const dirty = (job?.content || '') !== editorContent
@@ -153,6 +187,14 @@ export default function ContentStudioWorkspace({
   React.useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs.length])
+
+  // Auto-scroll editor while streaming new content
+  React.useEffect(() => {
+    if (busy && editorMode !== 'preview' && editorScrollRef.current) {
+      const el = editorScrollRef.current
+      el.scrollTop = el.scrollHeight
+    }
+  }, [editorContent, busy, editorMode])
 
   React.useEffect(() => {
     if (job?.pr_url || job?.pr_number) setPane('pr')
@@ -167,6 +209,14 @@ export default function ContentStudioWorkspace({
           (l.detail || '').toLowerCase().includes(find.toLowerCase()),
       )
     : logs
+
+  const checkStateColor = (state?: string) => {
+    const s = (state || '').toLowerCase()
+    if (s === 'success' || s === 'completed') return C.green
+    if (s === 'failure' || s === 'error' || s === 'cancelled' || s === 'timed_out') return C.red
+    if (s === 'pending' || s === 'queued' || s === 'in_progress') return C.orange
+    return C.muted
+  }
 
   return (
     <aside
@@ -267,6 +317,7 @@ export default function ContentStudioWorkspace({
             <div style={{
               display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 10px',
               borderBottom: `1px solid ${C.border}`, background: C.panel, flexShrink: 0,
+              alignItems: 'center',
             }}>
               <button type="button" disabled={busy || !job || !dirty} onClick={onSave} style={btn(dirty && job ? C.gold : C.dim, true)}>
                 {dirty ? 'Save draft' : 'Saved'}
@@ -280,23 +331,64 @@ export default function ContentStudioWorkspace({
               <button type="button" disabled={!job} onClick={onCloseJob} style={btn()}>
                 Deselect
               </button>
+              <div style={{
+                display: 'inline-flex', marginLeft: 4, borderRadius: 6,
+                border: `1px solid ${C.border}`, overflow: 'hidden',
+              }}>
+                {([
+                  ['write', 'Write'],
+                  ['split', 'Split'],
+                  ['preview', 'Preview'],
+                ] as [EditorMode, string][]).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setEditorMode(m)}
+                    style={{
+                      padding: '5px 9px', fontSize: 11, fontWeight: editorMode === m ? 700 : 500,
+                      border: 'none', cursor: 'pointer',
+                      background: editorMode === m ? C.surface : 'transparent',
+                      color: editorMode === m ? C.gold : C.dim,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div style={{ marginLeft: 'auto', fontSize: 11, color: C.muted, fontFamily: C.mono, alignSelf: 'center' }}>
                 {words} words · {chars} chars
                 {job?.seo_score != null ? ` · SEO ${job.seo_score}` : ''}
                 {dirty ? ' · unsaved' : ''}
+                {busy ? ' · streaming…' : ''}
               </div>
             </div>
-            <textarea
-              value={editorContent}
-              onChange={(e) => onEditorChange(e.target.value)}
-              placeholder={job ? 'Content will appear here as generation finishes…' : 'Run Auto-Pilot, Keywords, or Manual generate — output opens here.'}
-              spellCheck
-              style={{
-                flex: 1, minHeight: 280, width: '100%', resize: 'none', border: 'none',
-                padding: 14, background: C.bg, color: C.text, fontSize: 13, lineHeight: 1.55,
-                fontFamily: C.mono, boxSizing: 'border-box', outline: 'none',
-              }}
-            />
+            <div style={{
+              flex: 1, minHeight: 280, display: 'flex', minWidth: 0, overflow: 'hidden',
+            }}>
+              {(editorMode === 'write' || editorMode === 'split') && (
+                <textarea
+                  ref={editorScrollRef}
+                  value={editorContent}
+                  onChange={(e) => onEditorChange(e.target.value)}
+                  placeholder={job ? 'Content streams here as tokens arrive…' : 'Run Auto-Pilot, Keywords, or Manual generate — output streams here.'}
+                  spellCheck
+                  style={{
+                    flex: 1, minWidth: 0, height: '100%', resize: 'none', border: 'none',
+                    borderRight: editorMode === 'split' ? `1px solid ${C.border}` : 'none',
+                    padding: 14, background: C.bg, color: C.text, fontSize: 13, lineHeight: 1.55,
+                    fontFamily: C.mono, boxSizing: 'border-box', outline: 'none',
+                  }}
+                />
+              )}
+              {(editorMode === 'preview' || editorMode === 'split') && (
+                <div style={{
+                  flex: 1, minWidth: 0, height: '100%', overflow: 'auto',
+                  padding: 14, background: editorMode === 'preview' ? C.bg : C.panel,
+                }}>
+                  <MarkdownLite source={editorContent} />
+                </div>
+              )}
+            </div>
             {job?.error_message && (
               <div style={{ padding: 10, background: 'rgba(248,113,113,0.12)', color: C.red, fontSize: 12, borderTop: `1px solid ${C.border}` }}>
                 {job.error_message}
@@ -332,8 +424,83 @@ export default function ContentStudioWorkspace({
                     <Row label="Draft" value={prStatus.draft ? 'yes' : 'no'} />
                     <Row label="Mergeable" value={prStatus.mergeable_state || '—'} />
                     <Row label="Base ← head" value={`${prStatus.base || '?'} ← ${prStatus.head || '?'}`} mono />
+                    {prStatus.head_sha && (
+                      <Row label="Head SHA" value={prStatus.head_sha.slice(0, 12)} mono />
+                    )}
                     <Row label="Author" value={prStatus.user || '—'} />
                     <Row label="Updated" value={prStatus.updated_at ? new Date(prStatus.updated_at).toLocaleString() : '—'} />
+                    {prStatus.check_summary && (
+                      <div style={{
+                        padding: 10, borderRadius: 8, background: C.panel,
+                        border: `1px solid ${C.border}`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <strong style={{ fontSize: 12, color: C.text }}>CI checks</strong>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            color: checkStateColor(prStatus.check_summary.state),
+                          }}>
+                            {prStatus.check_summary.state}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.muted, fontFamily: C.mono, marginBottom: 8 }}>
+                          {prStatus.check_summary.total} total · {prStatus.check_summary.success} ok ·{' '}
+                          {prStatus.check_summary.failure} fail · {prStatus.check_summary.pending} pending
+                        </div>
+                        {(prStatus.checks || []).length === 0 && (
+                          <div style={{ fontSize: 11, color: C.dim }}>
+                            {prStatus.commit_status?.total_count
+                              ? 'Using commit status API (no check-runs).'
+                              : 'No check runs yet on this commit.'}
+                          </div>
+                        )}
+                        {(prStatus.checks || []).map((c, i) => (
+                          <div
+                            key={`${c.name}-${i}`}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', gap: 8,
+                              padding: '6px 0', borderTop: i ? `1px solid ${C.border}` : 'none',
+                              fontSize: 11,
+                            }}
+                          >
+                            <span style={{ color: C.text, wordBreak: 'break-word' }}>
+                              {c.html_url ? (
+                                <a href={c.html_url} target="_blank" rel="noreferrer" style={{ color: C.cyan }}>
+                                  {c.name}
+                                </a>
+                              ) : c.name}
+                            </span>
+                            <span style={{
+                              color: checkStateColor(c.conclusion || c.status),
+                              fontFamily: C.mono, flexShrink: 0,
+                            }}>
+                              {c.conclusion || c.status}
+                            </span>
+                          </div>
+                        ))}
+                        {(prStatus.commit_status?.statuses || []).length > 0 && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 11, color: C.dim, marginBottom: 4 }}>
+                              Commit status · {prStatus.commit_status?.state}
+                            </div>
+                            {prStatus.commit_status!.statuses.map((s, i) => (
+                              <div
+                                key={`${s.context}-${i}`}
+                                style={{
+                                  display: 'flex', justifyContent: 'space-between', gap: 8,
+                                  fontSize: 11, padding: '4px 0',
+                                }}
+                              >
+                                <span style={{ color: C.muted }}>{s.context}</span>
+                                <span style={{ color: checkStateColor(s.state), fontFamily: C.mono }}>
+                                  {s.state}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
                 {job.deploy_sha && <Row label="Deploy SHA" value={job.deploy_sha.slice(0, 12)} mono />}
@@ -351,8 +518,7 @@ export default function ContentStudioWorkspace({
                   </a>
                 )}
                 <p style={{ margin: 0, fontSize: 11, color: C.dim, lineHeight: 1.5 }}>
-                  Webhooks update merged/closed when configured. Use Refresh for on-demand GitHub state
-                  (checks, mergeable, draft).
+                  Refresh pulls PR state, mergeable, draft, and CI check-runs / commit status for the head SHA.
                 </p>
               </div>
             )}
