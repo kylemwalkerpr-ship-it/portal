@@ -43,19 +43,38 @@ Paid SEO MCPs (Ahrefs, Semrush, DataForSEO) add **competitor** volume only. Laye
 
 ## Credentials (one SA, two consumers)
 
-Use the **same** Search Console service account for portal Worker **and** MCP:
+**Canonical service account (GCP project `yousafe-gsc-reader`):**
 
-1. GSC → Users → Full (or Restricted with API) for `sc-domain:yousafeconsultancy.com` (+ host properties if used).
-2. Save SA JSON to:
+```
+gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com
+```
+
+Use this SA for portal Worker **and** local MCP:
+
+1. **GSC UI (required once per property)**  
+   Search Console → Settings → Users and permissions → **Add user**  
+   - Email: `gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com`  
+   - Permission: **Full**  
+   - Property: `sc-domain:yousafeconsultancy.com` (and any URL-prefix properties you still use)
+
+2. **Local MCP key file** (private key JSON for that SA — never commit to git):
    ```bash
-   ~/.config/gsc/service_account.json   # mode 600
+   ./scripts/setup-gsc-mcp.sh /path/to/yousafe-gsc-reader-*.json
+   # → ~/.config/gsc/service_account.json (mode 600)
+   grok mcp doctor gsc
    ```
-3. Worker secret (production): `GSC_SERVICE_ACCOUNT_JSON` + `GSC_SITE_URL=sc-domain:yousafeconsultancy.com`
-4. MCP env (local agent):
+
+3. **Worker secrets** (production Content Studio):
+   - `GSC_SERVICE_ACCOUNT_JSON` = full JSON key for the same SA  
+   - `GSC_SITE_URL=sc-domain:yousafeconsultancy.com`
+
+4. MCP env (already in `~/.grok/config.toml`):
    - `GSC_CREDENTIALS_PATH=$HOME/.config/gsc/service_account.json`
    - `GSC_SKIP_OAUTH=true`
 
-OAuth desktop client is fine for interactive MCP only; **automation should use SA**.
+If GSC returns **403**, the SA email is not yet a property user — fix step 1 before debugging tokens.
+
+OAuth desktop client is fine for interactive MCP only; **automation should use this SA**.
 
 ## Grok MCP (user config)
 

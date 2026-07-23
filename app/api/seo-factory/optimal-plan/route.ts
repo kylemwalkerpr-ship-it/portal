@@ -129,6 +129,9 @@ async function handle(request: NextRequest) {
       mcp: {
         server: 'gsc (mcp-search-console)',
         property: siteUrl,
+        serviceAccount: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+        credentialsHint:
+          'Local MCP: ~/.config/gsc/service_account.json for that SA. GSC UI must list the SA as Full user or API returns 403.',
         prompts: [
           `Show top 50 queries for ${siteUrl} last 28 days with impressions > 20 and position between 4 and 20, sorted by impressions.`,
           `Find high-impression low-CTR queries for ${siteUrl} last 90 days (CTR below expected for position).`,

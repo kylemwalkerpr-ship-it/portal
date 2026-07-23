@@ -57,10 +57,13 @@ EOF
   echo "Appended [mcp_servers.gsc] to $GROK_CFG"
 fi
 
+SA_EMAIL="gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com"
 echo ""
 echo "Next:"
-echo "  1. GSC → Users → add SA email (Full) on sc-domain:yousafeconsultancy.com"
+echo "  1. GSC → Settings → Users → Add user (Full):"
+echo "       $SA_EMAIL"
+echo "     Property: sc-domain:yousafeconsultancy.com"
 echo "  2. grok mcp doctor gsc"
 echo "  3. In Grok: list GSC properties / top queries last 28d"
-echo "  4. Studio: POST /api/seo-factory/optimal-plan → Auto-Pilot terms"
+echo "  4. Studio: Optimal GSC plan → Generate optimal"
 echo "Done."
