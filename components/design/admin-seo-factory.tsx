@@ -123,7 +123,10 @@ export default function AdminSeoFactory({
   const logPersistQueue = React.useRef<StudioLogEntry[]>([])
   const logPersistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const selectedJobIdRef = React.useRef<string | null>(null)
+  const editorContentRef = React.useRef('')
+  const selectedJobContentRef = React.useRef<string>('')
   React.useEffect(() => { selectedJobIdRef.current = selectedJobId }, [selectedJobId])
+  React.useEffect(() => { editorContentRef.current = editorContent }, [editorContent])
 
   const flushLogPersist = React.useCallback(async () => {
     const jobId = selectedJobIdRef.current
@@ -162,11 +165,26 @@ export default function AdminSeoFactory({
     [jobs, selectedJobId],
   )
 
+  React.useEffect(() => {
+    selectedJobContentRef.current = selectedJob?.content || ''
+  }, [selectedJob?.content, selectedJob?.id])
+
+  const isEditorDirty = React.useCallback(() => {
+    if (!selectedJobIdRef.current) return false
+    return editorContentRef.current !== (selectedJobContentRef.current || '')
+  }, [])
+
   const selectJob = React.useCallback((id: string) => {
+    if (selectedJobIdRef.current && selectedJobIdRef.current !== id && isEditorDirty()) {
+      const ok = window.confirm(
+        'You have unsaved editor changes. Switch jobs and discard them?',
+      )
+      if (!ok) return
+    }
     setSelectedJobId(id)
     setWorkspaceOpen(true)
     setPrStatus(null)
-  }, [])
+  }, [isEditorDirty])
 
   const loadHealth = async () => {
     try {
@@ -176,7 +194,7 @@ export default function AdminSeoFactory({
     } catch { /* ignore */ }
   }
 
-  const loadJobs = async () => {
+  const loadJobs = React.useCallback(async () => {
     try {
       const params = new URLSearchParams()
       params.set('limit', '100')
@@ -190,36 +208,40 @@ export default function AdminSeoFactory({
         setJobs(data.jobs || [])
         setQueueSummary(data.summary || null)
         // Keep editor in sync if selected job updated from server (unless local dirty)
-        if (selectedJobId) {
-          const j = (data.jobs || []).find((x: any) => x.id === selectedJobId)
+        const sid = selectedJobIdRef.current
+        if (sid) {
+          const j = (data.jobs || []).find((x: any) => x.id === sid)
           if (j?.content != null) {
             setEditorContent((prev) => {
-              // Only auto-fill when empty or matches previous server content length baseline
-              if (!prev.trim() || prev === (selectedJob?.content || '')) return j.content
+              const serverPrev = selectedJobContentRef.current || ''
+              if (!prev.trim() || prev === serverPrev) {
+                selectedJobContentRef.current = j.content || ''
+                return j.content
+              }
               return prev
             })
           }
         }
+      } else if (data.error) {
+        pushLog('error', 'jobs', data.error)
       }
     } catch (e) {
       pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
     }
-  }
+  }, [jobQ, jobStatusFilter, jobHostFilter, jobRepoFilter, pushLog])
 
   // Always keep job list fresh for the workspace queue
   React.useEffect(() => {
-    loadJobs()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobStatusFilter, jobHostFilter, jobRepoFilter])
+    void loadJobs()
+  }, [loadJobs])
 
   // Poll while work is in flight or a non-terminal job is selected
   React.useEffect(() => {
     const active = jobs.some((j) => !['merged', 'closed', 'failed'].includes(j.status || ''))
     if (!active && !busy) return
-    const t = setInterval(() => { loadJobs() }, 3500)
+    const t = setInterval(() => { void loadJobs() }, 4000)
     return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs, busy, jobQ])
+  }, [jobs, busy, loadJobs])
 
   // When selecting a job, load full content + persisted event_log
   React.useEffect(() => {
@@ -629,6 +651,20 @@ export default function AdminSeoFactory({
               return prev
             })
           }
+          // Keep plan panel aligned with stream result (estate gate + ownership)
+          if (data.plan) {
+            setPlan({
+              plan: data.plan,
+              gsc: data.gsc,
+              shipRecommendation: data.shipError
+                ? { allowed: false, reason: data.shipError }
+                : { allowed: true, reason: data.ship?.status || 'ok' },
+              shipGate: data.shipGate || null,
+            })
+          }
+          if (data.shipError) {
+            pushLog('error', 'ship', data.shipError)
+          }
           pushLog(
             data.shipError ? 'warn' : 'success',
             'generate',
@@ -761,37 +797,62 @@ export default function AdminSeoFactory({
   ) => {
     if (action === 'approve' && confirmApprove && !dryRun) {
       const ok = window.confirm(
-        'Approve this job to main?\n\nThis commits/merges to GitHub and triggers Cloudflare deploy for the target estate host.',
+        dryRun
+          ? 'Dry-run approve? (no GitHub write)'
+          : 'Approve this job to main?\n\nThis commits/merges to GitHub and triggers Cloudflare deploy for the target estate host.',
       )
       if (!ok) return
     }
     if (action === 'abandon' && !window.confirm('Abandon (close) this job?')) return
+    if (action === 'regenerate' && !window.confirm('Regenerate will close this job and create a new one. Continue?')) return
 
     setBusy(true)
     setActivityLine(`${action}…`)
     pushLog('info', 'jobs', `${action} · ${id.slice(0, 8)}`)
     try {
-      // Save editor content with approve/reship when dirty
+      // Always attach live editor content for ship/approve/reaudit when this job is open
       const body: Record<string, unknown> = {
         id,
         action,
-        shipMode: autoMode === 'none' ? 'pr' : autoMode === 'auto' ? 'merge' : autoMode,
+        shipMode:
+          action === 'approve'
+            ? 'autodeploy'
+            : autoMode === 'none'
+              ? 'pr'
+              : autoMode === 'auto'
+                ? 'merge'
+                : autoMode,
         minAuditScore: minAudit,
         maxRefine,
         dryRun: action === 'reship' || action === 'approve' ? dryRun : false,
         ...extra,
       }
-      if (
-        (action === 'approve' || action === 'reship' || action === 'reaudit') &&
-        id === selectedJobId &&
-        editorContent
-      ) {
-        if (action !== 'reaudit') body.content = editorContent
-        // For reaudit with dirty editor, save first
-        if (action === 'reaudit' && editorContent !== (selectedJob?.content || '')) {
-          await saveJobContent()
+      if (id === selectedJobIdRef.current && editorContentRef.current) {
+        if (action === 'approve' || action === 'reship' || action === 'reaudit') {
+          body.content = editorContentRef.current
         }
       }
+      // Persist dirty draft before ship so DB matches editor even if ship fails mid-way
+      if (
+        (action === 'approve' || action === 'reship') &&
+        id === selectedJobIdRef.current &&
+        isEditorDirty()
+      ) {
+        const saveRes = await fetch('/api/content-studio/jobs', {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, action: 'save', content: editorContentRef.current }),
+        })
+        const saveData = await saveRes.json().catch(() => ({}))
+        if (!saveRes.ok) throw new Error(saveData.error || 'Save before ship failed')
+        if (saveData.job) {
+          setJobs((prev) => prev.map((j) => (j.id === saveData.job.id ? saveData.job : j)))
+          selectedJobContentRef.current = saveData.job.content || editorContentRef.current
+        }
+        pushLog('info', 'editor', 'Draft saved before ship')
+      }
+
       const res = await fetch('/api/content-studio/jobs', {
         method: 'PATCH',
         credentials: 'same-origin',
@@ -800,7 +861,18 @@ export default function AdminSeoFactory({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Action failed')
-      if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+      if (data.job) {
+        setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+        if (data.job.id === selectedJobIdRef.current && data.job.content != null && action !== 'approve' && action !== 'reship') {
+          // Keep editor for meta/reaudit/duplicate flows when server returns content
+          if (action === 'reaudit' || action === 'update_meta') {
+            selectedJobContentRef.current = data.job.content || ''
+            if (action === 'reaudit' && body.content) {
+              /* editor already has content */
+            }
+          }
+        }
+      }
       if (data.ship?.prUrl) pushLog('success', 'github', `PR: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
       if (data.ship?.status === 'deployed' || data.ship?.status === 'merged' || data.merge?.merged) {
         pushLog(
@@ -824,17 +896,22 @@ export default function AdminSeoFactory({
       if (data.result?.jobId) selectJob(data.result.jobId)
       if (data.job?.id && action === 'duplicate') selectJob(data.job.id)
       if (data.result?.content) setEditorContent(data.result.content)
-      if (data.job && action === 'update_meta') {
-        setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
-      }
       if (data.audit && action === 'reaudit') {
         pushLog('success', 'audit', `Re-audit SEO ${data.audit.score} · ${data.audit.wordCount || data.job?.word_count} words`)
+      }
+      // After ship/merge, refresh PR status for open workspace job
+      if (
+        (action === 'approve' || action === 'merge_pr' || action === 'reship') &&
+        id === selectedJobIdRef.current &&
+        (data.job?.pr_number || data.ship?.prNumber)
+      ) {
+        setTimeout(() => { void refreshPrStatus() }, 600)
       }
       setActionNotice(
         action === 'abandon'
           ? 'Job closed'
           : action === 'approve'
-            ? data.message || 'Approved → main'
+            ? data.message || (dryRun ? 'Dry-run approve complete' : 'Approved → main')
             : action === 'monitor'
               ? data.monitor?.message || 'Monitor complete'
               : action === 'merge_pr'
@@ -846,7 +923,7 @@ export default function AdminSeoFactory({
                     : action === 'duplicate'
                       ? 'Job duplicated as draft'
                       : action === 'update_meta'
-                        ? 'Meta updated'
+                        ? 'Meta updated · ownership re-resolved'
                         : `Regenerated → ${data.result?.jobId || 'new job'}`,
       )
       pushLog(
@@ -855,7 +932,7 @@ export default function AdminSeoFactory({
         action === 'abandon'
           ? 'Job closed'
           : action === 'approve'
-            ? 'Approve → main complete'
+            ? dryRun ? 'Dry-run approve complete' : 'Approve → main complete'
             : action === 'reship'
               ? `Reship ${data.ship?.status}`
               : action === 'monitor'
@@ -876,6 +953,7 @@ export default function AdminSeoFactory({
     } finally {
       setBusy(false)
       setActivityLine(null)
+      void flushLogPersist()
     }
   }
 

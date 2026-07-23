@@ -337,11 +337,14 @@ export function validateRenderedPayload(opts: {
         }
       }
     }
-    // Body not empty after FM
+    // Body not empty after FM (ship-time quality floor; full SEO audit is separate)
     const body = content.replace(/^---[\s\S]*?---\s*/, '').trim()
-    if (body.split(/\s+/).length < 80) {
-      errors.push(`Markdown body too thin (${body.split(/\s+/).filter(Boolean).length} words; min 80 for ship)`)
+    const bodyWords = body.split(/\s+/).filter(Boolean).length
+    if (bodyWords < 80) {
+      errors.push(`Markdown body too thin (${bodyWords} words; min 80 for ship)`)
     }
+  } else if (content.length < 200) {
+    errors.push('Rendered payload too short to ship')
   }
 
   return { ok: errors.length === 0, errors }

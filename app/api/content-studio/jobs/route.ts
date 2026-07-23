@@ -390,7 +390,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'reaudit') {
-      if (!job.content?.trim()) {
+      // Prefer live editor content when provided so re-audit matches the pane
+      const content =
+        body.content != null ? String(body.content) : job.content != null ? String(job.content) : ''
+      if (!content.trim()) {
         return NextResponse.json({ error: 'Job has no content to audit' }, { status: 400 })
       }
       const contentType =
@@ -403,24 +406,27 @@ export async function PATCH(request: NextRequest) {
         indexable: job.indexable !== false,
       })
       const audit = auditContent({
-        content: String(job.content),
+        content,
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
         ownershipBlockers: plan.blockers,
       })
-      const words = String(job.content).trim().split(/\s+/).filter(Boolean).length
+      const words = content.trim().split(/\s+/).filter(Boolean).length
+      const patch: Record<string, unknown> = {
+        seo_score: audit.score,
+        word_count: words,
+        audit_json: { ...audit, reauditedAt: new Date().toISOString() },
+        owner_host: plan.host,
+        canonical_url: plan.canonicalUrl,
+        content_path: plan.filePath,
+        target_repo: plan.repo,
+      }
+      // Persist editor draft when re-auditing unsaved content
+      if (body.content != null) patch.content = content
       const { data: updated, error: upErr } = await supabase
         .from('content_jobs')
-        .update({
-          seo_score: audit.score,
-          word_count: words,
-          audit_json: { ...audit, reauditedAt: new Date().toISOString() },
-          owner_host: plan.host,
-          canonical_url: plan.canonicalUrl,
-          content_path: plan.filePath,
-          target_repo: plan.repo,
-        })
+        .update(patch)
         .eq('id', id)
         .select()
         .single()

@@ -209,6 +209,7 @@ export default function ContentStudioWorkspace({
   const words = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0
   const chars = editorContent.length
   const dirty = (job?.content || '') !== editorContent
+  const [copiedFlash, setCopiedFlash] = React.useState(false)
 
   React.useEffect(() => {
     if (!job) return
@@ -231,9 +232,43 @@ export default function ContentStudioWorkspace({
   }, [editorContent, busy, editorMode])
 
   React.useEffect(() => {
-    if (job?.pr_url || job?.pr_number) setPane('pr')
-    else if (job?.content) setPane('editor')
+    // Prefer editor when content exists; only open PR pane if no content yet
+    if (!job) return
+    if (job.content) setPane('editor')
+    else if (job.pr_url || job.pr_number) setPane('pr')
   }, [job?.id])
+
+  // Keyboard shortcuts: ⌘/Ctrl+S save, ⌘/Ctrl+Enter approve
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod || !job) return
+      const target = e.target as HTMLElement | null
+      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      if (e.key === 's') {
+        e.preventDefault()
+        if (dirty && !busy) onSave()
+      } else if (e.key === 'Enter' && !e.shiftKey && inField) {
+        // Only approve from editor textarea, not meta inputs
+        if (target?.tagName === 'TEXTAREA' && editorContent.trim() && !busy) {
+          e.preventDefault()
+          onApprove()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [job, dirty, busy, editorContent, onSave, onApprove])
+
+  const copyEditor = async () => {
+    try {
+      await navigator.clipboard.writeText(editorContent)
+      setCopiedFlash(true)
+      setTimeout(() => setCopiedFlash(false), 1500)
+    } catch {
+      /* ignore */
+    }
+  }
 
   const filteredLogs = find.trim()
     ? logs.filter(
@@ -254,6 +289,7 @@ export default function ContentStudioWorkspace({
 
   return (
     <aside
+      aria-label="Content Studio workspace"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -265,16 +301,30 @@ export default function ContentStudioWorkspace({
         fontFamily: 'inherit',
       }}
     >
+      <style>{`
+        @keyframes studioPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.55; transform: scale(0.92); }
+        }
+      `}</style>
       {/* Header */}
       <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <div>
             <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.gold, fontWeight: 700 }}>
               Workspace
+              {dirty ? <span style={{ color: C.orange, marginLeft: 8 }}>· unsaved</span> : null}
+              {busy ? <span style={{ color: C.cyan, marginLeft: 8 }}>· busy</span> : null}
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job?.title || job?.topic || ''}>
               {job?.title || job?.topic || 'No job selected'}
             </div>
+            {job && (
+              <div style={{ fontSize: 10, color: C.dim, marginTop: 2, fontFamily: C.mono }}>
+                {job.owner_host || '—'} · {job.region || '—'} · SEO {job.seo_score ?? '—'}
+                {job.indexable === false ? ' · noindex' : ''}
+              </div>
+            )}
           </div>
           {job && (
             <span style={{
@@ -311,7 +361,7 @@ export default function ContentStudioWorkspace({
             <span style={{
               width: 8, height: 8, borderRadius: 999, background: C.gold,
               boxShadow: `0 0 0 3px rgba(251,191,36,0.25)`,
-              animation: 'pulse 1.2s infinite',
+              animation: 'studioPulse 1.2s infinite',
             }} />
             {activityLine}
           </div>
@@ -397,12 +447,11 @@ export default function ContentStudioWorkspace({
               <button
                 type="button"
                 disabled={!editorContent}
-                onClick={() => {
-                  void navigator.clipboard?.writeText(editorContent)
-                }}
-                style={btn()}
+                onClick={() => { void copyEditor() }}
+                style={btn(copiedFlash ? C.green : undefined)}
+                title="Copy editor content"
               >
-                Copy
+                {copiedFlash ? 'Copied' : 'Copy'}
               </button>
               <button
                 type="button"
@@ -456,11 +505,11 @@ export default function ContentStudioWorkspace({
                   </button>
                 ))}
               </div>
-              <div style={{ marginLeft: 'auto', fontSize: 11, color: C.muted, fontFamily: C.mono, alignSelf: 'center' }}>
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: C.muted, fontFamily: C.mono, alignSelf: 'center' }} title="⌘/Ctrl+S save · ⌘/Ctrl+Enter approve">
                 {words} words · {chars} chars
                 {job?.seo_score != null ? ` · SEO ${job.seo_score}` : ''}
                 {dirty ? ' · unsaved' : ''}
-                {busy ? ' · streaming…' : ''}
+                {busy ? ' · working…' : ''}
               </div>
             </div>
             <div style={{
@@ -799,6 +848,7 @@ function btn(bg?: string, strong?: boolean): React.CSSProperties {
     fontSize: 11,
     fontWeight: 700,
     cursor: 'pointer',
+    opacity: 1,
   }
 }
 

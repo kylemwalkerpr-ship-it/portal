@@ -278,12 +278,16 @@ function GenerateForm({ onGenerate, generating }: {
           </div>
         </div>
 
+        <p style={{ margin: '0 0 12px', fontSize: 11, color: C.textMuted, lineHeight: 1.45 }}>
+          Routes through SEO Factory ownership + estate ship gate (legal/usa/uk/ca/au/apex/market).
+          Prefer <strong>Command Center</strong> for approve→main, streaming editor, and bulk ops.
+        </p>
         <button type="submit" disabled={generating || !topic.trim()} style={{
           padding: '10px 24px', borderRadius: 6, border: 'none', cursor: generating ? 'not-allowed' : 'pointer',
           background: generating ? C.textDim : C.navy, color: '#FFFFFF',
           fontSize: 13, fontWeight: 600, fontFamily: 'inherit', opacity: generating ? 0.6 : 1,
         }}>
-          {generating ? '⏳ Generating...' : '⚡ Generate & Open PR'}
+          {generating ? 'Generating…' : 'Generate via SEO Factory (PR)'}
         </button>
       </div>
     </form>
@@ -408,7 +412,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [error, setError] = React.useState<string | null>(null)
   const [activeTab, setActiveTab] = React.useState<Tab>('factory')
   const [GscDashboard, setGscDashboard] = React.useState<any>(null)
-  const [gscSiteUrl, setGscSiteUrl] = React.useState('https://caseworks.com/')
+  const [gscSiteUrl, setGscSiteUrl] = React.useState('sc-domain:yousafeconsultancy.com')
 
   // Lazy-load GSC dashboard when user switches to GSC tab
   React.useEffect(() => {
@@ -451,17 +455,47 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setGenerating(true)
     setError(null)
     try {
-      const res = await fetch('/api/content-studio/generate', {
+      // Map legacy Quick Generate into SEO Factory (estate gate + ownership + ship)
+      const contentTypeMap: Record<string, string> = {
+        blog_post: 'blog_summary',
+        article: 'legal_guide',
+        regional_page: 'regional_page',
+        marketplace_gig: 'marketplace_gig',
+      }
+      const contentType = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
+      const res = await fetch('/api/seo-factory/generate', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          topic: formData.topic,
+          title: formData.title || formData.topic,
+          primaryKeyword: (formData.keywords && formData.keywords[0]) || formData.topic,
+          region: formData.region || 'US',
+          contentType,
+          tone: formData.tone || 'educational',
+          audience: formData.audience,
+          keywords: formData.keywords,
+          shipMode: 'pr',
+          indexable: true,
+          minAuditScore: 55,
+          maxRefine: 2,
+        }),
       })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error ?? `HTTP ${res.status}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok && !data.content) {
+        throw new Error(data.error ?? `HTTP ${res.status}`)
       }
-      setActionNotice('Content generation started — PR opening shortly.')
+      const notice = data.ship?.prUrl
+        ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
+        : data.shipError
+          ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
+          : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
+      setActionNotice(notice)
+      if (data.jobId) {
+        // Prefer command center for full controls
+        setActiveTab('factory')
+      }
       await fetchJobs()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed')
