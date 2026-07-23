@@ -27,7 +27,7 @@ export async function GET() {
       detail: string
     }> = []
 
-    // Content AI chain (CF primary + gig-style fallbacks)
+    // Content AI chain: DeepSeek (NVIDIA) primary → Cloudflare fallback → free tiers
     const providers = listConfiguredContentProviders()
     const anyAi = providers.some((p) => p.configured)
     if (!anyAi) {
@@ -36,7 +36,7 @@ export async function GET() {
         label: 'Content AI chain',
         ok: false,
         detail:
-          'No providers configured. Set CF AI and/or GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY (same as gig AI).',
+          'No providers configured. Set NVIDIA_API_KEY (DeepSeek primary) and/or Cloudflare AI token (fallback).',
       })
     } else {
       try {

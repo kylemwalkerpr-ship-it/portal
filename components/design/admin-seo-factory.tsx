@@ -1885,14 +1885,14 @@ export default function AdminSeoFactory({
             padding: 24, borderTop: `4px solid ${C.gold}`,
           }}>
             <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              War Room feed · CF AI + gig fallbacks · Quality refine · Dedupe
+              War Room feed · DeepSeek primary · CF fallback · Quality refine
             </div>
             <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from ranked GSC demand</h2>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 680 }}>
               Default feed is the <strong>War Room</strong> (CTR gap, strike distance, AEO hubs) plus
-              AEO/SEO/GEO authority scoring. Drafts via Cloudflare AI and the free cascade
-              (Groq → Gemini → OpenRouter), then audit + estate ship. Default: <strong>merge → main</strong>.
-              Use workspace <strong>Approve → main</strong> for human-reviewed content.
+              AEO/SEO/GEO authority scoring. Drafts via <strong>DeepSeek V4 Pro (NVIDIA)</strong> first,
+              then <strong>Cloudflare Workers AI</strong> and free cascade fallbacks, then audit + estate ship.
+              Default: <strong>merge → main</strong>. Use workspace <strong>Approve → main</strong> for human-reviewed content.
             </p>
 
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 14 }}>

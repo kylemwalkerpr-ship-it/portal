@@ -1,18 +1,17 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * Default PRIMARY when NVIDIA_API_KEY is set:
- *   NVIDIA Integrate → deepseek-ai/deepseek-v4-pro (up to 16k output tokens)
- * Else PRIMARY: Cloudflare Workers AI.
- * FALLBACKS (gig-creation chain):
- *   Groq → Gemini → OpenRouter (:free) → custom → xAI → OpenAI → DeepSeek.com
- *   then getChatProvider() bridge.
+ * DEFAULT CHAIN (hard order):
+ *   1. DeepSeek via NVIDIA Integrate (deepseek-ai/deepseek-v4-pro, 16k tokens)
+ *   2. Cloudflare Workers AI (first fallback)
+ *   3. Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
+ *   4. getChatProvider() bridge
  *
  * NVIDIA auth: NVIDIA_API_KEY | NVAPI_KEY | NVIDIA_NIM_API_KEY
  * CF auth: CLOUDFLARE_AI_TOKEN | CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
  *
- * Override with CONTENT_AI_PROVIDER / AI_PROVIDER:
- *   nvidia | nvidia-deepseek | deepseek-v4 | cloudflare | auto | groq | …
+ * Override with CONTENT_AI_PROVIDER / AI_PROVIDER only if you must pin a backend.
+ * Default / auto / deepseek → NVIDIA DeepSeek primary, Cloudflare fallback.
  */
 
 const CF_AI_MODEL =
@@ -661,19 +660,18 @@ export function listConfiguredContentProviders(): Array<{
   configured: boolean
   role: 'primary' | 'fallback'
 }> {
-  const nvidiaPrimary = isNvidiaDeepseekConfigured()
   return [
     {
       id: 'nvidia-deepseek',
-      label: 'NVIDIA DeepSeek V4 Pro (16k)',
-      configured: nvidiaPrimary,
-      role: nvidiaPrimary ? 'primary' : 'fallback',
+      label: 'DeepSeek V4 Pro via NVIDIA (default primary)',
+      configured: isNvidiaDeepseekConfigured(),
+      role: 'primary',
     },
     {
       id: 'cloudflare-ai',
-      label: 'Cloudflare Workers AI',
+      label: 'Cloudflare Workers AI (default fallback)',
       configured: isCloudflareAiConfigured(),
-      role: nvidiaPrimary ? 'fallback' : 'primary',
+      role: 'fallback',
     },
     { id: 'groq', label: 'Groq (Llama 3.3 70B)', configured: Boolean(env('GROQ_API_KEY')), role: 'fallback' },
     { id: 'gemini', label: 'Google Gemini', configured: isGeminiConfigured(), role: 'fallback' },
@@ -681,41 +679,58 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
     { id: 'openai', label: 'OpenAI', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
-    { id: 'deepseek', label: 'DeepSeek.com', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
+    { id: 'deepseek', label: 'DeepSeek.com API', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
   ]
 }
 
+/**
+ * Resolve preferred provider label.
+ * Default is always nvidia-deepseek (DeepSeek); cloudflare is fallback in the chain.
+ * CONTENT_AI_PROVIDER=cloudflare forces CF first only when explicitly set.
+ */
 function preferProvider(): string {
-  const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase()
-  if (explicit) return explicit
-  // Long-form factory: prefer NVIDIA DeepSeek when keyed (16k tokens vs CF thin caps)
-  if (isNvidiaDeepseekConfigured()) return 'nvidia-deepseek'
-  return 'cloudflare'
+  const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
+  if (!explicit || explicit === 'auto' || explicit === 'default') {
+    return 'nvidia-deepseek'
+  }
+  // Aliases → NVIDIA DeepSeek primary
+  if (
+    explicit === 'deepseek' ||
+    explicit === 'deepseek-v4' ||
+    explicit === 'deepseek-v4-pro' ||
+    explicit === 'nvidia' ||
+    explicit === 'nvidia-deepseek' ||
+    explicit === 'nim'
+  ) {
+    return 'nvidia-deepseek'
+  }
+  return explicit
 }
 
 function isNvidiaPrefer(prefer: string): boolean {
   return (
     prefer === 'nvidia' ||
     prefer === 'nvidia-deepseek' ||
+    prefer === 'deepseek' ||
     prefer === 'deepseek-v4' ||
     prefer === 'deepseek-v4-pro' ||
-    prefer === 'nim'
+    prefer === 'nim' ||
+    prefer === 'auto' ||
+    prefer === 'default' ||
+    !prefer
   )
 }
 
-function tryCloudflareFirst(prefer: string): boolean {
-  if (isNvidiaPrefer(prefer)) return false
-  return (
-    prefer === 'cloudflare' ||
-    prefer === 'cloudflare-ai' ||
-    prefer === 'workers-ai' ||
-    !prefer ||
-    prefer === 'auto'
-  )
+function isCloudflareExclusive(prefer: string): boolean {
+  return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
 }
 
 type CompleteFn = () => Promise<ContentAiResult>
 
+/**
+ * Fixed factory order unless CONTENT_AI_PROVIDER pins a different lead:
+ * DeepSeek (NVIDIA) → Cloudflare → Groq → Gemini → OpenRouter → rest.
+ */
 function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
   const items: Array<{ label: string; run: CompleteFn }> = []
 
@@ -741,7 +756,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   }
   const pushRest = () => {
     for (const p of listOpenAiFallbackProviders()) {
-      if (p.label === 'groq') continue // already pushed
+      if (p.label === 'groq') continue
       items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     }
   }
@@ -749,56 +764,52 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     items.push({ label: 'chatProvider-bridge', run: () => chatProviderBridge(opts) })
   }
 
-  // Preferred-first
-  if (isNvidiaPrefer(prefer)) {
+  // Explicit pin: lead with that backend, then always DeepSeek → CF → rest
+  if (isCloudflareExclusive(prefer)) {
+    pushCf()
     pushNvidia()
-  } else if (
-    prefer === 'groq' ||
-    prefer === 'gemini' ||
-    prefer === 'openrouter' ||
-    prefer === 'xai' ||
-    prefer === 'grok' ||
-    prefer === 'openai' ||
-    prefer === 'deepseek' ||
-    prefer === 'custom'
-  ) {
-    if (prefer === 'groq') pushGroq()
-    else if (prefer === 'gemini') pushGemini()
-    else if (prefer === 'openrouter') pushOpenRouter()
-    else if (prefer === 'xai' || prefer === 'grok') {
-      const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
-      if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
-    } else if (prefer === 'openai' || prefer === 'deepseek' || prefer === 'custom') {
-      const p = listOpenAiFallbackProviders().find((x) => x.label === prefer)
-      if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
-    }
-  }
-
-  // Default order for factory long-form:
-  // NVIDIA DeepSeek (16k) → CF → Groq → Gemini → OpenRouter → rest → chat bridge
-  if (isNvidiaPrefer(prefer) || prefer === 'auto' || !prefer || prefer === 'cloudflare') {
-    // When prefer is cloudflare, still allow nvidia early if not exclusive
-    if (!isNvidiaPrefer(prefer) && prefer !== 'cloudflare' && prefer !== 'cloudflare-ai') {
-      pushNvidia()
-    } else if (isNvidiaPrefer(prefer)) {
-      // already pushed
-    } else if (prefer === 'auto' || !prefer) {
-      pushNvidia()
-    }
-  }
-  if (tryCloudflareFirst(prefer) || prefer === 'cloudflare' || prefer === 'auto' || !prefer) {
+  } else if (prefer === 'groq') {
+    pushGroq()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'gemini') {
+    pushGemini()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'openrouter') {
+    pushOpenRouter()
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'xai' || prefer === 'grok') {
+    const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
+    if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'openai' || prefer === 'custom') {
+    const p = listOpenAiFallbackProviders().find((x) => x.label === prefer)
+    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'deepseek' && env('DEEPSEEK_API_KEY') && !isNvidiaDeepseekConfigured()) {
+    // DeepSeek.com only if NVIDIA path missing
+    const p = listOpenAiFallbackProviders().find((x) => x.label === 'deepseek')
+    if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
+    pushCf()
+  } else {
+    // DEFAULT: DeepSeek primary, Cloudflare first fallback
+    pushNvidia()
     pushCf()
   }
-  // Always try NVIDIA somewhere near front if not already first
+
+  // Fill remaining cascade (deduped below)
   pushNvidia()
+  pushCf()
   pushGroq()
   pushGemini()
   pushOpenRouter()
   pushRest()
-  if (!tryCloudflareFirst(prefer) && !isNvidiaPrefer(prefer)) pushCf()
   pushChatBridge()
 
-  // Dedupe by label
   const seen = new Set<string>()
   return items.filter((i) => {
     if (seen.has(i.label)) return false
@@ -809,8 +820,7 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
 
 /**
  * Generate long-form content.
- * NVIDIA DeepSeek V4 Pro first when NVIDIA_API_KEY is set (16k tokens),
- * then Cloudflare AI, then gig free-tier fallbacks.
+ * Default: DeepSeek (NVIDIA) → Cloudflare fallback → other free tiers.
  */
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   const prefer = preferProvider()
@@ -819,7 +829,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
 
   if (!candidates.length) {
     throw new Error(
-      'No content AI provider configured. Set CLOUDFLARE_ACCOUNT_ID + AI token, and/or GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY (same as gig AI).',
+      'No content AI provider configured. Set NVIDIA_API_KEY (DeepSeek primary) and/or Cloudflare AI token as fallback.',
     )
   }
 
@@ -833,7 +843,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   }
 
   throw new Error(
-    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}. Configure NVIDIA_API_KEY (DeepSeek V4 Pro) and/or Cloudflare / Groq / Gemini.`,
+    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}. Primary: NVIDIA_API_KEY (DeepSeek). Fallback: Cloudflare Workers AI.`,
   )
 }
 
@@ -915,22 +925,30 @@ export async function* generateContentTextStream(
     complete: () => chatProviderBridge(opts),
   })
 
-  // Prefer-first reorder
-  if (!tryCloudflareFirst(prefer) && prefer && prefer !== 'auto') {
-    const want =
-      prefer === 'xai' || prefer === 'grok'
-        ? 'grok'
-        : prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
-          ? 'cloudflare-ai'
-          : prefer
+  // Default stream order is already DeepSeek → Cloudflare (built above).
+  // Only reorder when CONTENT_AI_PROVIDER explicitly pins Cloudflare (or other).
+  if (isCloudflareExclusive(prefer)) {
+    const idx = candidates.findIndex((c) => c.label === 'cloudflare-ai')
+    if (idx > 0) {
+      const [pref] = candidates.splice(idx, 1)
+      candidates.unshift(pref)
+    }
+  } else if (prefer === 'groq' || prefer === 'gemini' || prefer === 'openrouter' || prefer === 'openai' || prefer === 'custom') {
+    const want = prefer
     const idx = candidates.findIndex((c) => c.label === want)
+    if (idx > 0) {
+      const [pref] = candidates.splice(idx, 1)
+      candidates.unshift(pref)
+    }
+  } else if (prefer === 'xai' || prefer === 'grok') {
+    const idx = candidates.findIndex((c) => c.label === 'grok')
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
   }
 
-  // Dedupe
+  // Dedupe preserving order (DeepSeek first, Cloudflare second by default)
   const seen = new Set<string>()
   const unique = candidates.filter((c) => {
     if (seen.has(c.label)) return false
