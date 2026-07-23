@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { SellerProfilePage } from '@/components/marketplace/SellerProfilePage'
+import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 export const dynamic = 'force-dynamic'
@@ -223,6 +224,7 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
   // /api/sellers/[id] (which accepts profile_id, attorneys.id, or consultants.id).
   return (
     <>
+      <SsrHydrateGate readyEvent="yousafe:provider-ssr-ready">
       <article
         aria-label="Provider overview"
         style={{
@@ -282,6 +284,7 @@ export default async function ProviderProfilePage({ params }: ProviderPageProps)
           Not legal advice unless you hire a licensed attorney for a specific matter.
         </p>
       </article>
+      </SsrHydrateGate>
       <SellerProfilePage
         sellerId={profileId}
         initialSeller={{

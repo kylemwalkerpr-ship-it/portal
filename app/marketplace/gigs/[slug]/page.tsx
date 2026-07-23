@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { GigDetailPage } from '@/components/marketplace/GigDetailPage'
+import { SsrHydrateGate } from '@/components/marketplace/SsrHydrateGate'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceBaseUrl, getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { buildGigJsonLd } from '@/lib/gigJsonLd'
@@ -255,6 +256,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         />
       )}
       {gig && (
+        <SsrHydrateGate readyEvent="yousafe:gig-ssr-ready">
         <article
           aria-label="Service overview"
           style={{
@@ -329,6 +331,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
             Fixed-price marketplace service on YouSafe. Compare scope and delivery below, then request securely through checkout. Document preparation is not legal advice unless provided by a licensed attorney on the engagement.
           </p>
         </article>
+        </SsrHydrateGate>
       )}
       <GigDetailPage slug={slug} />
     </>

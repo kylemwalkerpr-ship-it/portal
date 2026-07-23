@@ -15,6 +15,7 @@ import {
 import { ReviewsSection } from './ReviewComponents'
 import ChatSidePane from './ChatSidePane'
 import { useGatedAction } from './useGatedAction'
+import { signalSsrReady } from './SsrHydrateGate'
 import { T, F } from './tokens'
 
 const pageShell: CSSProperties = {
@@ -242,6 +243,8 @@ export function GigDetailPage({ slug }: GigDetailPageProps) {
       setGig(loaded)
       setSelectedTierId(tiers[0]?.id || '')
       setMainImage(loaded.gallery_images?.[0]?.url || '')
+      // Collapse server-rendered SEO shell now that interactive body is ready.
+      signalSsrReady('yousafe:gig-ssr-ready')
       if (typeof window !== 'undefined') {
         const saved = readLocalList(SAVED_GIGS_KEY)
         setIsSaved(saved.some((item: any) => item.id === loaded.id))

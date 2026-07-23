@@ -75,7 +75,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'pr-immigration',
         name: 'PR & Immigration',
-        description: 'Express Entry, PNP, green cards, and permanent residency',
+        description:
+          'Express Entry, PNP, US green-card document packs, and permanent residence readiness — CRS planning, work-history mapping, and evidence indexes without guaranteed invitations.',
         keywords: ['express entry', 'pnp', 'green card', 'permanent residency', 'pr', 'ilr'],
         popular: true,
         order: 3,
@@ -92,7 +93,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'visitor-visas',
         name: 'Visitor Visas',
-        description: 'B-1/B-2, tourist visas, and temporary resident visas',
+        description:
+          'B-1/B-2, TRV, and short-stay visitor packets — ties evidence, itinerary consistency, invitation letters, and prior-travel narratives for temporary visits.',
         keywords: ['b1', 'b2', 'visitor', 'tourist', 'trv', 'temporary resident'],
         popular: false,
         order: 5,
@@ -100,7 +102,8 @@ export const CATEGORIES: Category[] = [
       {
         id: 'citizenship',
         name: 'Citizenship',
-        description: 'Naturalization, citizenship tests, and applications',
+        description:
+          'Naturalization and citizenship application support — residence timelines, test prep materials, and document checklists for applicants who already hold permanent status.',
         keywords: ['citizenship', 'naturalization', 'test', 'oath'],
         popular: false,
         order: 6,
@@ -110,7 +113,8 @@ export const CATEGORIES: Category[] = [
   {
     id: 'education',
     name: 'Education & Admissions',
-    description: 'University applications, admissions, and academic support',
+    description:
+      'University and graduate admissions support, scholarships, test prep, and academic mentoring — separate from immigration filings even when both are required for the same student journey.',
     icon: '🎓',
     vertical: 'study-abroad',
     popular: true,

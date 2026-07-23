@@ -16,6 +16,7 @@ import {
   type SellerProfile,
   type SellerGig,
 } from './SellerProfileComponents'
+import { signalSsrReady } from './SsrHydrateGate'
 
 export function SellerProfilePage({
   sellerId,
@@ -74,6 +75,9 @@ export function SellerProfilePage({
             setReviews(rPayload.reviews || [])
           }
         } catch { /* reviews route may not exist yet — non-blocking */ }
+
+        // Collapse SSR profile overview once the interactive profile is ready.
+        signalSsrReady('yousafe:provider-ssr-ready')
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load seller data')
       } finally {

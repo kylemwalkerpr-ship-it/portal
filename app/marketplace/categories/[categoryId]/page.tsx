@@ -7,6 +7,7 @@ import { resolveCategoryOrSubcategory } from '@/lib/categories'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 import { getCaseworksItemListJsonLd } from '@/lib/caseworksClusterMap'
+import { getCategoryEditorial } from '@/lib/categoryEditorial'
 
 interface CategoryPageProps {
   params: Promise<{ categoryId: string }>
@@ -143,6 +144,12 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
     ? category.subcategories.filter((s) => s.id !== subcategory.id)
     : category.subcategories
 
+  // Prefer subcategory-specific editorial; fall back to parent category copy.
+  const editorial =
+    getCategoryEditorial(filterId) ||
+    getCategoryEditorial(category.id) ||
+    null
+
   return (
     <>
       <script
@@ -201,6 +208,31 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           {' '}for structured worksheets. When you need a human review, shortlist providers with relevant
           jurisdiction tags and clear package descriptions rather than the lowest price alone.
         </p>
+        {editorial?.body?.map((para) => (
+          <p
+            key={para.slice(0, 48)}
+            style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.9 }}
+          >
+            {para}
+          </p>
+        ))}
+        {editorial?.compare && editorial.compare.length > 0 && (
+          <div style={{ marginTop: '14px', maxWidth: '48rem' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>
+              What to compare in {displayName}
+            </h2>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.6, fontSize: '14px', opacity: 0.9 }}>
+              {editorial.compare.map((c) => (
+                <li key={c} style={{ marginBottom: 4 }}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {editorial?.nextSteps && (
+          <p style={{ fontSize: '14px', lineHeight: 1.6, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.85 }}>
+            {editorial.nextSteps}
+          </p>
+        )}
         {activeCount < 1 ? (
           <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
             No active services in this category right now. Browse{' '}
