@@ -287,21 +287,46 @@ export function validateRenderedPayload(opts: {
         !content.includes("from '@/components/article/ArticleLayout'")) {
       errors.push('caseworks page must import ArticleLayout from @/components/article/ArticleLayout')
     }
+    if (
+      !content.includes('from "@/components/article/CTAPanel"') &&
+      !content.includes("from '@/components/article/CTAPanel'")
+    ) {
+      errors.push('caseworks page must import CTAPanel from @/components/article/CTAPanel')
+    }
     if (!content.includes('export const metadata')) {
       errors.push('caseworks page must export Next.js metadata')
     }
     if (!content.includes('export default function')) {
       errors.push('caseworks page must export a default page component')
     }
-    // Prevent the prerender bug that took down deploys
-    if (content.includes('<CTAPanel') || content.includes('CTAPanel')) {
-      if (!/cta\s*=/.test(content) || !/href\s*=/.test(content) || !/headline\s*=/.test(content)) {
+    // Multi-line CTAPanel blocks — the old single-line regex missed factory bugs
+    // that shipped title= without href and crashed Next Link prerender.
+    const ctaBlocks = content.match(/<CTAPanel\b[\s\S]*?(?:\/>|>[\s\S]*?<\/CTAPanel>)/g) || []
+    if (!ctaBlocks.length) {
+      errors.push('caseworks page must include a <CTAPanel /> with intake href')
+    }
+    for (const block of ctaBlocks) {
+      const hasHref = /\bhref\s*=/.test(block) || /\bctaHref\s*=/.test(block)
+      const hasHeadline = /\bheadline\s*=/.test(block) || /\btitle\s*=/.test(block)
+      const hasCta = /\bcta\s*=/.test(block) || /\bctaLabel\s*=/.test(block)
+      const hasBody = /\bbody\s*=/.test(block)
+      if (!hasHref) {
         errors.push(
-          'CTAPanel must include headline, body, cta, and href props (caseworks contract)',
+          'CTAPanel missing href (required — undefined Link href crashes caseworks build)',
         )
       }
-      if (/CTAPanel[^>]*\btitle\s*=/.test(content) && !/headline\s*=/.test(content)) {
-        errors.push('CTAPanel uses invalid prop "title" — use "headline"')
+      if (!hasHeadline) errors.push('CTAPanel missing headline (or legacy title)')
+      if (!hasCta) errors.push('CTAPanel missing cta (or legacy ctaLabel)')
+      if (!hasBody) errors.push('CTAPanel missing body')
+      // Prefer canonical props when factory emits modern import
+      if (/\btitle\s*=/.test(block) && !/\bheadline\s*=/.test(block)) {
+        errors.push('CTAPanel uses deprecated "title" — emit "headline" for caseworks contract')
+      }
+      if (/\bctaLabel\s*=/.test(block) && !/\bcta\s*=/.test(block)) {
+        errors.push('CTAPanel uses deprecated "ctaLabel" — emit "cta"')
+      }
+      if (/href\s*=\s*\{\s*(undefined|null)\s*\}/.test(block)) {
+        errors.push('CTAPanel href is undefined/null — refuse ship')
       }
     }
     if (content.includes('href={undefined}') || content.includes('href={null}')) {
