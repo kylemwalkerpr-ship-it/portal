@@ -8,15 +8,19 @@ import { resolveOwner, assertPlanRepoConsistency, type OwnerPlan } from './owner
 import { auditContent, canAutodeploy, type SeoFactoryAudit } from './audit'
 import { shipContent, type ShipMode, type ShipResult } from './ship'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
-import { generateContentTextStream } from '@/lib/contentAiProvider'
+import { generateContentText, generateContentTextStream } from '@/lib/contentAiProvider'
 import { formatStrategyForPrompt } from '@/lib/seoDataLoaders'
 import {
   auditToRefineNotes,
+  buildDepthAppendPrompt,
+  buildDepthExpandPrompt,
   buildFactorySystemPrompt,
   buildFactoryUserPrompt,
+  extractH2Titles,
+  mergeAppendedSections,
   minWordsForType,
 } from './prompts'
-import { targetWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
@@ -123,38 +127,55 @@ export async function* runSeoFactoryPipelineStream(
     })
     let attempts = 0
     let refineNotes: string | undefined
+    let expandPasses = 0
 
     for (let i = 0; i <= maxRefine; i++) {
       attempts = i + 1
+      const underDepth = Boolean(content) && countBodyWords(content) < minWords
       yield {
         type: 'progress',
         stage: 'generate',
         message:
           i === 0
             ? `Generating draft (attempt ${attempts})…`
-            : `Refining draft (attempt ${attempts})…`,
+            : underDepth
+              ? `Depth expand (attempt ${attempts}) · ${countBodyWords(content)}/${minWords} words…`
+              : `Refining draft (attempt ${attempts})…`,
       }
 
-      const prompt = buildFactoryUserPrompt({
-        title,
-        topic,
-        primaryKeyword,
-        region,
-        contentType,
-        tone,
-        audience: input.audience,
-        gscBlock,
-        opportunityAction: input.opportunityAction,
-        writeHint: input.writeHint,
-        refineNotes,
-      })
+      const prompt = underDepth
+        ? buildDepthExpandPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            minWords,
+            targetWords,
+            currentWords: countBodyWords(content),
+            draft: content,
+          })
+        : buildFactoryUserPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            tone,
+            audience: input.audience,
+            gscBlock,
+            opportunityAction: input.opportunityAction,
+            writeHint: input.writeHint,
+            refineNotes,
+          })
 
+      const prevWords = content ? countBodyWords(content) : 0
       let attemptText = ''
       for await (const ev of generateContentTextStream({
         system,
         prompt,
-        maxTokens: contentType === 'marketplace_gig' ? 3500 : 8000,
-        temperature: i === 0 ? 0.55 : 0.35,
+        maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 12000 : 10000,
+        temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
       })) {
         if (ev.type === 'provider') {
           provider = ev.provider
@@ -170,7 +191,9 @@ export async function* runSeoFactoryPipelineStream(
         }
       }
 
-      content = attemptText
+      if (!(underDepth && countBodyWords(attemptText) < prevWords)) {
+        content = attemptText
+      }
       audit = auditContent({
         content,
         contentType,
@@ -192,7 +215,8 @@ export async function* runSeoFactoryPipelineStream(
         goodEnough,
       }
 
-      if (goodEnough || i === maxRefine) break
+      if (goodEnough) break
+      if (i === maxRefine) break
       const q = evaluateContentQuality({
         content,
         contentType,
@@ -215,6 +239,97 @@ export async function* runSeoFactoryPipelineStream(
             : `Audit ${audit.score} < ${minAudit} — refining…`,
       }
     }
+
+    // Depth rescue loop (non-stream expand/append — shows progress only)
+    const maxExpand = contentType === 'marketplace_gig' ? 2 : 4
+    while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
+      expandPasses++
+      attempts++
+      const currentWords = countBodyWords(content)
+      yield {
+        type: 'progress',
+        stage: 'refine',
+        message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words…`,
+      }
+      try {
+        if (expandPasses % 2 === 1) {
+          const ai = await generateContentText({
+            system,
+            prompt: buildDepthExpandPrompt({
+              title,
+              topic,
+              primaryKeyword,
+              region,
+              contentType,
+              minWords,
+              targetWords,
+              currentWords,
+              draft: content,
+            }),
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 12000,
+            temperature: 0.42,
+          })
+          if (countBodyWords(ai.text) > currentWords) {
+            content = ai.text
+            provider = ai.provider
+            model = ai.model
+            yield { type: 'delta', text: '\n\n<!-- depth expand applied -->\n\n', attempt: attempts }
+            yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
+          }
+        } else {
+          const ai = await generateContentText({
+            system:
+              'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
+            prompt: buildDepthAppendPrompt({
+              primaryKeyword,
+              region,
+              minWords,
+              currentWords,
+              existingH2s: extractH2Titles(content),
+              draftExcerpt: content,
+            }),
+            maxTokens: 6000,
+            temperature: 0.45,
+          })
+          const merged = mergeAppendedSections(content, ai.text)
+          if (countBodyWords(merged) > currentWords) {
+            content = merged
+            provider = ai.provider
+            model = ai.model
+          }
+        }
+      } catch (e) {
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Depth rescue failed: ${e instanceof Error ? e.message : 'error'}`,
+        }
+        break
+      }
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+      yield {
+        type: 'attempt',
+        attempt: attempts,
+        score: audit.score,
+        wordCount: audit.wordCount,
+        goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+      }
+      if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
+    }
+
+    audit = auditContent({
+      content,
+      contentType,
+      primaryKeyword,
+      indexable: plan.indexable,
+      ownershipBlockers: plan.blockers,
+    })
 
     let shipMode = resolveShipMode(requestedMode, audit, plan)
     if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {

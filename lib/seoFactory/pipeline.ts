@@ -11,13 +11,25 @@ import { generateContentText } from '@/lib/contentAiProvider'
 import { formatStrategyForPrompt } from '@/lib/seoDataLoaders'
 import {
   auditToRefineNotes,
+  buildDepthAppendPrompt,
+  buildDepthExpandPrompt,
   buildFactorySystemPrompt,
   buildFactoryUserPrompt,
+  extractH2Titles,
+  mergeAppendedSections,
   minWordsForType,
 } from './prompts'
-import { targetWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+
+/** Token budget: long-form needs room; many models hard-cap ~8k–16k output. */
+function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'): number {
+  if (contentType === 'marketplace_gig') return phase === 'append' ? 2500 : 4000
+  if (phase === 'append') return 6000
+  if (phase === 'expand') return 12000
+  return 10000
+}
 
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
@@ -151,33 +163,56 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
   let attempts = 0
   let refineNotes: string | undefined
+  let expandPasses = 0
 
   for (let i = 0; i <= maxRefine; i++) {
     attempts = i + 1
-    const prompt = buildFactoryUserPrompt({
-      title,
-      topic,
-      primaryKeyword,
-      region,
-      contentType,
-      tone,
-      audience: input.audience,
-      gscBlock,
-      opportunityAction: input.opportunityAction,
-      writeHint: input.writeHint,
-      refineNotes,
-    })
+    const underDepth = Boolean(content) && countBodyWords(content) < minWords
 
-    // Higher token budget so 1.8k–2.2k word guides can complete
+    // Under depth → dedicated expand prompt (keeps draft, forbids short rewrite)
+    const prompt = underDepth
+      ? buildDepthExpandPrompt({
+          title,
+          topic,
+          primaryKeyword,
+          region,
+          contentType,
+          minWords,
+          targetWords,
+          currentWords: countBodyWords(content),
+          draft: content,
+        })
+      : buildFactoryUserPrompt({
+          title,
+          topic,
+          primaryKeyword,
+          region,
+          contentType,
+          tone,
+          audience: input.audience,
+          gscBlock,
+          opportunityAction: input.opportunityAction,
+          writeHint: input.writeHint,
+          refineNotes,
+        })
+
+    const prevWords = content ? countBodyWords(content) : 0
     const ai = await generateContentText({
       system,
       prompt,
-      maxTokens: contentType === 'marketplace_gig' ? 3500 : 8000,
-      temperature: i === 0 ? 0.55 : 0.35,
+      maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
+      temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
     })
-    content = ai.text
-    provider = ai.provider
-    model = ai.model
+    // Never accept a shorter body when we were expanding for depth
+    if (underDepth && countBodyWords(ai.text) < prevWords) {
+      // keep previous content; will try append rescue after loop
+      provider = ai.provider
+      model = ai.model
+    } else {
+      content = ai.text
+      provider = ai.provider
+      model = ai.model
+    }
 
     audit = auditContent({
       content,
@@ -193,7 +228,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       meetsShipQuality(audit) &&
       audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
-    if (goodEnough || i === maxRefine) break
+    if (goodEnough) break
+    if (i === maxRefine) break
     const q = evaluateContentQuality({
       content,
       contentType,
@@ -211,6 +247,84 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       .filter(Boolean)
       .join('\n\n')
   }
+
+  // ── Depth rescue: expand / append until floor met (or budget exhausted) ──
+  const maxExpand = contentType === 'marketplace_gig' ? 2 : 4
+  while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
+    expandPasses++
+    attempts++
+    const currentWords = countBodyWords(content)
+    try {
+      // Odd passes: full expand rewrite; even: append new H2s only
+      if (expandPasses % 2 === 1) {
+        const ai = await generateContentText({
+          system,
+          prompt: buildDepthExpandPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            minWords,
+            targetWords,
+            currentWords,
+            draft: content,
+          }),
+          maxTokens: tokensForType(contentType, 'expand'),
+          temperature: 0.42,
+        })
+        if (countBodyWords(ai.text) > currentWords) {
+          content = ai.text
+          provider = ai.provider
+          model = ai.model
+        }
+      } else {
+        const ai = await generateContentText({
+          system:
+            'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
+          prompt: buildDepthAppendPrompt({
+            primaryKeyword,
+            region,
+            minWords,
+            currentWords,
+            existingH2s: extractH2Titles(content),
+            draftExcerpt: content,
+          }),
+          maxTokens: tokensForType(contentType, 'append'),
+          temperature: 0.45,
+        })
+        const merged = mergeAppendedSections(content, ai.text)
+        if (countBodyWords(merged) > currentWords) {
+          content = merged
+          provider = ai.provider
+          model = ai.model
+        }
+      }
+    } catch (e) {
+      console.warn(
+        '[seoFactory/pipeline] depth expand pass failed',
+        e instanceof Error ? e.message : e,
+      )
+      break
+    }
+    audit = auditContent({
+      content,
+      contentType,
+      primaryKeyword,
+      indexable: plan.indexable,
+      ownershipBlockers: plan.blockers,
+    })
+    if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
+  }
+
+  // Final audit after rescue
+  audit = auditContent({
+    content,
+    contentType,
+    primaryKeyword,
+    indexable: plan.indexable,
+    ownershipBlockers: plan.blockers,
+  })
 
   let shipMode = resolveShipMode(requestedMode, audit, plan)
   // Never ship thin or low-quality voice to main — even if score looks OK

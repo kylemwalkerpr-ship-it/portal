@@ -137,7 +137,7 @@ export async function runOneDailyWin(opts: {
     shipMode = 'merge',
     dryRun = false,
     minAuditScore = 65,
-    maxRefine = 3,
+    maxRefine = 4,
     userId = 'system:war-room-daily',
     skipRecent = true,
   } = opts

@@ -18,7 +18,8 @@ const CF_AI_MODEL =
   process.env.CLOUDFLARE_AI_MODEL?.trim() ||
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
 
-const DEFAULT_MAX_TOKENS = 5000
+/** Default output budget — long-form guides need ~2k words (~3–4k tokens). */
+const DEFAULT_MAX_TOKENS = 8192
 const DEFAULT_TEMPERATURE = 0.65
 
 export interface ContentAiResult {
