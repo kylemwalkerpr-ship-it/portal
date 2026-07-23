@@ -5,6 +5,7 @@
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { resolveOwner, type OwnerPlan } from '@/lib/seoFactory/ownership'
+import { scoreTopicAuthority } from '@/lib/seoFactory/authorityScoring'
 
 export type OpportunityAction = 'title_rewrite' | 'expand_or_build' | 'ignore'
 
@@ -109,37 +110,72 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
   }
 
   const brand = /yousafe|yousafeconsultancy/
-  const scored = queries
-    .filter((q) => !brand.test(q.term))
-    .map((q) => {
-      const posW = q.position <= 20 ? 1.4 : q.position <= 40 ? 1.1 : 0.9
-      const ctrGap = 1 - Math.min(q.ctr / 0.05, 1)
-      const score = q.impressions * ctrGap * posW
-      let action: OpportunityAction = 'expand_or_build'
-      if (q.position >= 4 && q.position <= 20 && q.ctr < 0.03) action = 'title_rewrite'
-      if (q.impressions < 10) action = 'ignore'
-      const region = inferRegion(q.term)
-      const suggestedContentType = inferContentType(q.term)
-      return {
-        ...q,
-        score,
-        action,
-        suggestedContentType,
-        region,
-      }
+  type Scored = {
+    term: string
+    impressions: number
+    clicks: number
+    ctr: number
+    position: number
+    score: number
+    action: OpportunityAction
+    suggestedContentType: string
+    region: string
+  }
+  const scored: Scored[] = []
+  for (const q of queries.filter((row) => !brand.test(row.term))) {
+    let action: OpportunityAction = 'expand_or_build'
+    if (q.position >= 4 && q.position <= 20 && q.ctr < 0.03) action = 'title_rewrite'
+    if (q.impressions < 10) action = 'ignore'
+    const region = inferRegion(q.term)
+    const suggestedContentType = inferContentType(q.term)
+    // Preliminary authority (owner resolved in next loop for final score)
+    const pre = scoreTopicAuthority({
+      term: q.term,
+      impressions: q.impressions,
+      clicks: q.clicks,
+      ctr: q.ctr,
+      position: q.position,
     })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+    const posW = q.position <= 20 ? 1.4 : q.position <= 40 ? 1.1 : 0.9
+    const ctrGap = 1 - Math.min(q.ctr / 0.05, 1)
+    const gscRaw = q.impressions * ctrGap * posW
+    // Blend GSC opportunity with AEO/SEO/GEO authority (0–100 → scale)
+    const score = gscRaw * 0.45 + pre.total * 40
+    scored.push({
+      ...q,
+      score,
+      action,
+      suggestedContentType,
+      region,
+    })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  const top = scored.slice(0, limit)
 
   const opportunities: FactoryOpportunity[] = []
-  for (const q of scored) {
+  for (const q of top) {
     const ownerHint = await resolveOwner({
       primaryKeyword: q.term,
       contentType: q.suggestedContentType,
       region: q.region,
     })
-    opportunities.push({ ...q, ownerHint })
+    const auth = scoreTopicAuthority({
+      term: q.term,
+      impressions: q.impressions,
+      clicks: q.clicks,
+      ctr: q.ctr,
+      position: q.position,
+      hasOwner: Boolean(ownerHint.matched?.owner_url),
+      host: ownerHint.host,
+      registryAction: ownerHint.action,
+    })
+    opportunities.push({
+      ...q,
+      score: q.score * 0.5 + auth.total * 35,
+      ownerHint,
+    })
   }
+  opportunities.sort((a, b) => b.score - a.score)
 
   return {
     source,

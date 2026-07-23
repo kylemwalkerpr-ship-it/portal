@@ -150,6 +150,8 @@ export default function ContentStudioWorkspace({
   onSelectJob,
   onSave,
   onShip,
+  onApprove,
+  onMonitor,
   onRegenerate,
   onRefreshPr,
   onCloseJob,
@@ -165,7 +167,11 @@ export default function ContentStudioWorkspace({
   onEditorChange: (v: string) => void
   onSelectJob: (id: string) => void
   onSave: () => void
+  /** Legacy reship / PR path */
   onShip: () => void
+  /** Approve → commit/merge main → Cloudflare deploy + monitor */
+  onApprove: () => void
+  onMonitor: () => void
   onRegenerate: () => void
   onRefreshPr: () => void
   onCloseJob: () => void
@@ -322,8 +328,20 @@ export default function ContentStudioWorkspace({
               <button type="button" disabled={busy || !job || !dirty} onClick={onSave} style={btn(dirty && job ? C.gold : C.dim, true)}>
                 {dirty ? 'Save draft' : 'Saved'}
               </button>
+              <button
+                type="button"
+                disabled={busy || !job || !editorContent.trim()}
+                onClick={onApprove}
+                title="Save (if needed), commit/merge to main, trigger Cloudflare deploy, run CI monitor"
+                style={btn(C.green, true)}
+              >
+                Approve → main
+              </button>
               <button type="button" disabled={busy || !job || !editorContent.trim()} onClick={onShip} style={btn(C.cyan, true)}>
-                Ship / reship PR
+                Ship PR only
+              </button>
+              <button type="button" disabled={busy || !job} onClick={onMonitor} style={btn()}>
+                Monitor CI
               </button>
               <button type="button" disabled={busy || !job} onClick={onRegenerate} style={btn()}>
                 Regenerate

@@ -16,7 +16,7 @@ import {
   minWordsForType,
 } from './prompts'
 
-export type RequestedShipMode = ShipMode | 'none' | 'auto'
+export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
 export interface PipelineInput {
   topic: string
@@ -36,6 +36,7 @@ export interface PipelineInput {
   /** Max AI refine attempts after first draft (default 2). */
   maxRefine?: number
   opportunityAction?: string
+  writeHint?: string
   userId?: string
   skipShipIfBelowScore?: boolean
 }
@@ -69,11 +70,16 @@ function resolveShipMode(
 ): ShipMode | 'none' {
   if (requested === 'none') return 'none'
   if (requested === 'pr') return 'pr'
-  if (requested === 'autodeploy') {
-    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'pr'
+  if (requested === 'merge') {
+    // Prefer PR→merge to main (audit trail); fall back handled in shipContent
+    return plan.blockers.length === 0 ? 'merge' : 'pr'
   }
-  // auto
-  return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'pr'
+  if (requested === 'autodeploy') {
+    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'merge'
+  }
+  // auto: high-quality non-blocked → merge to main; else PR for review
+  if (canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0) return 'merge'
+  return 'pr'
 }
 
 export async function runSeoFactoryPipeline(input: PipelineInput): Promise<PipelineResult> {
@@ -154,6 +160,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       audience: input.audience,
       gscBlock,
       opportunityAction: input.opportunityAction,
+      writeHint: input.writeHint,
       refineNotes,
     })
 
@@ -224,7 +231,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     )
     const status =
-      shipResult?.status === 'deployed'
+      shipResult?.status === 'deployed' || shipResult?.status === 'merged'
         ? 'merged'
         : shipResult?.status === 'pr_created'
           ? 'pr_created'
@@ -252,7 +259,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ai_provider: provider,
         word_count: audit.wordCount,
         seo_score: audit.score,
-        ship_mode: shipMode === 'none' ? 'pr' : shipMode,
+        // DB check allows pr|autodeploy only; map merge → autodeploy
+        ship_mode:
+          shipMode === 'none' || shipMode === 'pr'
+            ? 'pr'
+            : 'autodeploy',
         indexable: plan.indexable,
         canonical_url: plan.canonicalUrl,
         owner_host: plan.host,
@@ -264,8 +275,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
           opportunityAction: input.opportunityAction,
         },
-        deploy_sha: shipResult?.commitSha || null,
-        deployed_at: shipResult?.status === 'deployed' ? new Date().toISOString() : null,
+        deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
+        deployed_at:
+          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
+            ? new Date().toISOString()
+            : null,
+        merged_at:
+          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
+            ? new Date().toISOString()
+            : null,
         llms_included: audit.llmsRecommended,
         error_message: shipError,
       })

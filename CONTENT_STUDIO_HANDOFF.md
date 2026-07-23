@@ -26,6 +26,12 @@ https://portal.yousafeconsultancy.com/dashboard/admin/content
 3. **PR CI status** — `refresh_pr` loads check-runs + combined commit status for the PR head SHA.
 4. **Durable debug logs** — `content_jobs.event_log` JSONB; client debounces `append_log`; job open hydrates history.
 
+### Approve → main + authority planner (2026-07-23)
+
+5. **Approve → main** — Workspace **Approve → main** commits (or merges open PR) to `main` so Cloudflare deploys. Skips automated score gates for human-reviewed content; still refuses ownership blockers. Defaults: ship mode `merge`.
+6. **Deploy monitor** — After approve/merge, Workers AI diagnoses CI failures and can open a GitHub issue. `POST /api/seo-factory/monitor` (`jobId` or `{ scan: true }`). Queue **Monitor** / Auto-Pilot **Scan deploy monitor**.
+7. **AEO/SEO/GEO topic algorithm** — `lib/seoFactory/authorityScoring.ts` ranks demand, AEO Q&A intent, LLM-citation potential, discipline entities, professionalism, cluster fill. Wired into keyword plan + auto-run + factory prompts.
+
 ### AI provider priority (content generation)
 
 **Primary:** Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) via

@@ -7,6 +7,11 @@ import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { resolveOwner, type OwnerPlan } from './ownership'
+import {
+  authorityPromptHints,
+  scoreTopicAuthority,
+  type AuthorityBreakdown,
+} from './authorityScoring'
 
 export type PlanLane =
   | 'refresh' // pos 4–20, weak CTR → rewrite/refresh existing owner
@@ -23,6 +28,9 @@ export interface KeywordSignal {
   position: number
   /** Research score for ranking the board */
   demandScore: number
+  /** AEO/SEO/GEO authority composite 0–100 */
+  authorityScore: number
+  authority: AuthorityBreakdown
   lane: PlanLane
   laneReason: string
   region: string
@@ -43,7 +51,7 @@ export interface KeywordSignal {
     position: number
   } | null
   recentlyCovered: boolean
-  priority: number // 1 = do first
+  priority: number // higher = do first
 }
 
 export interface EditorialPlanItem {
@@ -52,12 +60,15 @@ export interface EditorialPlanItem {
   priority: number
   region: string
   contentType: string
-  shipHint: 'pr' | 'autodeploy' | 'none'
+  shipHint: 'pr' | 'autodeploy' | 'merge' | 'none'
   ownerUrl: string | null
   host: string | null
   repo: string | null
   filePath: string | null
   demandScore: number
+  authorityScore: number
+  contentAngle: AuthorityBreakdown['contentAngle']
+  writeHint: string
   rationale: string
   impressions: number
   position: number
@@ -422,11 +433,24 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
     })
     const relatedPage = findRelatedPage(q.term, pages, plan.matched?.owner_url || plan.canonicalUrl)
     const dScore = demandScore(q)
+    const authority = scoreTopicAuthority({
+      term: q.term,
+      impressions: q.impressions,
+      clicks: q.clicks,
+      ctr: q.ctr,
+      position: q.position,
+      hasOwner: Boolean(plan.matched?.owner_url),
+      host: plan.host,
+      recentlyCovered,
+      registryAction: plan.action,
+    })
 
-    // Priority: actionable lanes first, then demand
+    // Priority: actionable lanes first, then AEO/SEO/GEO authority, then raw demand
     const lanePri =
-      lane === 'refresh' ? 100 : lane === 'expand' ? 80 : lane === 'build_new' ? 70 : lane === 'monitor' ? 20 : 5
-    const priority = lanePri * 10000 + dScore
+      lane === 'refresh' ? 100 : lane === 'expand' ? 85 : lane === 'build_new' ? 70 : lane === 'monitor' ? 20 : 5
+    // Prefer high-authority expand/refresh over low-authority net-new
+    const authorityBoost = authority.total
+    const priority = lanePri * 100000 + authorityBoost * 1000 + Math.min(dScore, 999)
 
     board.push({
       term: q.term,
@@ -435,8 +459,10 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       ctr: q.ctr,
       position: q.position,
       demandScore: dScore,
+      authorityScore: authority.total,
+      authority,
       lane,
-      laneReason: reason,
+      laneReason: `${reason} · ${authority.rationale}`,
       region,
       suggestedContentType:
         plan.intentClass === 'geo_modifier'
@@ -470,7 +496,12 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
     })
   }
 
-  board.sort((a, b) => b.priority - a.priority || b.demandScore - a.demandScore)
+  board.sort(
+    (a, b) =>
+      b.priority - a.priority ||
+      b.authorityScore - a.authorityScore ||
+      b.demandScore - a.demandScore,
+  )
   const trimmed = board.slice(0, boardLimit)
 
   const mix = {
@@ -501,26 +532,40 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
   }
 
   const plan: EditorialPlanItem[] = []
+  const toPlanItem = (b: KeywordSignal, extraRationale = ''): EditorialPlanItem => ({
+    term: b.term,
+    lane: b.lane,
+    priority: plan.length + 1,
+    region: b.region,
+    contentType: b.suggestedContentType,
+    // High authority + clear owner → merge to main after generate; else PR
+    shipHint:
+      b.authorityScore >= 62 && b.lane !== 'build_new'
+        ? 'merge'
+        : b.authorityScore >= 70
+          ? 'merge'
+          : 'pr',
+    ownerUrl: b.owner.url,
+    host: b.owner.host,
+    repo: b.owner.repo,
+    filePath: b.owner.filePath,
+    demandScore: b.demandScore,
+    authorityScore: b.authorityScore,
+    contentAngle: b.authority.contentAngle,
+    writeHint: authorityPromptHints(b.authority.contentAngle),
+    rationale: (b.laneReason + extraRationale).trim(),
+    impressions: b.impressions,
+    position: b.position,
+    ctr: b.ctr,
+  })
+
   const take = (lane: PlanLane, n: number) => {
-    const pool = trimmed.filter((b) => b.lane === lane && !plan.some((p) => p.term === b.term))
+    // Within lane, authority-first (already sorted on board)
+    const pool = trimmed
+      .filter((b) => b.lane === lane && !plan.some((p) => p.term === b.term))
+      .sort((a, b) => b.authorityScore - a.authorityScore || b.demandScore - a.demandScore)
     for (const b of pool.slice(0, n)) {
-      plan.push({
-        term: b.term,
-        lane: b.lane,
-        priority: plan.length + 1,
-        region: b.region,
-        contentType: b.suggestedContentType,
-        shipHint: b.lane === 'refresh' || b.lane === 'expand' ? 'pr' : 'pr',
-        ownerUrl: b.owner.url,
-        host: b.owner.host,
-        repo: b.owner.repo,
-        filePath: b.owner.filePath,
-        demandScore: b.demandScore,
-        rationale: b.laneReason,
-        impressions: b.impressions,
-        position: b.position,
-        ctr: b.ctr,
-      })
+      plan.push(toPlanItem(b))
     }
   }
   take('refresh', want.refresh)
@@ -532,31 +577,26 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       if (plan.length >= planLimit) break
       if (b.lane === 'monitor' || b.lane === 'defer') continue
       if (plan.some((p) => p.term === b.term)) continue
-      plan.push({
-        term: b.term,
-        lane: b.lane,
-        priority: plan.length + 1,
-        region: b.region,
-        contentType: b.suggestedContentType,
-        shipHint: 'pr',
-        ownerUrl: b.owner.url,
-        host: b.owner.host,
-        repo: b.owner.repo,
-        filePath: b.owner.filePath,
-        demandScore: b.demandScore,
-        rationale: b.laneReason + ' (backfill)',
-        impressions: b.impressions,
-        position: b.position,
-        ctr: b.ctr,
-      })
+      plan.push(toPlanItem(b, ' (backfill)'))
     }
   }
+
+  // Final plan order: authority score within retained mix
+  plan.sort((a, b) => b.authorityScore - a.authorityScore || b.demandScore - a.demandScore)
+  plan.forEach((p, i) => {
+    p.priority = i + 1
+  })
+
+  const avgAuth = plan.length
+    ? Math.round(plan.reduce((s, p) => s + p.authorityScore, 0) / plan.length)
+    : 0
 
   const summary = [
     `GSC ${source}: ${queries.length} queries researched, ${trimmed.length} on board.`,
     `Lanes — refresh ${mix.refresh}, expand ${mix.expand}, new ${mix.build_new}, monitor ${mix.monitor}, defer ${mix.defer}.`,
     `Plan ${plan.length} items @ mix refresh ${Math.round(targetMix.refresh * 100)}% / expand ${Math.round(targetMix.expand * 100)}% / new ${Math.round(targetMix.build_new * 100)}%.`,
-    `Balance: prioritize CTR rewrites on pos 4–20, deepen weak owners, only net-new when demand has no owner.`,
+    `Authority algorithm (AEO/SEO/GEO): avg score ${avgAuth}/100 — prioritizes discipline entities, Q&A intent, LLM-citable structure, and cluster fill over thin demand.`,
+    `Ship default for high-authority items: merge→main (Cloudflare autodeploy).`,
   ].join(' ')
 
   return {

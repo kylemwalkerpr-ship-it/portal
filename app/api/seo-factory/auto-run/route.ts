@@ -116,12 +116,13 @@ export async function POST(request: NextRequest) {
           clicks: 0,
           ctr: item?.ctr || 0,
           position: item?.position || 50,
-          score: item?.demandScore || 0,
+          score: item?.authorityScore || item?.demandScore || 0,
           action: item?.lane === 'refresh' ? 'title_rewrite' : 'expand_or_build',
           suggestedContentType: contentType,
           region,
           ownerHint,
-        })
+          writeHint: item?.writeHint,
+        } as FactoryOpportunity & { writeHint?: string })
       }
     } else {
       let pool = pickAutoRunCandidates(opportunities, 40)
@@ -158,6 +159,12 @@ export async function POST(request: NextRequest) {
 
     for (const opp of candidates) {
       try {
+        // Prefer merge→main when auto mode so approved quality ships deploy
+        const shipModeForRun =
+          requestedMode === 'auto'
+            ? 'merge'
+            : requestedMode
+
         const result = await runSeoFactoryPipeline({
           topic: opp.term,
           title: opp.term,
@@ -165,11 +172,12 @@ export async function POST(request: NextRequest) {
           region: opp.region || 'US',
           contentType: opp.suggestedContentType || 'legal_guide',
           tone: 'educational',
-          shipMode: requestedMode,
+          shipMode: shipModeForRun,
           dryRun,
           minAuditScore,
           maxRefine,
           opportunityAction: opp.action,
+          writeHint: (opp as any).writeHint,
           userId,
         })
 

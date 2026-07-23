@@ -34,10 +34,14 @@ function resolveShipMode(
 ): ShipMode | 'none' {
   if (requested === 'none') return 'none'
   if (requested === 'pr') return 'pr'
-  if (requested === 'autodeploy') {
-    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'pr'
+  if (requested === 'merge') {
+    return plan.blockers.length === 0 ? 'merge' : 'pr'
   }
-  return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'pr'
+  if (requested === 'autodeploy') {
+    return canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0 ? 'autodeploy' : 'merge'
+  }
+  if (canAutodeploy(audit, plan.ymy) && plan.blockers.length === 0) return 'merge'
+  return 'pr'
 }
 
 export async function* runSeoFactoryPipelineStream(
@@ -137,6 +141,7 @@ export async function* runSeoFactoryPipelineStream(
         audience: input.audience,
         gscBlock,
         opportunityAction: input.opportunityAction,
+        writeHint: input.writeHint,
         refineNotes,
       })
 
@@ -240,7 +245,7 @@ export async function* runSeoFactoryPipelineStream(
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
       )
       const status =
-        shipResult?.status === 'deployed'
+        shipResult?.status === 'deployed' || shipResult?.status === 'merged'
           ? 'merged'
           : shipResult?.status === 'pr_created'
             ? 'pr_created'
@@ -279,7 +284,8 @@ export async function* runSeoFactoryPipelineStream(
         ai_provider: provider,
         word_count: audit.wordCount,
         seo_score: audit.score,
-        ship_mode: shipMode === 'none' ? 'pr' : shipMode,
+        ship_mode:
+          shipMode === 'none' || shipMode === 'pr' ? 'pr' : 'autodeploy',
         indexable: plan.indexable,
         canonical_url: plan.canonicalUrl,
         owner_host: plan.host,
@@ -291,8 +297,15 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
           opportunityAction: input.opportunityAction,
         },
-        deploy_sha: shipResult?.commitSha || null,
-        deployed_at: shipResult?.status === 'deployed' ? new Date().toISOString() : null,
+        deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
+        deployed_at:
+          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
+            ? new Date().toISOString()
+            : null,
+        merged_at:
+          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
+            ? new Date().toISOString()
+            : null,
         llms_included: audit.llmsRecommended,
         error_message: shipError,
       }

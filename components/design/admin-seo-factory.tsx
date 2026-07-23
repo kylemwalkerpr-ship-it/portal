@@ -14,7 +14,7 @@ const C = {
   blue: '#2563EB', surface2: '#F4F2EE',
 }
 
-type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto'
+type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
 type Tab = 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies'
 
 export default function AdminSeoFactory({
@@ -27,7 +27,7 @@ export default function AdminSeoFactory({
   const [primaryKeyword, setPrimaryKeyword] = React.useState('')
   const [region, setRegion] = React.useState('US')
   const [contentType, setContentType] = React.useState('legal_guide')
-  const [shipMode, setShipMode] = React.useState<ShipMode>('auto')
+  const [shipMode, setShipMode] = React.useState<ShipMode>('merge')
   const [indexable, setIndexable] = React.useState(true)
   const [busy, setBusy] = React.useState(false)
   const [plan, setPlan] = React.useState<any>(null)
@@ -39,7 +39,7 @@ export default function AdminSeoFactory({
   const [jobQ, setJobQ] = React.useState('')
   const [selectedOpp, setSelectedOpp] = React.useState<Set<string>>(new Set())
   const [autoLimit, setAutoLimit] = React.useState(3)
-  const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy' | 'none'>('auto')
+  const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy' | 'merge' | 'none'>('merge')
   const [autoResult, setAutoResult] = React.useState<any>(null)
   const [dryRun, setDryRun] = React.useState(false)
   const [minAudit, setMinAudit] = React.useState(55)
@@ -690,46 +690,124 @@ export default function AdminSeoFactory({
     }
   }
 
-  const jobAction = async (id: string, action: 'reship' | 'regenerate' | 'abandon') => {
+  const jobAction = async (
+    id: string,
+    action: 'reship' | 'regenerate' | 'abandon' | 'approve' | 'merge_pr' | 'monitor',
+  ) => {
     setBusy(true)
     setActivityLine(`${action}…`)
     pushLog('info', 'jobs', `${action} · ${id.slice(0, 8)}`)
     try {
-      // If reshiping selected job, save editor first when dirty
-      if (action === 'reship' && id === selectedJobId && editorContent && editorContent !== (selectedJob?.content || '')) {
-        await saveJobContent()
+      // Save editor content with approve/reship when dirty
+      const body: Record<string, unknown> = {
+        id,
+        action,
+        shipMode: autoMode === 'none' ? 'pr' : autoMode === 'auto' ? 'merge' : autoMode,
+        minAuditScore: minAudit,
+        maxRefine,
+        dryRun: action === 'reship' || action === 'approve' ? dryRun : false,
+      }
+      if (
+        (action === 'approve' || action === 'reship') &&
+        id === selectedJobId &&
+        editorContent
+      ) {
+        body.content = editorContent
       }
       const res = await fetch('/api/content-studio/jobs', {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          action,
-          shipMode: autoMode === 'none' ? 'pr' : autoMode,
-          minAuditScore: minAudit,
-          maxRefine,
-          dryRun: action === 'reship' ? dryRun : false,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Action failed')
       if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
       if (data.ship?.prUrl) pushLog('success', 'github', `PR: ${data.ship.prUrl}`, JSON.stringify(data.ship, null, 2))
+      if (data.ship?.status === 'deployed' || data.ship?.status === 'merged' || data.merge?.merged) {
+        pushLog(
+          'success',
+          'github',
+          data.message || `Merged/deployed · sha ${(data.ship?.mergeCommitSha || data.ship?.commitSha || data.merge?.sha || '').toString().slice(0, 10)}`,
+          JSON.stringify(data.ship || data.merge, null, 2),
+        )
+      }
+      if (data.monitor) {
+        pushLog(
+          data.monitor.ok ? 'success' : data.monitor.checkState === 'pending' ? 'warn' : 'error',
+          'monitor',
+          data.monitor.message || data.monitor.action,
+          data.monitor.diagnosis || JSON.stringify(data.monitor.checks?.slice?.(0, 8), null, 2),
+        )
+        if (data.monitor.issueUrl) {
+          pushLog('warn', 'monitor', `Diagnosis issue: ${data.monitor.issueUrl}`)
+        }
+      }
       if (data.result?.jobId) selectJob(data.result.jobId)
       if (data.result?.content) setEditorContent(data.result.content)
       setActionNotice(
         action === 'abandon'
           ? 'Job closed'
-          : action === 'reship'
-            ? `Reship: ${data.ship?.status || 'ok'}`
-            : `Regenerated → ${data.result?.jobId || 'new job'}`,
+          : action === 'approve'
+            ? data.message || 'Approved → main'
+            : action === 'monitor'
+              ? data.monitor?.message || 'Monitor complete'
+              : action === 'merge_pr'
+                ? data.message || 'PR merged'
+                : action === 'reship'
+                  ? `Reship: ${data.ship?.status || 'ok'}`
+                  : `Regenerated → ${data.result?.jobId || 'new job'}`,
       )
-      pushLog('success', 'jobs', action === 'abandon' ? 'Job closed' : action === 'reship' ? `Reship ${data.ship?.status}` : `Regenerated`)
+      pushLog(
+        'success',
+        'jobs',
+        action === 'abandon'
+          ? 'Job closed'
+          : action === 'approve'
+            ? 'Approve → main complete'
+            : action === 'reship'
+              ? `Reship ${data.ship?.status}`
+              : action === 'monitor'
+                ? 'Monitor finished'
+                : 'Regenerated',
+      )
       await loadJobs()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Job action failed'
       pushLog('error', 'jobs', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
+  }
+
+  const scanMonitor = async () => {
+    setBusy(true)
+    setActivityLine('Scanning recent deploys…')
+    pushLog('info', 'monitor', 'Scan recent jobs for CI/deploy issues')
+    try {
+      const res = await fetch('/api/seo-factory/monitor', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan: true, limit: 8 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Monitor scan failed')
+      pushLog('success', 'monitor', data.message || `Scanned ${data.scanned}`)
+      for (const r of data.results || []) {
+        pushLog(
+          r.checkState === 'failure' ? 'error' : r.checkState === 'pending' ? 'warn' : 'info',
+          'monitor',
+          `${(r.jobId || '').slice(0, 8)} · ${r.checkState} · ${r.message}`,
+          r.issueUrl || r.diagnosis?.slice?.(0, 500),
+        )
+      }
+      setActionNotice(data.message || 'Monitor scan complete')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Monitor scan failed'
+      pushLog('error', 'monitor', msg)
       setActionNotice(msg)
     } finally {
       setBusy(false)
@@ -916,7 +994,7 @@ export default function AdminSeoFactory({
               </div>
 
               <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-                <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Editorial plan (balanced)</h3>
+                <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Editorial plan (AEO / SEO / GEO authority)</h3>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {(kwPlan.plan || []).map((p: any) => (
                     <div key={p.term} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
@@ -925,13 +1003,17 @@ export default function AdminSeoFactory({
                         <span style={{
                           color: p.lane === 'refresh' ? C.orange : p.lane === 'expand' ? C.blue : C.green,
                           fontWeight: 600, textTransform: 'uppercase', fontSize: 10,
-                        }}>{p.lane}</span>
+                        }}>{p.lane} · auth {p.authorityScore ?? '—'} · {p.shipHint || 'pr'}</span>
                       </div>
                       <div style={{ color: C.textMuted, marginTop: 4 }}>
                         {p.impressions} imp · pos {Number(p.position).toFixed(1)} · CTR {(p.ctr * 100).toFixed(2)}%
                         · {p.host} → {p.repo}
+                        {p.contentAngle ? ` · angle: ${p.contentAngle}` : ''}
                       </div>
                       <div style={{ color: C.textDim, marginTop: 2 }}>{p.rationale}</div>
+                      {p.writeHint && (
+                        <div style={{ color: C.cyan, marginTop: 4, fontSize: 11 }}>{p.writeHint}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -991,9 +1073,10 @@ export default function AdminSeoFactory({
             </div>
             <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from GSC demand</h2>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 680 }}>
-              Uses the <strong>GSC keyword plan</strong> by default: balanced mix of refresh (CTR fixes), expand
-              (deepen owners), and limited net-new. Drafts with Workers AI, refines to audit threshold, routes by
-              SEO strategies ownership, then PR / autodeploy.
+              Topics ranked by the <strong>AEO / SEO / GEO authority algorithm</strong> (discipline entities,
+              Q&amp;A intent, LLM-citable structure, cluster fill) plus GSC demand. Drafts with Workers AI,
+              refine to audit threshold, route by ownership. Default ship: <strong>merge → main</strong> for
+              Cloudflare autodeploy. Use workspace <strong>Approve → main</strong> for human-reviewed content.
             </p>
 
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 14 }}>
@@ -1006,9 +1089,10 @@ export default function AdminSeoFactory({
               <label style={labelStyle}>
                 Ship mode
                 <select value={autoMode} onChange={(e) => setAutoMode(e.target.value as any)} style={inputStyle}>
-                  <option value="auto">Auto (PR or main if audit OK)</option>
-                  <option value="pr">Always PR</option>
-                  <option value="autodeploy">Prefer autodeploy</option>
+                  <option value="merge">Merge → main (recommended)</option>
+                  <option value="auto">Auto (merge if audit OK, else PR)</option>
+                  <option value="autodeploy">Direct commit main</option>
+                  <option value="pr">PR only (no auto-merge)</option>
                   <option value="none">Generate only</option>
                 </select>
               </label>
@@ -1053,6 +1137,9 @@ export default function AdminSeoFactory({
               </button>
               <button type="button" disabled={busy} onClick={() => { setTab('opportunities'); if (!opps) loadOpps() }} style={btnSecondary}>
                 Pick opportunities
+              </button>
+              <button type="button" disabled={busy} onClick={() => scanMonitor()} style={btnSecondary}>
+                Scan deploy monitor
               </button>
             </div>
           </div>
@@ -1131,9 +1218,10 @@ export default function AdminSeoFactory({
               <label style={labelStyle}>
                 Ship mode
                 <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={inputStyle}>
+                  <option value="merge">Merge → main</option>
                   <option value="auto">Auto</option>
-                  <option value="pr">PR</option>
-                  <option value="autodeploy">Autodeploy</option>
+                  <option value="autodeploy">Direct main</option>
+                  <option value="pr">PR only</option>
                   <option value="none">Generate only</option>
                 </select>
               </label>
@@ -1293,7 +1381,15 @@ export default function AdminSeoFactory({
                     <button type="button" style={btnSmall} onClick={() => { selectJob(j.id); setEditorContent(j.content || '') }}>Edit</button>
                   )}
                   {j.content && j.status !== 'merged' && (
-                    <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'reship')}>Reship</button>
+                    <>
+                      <button type="button" style={{ ...btnSmall, background: C.green, color: '#fff', border: 'none' }} disabled={busy} onClick={() => jobAction(j.id, 'approve')}>
+                        Approve → main
+                      </button>
+                      <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'reship')}>Ship PR</button>
+                    </>
+                  )}
+                  {(j.deploy_sha || j.pr_number) && (
+                    <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'monitor')}>Monitor</button>
                   )}
                   <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'regenerate')}>Regenerate</button>
                   {j.status !== 'closed' && j.status !== 'merged' && (
@@ -1457,6 +1553,8 @@ export default function AdminSeoFactory({
             onSelectJob={selectJob}
             onSave={saveJobContent}
             onShip={() => selectedJobId && jobAction(selectedJobId, 'reship')}
+            onApprove={() => selectedJobId && jobAction(selectedJobId, 'approve')}
+            onMonitor={() => selectedJobId && jobAction(selectedJobId, 'monitor')}
             onRegenerate={() => selectedJobId && jobAction(selectedJobId, 'regenerate')}
             onRefreshPr={refreshPrStatus}
             onCloseJob={() => { setSelectedJobId(null); setEditorContent(''); setPrStatus(null) }}

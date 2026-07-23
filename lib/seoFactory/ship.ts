@@ -9,7 +9,8 @@ import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile } from './renderTarget'
 
-export type ShipMode = 'pr' | 'autodeploy'
+/** pr = open PR only; autodeploy = commit main; merge = PR then merge to main */
+export type ShipMode = 'pr' | 'autodeploy' | 'merge'
 
 export interface ShipResult {
   mode: ShipMode
@@ -20,9 +21,12 @@ export interface ShipResult {
   prUrl?: string
   prNumber?: number
   commitSha?: string
+  mergeCommitSha?: string
   canonicalUrl: string
-  status: 'pr_created' | 'deployed' | 'dry_run'
+  status: 'pr_created' | 'deployed' | 'merged' | 'dry_run'
   dryRun?: boolean
+  /** Human-approved ships skip automated audit gates (still refuse hard ownership blockers). */
+  humanApproved?: boolean
 }
 
 async function gh(path: string, init: RequestInit = {}): Promise<any> {
@@ -93,6 +97,65 @@ async function putContent(opts: {
   return { commitSha: res.commit?.sha || res.content?.sha || '' }
 }
 
+/** Merge an open PR into main (squash or merge per repo defaults). */
+export async function mergePullRequest(opts: {
+  owner: string
+  repo: string
+  prNumber: number
+  commitTitle?: string
+  mergeMethod?: 'merge' | 'squash' | 'rebase'
+}): Promise<{ merged: boolean; sha?: string; message: string }> {
+  const method = opts.mergeMethod || 'squash'
+  try {
+    const res = await gh(
+      `/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commit_title: opts.commitTitle || `seo-factory: merge PR #${opts.prNumber}`,
+          merge_method: method,
+        }),
+      },
+    )
+    return {
+      merged: Boolean(res.merged),
+      sha: res.sha as string | undefined,
+      message: String(res.message || 'merged'),
+    }
+  } catch (e) {
+    // Retry with merge if squash rejected
+    if (method === 'squash') {
+      try {
+        const res = await gh(
+          `/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              commit_title: opts.commitTitle || `seo-factory: merge PR #${opts.prNumber}`,
+              merge_method: 'merge',
+            }),
+          },
+        )
+        return {
+          merged: Boolean(res.merged),
+          sha: res.sha as string | undefined,
+          message: String(res.message || 'merged'),
+        }
+      } catch (e2) {
+        throw e2
+      }
+    }
+    throw e
+  }
+}
+
+/**
+ * Human-approved path: commit straight to main when possible.
+ * Skips automated score gates (admin already reviewed content in the studio).
+ * Still refuses hard ownership/host mismatches.
+ */
 export async function shipContent(opts: {
   mode: ShipMode
   plan: OwnerPlan
@@ -104,6 +167,8 @@ export async function shipContent(opts: {
   audit: SeoFactoryAudit
   dryRun?: boolean
   jobId?: string
+  /** Admin explicitly approved in Content Studio — prefer main deploy */
+  humanApproved?: boolean
 }): Promise<ShipResult> {
   // Hard gate: strategy host → repo must match HOST_REPO table
   assertPlanRepoConsistency(opts.plan)
@@ -136,16 +201,22 @@ export async function shipContent(opts: {
       canonicalUrl: opts.plan.canonicalUrl,
       status: 'dry_run',
       dryRun: true,
+      humanApproved: opts.humanApproved,
     }
   }
 
-  if (opts.mode === 'autodeploy') {
+  // Human approve or explicit autodeploy → commit main (fast path for CF deploy)
+  const useMainCommit =
+    opts.mode === 'autodeploy' || Boolean(opts.humanApproved && opts.mode !== 'pr')
+
+  if (useMainCommit) {
     if (opts.plan.blockers.length > 0) {
-      throw new Error(`Cannot autodeploy: ${opts.plan.blockers[0]}`)
+      throw new Error(`Cannot ship to main: ${opts.plan.blockers[0]}`)
     }
-    if (!canAutodeploy(opts.audit, opts.plan.ymy)) {
+    // Automated autodeploy still needs audit gate; human-approved does not
+    if (!opts.humanApproved && !canAutodeploy(opts.audit, opts.plan.ymy)) {
       throw new Error(
-        `Audit score ${opts.audit.score} (${opts.audit.grade}) or blockers prevent autodeploy. Use ship_mode=pr.`,
+        `Audit score ${opts.audit.score} (${opts.audit.grade}) or blockers prevent autodeploy. Approve in Studio or use ship_mode=pr.`,
       )
     }
 
@@ -156,22 +227,26 @@ export async function shipContent(opts: {
       path: filePath,
       branch: branchMain,
       content: fileContent,
-      message: `seo-factory: ship "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
+      message: opts.humanApproved
+        ? `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`
+        : `seo-factory: ship "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
       sha: existingSha,
     })
 
     return {
-      mode: 'autodeploy',
+      mode: useMainCommit ? 'autodeploy' : opts.mode,
       owner,
       repo,
       path: filePath,
       commitSha,
+      mergeCommitSha: commitSha,
       canonicalUrl: opts.plan.canonicalUrl,
       status: 'deployed',
+      humanApproved: opts.humanApproved,
     }
   }
 
-  // PR mode
+  // PR mode (and merge mode: open PR then merge)
   const baseSha = await getMainSha(owner, repo, branchMain)
   const slug = filePath.split('/').filter(Boolean).slice(-2, -1)[0] || 'page'
   const branchName = `seo-factory/${slug}-${Date.now().toString(36)}`.slice(0, 240)
@@ -182,7 +257,7 @@ export async function shipContent(opts: {
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseSha }),
   })
 
-  await putContent({
+  const { commitSha: branchCommit } = await putContent({
     owner,
     repo,
     path: filePath,
@@ -208,15 +283,66 @@ export async function shipContent(opts: {
         `- **Indexable:** ${opts.plan.indexable}`,
         `- **Audit:** ${opts.audit.score} (${opts.audit.grade})`,
         `- **Job:** ${opts.jobId || '—'}`,
+        opts.mode === 'merge' ? '- **Auto-merge:** yes (to main → Cloudflare deploy)' : '',
         '',
         opts.audit.blockers.length
           ? `### Blockers\n${opts.audit.blockers.map((b) => `- ${b.message}`).join('\n')}`
           : '### Blockers\n- none',
         '',
         'Merging to `main` triggers Cloudflare autodeploy for this repo.',
-      ].join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
     }),
   })
+
+  if (opts.mode === 'merge') {
+    // Brief pause so GitHub indexes the PR head
+    await new Promise((r) => setTimeout(r, 800))
+    try {
+      const merged = await mergePullRequest({
+        owner,
+        repo,
+        prNumber: pr.number,
+        commitTitle: `seo-factory: merge "${opts.title}"`,
+      })
+      if (merged.merged) {
+        return {
+          mode: 'merge',
+          owner,
+          repo,
+          path: filePath,
+          branch: branchName,
+          prUrl: pr.html_url,
+          prNumber: pr.number,
+          commitSha: branchCommit,
+          mergeCommitSha: merged.sha,
+          canonicalUrl: opts.plan.canonicalUrl,
+          status: 'merged',
+          humanApproved: opts.humanApproved,
+        }
+      }
+    } catch (mergeErr) {
+      // Leave PR open for human/monitor if merge blocked (branch protection, etc.)
+      console.warn(
+        '[ship] auto-merge failed, PR left open:',
+        mergeErr instanceof Error ? mergeErr.message : mergeErr,
+      )
+      return {
+        mode: 'merge',
+        owner,
+        repo,
+        path: filePath,
+        branch: branchName,
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        commitSha: branchCommit,
+        canonicalUrl: opts.plan.canonicalUrl,
+        status: 'pr_created',
+        humanApproved: opts.humanApproved,
+      }
+    }
+  }
 
   return {
     mode: 'pr',
@@ -226,7 +352,27 @@ export async function shipContent(opts: {
     branch: branchName,
     prUrl: pr.html_url,
     prNumber: pr.number,
+    commitSha: branchCommit,
     canonicalUrl: opts.plan.canonicalUrl,
     status: 'pr_created',
+    humanApproved: opts.humanApproved,
   }
 }
+
+/** Parse "owner/repo" or bare repo name with default owner. */
+export function parseRepoSlug(targetRepo: string): { owner: string; repo: string } {
+  const cleaned = String(targetRepo || '')
+    .replace(/^https?:\/\/github\.com\//, '')
+    .replace(/\.git$/, '')
+    .replace(/\/$/, '')
+  if (cleaned.includes('/')) {
+    const [owner, repo] = cleaned.split('/')
+    return { owner, repo }
+  }
+  return {
+    owner: process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it',
+    repo: cleaned,
+  }
+}
+
+export { gh, getMainSha, getFileSha, putContent }

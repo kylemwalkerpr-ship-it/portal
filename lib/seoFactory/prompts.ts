@@ -38,17 +38,19 @@ export function buildFactorySystemPrompt(opts: {
       : '2) robots: noindex,follow',
     `3) Canonical intent: ${plan.canonicalUrl}`,
     `4) Owner host: ${plan.host} — do not cannibalize other estate hosts.`,
-    '5) Body structure:',
+    '5) Body structure (SEO + AEO + GEO):',
     '   - H1 (matches title)',
-    '   - ## In 60 seconds (3–5 bullets)',
+    '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR',
     '   - ≥4 H2 sections with concrete procedures, documents, risks',
-    '   - ## FAQ (4–6 Q&A)',
-    '   - ## Sources (bullet list of official URLs)',
+    '   - ## FAQ (4–6 Q&A) — self-contained answers LLMs can cite',
+    '   - ## Sources (bullet list of official URLs only)',
     '   - Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks',
     '   - Short disclaimer: educational only, not legal advice',
-    `6) Minimum ${minWords} words of body prose (not counting JSON-LD).`,
-    `7) Content type: ${contentType}`,
-    '8) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
+    '6) Authority: use precise immigration entities (forms, visas, agencies). No fluff.',
+    '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
+    `8) Minimum ${minWords} words of body prose (not counting JSON-LD).`,
+    `9) Content type: ${contentType}`,
+    '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
   ]
     .filter(Boolean)
     .join('\n')
@@ -64,6 +66,8 @@ export function buildFactoryUserPrompt(opts: {
   audience?: string
   gscBlock: string
   opportunityAction?: string
+  /** From authority algorithm contentAngle writeHint */
+  writeHint?: string
   refineNotes?: string
 }): string {
   const parts = [
@@ -77,9 +81,10 @@ export function buildFactoryUserPrompt(opts: {
     '',
     opts.gscBlock,
     '',
+    opts.writeHint ? `Authority angle: ${opts.writeHint}` : '',
     opts.opportunityAction === 'title_rewrite'
       ? 'Emphasize a high-CTR title and meta description (year + place + concrete action). Expand the page so it deserves ranking.'
-      : 'Expand with concrete procedures, document checklists, timelines, and FAQs for high-impression / weak-rank demand.',
+      : 'Expand with concrete procedures, document checklists, timelines, and FAQs for high-impression / weak-rank demand. Optimize for Google + AI answer engines (clear definitions, steps, citable facts).',
     'Write the full page now.',
   ]
   if (opts.refineNotes) {

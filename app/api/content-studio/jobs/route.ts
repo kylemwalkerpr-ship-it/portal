@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline } from '@/lib/seoFactory/pipeline'
-import { shipContent, type ShipMode } from '@/lib/seoFactory/ship'
+import { shipContent, mergePullRequest, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
+import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 
 function sb() {
   return createClient(
@@ -79,14 +80,19 @@ function ghHeaders(token: string): GhHeaders {
 
 /**
  * PATCH /api/content-studio/jobs
- * Actions: reship | regenerate | abandon | save | refresh_pr | append_log
+ * Actions: reship | regenerate | abandon | save | refresh_pr | append_log |
+ *          approve | merge_pr | monitor
  *
  * Body: {
  *   id,
- *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr'|'append_log',
+ *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr'|'append_log'|
+ *           'approve'|'merge_pr'|'monitor',
  *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?,
  *   entries?: StudioLogEntry[]  // for append_log
  * }
+ *
+ * approve — admin reviewed content: commit/merge to main → Cloudflare deploy,
+ *           then run CI/deploy monitor (Workers AI diagnosis on failure).
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -400,10 +406,75 @@ export async function PATCH(request: NextRequest) {
       })
     }
 
-    if (action === 'reship') {
-      if (!job.content) {
+    if (action === 'monitor') {
+      const result = await monitorContentJob(id, {
+        openIssueOnFailure: body.openIssue !== false,
+        waitMs: body.waitMs != null ? Number(body.waitMs) : 0,
+      })
+      const { data: refreshed } = await supabase.from('content_jobs').select('*').eq('id', id).single()
+      return NextResponse.json({ ok: result.ok, monitor: result, job: refreshed || job })
+    }
+
+    if (action === 'merge_pr') {
+      const prNumber = job.pr_number
+      if (!prNumber) {
+        return NextResponse.json({ error: 'Job has no PR to merge' }, { status: 400 })
+      }
+      const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
+      try {
+        const merged = await mergePullRequest({
+          owner,
+          repo,
+          prNumber,
+          commitTitle: `seo-factory: approve merge "${job.title || job.topic}"`,
+        })
+        if (!merged.merged) {
+          return NextResponse.json(
+            { ok: false, error: merged.message || 'Merge rejected', merge: merged },
+            { status: 422 },
+          )
+        }
+        const now = new Date().toISOString()
+        const { data: updated } = await supabase
+          .from('content_jobs')
+          .update({
+            status: 'merged',
+            merged_at: now,
+            deployed_at: now,
+            deploy_sha: merged.sha || job.deploy_sha,
+            error_message: null,
+            ship_mode: 'autodeploy',
+          })
+          .eq('id', id)
+          .select()
+          .single()
+
+        // Fire-and-watch CI after merge
+        const monitor = await monitorContentJob(id, {
+          openIssueOnFailure: true,
+          waitMs: 2500,
+        })
+        return NextResponse.json({
+          ok: true,
+          merge: merged,
+          monitor,
+          job: updated,
+          message: 'Merged to main — Cloudflare deploy should start; monitor ran',
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Merge failed'
+        await supabase.from('content_jobs').update({ error_message: msg }).eq('id', id)
+        return NextResponse.json({ ok: false, error: msg }, { status: 422 })
+      }
+    }
+
+    if (action === 'approve' || action === 'reship') {
+      // Optional save-before-ship when content provided
+      let content = body.content != null ? String(body.content) : job.content
+      if (!content?.trim()) {
         return NextResponse.json({ error: 'Job has no content to ship' }, { status: 400 })
       }
+      const humanApproved = action === 'approve' || body.humanApproved === true
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
@@ -413,47 +484,161 @@ export async function PATCH(request: NextRequest) {
         region: job.region || 'US',
         indexable: job.indexable !== false,
       })
-      const audit =
-        (job.audit_json as any)?.score != null
-          ? (job.audit_json as any)
-          : auditContent({
-              content: job.content,
-              contentType,
-              primaryKeyword,
-              indexable: plan.indexable,
-              ownershipBlockers: plan.blockers,
-            })
-      const shipMode = (body.shipMode || job.ship_mode || 'pr') as ShipMode
+      const audit = auditContent({
+        content: String(content),
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+
+      // Approve always targets main (direct commit). Reship respects shipMode.
+      let shipMode: ShipMode = 'pr'
+      if (action === 'approve') {
+        shipMode = 'autodeploy'
+      } else {
+        const requested = String(body.shipMode || job.ship_mode || 'merge').toLowerCase()
+        shipMode =
+          requested === 'autodeploy' || requested === 'merge'
+            ? (requested as ShipMode)
+            : requested === 'pr'
+              ? 'pr'
+              : 'merge'
+      }
+
       try {
+        // Persist editor content before ship
+        if (body.content != null) {
+          await supabase
+            .from('content_jobs')
+            .update({
+              content: String(content),
+              word_count: String(content).trim().split(/\s+/).filter(Boolean).length,
+              seo_score: audit.score,
+              audit_json: audit,
+            })
+            .eq('id', id)
+        }
+
+        // If PR already open and approve → merge that PR instead of new ship
+        if (
+          humanApproved &&
+          job.pr_number &&
+          job.status === 'pr_created' &&
+          body.forceNewShip !== true
+        ) {
+          const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
+          try {
+            const merged = await mergePullRequest({
+              owner,
+              repo,
+              prNumber: job.pr_number,
+              commitTitle: `seo-factory: approve "${job.title || job.topic}"`,
+            })
+            if (merged.merged) {
+              const now = new Date().toISOString()
+              const { data: updated } = await supabase
+                .from('content_jobs')
+                .update({
+                  status: 'merged',
+                  content: String(content),
+                  merged_at: now,
+                  deployed_at: now,
+                  deploy_sha: merged.sha || job.deploy_sha,
+                  error_message: null,
+                  ship_mode: 'autodeploy',
+                  seo_score: audit.score,
+                  audit_json: audit,
+                })
+                .eq('id', id)
+                .select()
+                .single()
+              const monitor = await monitorContentJob(id, {
+                openIssueOnFailure: true,
+                waitMs: 2500,
+              })
+              return NextResponse.json({
+                ok: true,
+                approved: true,
+                merge: merged,
+                monitor,
+                job: updated,
+                message: 'Existing PR merged to main · monitor started',
+              })
+            }
+          } catch {
+            // fall through to fresh ship to main
+          }
+        }
+
         const ship = await shipContent({
-          mode: shipMode === 'autodeploy' ? 'autodeploy' : 'pr',
+          mode: shipMode,
           plan,
-          content: job.content,
-          title: job.title || job.topic,
+          content: String(content),
+          title: body.title != null ? String(body.title) : job.title || job.topic,
           region: job.region || 'US',
           contentType,
           primaryKeyword,
           audit,
           dryRun: Boolean(body.dryRun),
           jobId: id,
+          humanApproved,
         })
+        const now = new Date().toISOString()
+        const terminal =
+          ship.status === 'deployed' || ship.status === 'merged'
+            ? 'merged'
+            : ship.status === 'pr_created'
+              ? 'pr_created'
+              : job.status
         const { data: updated } = await supabase
           .from('content_jobs')
           .update({
-            status: ship.status === 'deployed' ? 'merged' : 'pr_created',
+            status: terminal,
+            content: String(content),
             pr_url: ship.prUrl || job.pr_url,
             pr_number: ship.prNumber || job.pr_number,
             branch_name: ship.branch || job.branch_name,
             content_path: ship.path || job.content_path,
-            deploy_sha: ship.commitSha || null,
-            deployed_at: ship.status === 'deployed' ? new Date().toISOString() : job.deployed_at,
+            deploy_sha: ship.mergeCommitSha || ship.commitSha || job.deploy_sha,
+            deployed_at:
+              ship.status === 'deployed' || ship.status === 'merged' ? now : job.deployed_at,
+            merged_at:
+              ship.status === 'deployed' || ship.status === 'merged' ? now : job.merged_at,
             error_message: null,
-            ship_mode: ship.mode,
+            ship_mode: ship.mode === 'pr' ? 'pr' : 'autodeploy',
+            seo_score: audit.score,
+            word_count: audit.wordCount,
+            audit_json: audit,
           })
           .eq('id', id)
           .select()
           .single()
-        return NextResponse.json({ ok: true, ship, job: updated })
+
+        let monitor = null
+        if (
+          (ship.status === 'deployed' || ship.status === 'merged') &&
+          !body.dryRun
+        ) {
+          monitor = await monitorContentJob(id, {
+            openIssueOnFailure: true,
+            waitMs: 2000,
+          })
+        }
+
+        return NextResponse.json({
+          ok: true,
+          approved: humanApproved,
+          ship,
+          monitor,
+          job: updated,
+          message:
+            ship.status === 'deployed' || ship.status === 'merged'
+              ? 'Approved → main · Cloudflare deploy · monitor ran'
+              : ship.status === 'pr_created'
+                ? 'PR opened (merge blocked — use Approve again or fix branch protection)'
+                : 'Ship complete',
+        })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Ship failed'
         await supabase.from('content_jobs').update({ error_message: msg, status: 'failed' }).eq('id', id)
