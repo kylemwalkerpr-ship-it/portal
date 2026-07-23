@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { isCloudflareAiConfigured, generateContentText } from '@/lib/contentAiProvider'
+import {
+  isCloudflareAiConfigured,
+  generateContentText,
+  listConfiguredContentProviders,
+} from '@/lib/contentAiProvider'
 import { getGscAccess } from '@/lib/gscAuth'
 import { createClient } from '@supabase/supabase-js'
 import { loadStrategiesIndex, loadStrategyPromptPack } from '@/lib/seoDataLoaders'
@@ -23,12 +27,18 @@ export async function GET() {
       detail: string
     }> = []
 
-    // Cloudflare AI
-    const cfOk = isCloudflareAiConfigured()
-    let cfDetail = cfOk
-      ? 'CLOUDFLARE_ACCOUNT_ID + AI token present'
-      : 'Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_AI_TOKEN'
-    if (cfOk) {
+    // Content AI chain (CF primary + gig-style fallbacks)
+    const providers = listConfiguredContentProviders()
+    const anyAi = providers.some((p) => p.configured)
+    if (!anyAi) {
+      checks.push({
+        id: 'content_ai',
+        label: 'Content AI chain',
+        ok: false,
+        detail:
+          'No providers configured. Set CF AI and/or GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY (same as gig AI).',
+      })
+    } else {
       try {
         const r = await generateContentText({
           system: 'Reply with exactly: ok',
@@ -36,19 +46,40 @@ export async function GET() {
           maxTokens: 8,
           temperature: 0,
         })
-        cfDetail = `Live OK · ${r.provider} · ${r.model}`
-        checks.push({ id: 'cloudflare_ai', label: 'Cloudflare Workers AI', ok: true, detail: cfDetail })
+        checks.push({
+          id: 'content_ai',
+          label: 'Content AI chain',
+          ok: true,
+          detail: `Live OK · ${r.provider} · ${r.model}`,
+        })
       } catch (e) {
         checks.push({
-          id: 'cloudflare_ai',
-          label: 'Cloudflare Workers AI',
+          id: 'content_ai',
+          label: 'Content AI chain',
           ok: false,
-          detail: e instanceof Error ? e.message.slice(0, 180) : 'AI call failed',
+          detail: e instanceof Error ? e.message.slice(0, 220) : 'AI call failed',
         })
       }
-    } else {
-      checks.push({ id: 'cloudflare_ai', label: 'Cloudflare Workers AI', ok: false, detail: cfDetail })
     }
+    for (const p of providers) {
+      checks.push({
+        id: `ai_${p.id}`,
+        label: `AI · ${p.label}`,
+        ok: p.configured,
+        detail: p.configured
+          ? `${p.role === 'primary' ? 'Primary' : 'Fallback'} · credentials present`
+          : 'Not configured',
+      })
+    }
+    // Keep legacy id for UI that still looks for cloudflare_ai
+    checks.push({
+      id: 'cloudflare_ai',
+      label: 'Cloudflare Workers AI (legacy)',
+      ok: isCloudflareAiConfigured(),
+      detail: isCloudflareAiConfigured()
+        ? 'CLOUDFLARE_ACCOUNT_ID + AI token present'
+        : 'Missing CLOUDFLARE_ACCOUNT_ID or AI token',
+    })
 
     // GitHub
     const ghToken = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
@@ -148,15 +179,17 @@ export async function GET() {
       })
     }
 
-    // Fallbacks
-    const fallbacks = ['XAI_API_KEY', 'OPENAI_API_KEY', 'DEEPSEEK_API_KEY', 'GROQ_API_KEY'].filter(
-      (k) => Boolean((process.env[k] || '').trim()),
-    )
+    // Gig-style fallbacks summary (credentials present)
+    const fb = listConfiguredContentProviders().filter((p) => p.role === 'fallback' && p.configured)
     checks.push({
       id: 'ai_fallbacks',
-      label: 'AI fallbacks',
-      ok: fallbacks.length > 0 || cfOk,
-      detail: fallbacks.length ? fallbacks.join(', ') : 'None (CF AI only)',
+      label: 'AI fallbacks (gig chain)',
+      ok: fb.length > 0 || isCloudflareAiConfigured(),
+      detail: fb.length
+        ? fb.map((p) => p.id).join(', ')
+        : isCloudflareAiConfigured()
+          ? 'None configured — CF AI only (add GROQ/GEMINI/OPENROUTER like gigs)'
+          : 'None',
     })
 
     // SEO strategies corpus

@@ -1,21 +1,17 @@
 /**
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
- * Cloudflare Workers AI is PRIMARY for long-form articles and blogs.
- * Other OpenAI-compatible providers (xAI, custom, OpenAI, DeepSeek) are
- * fallbacks only — chat/gigs still use lib/chatProvider.ts separately.
+ * Default PRIMARY: Cloudflare Workers AI (long-form capacity).
+ * FALLBACKS match gig-creation / consultant·attorney AI (`lib/chatProvider.ts`):
+ *   Groq → Gemini → OpenRouter (:free) → custom → xAI → OpenAI → DeepSeek
+ *   then getChatProvider() as a last-resort bridge (same chain gigs use).
  *
- * Auth (any one of these tokens, preferred order):
- *   CLOUDFLARE_AI_TOKEN           — scoped Workers AI token (recommended)
- *   CLOUDFLARE_WORKERS_AI_TOKEN   — alias
- *   CLOUDFLARE_API_TOKEN          — account API token with Workers AI Read
+ * CF auth (first match):
+ *   CLOUDFLARE_AI_TOKEN | CLOUDFLARE_WORKERS_AI_TOKEN | CLOUDFLARE_API_TOKEN
+ *   + CLOUDFLARE_ACCOUNT_ID
  *
- * Plus: CLOUDFLARE_ACCOUNT_ID (e.g. 48f2c5185be44e14fea1df7d0591932a)
- *
- * REST (OpenAI-compatible, preferred):
- *   POST /client/v4/accounts/{account_id}/ai/v1/chat/completions
- * Legacy run endpoint fallback:
- *   POST /client/v4/accounts/{account_id}/ai/run/{model}
+ * Override order with CONTENT_AI_PROVIDER / AI_PROVIDER:
+ *   cloudflare | auto | groq | gemini | openrouter | grok | openai | deepseek | custom
  */
 
 const CF_AI_MODEL =
@@ -72,37 +68,143 @@ export function resolveCloudflareAiAuth(): { accountId: string; token: string } 
   return { accountId, token }
 }
 
+/** Transient 429/503 retry — same pattern as gig chatProvider. */
+async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const retryable = /\b(503|429)\b|UNAVAILABLE|overload|high.demand|rate.?limit/i.test(msg)
+    if (!retryable) throw e
+    console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
+    await new Promise((r) => setTimeout(r, 1500))
+    return fn()
+  }
+}
+
 async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): Promise<ContentAiResult> {
-  const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
+  return withRetry(p.label, async () => {
+    const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${p.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: p.model,
-      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-      max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-      messages: [
-        { role: 'system', content: opts.system },
-        { role: 'user', content: opts.prompt },
-      ],
-    }),
+    }
+    // OpenRouter free-tier attribution (same as chatProvider)
+    if (p.label === 'openrouter') {
+      headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
+      headers['X-Title'] = 'YouSafe Content Studio'
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: p.model,
+        temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+        max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+        messages: [
+          { role: 'system', content: opts.system },
+          { role: 'user', content: opts.prompt },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`${p.label} ${res.status}: ${body.slice(0, 400)}`)
+    }
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>
+    }
+    const text = json.choices?.[0]?.message?.content
+    if (!text?.trim()) throw new Error(`${p.label} returned empty content`)
+    return { text: text.trim(), provider: p.label, model: p.model }
   })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`${p.label} ${res.status}: ${body.slice(0, 400)}`)
+}
+
+const GEMINI_MODEL = env('GEMINI_MODEL') || 'gemini-2.5-flash'
+const OPENROUTER_MODELS = [
+  env('OPENROUTER_MODEL') || 'meta-llama/llama-3.3-70b-instruct:free',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+]
+
+async function geminiComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const apiKey = env('GEMINI_API_KEY') || env('GOOGLE_GEMINI_API_KEY')
+  if (!apiKey) throw new Error('Gemini not configured (GEMINI_API_KEY)')
+  const model = GEMINI_MODEL
+  return withRetry('gemini', async () => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: opts.system }] },
+        contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
+        generationConfig: {
+          temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+          maxOutputTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+        },
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      const fp = `[len=${apiKey.length} ${apiKey.slice(0, 4)}…${apiKey.slice(-3)}]`
+      throw new Error(`gemini ${res.status} ${fp}: ${body.slice(0, 400)}`)
+    }
+    const data = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    }
+    const text = data.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text)
+      .filter(Boolean)
+      .join('')
+      .trim()
+    if (!text) throw new Error('gemini returned empty content')
+    return { text, provider: 'gemini', model }
+  })
+}
+
+/** OpenRouter free models with walk-on 404/429 (same as gig chatProvider). */
+async function openRouterComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const apiKey = env('OPENROUTER_API_KEY')
+  if (!apiKey) throw new Error('OpenRouter not configured (OPENROUTER_API_KEY)')
+  let lastErr: Error | null = null
+  for (const model of OPENROUTER_MODELS) {
+    try {
+      return await openAiCompatibleComplete(
+        {
+          label: 'openrouter',
+          baseURL: 'https://openrouter.ai/api/v1',
+          apiKey,
+          model,
+        },
+        opts,
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      lastErr = e instanceof Error ? e : new Error(msg)
+      const tryNext =
+        /\b(404|429|503)\b/.test(msg) || /not.found|rate.?limit|overload|unavailable/i.test(msg)
+      if (!tryNext) break
+    }
   }
-  const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
-  }
-  const text = json.choices?.[0]?.message?.content
-  if (!text?.trim()) throw new Error(`${p.label} returned empty content`)
-  return { text: text.trim(), provider: p.label, model: p.model }
+  throw lastErr || new Error('OpenRouter: no free models succeeded')
+}
+
+/** Last-resort: reuse exact gig-creation provider chain. */
+async function chatProviderBridge(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const { getChatProvider } = await import('@/lib/chatProvider')
+  const provider = getChatProvider()
+  if (!provider) throw new Error('chatProvider chain not configured')
+  const text = await provider.reply(opts.system, [{ role: 'user', content: opts.prompt }], {
+    maxOutputTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+  })
+  if (!text?.trim()) throw new Error(`${provider.name} returned empty content`)
+  return { text: text.trim(), provider: `chatProvider:${provider.name}`, model: provider.name }
 }
 
 /**
@@ -157,12 +259,17 @@ async function* openAiCompatibleStream(
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
   const url = p.baseURL.replace(/\/$/, '') + '/chat/completions'
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${p.apiKey}`,
+  }
+  if (p.label === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://portal.yousafeconsultancy.com'
+    headers['X-Title'] = 'YouSafe Content Studio'
+  }
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${p.apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
       model: p.model,
       stream: true,
@@ -378,9 +485,26 @@ async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiRe
   return { text, provider: 'cloudflare-ai', model }
 }
 
-function listFallbackProviders(): OpenAiCompat[] {
+/**
+ * OpenAI-compatible fallbacks in gig-creation order where possible:
+ * Groq → OpenRouter → custom → xAI → OpenAI → DeepSeek
+ * (Gemini is native REST and tried separately.)
+ */
+function listOpenAiFallbackProviders(): OpenAiCompat[] {
   const out: OpenAiCompat[] = []
 
+  // 1) Groq — primary free tier for gigs (fastest)
+  if (env('GROQ_API_KEY')) {
+    out.push({
+      label: 'groq',
+      baseURL: 'https://api.groq.com/openai/v1',
+      apiKey: env('GROQ_API_KEY'),
+      model: env('GROQ_MODEL') || 'llama-3.3-70b-versatile',
+    })
+  }
+  // 2) OpenRouter free models — separate daily quota (same as gigs)
+  // Handled by openRouterComplete (multi-model walk), not listed here as single OpenAiCompat
+  // 3) Custom OpenAI-compatible
   if (env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')) {
     out.push({
       label: 'custom',
@@ -413,21 +537,40 @@ function listFallbackProviders(): OpenAiCompat[] {
       model: env('DEEPSEEK_MODEL') || 'deepseek-chat',
     })
   }
-  if (env('GROQ_API_KEY')) {
-    out.push({
-      label: 'groq',
-      baseURL: 'https://api.groq.com/openai/v1',
-      apiKey: env('GROQ_API_KEY'),
-      model: env('GROQ_MODEL') || 'llama-3.3-70b-versatile',
-    })
-  }
 
   return out
+}
+
+function isGeminiConfigured(): boolean {
+  return Boolean(env('GEMINI_API_KEY') || env('GOOGLE_GEMINI_API_KEY'))
+}
+
+function isOpenRouterConfigured(): boolean {
+  return Boolean(env('OPENROUTER_API_KEY'))
 }
 
 /** True when CF Workers AI credentials are present. */
 export function isCloudflareAiConfigured(): boolean {
   return resolveCloudflareAiAuth() !== null
+}
+
+/** Operator-facing list of which content AI backends are configured. */
+export function listConfiguredContentProviders(): Array<{
+  id: string
+  label: string
+  configured: boolean
+  role: 'primary' | 'fallback'
+}> {
+  return [
+    { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: isCloudflareAiConfigured(), role: 'primary' },
+    { id: 'groq', label: 'Groq (Llama 3.3 70B)', configured: Boolean(env('GROQ_API_KEY')), role: 'fallback' },
+    { id: 'gemini', label: 'Google Gemini', configured: isGeminiConfigured(), role: 'fallback' },
+    { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
+    { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
+    { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
+    { id: 'openai', label: 'OpenAI', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
+    { id: 'deepseek', label: 'DeepSeek', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
+  ]
 }
 
 function preferProvider(): string {
@@ -444,58 +587,98 @@ function tryCloudflareFirst(prefer: string): boolean {
   )
 }
 
+type CompleteFn = () => Promise<ContentAiResult>
+
+function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
+  const items: Array<{ label: string; run: CompleteFn }> = []
+
+  const pushCf = () => {
+    if (isCloudflareAiConfigured()) {
+      items.push({ label: 'cloudflare-ai', run: () => cloudflareAiComplete(opts) })
+    }
+  }
+  const pushGroq = () => {
+    const p = listOpenAiFallbackProviders().find((x) => x.label === 'groq')
+    if (p) items.push({ label: 'groq', run: () => openAiCompatibleComplete(p, opts) })
+  }
+  const pushGemini = () => {
+    if (isGeminiConfigured()) items.push({ label: 'gemini', run: () => geminiComplete(opts) })
+  }
+  const pushOpenRouter = () => {
+    if (isOpenRouterConfigured()) items.push({ label: 'openrouter', run: () => openRouterComplete(opts) })
+  }
+  const pushRest = () => {
+    for (const p of listOpenAiFallbackProviders()) {
+      if (p.label === 'groq') continue // already pushed
+      items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
+    }
+  }
+  const pushChatBridge = () => {
+    items.push({ label: 'chatProvider-bridge', run: () => chatProviderBridge(opts) })
+  }
+
+  // Preferred-first
+  if (prefer === 'groq' || prefer === 'gemini' || prefer === 'openrouter' || prefer === 'xai' || prefer === 'grok' || prefer === 'openai' || prefer === 'deepseek' || prefer === 'custom') {
+    if (prefer === 'groq') pushGroq()
+    else if (prefer === 'gemini') pushGemini()
+    else if (prefer === 'openrouter') pushOpenRouter()
+    else if (prefer === 'xai' || prefer === 'grok') {
+      const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
+      if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
+    } else if (prefer === 'openai' || prefer === 'deepseek' || prefer === 'custom') {
+      const p = listOpenAiFallbackProviders().find((x) => x.label === prefer)
+      if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
+    }
+  }
+
+  // Default / remaining order mirrors gigs after CF primary:
+  // CF → Groq → Gemini → OpenRouter → other OpenAI-compat → chatProvider bridge
+  if (tryCloudflareFirst(prefer) || prefer === 'cloudflare' || prefer === 'auto') {
+    pushCf()
+  }
+  pushGroq()
+  pushGemini()
+  pushOpenRouter()
+  pushRest()
+  if (!tryCloudflareFirst(prefer)) pushCf()
+  pushChatBridge()
+
+  // Dedupe by label
+  const seen = new Set<string>()
+  return items.filter((i) => {
+    if (seen.has(i.label)) return false
+    seen.add(i.label)
+    return true
+  })
+}
+
 /**
- * Generate long-form content. Cloudflare AI first, then OpenAI-compatible fallbacks.
- * Surfaces the last error if every provider fails.
+ * Generate long-form content.
+ * Cloudflare AI first (default), then the same free-tier fallbacks as
+ * consultant/attorney gig drafting (Groq, Gemini, OpenRouter, …).
  */
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   const prefer = preferProvider()
   const errors: string[] = []
-  const tryCfFirst = tryCloudflareFirst(prefer)
+  const candidates = orderedCompleters(opts, prefer)
 
-  if (tryCfFirst && isCloudflareAiConfigured()) {
-    try {
-      return await cloudflareAiComplete(opts)
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
-    }
+  if (!candidates.length) {
+    throw new Error(
+      'No content AI provider configured. Set CLOUDFLARE_ACCOUNT_ID + AI token, and/or GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY (same as gig AI).',
+    )
   }
 
-  if (!tryCfFirst) {
-    const fallbacks = listFallbackProviders()
-    const preferred = fallbacks.find((p) => {
-      if (prefer === 'xai' || prefer === 'grok') return p.label === 'grok'
-      return p.label === prefer
-    })
-    if (preferred) {
-      try {
-        return await openAiCompatibleComplete(preferred, opts)
-      } catch (e) {
-        errors.push(e instanceof Error ? e.message : String(e))
-      }
-    }
-  }
-
-  for (const p of listFallbackProviders()) {
+  for (const c of candidates) {
     try {
-      return await openAiCompatibleComplete(p, opts)
+      return await c.run()
     } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  if (!tryCfFirst && isCloudflareAiConfigured()) {
-    try {
-      return await cloudflareAiComplete(opts)
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e))
+      errors.push(`${c.label}: ${e instanceof Error ? e.message : String(e)}`)
+      console.warn(`[contentAi] ${c.label} failed; trying next`)
     }
   }
 
   throw new Error(
-    errors.length
-      ? `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}`
-      : 'No content AI provider configured. Set CLOUDFLARE_ACCOUNT_ID + (CLOUDFLARE_AI_TOKEN or CLOUDFLARE_API_TOKEN with Workers AI Read).',
+    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}`,
   )
 }
 
@@ -508,16 +691,17 @@ export async function* generateContentTextStream(
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
   const prefer = preferProvider()
-  const tryCfFirst = tryCloudflareFirst(prefer)
   const errors: string[] = []
 
   type Candidate = {
     label: string
-    stream: () => AsyncGenerator<ContentAiStreamEvent>
+    stream?: () => AsyncGenerator<ContentAiStreamEvent>
     complete: () => Promise<ContentAiResult>
   }
 
   const candidates: Candidate[] = []
+
+  // Streaming-capable OpenAI-compat providers
   if (isCloudflareAiConfigured()) {
     candidates.push({
       label: 'cloudflare-ai',
@@ -525,38 +709,79 @@ export async function* generateContentTextStream(
       complete: () => cloudflareAiComplete(opts),
     })
   }
-  for (const p of listFallbackProviders()) {
+  for (const p of listOpenAiFallbackProviders()) {
     candidates.push({
       label: p.label,
       stream: () => openAiCompatibleStream(p, opts),
       complete: () => openAiCompatibleComplete(p, opts),
     })
   }
-
-  // Reorder if a non-CF provider is preferred
-  if (!tryCfFirst && candidates.length > 1) {
-    const idx = candidates.findIndex((c) => {
-      if (prefer === 'xai' || prefer === 'grok') return c.label === 'grok'
-      return c.label === prefer
+  if (isOpenRouterConfigured()) {
+    // Multi-model OpenRouter: stream first free model only; complete walks list
+    candidates.push({
+      label: 'openrouter',
+      stream: () =>
+        openAiCompatibleStream(
+          {
+            label: 'openrouter',
+            baseURL: 'https://openrouter.ai/api/v1',
+            apiKey: env('OPENROUTER_API_KEY'),
+            model: OPENROUTER_MODELS[0],
+          },
+          opts,
+        ),
+      complete: () => openRouterComplete(opts),
     })
+  }
+  // Gemini has no SSE path here — synthetic stream from complete
+  if (isGeminiConfigured()) {
+    candidates.push({
+      label: 'gemini',
+      complete: () => geminiComplete(opts),
+    })
+  }
+  candidates.push({
+    label: 'chatProvider-bridge',
+    complete: () => chatProviderBridge(opts),
+  })
+
+  // Prefer-first reorder
+  if (!tryCloudflareFirst(prefer) && prefer && prefer !== 'auto') {
+    const want =
+      prefer === 'xai' || prefer === 'grok'
+        ? 'grok'
+        : prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
+          ? 'cloudflare-ai'
+          : prefer
+    const idx = candidates.findIndex((c) => c.label === want)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
   }
 
-  for (const c of candidates) {
-    try {
-      yield* c.stream()
-      return
-    } catch (e) {
-      errors.push(`${c.label} stream: ${e instanceof Error ? e.message : String(e)}`)
+  // Dedupe
+  const seen = new Set<string>()
+  const unique = candidates.filter((c) => {
+    if (seen.has(c.label)) return false
+    seen.add(c.label)
+    return true
+  })
+
+  for (const c of unique) {
+    if (c.stream) {
       try {
-        yield* completeAsStream(c.complete)
+        yield* c.stream()
         return
-      } catch (e2) {
-        errors.push(`${c.label}: ${e2 instanceof Error ? e2.message : String(e2)}`)
+      } catch (e) {
+        errors.push(`${c.label} stream: ${e instanceof Error ? e.message : String(e)}`)
       }
+    }
+    try {
+      yield* completeAsStream(c.complete)
+      return
+    } catch (e2) {
+      errors.push(`${c.label}: ${e2 instanceof Error ? e2.message : String(e2)}`)
     }
   }
 
