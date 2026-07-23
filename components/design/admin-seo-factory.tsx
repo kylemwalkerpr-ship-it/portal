@@ -69,6 +69,7 @@ export default function AdminSeoFactory({
   const [strategies, setStrategies] = React.useState<any>(null)
   const [strategyDoc, setStrategyDoc] = React.useState<{ title: string; content: string } | null>(null)
   const [kwPlan, setKwPlan] = React.useState<any>(null)
+  const [optimalPlan, setOptimalPlan] = React.useState<any>(null)
   const [kwLaneFilter, setKwLaneFilter] = React.useState<string>('all')
   const [mixRefresh, setMixRefresh] = React.useState(40)
   const [mixExpand, setMixExpand] = React.useState(35)
@@ -441,6 +442,112 @@ export default function AdminSeoFactory({
     } finally {
       setBusy(false)
     }
+  }
+
+  const loadOptimalPlan = async () => {
+    setBusy(true)
+    setActivityLine('Building optimal GSC × authority plan…')
+    pushLog('info', 'optimal', 'Build optimal plan (GSC + AEO/SEO/GEO + estate)')
+    try {
+      const res = await fetch('/api/seo-factory/optimal-plan', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planLimit: Math.max(autoLimit * 4, 12),
+          boardLimit: 80,
+          regionFilter: regionFilter || undefined,
+          mixRefresh,
+          mixExpand,
+          mixNew,
+          minImpressions: 5,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Optimal plan failed')
+      setOptimalPlan(data)
+      // Mirror into keyword plan UI shape where useful
+      setKwPlan({
+        source: data.gscSource,
+        summary: data.summary,
+        mix: data.mix,
+        targetMix: data.targetMix,
+        plan: data.plan,
+        board: data.board,
+        warnings: data.warnings,
+      })
+      for (const w of data.warnings || []) pushLog('warn', 'optimal', w)
+      pushLog(
+        'success',
+        'optimal',
+        data.summary || `Optimal plan · ${data.plan?.length || 0} items · GSC ${data.gscSource}`,
+        JSON.stringify({ siteUrl: data.siteUrl, autoRunTerms: data.autoRunTerms, stack: data.stack }, null, 2),
+      )
+      setActionNotice(
+        data.gscLive
+          ? `Optimal plan ready (live GSC) · ${data.autoRunTerms?.length || 0} auto-run terms`
+          : `Optimal plan ready (snapshot GSC) · ${data.autoRunTerms?.length || 0} terms — wire SA for live`,
+      )
+      setTab('keywords')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Optimal plan failed'
+      pushLog('error', 'optimal', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
+  }
+
+  const runOptimalAutoPilot = async () => {
+    let feed = (optimalPlan?.autoRunTerms as string[]) || []
+    if (!feed.length) {
+      // Build plan first, then run without requiring a second click
+      setBusy(true)
+      setActivityLine('Building optimal plan then generating…')
+      try {
+        const res = await fetch('/api/seo-factory/optimal-plan', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            planLimit: Math.max(autoLimit * 4, 12),
+            regionFilter: regionFilter || undefined,
+            mixRefresh,
+            mixExpand,
+            mixNew,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Optimal plan failed')
+        setOptimalPlan(data)
+        setKwPlan({
+          source: data.gscSource,
+          summary: data.summary,
+          mix: data.mix,
+          targetMix: data.targetMix,
+          plan: data.plan,
+          board: data.board,
+          warnings: data.warnings,
+        })
+        feed = data.autoRunTerms || []
+        pushLog('success', 'optimal', data.summary || 'Optimal plan ready')
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Optimal plan failed'
+        pushLog('error', 'optimal', msg)
+        setActionNotice(msg)
+        setBusy(false)
+        setActivityLine(null)
+        return
+      }
+      setBusy(false)
+      setActivityLine(null)
+    }
+    if (!feed.length) {
+      setActionNotice('Optimal plan returned no terms')
+      return
+    }
+    await runAutoPilot(feed.slice(0, autoLimit))
   }
 
   const executeKeywordPlan = async () => {
@@ -1441,8 +1548,19 @@ export default function AdminSeoFactory({
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" disabled={busy} onClick={() => runAutoPilot()} style={{ ...btnPrimary, opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}>
-                {busy ? 'Running pipeline…' : dryRun ? `Dry-run top ${autoLimit}` : `Generate & ship top ${autoLimit}`}
+              <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}>
+                {busy ? 'Planning…' : '① Optimal GSC plan'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => runOptimalAutoPilot()}
+                style={{ ...btnPrimary, opacity: busy ? 0.7 : 1, fontSize: 14, padding: '12px 18px' }}
+              >
+                {busy ? 'Running…' : dryRun ? `② Dry-run optimal × ${autoLimit}` : `② Generate optimal × ${autoLimit}`}
+              </button>
+              <button type="button" disabled={busy} onClick={() => runAutoPilot()} style={btnSecondary}>
+                Classic top demand
               </button>
               <button type="button" disabled={busy || selectedOpp.size === 0} onClick={() => runAutoPilot([...selectedOpp])} style={btnSecondary}>
                 Run selected ({selectedOpp.size})
@@ -1454,6 +1572,24 @@ export default function AdminSeoFactory({
                 Scan deploy monitor
               </button>
             </div>
+            {optimalPlan && (
+              <div style={{
+                marginTop: 16, padding: 12, borderRadius: 8, fontSize: 12,
+                background: optimalPlan.gscLive ? '#ECFDF5' : '#FFFBEB',
+                border: `1px solid ${C.border}`, color: C.textMuted, lineHeight: 1.5,
+              }}>
+                <strong style={{ color: C.cyan }}>Optimal stack ready</strong>
+                {' · '}GSC {optimalPlan.gscLive ? 'live' : 'snapshot'} ({optimalPlan.gscSource})
+                {' · '}{optimalPlan.autoRunTerms?.length || 0} terms
+                {' · '}{optimalPlan.siteUrl}
+                <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                  {(optimalPlan.autoRunTerms || []).slice(0, 8).join(' · ') || '—'}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11 }}>
+                  Agent/MCP: use prompts in API response · docs/SEO_OPTIMAL_STACK.md
+                </div>
+              </div>
+            )}
           </div>
 
           {autoResult && (

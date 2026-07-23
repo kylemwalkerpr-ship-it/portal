@@ -7,6 +7,23 @@ GitHub Actions + Cloudflare Workers Builds green after Worker size fix.
 
 https://portal.yousafeconsultancy.com/dashboard/admin/content
 
+## Maximally optimal stack (2026-07-23)
+
+See **`docs/SEO_OPTIMAL_STACK.md`**.
+
+| Layer | Choice |
+|-------|--------|
+| Agent GSC | Free MCP `mcp-search-console` (Grok `mcp_servers.gsc`) |
+| Studio planner | `POST /api/seo-factory/optimal-plan` + Auto-Pilot **① Optimal GSC plan** |
+| AI | CF primary → Groq → Gemini → OpenRouter (gig chain) |
+| Ship | shipGate + Approve → main |
+
+```bash
+# One-time: place Search Console SA JSON then
+./scripts/setup-gsc-mcp.sh /path/to/service_account.json
+grok mcp doctor gsc
+```
+
 ## What shipped
 
 | Area | Location |
