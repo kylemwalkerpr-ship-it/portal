@@ -59,23 +59,56 @@ async function getMainSha(owner: string, repo: string, branch: string): Promise<
   return ref.object.sha
 }
 
+/** Encode path segments for GitHub Contents API (encodeURI leaves some chars unescaped). */
+function encodeRepoPath(filePath: string): string {
+  return String(filePath || '')
+    .replace(/^\//, '')
+    .split('/')
+    .filter(Boolean)
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')
+}
+
+/**
+ * Blob SHA of an existing file on a branch, or undefined if the path is free (404).
+ * Required when updating — GitHub Contents API returns 422 if "sha" wasn't supplied.
+ */
 async function getFileSha(
   owner: string,
   repo: string,
   path: string,
   branch: string,
 ): Promise<string | undefined> {
-  try {
-    const file = await gh(
-      `/repos/${owner}/${repo}/contents/${encodeURI(path).replace(/^\//, '')}?ref=${encodeURIComponent(branch)}`,
-    )
-    return file.sha as string
-  } catch {
-    return undefined
+  const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
+  if (!token) throw new Error('GITHUB_TOKEN (or CONTENT_STUDIO_GITHUB_TOKEN) not set')
+  const base = process.env.GITHUB_API_BASE ?? 'https://api.github.com'
+  const url = `${base}/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'yousafe-portal-seo-factory',
+    },
+  })
+  if (res.status === 404) return undefined
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`GitHub ${res.status} getFileSha: ${text.slice(0, 300)}`)
   }
+  const file = await res.json()
+  // Directory listing — never treat as a file blob
+  if (Array.isArray(file)) {
+    throw new Error(`Path is a directory, not a file: ${path}`)
+  }
+  const sha = file?.sha as string | undefined
+  if (!sha) {
+    throw new Error(`GitHub contents response missing blob sha for ${path} @ ${branch}`)
+  }
+  return sha
 }
 
-async function putContent(opts: {
+async function putContentOnce(opts: {
   owner: string
   repo: string
   path: string
@@ -90,12 +123,51 @@ async function putContent(opts: {
     content: Buffer.from(opts.content, 'utf8').toString('base64'),
   }
   if (opts.sha) body.sha = opts.sha
-  const res = await gh(`/repos/${opts.owner}/${opts.repo}/contents/${encodeURI(opts.path).replace(/^\//, '')}`, {
+  const res = await gh(`/repos/${opts.owner}/${opts.repo}/contents/${encodeRepoPath(opts.path)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   return { commitSha: res.commit?.sha || res.content?.sha || '' }
+}
+
+/**
+ * Create or update a file. Always resolves blob SHA when the path already exists
+ * (on main or on a feature branch forked from main). Retries once on 422/409
+ * when GitHub says the file exists or the SHA is stale.
+ */
+async function putContent(opts: {
+  owner: string
+  repo: string
+  path: string
+  branch: string
+  content: string
+  message: string
+  sha?: string
+}): Promise<{ commitSha: string }> {
+  let sha = opts.sha
+  if (sha === undefined) {
+    sha = await getFileSha(opts.owner, opts.repo, opts.path, opts.branch)
+  }
+
+  try {
+    return await putContentOnce({ ...opts, sha })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const needsSha =
+      /422/.test(msg) &&
+      (/sha/i.test(msg) || /Invalid request/i.test(msg) || /already exists/i.test(msg))
+    const staleSha = /409/.test(msg) || /does not match/i.test(msg) || /is at .+ but expected/i.test(msg)
+    if (!needsSha && !staleSha) throw e
+
+    const retrySha = await getFileSha(opts.owner, opts.repo, opts.path, opts.branch)
+    if (!retrySha) {
+      throw new Error(
+        `GitHub refused update for ${opts.path} on ${opts.branch} (missing sha) and re-fetch found no file. Original: ${msg.slice(0, 280)}`,
+      )
+    }
+    return await putContentOnce({ ...opts, sha: retrySha })
+  }
 }
 
 /** Merge an open PR into main (squash or merge per repo defaults). */
@@ -269,6 +341,8 @@ export async function shipContent(opts: {
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseSha }),
   })
 
+  // Branch is forked from main — if path already exists, GitHub requires blob sha.
+  // putContent resolves SHA automatically (create vs update).
   const { commitSha: branchCommit } = await putContent({
     owner,
     repo,

@@ -227,13 +227,77 @@ async function createBranch(owner: string, repo: string, branchName: string, fro
   })
 }
 
-async function putFile(owner: string, repo: string, branch: string, path: string, content: string, message: string): Promise<void> {
+function encodeRepoPath(filePath: string): string {
+  return String(filePath || '')
+    .replace(/^\//, '')
+    .split('/')
+    .filter(Boolean)
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')
+}
+
+/** Blob SHA when path exists on branch; undefined if free (create). Required for updates. */
+async function getFileSha(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string,
+): Promise<string | undefined> {
+  const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
+  if (!token) throw new Error('GITHUB_TOKEN not set')
+  const base = process.env.GITHUB_API_BASE ?? 'https://api.github.com'
+  const res = await fetch(
+    `${base}/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`,
+    {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'yousafe-portal-content-studio',
+      },
+    },
+  )
+  if (res.status === 404) return undefined
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`GitHub ${res.status} getFileSha: ${text.slice(0, 200)}`)
+  }
+  const file = await res.json()
+  if (Array.isArray(file)) throw new Error(`Path is a directory: ${path}`)
+  return file.sha as string | undefined
+}
+
+async function putFile(
+  owner: string,
+  repo: string,
+  branch: string,
+  path: string,
+  content: string,
+  message: string,
+): Promise<void> {
   const b64 = Buffer.from(content, 'utf8').toString('base64')
-  await gh(`/repos/${owner}/${repo}/contents/${encodeURI(path).replace(/^\//, '')}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, branch, content: b64 }),
-  })
+  let sha = await getFileSha(owner, repo, path, branch)
+  const body: Record<string, string> = { message, branch, content: b64 }
+  if (sha) body.sha = sha
+
+  try {
+    await gh(`/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // File exists but we missed sha (or sha stale) — re-fetch and retry once
+    if (!/422|409/.test(msg)) throw e
+    sha = await getFileSha(owner, repo, path, branch)
+    if (!sha) throw e
+    await gh(`/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, branch, content: b64, sha }),
+    })
+  }
 }
 
 async function openPR(owner: string, repo: string, head: string, base: string, title: string, body: string): Promise<{ url: string; number: number }> {
