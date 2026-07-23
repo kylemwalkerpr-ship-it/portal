@@ -16,7 +16,7 @@ function sb() {
 
 /**
  * GET /api/content-studio/jobs
- * Query: status, region, limit, q (search topic/keyword), id
+ * Query: status, region, host (owner_host), repo (target_repo), limit, q, id, ids
  */
 export async function GET(request: NextRequest) {
   try {
@@ -27,10 +27,16 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
+    const ids = (searchParams.get('ids') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     const status = searchParams.get('status')
     const region = searchParams.get('region')
+    const host = searchParams.get('host') || searchParams.get('owner_host')
+    const repo = searchParams.get('repo') || searchParams.get('target_repo')
     const q = (searchParams.get('q') || '').trim()
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 100)
+    const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 200)
 
     const supabase = sb()
 
@@ -40,28 +46,237 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ job: data })
     }
 
+    if (ids.length) {
+      const { data, error } = await supabase
+        .from('content_jobs')
+        .select('*')
+        .in('id', ids.slice(0, 50))
+      if (error) throw new Error(error.message)
+      return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
+    }
+
     let query = supabase
       .from('content_jobs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(limit)
 
-    if (status) query = query.eq('status', status)
+    if (status) {
+      if (status.includes(',')) {
+        query = query.in('status', status.split(',').map((s) => s.trim()).filter(Boolean))
+      } else {
+        query = query.eq('status', status)
+      }
+    }
     if (region) query = query.eq('region', region)
+    if (host) query = query.eq('owner_host', host)
+    if (repo) query = query.ilike('target_repo', `%${repo}%`)
     if (q) {
       query = query.or(
-        `topic.ilike.%${q}%,title.ilike.%${q}%,primary_keyword.ilike.%${q}%`,
+        `topic.ilike.%${q}%,title.ilike.%${q}%,primary_keyword.ilike.%${q}%,content_path.ilike.%${q}%`,
       )
     }
 
     const { data, error } = await query
     if (error) throw new Error(`Supabase query failed: ${error.message}`)
 
-    return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
+    // Summary for admin queue dashboard
+    const jobs = data ?? []
+    const summary = {
+      total: jobs.length,
+      drafting: jobs.filter((j) => j.status === 'drafting').length,
+      pr_created: jobs.filter((j) => j.status === 'pr_created').length,
+      merged: jobs.filter((j) => j.status === 'merged').length,
+      failed: jobs.filter((j) => j.status === 'failed').length,
+      closed: jobs.filter((j) => j.status === 'closed').length,
+      avgSeo:
+        jobs.filter((j) => j.seo_score != null).length > 0
+          ? Math.round(
+              jobs
+                .filter((j) => j.seo_score != null)
+                .reduce((s, j) => s + Number(j.seo_score), 0) /
+                jobs.filter((j) => j.seo_score != null).length,
+            )
+          : null,
+    }
+
+    return NextResponse.json({ jobs, count: jobs.length, summary })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error' },
+      { status: 500 },
+    )
+  }
+}
+
+/**
+ * POST /api/content-studio/jobs — bulk admin actions
+ * Body: { action: 'bulk_abandon'|'bulk_monitor'|'bulk_approve'|'bulk_reaudit', ids: string[], dryRun? }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await requireAdminUser()
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    const body = await request.json()
+    const action = String(body.action || '').trim()
+    const ids: string[] = Array.isArray(body.ids)
+      ? body.ids.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 25)
+      : []
+    if (!action.startsWith('bulk_') || !ids.length) {
+      return NextResponse.json(
+        { error: 'bulk action and ids[] required (max 25)' },
+        { status: 400 },
+      )
+    }
+
+    const supabase = sb()
+    const results: Array<{ id: string; ok: boolean; error?: string; detail?: unknown }> = []
+
+    for (const id of ids) {
+      try {
+        if (action === 'bulk_abandon') {
+          const { error } = await supabase
+            .from('content_jobs')
+            .update({ status: 'closed', closed_at: new Date().toISOString() })
+            .eq('id', id)
+          if (error) throw error
+          results.push({ id, ok: true })
+        } else if (action === 'bulk_monitor') {
+          const mon = await monitorContentJob(id, {
+            openIssueOnFailure: body.openIssue !== false,
+            waitMs: 0,
+          })
+          results.push({ id, ok: mon.ok, detail: mon })
+        } else if (action === 'bulk_reaudit') {
+          const { data: job } = await supabase.from('content_jobs').select('*').eq('id', id).single()
+          if (!job?.content) {
+            results.push({ id, ok: false, error: 'no content' })
+            continue
+          }
+          const contentType =
+            job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
+          const audit = auditContent({
+            content: String(job.content),
+            contentType,
+            primaryKeyword: job.primary_keyword || job.topic,
+            indexable: job.indexable !== false,
+            ownershipBlockers: [],
+          })
+          const words = String(job.content).trim().split(/\s+/).filter(Boolean).length
+          await supabase
+            .from('content_jobs')
+            .update({
+              seo_score: audit.score,
+              word_count: words,
+              audit_json: audit,
+            })
+            .eq('id', id)
+          results.push({ id, ok: true, detail: { score: audit.score, words } })
+        } else if (action === 'bulk_approve') {
+          // Re-use single-job approve path via internal patch semantics
+          const { data: job } = await supabase.from('content_jobs').select('*').eq('id', id).single()
+          if (!job?.content) {
+            results.push({ id, ok: false, error: 'no content' })
+            continue
+          }
+          if (job.status === 'merged') {
+            results.push({ id, ok: true, detail: { skipped: 'already merged' } })
+            continue
+          }
+          // Delegate to ship path by calling shipContent
+          const contentType =
+            job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
+          const primaryKeyword = job.primary_keyword || job.topic
+          const plan = await resolveOwner({
+            primaryKeyword,
+            contentType,
+            region: job.region || 'US',
+            indexable: job.indexable !== false,
+          })
+          const audit = auditContent({
+            content: String(job.content),
+            contentType,
+            primaryKeyword,
+            indexable: plan.indexable,
+            ownershipBlockers: plan.blockers,
+          })
+          try {
+            const ship = await shipContent({
+              mode: 'autodeploy',
+              plan,
+              content: String(job.content),
+              title: job.title || job.topic,
+              region: job.region || 'US',
+              contentType,
+              primaryKeyword,
+              audit,
+              dryRun: Boolean(body.dryRun),
+              jobId: id,
+              humanApproved: true,
+            })
+            const now = new Date().toISOString()
+            const terminal =
+              ship.status === 'deployed' || ship.status === 'merged' ? 'merged' : 'pr_created'
+            await supabase
+              .from('content_jobs')
+              .update({
+                status: terminal,
+                pr_url: ship.prUrl || job.pr_url,
+                pr_number: ship.prNumber || job.pr_number,
+                branch_name: ship.branch || job.branch_name,
+                content_path: ship.path || job.content_path,
+                deploy_sha: ship.mergeCommitSha || ship.commitSha || job.deploy_sha,
+                deployed_at:
+                  ship.status === 'deployed' || ship.status === 'merged' ? now : job.deployed_at,
+                merged_at:
+                  ship.status === 'deployed' || ship.status === 'merged' ? now : job.merged_at,
+                error_message: null,
+                ship_mode: 'autodeploy',
+                seo_score: audit.score,
+                audit_json: audit,
+              })
+              .eq('id', id)
+            if ((ship.status === 'deployed' || ship.status === 'merged') && !body.dryRun) {
+              await monitorContentJob(id, { openIssueOnFailure: true, waitMs: 1500 })
+            }
+            results.push({ id, ok: true, detail: ship })
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'approve failed'
+            await supabase
+              .from('content_jobs')
+              .update({ error_message: msg, status: 'failed' })
+              .eq('id', id)
+            results.push({ id, ok: false, error: msg })
+          }
+        } else {
+          results.push({ id, ok: false, error: `Unknown bulk action ${action}` })
+        }
+      } catch (e) {
+        results.push({
+          id,
+          ok: false,
+          error: e instanceof Error ? e.message : 'failed',
+        })
+      }
+    }
+
+    const okCount = results.filter((r) => r.ok).length
+    return NextResponse.json({
+      ok: okCount === results.length,
+      action,
+      processed: results.length,
+      succeeded: okCount,
+      failed: results.length - okCount,
+      results,
+    })
+  } catch (err) {
+    console.error('[content-studio/jobs POST bulk]', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Bulk failed' },
       { status: 500 },
     )
   }
@@ -81,13 +296,14 @@ function ghHeaders(token: string): GhHeaders {
 /**
  * PATCH /api/content-studio/jobs
  * Actions: reship | regenerate | abandon | save | refresh_pr | append_log |
- *          approve | merge_pr | monitor
+ *          approve | merge_pr | monitor | reaudit | update_meta | duplicate
  *
  * Body: {
  *   id,
  *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr'|'append_log'|
- *           'approve'|'merge_pr'|'monitor',
+ *           'approve'|'merge_pr'|'monitor'|'reaudit'|'update_meta'|'duplicate',
  *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?,
+ *   indexable?, region?, primary_keyword?, tone?,
  *   entries?: StudioLogEntry[]  // for append_log
  * }
  *
@@ -171,6 +387,137 @@ export async function PATCH(request: NextRequest) {
         .single()
       if (upErr) throw upErr
       return NextResponse.json({ ok: true, job: updated })
+    }
+
+    if (action === 'reaudit') {
+      if (!job.content?.trim()) {
+        return NextResponse.json({ error: 'Job has no content to audit' }, { status: 400 })
+      }
+      const contentType =
+        job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
+      const primaryKeyword = job.primary_keyword || job.topic
+      const plan = await resolveOwner({
+        primaryKeyword,
+        contentType,
+        region: job.region || 'US',
+        indexable: job.indexable !== false,
+      })
+      const audit = auditContent({
+        content: String(job.content),
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+      const words = String(job.content).trim().split(/\s+/).filter(Boolean).length
+      const { data: updated, error: upErr } = await supabase
+        .from('content_jobs')
+        .update({
+          seo_score: audit.score,
+          word_count: words,
+          audit_json: { ...audit, reauditedAt: new Date().toISOString() },
+          owner_host: plan.host,
+          canonical_url: plan.canonicalUrl,
+          content_path: plan.filePath,
+          target_repo: plan.repo,
+        })
+        .eq('id', id)
+        .select()
+        .single()
+      if (upErr) throw upErr
+      return NextResponse.json({ ok: true, job: updated, audit, plan })
+    }
+
+    if (action === 'update_meta') {
+      const patch: Record<string, unknown> = {}
+      if (body.title != null) patch.title = String(body.title).trim()
+      if (body.topic != null) patch.topic = String(body.topic).trim()
+      if (body.primary_keyword != null || body.primaryKeyword != null) {
+        patch.primary_keyword = String(body.primary_keyword || body.primaryKeyword).trim()
+      }
+      if (body.region != null) patch.region = String(body.region).toUpperCase()
+      if (body.tone != null) patch.tone = String(body.tone)
+      if (body.indexable != null) patch.indexable = Boolean(body.indexable)
+      if (body.ship_mode != null || body.shipMode != null) {
+        const sm = String(body.ship_mode || body.shipMode)
+        patch.ship_mode = sm === 'autodeploy' || sm === 'merge' ? 'autodeploy' : 'pr'
+      }
+      if (body.content_type != null || body.contentType != null) {
+        patch.content_type = String(body.content_type || body.contentType)
+      }
+      if (!Object.keys(patch).length) {
+        return NextResponse.json({ error: 'No meta fields to update' }, { status: 400 })
+      }
+      // Re-resolve ownership when routing fields change
+      if (
+        patch.primary_keyword ||
+        patch.region ||
+        patch.content_type ||
+        patch.indexable != null
+      ) {
+        try {
+          const plan = await resolveOwner({
+            primaryKeyword: String(patch.primary_keyword || job.primary_keyword || job.topic),
+            contentType: String(
+              patch.content_type === 'article'
+                ? 'legal_guide'
+                : patch.content_type ||
+                    (job.content_type === 'article' ? 'legal_guide' : job.content_type) ||
+                    'legal_guide',
+            ),
+            region: String(patch.region || job.region || 'US'),
+            indexable: patch.indexable != null ? Boolean(patch.indexable) : job.indexable !== false,
+          })
+          patch.owner_host = plan.host
+          patch.target_repo = plan.repo
+          patch.canonical_url = plan.canonicalUrl
+          patch.content_path = plan.filePath
+          patch.indexable = plan.indexable
+        } catch {
+          /* keep prior ownership */
+        }
+      }
+      const { data: updated, error: upErr } = await supabase
+        .from('content_jobs')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single()
+      if (upErr) throw upErr
+      return NextResponse.json({ ok: true, job: updated })
+    }
+
+    if (action === 'duplicate') {
+      const { data: created, error: insErr } = await supabase
+        .from('content_jobs')
+        .insert({
+          user_id: userId,
+          title: `${job.title || job.topic} (copy)`,
+          topic: job.topic,
+          content_type: job.content_type,
+          tone: job.tone,
+          region: job.region,
+          target_repo: job.target_repo,
+          status: 'drafting',
+          slug: job.slug,
+          content: job.content,
+          content_path: job.content_path,
+          ai_provider: job.ai_provider,
+          word_count: job.word_count,
+          seo_score: job.seo_score,
+          ship_mode: job.ship_mode || 'pr',
+          indexable: job.indexable,
+          canonical_url: job.canonical_url,
+          owner_host: job.owner_host,
+          primary_keyword: job.primary_keyword,
+          audit_json: job.audit_json,
+          gsc_json: job.gsc_json,
+          error_message: null,
+        })
+        .select()
+        .single()
+      if (insErr) throw insErr
+      return NextResponse.json({ ok: true, job: created, duplicatedFrom: id })
     }
 
     if (action === 'save') {

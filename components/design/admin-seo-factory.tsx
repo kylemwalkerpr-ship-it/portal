@@ -15,7 +15,20 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
-type Tab = 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies'
+type Tab = 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls'
+
+const STUDIO_PREFS_KEY = 'yousafe.contentStudio.prefs.v1'
+
+type StudioPrefs = {
+  dryRun: boolean
+  minAudit: number
+  maxRefine: number
+  shipMode: ShipMode
+  autoMode: 'auto' | 'pr' | 'autodeploy' | 'merge' | 'none'
+  skipRecent: boolean
+  workspaceOpen: boolean
+  confirmApprove: boolean
+}
 
 export default function AdminSeoFactory({
   setActionNotice,
@@ -37,6 +50,11 @@ export default function AdminSeoFactory({
   const [health, setHealth] = React.useState<any>(null)
   const [jobs, setJobs] = React.useState<any[]>([])
   const [jobQ, setJobQ] = React.useState('')
+  const [jobStatusFilter, setJobStatusFilter] = React.useState<string>('all')
+  const [jobHostFilter, setJobHostFilter] = React.useState<string>('all')
+  const [jobRepoFilter, setJobRepoFilter] = React.useState<string>('all')
+  const [selectedJobIds, setSelectedJobIds] = React.useState<Set<string>>(new Set())
+  const [queueSummary, setQueueSummary] = React.useState<any>(null)
   const [selectedOpp, setSelectedOpp] = React.useState<Set<string>>(new Set())
   const [autoLimit, setAutoLimit] = React.useState(3)
   const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy' | 'merge' | 'none'>('merge')
@@ -45,6 +63,7 @@ export default function AdminSeoFactory({
   const [minAudit, setMinAudit] = React.useState(55)
   const [maxRefine, setMaxRefine] = React.useState(2)
   const [skipRecent, setSkipRecent] = React.useState(true)
+  const [confirmApprove, setConfirmApprove] = React.useState(true)
   const [regionFilter, setRegionFilter] = React.useState('')
   const [preview, setPreview] = React.useState<string | null>(null)
   const [strategies, setStrategies] = React.useState<any>(null)
@@ -62,6 +81,45 @@ export default function AdminSeoFactory({
   const [prStatus, setPrStatus] = React.useState<PrStatus | null>(null)
   const [activityLine, setActivityLine] = React.useState<string | null>(null)
   const [workspaceOpen, setWorkspaceOpen] = React.useState(true)
+  const [prefsHydrated, setPrefsHydrated] = React.useState(false)
+
+  // Hydrate admin prefs from localStorage
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STUDIO_PREFS_KEY)
+      if (!raw) {
+        setPrefsHydrated(true)
+        return
+      }
+      const p = JSON.parse(raw) as Partial<StudioPrefs>
+      if (typeof p.dryRun === 'boolean') setDryRun(p.dryRun)
+      if (typeof p.minAudit === 'number') setMinAudit(p.minAudit)
+      if (typeof p.maxRefine === 'number') setMaxRefine(p.maxRefine)
+      if (p.shipMode) setShipMode(p.shipMode)
+      if (p.autoMode) setAutoMode(p.autoMode)
+      if (typeof p.skipRecent === 'boolean') setSkipRecent(p.skipRecent)
+      if (typeof p.workspaceOpen === 'boolean') setWorkspaceOpen(p.workspaceOpen)
+      if (typeof p.confirmApprove === 'boolean') setConfirmApprove(p.confirmApprove)
+    } catch { /* ignore */ }
+    setPrefsHydrated(true)
+  }, [])
+
+  React.useEffect(() => {
+    if (!prefsHydrated) return
+    try {
+      const prefs: StudioPrefs = {
+        dryRun,
+        minAudit,
+        maxRefine,
+        shipMode,
+        autoMode,
+        skipRecent,
+        workspaceOpen,
+        confirmApprove,
+      }
+      localStorage.setItem(STUDIO_PREFS_KEY, JSON.stringify(prefs))
+    } catch { /* ignore */ }
+  }, [prefsHydrated, dryRun, minAudit, maxRefine, shipMode, autoMode, skipRecent, workspaceOpen, confirmApprove])
   const logPersistQueue = React.useRef<StudioLogEntry[]>([])
   const logPersistTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const selectedJobIdRef = React.useRef<string | null>(null)
@@ -120,11 +178,17 @@ export default function AdminSeoFactory({
 
   const loadJobs = async () => {
     try {
-      const qs = jobQ ? `?q=${encodeURIComponent(jobQ)}&limit=50` : '?limit=50'
-      const res = await fetch(`/api/content-studio/jobs${qs}`, { credentials: 'same-origin' })
+      const params = new URLSearchParams()
+      params.set('limit', '100')
+      if (jobQ) params.set('q', jobQ)
+      if (jobStatusFilter && jobStatusFilter !== 'all') params.set('status', jobStatusFilter)
+      if (jobHostFilter && jobHostFilter !== 'all') params.set('host', jobHostFilter)
+      if (jobRepoFilter && jobRepoFilter !== 'all') params.set('repo', jobRepoFilter)
+      const res = await fetch(`/api/content-studio/jobs?${params}`, { credentials: 'same-origin' })
       const data = await res.json()
       if (res.ok) {
         setJobs(data.jobs || [])
+        setQueueSummary(data.summary || null)
         // Keep editor in sync if selected job updated from server (unless local dirty)
         if (selectedJobId) {
           const j = (data.jobs || []).find((x: any) => x.id === selectedJobId)
@@ -146,7 +210,7 @@ export default function AdminSeoFactory({
   React.useEffect(() => {
     loadJobs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [jobStatusFilter, jobHostFilter, jobRepoFilter])
 
   // Poll while work is in flight or a non-terminal job is selected
   React.useEffect(() => {
@@ -692,8 +756,17 @@ export default function AdminSeoFactory({
 
   const jobAction = async (
     id: string,
-    action: 'reship' | 'regenerate' | 'abandon' | 'approve' | 'merge_pr' | 'monitor',
+    action: 'reship' | 'regenerate' | 'abandon' | 'approve' | 'merge_pr' | 'monitor' | 'reaudit' | 'duplicate' | 'update_meta',
+    extra?: Record<string, unknown>,
   ) => {
+    if (action === 'approve' && confirmApprove && !dryRun) {
+      const ok = window.confirm(
+        'Approve this job to main?\n\nThis commits/merges to GitHub and triggers Cloudflare deploy for the target estate host.',
+      )
+      if (!ok) return
+    }
+    if (action === 'abandon' && !window.confirm('Abandon (close) this job?')) return
+
     setBusy(true)
     setActivityLine(`${action}…`)
     pushLog('info', 'jobs', `${action} · ${id.slice(0, 8)}`)
@@ -706,13 +779,18 @@ export default function AdminSeoFactory({
         minAuditScore: minAudit,
         maxRefine,
         dryRun: action === 'reship' || action === 'approve' ? dryRun : false,
+        ...extra,
       }
       if (
-        (action === 'approve' || action === 'reship') &&
+        (action === 'approve' || action === 'reship' || action === 'reaudit') &&
         id === selectedJobId &&
         editorContent
       ) {
-        body.content = editorContent
+        if (action !== 'reaudit') body.content = editorContent
+        // For reaudit with dirty editor, save first
+        if (action === 'reaudit' && editorContent !== (selectedJob?.content || '')) {
+          await saveJobContent()
+        }
       }
       const res = await fetch('/api/content-studio/jobs', {
         method: 'PATCH',
@@ -744,7 +822,14 @@ export default function AdminSeoFactory({
         }
       }
       if (data.result?.jobId) selectJob(data.result.jobId)
+      if (data.job?.id && action === 'duplicate') selectJob(data.job.id)
       if (data.result?.content) setEditorContent(data.result.content)
+      if (data.job && action === 'update_meta') {
+        setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
+      }
+      if (data.audit && action === 'reaudit') {
+        pushLog('success', 'audit', `Re-audit SEO ${data.audit.score} · ${data.audit.wordCount || data.job?.word_count} words`)
+      }
       setActionNotice(
         action === 'abandon'
           ? 'Job closed'
@@ -756,7 +841,13 @@ export default function AdminSeoFactory({
                 ? data.message || 'PR merged'
                 : action === 'reship'
                   ? `Reship: ${data.ship?.status || 'ok'}`
-                  : `Regenerated → ${data.result?.jobId || 'new job'}`,
+                  : action === 'reaudit'
+                    ? `Re-audit: SEO ${data.audit?.score ?? '—'}`
+                    : action === 'duplicate'
+                      ? 'Job duplicated as draft'
+                      : action === 'update_meta'
+                        ? 'Meta updated'
+                        : `Regenerated → ${data.result?.jobId || 'new job'}`,
       )
       pushLog(
         'success',
@@ -769,7 +860,13 @@ export default function AdminSeoFactory({
               ? `Reship ${data.ship?.status}`
               : action === 'monitor'
                 ? 'Monitor finished'
-                : 'Regenerated',
+                : action === 'reaudit'
+                  ? 'Re-audit complete'
+                  : action === 'duplicate'
+                    ? 'Duplicated'
+                    : action === 'update_meta'
+                      ? 'Meta saved'
+                      : 'Regenerated',
       )
       await loadJobs()
     } catch (e) {
@@ -780,6 +877,90 @@ export default function AdminSeoFactory({
       setBusy(false)
       setActivityLine(null)
     }
+  }
+
+  const bulkAction = async (action: 'bulk_abandon' | 'bulk_monitor' | 'bulk_approve' | 'bulk_reaudit') => {
+    const ids = [...selectedJobIds]
+    if (!ids.length) {
+      setActionNotice('Select jobs in the queue first')
+      return
+    }
+    if (action === 'bulk_approve' && !dryRun) {
+      const ok = window.confirm(`Approve ${ids.length} job(s) to main? This writes to GitHub.`)
+      if (!ok) return
+    }
+    if (action === 'bulk_abandon' && !window.confirm(`Abandon ${ids.length} job(s)?`)) return
+
+    setBusy(true)
+    setActivityLine(`${action} × ${ids.length}…`)
+    pushLog('info', 'bulk', `${action} · ${ids.length} jobs`)
+    try {
+      const res = await fetch('/api/content-studio/jobs', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ids, dryRun }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Bulk action failed')
+      pushLog(
+        data.failed ? 'warn' : 'success',
+        'bulk',
+        `${action}: ${data.succeeded}/${data.processed} ok` + (data.failed ? ` · ${data.failed} failed` : ''),
+        JSON.stringify(data.results?.slice?.(0, 10), null, 2),
+      )
+      setActionNotice(data.message || `${action}: ${data.succeeded}/${data.processed} succeeded`)
+      setSelectedJobIds(new Set())
+      await loadJobs()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Bulk failed'
+      pushLog('error', 'bulk', msg)
+      setActionNotice(msg)
+    } finally {
+      setBusy(false)
+      setActivityLine(null)
+    }
+  }
+
+  const exportJobsCsv = () => {
+    const rows = [
+      ['id', 'status', 'title', 'keyword', 'region', 'host', 'repo', 'seo_score', 'words', 'pr_url', 'canonical'],
+      ...jobs.map((j) => [
+        j.id,
+        j.status,
+        JSON.stringify(j.title || j.topic || ''),
+        JSON.stringify(j.primary_keyword || ''),
+        j.region || '',
+        j.owner_host || '',
+        j.target_repo || '',
+        j.seo_score ?? '',
+        j.word_count ?? '',
+        j.pr_url || '',
+        j.canonical_url || '',
+      ]),
+    ]
+    const csv = rows.map((r) => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `content-jobs-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+    pushLog('success', 'export', `Exported ${jobs.length} jobs to CSV`)
+  }
+
+  const toggleJobSelect = (id: string) => {
+    setSelectedJobIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  const selectAllVisibleJobs = () => {
+    if (selectedJobIds.size === jobs.length) setSelectedJobIds(new Set())
+    else setSelectedJobIds(new Set(jobs.map((j) => j.id)))
   }
 
   const scanMonitor = async () => {
@@ -831,10 +1012,16 @@ export default function AdminSeoFactory({
     ['factory', 'Manual'],
     ['opportunities', 'Opportunities'],
     ['queue', 'Job queue'],
+    ['controls', 'Controls'],
     ['strategies', 'Strategies'],
     ['metrics', 'Metrics'],
     ['health', 'System'],
   ]
+
+  const filteredJobsClient = React.useMemo(() => {
+    // Server already filters; keep client fallback for multi-status chips
+    return jobs as StudioJob[]
+  }, [jobs])
 
   const openStrategyDoc = async (path: string, title: string) => {
     try {
@@ -886,6 +1073,52 @@ export default function AdminSeoFactory({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Global admin control strip */}
+      <div style={{
+        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
+        marginBottom: 12, padding: '10px 12px', borderRadius: 10,
+        background: C.surface2, border: `1px solid ${C.border}`, fontSize: 12,
+      }}>
+        <strong style={{ color: C.cyan }}>Admin</strong>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
+          <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+          Dry-run
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
+          Min audit
+          <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>
+            {[45, 55, 65, 70, 80].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
+          Refine
+          <select value={maxRefine} onChange={(e) => setMaxRefine(Number(e.target.value))} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>
+            {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
+          Ship
+          <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${C.border}` }}>
+            <option value="merge">merge→main</option>
+            <option value="pr">PR</option>
+            <option value="autodeploy">main</option>
+            <option value="none">none</option>
+            <option value="auto">auto</option>
+          </select>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textMuted }}>
+          <input type="checkbox" checked={confirmApprove} onChange={(e) => setConfirmApprove(e.target.checked)} />
+          Confirm approve
+        </label>
+        <span style={{ color: C.textDim }}>·</span>
+        <button type="button" style={btnSmall} disabled={busy} onClick={() => loadJobs()}>Refresh jobs</button>
+        <button type="button" style={btnSmall} disabled={busy} onClick={() => scanMonitor()}>Monitor scan</button>
+        <button type="button" style={btnSmall} onClick={() => setTab('controls')}>All controls…</button>
+        {selectedJobIds.size > 0 && (
+          <span style={{ color: C.gold, fontWeight: 700 }}>{selectedJobIds.size} selected</span>
+        )}
       </div>
 
       {busy && (
@@ -1345,10 +1578,22 @@ export default function AdminSeoFactory({
                         disabled={busy || o.action === 'ignore'}
                         onClick={() => runGenerate({
                           topic: o.term, keyword: o.term, region: o.region,
-                          contentType: o.suggestedContentType || 'legal_guide', shipMode: 'pr',
+                          contentType: o.suggestedContentType || 'legal_guide',
+                          shipMode: shipMode === 'auto' ? 'merge' : shipMode,
                         })}
                       >
-                        Ship PR
+                        Generate
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...btnSmall, marginLeft: 4 }}
+                        disabled={busy || o.action === 'ignore'}
+                        onClick={() => runGenerate({
+                          topic: o.term, keyword: o.term, region: o.region,
+                          contentType: o.suggestedContentType || 'legal_guide', shipMode: 'none',
+                        })}
+                      >
+                        Draft only
                       </button>
                     </td>
                   </tr>
@@ -1362,18 +1607,69 @@ export default function AdminSeoFactory({
       {/* ── Queue ── */}
       {tab === 'queue' && (
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          {queueSummary && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12, fontSize: 12 }}>
+              {[
+                ['Shown', queueSummary.total],
+                ['Drafting', queueSummary.drafting],
+                ['PR', queueSummary.pr_created],
+                ['Merged', queueSummary.merged],
+                ['Failed', queueSummary.failed],
+                ['Avg SEO', queueSummary.avgSeo ?? '—'],
+              ].map(([l, v]) => (
+                <span key={String(l)} style={{ padding: '4px 10px', borderRadius: 999, background: C.surface2, color: C.textMuted }}>
+                  <strong style={{ color: C.cyan }}>{v}</strong> {l}
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               value={jobQ}
               onChange={(e) => setJobQ(e.target.value)}
-              placeholder="Search topic / keyword…"
-              style={{ ...inputStyle, marginTop: 0, maxWidth: 280 }}
+              onKeyDown={(e) => e.key === 'Enter' && loadJobs()}
+              placeholder="Search topic / keyword / path…"
+              style={{ ...inputStyle, marginTop: 0, maxWidth: 260 }}
             />
+            <select value={jobStatusFilter} onChange={(e) => setJobStatusFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
+              <option value="all">All statuses</option>
+              {['drafting', 'pr_created', 'merged', 'failed', 'closed', 'pending', 'publishing'].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select value={jobHostFilter} onChange={(e) => setJobHostFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
+              <option value="all">All hosts</option>
+              {['legal', 'usa', 'uk', 'ca', 'au', 'apex', 'market'].map((h) => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+            <select value={jobRepoFilter} onChange={(e) => setJobRepoFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
+              <option value="all">All repos</option>
+              {['caseworks', 'yousafe-consultancy', 'portal'].map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
             <button type="button" onClick={loadJobs} style={btnSecondary}>Search / refresh</button>
+            <button type="button" onClick={exportJobsCsv} style={btnSecondary} disabled={!jobs.length}>Export CSV</button>
           </div>
+
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textMuted }}>
+              <input type="checkbox" checked={selectedJobIds.size === jobs.length && jobs.length > 0} onChange={selectAllVisibleJobs} />
+              Select all ({selectedJobIds.size})
+            </label>
+            <button type="button" style={btnSmall} disabled={busy || !selectedJobIds.size} onClick={() => bulkAction('bulk_reaudit')}>Bulk re-audit</button>
+            <button type="button" style={btnSmall} disabled={busy || !selectedJobIds.size} onClick={() => bulkAction('bulk_monitor')}>Bulk monitor</button>
+            <button type="button" style={{ ...btnSmall, background: C.green, color: '#fff', border: 'none' }} disabled={busy || !selectedJobIds.size} onClick={() => bulkAction('bulk_approve')}>
+              Bulk approve → main
+            </button>
+            <button type="button" style={{ ...btnSmall, color: C.red }} disabled={busy || !selectedJobIds.size} onClick={() => bulkAction('bulk_abandon')}>Bulk abandon</button>
+            {dryRun && <span style={{ fontSize: 11, color: C.orange, fontWeight: 700 }}>DRY-RUN ON</span>}
+          </div>
+
           <div style={{ display: 'grid', gap: 10 }}>
-            {jobs.length === 0 && <div style={{ color: C.textMuted, fontSize: 13 }}>No jobs yet.</div>}
-            {jobs.map((j) => (
+            {filteredJobsClient.length === 0 && <div style={{ color: C.textMuted, fontSize: 13 }}>No jobs match filters.</div>}
+            {filteredJobsClient.map((j) => (
               <div
                 key={j.id}
                 style={{
@@ -1384,17 +1680,29 @@ export default function AdminSeoFactory({
                 }}
                 onClick={() => selectJob(j.id)}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                  <strong>{j.title || j.topic}</strong>
-                  <span style={{ color: C.textDim }}>{j.status} · SEO {j.seo_score ?? '—'} · {j.ai_provider || '—'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedJobIds.has(j.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleJobSelect(j.id)}
+                    />
+                    <strong>{j.title || j.topic}</strong>
+                  </div>
+                  <span style={{ color: C.textDim }}>
+                    {j.status} · SEO {j.seo_score ?? '—'} · {j.owner_host || '—'} · {j.ai_provider || '—'}
+                  </span>
                 </div>
                 <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>
                   {j.primary_keyword || j.topic} · {j.region} · {j.target_repo}
+                  {j.content_path && <> · <code style={{ fontSize: 11 }}>{j.content_path}</code></>}
                   {j.pr_url && <> · <a href={j.pr_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PR</a></>}
+                  {j.indexable === false && <span style={{ color: C.orange }}> · noindex</span>}
                   {j.error_message && <span style={{ color: C.red }}> · {j.error_message}</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open in workspace</button>
+                  <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open</button>
                   {j.content && (
                     <button type="button" style={btnSmall} onClick={() => { selectJob(j.id); setEditorContent(j.content || '') }}>Edit</button>
                   )}
@@ -1406,9 +1714,14 @@ export default function AdminSeoFactory({
                       <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'reship')}>Ship PR</button>
                     </>
                   )}
+                  {j.pr_number && j.status === 'pr_created' && (
+                    <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'merge_pr')}>Merge PR</button>
+                  )}
                   {(j.deploy_sha || j.pr_number) && (
                     <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'monitor')}>Monitor</button>
                   )}
+                  <button type="button" style={btnSmall} disabled={busy || !j.content} onClick={() => jobAction(j.id, 'reaudit')}>Re-audit</button>
+                  <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'duplicate')}>Duplicate</button>
                   <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'regenerate')}>Regenerate</button>
                   {j.status !== 'closed' && j.status !== 'merged' && (
                     <button type="button" style={btnSmall} disabled={busy} onClick={() => jobAction(j.id, 'abandon')}>Abandon</button>
@@ -1416,6 +1729,102 @@ export default function AdminSeoFactory({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Controls / prefs ── */}
+      {tab === 'controls' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, borderTop: `4px solid ${C.gold}` }}>
+            <h2 style={{ margin: '0 0 8px', fontSize: 18, color: C.cyan }}>Studio admin controls</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: C.textMuted, maxWidth: 640 }}>
+              Defaults apply across Auto-Pilot, Manual generate, queue bulk actions, and the workspace.
+              Preferences persist in this browser.
+            </p>
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+              <label style={labelStyle}>
+                Default ship mode (manual)
+                <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={inputStyle}>
+                  <option value="merge">Merge → main</option>
+                  <option value="auto">Auto</option>
+                  <option value="autodeploy">Direct main</option>
+                  <option value="pr">PR only</option>
+                  <option value="none">Generate only</option>
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Auto-Pilot ship mode
+                <select value={autoMode} onChange={(e) => setAutoMode(e.target.value as any)} style={inputStyle}>
+                  <option value="merge">Merge → main</option>
+                  <option value="auto">Auto</option>
+                  <option value="autodeploy">Direct main</option>
+                  <option value="pr">PR only</option>
+                  <option value="none">Generate only</option>
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Min audit score
+                <select value={minAudit} onChange={(e) => setMinAudit(Number(e.target.value))} style={inputStyle}>
+                  {[45, 55, 65, 70, 80].map((n) => <option key={n} value={n}>{n}+</option>)}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Refine passes
+                <select value={maxRefine} onChange={(e) => setMaxRefine(Number(e.target.value))} style={inputStyle}>
+                  {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 16, fontSize: 13, color: C.textMuted }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+                Global dry-run (no GitHub writes)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={skipRecent} onChange={(e) => setSkipRecent(e.target.checked)} />
+                Skip recently covered keywords
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={confirmApprove} onChange={(e) => setConfirmApprove(e.target.checked)} />
+                Confirm before Approve → main
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={workspaceOpen} onChange={(e) => setWorkspaceOpen(e.target.checked)} />
+                Show workspace pane
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={indexable} onChange={(e) => setIndexable(e.target.checked)} />
+                Default indexable
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 18, flexWrap: 'wrap' }}>
+              <button type="button" style={btnSecondary} disabled={busy} onClick={() => { void loadHealth(); setTab('health') }}>Refresh system health</button>
+              <button type="button" style={btnSecondary} disabled={busy} onClick={() => scanMonitor()}>Scan deploy monitor</button>
+              <button type="button" style={btnSecondary} disabled={busy} onClick={() => loadJobs()}>Refresh job queue</button>
+              <button type="button" style={btnSecondary} disabled={busy} onClick={() => loadMetrics()}>Refresh metrics</button>
+              <button type="button" style={btnSecondary} onClick={() => { setLogs([]); pushLog('info', 'controls', 'Debug log cleared') }}>Clear session log</button>
+              <button
+                type="button"
+                style={btnSecondary}
+                onClick={() => {
+                  localStorage.removeItem(STUDIO_PREFS_KEY)
+                  setActionNotice('Prefs reset — reload page to restore defaults')
+                }}
+              >
+                Reset saved prefs
+              </button>
+            </div>
+          </div>
+
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+            <h3 style={{ margin: '0 0 10px', color: C.cyan }}>Estate ship contract (reminder)</h3>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: C.textMuted, lineHeight: 1.55 }}>
+              <li><strong>legal</strong> → caseworks · <code>app/…/page.tsx</code> only</li>
+              <li><strong>usa/uk/ca/au/apex</strong> → yousafe-consultancy · <code>{'{region}'}/content/…/*.md</code></li>
+              <li><strong>market</strong> → portal · <code>catalogue/*.mdx</code> gigs only</li>
+              <li>Invalid host/type/path/format is refused before any GitHub write</li>
+            </ul>
           </div>
         </div>
       )}
@@ -1576,6 +1985,13 @@ export default function AdminSeoFactory({
             onRegenerate={() => selectedJobId && jobAction(selectedJobId, 'regenerate')}
             onRefreshPr={refreshPrStatus}
             onCloseJob={() => { setSelectedJobId(null); setEditorContent(''); setPrStatus(null) }}
+            onReaudit={() => selectedJobId && jobAction(selectedJobId, 'reaudit')}
+            onDuplicate={() => selectedJobId && jobAction(selectedJobId, 'duplicate')}
+            onMergePr={() => selectedJobId && jobAction(selectedJobId, 'merge_pr')}
+            onAbandon={() => selectedJobId && jobAction(selectedJobId, 'abandon')}
+            onUpdateMeta={(patch) => selectedJobId && jobAction(selectedJobId, 'update_meta', patch)}
+            dryRun={dryRun}
+            onToggleDryRun={() => setDryRun((d) => !d)}
             busy={busy}
             logs={logs}
             onClearLogs={() => setLogs([])}

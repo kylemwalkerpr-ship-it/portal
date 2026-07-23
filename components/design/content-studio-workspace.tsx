@@ -38,6 +38,7 @@ export interface StudioJob {
   title?: string | null
   topic?: string | null
   primary_keyword?: string | null
+  slug?: string | null
   content?: string | null
   status?: string | null
   pr_url?: string | null
@@ -56,6 +57,7 @@ export interface StudioJob {
   owner_host?: string | null
   canonical_url?: string | null
   deploy_sha?: string | null
+  indexable?: boolean | null
   event_log?: StudioLogEntry[] | null
   created_at?: string
   updated_at?: string
@@ -155,6 +157,13 @@ export default function ContentStudioWorkspace({
   onRegenerate,
   onRefreshPr,
   onCloseJob,
+  onReaudit,
+  onDuplicate,
+  onMergePr,
+  onAbandon,
+  onUpdateMeta,
+  dryRun,
+  onToggleDryRun,
   busy,
   logs,
   onClearLogs,
@@ -175,6 +184,13 @@ export default function ContentStudioWorkspace({
   onRegenerate: () => void
   onRefreshPr: () => void
   onCloseJob: () => void
+  onReaudit?: () => void
+  onDuplicate?: () => void
+  onMergePr?: () => void
+  onAbandon?: () => void
+  onUpdateMeta?: (patch: Record<string, unknown>) => void
+  dryRun?: boolean
+  onToggleDryRun?: () => void
   busy: boolean
   logs: StudioLogEntry[]
   onClearLogs: () => void
@@ -184,11 +200,23 @@ export default function ContentStudioWorkspace({
   const [pane, setPane] = React.useState<PaneTab>('editor')
   const [editorMode, setEditorMode] = React.useState<EditorMode>('write')
   const [find, setFind] = React.useState('')
+  const [metaTitle, setMetaTitle] = React.useState('')
+  const [metaKeyword, setMetaKeyword] = React.useState('')
+  const [metaRegion, setMetaRegion] = React.useState('US')
+  const [metaIndexable, setMetaIndexable] = React.useState(true)
   const logEndRef = React.useRef<HTMLDivElement>(null)
   const editorScrollRef = React.useRef<HTMLTextAreaElement>(null)
   const words = editorContent.trim() ? editorContent.trim().split(/\s+/).length : 0
   const chars = editorContent.length
   const dirty = (job?.content || '') !== editorContent
+
+  React.useEffect(() => {
+    if (!job) return
+    setMetaTitle(job.title || job.topic || '')
+    setMetaKeyword(job.primary_keyword || job.topic || '')
+    setMetaRegion((job.region || 'US').toUpperCase())
+    setMetaIndexable(job.indexable !== false)
+  }, [job?.id])
 
   React.useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -335,17 +363,72 @@ export default function ContentStudioWorkspace({
                 title="Save (if needed), commit/merge to main, trigger Cloudflare deploy, run CI monitor"
                 style={btn(C.green, true)}
               >
-                Approve → main
+                {dryRun ? 'Dry-run approve' : 'Approve → main'}
               </button>
               <button type="button" disabled={busy || !job || !editorContent.trim()} onClick={onShip} style={btn(C.cyan, true)}>
                 Ship PR only
               </button>
+              {job?.pr_number && onMergePr && (
+                <button type="button" disabled={busy} onClick={onMergePr} style={btn(C.green)}>
+                  Merge open PR
+                </button>
+              )}
               <button type="button" disabled={busy || !job} onClick={onMonitor} style={btn()}>
                 Monitor CI
               </button>
+              {onReaudit && (
+                <button type="button" disabled={busy || !job || !editorContent.trim()} onClick={onReaudit} style={btn()}>
+                  Re-audit
+                </button>
+              )}
               <button type="button" disabled={busy || !job} onClick={onRegenerate} style={btn()}>
                 Regenerate
               </button>
+              {onDuplicate && (
+                <button type="button" disabled={busy || !job} onClick={onDuplicate} style={btn()}>
+                  Duplicate
+                </button>
+              )}
+              {onAbandon && job && job.status !== 'merged' && job.status !== 'closed' && (
+                <button type="button" disabled={busy} onClick={onAbandon} style={btn(C.red)}>
+                  Abandon
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!editorContent}
+                onClick={() => {
+                  void navigator.clipboard?.writeText(editorContent)
+                }}
+                style={btn()}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                disabled={!editorContent}
+                onClick={() => {
+                  const blob = new Blob([editorContent], { type: 'text/markdown;charset=utf-8' })
+                  const a = document.createElement('a')
+                  a.href = URL.createObjectURL(blob)
+                  a.download = `${(job?.slug || job?.primary_keyword || 'draft').toString().replace(/\s+/g, '-')}.md`
+                  a.click()
+                  URL.revokeObjectURL(a.href)
+                }}
+                style={btn()}
+              >
+                Download
+              </button>
+              {onToggleDryRun && (
+                <button
+                  type="button"
+                  onClick={onToggleDryRun}
+                  title="When on, approve/ship do not write to GitHub"
+                  style={btn(dryRun ? C.orange : undefined, !!dryRun)}
+                >
+                  {dryRun ? 'Dry-run ON' : 'Dry-run'}
+                </button>
+              )}
               <button type="button" disabled={!job} onClick={onCloseJob} style={btn()}>
                 Deselect
               </button>
@@ -587,15 +670,78 @@ export default function ContentStudioWorkspace({
             {!job && <Empty>Select a job to view ownership, audit, and SEO metadata.</Empty>}
             {job && (
               <div style={{ display: 'grid', gap: 10, fontSize: 12 }}>
+                {onUpdateMeta && (
+                  <div style={{
+                    display: 'grid', gap: 8, padding: 10, borderRadius: 8,
+                    background: C.panel, border: `1px solid ${C.border}`, marginBottom: 4,
+                  }}>
+                    <div style={{ fontWeight: 700, color: C.gold, fontSize: 11, textTransform: 'uppercase' }}>
+                      Admin meta controls
+                    </div>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ color: C.dim, fontSize: 11 }}>Title</span>
+                      <input
+                        value={metaTitle}
+                        onChange={(e) => setMetaTitle(e.target.value)}
+                        style={metaInput}
+                      />
+                    </label>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ color: C.dim, fontSize: 11 }}>Primary keyword</span>
+                      <input
+                        value={metaKeyword}
+                        onChange={(e) => setMetaKeyword(e.target.value)}
+                        style={metaInput}
+                      />
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <label style={{ display: 'grid', gap: 4 }}>
+                        <span style={{ color: C.dim, fontSize: 11 }}>Region</span>
+                        <select value={metaRegion} onChange={(e) => setMetaRegion(e.target.value)} style={metaInput}>
+                          {['US', 'UK', 'CA', 'AU', 'COMPARE'].map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
+                        <input
+                          type="checkbox"
+                          checked={metaIndexable}
+                          onChange={(e) => setMetaIndexable(e.target.checked)}
+                        />
+                        <span style={{ color: C.text, fontSize: 12 }}>Indexable</span>
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        onUpdateMeta({
+                          title: metaTitle,
+                          primary_keyword: metaKeyword,
+                          region: metaRegion,
+                          indexable: metaIndexable,
+                        })
+                      }
+                      style={btn(C.gold, true)}
+                    >
+                      Save meta + re-resolve ownership
+                    </button>
+                  </div>
+                )}
                 <Row label="Keyword" value={job.primary_keyword || job.topic || '—'} />
                 <Row label="Region" value={job.region || '—'} />
                 <Row label="Type" value={job.content_type || '—'} />
                 <Row label="Host" value={job.owner_host || '—'} />
+                <Row label="Repo" value={job.target_repo || '—'} mono />
+                <Row label="Path" value={job.content_path || '—'} mono />
                 <Row label="Canonical" value={job.canonical_url || '—'} mono />
+                <Row label="Indexable" value={job.indexable === false ? 'no' : 'yes'} />
                 <Row label="Ship mode" value={job.ship_mode || '—'} />
                 <Row label="AI" value={job.ai_provider || '—'} />
                 <Row label="SEO score" value={job.seo_score != null ? String(job.seo_score) : '—'} />
                 <Row label="Words" value={job.word_count != null ? String(job.word_count) : String(words)} />
+                <Row label="Job ID" value={job.id} mono />
                 <Row label="Created" value={job.created_at ? new Date(job.created_at).toLocaleString() : '—'} />
                 <Row label="Updated" value={job.updated_at ? new Date(job.updated_at).toLocaleString() : '—'} />
                 {job.audit_json && (
@@ -643,7 +789,10 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 function btn(bg?: string, strong?: boolean): React.CSSProperties {
   return {
     background: bg || 'rgba(255,255,255,0.06)',
-    color: strong && bg === C.gold ? '#0B1220' : strong && bg === C.cyan ? '#0B1220' : C.text,
+    color:
+      strong && (bg === C.gold || bg === C.cyan || bg === C.green)
+        ? '#0B1220'
+        : C.text,
     border: `1px solid ${C.border}`,
     borderRadius: 6,
     padding: '6px 10px',
@@ -651,4 +800,15 @@ function btn(bg?: string, strong?: boolean): React.CSSProperties {
     fontWeight: 700,
     cursor: 'pointer',
   }
+}
+
+const metaInput: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 9px',
+  borderRadius: 6,
+  border: `1px solid ${C.border}`,
+  background: C.surface,
+  color: C.text,
+  fontSize: 12,
+  boxSizing: 'border-box',
 }
