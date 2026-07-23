@@ -183,9 +183,8 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
           <li aria-current="page" style={{ fontWeight: 600 }}>{displayName}</li>
         </ol>
       </nav>
-      {/* Editorial intro — category pages were listing-only shells (~170w).
-          Visible body copy + H1 context for indexable categories with supply. */}
-      <header className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+      {/* Editorial intro in <main> so crawlers attribute body copy as primary content. */}
+      <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
         <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 10px' }}>{displayName}</h1>
         <p style={{ fontSize: '16px', lineHeight: 1.55, maxWidth: '48rem', margin: 0, opacity: 0.9 }}>
           {displayDescription}
@@ -251,7 +250,7 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
             provider role before you order.
           </p>
         )}
-      </header>
+      </main>
       <GigDiscoveryPage categoryId={filterId} categoryName={displayName} />
       {/* Sibling-subcategories rail — gives this page real outlinks
           (HTML anchors, not JSON-LD) AND gives every sibling page a

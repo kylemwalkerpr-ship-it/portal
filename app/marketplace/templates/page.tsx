@@ -48,8 +48,25 @@ export default function TemplatesIndexPage() {
       <h1 style={{ fontFamily: SERIF, fontSize: '36px', fontWeight: 500, margin: '0 0 12px', letterSpacing: '-0.015em', lineHeight: 1.15 }}>
         Document Template Packs
       </h1>
-      <p style={{ fontSize: '16px', color: C.textMuted, maxWidth: '640px', lineHeight: 1.6, margin: '0 0 40px' }}>
+      <p style={{ fontSize: '16px', color: C.textMuted, maxWidth: '640px', lineHeight: 1.6, margin: '0 0 16px' }}>
         Digital preparation kits you can use immediately. Each pack includes editable worksheets, checklists, and letter templates organised by visa type and country.
+      </p>
+      <p style={{ fontSize: '15px', color: C.text, maxWidth: '640px', lineHeight: 1.65, margin: '0 0 12px' }}>
+        Template packs are for organization and preparation — not completed filings and not legal advice.
+        Use them to inventory evidence, draft sponsor letters, and prepare interview answers before you
+        open official portals or hire a marketplace provider for a fixed-scope review.
+      </p>
+      <p style={{ fontSize: '15px', color: C.text, maxWidth: '640px', lineHeight: 1.65, margin: '0 0 12px' }}>
+        Choose by destination and product: US F-1 and OPT kits, Canada study permit and PGWP kits,
+        visitor and refusal-recovery packs, and multi-country bundles. After purchase you get instant
+        digital delivery; always re-check current USCIS/IRCC instructions because fees and forms change.
+      </p>
+      <p style={{ fontSize: '14px', color: C.textMuted, maxWidth: '640px', lineHeight: 1.6, margin: '0 0 40px' }}>
+        Need a human on the packet? Browse{' '}
+        <Link href="/categories/immigration" style={{ color: C.cyan }}>immigration services</Link>
+        {' '}or{' '}
+        <Link href="/providers" style={{ color: C.cyan }}>providers</Link>
+        {' '}after you finish the worksheets.
       </p>
 
       <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>

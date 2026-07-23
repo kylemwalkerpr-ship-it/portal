@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { MarketplaceCategoriesIndex } from '@/components/marketplace/MarketplaceCategoriesIndex'
+import { CategoriesIndexSeo } from '@/components/marketplace/MarketIndexSeo'
 import { getMarketplaceCanonicalUrl } from '@/lib/marketplaceSeo'
 
 // ISR: revalidate at most once per hour
@@ -20,5 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MarketplaceCategoriesIndexPage() {
-  return <MarketplaceCategoriesIndex />
+  return (
+    <>
+      <CategoriesIndexSeo />
+      <MarketplaceCategoriesIndex />
+    </>
+  )
 }
