@@ -74,11 +74,11 @@ export async function GET() {
     // Keep legacy id for UI that still looks for cloudflare_ai
     checks.push({
       id: 'cloudflare_ai',
-      label: 'Cloudflare Workers AI (legacy)',
+      label: 'Cloudflare Workers AI (fallback)',
       ok: isCloudflareAiConfigured(),
       detail: isCloudflareAiConfigured()
-        ? 'CLOUDFLARE_ACCOUNT_ID + AI token present'
-        : 'Missing CLOUDFLARE_ACCOUNT_ID or AI token',
+        ? 'Configured as first fallback after DeepSeek'
+        : 'Missing CLOUDFLARE_ACCOUNT_ID or AI token (optional if NVIDIA_API_KEY is set)',
     })
 
     // GitHub
