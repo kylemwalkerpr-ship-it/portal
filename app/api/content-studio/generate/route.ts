@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Buffer } from 'node:buffer'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveOwner, assertPlanRepoConsistency } from '@/lib/seoFactory/ownership'
 import { renderTargetFile } from '@/lib/seoFactory/renderTarget'
+import {
+  createBranchFrom,
+  getBranchHeadSha,
+  openPullRequest,
+  putRepoFile,
+} from '@/lib/githubContents'
 
 // ── Types ──
 interface GenerateRequest {
@@ -182,133 +187,6 @@ function computeSeoScore(content: string, data: GenerateRequest): number {
   return Math.min(Math.round((score / max) * 100), 100)
 }
 
-// ── GitHub helpers ──
-
-async function gh(path: string, init: RequestInit): Promise<any> {
-  const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
-  if (!token) throw new Error('GITHUB_TOKEN (or CONTENT_STUDIO_GITHUB_TOKEN) not set')
-  const base = process.env.GITHUB_API_BASE ?? 'https://api.github.com'
-  // GitHub rejects Workers' default UA with 403 administrative rules.
-  const res = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'yousafe-portal-content-studio',
-      ...(init.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`GitHub ${res.status}: ${text.slice(0, 200)}`)
-  }
-  return res.json()
-}
-
-async function getDefaultBranchSha(owner: string, repo: string, branch: string): Promise<string> {
-  const refPath = `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`
-  try {
-    const resp = await gh(refPath, { method: 'GET' })
-    return resp.object.sha
-  } catch {
-    const branches = await gh(`/repos/${owner}/${repo}/branches`, { method: 'GET' })
-    const b = (branches as Array<{ name: string; commit: { sha: string } }>).find(x => x.name === branch)
-    if (!b) throw new Error(`Branch '${branch}' not found`)
-    return b.commit.sha
-  }
-}
-
-async function createBranch(owner: string, repo: string, branchName: string, fromSha: string): Promise<void> {
-  await gh(`/repos/${owner}/${repo}/git/refs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: fromSha }),
-  })
-}
-
-function encodeRepoPath(filePath: string): string {
-  return String(filePath || '')
-    .replace(/^\//, '')
-    .split('/')
-    .filter(Boolean)
-    .map((seg) => encodeURIComponent(seg))
-    .join('/')
-}
-
-/** Blob SHA when path exists on branch; undefined if free (create). Required for updates. */
-async function getFileSha(
-  owner: string,
-  repo: string,
-  path: string,
-  branch: string,
-): Promise<string | undefined> {
-  const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
-  if (!token) throw new Error('GITHUB_TOKEN not set')
-  const base = process.env.GITHUB_API_BASE ?? 'https://api.github.com'
-  const res = await fetch(
-    `${base}/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'yousafe-portal-content-studio',
-      },
-    },
-  )
-  if (res.status === 404) return undefined
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`GitHub ${res.status} getFileSha: ${text.slice(0, 200)}`)
-  }
-  const file = await res.json()
-  if (Array.isArray(file)) throw new Error(`Path is a directory: ${path}`)
-  return file.sha as string | undefined
-}
-
-async function putFile(
-  owner: string,
-  repo: string,
-  branch: string,
-  path: string,
-  content: string,
-  message: string,
-): Promise<void> {
-  const b64 = Buffer.from(content, 'utf8').toString('base64')
-  let sha = await getFileSha(owner, repo, path, branch)
-  const body: Record<string, string> = { message, branch, content: b64 }
-  if (sha) body.sha = sha
-
-  try {
-    await gh(`/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    // File exists but we missed sha (or sha stale) — re-fetch and retry once
-    if (!/422|409/.test(msg)) throw e
-    sha = await getFileSha(owner, repo, path, branch)
-    if (!sha) throw e
-    await gh(`/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, branch, content: b64, sha }),
-    })
-  }
-}
-
-async function openPR(owner: string, repo: string, head: string, base: string, title: string, body: string): Promise<{ url: string; number: number }> {
-  const pr = await gh(`/repos/${owner}/${repo}/pulls`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, head, base, body, draft: false }),
-  })
-  return { url: pr.html_url, number: pr.number }
-}
-
 // ── Main handler ──
 
 export async function POST(request: NextRequest) {
@@ -386,11 +264,19 @@ export async function POST(request: NextRequest) {
     const jobSuffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     const branchName = `content-studio/${safeSlug}-${jobSuffix}`.slice(0, 240)
 
-    const sha = await getDefaultBranchSha(target.owner, target.repo, target.defaultBranch)
-    await createBranch(target.owner, target.repo, branchName, sha)
+    const headSha = await getBranchHeadSha(target.owner, target.repo, target.defaultBranch)
+    await createBranchFrom(target.owner, target.repo, branchName, headSha)
 
     const commitMsg = `content(${plan.host}/${body.content_type}): add "${body.title || safeSlug}" [Content Studio · ${plan.routingSource}]`
-    await putFile(target.owner, target.repo, branchName, filePath, fileContent, commitMsg)
+    // Always resolves blob sha when path already exists on the forked branch
+    await putRepoFile({
+      owner: target.owner,
+      repo: target.repo,
+      path: filePath,
+      branch: branchName,
+      content: fileContent,
+      message: commitMsg,
+    })
 
     const prTitle = body.title
       ? `[Content Studio] ${body.title}`
@@ -422,7 +308,14 @@ export async function POST(request: NextRequest) {
       '> Review the content and merge when ready. The webhook will update the job status automatically.',
     ].filter(Boolean).join('\n')
 
-    const pr = await openPR(target.owner, target.repo, branchName, target.defaultBranch, prTitle, prBody)
+    const pr = await openPullRequest({
+      owner: target.owner,
+      repo: target.repo,
+      head: branchName,
+      base: target.defaultBranch,
+      title: prTitle,
+      body: prBody,
+    })
 
     // ── 4. Save to Supabase ──
     const supabase = createClient(
@@ -445,7 +338,7 @@ export async function POST(request: NextRequest) {
         content,
         branch_name: branchName,
         content_path: filePath,
-        pr_url: pr.url,
+        pr_url: pr.html_url,
         pr_number: pr.number,
         ai_provider: label,
         word_count: wordCount,
@@ -467,7 +360,7 @@ export async function POST(request: NextRequest) {
         id: job.id,
         title: job.title,
         status: job.status,
-        pr_url: pr.url,
+        pr_url: pr.html_url,
         pr_number: pr.number,
         branch_name: branchName,
         content_path: filePath,
