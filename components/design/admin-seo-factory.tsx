@@ -1380,14 +1380,15 @@ export default function AdminSeoFactory({
             padding: 24, borderTop: `4px solid ${C.gold}`,
           }}>
             <div style={{ fontSize: 11, color: C.gold, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              Cloudflare AI · Quality refine · Dedupe
+              CF AI + gig fallbacks · Quality refine · Dedupe
             </div>
             <h2 style={{ margin: '8px 0', fontSize: 20, color: C.cyan }}>Publish from GSC demand</h2>
             <p style={{ margin: '0 0 18px', fontSize: 13, color: C.textMuted, lineHeight: 1.55, maxWidth: 680 }}>
               Topics ranked by the <strong>AEO / SEO / GEO authority algorithm</strong> (discipline entities,
-              Q&amp;A intent, LLM-citable structure, cluster fill) plus GSC demand. Drafts with Workers AI,
-              refine to audit threshold, route by ownership. Default ship: <strong>merge → main</strong> for
-              Cloudflare autodeploy. Use workspace <strong>Approve → main</strong> for human-reviewed content.
+              Q&amp;A intent, LLM-citable structure, cluster fill) plus GSC demand. Drafts with Cloudflare AI
+              and the same free-tier cascade as gig creation (Groq → Gemini → OpenRouter), then audit + estate
+              ship. Default: <strong>merge → main</strong>. Use workspace <strong>Approve → main</strong> for
+              human-reviewed content.
             </p>
 
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 14 }}>
