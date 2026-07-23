@@ -75,9 +75,39 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
       <h1 style={{ fontFamily: SERIF, fontSize: '32px', fontWeight: 500, margin: '0 0 16px', letterSpacing: '-0.015em', lineHeight: 1.2 }}>
         {pack.name}
       </h1>
-      <p style={{ fontSize: '16px', color: C.textMuted, lineHeight: 1.6, margin: '0 0 32px' }}>
+      <p style={{ fontSize: '16px', color: C.textMuted, lineHeight: 1.6, margin: '0 0 20px' }}>
         {pack.short_description}
       </p>
+
+      <section style={{ marginBottom: '28px', maxWidth: '40rem' }}>
+        <h2 style={{ fontFamily: SERIF, fontSize: '20px', fontWeight: 500, margin: '0 0 10px' }}>
+          Who this pack is for
+        </h2>
+        <p style={{ fontSize: '15px', color: C.text, lineHeight: 1.7, margin: '0 0 10px' }}>
+          Students, sponsors, and consultants who need a structured way to collect facts before they
+          touch official portals. This is a preparation kit — worksheets, trackers, and checklists —
+          not a completed filing and not legal advice. Use it to reduce missing pages, inconsistent
+          names, and last-minute scramble before an interview or online submission.
+        </p>
+        <p style={{ fontSize: '15px', color: C.text, lineHeight: 1.7, margin: 0 }}>
+          Work through each included template in order, keep evidence filenames consistent with your
+          inventory list, and cross-check totals against the school cost of attendance or LOA. When a
+          licensed review is required, export your filled worksheets into a clean packet for counsel
+          rather than forwarding a pile of screenshots.
+        </p>
+      </section>
+
+      <section style={{ marginBottom: '28px', maxWidth: '40rem' }}>
+        <h2 style={{ fontFamily: SERIF, fontSize: '20px', fontWeight: 500, margin: '0 0 10px' }}>
+          How to use it
+        </h2>
+        <ol style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '15px', color: C.text, lineHeight: 1.75 }}>
+          <li style={{ marginBottom: 6 }}>Download after checkout and save a master folder for this application only.</li>
+          <li style={{ marginBottom: 6 }}>Fill worksheets with facts that match your passport, school documents, and bank evidence.</li>
+          <li style={{ marginBottom: 6 }}>Mark open items (missing statements, unsigned sponsor letters) before you book fees.</li>
+          <li style={{ marginBottom: 6 }}>Re-check official government instructions — forms and fees change; templates organize, they do not replace sources.</li>
+        </ol>
+      </section>
 
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
         <span style={{ fontSize: '32px', fontWeight: 700, color: C.cyan, fontFamily: SERIF }}>

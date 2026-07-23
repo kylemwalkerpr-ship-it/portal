@@ -183,6 +183,24 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
         <p style={{ fontSize: '16px', lineHeight: 1.55, maxWidth: '48rem', margin: 0, opacity: 0.9 }}>
           {displayDescription}
         </p>
+        <p style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '12px 0 0', opacity: 0.9 }}>
+          YouSafe Marketplace lists fixed-price briefs from consultants and licensed attorneys. Compare
+          scope, delivery time, and provider role before you request work. For free procedural reading —
+          document order, refusal triggers, and official-source links — use{' '}
+          <a href="https://legal.yousafeconsultancy.com/" style={{ textDecoration: 'underline' }}>
+            MyCaseworks
+          </a>
+          . Marketplace orders are document-preparation and consulting engagements unless your contract
+          states attorney representation.
+        </p>
+        <p style={{ fontSize: '15px', lineHeight: 1.65, maxWidth: '48rem', margin: '10px 0 0', opacity: 0.9 }}>
+          Prefer a self-serve kit first? Browse{' '}
+          <Link href="/templates" style={{ textDecoration: 'underline' }}>
+            template packs
+          </Link>
+          {' '}for structured worksheets. When you need a human review, shortlist providers with relevant
+          jurisdiction tags and clear package descriptions rather than the lowest price alone.
+        </p>
         {activeCount < 1 ? (
           <p style={{ fontSize: '14px', marginTop: '12px', opacity: 0.75 }}>
             No active services in this category right now. Browse{' '}

@@ -181,11 +181,13 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     redirect(`/marketplace/gigs/${redirected}`)
   }
 
+  // Single load for JSON-LD + SSR body (React cache() also dedupes with metadata).
+  const gig = await loadGigForSeo(slug)
+
   // Build the JSON-LD graph for this gig. Failure here must never break the
   // page render — emit nothing rather than a broken script.
   let jsonLd: object | null = null
   try {
-    const gig = await loadGigForSeo(slug)
     if (gig) {
       const canonicalUrl = getMarketplaceCanonicalUrl(`/marketplace/gigs/${slug}/`)
       const marketplaceBaseUrl = getMarketplaceBaseUrl()
@@ -225,6 +227,25 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     }
   } catch { /* JSON-LD is opportunistic — never block the page. */ }
 
+  // SSR crawlable body — GigDetailPage is a client island that hydrates
+  // interactive UI. Without this block, crawlers only saw a loading shell
+  // (~15 words) and treated active gigs as thin content.
+  const ssrTitle = (gig?.seo_title || gig?.title || titleFromSlug(slug)) as string
+  const ssrPitch = (gig?.pitch || '').toString().trim()
+  const ssrDescription = (gig?.description || gig?.seo_description || '').toString().trim()
+  const ssrFaq = Array.isArray(gig?.faq)
+    ? (gig.faq as Array<{ question?: string; answer?: string }>).filter((f) => f?.question && f?.answer)
+    : []
+  const ssrTiers = Array.isArray(gig?.tiers) ? (gig.tiers as Array<{ title?: string; tier?: string; price?: number; delivery_days?: number; description?: string }>) : []
+  const ssrTags = Array.isArray(gig?.tags) ? (gig.tags as string[]).filter(Boolean).slice(0, 12) : []
+  const categoryLabel = gig?.category ? getCategoryById(gig.category as CategoryId)?.name : null
+  const providerName =
+    gig?.provider && !Array.isArray(gig.provider)
+      ? (gig.provider as { full_name?: string | null })?.full_name
+      : Array.isArray(gig?.provider)
+        ? (gig.provider[0] as { full_name?: string | null } | undefined)?.full_name
+        : null
+
   return (
     <>
       {jsonLd && (
@@ -232,6 +253,82 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+      )}
+      {gig && (
+        <article
+          aria-label="Service overview"
+          style={{
+            maxWidth: 880,
+            margin: '0 auto',
+            padding: '28px 20px 8px',
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            color: '#0F172A',
+          }}
+        >
+          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748B', margin: '0 0 8px' }}>
+            {[categoryLabel, gig.jurisdiction ? String(gig.jurisdiction).toUpperCase() : null, gig.provider_type]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.2, margin: '0 0 12px' }}>{ssrTitle}</h1>
+          {providerName && (
+            <p style={{ fontSize: 14, color: '#475569', margin: '0 0 12px' }}>
+              Offered by {providerName}
+              {typeof gig.avg_rating === 'number' && gig.review_count
+                ? ` · ${Number(gig.avg_rating).toFixed(1)}★ (${gig.review_count} review${gig.review_count === 1 ? '' : 's'})`
+                : ''}
+              {typeof gig.order_count === 'number' && gig.order_count > 0 ? ` · ${gig.order_count} orders` : ''}
+            </p>
+          )}
+          {ssrPitch && (
+            <p style={{ fontSize: 17, lineHeight: 1.55, margin: '0 0 16px', fontWeight: 500 }}>{ssrPitch}</p>
+          )}
+          {ssrDescription && (
+            <div style={{ fontSize: 15, lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-wrap' }}>{ssrDescription}</div>
+          )}
+          {ssrTags.length > 0 && (
+            <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 16px' }}>
+              Topics: {ssrTags.join(', ')}
+            </p>
+          )}
+          {ssrTiers.length > 0 && (
+            <section style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>Packages</h2>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.6 }}>
+                {ssrTiers.map((t, i) => {
+                  const price =
+                    typeof t.price === 'number' && t.price > 0
+                      ? t.price >= 1000
+                        ? `$${(t.price / 100).toFixed(0)}`
+                        : `$${t.price}`
+                      : null
+                  return (
+                    <li key={i} style={{ marginBottom: 8 }}>
+                      <strong>{t.title || t.tier || `Package ${i + 1}`}</strong>
+                      {price ? ` — ${price}` : ''}
+                      {typeof t.delivery_days === 'number' ? ` · ${t.delivery_days} day delivery` : ''}
+                      {t.description ? ` — ${String(t.description).slice(0, 220)}` : ''}
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+          {ssrFaq.length > 0 && (
+            <section style={{ marginBottom: 12 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>FAQ</h2>
+              {ssrFaq.slice(0, 8).map((f, i) => (
+                <div key={i} style={{ marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 4px' }}>{f.question}</h3>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, color: '#334155' }}>{f.answer}</p>
+                </div>
+              ))}
+            </section>
+          )}
+          <p style={{ fontSize: 13, color: '#64748B', margin: '8px 0 0' }}>
+            Fixed-price marketplace service on YouSafe. Compare scope and delivery below, then request securely through checkout. Document preparation is not legal advice unless provided by a licensed attorney on the engagement.
+          </p>
+        </article>
       )}
       <GigDetailPage slug={slug} />
     </>
