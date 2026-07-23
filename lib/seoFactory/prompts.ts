@@ -10,6 +10,7 @@ import {
   minWordsForType as depthMinWords,
   targetWordsForType,
 } from './contentDepth'
+import { qualityPromptBlock } from './contentQualityGate'
 
 export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
@@ -36,6 +37,8 @@ export function buildFactorySystemPrompt(opts: {
     '- NEVER keyword-stuff, NEVER invent stats, NEVER fake case results, NEVER pad with filler to hit word count.',
     '',
     depthPromptClause(contentType),
+    '',
+    qualityPromptBlock(),
     '',
     'OWNERSHIP (must follow):',
     `- Host: ${plan.host} → repo ${plan.repo}`,
@@ -214,7 +217,8 @@ export function auditToRefineNotes(audit: {
     lines.push(`- WARNING: ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`)
   }
   lines.push(
-    'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal, and body word count ≥ hard minimum.',
+    'Ensure: official .gov/.edu URLs, TL;DR block, opening answer ≤40 words, ≥4 H2s, FAQ + FAQPage schema, Article schema, disclaimer, meta description 140–160 chars, CTR-ready title ≤60 chars ideal, body word count ≥ hard minimum.',
+    'VOICE: sound human — second person, varied sentence length, no AI clichés (delve/leverage/robust/seamless/navigate the complexities/in conclusion), no outcome guarantees, no hype.',
   )
   return lines.join('\n')
 }

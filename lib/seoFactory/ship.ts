@@ -12,6 +12,7 @@ import { canAutodeploy } from './audit'
 import { renderTargetFile } from './renderTarget'
 import { assertShipAllowed } from './shipGate'
 import { assertContentDepth } from './contentDepth'
+import { assertQualityGate } from './contentQualityGate'
 import {
   createBranchFrom,
   getBranchHeadSha,
@@ -110,16 +111,21 @@ export async function shipContent(opts: {
     canonicalUrl: opts.plan.canonicalUrl,
   })
 
-  // Hard gate: Google-aligned body depth — approve cannot bypass thin content.
-  // Counts prose only (excludes JSON-LD / front matter).
+  // ── Master gate stack (approve / merge cannot skip any layer) ────────────
+  // 1) Google depth floor (prose word count)
   assertContentDepth({
     content: opts.content,
     contentType: opts.contentType,
     indexable: opts.plan.indexable,
   })
-
-  // Hard gate: host subdomain · content type · path layout · rendered format
-  // Refuse before any GitHub write (including dry-run so operators see the block).
+  // 2) Voice, tonality, AI-slop, outcome promises, human cadence
+  assertQualityGate({
+    content: opts.content,
+    contentType: opts.contentType,
+    primaryKeyword: opts.primaryKeyword,
+    indexable: opts.plan.indexable,
+  })
+  // 3) Host · path · format (caseworks CTAPanel contract, markdown FM, etc.)
   assertShipAllowed({
     plan: opts.plan,
     contentType: opts.contentType,

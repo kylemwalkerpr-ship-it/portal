@@ -9,6 +9,7 @@ import {
   minWordsForType,
   targetWordsForType,
 } from './contentDepth'
+import { evaluateContentQuality } from './contentQualityGate'
 
 export interface AuditFinding {
   code: string
@@ -27,6 +28,9 @@ export interface SeoFactoryAudit {
   llmsRecommended: boolean
   wordCount: number
   primaryKeyword?: string
+  /** 0–100 human-voice score from quality gate */
+  humanScore?: number
+  qualitySummary?: string
 }
 
 function grade(score: number): SeoFactoryAudit['grade'] {
@@ -242,29 +246,79 @@ export function auditContent(opts: {
     passes.push({ code: 'robots_index', severity: 'pass', message: 'Indexable intent (no noindex)' })
   }
 
-  // Disclaimer / not legal advice
+  // Disclaimer / not legal advice (quality gate also blocks when missing on indexable)
   const hasDisclaimer = /not legal advice|editorial|consult (an? )?(attorney|lawyer|solicitor)/i.test(body)
   add(hasDisclaimer, {
     code: 'disclaimer',
-    severity: 'warning',
+    severity: wantIndexable ? 'blocker' : 'warning',
     message: hasDisclaimer ? 'Disclaimer present' : 'Missing legal disclaimer',
     fix: 'Add short disclaimer: educational only, not legal advice',
   }, 1)
 
-  // Never recommend index for under-floor depth
+  // ── Voice / tone / human quality (non-negotiable) ────────────────────────
+  const quality = evaluateContentQuality({
+    content,
+    contentType: opts.contentType,
+    primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
+    indexable: wantIndexable,
+  })
+  for (const b of quality.blockers) {
+    // Avoid duplicate codes already covered above (tldr/faq/citations)
+    if (
+      (b.code === 'missing_tldr' && hasTldr) ||
+      (b.code === 'missing_official_sources' && hasGov) ||
+      (b.code === 'missing_disclaimer' && hasDisclaimer)
+    ) {
+      continue
+    }
+    if (blockers.some((x) => x.code === b.code && x.message === b.message)) continue
+    blockers.push({
+      code: b.code,
+      severity: 'blocker',
+      message: b.message,
+      fix: b.fix,
+    })
+  }
+  for (const w of quality.warnings) {
+    if (warnings.some((x) => x.code === w.code)) continue
+    warnings.push({
+      code: w.code,
+      severity: 'warning',
+      message: w.message,
+      fix: w.fix,
+    })
+  }
+  if (quality.ok && quality.humanScore >= 75) {
+    passes.push({
+      code: 'human_voice',
+      severity: 'pass',
+      message: `Human voice ${quality.humanScore}/100`,
+    })
+    points += 2
+  } else if (quality.humanScore >= 60 && quality.ok) {
+    points += 1
+  }
+
+  // Never recommend index for under-floor depth or quality blockers
   const indexableRecommended =
     wantIndexable &&
     blockers.length === 0 &&
     words >= minWords &&
     !depth.thin &&
-    !depth.belowMin
+    !depth.belowMin &&
+    quality.ok
 
   const score = Math.min(100, Math.round((points / max) * 100))
-  // Penalize blockers hard (thin content especially)
+  // Penalize blockers hard (thin content + voice especially)
   const thinPenalty = blockers.some((b) => b.code === 'thin_content' || b.code === 'word_count')
     ? 20
     : 0
-  const finalScore = Math.max(0, score - blockers.length * 12 - thinPenalty)
+  const voicePenalty = blockers.some((b) =>
+    ['ai_slop', 'outcome_promise', 'hype_tone', 'inhuman_voice', 'keyword_stuffing'].includes(b.code),
+  )
+    ? 15
+    : 0
+  const finalScore = Math.max(0, score - blockers.length * 12 - thinPenalty - voicePenalty)
 
   return {
     score: finalScore,
@@ -276,19 +330,31 @@ export function auditContent(opts: {
     llmsRecommended: indexableRecommended && hasTldr && hasFaq && finalScore >= 70,
     wordCount: words,
     primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
+    humanScore: quality.humanScore,
+    qualitySummary: quality.summary,
   }
 }
 
 export function canAutodeploy(audit: SeoFactoryAudit, ymy: boolean, threshold = 70): boolean {
   if (audit.blockers.length > 0) return false
-  // Depth floor is non-negotiable even if score looks high
-  if (audit.blockers.some((b) => b.code === 'word_count' || b.code === 'thin_content')) return false
+  if (!meetsShipQuality(audit)) return false
   if (audit.score < threshold) return false
   if (ymy && audit.score < 80) return false
   return true
 }
 
-/** True when audit has no depth/word-count blockers (safe for unattended publish). */
+/** True when audit has no depth/word-count blockers. */
 export function meetsDepthFloor(audit: SeoFactoryAudit): boolean {
   return !audit.blockers.some((b) => b.code === 'word_count' || b.code === 'thin_content')
+}
+
+/**
+ * Full unattended publish readiness: depth + voice/tone/compliance + no blockers.
+ * Use this for auto-run / merge — not depth alone.
+ */
+export function meetsShipQuality(audit: SeoFactoryAudit): boolean {
+  if (audit.blockers.length > 0) return false
+  if (!meetsDepthFloor(audit)) return false
+  if (audit.humanScore != null && audit.humanScore < 55) return false
+  return true
 }

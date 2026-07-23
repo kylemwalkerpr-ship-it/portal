@@ -16,7 +16,8 @@ import {
   minWordsForType,
 } from './prompts'
 import { targetWordsForType } from './contentDepth'
-import { meetsDepthFloor } from './audit'
+import { meetsDepthFloor, meetsShipQuality } from './audit'
+import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
@@ -186,33 +187,43 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       ownershipBlockers: plan.blockers,
     })
 
-    // Depth floor is mandatory for unattended publish — keep refining until met
+    // Depth + voice/tone/compliance — unattended publish must clear all gates
     const goodEnough =
       audit.score >= minAudit &&
-      meetsDepthFloor(audit) &&
+      meetsShipQuality(audit) &&
       audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
     if (goodEnough || i === maxRefine) break
-    refineNotes = auditToRefineNotes({
-      ...audit,
-      minWords,
-      targetWords,
+    const q = evaluateContentQuality({
+      content,
+      contentType,
+      primaryKeyword,
+      indexable: plan.indexable,
     })
+    refineNotes = [
+      auditToRefineNotes({
+        ...audit,
+        minWords,
+        targetWords,
+      }),
+      !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
   }
 
   let shipMode = resolveShipMode(requestedMode, audit, plan)
-  // Never ship thin content to main — even if score clears threshold
-  if (!meetsDepthFloor(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+  // Never ship thin or low-quality voice to main — even if score looks OK
+  if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
     shipMode = 'none'
   }
   if (
     input.skipShipIfBelowScore !== false &&
     shipMode !== 'none' &&
-    (audit.score < minAudit || !meetsDepthFloor(audit)) &&
+    (audit.score < minAudit || !meetsShipQuality(audit)) &&
     requestedMode !== 'pr'
   ) {
-    // Keep PR only when depth is OK but score is soft; thin → no ship
-    if (!meetsDepthFloor(audit)) {
+    if (!meetsShipQuality(audit)) {
       shipMode = 'none'
     } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
       shipMode = audit.score >= 50 ? 'pr' : 'none'

@@ -17,7 +17,8 @@ import {
   minWordsForType,
 } from './prompts'
 import { targetWordsForType } from './contentDepth'
-import { meetsDepthFloor } from './audit'
+import { meetsDepthFloor, meetsShipQuality } from './audit'
+import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 
 export type PipelineStreamEvent =
@@ -180,7 +181,7 @@ export async function* runSeoFactoryPipelineStream(
 
       const goodEnough =
         audit.score >= minAudit &&
-        meetsDepthFloor(audit) &&
+        meetsShipQuality(audit) &&
         audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
       yield {
@@ -192,27 +193,40 @@ export async function* runSeoFactoryPipelineStream(
       }
 
       if (goodEnough || i === maxRefine) break
-      refineNotes = auditToRefineNotes({ ...audit, minWords, targetWords })
+      const q = evaluateContentQuality({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+      })
+      refineNotes = [
+        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
       yield {
         type: 'progress',
         stage: 'refine',
         message: !meetsDepthFloor(audit)
           ? `Depth ${audit.wordCount}/${minWords} words — expanding…`
-          : `Audit ${audit.score} < ${minAudit} — refining…`,
+          : !meetsShipQuality(audit)
+            ? `Quality gate · human ${audit.humanScore ?? q.humanScore}/100 — rewriting voice…`
+            : `Audit ${audit.score} < ${minAudit} — refining…`,
       }
     }
 
     let shipMode = resolveShipMode(requestedMode, audit, plan)
-    if (!meetsDepthFloor(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+    if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
       shipMode = 'none'
     }
     if (
       input.skipShipIfBelowScore !== false &&
       shipMode !== 'none' &&
-      (audit.score < minAudit || !meetsDepthFloor(audit)) &&
+      (audit.score < minAudit || !meetsShipQuality(audit)) &&
       requestedMode !== 'pr'
     ) {
-      if (!meetsDepthFloor(audit)) {
+      if (!meetsShipQuality(audit)) {
         shipMode = 'none'
       } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
         shipMode = audit.score >= 50 ? 'pr' : 'none'
