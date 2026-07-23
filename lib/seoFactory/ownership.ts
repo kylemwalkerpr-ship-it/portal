@@ -286,8 +286,22 @@ export function standingRulesHost(opts: {
     return { host: 'legal', contentType: contentType || 'legal_guide', reason: 'housing/tenant rights → legal' }
   }
 
-  // Blog / news
+  // Blog / news — legal by default for YMYL news; regional hosts only when region page type is explicit
   if (contentType === 'blog_post' || contentType === 'blog_summary' || /news|update 2026|overview/i.test(kw)) {
+    // Soft regional blog only when keyword clearly geo-local and non-procedural
+    if (
+      contentType === 'blog_summary' &&
+      !/visa|permit|uscis|ukvi|ircc|opt|h-1b|i-\d+/i.test(kw) &&
+      (region === 'UK' || region === 'CA' || region === 'AU' || region === 'US')
+    ) {
+      const host: OwnerHost =
+        region === 'UK' ? 'uk' : region === 'CA' ? 'ca' : region === 'AU' ? 'au' : 'usa'
+      return {
+        host,
+        contentType: 'blog_summary',
+        reason: `regional news-style blog → ${host}/content/blog`,
+      }
+    }
     return { host: 'legal', contentType: contentType || 'blog_summary', reason: 'news_summary → legal blog' }
   }
 
@@ -342,6 +356,12 @@ function pathForHostFallback(
     return {
       filePath: `${app}/content/universities/${slug}.md`,
       urlPath: `/universities/${slug}/`,
+    }
+  }
+  if (contentType === 'blog_post' || contentType === 'blog_summary') {
+    return {
+      filePath: `${app}/content/blog/${slug}.md`,
+      urlPath: `/blog/${slug}/`,
     }
   }
   return { filePath: `${app}/content/${slug}.md`, urlPath: `/${slug}/` }

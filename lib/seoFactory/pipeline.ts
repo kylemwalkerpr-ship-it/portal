@@ -208,6 +208,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
   if (shipMode !== 'none') {
     try {
+      // shipContent enforces shipGate (host · path · format) before any Git write
       shipResult = await shipContent({
         mode: shipMode,
         plan,

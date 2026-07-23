@@ -8,6 +8,7 @@ import { assertPlanRepoConsistency, HOST_REPO } from './ownership'
 import type { SeoFactoryAudit } from './audit'
 import { canAutodeploy } from './audit'
 import { renderTargetFile } from './renderTarget'
+import { assertShipAllowed } from './shipGate'
 
 /** pr = open PR only; autodeploy = commit main; merge = PR then merge to main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -190,6 +191,17 @@ export async function shipContent(opts: {
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
     canonicalUrl: opts.plan.canonicalUrl,
+  })
+
+  // Hard gate: host subdomain · content type · path layout · rendered format
+  // Refuse before any GitHub write (including dry-run so operators see the block).
+  assertShipAllowed({
+    plan: opts.plan,
+    contentType: opts.contentType,
+    title: opts.title,
+    primaryKeyword: opts.primaryKeyword,
+    filePath,
+    fileContent,
   })
 
   if (opts.dryRun) {

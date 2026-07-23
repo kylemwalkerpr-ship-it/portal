@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { buildGscContentBrief, formatGscBriefForPrompt } from '@/lib/gscContentBrief'
+import { describeEstateContract, validateShipPlan } from '@/lib/seoFactory/shipGate'
 
 /**
  * POST /api/seo-factory/plan
@@ -40,10 +41,27 @@ export async function POST(request: NextRequest) {
     })
 
     const suggestedKeyword = gscBrief.primaryKeywords[0]?.term || primaryKeyword || topic
+    const shipGate = validateShipPlan({
+      plan,
+      contentType,
+      title: topic || primaryKeyword,
+      primaryKeyword: primaryKeyword || topic,
+    })
 
     return NextResponse.json({
       plan,
       suggestedKeyword,
+      shipGate: {
+        ok: shipGate.ok,
+        errors: shipGate.errors,
+        warnings: shipGate.warnings,
+        kind: shipGate.kind,
+        host: shipGate.host,
+        repo: shipGate.repo,
+        filePath: shipGate.filePath,
+        canonicalUrl: shipGate.canonicalUrl,
+      },
+      estateContract: describeEstateContract(),
       gsc: {
         source: gscBrief.source,
         mode: gscBrief.mode,
@@ -54,12 +72,19 @@ export async function POST(request: NextRequest) {
       },
       gscPromptPreview: formatGscBriefForPrompt(gscBrief).slice(0, 2000),
       shipRecommendation: {
-        mode: plan.ymy || plan.blockers.length ? 'pr' : 'autodeploy',
-        reason: plan.ymy
-          ? 'YMYL legal content defaults to PR for human review'
-          : plan.blockers.length
-            ? 'Ownership blockers require PR or keyword change'
-            : 'Non-YMYL with clear ownership — autodeploy allowed after audit ≥70',
+        mode: !shipGate.ok
+          ? 'none'
+          : plan.ymy || plan.blockers.length
+            ? 'pr'
+            : 'merge',
+        allowed: shipGate.ok,
+        reason: !shipGate.ok
+          ? `Ship blocked by estate gate: ${shipGate.errors[0]}`
+          : plan.ymy
+            ? 'YMYL legal content — merge allowed after human Approve or high audit'
+            : plan.blockers.length
+              ? 'Ownership blockers require keyword/ownership change'
+              : `Allowed on ${shipGate.host} → ${shipGate.repo} · ${shipGate.filePath}`,
       },
     })
   } catch (err) {
