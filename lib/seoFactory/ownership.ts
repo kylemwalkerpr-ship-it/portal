@@ -119,13 +119,77 @@ export function slugify(s: string): string {
     .slice(0, 80)
 }
 
+/**
+ * Detect when two keywords describe fundamentally different subjects
+ * even though they share words (e.g. "stem occupations list" vs "document checklist").
+ *
+ * Checks BOTH directions:
+ *   1) Keyword has a topical signal the registry entry lacks.
+ *   2) Registry entry has a topical signal the keyword lacks.
+ *
+ * Returns a penalty 0–60 that reduces raw match scores below the 45 threshold
+ * when subject mismatch is confirmed.
+ */
+function intentMismatchPenalty(keyword: string, primary: string): number {
+  const kw = keyword.toLowerCase().trim()
+  const pr = primary.toLowerCase().trim()
+  let penalty = 0
+
+  // ── Direction A: keyword has subject NOT in registry entry ────────────────
+  // e.g. kw="stem occupations list" vs pr="document checklist" → kw has "stem"
+  if (/stem|category.*occupation|stem.*occupation/i.test(kw) && !/stem/i.test(pr)) {
+    penalty += 40
+  }
+  if (/timeline|processing.*time|how long/i.test(kw) && !/timeline|processing.*time/i.test(pr)) {
+    penalty += 40
+  }
+  if (/fee|cost|price|payment/i.test(kw) && !/fee|cost/i.test(pr)) {
+    penalty += 40
+  }
+
+  // ── Direction B: registry entry has concrete page type NOT in keyword ─────
+  // e.g. pr="express entry document checklist" vs kw="stem category occupations list"
+  //      → pr has "checklist" but kw does not
+  const concretePageTypes = /checklist|handbook|form|instructions|timeline/i
+  const kwConcrete = kw.match(concretePageTypes)
+  const prConcrete = pr.match(concretePageTypes)
+  if (prConcrete && !kwConcrete) {
+    // Registry is a concrete document type but keyword asks about something else
+    penalty += 40
+  }
+  // Both match concrete types but different ones → likely different pages
+  if (kwConcrete && prConcrete && kwConcrete[0] !== prConcrete[0]) {
+    penalty += 40
+  }
+
+  // ── Direction C: requirement/eligibility mismatch ─────────────────────────
+  if (/requirement|eligibility|qualify/i.test(pr) && !/requirement|eligibility|qualify/i.test(kw)) {
+    penalty += 35
+  }
+  if (/requirement|eligibility|qualify/i.test(kw) && !/requirement|eligibility|qualify/i.test(pr)) {
+    penalty += 35
+  }
+
+  return Math.min(60, penalty)
+}
+
 function scoreMatch(keyword: string, primary: string): number {
   const a = normalize(keyword)
   const b = normalize(primary)
   if (!a || !b) return 0
   if (a === b) return 100
   // phrase containment
-  if (a.includes(b) || b.includes(a)) return 85
+  if (a.includes(b) || b.includes(a)) {
+    // Even when one phrase contains the other, check for intent mismatch
+    const ip = intentMismatchPenalty(keyword, primary)
+    if (ip >= 40) {
+      // Strong penalty — the keywords share words but describe fundamentally different things
+      // e.g. "stem category occupations list" matches "document checklist" on "express entry" only
+      // Reduce to mid-range so standing rules can pick a better default
+      return Math.round(85 * (1 - ip / 100))
+    }
+    return 85
+  }
   const aw = a.split(' ').filter((w) => w.length > 2)
   const bw = b.split(' ').filter((w) => w.length > 2)
   if (!aw.length || !bw.length) return 0
@@ -136,7 +200,13 @@ function scoreMatch(keyword: string, primary: string): number {
   const union = new Set([...aw, ...bw]).size
   const j = overlap / union
   const coverage = overlap / bw.length
-  return Math.round(Math.max(j, coverage) * 90)
+  let raw = Math.round(Math.max(j, coverage) * 90)
+  // Apply intent mismatch penalty
+  const ip = intentMismatchPenalty(keyword, primary)
+  if (ip > 0) {
+    raw = Math.round(raw * (1 - ip / 100))
+  }
+  return raw
 }
 
 /** Derive owner host from absolute URL hostname (authoritative when present). */

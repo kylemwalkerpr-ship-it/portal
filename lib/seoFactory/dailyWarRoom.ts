@@ -232,7 +232,21 @@ export async function runDailyWarRoomBatch(opts?: {
   const runId = `wr-daily-${startedAt.slice(0, 10)}-${Date.now().toString(36)}`
   const limit = opts?.limit ?? DAILY_WAR_LIMIT
 
-  const { wins, source, siteUrl, summary } = await selectDailyWins({ limit })
+  // Isolate selectDailyWins so a GSC failure doesn't crash the entire batch
+  let wins: WarOpportunity[] = []
+  let source = 'error'
+  let siteUrl: string | null = null
+  let summary = 'Failed to select daily wins'
+  try {
+    const selected = await selectDailyWins({ limit })
+    wins = selected.wins
+    source = selected.source
+    siteUrl = selected.siteUrl
+    summary = selected.summary
+  } catch (e) {
+    console.error('[dailyWarRoom] selectDailyWins failed', e instanceof Error ? e.message : e)
+  }
+
   const work: DailyWorkItem[] = []
 
   for (let i = 0; i < wins.length; i++) {

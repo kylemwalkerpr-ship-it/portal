@@ -31,6 +31,31 @@ function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'
   return 16384
 }
 
+/**
+ * Wrap an AI generation call with one automatic retry on transient failures
+ * (timeout, rate-limit, gateway 500s). Returns the first successful result
+ * or throws after exhausting retries.
+ */
+async function generateWithRetry(
+  fn: typeof generateContentText,
+  opts: Parameters<typeof generateContentText>[0],
+): Promise<{ text: string; provider: string; model: string }> {
+  for (let retry = 0; retry < 2; retry++) {
+    try {
+      const result = await fn(opts)
+      if (result.text && result.text.length > 50) return result
+    } catch (e) {
+      if (retry === 1) throw e
+      console.warn(
+        `[pipeline] AI transient error (retry ${retry + 1})`,
+        e instanceof Error ? e.message : e,
+      )
+      await new Promise((r) => setTimeout(r, 2000 * (retry + 1)))
+    }
+  }
+  throw new Error('AI generation failed after retry')
+}
+
 export type RequestedShipMode = ShipMode | 'none' | 'auto' | 'merge'
 
 export interface PipelineInput {
@@ -197,7 +222,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         })
 
     const prevWords = content ? countBodyWords(content) : 0
-    const ai = await generateContentText({
+    const ai = await generateWithRetry(generateContentText, {
       system,
       prompt,
       maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
@@ -257,7 +282,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     try {
       // Odd passes: full expand rewrite; even: append new H2s only
       if (expandPasses % 2 === 1) {
-        const ai = await generateContentText({
+        const ai = await generateWithRetry(generateContentText, {
           system,
           prompt: buildDepthExpandPrompt({
             title,
@@ -279,7 +304,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           model = ai.model
         }
       } else {
-        const ai = await generateContentText({
+        const ai = await generateWithRetry(generateContentText, {
           system:
             'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
           prompt: buildDepthAppendPrompt({

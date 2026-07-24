@@ -461,11 +461,18 @@ export async function buildSeoWarRoom(opts?: {
     if (play === 'ignore_noise') continue
 
     const contentType = inferContentType(q.term, play)
-    const plan = await resolveOwner({
-      primaryKeyword: q.term,
-      contentType,
-      region,
-    })
+    let plan
+    try {
+      plan = await resolveOwner({
+        primaryKeyword: q.term,
+        contentType,
+        region,
+      })
+    } catch {
+      // Individual query ownership failure shouldn't crash the entire war room
+      continue
+    }
+    if (!plan || !plan.host) continue
     const auth = scoreTopicAuthority({
       term: q.term,
       impressions: q.impressions,
