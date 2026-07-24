@@ -4,11 +4,16 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 minify = true
 
-# [limits] cpu_ms requires the Workers Paid plan. Re-add this block — with
-# something like cpu_ms = 300000 — the moment the account is upgraded.
-# Production users intermittently hit Cloudflare Error 1102 because the
-# OpenNext-bundled Next.js handler is ~10 MB and the Free plan's per-request
-# CPU ceiling (10 ms) is far below what a cold-start parse requires.
+# ── Limits (Workers Paid plan required) ────────────────────────────────
+# Every route hits Cloudflare Error 1102 (503) on the Free plan because the
+# OpenNext-bundled Next.js handler (~10 MB) alone exceeds the 10 ms CPU
+# ceiling before any app logic runs. Upgrade to Workers Paid then uncomment:
+#
+# [limits]
+# cpu_ms = 300000
+#
+# Required: `npx wrangler queues create content-queue` + add a [[queues]]
+# producer binding for async job processing as the eventual architecture.
 # Reference: opennextjs/opennextjs-cloudflare#598.
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
@@ -76,6 +81,19 @@ AUTHORIZENET_ENVIRONMENT = "production"
 # NMI Collect.js inline UX). 'accept-hosted' would redirect to Authorize.net's
 # hosted payment page — out of scope for the current integration.
 AUTHORIZENET_ACCEPT_VARIANT = "accept-js"
+
+# ── Required Secrets (set with `npx wrangler secret put <NAME>`) ────────
+# These are NOT in wrangler.toml — set them individually:
+#
+#   NVIDIA_API_KEY   — DeepSeek V4 Pro via NVIDIA (default AI provider)
+#   GITHUB_TOKEN     — GitHub PAT for shipContent (PRs, merges, deploys)
+#   SUPABASE_SERVICE_ROLE_KEY — Server-side Supabase access (content_jobs, etc.)
+#   CLOUDFLARE_AI_TOKEN      — Fallback AI when NVIDIA key is exhausted
+#   RESEND_API_KEY   — Transactional email (attorney decision notifications)
+#
+# Without NVIDIA_API_KEY, the Auto-Pilot and Content Studio cannot generate
+# content — they fall through all providers because none are configured.
+# Without GITHUB_TOKEN, shipContent returns 503 on PR/merge operations.
 
 # Resend transactional email key. Used for attorney application decision emails.
 # Set with: npx wrangler secret put RESEND_API_KEY

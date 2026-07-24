@@ -199,38 +199,53 @@ export default function AdminSeoFactory({
   }
 
   const loadJobs = React.useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      params.set('limit', '100')
-      if (jobQ) params.set('q', jobQ)
-      if (jobStatusFilter && jobStatusFilter !== 'all') params.set('status', jobStatusFilter)
-      if (jobHostFilter && jobHostFilter !== 'all') params.set('host', jobHostFilter)
-      if (jobRepoFilter && jobRepoFilter !== 'all') params.set('repo', jobRepoFilter)
-      const res = await fetch(`/api/content-studio/jobs?${params}`, { credentials: 'same-origin' })
-      const data = await res.json()
-      if (res.ok) {
-        setJobs(data.jobs || [])
-        setQueueSummary(data.summary || null)
-        // Keep editor in sync if selected job updated from server (unless local dirty)
-        const sid = selectedJobIdRef.current
-        if (sid) {
-          const j = (data.jobs || []).find((x: any) => x.id === sid)
-          if (j?.content != null) {
-            setEditorContent((prev) => {
-              const serverPrev = selectedJobContentRef.current || ''
-              if (!prev.trim() || prev === serverPrev) {
-                selectedJobContentRef.current = j.content || ''
-                return j.content
-              }
-              return prev
-            })
-          }
+    const params = new URLSearchParams()
+    params.set('limit', '100')
+    if (jobQ) params.set('q', jobQ)
+    if (jobStatusFilter && jobStatusFilter !== 'all') params.set('status', jobStatusFilter)
+    if (jobHostFilter && jobHostFilter !== 'all') params.set('host', jobHostFilter)
+    if (jobRepoFilter && jobRepoFilter !== 'all') params.set('repo', jobRepoFilter)
+    const url = `/api/content-studio/jobs?${params}`
+    const maxRetries = 2
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, { credentials: 'same-origin' })
+        if (res.status === 503 && attempt < maxRetries) {
+          pushLog('warn', 'jobs', `503 retry ${attempt + 1}/${maxRetries}`)
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+          continue
         }
-      } else if (data.error) {
-        pushLog('error', 'jobs', data.error)
+        const data = await res.json()
+        if (res.ok) {
+          setJobs(data.jobs || [])
+          setQueueSummary(data.summary || null)
+          // Keep editor in sync if selected job updated from server (unless local dirty)
+          const sid = selectedJobIdRef.current
+          if (sid) {
+            const j = (data.jobs || []).find((x: any) => x.id === sid)
+            if (j?.content != null) {
+              setEditorContent((prev) => {
+                const serverPrev = selectedJobContentRef.current || ''
+                if (!prev.trim() || prev === serverPrev) {
+                  selectedJobContentRef.current = j.content || ''
+                  return j.content
+                }
+                return prev
+              })
+            }
+          }
+        } else if (data.error && attempt === maxRetries) {
+          pushLog('error', 'jobs', data.error)
+        }
+        break // success (or non-retryable error)
+      } catch (e) {
+        if (attempt === maxRetries) {
+          pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
+        } else {
+          pushLog('warn', 'jobs', `Retry ${attempt + 1}/${maxRetries}: ${e instanceof Error ? e.message : 'failed'}`)
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+        }
       }
-    } catch (e) {
-      pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
     }
   }, [jobQ, jobStatusFilter, jobHostFilter, jobRepoFilter, pushLog])
 
