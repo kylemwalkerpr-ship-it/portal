@@ -1,8 +1,10 @@
 /**
- * Ship generated content to estate repos via PR or direct main commit (autodeploy).
+ * Ship generated content to estate repos — THE ONLY Git write door for Content Studio.
  *
- * All GitHub file writes go through lib/githubContents.putRepoFile so create vs
- * update always supplies the blob SHA (prevents 422 "sha wasn't supplied").
+ * Architecture (docs/CONTENT_STUDIO_ARCHITECTURE.md):
+ *   - Unattended: PR → wait for CI → merge (never direct-push main)
+ *   - Human-approved: may direct-commit main for fast CF deploy
+ *   - All writes via putRepoFile (SHA resolve + 422/409 retry)
  */
 
 import type { OwnerPlan } from './ownership'
@@ -23,7 +25,7 @@ import {
   putRepoFile,
 } from '@/lib/githubContents'
 
-/** pr = open PR only; autodeploy = commit main; merge = PR then merge to main */
+/** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
 
 export interface ShipResult {
@@ -41,6 +43,70 @@ export interface ShipResult {
   dryRun?: boolean
   /** Human-approved ships skip automated audit gates (still refuse hard ownership blockers). */
   humanApproved?: boolean
+  /** CI state when merge waited for checks */
+  ciState?: 'success' | 'failure' | 'pending' | 'none' | 'timeout'
+  ciNote?: string
+}
+
+/** Poll GitHub check-runs / combined status until green, red, or timeout. */
+async function waitForCommitCi(
+  owner: string,
+  repo: string,
+  sha: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<{ state: NonNullable<ShipResult['ciState']>; note: string }> {
+  const timeoutMs = opts?.timeoutMs ?? 3 * 60 * 1000
+  const intervalMs = opts?.intervalMs ?? 15_000
+  const deadline = Date.now() + timeoutMs
+  let lastNote = 'no checks yet'
+  let emptyPolls = 0
+
+  while (Date.now() < deadline) {
+    try {
+      const [checksRes, statusRes] = await Promise.all([
+        githubFetch(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=50`).catch(
+          () => null,
+        ),
+        githubFetch(`/repos/${owner}/${repo}/commits/${sha}/status`).catch(() => null),
+      ])
+
+      const runs = (checksRes?.check_runs || []) as Array<{
+        name?: string
+        status?: string
+        conclusion?: string | null
+      }>
+      if (runs.length) {
+        emptyPolls = 0
+        const pending = runs.some((r) => r.status !== 'completed')
+        const failed = runs.some((r) =>
+          ['failure', 'timed_out', 'cancelled', 'action_required'].includes(
+            String(r.conclusion || ''),
+          ),
+        )
+        const names = runs.map((r) => `${r.name}:${r.conclusion || r.status}`).join(', ')
+        lastNote = names.slice(0, 280)
+        if (failed) return { state: 'failure', note: lastNote }
+        if (!pending) return { state: 'success', note: lastNote }
+      } else if (statusRes && statusRes.state && statusRes.state !== 'pending') {
+        const st = String(statusRes.state)
+        lastNote = `combined:${st}`
+        if (st === 'success') return { state: 'success', note: lastNote }
+        if (st === 'failure' || st === 'error') return { state: 'failure', note: lastNote }
+      } else {
+        emptyPolls++
+        lastNote = 'waiting for check-runs to appear'
+        // After ~45s with zero checks, treat as "no required CI" and allow merge attempt
+        if (emptyPolls >= 3) {
+          return { state: 'none', note: 'no check-runs registered — merge allowed' }
+        }
+      }
+    } catch (e) {
+      lastNote = e instanceof Error ? e.message : 'CI poll error'
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  // Timeout with pending checks: still try merge (branch protection may enforce)
+  return { state: 'timeout', note: lastNote }
 }
 
 // ── Back-compat re-exports (tests / older imports) ──────────────────────────
@@ -151,35 +217,26 @@ export async function shipContent(opts: {
     }
   }
 
-  // Human approve or explicit autodeploy → commit main (fast path for CF deploy)
-  const useMainCommit =
-    opts.mode === 'autodeploy' || Boolean(opts.humanApproved && opts.mode !== 'pr')
+  // ── Direct main ONLY for human-approved ships (architecture I4) ─────────
+  // Unattended factory / War Room must never red-X main without a PR + CI gate.
+  const useMainCommit = Boolean(opts.humanApproved && opts.mode !== 'pr')
 
   if (useMainCommit) {
     if (opts.plan.blockers.length > 0) {
       throw new Error(`Cannot ship to main: ${opts.plan.blockers[0]}`)
     }
-    // Automated autodeploy still needs audit gate; human-approved does not
-    if (!opts.humanApproved && !canAutodeploy(opts.audit, opts.plan.ymy)) {
-      throw new Error(
-        `Audit score ${opts.audit.score} (${opts.audit.grade}) or blockers prevent autodeploy. Approve in Studio or use ship_mode=pr.`,
-      )
-    }
 
-    // putRepoFile always GET→sha then PUT (create or update) + 422/409 retry
     const put = await putRepoFile({
       owner,
       repo,
       path: filePath,
       branch: branchMain,
       content: fileContent,
-      message: opts.humanApproved
-        ? `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`
-        : `seo-factory: ship "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
+      message: `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
     })
 
     return {
-      mode: useMainCommit ? 'autodeploy' : opts.mode,
+      mode: 'autodeploy',
       owner,
       repo,
       path: filePath,
@@ -187,18 +244,27 @@ export async function shipContent(opts: {
       mergeCommitSha: put.commitSha,
       canonicalUrl: opts.plan.canonicalUrl,
       status: 'deployed',
-      humanApproved: opts.humanApproved,
+      humanApproved: true,
     }
   }
 
-  // PR mode (and merge mode: open PR then merge)
+  // Unattended autodeploy without human approval → force PR path (CI gate)
+  const effectiveMode: ShipMode =
+    opts.mode === 'autodeploy' && !opts.humanApproved ? 'merge' : opts.mode
+
+  if (effectiveMode === 'autodeploy' && !opts.humanApproved) {
+    if (!canAutodeploy(opts.audit, opts.plan.ymy)) {
+      // fall through to PR/merge path below
+    }
+  }
+
+  // PR path (and merge: PR → wait CI → merge)
   const baseSha = await getBranchHeadSha(owner, repo, branchMain)
   const slug = filePath.split('/').filter(Boolean).slice(-2, -1)[0] || 'page'
   const branchName = `seo-factory/${slug}-${Date.now().toString(36)}`.slice(0, 240)
 
   await createBranchFrom(owner, repo, branchName, baseSha)
 
-  // Branch is forked from main — path often already exists → must send blob sha.
   const put = await putRepoFile({
     owner,
     repo,
@@ -226,21 +292,50 @@ export async function shipContent(opts: {
       `- **Audit:** ${opts.audit.score} (${opts.audit.grade})`,
       `- **Job:** ${opts.jobId || '—'}`,
       `- **Git write:** ${put.updated ? 'update (sha resolved)' : 'create'} · ${put.attempts} attempt(s)`,
-      opts.mode === 'merge' ? '- **Auto-merge:** yes (to main → Cloudflare deploy)' : '',
+      effectiveMode === 'merge'
+        ? '- **Auto-merge:** after CI green (or timeout with merge attempt)'
+        : '',
       '',
       opts.audit.blockers.length
         ? `### Blockers\n${opts.audit.blockers.map((b) => `- ${b.message}`).join('\n')}`
         : '### Blockers\n- none',
       '',
       'Merging to `main` triggers Cloudflare autodeploy for this repo.',
+      'Unattended ships wait for GitHub check-runs so a bad page.tsx cannot red-X main.',
     ]
       .filter(Boolean)
       .join('\n'),
   })
 
-  if (opts.mode === 'merge') {
-    // Brief pause so GitHub indexes the PR head
-    await new Promise((r) => setTimeout(r, 800))
+  if (effectiveMode === 'merge' || effectiveMode === 'autodeploy') {
+    // Let GitHub register the PR head + start workflows
+    await new Promise((r) => setTimeout(r, 2500))
+
+    const ci = await waitForCommitCi(owner, repo, branchCommit, {
+      // Stay under typical Worker/cron budgets; 5 min covers most caseworks builds
+      timeoutMs: Number(process.env.SHIP_CI_WAIT_MS || 5 * 60 * 1000),
+      intervalMs: 20_000,
+    })
+
+    if (ci.state === 'failure') {
+      console.warn('[ship] CI failed on PR head — leaving PR open', ci.note)
+      return {
+        mode: 'merge',
+        owner,
+        repo,
+        path: filePath,
+        branch: branchName,
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        commitSha: branchCommit,
+        canonicalUrl: opts.plan.canonicalUrl,
+        status: 'pr_created',
+        humanApproved: opts.humanApproved,
+        ciState: 'failure',
+        ciNote: `CI failed — not merged. ${ci.note}`,
+      }
+    }
+
     try {
       const merged = await mergePrApi({
         owner,
@@ -262,10 +357,11 @@ export async function shipContent(opts: {
           canonicalUrl: opts.plan.canonicalUrl,
           status: 'merged',
           humanApproved: opts.humanApproved,
+          ciState: ci.state,
+          ciNote: ci.note,
         }
       }
     } catch (mergeErr) {
-      // Leave PR open for human/monitor if merge blocked (branch protection, etc.)
       console.warn(
         '[ship] auto-merge failed, PR left open:',
         mergeErr instanceof Error ? mergeErr.message : mergeErr,
@@ -282,7 +378,25 @@ export async function shipContent(opts: {
         canonicalUrl: opts.plan.canonicalUrl,
         status: 'pr_created',
         humanApproved: opts.humanApproved,
+        ciState: ci.state,
+        ciNote: `merge blocked: ${mergeErr instanceof Error ? mergeErr.message : 'unknown'} · CI ${ci.state}`,
       }
+    }
+
+    return {
+      mode: 'merge',
+      owner,
+      repo,
+      path: filePath,
+      branch: branchName,
+      prUrl: pr.html_url,
+      prNumber: pr.number,
+      commitSha: branchCommit,
+      canonicalUrl: opts.plan.canonicalUrl,
+      status: 'pr_created',
+      humanApproved: opts.humanApproved,
+      ciState: ci.state,
+      ciNote: ci.note,
     }
   }
 

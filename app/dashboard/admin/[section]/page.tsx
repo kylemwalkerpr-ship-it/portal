@@ -18,6 +18,8 @@ export const dynamic = 'force-dynamic'
 const VALID_SECTIONS = new Set([
   'dashboard', 'users', 'orders', 'tickets', 'inquiries', 'analytics',
   'financials', 'gigs', 'settings',
+  // Content Studio command center (deep-linkable)
+  'content',
   // Financials tab aliases
   'escrow', 'payouts', 'wallets', 'loyalty',
 ])

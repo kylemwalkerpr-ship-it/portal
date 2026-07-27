@@ -20,10 +20,11 @@ End-state architecture for Content Studio + GSC + agent MCP.
 │  3. Auto-Pilot (useWarRoom:true) / Keywords / Manual stream      │
 │  4. Estate shipGate (host·path·format) before any Git write      │
 │  5. Approve → main + deploy monitor (Workers AI)                 │
-│  AI: CF primary → Groq → Gemini → OpenRouter (gig chain)         │
+│  AI: DeepSeek V4 Pro (NVIDIA) → CF → Groq → Gemini → OpenRouter  │
+│  Ship door: shipContent only (PR → CI → merge; human may main)   │
 │  Prompts: play-specific SERP/AEO tactics (title CTR, strike…)    │
 └─────────────────────────────┬────────────────────────────────────┘
-                              │ PR / commit
+                              │ PR → CI green → merge
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  ESTATE REPOS                                                    │
@@ -32,6 +33,8 @@ End-state architecture for Content Studio + GSC + agent MCP.
 │  market → portal catalogue (*.mdx)                               │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+Canonical architecture: **`docs/CONTENT_STUDIO_ARCHITECTURE.md`**.
 
 ## Daily automation (midday Kenya)
 
@@ -75,8 +78,8 @@ Priority = estimated gain clicks × authority × play weight. Brand/meal-plan/no
 | Agent GSC tools | **mcp-gsc** (uvx `mcp-search-console`) | Free MIT, 20 tools, inspect + analytics |
 | Ranking engine | **War Room** (CTR gap · strike · cannibal) | Ranks by *gain*, not vanity volume |
 | Planner feed | **optimal-plan** (war-room first + lanes) | Estate-aware; paid MCPs don’t know legal vs usa host |
-| Generation | **CF AI + gig fallbacks** + play prompts | Same free cascade; SERP-tactic writeHints |
-| Ship | **shipGate + Approve→main** | Prevents broken caseworks pages / wrong subdomain |
+| Generation | **DeepSeek V4 Pro → CF → free tiers** + play prompts | Long-form primary; free cascade fallbacks |
+| Ship | **Single door `shipContent` + CI-gated merge** | Unattended never direct-pushes main |
 
 Paid SEO MCPs (Ahrefs, Semrush, DataForSEO) add **competitor** volume only. Layer them later if you buy API access — never replace GSC + estate gate.
 

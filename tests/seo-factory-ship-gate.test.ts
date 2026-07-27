@@ -90,6 +90,25 @@ describe('validateShipPlan', () => {
     expect(r.ok).toBe(true)
   })
 
+  it('allows caseworks guide / compare / templates trees (registry alignment)', () => {
+    for (const filePath of [
+      'app/guide/study-permit-guide/page.tsx',
+      'app/compare/au-485-vs-canada-pgwp/page.tsx',
+      'app/templates/financial-sponsor-letter-us-f1/page.tsx',
+    ]) {
+      const r = validateShipPlan({
+        plan: plan({
+          host: 'legal',
+          repo: 'caseworks',
+          filePath,
+          canonicalUrl: `https://legal.yousafeconsultancy.com/${filePath.replace(/^app\//, '').replace(/\/page\.tsx$/, '')}/`,
+        }),
+        contentType: 'legal_guide',
+      })
+      expect(r.ok).toBe(true)
+    }
+  })
+
   it('blocks market gig on legal', () => {
     const r = validateShipPlan({
       plan: plan({

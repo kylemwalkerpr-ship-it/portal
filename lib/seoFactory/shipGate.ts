@@ -52,10 +52,19 @@ export const HOST_ALLOWED_KINDS: Record<OwnerHost, ShipContentKind[]> = {
 
 /** File path patterns required per host (any match is OK). */
 export const HOST_PATH_PATTERNS: Record<OwnerHost, RegExp[]> = {
+  // caseworks app tree — must stay in sync with live caseworks/app/*
   legal: [
     /^app\/(us|uk|ca|au)\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
     /^app\/blog\/[a-z0-9][a-z0-9-]*\/page\.tsx$/,
-    /^app\/(us|uk|ca)\/(student-visas|immigration|tenancy|express-entry|family|loans)\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/(us|uk|ca|au)\/(student-visas|immigration|tenancy|express-entry|family|loans)\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    // Strategy registry also owns guide / compare / templates / articles / topics hubs
+    /^app\/guide\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/compare\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/templates\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/articles\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/topics\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/library\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
+    /^app\/glossary\/[a-z0-9][a-z0-9-/]*\/page\.tsx$/,
   ],
   usa: [
     /^usa\/content\/from\/[a-z0-9][a-z0-9-]*\.md$/,
@@ -460,7 +469,7 @@ export function assertShipAllowed(opts: {
 function describePathExamples(host: OwnerHost): string {
   switch (host) {
     case 'legal':
-      return 'app/us/{slug}/page.tsx · app/uk/{slug}/page.tsx · app/blog/{slug}/page.tsx'
+      return 'app/us|uk|ca|au/{slug}/page.tsx · app/blog|guide|compare|templates/{slug}/page.tsx'
     case 'usa':
       return 'usa/content/from/{slug}.md · usa/content/blog/{slug}.md · usa/content/{slug}.md'
     case 'uk':
