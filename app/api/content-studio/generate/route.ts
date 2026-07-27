@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       dryRun: Boolean(body.dryRun || body.dry_run),
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 3,
-      userId: auth.profileId || auth.userId || 'admin',
+      userId: auth.profileId || 'admin',
     })
 
     return NextResponse.json({
