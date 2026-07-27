@@ -110,11 +110,11 @@ function GscConnect({
       )}
 
       <p style={{ fontSize: 11, color: C.textDim, marginTop: 12, maxWidth: 520, margin: '12px auto 0' }}>
-        {oauthClientConfigured
-          ? 'OAuth client ID/secret are set on the Worker. Click Connect to authorize read-only GSC access.'
-          : saConfigured
-            ? 'OAuth optional. For button connect, set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (or GSC_OAUTH_CLIENT_ID/SECRET) as Worker secrets.'
-            : 'Set GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL (recommended), or GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET for OAuth.'}
+        {saConfigured
+          ? 'Service account is on the Worker — factory already uses live GSC without this button. OAuth is only for personal-login analytics in this panel.'
+          : oauthClientConfigured
+            ? 'OAuth client is configured. Click Connect to authorize read-only GSC access.'
+            : 'Missing GSC credentials on the Worker. Preferred: GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL. Optional OAuth: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET.'}
       </p>
       {setupHint && setupHint.length > 0 && (
         <ul style={{ fontSize: 11, color: C.textMuted, textAlign: 'left', maxWidth: 480, margin: '12px auto 0' }}>

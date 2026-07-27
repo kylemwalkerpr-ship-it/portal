@@ -1,37 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { detectGscAuthMode, serviceAccountEmail } from '@/lib/gscAuth'
+import { detectGscAuthMode, getGscAccess, serviceAccountEmail } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
+
+function envPresent(...names: string[]): boolean {
+  return names.some((n) => Boolean((process.env[n] || '').trim()))
+}
 
 /**
  * GET /api/content-studio/gsc/status
  * Connection + credential mode for Content Studio GSC panel.
+ *
+ * IMPORTANT: Service account alone is enough for factory/War Room live GSC.
+ * Interactive OAuth (GOOGLE_CLIENT_*) is optional.
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const auth = await requireAdminUser()
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    const mode = await detectGscAuthMode()
-    const saEmail = serviceAccountEmail()
+    const hasGoogleClientId = envPresent(
+      'GOOGLE_CLIENT_ID',
+      'GSC_OAUTH_CLIENT_ID',
+      'GOOGLE_OAUTH_CLIENT_ID',
+    )
+    const hasGoogleClientSecret = envPresent(
+      'GOOGLE_CLIENT_SECRET',
+      'GSC_OAUTH_CLIENT_SECRET',
+      'GOOGLE_OAUTH_CLIENT_SECRET',
+    )
+    const oauthClientConfigured = hasGoogleClientId && hasGoogleClientSecret
+    const saConfigured = envPresent('GSC_SERVICE_ACCOUNT_JSON', 'GSC_SERVICE_ACCOUNT_KEY')
+    const hasRefreshToken = envPresent('GSC_OAUTH_REFRESH_TOKEN')
     const siteUrl = process.env.GSC_SITE_URL ?? null
 
-    const oauthClientConfigured = Boolean(
-      (process.env.GOOGLE_CLIENT_ID ||
-        process.env.GSC_OAUTH_CLIENT_ID ||
-        process.env.GOOGLE_OAUTH_CLIENT_ID) &&
-        (process.env.GOOGLE_CLIENT_SECRET ||
-          process.env.GSC_OAUTH_CLIENT_SECRET ||
-          process.env.GOOGLE_OAUTH_CLIENT_SECRET),
-    )
-    const saConfigured = Boolean(
-      process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY,
-    )
+    let mode: Awaited<ReturnType<typeof detectGscAuthMode>> = null
+    let saEmail: string | null = null
+    let liveOk = false
+    let liveDetail: string | null = null
+    try {
+      mode = await detectGscAuthMode()
+      saEmail = serviceAccountEmail()
+      // Prove live token mint (same path as War Room / factory)
+      const access = await getGscAccess()
+      if (access?.accessToken) {
+        liveOk = true
+        liveDetail = `${access.mode} · ${access.siteUrl || siteUrl || 'no siteUrl'}`
+        mode = access.mode
+      } else {
+        liveDetail = 'Credentials present but token mint returned null'
+      }
+    } catch (e) {
+      liveDetail = e instanceof Error ? e.message.slice(0, 160) : 'token mint failed'
+    }
 
-    // OAuth token row (content-studio gsc_tokens table)
+    // OAuth token row (content-studio gsc_tokens table) — interactive Connect
     let oauthConnected = false
     let oauthEmail: string | null = null
     try {
@@ -52,12 +78,20 @@ export async function GET(request: NextRequest) {
       /* table may not exist yet */
     }
 
-    const snap = await loadGscSnapshot()
-    const liveReady = mode !== null || oauthConnected
+    let snap: Awaited<ReturnType<typeof loadGscSnapshot>> | null = null
+    try {
+      snap = await loadGscSnapshot()
+    } catch {
+      /* snapshot optional */
+    }
+
+    // Connected if we can mint a live token OR have interactive OAuth row
+    // SA on Worker = enough for automation (don't force OAuth button)
+    const connected = liveOk || oauthConnected || (saConfigured && Boolean(siteUrl))
 
     return NextResponse.json({
-      connected: liveReady,
-      mode, // oauth | service_account | null
+      connected,
+      mode: mode || (saConfigured ? 'service_account' : oauthConnected ? 'oauth' : null),
       siteUrl,
       serviceAccountEmail: saEmail,
       email: oauthEmail || saEmail || undefined,
@@ -65,15 +99,24 @@ export async function GET(request: NextRequest) {
       oauthEmail,
       oauthClientConfigured,
       saConfigured,
-      snapshot: {
-        available: true,
-        generatedAt: snap.generatedAt ?? null,
-        queryCount: snap.totals?.queryCount ?? 0,
-        pageCount: snap.totals?.pageCount ?? 0,
+      hasRefreshToken,
+      liveOk,
+      liveDetail,
+      env: {
+        GOOGLE_CLIENT_ID: hasGoogleClientId,
+        GOOGLE_CLIENT_SECRET: hasGoogleClientSecret,
+        GSC_SERVICE_ACCOUNT_JSON: saConfigured,
+        GSC_SITE_URL: Boolean((siteUrl || '').trim()),
+        GSC_OAUTH_REFRESH_TOKEN: hasRefreshToken,
       },
-      // Operator checklist when live API returns 403
+      snapshot: {
+        available: Boolean(snap),
+        generatedAt: snap?.generatedAt ?? null,
+        queryCount: snap?.totals?.queryCount ?? 0,
+        pageCount: snap?.totals?.pageCount ?? 0,
+      },
       setup: {
-        addServiceAccountToGsc: saConfigured,
+        addServiceAccountToGsc: saConfigured && !liveOk,
         serviceAccountEmail: saEmail ?? 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
         properties: [
           'sc-domain:yousafeconsultancy.com (preferred)',
@@ -81,18 +124,25 @@ export async function GET(request: NextRequest) {
           'https://usa.yousafeconsultancy.com/',
           'https://yousafeconsultancy.com/',
         ],
-        // Preferred path is SA (automation). OAuth is optional interactive connect.
-        envRequired: saConfigured
-          ? ['GSC_SERVICE_ACCOUNT_JSON ✓', 'GSC_SITE_URL']
-          : oauthClientConfigured
-            ? ['GOOGLE_CLIENT_ID ✓', 'GOOGLE_CLIENT_SECRET ✓', 'Connect OAuth once']
-            : [
-                'GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL (recommended)',
-                'OR GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (interactive OAuth)',
-              ],
+        envRequired: connected
+          ? liveOk
+            ? [`Live GSC OK (${liveDetail})`]
+            : ['SA/OAuth secrets present — if data fails, add SA email to GSC properties']
+          : [
+              'Set Worker secret GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL (recommended)',
+              'OR set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET and click Connect',
+            ],
+        note:
+          'Interactive OAuth is optional. Factory / War Room use the service account when configured.',
       },
     })
-  } catch {
-    return NextResponse.json({ connected: false, mode: null })
+  } catch (e) {
+    return NextResponse.json({
+      connected: false,
+      mode: null,
+      error: e instanceof Error ? e.message : 'status failed',
+      oauthClientConfigured: false,
+      saConfigured: false,
+    })
   }
 }
