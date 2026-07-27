@@ -119,7 +119,10 @@ jobs:
           GSC_OAUTH_REFRESH_TOKEN: ${{ secrets.GSC_OAUTH_REFRESH_TOKEN }}
           GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
           GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
-          # Content Studio AI providers (app/api/content-studio/generate)
+          # Content Studio AI — primary: DeepSeek V4 Pro (NVIDIA), then CF, then rest
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_DEEPSEEK_MODEL: ${{ secrets.NVIDIA_DEEPSEEK_MODEL }}
+          NVAPI_KEY: ${{ secrets.NVAPI_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -217,7 +220,18 @@ jobs:
           # Service account JSON (gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com).
           # Must be added as Full user on each Search Console property for live queries.
           put_secret GSC_SERVICE_ACCOUNT_JSON  "$GSC_SERVICE_ACCOUNT_JSON"
-          # Content Studio — AI providers (priority: custom → xAI/Grok → OpenAI → DeepSeek)
+          # Content Studio AI chain (lib/contentAiProvider.ts):
+          #   1) DeepSeek V4 Pro via NVIDIA  (primary writer)
+          #   2) Cloudflare Workers AI      (first fallback)
+          #   3) Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
+          # Always pin CONTENT_AI_PROVIDER so a stale Worker secret cannot
+          # force Cloudflare-first after a code deploy. Values are fixed
+          # (not from secrets) so put_secret always has a non-empty value.
+          put_secret CONTENT_AI_PROVIDER       "nvidia-deepseek"
+          put_secret NVIDIA_DEEPSEEK_MODEL     "${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-pro}"
+          # NVIDIA key aliases — any one unlocks the primary path
+          put_secret NVIDIA_API_KEY            "${NVIDIA_API_KEY:-$NVAPI_KEY}"
+          put_secret NVAPI_KEY                 "${NVAPI_KEY:-$NVIDIA_API_KEY}"
           put_secret XAI_API_KEY               "$XAI_API_KEY"
           put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
           put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"

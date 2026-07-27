@@ -685,12 +685,17 @@ export function listConfiguredContentProviders(): Array<{
 
 /**
  * Resolve preferred provider label.
- * Default is always nvidia-deepseek (DeepSeek); cloudflare is fallback in the chain.
- * CONTENT_AI_PROVIDER=cloudflare forces CF first only when explicitly set.
+ *
+ * HARD DEFAULT: DeepSeek V4 Pro via NVIDIA (`nvidia-deepseek`).
+ * Cloudflare is always the first fallback in orderedCompleters — never the
+ * default lead unless CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
+ *
+ * Empty / unknown / legacy "primary" values all map back to nvidia-deepseek
+ * so a stale Worker secret cannot silently demote the writer.
  */
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
-  if (!explicit || explicit === 'auto' || explicit === 'default') {
+  if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
     return 'nvidia-deepseek'
   }
   // Aliases → NVIDIA DeepSeek primary
@@ -702,6 +707,26 @@ function preferProvider(): string {
     explicit === 'nvidia-deepseek' ||
     explicit === 'nim'
   ) {
+    return 'nvidia-deepseek'
+  }
+  // Explicit alternate lead (cloudflare, groq, …) — still falls through to
+  // DeepSeek → CF → rest after that provider in orderedCompleters.
+  const allowedPins = new Set([
+    'cloudflare',
+    'cloudflare-ai',
+    'workers-ai',
+    'groq',
+    'gemini',
+    'openrouter',
+    'openai',
+    'custom',
+    'xai',
+    'grok',
+  ])
+  if (!allowedPins.has(explicit)) {
+    console.warn(
+      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-deepseek (DeepSeek V4 Pro)`,
+    )
     return 'nvidia-deepseek'
   }
   return explicit

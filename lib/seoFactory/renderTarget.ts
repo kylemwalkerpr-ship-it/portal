@@ -29,10 +29,16 @@ function stripFrontMatter(content: string): { fm: Record<string, string>; body: 
 function markdownToJsx(body: string): string {
   // Drop JSON-LD / raw HTML scripts — ArticleLayout already emits schema.
   // Leaving them as text or broken JSX breaks prerender (and confuses crawlers).
+  // All AI providers (DeepSeek / CF / Groq / …) produce markdown; this converter
+  // must emit build-safe JSX regardless of which model wrote the draft.
   let cleaned = body
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/```json[\s\S]*?```/gi, '')
     .replace(/```html[\s\S]*?```/gi, '')
+    .replace(/```tsx?[\s\S]*?```/gi, '')
+    .replace(/```jsx?[\s\S]*?```/gi, '')
+    // Strip any remaining fenced blocks so fences never leak into page.tsx
+    .replace(/```[\s\S]*?```/gi, '')
 
   const lines = cleaned.split('\n')
   const out: string[] = []
@@ -45,6 +51,12 @@ function markdownToJsx(body: string): string {
     out.push(`      <p>${escapeJsxText(para.join(' '))}</p>`)
     para = []
   }
+  const closeList = () => {
+    if (inList) {
+      out.push('      </ul>')
+      inList = false
+    }
+  }
 
   for (const raw of lines) {
     const line = raw.trimEnd()
@@ -52,6 +64,7 @@ function markdownToJsx(body: string): string {
 
     if (trimmed.startsWith('```')) {
       flushPara()
+      closeList()
       inFence = !inFence
       continue
     }
@@ -59,25 +72,20 @@ function markdownToJsx(body: string): string {
 
     if (!trimmed) {
       flushPara()
-      if (inList) {
-        out.push('      </ul>')
-        inList = false
-      }
+      closeList()
       continue
     }
 
     // Skip raw HTML blocks and markdown H1 (page already has title/H1 from layout)
     if (trimmed.startsWith('<') || trimmed.startsWith('#' + ' ')) {
       flushPara()
+      closeList()
       continue
     }
 
     if (line.startsWith('## ')) {
       flushPara()
-      if (inList) {
-        out.push('      </ul>')
-        inList = false
-      }
+      closeList()
       // Skip duplicate "In 60 seconds" — Tldr already covers it
       if (/^in 60 seconds$/i.test(line.slice(3).trim())) continue
       const id = line
@@ -85,15 +93,12 @@ function markdownToJsx(body: string): string {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
-      out.push(`      <h2 id="${id}">${escapeJsxText(line.slice(3))}</h2>`)
+      out.push(`      <h2 id="${id || 'section'}">${escapeJsxText(line.slice(3))}</h2>`)
       continue
     }
     if (line.startsWith('### ')) {
       flushPara()
-      if (inList) {
-        out.push('      </ul>')
-        inList = false
-      }
+      closeList()
       out.push(`      <h3>${escapeJsxText(line.slice(4))}</h3>`)
       continue
     }
@@ -119,7 +124,7 @@ function markdownToJsx(body: string): string {
     para.push(trimmed)
   }
   flushPara()
-  if (inList) out.push('      </ul>')
+  closeList()
   return out.join('\n')
 }
 
@@ -246,7 +251,7 @@ ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with 
 }
 `
   // Self-check: never emit a page that would fail caseworks CTAPanel contract /
-  // Next Link prerender. Defense in depth with shipGate.validateRenderedPayload.
+  // Next Link prerender / static export. Provider-agnostic (DeepSeek or fallback).
   if (!out.includes('href=') || !out.includes('headline=') || !out.includes('cta=')) {
     throw new Error(
       'renderCaseworksPage internal error: CTAPanel contract incomplete (href/headline/cta required)',
@@ -254,6 +259,22 @@ ${jsxBody || `      <p>Editorial draft for ${escapeJsxText(title)}. Expand with 
   }
   if (out.includes('<CTAPanel') && /CTAPanel[\s\S]{0,200}\btitle\s*=/.test(out) && !out.includes('headline=')) {
     throw new Error('renderCaseworksPage internal error: CTAPanel used title= without headline=')
+  }
+  if (out.includes('href={undefined}') || out.includes('href={null}')) {
+    throw new Error('renderCaseworksPage internal error: undefined Link href')
+  }
+  if (/```/.test(out)) {
+    throw new Error('renderCaseworksPage internal error: markdown fences leaked into page.tsx')
+  }
+  const openP = (out.match(/<p>/g) || []).length
+  const closeP = (out.match(/<\/p>/g) || []).length
+  if (openP !== closeP) {
+    throw new Error(`renderCaseworksPage internal error: unbalanced <p> (${openP}/${closeP})`)
+  }
+  const openUl = (out.match(/<ul>/g) || []).length
+  const closeUl = (out.match(/<\/ul>/g) || []).length
+  if (openUl !== closeUl) {
+    throw new Error(`renderCaseworksPage internal error: unbalanced <ul> (${openUl}/${closeUl})`)
   }
   return out
 }

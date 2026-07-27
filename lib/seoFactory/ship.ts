@@ -112,6 +112,9 @@ export async function shipContent(opts: {
   })
 
   // ── Master gate stack (approve / merge cannot skip any layer) ────────────
+  // Provider-agnostic: DeepSeek, Cloudflare, or any fallback may draft the
+  // markdown — only the rendered file path is written to GitHub, and it must
+  // always pass the same build-safe contract so main never red-X's deploy.
   // 1) Google depth floor (prose word count)
   assertContentDepth({
     content: opts.content,
@@ -125,7 +128,7 @@ export async function shipContent(opts: {
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
   })
-  // 3) Host · path · format (caseworks CTAPanel contract, markdown FM, etc.)
+  // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({
     plan: opts.plan,
     contentType: opts.contentType,
