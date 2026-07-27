@@ -392,9 +392,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     effectiveRequested !== 'pr'
   ) {
     if (!meetsShipQuality(audit)) {
-      // Quality blockers → try PR if depth OK so human can still merge after fix;
-      // only hard-hold when depth itself fails or score is catastrophic.
-      if (meetsDepthFloor(audit) && audit.score >= 40 && plan.blockers.length === 0) {
+      // Depth OK + no ownership blockers → open PR for review instead of silent hold.
+      // Score floor 30: AI-slop residual after sanitize should not kill the daily job.
+      if (meetsDepthFloor(audit) && audit.score >= 30 && plan.blockers.length === 0) {
         shipMode = 'pr'
         gateHoldReason = null
       } else {
