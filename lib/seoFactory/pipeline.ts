@@ -565,8 +565,14 @@ function formatGateHold(audit: SeoFactoryAudit, minAudit: number, why: string): 
   return parts.join(' · ')
 }
 
-/** Keywords already covered by recent non-failed jobs (dedupe auto-run). */
-export async function loadRecentPrimaryKeywords(days = 45): Promise<Set<string>> {
+/**
+ * Keywords already *productively* covered by Content Studio (dedupe auto-run / War Room).
+ *
+ * Only jobs that reached Git (PR or merge) count. Held/drafting/pending/failed rows
+ * must NOT block the queue — otherwise a quality-hold War Room day empties Auto-Pilot
+ * with "No eligible opportunities (all top terms recently covered)".
+ */
+export async function loadRecentPrimaryKeywords(days = 14): Promise<Set<string>> {
   const out = new Set<string>()
   try {
     const supabase = createClient(
@@ -578,7 +584,8 @@ export async function loadRecentPrimaryKeywords(days = 45): Promise<Set<string>>
       .from('content_jobs')
       .select('primary_keyword, topic, status')
       .gte('created_at', since)
-      .neq('status', 'failed')
+      // Shipped or open for review only — not drafts held at quality gates
+      .in('status', ['merged', 'pr_created', 'publishing'])
       .limit(500)
     for (const row of data || []) {
       const k = (row.primary_keyword || row.topic || '').toLowerCase().trim()

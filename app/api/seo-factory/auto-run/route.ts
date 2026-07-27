@@ -69,10 +69,13 @@ export async function POST(request: NextRequest) {
       : []
 
     const { source, siteUrl, opportunities } = await loadFactoryOpportunities(80)
-    const recent = skipRecent ? await loadRecentPrimaryKeywords(45) : new Set<string>()
+    // 14d lookback; only merged/PR jobs count (see loadRecentPrimaryKeywords)
+    const recentDays = body.recentDays != null ? Number(body.recentDays) : 14
+    const recent = skipRecent ? await loadRecentPrimaryKeywords(recentDays) : new Set<string>()
 
     let candidates: Candidate[]
     let planMeta: Record<string, unknown> | null = null
+    let relaxedRecent = false
 
     const warToCandidate = async (o: WarOpportunity): Promise<Candidate> => {
       const ownerHint = await resolveOwner({
@@ -260,16 +263,57 @@ export async function POST(request: NextRequest) {
       candidates = pool.slice(0, limit)
     }
 
+    // ── Fallback: if skipRecent wiped the queue, re-fill without the filter ──
+    // Prefer fresh terms, but never leave Auto-Pilot empty when GSC has demand.
+    if (!candidates.length && skipRecent) {
+      relaxedRecent = true
+      if (useWarRoom) {
+        try {
+          const room = await buildSeoWarRoom({
+            days,
+            limit: Math.max(limit * 6, 24),
+            minImpressions: minImpressions || 2,
+            regionFilter: regionFilter || undefined,
+          })
+          candidates = []
+          for (const o of room.queue) {
+            if (candidates.length >= limit) break
+            if (o.play === 'cannibal_merge') continue
+            candidates.push(await warToCandidate(o))
+          }
+          planMeta = {
+            ...(planMeta || {}),
+            mode: (planMeta?.mode as string) || 'war-room',
+            recentRelaxed: true,
+            summary: `${room.summary} · recent-skip relaxed (no unshipped gaps left in ${recentDays}d window)`,
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (!candidates.length) {
+        let pool = pickAutoRunCandidates(opportunities, 40)
+        if (regionFilter) pool = pool.filter((o) => o.region === regionFilter)
+        if (minImpressions > 0) pool = pool.filter((o) => o.impressions >= minImpressions)
+        pool = pool.filter(
+          (o) => !o.ownerHint?.blockers?.some((b) => /blocked_on_supply|301|merge/i.test(b)),
+        )
+        candidates = pool.slice(0, limit)
+      }
+    }
+
     if (!candidates.length) {
       return NextResponse.json({
         ok: true,
         source,
         siteUrl,
         message: skipRecent
-          ? 'No eligible opportunities (all top terms recently covered or filtered)'
-          : 'No eligible opportunities to run',
+          ? `No eligible opportunities. GSC pool empty or all filtered (not just recent). Uncheck “Skip recently covered”, clear region filter, or lower min impressions. Recently shipped terms in last ${recentDays}d: ${recent.size}.`
+          : 'No eligible opportunities to run — GSC snapshot/live returned no actionable terms.',
         results: [],
         skippedRecent: recent.size,
+        recentDays,
+        hint: 'Only jobs with status merged/pr_created block terms. Drafting/held jobs no longer count as “covered”.',
       })
     }
 
@@ -373,12 +417,18 @@ export async function POST(request: NextRequest) {
       shipped,
       avgAuditScore: avgScore,
       skippedRecent: recent.size,
+      recentDays,
+      recentRelaxed: relaxedRecent,
       keywordPlan: planMeta,
       warRoom: planMeta?.mode === 'war-room' || planMeta?.mode === 'explicit+war-room' ? planMeta : null,
       results,
       message: dryRun
-        ? `Dry-run complete: ${results.length} drafts (no GitHub writes) · ${modeLabel}`
-        : `Auto-run complete: ${shipped}/${results.length} shipped · avg audit ${avgScore ?? '—'} · ${modeLabel}`,
+        ? `Dry-run complete: ${results.length} drafts (no GitHub writes) · ${modeLabel}${
+            relaxedRecent ? ' · recent-skip relaxed' : ''
+          }`
+        : `Auto-run complete: ${shipped}/${results.length} shipped · avg audit ${avgScore ?? '—'} · ${modeLabel}${
+            relaxedRecent ? ' · recent-skip relaxed' : ''
+          }`,
     })
   } catch (err) {
     console.error('[seo-factory/auto-run]', err)

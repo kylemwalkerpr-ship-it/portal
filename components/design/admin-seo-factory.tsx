@@ -1955,7 +1955,11 @@ export default function AdminSeoFactory({
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={skipRecent} onChange={(e) => setSkipRecent(e.target.checked)} />
-                Skip recently covered keywords
+                Skip recently shipped keywords (merged/PR only · 14d)
+                {' '}
+                <span className="text-xs text-muted-foreground">
+                  Uncheck if Auto-Pilot says no opportunities
+                </span>
               </label>
             </div>
 
@@ -2413,7 +2417,11 @@ export default function AdminSeoFactory({
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={skipRecent} onChange={(e) => setSkipRecent(e.target.checked)} />
-                Skip recently covered keywords
+                Skip recently shipped keywords (merged/PR only · 14d)
+                {' '}
+                <span className="text-xs text-muted-foreground">
+                  Uncheck if Auto-Pilot says no opportunities
+                </span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={confirmApprove} onChange={(e) => setConfirmApprove(e.target.checked)} />
