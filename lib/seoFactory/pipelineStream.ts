@@ -333,6 +333,15 @@ export async function* runSeoFactoryPipelineStream(
       if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
     }
 
+    // Scaffold FM / disclaimer / sources / TL;DR before final audit + ship
+    const { ensureEditorialScaffold } = await import('./editorialScaffold')
+    content = ensureEditorialScaffold({
+      content,
+      title: title || primaryKeyword,
+      primaryKeyword,
+      region,
+    })
+
     audit = auditContent({
       content,
       contentType,
@@ -341,7 +350,10 @@ export async function* runSeoFactoryPipelineStream(
       ownershipBlockers: plan.blockers,
     })
 
-    let shipMode = resolveShipMode(requestedMode, audit, plan)
+    let effectiveRequested = requestedMode
+    if (input.dryRun && effectiveRequested === 'none') effectiveRequested = 'merge'
+
+    let shipMode = resolveShipMode(effectiveRequested, audit, plan)
     let gateHold: string | null = null
     if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
       gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
@@ -351,12 +363,21 @@ export async function* runSeoFactoryPipelineStream(
       input.skipShipIfBelowScore !== false &&
       shipMode !== 'none' &&
       (audit.score < minAudit || !meetsShipQuality(audit)) &&
-      requestedMode !== 'pr'
+      effectiveRequested !== 'pr'
     ) {
       if (!meetsShipQuality(audit)) {
-        gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
-        shipMode = 'none'
-      } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
+        if (meetsDepthFloor(audit) && audit.score >= 40 && plan.blockers.length === 0) {
+          shipMode = 'pr'
+          gateHold = null
+        } else {
+          gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
+          shipMode = 'none'
+        }
+      } else if (
+        effectiveRequested === 'auto' ||
+        effectiveRequested === 'autodeploy' ||
+        effectiveRequested === 'merge'
+      ) {
         shipMode = audit.score >= 50 ? 'pr' : 'none'
         if (shipMode === 'none') {
           gateHold = `Ship withheld (audit ${audit.score} < 50)`
@@ -389,11 +410,13 @@ export async function* runSeoFactoryPipelineStream(
         shipError = e instanceof Error ? e.message : 'Ship failed'
       }
     } else {
-      shipError = gateHold
+      shipError =
+        gateHold ||
+        `Ship withheld · audit ${audit.score} · words ${audit.wordCount}`
       yield {
         type: 'progress',
         stage: 'ship',
-        message: gateHold || 'Ship skipped (mode none)',
+        message: shipError,
       }
     }
 

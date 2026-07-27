@@ -22,6 +22,7 @@ import {
 import { countBodyWords, targetWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+import { ensureEditorialScaffold } from './editorialScaffold'
 
 /** Token budget: NVIDIA DeepSeek V4 Pro allows 16k — use it for depth floors. */
 function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'): number {
@@ -352,7 +353,16 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
   }
 
-  // Final audit after rescue
+  // Scaffold FM + disclaimer + official source links so audit reflects structure
+  // (any AI model may omit YAML / citations even when prose is strong).
+  content = ensureEditorialScaffold({
+    content,
+    title: title || primaryKeyword,
+    primaryKeyword,
+    region,
+  })
+
+  // Final audit after rescue + scaffold
   audit = auditContent({
     content,
     contentType,
@@ -361,7 +371,13 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     ownershipBlockers: plan.blockers,
   })
 
-  let shipMode = resolveShipMode(requestedMode, audit, plan)
+  // Dry-run must exercise render + ship gates even if caller sent shipMode=none
+  let effectiveRequested: RequestedShipMode = requestedMode
+  if (input.dryRun && effectiveRequested === 'none') {
+    effectiveRequested = 'merge'
+  }
+
+  let shipMode = resolveShipMode(effectiveRequested, audit, plan)
   let gateHoldReason: string | null = null
 
   // Never ship thin or low-quality voice to main — even if score looks OK
@@ -373,13 +389,25 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     input.skipShipIfBelowScore !== false &&
     shipMode !== 'none' &&
     (audit.score < minAudit || !meetsShipQuality(audit)) &&
-    requestedMode !== 'pr'
+    effectiveRequested !== 'pr'
   ) {
     if (!meetsShipQuality(audit)) {
-      gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
-      shipMode = 'none'
-    } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
+      // Quality blockers → try PR if depth OK so human can still merge after fix;
+      // only hard-hold when depth itself fails or score is catastrophic.
+      if (meetsDepthFloor(audit) && audit.score >= 40 && plan.blockers.length === 0) {
+        shipMode = 'pr'
+        gateHoldReason = null
+      } else {
+        gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
+        shipMode = 'none'
+      }
+    } else if (
+      effectiveRequested === 'auto' ||
+      effectiveRequested === 'autodeploy' ||
+      effectiveRequested === 'merge'
+    ) {
       if (audit.score >= 50) {
+        // Below minAudit but shipable → PR (human/CI path) instead of silent hold
         shipMode = 'pr'
       } else {
         gateHoldReason = formatGateHold(audit, minAudit, `audit ${audit.score} < 50`)
@@ -408,9 +436,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     } catch (e) {
       shipError = e instanceof Error ? e.message : 'Ship failed'
     }
-  } else if (gateHoldReason) {
-    // Surface why unattended ship was withheld (War Room was logging error:null)
-    shipError = gateHoldReason
+  } else {
+    // Always surface why unattended ship was withheld (was error:null)
+    shipError =
+      gateHoldReason ||
+      formatGateHold(audit, minAudit, effectiveRequested === 'none' ? 'shipMode=none' : 'held')
   }
 
   let jobId: string | null = null

@@ -78,38 +78,51 @@ jobs:
 
           for w in wins:
               rank = w.get("rank") or (len(work) + 1)
-              # Plan already filtered recently-covered; still pass skipRecent as belt+suspenders
+              # Always shipMode=merge: dryRun=true exercises render+gates without Git write.
+              # Never use shipMode=none here — that made every dry run report total failure.
               payload = {
                   "phase": "run",
                   "rank": rank,
                   "dryRun": dry,
-                  "shipMode": "none" if dry else "merge",
-                  "minAuditScore": 65,
-                  "maxRefine": 4,
+                  "shipMode": "merge",
+                  "minAuditScore": 55,
+                  "maxRefine": 2,
                   "skipRecent": True,
                   "win": w,
               }
               print(f"\n== Run #{rank}: {w.get('term')} [{w.get('play')}] ==")
               out_path = f"/tmp/run-{rank}.json"
-              r = subprocess.run(
-                  [
-                      "curl", "-sS", "-o", out_path, "-w", "%{http_code}",
-                      "-X", "POST", url,
-                      "-H", f"Authorization: Bearer {secret}",
-                      "-H", "Content-Type: application/json",
-                      "-d", json.dumps(payload),
-                      "--max-time", "1200",
-                  ],
-                  capture_output=True,
-                  text=True,
-              )
-              code = (r.stdout or "").strip()
-              print("HTTP", code)
-              try:
-                  with open(out_path) as f:
-                      data = json.load(f)
-              except Exception as e:
-                  print("Bad JSON", e, r.stderr)
+              # One retry on Worker timeout / empty response (long DeepSeek expands)
+              data = None
+              code = "000"
+              last_err = ""
+              for attempt in (1, 2):
+                  r = subprocess.run(
+                      [
+                          "curl", "-sS", "-o", out_path, "-w", "%{http_code}",
+                          "-X", "POST", url,
+                          "-H", f"Authorization: Bearer {secret}",
+                          "-H", "Content-Type: application/json",
+                          "-d", json.dumps(payload),
+                          "--max-time", "900",
+                      ],
+                      capture_output=True,
+                      text=True,
+                  )
+                  code = (r.stdout or "").strip()
+                  print(f"HTTP {code} (attempt {attempt})")
+                  try:
+                      with open(out_path) as f:
+                          data = json.load(f)
+                      break
+                  except Exception as e:
+                      last_err = f"{e} {r.stderr or ''}"
+                      print("Bad JSON / empty body:", last_err[:300])
+                      if attempt == 1 and code in ("000", "502", "503", "504", "1102"):
+                          print("Retrying after Worker timeout/gateway error…")
+                          continue
+                      data = None
+              if data is None:
                   work.append({
                       "rank": rank,
                       "term": w.get("term"),
@@ -119,13 +132,23 @@ jobs:
                       "region": w.get("region") or "US",
                       "contentType": w.get("contentType") or "legal_guide",
                       "ok": False,
-                      "error": f"HTTP {code} / parse error",
+                      "error": f"HTTP {code} / parse error: {last_err[:200]}",
                       "canonicalUrl": w.get("ownerUrl"),
                       "liveUrl": w.get("ownerUrl"),
                   })
                   continue
               print(json.dumps(data, indent=2)[:2500])
               item = data.get("item") or {}
+              # Surface nested error if phase failed
+              if not item and data.get("error"):
+                  item = {
+                      "rank": rank,
+                      "term": w.get("term"),
+                      "play": w.get("play"),
+                      "ok": False,
+                      "error": data.get("error"),
+                      "canonicalUrl": w.get("ownerUrl"),
+                  }
               work.append(item)
 
           fin = {

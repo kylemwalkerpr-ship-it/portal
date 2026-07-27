@@ -230,22 +230,51 @@ function intentMismatchPenalty(keyword: string, primary: string): number {
   return Math.min(60, penalty)
 }
 
-function scoreMatch(keyword: string, primary: string): number {
+/** Penalize registry rows when keyword region conflicts with entry region signals. */
+function regionMismatchPenalty(keyword: string, primary: string, ownerUrl?: string): number {
+  const kw = keyword.toLowerCase()
+  const pr = (primary + ' ' + (ownerUrl || '')).toLowerCase()
+  const kwCa = /\bcanada|canadian|ircc|pgwp|express entry\b/.test(kw)
+  const kwUk = /\buk\b|british|ukvi|ilr|appendix fm|skilled worker\b/.test(kw)
+  const kwUs = /\b(us|usa|f-1|f1|opt|uscis|sevis)\b/.test(kw)
+  const kwAu = /\b(australia|485|subclass|home affairs|pte)\b/.test(kw)
+  const prCa = /\bcanada|canadian|ircc|\/ca\/|ca\.yousafe/.test(pr)
+  const prUk = /\buk\b|british|ukvi|\/uk\/|uk\.yousafe|gov\.uk/.test(pr)
+  const prUs = /\b(us|usa|f-1|opt|\/us\/|usa\.yousafe|uscis)\b/.test(pr)
+  const prAu = /\b(australia|485|\/au\/|au\.yousafe|homeaffairs)\b/.test(pr)
+
+  if (kwCa && prUk && !prCa) return 55
+  if (kwCa && prUs && !prCa) return 55
+  if (kwCa && prAu && !prCa) return 55
+  if (kwUk && prCa && !prUk) return 55
+  if (kwUk && prUs && !prUk) return 55
+  if (kwUs && prUk && !prUs) return 55
+  if (kwUs && prCa && !prUs) return 45
+  if (kwAu && !prAu && (prCa || prUk || prUs)) return 55
+  // Housing vs visa subject clash (austin student visa ≠ renting austin)
+  if (/\bvisa\b/.test(kw) && /rent|tenant|housing|lease/.test(pr) && !/visa|immigration|f-1|opt/.test(pr)) {
+    return 50
+  }
+  return 0
+}
+
+function scoreMatch(keyword: string, primary: string, ownerUrl?: string): number {
   const a = normalize(keyword)
   const b = normalize(primary)
   if (!a || !b) return 0
-  if (a === b) return 100
+  const regionPen = regionMismatchPenalty(keyword, primary, ownerUrl)
+  if (a === b) return Math.max(0, 100 - regionPen)
   // phrase containment
   if (a.includes(b) || b.includes(a)) {
     // Even when one phrase contains the other, check for intent mismatch
-    const ip = intentMismatchPenalty(keyword, primary)
+    const ip = intentMismatchPenalty(keyword, primary) + regionPen
     if (ip >= 40) {
       // Strong penalty — the keywords share words but describe fundamentally different things
       // e.g. "stem category occupations list" matches "document checklist" on "express entry" only
       // Reduce to mid-range so standing rules can pick a better default
-      return Math.round(85 * (1 - ip / 100))
+      return Math.round(85 * (1 - Math.min(ip, 90) / 100))
     }
-    return 85
+    return Math.max(0, 85 - regionPen)
   }
   const aw = a.split(' ').filter((w) => w.length > 2)
   const bw = b.split(' ').filter((w) => w.length > 2)
@@ -258,12 +287,12 @@ function scoreMatch(keyword: string, primary: string): number {
   const j = overlap / union
   const coverage = overlap / bw.length
   let raw = Math.round(Math.max(j, coverage) * 90)
-  // Apply intent mismatch penalty
-  const ip = intentMismatchPenalty(keyword, primary)
+  // Apply intent + region mismatch penalties
+  const ip = intentMismatchPenalty(keyword, primary) + regionPen
   if (ip > 0) {
-    raw = Math.round(raw * (1 - ip / 100))
+    raw = Math.round(raw * (1 - Math.min(ip, 90) / 100))
   }
-  return raw
+  return Math.max(0, raw)
 }
 
 /** Derive owner host from absolute URL hostname (authoritative when present). */
@@ -535,7 +564,7 @@ export async function resolveOwner(opts: {
 
   let best: { row: OwnershipRow; score: number } | null = null
   for (const row of rows) {
-    const score = scoreMatch(keyword, row.primary_keyword)
+    const score = scoreMatch(keyword, row.primary_keyword, row.owner_url)
     if (score < 45) continue
     if (!best || score > best.score) best = { row, score }
   }

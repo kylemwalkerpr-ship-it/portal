@@ -237,12 +237,13 @@ export async function runOneDailyWin(opts: {
 
     const canonical = result.plan.canonicalUrl || win.ownerUrl
     const shipped = meetsSoftShip(result.ship?.status)
-    // Gate holds (audit/depth) surface as shipError with a clear message — count as failed ship
+    // Gate holds (audit/depth) surface as shipError — count as failed ship unless dry_run ok
     const held = Boolean(result.shipError) && !shipped
+    const ok = shipped && !held
     return {
       ...base,
       contentType: result.plan.contentType || contentType,
-      ok: shipped && !held,
+      ok,
       jobId: result.jobId,
       canonicalUrl: canonical,
       liveUrl: liveUrlFromCanonical(canonical),
@@ -254,7 +255,14 @@ export async function runOneDailyWin(opts: {
       wordCount: result.audit.wordCount,
       humanScore: result.audit.humanScore ?? null,
       shipStatus: result.ship?.status || (held ? 'held' : result.shipMode),
-      error: result.shipError || result.error || null,
+      error:
+        result.shipError ||
+        result.error ||
+        (!ok
+          ? `Ship failed · audit ${result.audit.score} · words ${result.audit.wordCount} · ${
+              (result.audit.blockers || []).slice(0, 2).map((b) => b.message).join('; ') || 'no ship'
+            }`
+          : null),
     }
   } catch (e) {
     return {
