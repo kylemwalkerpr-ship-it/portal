@@ -26,8 +26,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.GSC_OAUTH_CLIENT_ID)
-    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || process.env.GSC_OAUTH_CLIENT_SECRET)
+    const clientId =
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.GSC_OAUTH_CLIENT_ID ||
+      process.env.GOOGLE_OAUTH_CLIENT_ID
+    const clientSecret =
+      process.env.GOOGLE_CLIENT_SECRET ||
+      process.env.GSC_OAUTH_CLIENT_SECRET ||
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET
     if (!clientId || !clientSecret) {
       throw new Error('Google OAuth credentials not configured')
     }

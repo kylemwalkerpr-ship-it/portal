@@ -12,9 +12,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.GSC_OAUTH_CLIENT_ID
+  // Accept every historical secret name used across deploy + dashboard wiring
+  const clientId =
+    process.env.GOOGLE_CLIENT_ID ||
+    process.env.GSC_OAUTH_CLIENT_ID ||
+    process.env.GOOGLE_OAUTH_CLIENT_ID
   if (!clientId) {
-    return NextResponse.json({ error: 'GOOGLE_CLIENT_ID not configured' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error:
+          'Google OAuth client ID not configured. Set GOOGLE_CLIENT_ID or GSC_OAUTH_CLIENT_ID on the Worker ' +
+          '(or use the GSC service account: GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL — no OAuth button needed).',
+      },
+      { status: 500 },
+    )
   }
 
   const redirectUri = process.env.GSC_REDIRECT_URI ??

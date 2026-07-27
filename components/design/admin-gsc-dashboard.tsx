@@ -26,18 +26,36 @@ interface GscDashboardProps {
 
 // ── Connect state ──
 
-function GscConnect({ siteUrl, onConnect }: { siteUrl: string; onConnect: () => void }) {
+function GscConnect({
+  siteUrl,
+  onConnect,
+  oauthClientConfigured,
+  saConfigured,
+  saEmail,
+  setupHint,
+}: {
+  siteUrl: string
+  onConnect: () => void
+  oauthClientConfigured?: boolean
+  saConfigured?: boolean
+  saEmail?: string | null
+  setupHint?: string[]
+}) {
   const [loading, setLoading] = React.useState(false)
+  const [err, setErr] = React.useState<string | null>(null)
 
   const handleConnect = async () => {
     setLoading(true)
+    setErr(null)
     try {
       const res = await fetch('/api/content-studio/gsc/auth', { credentials: 'same-origin' })
-      const { authUrl, error } = await res.json()
-      if (error) throw new Error(error)
-      window.location.href = authUrl
-    } catch (err) {
-      console.error('GSC auth error:', err)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      if (!data.authUrl) throw new Error('No authUrl returned')
+      window.location.href = data.authUrl
+    } catch (e) {
+      console.error('GSC auth error:', e)
+      setErr(e instanceof Error ? e.message : 'Connect failed')
       setLoading(false)
     }
   }
@@ -52,18 +70,59 @@ function GscConnect({ siteUrl, onConnect }: { siteUrl: string; onConnect: () => 
         Connect Google Search Console
       </h3>
       <p style={{ color: C.textMuted, fontSize: 13, maxWidth: 480, margin: '0 auto 20px' }}>
-        See exactly which keywords drive traffic to <strong>{siteUrl}</strong>.
-        One-click OAuth — read-only access. No config files needed.
+        Live demand for <strong>{siteUrl || 'your estate'}</strong>. Prefer the{' '}
+        <strong>service account</strong> (automation) — OAuth is optional for interactive login.
       </p>
-      <button onClick={handleConnect} disabled={loading} style={{
-        padding: '10px 28px', borderRadius: 8, border: 'none', cursor: loading ? 'wait' : 'pointer',
-        background: '#1a73e8', color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-      }}>
-        {loading ? 'Redirecting to Google...' : 'Connect Google Search Console'}
+
+      {saConfigured && (
+        <div style={{
+          background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8,
+          padding: '10px 14px', fontSize: 12, color: '#92400E', marginBottom: 16, textAlign: 'left',
+        }}>
+          Service account JSON is on the Worker{saEmail ? ` (${saEmail})` : ''}.
+          If live API returns 403, add that email as a <strong>Full</strong> user on each GSC property.
+          Content Studio still uses the CSV snapshot until live access works.
+        </div>
+      )}
+
+      <button
+        onClick={handleConnect}
+        disabled={loading || oauthClientConfigured === false}
+        style={{
+          padding: '10px 28px', borderRadius: 8, border: 'none',
+          cursor: loading ? 'wait' : oauthClientConfigured === false ? 'not-allowed' : 'pointer',
+          background: oauthClientConfigured === false ? '#94A3B8' : '#1a73e8',
+          color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+          opacity: oauthClientConfigured === false ? 0.85 : 1,
+        }}
+      >
+        {loading
+          ? 'Redirecting to Google...'
+          : oauthClientConfigured === false
+            ? 'OAuth client not configured'
+            : 'Connect Google Search Console (OAuth)'}
       </button>
-      <p style={{ fontSize: 11, color: C.textDim, marginTop: 12 }}>
-        Requires: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET env vars
+
+      {err && (
+        <p style={{ fontSize: 12, color: C.red, marginTop: 12, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+          {err}
+        </p>
+      )}
+
+      <p style={{ fontSize: 11, color: C.textDim, marginTop: 12, maxWidth: 520, margin: '12px auto 0' }}>
+        {oauthClientConfigured
+          ? 'OAuth client ID/secret are set on the Worker. Click Connect to authorize read-only GSC access.'
+          : saConfigured
+            ? 'OAuth optional. For button connect, set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (or GSC_OAUTH_CLIENT_ID/SECRET) as Worker secrets.'
+            : 'Set GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL (recommended), or GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET for OAuth.'}
       </p>
+      {setupHint && setupHint.length > 0 && (
+        <ul style={{ fontSize: 11, color: C.textMuted, textAlign: 'left', maxWidth: 480, margin: '12px auto 0' }}>
+          {setupHint.map((h) => (
+            <li key={h}>{h}</li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -211,8 +270,18 @@ function GscSummary({ rows, onRefresh, loading }: { rows: GscRow[]; onRefresh: (
 
 // ── Main component ──
 
+type GscStatus = {
+  connected: boolean
+  email?: string
+  mode?: string | null
+  oauthClientConfigured?: boolean
+  saConfigured?: boolean
+  serviceAccountEmail?: string | null
+  setup?: { envRequired?: string[] }
+}
+
 export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: GscDashboardProps) {
-  const [status, setStatus] = React.useState<{ connected: boolean; email?: string; expiresAt?: string } | null>(null)
+  const [status, setStatus] = React.useState<GscStatus | null>(null)
   const [rows, setRows] = React.useState<GscRow[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dimension, setDimension] = React.useState<'query' | 'page'>('query')
@@ -222,9 +291,12 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
   // Check GSC connection status
   React.useEffect(() => {
     fetch('/api/content-studio/gsc/status', { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(s => setStatus(s))
-      .catch(() => setStatus({ connected: false }))
+      .then(async (r) => {
+        const s = await r.json()
+        if (!r.ok) throw new Error(s.error || 'Status failed')
+        setStatus(s)
+      })
+      .catch(() => setStatus({ connected: false, oauthClientConfigured: false, saConfigured: false }))
   }, [])
 
   // Pull GSC data when connected
@@ -260,7 +332,16 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
   if (!status) return <div style={{ padding: 20, color: C.textDim, textAlign: 'center' }}>Checking GSC status...</div>
 
   if (!status.connected) {
-    return <GscConnect siteUrl={siteUrl} onConnect={onConnect} />
+    return (
+      <GscConnect
+        siteUrl={siteUrl}
+        onConnect={onConnect}
+        oauthClientConfigured={status.oauthClientConfigured}
+        saConfigured={status.saConfigured}
+        saEmail={status.serviceAccountEmail}
+        setupHint={status.setup?.envRequired}
+      />
+    )
   }
 
   return (

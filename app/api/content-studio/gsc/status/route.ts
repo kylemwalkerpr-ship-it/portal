@@ -19,6 +19,18 @@ export async function GET(request: NextRequest) {
     const saEmail = serviceAccountEmail()
     const siteUrl = process.env.GSC_SITE_URL ?? null
 
+    const oauthClientConfigured = Boolean(
+      (process.env.GOOGLE_CLIENT_ID ||
+        process.env.GSC_OAUTH_CLIENT_ID ||
+        process.env.GOOGLE_OAUTH_CLIENT_ID) &&
+        (process.env.GOOGLE_CLIENT_SECRET ||
+          process.env.GSC_OAUTH_CLIENT_SECRET ||
+          process.env.GOOGLE_OAUTH_CLIENT_SECRET),
+    )
+    const saConfigured = Boolean(
+      process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY,
+    )
+
     // OAuth token row (content-studio gsc_tokens table)
     let oauthConnected = false
     let oauthEmail: string | null = null
@@ -41,14 +53,18 @@ export async function GET(request: NextRequest) {
     }
 
     const snap = await loadGscSnapshot()
+    const liveReady = mode !== null || oauthConnected
 
     return NextResponse.json({
-      connected: mode !== null || oauthConnected,
+      connected: liveReady,
       mode, // oauth | service_account | null
       siteUrl,
       serviceAccountEmail: saEmail,
+      email: oauthEmail || saEmail || undefined,
       oauthConnected,
       oauthEmail,
+      oauthClientConfigured,
+      saConfigured,
       snapshot: {
         available: true,
         generatedAt: snap.generatedAt ?? null,
@@ -57,7 +73,7 @@ export async function GET(request: NextRequest) {
       },
       // Operator checklist when live API returns 403
       setup: {
-        addServiceAccountToGsc: !mode || mode === 'service_account',
+        addServiceAccountToGsc: saConfigured,
         serviceAccountEmail: saEmail ?? 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
         properties: [
           'sc-domain:yousafeconsultancy.com (preferred)',
@@ -65,7 +81,15 @@ export async function GET(request: NextRequest) {
           'https://usa.yousafeconsultancy.com/',
           'https://yousafeconsultancy.com/',
         ],
-        envRequired: ['GSC_SERVICE_ACCOUNT_JSON', 'GSC_SITE_URL'],
+        // Preferred path is SA (automation). OAuth is optional interactive connect.
+        envRequired: saConfigured
+          ? ['GSC_SERVICE_ACCOUNT_JSON ✓', 'GSC_SITE_URL']
+          : oauthClientConfigured
+            ? ['GOOGLE_CLIENT_ID ✓', 'GOOGLE_CLIENT_SECRET ✓', 'Connect OAuth once']
+            : [
+                'GSC_SERVICE_ACCOUNT_JSON + GSC_SITE_URL (recommended)',
+                'OR GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET (interactive OAuth)',
+              ],
       },
     })
   } catch {

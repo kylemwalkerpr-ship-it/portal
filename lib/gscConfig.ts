@@ -24,10 +24,20 @@ export async function getGscConfig(): Promise<GscConfig> {
   } catch { /* fall through to env */ }
 
   return {
-    clientId:     row?.client_id     || process.env.GSC_OAUTH_CLIENT_ID     || null,
-    clientSecret: row?.client_secret || process.env.GSC_OAUTH_CLIENT_SECRET || null,
+    clientId:
+      row?.client_id ||
+      process.env.GSC_OAUTH_CLIENT_ID ||
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.GOOGLE_OAUTH_CLIENT_ID ||
+      null,
+    clientSecret:
+      row?.client_secret ||
+      process.env.GSC_OAUTH_CLIENT_SECRET ||
+      process.env.GOOGLE_CLIENT_SECRET ||
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
+      null,
     refreshToken: row?.refresh_token || process.env.GSC_OAUTH_REFRESH_TOKEN || null,
-    siteUrl:      row?.site_url      || process.env.GSC_SITE_URL            || null,
+    siteUrl: row?.site_url || process.env.GSC_SITE_URL || null,
   }
 }
 
