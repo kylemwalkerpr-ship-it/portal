@@ -644,10 +644,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onConnect: async () => {
               try {
                 const res = await fetch('/api/content-studio/gsc/auth', { credentials: 'same-origin' })
-                const { authUrl } = await res.json()
-                if (authUrl) window.location.href = authUrl
+                const data = await res.json()
+                if (data.error) throw new Error(data.error)
+                if (!data.authUrl) {
+                  throw new Error(
+                    'OAuth not available — factory uses GSC service account instead (no Connect button needed)',
+                  )
+                }
+                window.location.href = data.authUrl
               } catch (err) {
-                setActionNotice('GSC auth failed')
+                setActionNotice(
+                  err instanceof Error ? `GSC connect: ${err.message}` : 'GSC auth failed',
+                )
               }
             },
             onDisconnect: async () => {
