@@ -4,17 +4,11 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 minify = true
 
-# ── Limits (Workers Paid plan required) ────────────────────────────────
-# Every route hits Cloudflare Error 1102 (503) on the Free plan because the
-# OpenNext-bundled Next.js handler (~10 MB) alone exceeds the 10 ms CPU
-# ceiling before any app logic runs. Upgrade to Workers Paid then uncomment:
-#
-# [limits]
-# cpu_ms = 300000
-#
-# Required: `npx wrangler queues create content-queue` + add a [[queues]]
-# producer binding for async job processing as the eventual architecture.
-# Reference: opennextjs/opennextjs-cloudflare#598.
+# ── Limits (Workers Paid) ──────────────────────────────────────────────
+# OpenNext Next.js handler is CPU-heavy. Free plan (10 ms) → CF 1102 / 503.
+# Paid plan + elevated cpu_ms required in production.
+[limits]
+cpu_ms = 300000
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).

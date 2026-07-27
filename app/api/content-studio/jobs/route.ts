@@ -92,15 +92,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
     }
 
-    let query = supabase
+    // List without content/event_log/audit_json — those blow Worker CPU + payload size
+    const selectCols = includeContent ? '*' : JOB_LIST_COLUMNS
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = supabase
       .from('content_jobs')
-      .select(includeContent ? '*' : JOB_LIST_COLUMNS)
+      .select(selectCols)
       .order('created_at', { ascending: false })
       .limit(limit)
 
     if (status) {
       if (status.includes(',')) {
-        query = query.in('status', status.split(',').map((s) => s.trim()).filter(Boolean))
+        query = query.in('status', status.split(',').map((s: string) => s.trim()).filter(Boolean))
       } else {
         query = query.eq('status', status)
       }
@@ -109,7 +112,6 @@ export async function GET(request: NextRequest) {
     if (host) query = query.eq('owner_host', host)
     if (repo) query = query.ilike('target_repo', `%${repo}%`)
     if (q) {
-      // Escape commas in filter values for PostgREST or()
       const safe = q.replace(/[%_,.()]/g, ' ').slice(0, 80)
       query = query.or(
         `topic.ilike.%${safe}%,title.ilike.%${safe}%,primary_keyword.ilike.%${safe}%,content_path.ilike.%${safe}%`,
@@ -119,23 +121,21 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
     if (error) throw new Error(`Supabase query failed: ${error.message}`)
 
+    const jobs = (data ?? []) as Array<Record<string, unknown>>
+
     // Summary for admin queue dashboard
-    const jobs = data ?? []
+    const byStatus = (s: string) => jobs.filter((j) => j.status === s).length
+    const scored = jobs.filter((j) => j.seo_score != null)
     const summary = {
       total: jobs.length,
-      drafting: jobs.filter((j: { status?: string }) => j.status === 'drafting').length,
-      pr_created: jobs.filter((j: { status?: string }) => j.status === 'pr_created').length,
-      merged: jobs.filter((j: { status?: string }) => j.status === 'merged').length,
-      failed: jobs.filter((j: { status?: string }) => j.status === 'failed').length,
-      closed: jobs.filter((j: { status?: string }) => j.status === 'closed').length,
+      drafting: byStatus('drafting'),
+      pr_created: byStatus('pr_created'),
+      merged: byStatus('merged'),
+      failed: byStatus('failed'),
+      closed: byStatus('closed'),
       avgSeo:
-        jobs.filter((j: { seo_score?: number | null }) => j.seo_score != null).length > 0
-          ? Math.round(
-              jobs
-                .filter((j: { seo_score?: number | null }) => j.seo_score != null)
-                .reduce((s: number, j: { seo_score?: number | null }) => s + Number(j.seo_score), 0) /
-                jobs.filter((j: { seo_score?: number | null }) => j.seo_score != null).length,
-            )
+        scored.length > 0
+          ? Math.round(scored.reduce((s, j) => s + Number(j.seo_score), 0) / scored.length)
           : null,
     }
 
