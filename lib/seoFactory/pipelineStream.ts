@@ -79,12 +79,22 @@ export async function* runSeoFactoryPipelineStream(
       indexable,
       slug: input.slug,
     })
+    // Trust path/host-reconciled type from ownership (never legal_guide on universities)
+    contentType = plan.contentType || contentType
     if (plan.intentClass === 'geo_modifier') contentType = 'regional_from'
     else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
     else if (plan.intentClass === 'transactional') contentType = 'marketplace_gig'
     else if (plan.intentClass === 'news_summary') contentType = 'blog_summary'
     else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
       contentType = 'legal_guide'
+    }
+    if (/content\/universities\//.test(plan.filePath)) contentType = 'regional_university'
+    else if (/content\/from\//.test(plan.filePath)) contentType = 'regional_from'
+    else if (
+      (plan.host === 'usa' || plan.host === 'uk' || plan.host === 'ca' || plan.host === 'au' || plan.host === 'apex') &&
+      (contentType === 'legal_guide' || contentType === 'article')
+    ) {
+      contentType = 'regional_page'
     }
     assertPlanRepoConsistency(plan)
     const minWords = minWordsForType(contentType)
@@ -332,7 +342,9 @@ export async function* runSeoFactoryPipelineStream(
     })
 
     let shipMode = resolveShipMode(requestedMode, audit, plan)
+    let gateHold: string | null = null
     if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+      gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
       shipMode = 'none'
     }
     if (
@@ -342,9 +354,13 @@ export async function* runSeoFactoryPipelineStream(
       requestedMode !== 'pr'
     ) {
       if (!meetsShipQuality(audit)) {
+        gateHold = `Ship withheld (quality/depth) · audit ${audit.score} · words ${audit.wordCount}`
         shipMode = 'none'
       } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
         shipMode = audit.score >= 50 ? 'pr' : 'none'
+        if (shipMode === 'none') {
+          gateHold = `Ship withheld (audit ${audit.score} < 50)`
+        }
       }
     }
 
@@ -373,7 +389,12 @@ export async function* runSeoFactoryPipelineStream(
         shipError = e instanceof Error ? e.message : 'Ship failed'
       }
     } else {
-      yield { type: 'progress', stage: 'ship', message: 'Ship skipped (mode none)' }
+      shipError = gateHold
+      yield {
+        type: 'progress',
+        stage: 'ship',
+        message: gateHold || 'Ship skipped (mode none)',
+      }
     }
 
     yield { type: 'ship', ship: shipResult, shipError, shipMode }

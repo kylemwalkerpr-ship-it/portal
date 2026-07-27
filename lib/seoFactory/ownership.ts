@@ -61,11 +61,68 @@ export interface OwnerPlan {
   indexable: boolean
   action: string
   intentClass: string
+  /**
+   * Final content type after path/host reconciliation.
+   * Always trust this over the caller's input type when shipping.
+   */
+  contentType: string
   warnings: string[]
   blockers: string[]
   ymy: boolean
   /** How routing was decided */
   routingSource: 'registry_owner_url' | 'registry_host' | 'standing_rules' | 'content_type_default'
+}
+
+/**
+ * Align content type + intent with the resolved host/path.
+ *
+ * Prevents the War Room / GSC bug where title_ctr_rewrite forced legal_guide
+ * onto usa/content/universities/* (1800-word legal floor + ship-gate host mismatch).
+ */
+export function reconcileContentTypeWithPath(opts: {
+  contentType: string
+  filePath: string
+  host: OwnerHost
+  intentClass?: string
+}): { contentType: string; intentClass: string } {
+  const p = (opts.filePath || '').replace(/^\/+/, '')
+  let contentType = (opts.contentType || 'legal_guide').toLowerCase()
+  let intentClass = opts.intentClass || 'procedural'
+
+  if (/content\/universities\//.test(p) || /\/universities\//.test(p)) {
+    return { contentType: 'regional_university', intentClass: 'university_modifier' }
+  }
+  if (/content\/from\//.test(p) || /(^|\/)from\//.test(p)) {
+    return { contentType: 'regional_from', intentClass: 'geo_modifier' }
+  }
+  if (/content\/blog\//.test(p) || /^app\/blog\//.test(p)) {
+    const kind = contentType === 'blog_post' ? 'blog_post' : 'blog_summary'
+    return { contentType: kind, intentClass: 'news_summary' }
+  }
+  if (opts.host === 'market' || /^catalogue\//.test(p)) {
+    return { contentType: 'marketplace_gig', intentClass: 'transactional' }
+  }
+  // Regional hosts must never ship legal_guide (caseworks-only contract)
+  if (
+    (opts.host === 'usa' ||
+      opts.host === 'uk' ||
+      opts.host === 'ca' ||
+      opts.host === 'au' ||
+      opts.host === 'apex') &&
+    (contentType === 'legal_guide' || contentType === 'article')
+  ) {
+    return { contentType: 'regional_page', intentClass: intentClass === 'procedural' ? 'hub' : intentClass }
+  }
+  // Legal host: regional_* types are wrong — force guide
+  if (
+    opts.host === 'legal' &&
+    (contentType === 'regional_university' ||
+      contentType === 'regional_from' ||
+      contentType === 'regional_page')
+  ) {
+    return { contentType: 'legal_guide', intentClass: 'procedural' }
+  }
+  return { contentType, intentClass }
 }
 
 /** Host → GitHub repo (immutable estate contract). */
@@ -607,6 +664,22 @@ export async function resolveOwner(opts: {
     blockers.push(`Internal error: host ${host} repo mismatch`)
   }
 
+  // Path/host always win over caller or registry intent when they disagree.
+  // Fixes: legal_guide forced onto universities/* or regional hosts.
+  const reconciled = reconcileContentTypeWithPath({
+    contentType,
+    filePath,
+    host,
+    intentClass,
+  })
+  if (reconciled.contentType !== contentType) {
+    warnings.push(
+      `Content type reconciled ${contentType} → ${reconciled.contentType} (path=${filePath}, host=${host})`,
+    )
+  }
+  contentType = reconciled.contentType
+  intentClass = reconciled.intentClass
+
   return {
     matched,
     matchScore,
@@ -617,6 +690,7 @@ export async function resolveOwner(opts: {
     indexable,
     action,
     intentClass,
+    contentType,
     warnings,
     blockers,
     ymy,

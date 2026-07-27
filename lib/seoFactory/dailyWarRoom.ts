@@ -96,28 +96,66 @@ function liveUrlFromCanonical(canonical: string | null | undefined): string | nu
 export async function selectDailyWins(opts?: {
   limit?: number
   days?: number
+  /** Skip terms covered by recent content_jobs (default true) */
+  skipRecent?: boolean
+  /** Lookback for recent-keyword skip (default 14) */
+  recentDays?: number
 }): Promise<{
   wins: WarOpportunity[]
   source: string
   siteUrl: string | null
   summary: string
   kpis: Record<string, unknown>
+  skippedRecent: number
 }> {
   const limit = Math.min(10, Math.max(1, opts?.limit ?? DAILY_WAR_LIMIT))
+  // Over-fetch so we can drop recently-covered terms and still fill the daily batch
   const room = await buildSeoWarRoom({
     days: opts?.days ?? 90,
-    limit: 60,
+    limit: 80,
     minImpressions: 2,
   })
-  const wins = room.queue
-    .filter((o) => o.play !== 'cannibal_merge' && o.play !== 'ignore_noise')
-    .slice(0, limit)
+
+  let recent = new Set<string>()
+  let skippedRecent = 0
+  if (opts?.skipRecent !== false) {
+    try {
+      recent = await loadRecentPrimaryKeywords(opts?.recentDays ?? 14)
+    } catch {
+      recent = new Set()
+    }
+  }
+
+  const wins: WarOpportunity[] = []
+  for (const o of room.queue) {
+    if (o.play === 'cannibal_merge' || o.play === 'ignore_noise') continue
+    if (recent.has(o.term.toLowerCase())) {
+      skippedRecent++
+      continue
+    }
+    wins.push(o)
+    if (wins.length >= limit) break
+  }
+
+  // Fallback: if everything was recently covered, still return top N so the job
+  // can rewrite rather than exit with zero work (but prefer fresh terms first).
+  if (!wins.length) {
+    const fallback = room.queue
+      .filter((o) => o.play !== 'cannibal_merge' && o.play !== 'ignore_noise')
+      .slice(0, limit)
+    wins.push(...fallback)
+  }
+
   return {
     wins,
     source: room.source,
     siteUrl: room.siteUrl,
-    summary: room.summary,
-    kpis: room.kpis as unknown as Record<string, unknown>,
+    summary:
+      skippedRecent > 0
+        ? `${room.summary} · skipped ${skippedRecent} recently-covered terms at plan time`
+        : room.summary,
+    kpis: { ...(room.kpis as unknown as Record<string, unknown>), skippedRecent },
+    skippedRecent,
   }
 }
 
@@ -171,12 +209,22 @@ export async function runOneDailyWin(opts: {
       }
     }
 
+    // Prefer ownership-reconciled type (universities → regional_university, etc.)
+    const contentType =
+      win.contentType && win.contentType !== 'legal_guide'
+        ? win.contentType
+        : /universities\//.test(win.filePath || '')
+          ? 'regional_university'
+          : /\/from\//.test(win.filePath || '')
+            ? 'regional_from'
+            : win.contentType || 'legal_guide'
+
     const result = await runSeoFactoryPipeline({
       topic: win.term,
       title: win.term,
       primaryKeyword: win.term,
       region: win.region || 'US',
-      contentType: win.contentType || 'legal_guide',
+      contentType,
       tone: 'educational',
       shipMode,
       dryRun,
@@ -188,9 +236,13 @@ export async function runOneDailyWin(opts: {
     })
 
     const canonical = result.plan.canonicalUrl || win.ownerUrl
+    const shipped = meetsSoftShip(result.ship?.status)
+    // Gate holds (audit/depth) surface as shipError with a clear message — count as failed ship
+    const held = Boolean(result.shipError) && !shipped
     return {
       ...base,
-      ok: result.ok && !result.shipError && meetsSoftShip(result.ship?.status),
+      contentType: result.plan.contentType || contentType,
+      ok: shipped && !held,
       jobId: result.jobId,
       canonicalUrl: canonical,
       liveUrl: liveUrlFromCanonical(canonical),
@@ -201,7 +253,7 @@ export async function runOneDailyWin(opts: {
       auditScore: result.audit.score,
       wordCount: result.audit.wordCount,
       humanScore: result.audit.humanScore ?? null,
-      shipStatus: result.ship?.status || (result.shipError ? 'error' : result.shipMode),
+      shipStatus: result.ship?.status || (held ? 'held' : result.shipMode),
       error: result.shipError || result.error || null,
     }
   } catch (e) {

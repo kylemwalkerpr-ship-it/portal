@@ -146,13 +146,23 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     indexable,
     slug: input.slug,
   })
-  // Prefer strategy-driven content type (geo → regional_from, etc.)
+  // Always trust plan's path/host-reconciled type (never ship legal_guide to usa universities)
+  contentType = plan.contentType || contentType
   if (plan.intentClass === 'geo_modifier') contentType = 'regional_from'
   else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
   else if (plan.intentClass === 'transactional') contentType = 'marketplace_gig'
   else if (plan.intentClass === 'news_summary') contentType = 'blog_summary'
   else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
     contentType = 'legal_guide'
+  }
+  // Second pass: path wins if still mismatched (defense in depth)
+  if (/content\/universities\//.test(plan.filePath)) contentType = 'regional_university'
+  else if (/content\/from\//.test(plan.filePath)) contentType = 'regional_from'
+  else if (
+    (plan.host === 'usa' || plan.host === 'uk' || plan.host === 'ca' || plan.host === 'au' || plan.host === 'apex') &&
+    (contentType === 'legal_guide' || contentType === 'article')
+  ) {
+    contentType = 'regional_page'
   }
   assertPlanRepoConsistency(plan)
   const minWords = minWordsForType(contentType)
@@ -352,8 +362,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   })
 
   let shipMode = resolveShipMode(requestedMode, audit, plan)
+  let gateHoldReason: string | null = null
+
   // Never ship thin or low-quality voice to main — even if score looks OK
   if (!meetsShipQuality(audit) && shipMode !== 'none' && shipMode !== 'pr') {
+    gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
     shipMode = 'none'
   }
   if (
@@ -363,9 +376,15 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     requestedMode !== 'pr'
   ) {
     if (!meetsShipQuality(audit)) {
+      gateHoldReason = formatGateHold(audit, minAudit, 'quality/depth blockers')
       shipMode = 'none'
     } else if (requestedMode === 'auto' || requestedMode === 'autodeploy' || requestedMode === 'merge') {
-      shipMode = audit.score >= 50 ? 'pr' : 'none'
+      if (audit.score >= 50) {
+        shipMode = 'pr'
+      } else {
+        gateHoldReason = formatGateHold(audit, minAudit, `audit ${audit.score} < 50`)
+        shipMode = 'none'
+      }
     }
   }
 
@@ -389,6 +408,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     } catch (e) {
       shipError = e instanceof Error ? e.message : 'Ship failed'
     }
+  } else if (gateHoldReason) {
+    // Surface why unattended ship was withheld (War Room was logging error:null)
+    shipError = gateHoldReason
   }
 
   let jobId: string | null = null
@@ -402,9 +424,11 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         ? 'merged'
         : shipResult?.status === 'pr_created'
           ? 'pr_created'
-          : shipError
+          : shipError && !gateHoldReason
             ? 'failed'
-            : 'drafting'
+            : gateHoldReason
+              ? 'drafting'
+              : 'drafting'
 
     const { data: job } = await supabase
       .from('content_jobs')
@@ -461,8 +485,19 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     console.warn('[seoFactory/pipeline] job persist skipped', e)
   }
 
+  // ok when we either shipped, opened a PR, or dry-ran — not when gates held ship
+  const shippedOk = Boolean(
+    shipResult &&
+      (shipResult.status === 'deployed' ||
+        shipResult.status === 'merged' ||
+        shipResult.status === 'pr_created' ||
+        shipResult.status === 'dry_run'),
+  )
+  // Gate-held drafts are not hard pipeline crashes, but they are not successful ships
+  const ok = shippedOk || (shipMode === 'none' && !gateHoldReason && !shipError)
+
   return {
-    ok: !shipError,
+    ok: Boolean(ok && !shipError?.startsWith('Ship refused')),
     content,
     plan,
     audit,
@@ -482,6 +517,22 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     jobId,
     error: shipError || undefined,
   }
+}
+
+/** Human-readable reason for War Room / Auto-Pilot when merge is withheld. */
+function formatGateHold(audit: SeoFactoryAudit, minAudit: number, why: string): string {
+  const blockers = (audit.blockers || [])
+    .slice(0, 4)
+    .map((b) => b.message)
+    .join('; ')
+  const parts = [
+    `Ship withheld (${why})`,
+    `audit ${audit.score}/100 (min ${minAudit}) grade ${audit.grade}`,
+    `words ${audit.wordCount}`,
+    audit.humanScore != null ? `human ${audit.humanScore}` : null,
+    blockers ? `blockers: ${blockers}` : null,
+  ].filter(Boolean)
+  return parts.join(' · ')
 }
 
 /** Keywords already covered by recent non-failed jobs (dedupe auto-run). */

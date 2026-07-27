@@ -11,6 +11,7 @@ function plan(partial: Partial<OwnerPlan> & Pick<OwnerPlan, 'host' | 'repo' | 'f
     indexable: true,
     action: 'build',
     intentClass: 'procedural',
+    contentType: 'legal_guide',
     warnings: [],
     blockers: [],
     ymy: partial.host === 'legal',

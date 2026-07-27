@@ -73,7 +73,13 @@ export async function POST(req: NextRequest) {
 
     // ── plan: return top wins only ─────────────────────────────────────────
     if (phase === 'plan') {
-      const { wins, source, siteUrl, summary, kpis } = await selectDailyWins({ limit })
+      const { wins, source, siteUrl, summary, kpis, skippedRecent } = await selectDailyWins({
+        limit,
+        // Plan phase already drops recently covered terms so the daily job
+        // does not spend AI budget on 4/5 skips + one sticky failure.
+        skipRecent: body.skipRecent !== false,
+        recentDays: body.recentDays != null ? Number(body.recentDays) : 14,
+      })
       return NextResponse.json({
         ok: true,
         phase: 'plan',
@@ -82,6 +88,7 @@ export async function POST(req: NextRequest) {
         siteUrl,
         summary,
         kpis,
+        skippedRecent,
         wins: wins.map((w, i) => ({
           rank: i + 1,
           term: w.term,

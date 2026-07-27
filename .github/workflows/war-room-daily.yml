@@ -78,13 +78,14 @@ jobs:
 
           for w in wins:
               rank = w.get("rank") or (len(work) + 1)
+              # Plan already filtered recently-covered; still pass skipRecent as belt+suspenders
               payload = {
                   "phase": "run",
                   "rank": rank,
                   "dryRun": dry,
                   "shipMode": "none" if dry else "merge",
                   "minAuditScore": 65,
-                  "maxRefine": 3,
+                  "maxRefine": 4,
                   "skipRecent": True,
                   "win": w,
               }
@@ -161,12 +162,32 @@ jobs:
               f.write(text if isinstance(text, str) else json.dumps(final, indent=2))
 
           if not final.get("ok"):
+              print("Finalize reported not ok")
               sys.exit(1)
 
           items = [w for w in work if not w.get("skipped")]
-          if items and all(not w.get("ok") for w in items):
-              print("All non-skipped runs failed")
+          shipped = [w for w in items if w.get("ok")]
+          failed = [w for w in items if not w.get("ok")]
+
+          # Always print failure reasons (was previously error:null / silent)
+          for w in failed:
+              print(
+                  f"FAIL rank={w.get('rank')} term={w.get('term')!r} "
+                  f"audit={w.get('auditScore')} words={w.get('wordCount')} "
+                  f"ship={w.get('shipStatus')} err={w.get('error')}"
+              )
+
+          if not items:
+              # Entire queue skipped / empty after plan-time filters — not a hard outage
+              print("No actionable runs (all skipped or empty queue). Treating as soft success.")
+              sys.exit(0)
+
+          if failed and not shipped:
+              print("All non-skipped runs failed to ship")
               sys.exit(1)
+
+          if failed:
+              print(f"Partial success: shipped {len(shipped)} · failed {len(failed)}")
           print("\nDaily War Room complete.")
           PY
 

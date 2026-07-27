@@ -155,7 +155,8 @@ function renderCaseworksPage(opts: {
   const pathCountry = pathParts.find((p) => ['us', 'uk', 'ca', 'au'].includes(p.toLowerCase()))
   const countryRaw = (pathCountry || opts.region || 'us').toLowerCase()
   const country = countryRaw === 'compare' ? 'us' : countryRaw
-  const safeCountry = ['us', 'uk', 'ca'].includes(country) ? country : 'us'
+  // Caseworks ArticleMeta.country is us|uk|ca|au (au added for SEO Factory AU guides)
+  const safeCountry = ['us', 'uk', 'ca', 'au'].includes(country) ? country : 'us'
   // Caseworks ArticleMeta.topic union
   const topic =
     /tenant|rent|deposit|section.?21|housing/i.test(opts.primaryKeyword + title)

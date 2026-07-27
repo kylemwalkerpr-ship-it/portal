@@ -118,8 +118,11 @@ export function isNoiseQuery(term: string): boolean {
   const t = term.toLowerCase().trim()
   if (!t || t.length < 3) return true
   if (/yousafe|mycaseworks|yousafeconsultancy/.test(t)) return true
-  // Quoted multi-fragment noise from GSC (often PDF/snippet garbage)
-  if ((t.match(/"/g) || []).length >= 2 && t.split(/\s+/).length > 8) return true
+  // Quoted multi-fragment noise from GSC (PDF/snippet garbage)
+  // e.g. `"issued by yale university" weekly new haven` — not a real intent.
+  const quoteCount = (t.match(/"/g) || []).length
+  if (quoteCount >= 2) return true
+  if (/^["'].*["']/.test(t) && t.split(/\s+/).length <= 8) return true
   // Off-estate spam / housing meal plans / random university brochure
   if (/meal plan|room and meal|stockton room|housing rates final/.test(t)) return true
   // Pure number codes with no immigration context
@@ -136,13 +139,17 @@ function inferRegion(term: string): string {
   return 'US'
 }
 
-function inferContentType(term: string, play: WarPlay): string {
-  if (play === 'title_ctr_rewrite') return 'legal_guide'
+/**
+ * Infer content type from the term first — never let a play force legal_guide
+ * onto university / from-country queries (that broke depth floors + ship gates).
+ */
+export function inferContentType(term: string, _play?: WarPlay): string {
   if (/from [a-z]+|visa from/i.test(term)) return 'regional_from'
-  if (/university|college|campus/i.test(term) && !/housing|tenant/i.test(term)) {
+  if (/university|college|campus|\byale\b|\bmit\b|\bnyu\b|\bharvard\b/i.test(term) && !/housing|tenant/i.test(term)) {
     return 'regional_university'
   }
   if (/blog|news|update|what is/i.test(term)) return 'blog_summary'
+  // title_ctr_rewrite / strike / etc. default to legal guides for procedural terms
   return 'legal_guide'
 }
 
@@ -460,12 +467,12 @@ export async function buildSeoWarRoom(opts?: {
     const play = classifyPlay(q, expected, multi)
     if (play === 'ignore_noise') continue
 
-    const contentType = inferContentType(q.term, play)
+    const seedType = inferContentType(q.term, play)
     let plan
     try {
       plan = await resolveOwner({
         primaryKeyword: q.term,
-        contentType,
+        contentType: seedType,
         region,
       })
     } catch {
@@ -473,6 +480,8 @@ export async function buildSeoWarRoom(opts?: {
       continue
     }
     if (!plan || !plan.host) continue
+    // Always use path/host-reconciled type from ownership (never legal_guide on universities)
+    const contentType = plan.contentType || seedType
     const auth = scoreTopicAuthority({
       term: q.term,
       impressions: q.impressions,
