@@ -199,53 +199,33 @@ export default function AdminSeoFactory({
   }
 
   const loadJobs = React.useCallback(async () => {
+    // Skip background polls when tab is hidden (was a major 503 amplifier)
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
     const params = new URLSearchParams()
-    params.set('limit', '100')
+    // Lightweight list (no content body) — full row loaded via ?id=
+    params.set('limit', '40')
     if (jobQ) params.set('q', jobQ)
     if (jobStatusFilter && jobStatusFilter !== 'all') params.set('status', jobStatusFilter)
     if (jobHostFilter && jobHostFilter !== 'all') params.set('host', jobHostFilter)
     if (jobRepoFilter && jobRepoFilter !== 'all') params.set('repo', jobRepoFilter)
     const url = `/api/content-studio/jobs?${params}`
-    const maxRetries = 2
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const res = await fetch(url, { credentials: 'same-origin' })
-        if (res.status === 503 && attempt < maxRetries) {
-          pushLog('warn', 'jobs', `503 retry ${attempt + 1}/${maxRetries}`)
-          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
-          continue
-        }
-        const data = await res.json()
-        if (res.ok) {
-          setJobs(data.jobs || [])
-          setQueueSummary(data.summary || null)
-          // Keep editor in sync if selected job updated from server (unless local dirty)
-          const sid = selectedJobIdRef.current
-          if (sid) {
-            const j = (data.jobs || []).find((x: any) => x.id === sid)
-            if (j?.content != null) {
-              setEditorContent((prev) => {
-                const serverPrev = selectedJobContentRef.current || ''
-                if (!prev.trim() || prev === serverPrev) {
-                  selectedJobContentRef.current = j.content || ''
-                  return j.content
-                }
-                return prev
-              })
-            }
-          }
-        } else if (data.error && attempt === maxRetries) {
-          pushLog('error', 'jobs', data.error)
-        }
-        break // success (or non-retryable error)
-      } catch (e) {
-        if (attempt === maxRetries) {
-          pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
-        } else {
-          pushLog('warn', 'jobs', `Retry ${attempt + 1}/${maxRetries}: ${e instanceof Error ? e.message : 'failed'}`)
-          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
-        }
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' })
+      // Do not hammer retries on 503 — that worsens Worker overload (CF 1102)
+      if (res.status === 503) {
+        pushLog('warn', 'jobs', '503 from /jobs — backing off (Worker busy). Will retry on next poll.')
+        return
       }
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setJobs(data.jobs || [])
+        setQueueSummary(data.summary || null)
+        // List payload no longer includes content — keep editor until ?id= fetch
+      } else if (data.error) {
+        pushLog('error', 'jobs', data.error)
+      }
+    } catch (e) {
+      pushLog('error', 'jobs', e instanceof Error ? e.message : 'Failed to load jobs')
     }
   }, [jobQ, jobStatusFilter, jobHostFilter, jobRepoFilter, pushLog])
 
@@ -254,11 +234,16 @@ export default function AdminSeoFactory({
     void loadJobs()
   }, [loadJobs])
 
-  // Poll while work is in flight or a non-terminal job is selected
+  // Poll only while truly in-flight (not drafting holds). 4s polls + select(*) caused 503 storms.
   React.useEffect(() => {
-    const active = jobs.some((j) => !['merged', 'closed', 'failed'].includes(j.status || ''))
-    if (!active && !busy) return
-    const t = setInterval(() => { void loadJobs() }, 4000)
+    const inflight = jobs.some((j) =>
+      ['pending', 'publishing'].includes(String(j.status || '')),
+    )
+    if (!inflight && !busy) return
+    const t = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      void loadJobs()
+    }, 12_000)
     return () => clearInterval(t)
   }, [jobs, busy, loadJobs])
 

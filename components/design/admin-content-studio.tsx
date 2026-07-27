@@ -421,10 +421,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }, [activeTab, GscDashboard])
 
-  // Fetch jobs on mount
+  // Fetch jobs on mount (lightweight list — no content bodies)
   const fetchJobs = React.useCallback(async () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
     try {
-      const res = await fetch('/api/content-studio/jobs', { credentials: 'same-origin' })
+      const res = await fetch('/api/content-studio/jobs?limit=40', { credentials: 'same-origin' })
+      // Back off on Worker 503 instead of retry-storming
+      if (res.status === 503) {
+        setError('Server busy (503). Waiting before next refresh…')
+        return
+      }
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(
@@ -443,11 +449,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
 
-  // Poll for in-progress jobs
+  // Poll only pending/publishing — drafting quality-holds must not spin forever
   React.useEffect(() => {
-    const hasActive = jobs.some(j => !['merged', 'closed', 'failed'].includes(j.status))
+    const hasActive = jobs.some((j) => ['pending', 'publishing'].includes(j.status))
     if (!hasActive) return
-    const interval = setInterval(fetchJobs, 4000)
+    const interval = setInterval(fetchJobs, 12_000)
     return () => clearInterval(interval)
   }, [jobs, fetchJobs])
 

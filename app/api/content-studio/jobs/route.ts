@@ -17,7 +17,42 @@ function sb() {
 /**
  * GET /api/content-studio/jobs
  * Query: status, region, host (owner_host), repo (target_repo), limit, q, id, ids
+ *
+ * List responses intentionally omit heavy columns (content, event_log, audit_json,
+ * gsc_json) so the queue can poll without exceeding Worker CPU / response limits.
+ * Full row is available via ?id= for the editor.
  */
+const JOB_LIST_COLUMNS = [
+  'id',
+  'user_id',
+  'title',
+  'topic',
+  'content_type',
+  'tone',
+  'region',
+  'status',
+  'error_message',
+  'target_repo',
+  'branch_name',
+  'content_path',
+  'pr_url',
+  'pr_number',
+  'ai_provider',
+  'word_count',
+  'seo_score',
+  'primary_keyword',
+  'owner_host',
+  'canonical_url',
+  'ship_mode',
+  'indexable',
+  'deploy_sha',
+  'deployed_at',
+  'merged_at',
+  'closed_at',
+  'created_at',
+  'updated_at',
+].join(',')
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdminUser()
@@ -36,7 +71,9 @@ export async function GET(request: NextRequest) {
     const host = searchParams.get('host') || searchParams.get('owner_host')
     const repo = searchParams.get('repo') || searchParams.get('target_repo')
     const q = (searchParams.get('q') || '').trim()
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10), 200)
+    // Cap list size — full content is loaded per-job via ?id=
+    const limit = Math.min(parseInt(searchParams.get('limit') ?? '40', 10) || 40, 80)
+    const includeContent = searchParams.get('full') === '1'
 
     const supabase = sb()
 
@@ -49,7 +86,7 @@ export async function GET(request: NextRequest) {
     if (ids.length) {
       const { data, error } = await supabase
         .from('content_jobs')
-        .select('*')
+        .select(includeContent ? '*' : JOB_LIST_COLUMNS)
         .in('id', ids.slice(0, 50))
       if (error) throw new Error(error.message)
       return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
@@ -57,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('content_jobs')
-      .select('*')
+      .select(includeContent ? '*' : JOB_LIST_COLUMNS)
       .order('created_at', { ascending: false })
       .limit(limit)
 
@@ -72,8 +109,10 @@ export async function GET(request: NextRequest) {
     if (host) query = query.eq('owner_host', host)
     if (repo) query = query.ilike('target_repo', `%${repo}%`)
     if (q) {
+      // Escape commas in filter values for PostgREST or()
+      const safe = q.replace(/[%_,.()]/g, ' ').slice(0, 80)
       query = query.or(
-        `topic.ilike.%${q}%,title.ilike.%${q}%,primary_keyword.ilike.%${q}%,content_path.ilike.%${q}%`,
+        `topic.ilike.%${safe}%,title.ilike.%${safe}%,primary_keyword.ilike.%${safe}%,content_path.ilike.%${safe}%`,
       )
     }
 
@@ -84,18 +123,18 @@ export async function GET(request: NextRequest) {
     const jobs = data ?? []
     const summary = {
       total: jobs.length,
-      drafting: jobs.filter((j) => j.status === 'drafting').length,
-      pr_created: jobs.filter((j) => j.status === 'pr_created').length,
-      merged: jobs.filter((j) => j.status === 'merged').length,
-      failed: jobs.filter((j) => j.status === 'failed').length,
-      closed: jobs.filter((j) => j.status === 'closed').length,
+      drafting: jobs.filter((j: { status?: string }) => j.status === 'drafting').length,
+      pr_created: jobs.filter((j: { status?: string }) => j.status === 'pr_created').length,
+      merged: jobs.filter((j: { status?: string }) => j.status === 'merged').length,
+      failed: jobs.filter((j: { status?: string }) => j.status === 'failed').length,
+      closed: jobs.filter((j: { status?: string }) => j.status === 'closed').length,
       avgSeo:
-        jobs.filter((j) => j.seo_score != null).length > 0
+        jobs.filter((j: { seo_score?: number | null }) => j.seo_score != null).length > 0
           ? Math.round(
               jobs
-                .filter((j) => j.seo_score != null)
-                .reduce((s, j) => s + Number(j.seo_score), 0) /
-                jobs.filter((j) => j.seo_score != null).length,
+                .filter((j: { seo_score?: number | null }) => j.seo_score != null)
+                .reduce((s: number, j: { seo_score?: number | null }) => s + Number(j.seo_score), 0) /
+                jobs.filter((j: { seo_score?: number | null }) => j.seo_score != null).length,
             )
           : null,
     }
@@ -103,8 +142,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ jobs, count: jobs.length, summary })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
+    // Never return opaque CF 503 from app code — surface JSON 500 so UI can stop retry storms
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal error' },
+      { error: err instanceof Error ? err.message : 'Internal error', jobs: [], count: 0 },
       { status: 500 },
     )
   }
