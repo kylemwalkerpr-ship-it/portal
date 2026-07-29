@@ -4,11 +4,13 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 minify = true
 
-# ── Limits (Workers Paid) ──────────────────────────────────────────────
-# OpenNext Next.js handler is CPU-heavy. Free plan (10 ms) → CF 1102 / 503.
-# Paid plan + elevated cpu_ms required in production.
-[limits]
-cpu_ms = 300000
+# ── CPU Limit ───────────────────────────────────────────────────────────
+# OpenNext Next.js handler is CPU-heavy. The Free plan caps CPU at 10ms
+# per invocation. If your Workers plan is upgraded to Paid, uncomment the
+# [limits] block below and set an appropriate cpu_ms value.
+#
+# [limits]
+# cpu_ms = 300000
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).
