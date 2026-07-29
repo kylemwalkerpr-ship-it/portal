@@ -24,6 +24,14 @@ import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInqui
 const URGENCY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
@@ -187,6 +195,13 @@ export async function GET(req: Request) {
     has_more: page * pageSize < total,
     facets,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 function topValues(values: any[], cap = 12): string[] {

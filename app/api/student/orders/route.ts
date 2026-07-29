@@ -21,6 +21,14 @@ function dollarsFromCents(cents: unknown) { return Number(cents || 0) / 100 }
 const SORT_COLUMNS = ['created_at', 'total_amount', 'deadline', 'progress'] as const
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await getCurrentStudent()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profile } = auth
@@ -193,4 +201,11 @@ export async function GET(req: Request) {
     total_pages: Math.max(1, Math.ceil(total / pageSize)),
     has_more: page * pageSize < total,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

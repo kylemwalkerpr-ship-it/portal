@@ -4,6 +4,14 @@ import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForAp
 import { safetyGuard } from '@/lib/safety'
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await getCurrentConsultant()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
@@ -68,9 +76,24 @@ export async function GET(req: Request) {
     }
   })
   return Response.json({ messages: data ?? [], offers: [...normalized, ...((offers ?? []).map((o) => ({ ...o, source_type: 'consultant_offer' })))] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const postAbortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', postAbortHandler)
+
+  try {
   const auth = await getCurrentConsultant()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
 
@@ -144,4 +167,11 @@ export async function POST(req: Request) {
   }
 
   return Response.json({ message: data })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', postAbortHandler)
+  }
 }

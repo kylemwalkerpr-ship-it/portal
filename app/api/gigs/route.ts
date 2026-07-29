@@ -6,6 +6,14 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 import { isCategoryAllowedForRole, isSubcategoryAllowedForRole } from '@/lib/categories'
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const url = new URL(req.url)
 
   // CPU-budget ordering (CF 1102): anonymous visitors (no Clerk session
@@ -163,9 +171,24 @@ export async function GET(req: Request) {
   })
 
   return ok({ gigs, count, limit: resolvedLimit, byStatus })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const postAbortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', postAbortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant'].includes(auth.role)) return fail('Forbidden.', 403)
@@ -286,4 +309,11 @@ export async function POST(req: Request) {
   if (tierError) return fail(tierError.message, 500)
 
   return ok({ gig }, { status: 201 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', postAbortHandler)
+  }
 }

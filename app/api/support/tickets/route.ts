@@ -14,6 +14,14 @@ type Kind = 'void' | 'refund_partial' | 'release_hold' | 'other'
 const VALID_KIND: Kind[] = ['void', 'refund_partial', 'release_hold', 'other']
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   if (!['support', 'admin'].includes(auth.role)) {
@@ -40,9 +48,24 @@ export async function GET(req: Request) {
   const { data, error } = await q
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ tickets: data ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const postAbortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', postAbortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   if (auth.role !== 'support') {
@@ -96,4 +119,11 @@ export async function POST(req: Request) {
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
   return Response.json({ ticket: data })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', postAbortHandler)
+  }
 }

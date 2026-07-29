@@ -28,6 +28,14 @@ const STATUS_MAP: Record<string, string[]> = {
 }
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const { ctx, error, status } = await requireAttorney()
   if (!ctx) return Response.json({ error }, { status })
 
@@ -170,4 +178,11 @@ export async function GET(req: Request) {
     total_pages: Math.max(1, Math.ceil(total / pageSize)),
     has_more: page * pageSize < total,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

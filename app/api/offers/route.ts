@@ -84,6 +84,14 @@ async function resolveChat(auth: any, senderType: 'attorney' | 'consultant', pro
 }
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
@@ -105,9 +113,24 @@ export async function GET(req: Request) {
   if (error) return fail(error.message, 500)
   const status = 200
   return ok({ offers: offers ?? [] }, { status })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const postAbortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', postAbortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant'].includes(auth.role)) return fail('Only attorneys and consultants can create offers.', 403)
@@ -217,4 +240,11 @@ export async function POST(req: Request) {
     },
     { status: 201 },
   )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', postAbortHandler)
+  }
 }

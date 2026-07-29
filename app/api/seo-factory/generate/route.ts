@@ -12,6 +12,13 @@ import { runSeoFactoryPipeline, type RequestedShipMode } from '@/lib/seoFactory/
  *   shipMode?: 'pr' | 'autodeploy' | 'none' | 'auto'
  */
 export async function POST(request: NextRequest) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (request.signal.aborted) {
+    return NextResponse.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  request.signal.addEventListener('abort', abortHandler)
+
   try {
     const auth = await requireAdminUser()
     if ('error' in auth) {
@@ -70,9 +77,13 @@ export async function POST(request: NextRequest) {
     }, { status: result.shipError ? 422 : 200 })
   } catch (err) {
     console.error('[seo-factory/generate]', err)
+    const message = err instanceof Error ? err.message : 'Generate failed'
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Generate failed' },
-      { status: 500 },
+      { error: message },
+      { status: isCpuTimeout ? 503 : 500 },
     )
+  } finally {
+    request.signal.removeEventListener('abort', abortHandler)
   }
 }

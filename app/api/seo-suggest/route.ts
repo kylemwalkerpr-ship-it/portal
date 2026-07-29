@@ -28,6 +28,14 @@ function sanitizeTier(raw: Record<string, unknown>): TierSummary {
 //
 // Body: { field: <SuggestField>, context: <SuggestContext>, hint?: string }
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant', 'admin'].includes(auth.role)) return fail('Forbidden.', 403)
@@ -86,4 +94,11 @@ export async function POST(req: Request) {
   const result = await draftField(field, suggestCtx, hint)
   if (result.ok === false) return fail(result.message, result.status)
   return ok({ field, value: result.value, research: result.research })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

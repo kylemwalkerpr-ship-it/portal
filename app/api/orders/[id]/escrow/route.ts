@@ -13,6 +13,14 @@ import { mirrorMessage } from '@/lib/conversations'
 const APPROVABLE = ['under_review', 'review', 'delivered']
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { db, profileId } = auth
@@ -134,9 +142,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   return fail('Unknown action. Use approve_delivery, request_revision, or raise_dispute.', 400)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (_req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const getAbortHandler = () => { /* no-op */ }
+  _req.signal.addEventListener('abort', getAbortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   const { db, profileId } = auth
@@ -199,4 +222,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     pending_scope_changes: pendingScopeChanges,
     events,
   }, {}, warnings.length ? { data_warnings: warnings } : {})
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    _req.signal.removeEventListener('abort', getAbortHandler)
+  }
 }

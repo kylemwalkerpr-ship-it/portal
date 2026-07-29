@@ -15,6 +15,14 @@
 import { requirePortalUser } from '@/lib/portalAuth'
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return Response.json({ error: auth.error }, { status: auth.status })
   const { db, profileId } = auth
@@ -159,4 +167,11 @@ export async function GET(req: Request) {
     has_more: page * pageSize < total,
     counts,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

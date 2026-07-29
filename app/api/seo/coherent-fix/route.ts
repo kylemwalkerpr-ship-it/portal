@@ -40,6 +40,14 @@ const VALID_FIELDS: SeoEditableField[] = [
 ]
 
 export async function POST(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requirePortalUser()
   if ('error' in auth) return fail(auth.error, auth.status)
   if (!['attorney', 'consultant', 'admin'].includes(auth.role)) return fail('Forbidden.', 403)
@@ -175,6 +183,13 @@ export async function POST(req: Request) {
   }
 
   return ok({ changes: result.changes, expectedScoreDelta })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 // Copy of the seo-audit helper. Kept inline rather than imported so the
