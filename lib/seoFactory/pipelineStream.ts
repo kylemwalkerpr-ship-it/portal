@@ -20,7 +20,7 @@ import {
   mergeAppendedSections,
   minWordsForType,
 } from './prompts'
-import { countBodyWords, targetWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
@@ -64,7 +64,7 @@ export async function* runSeoFactoryPipelineStream(
     const indexable = input.indexable !== false
     const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
     const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
-    const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 3)))
+    const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 10)))
 
     if (!topic) {
       yield { type: 'error', error: 'topic required' }
@@ -99,6 +99,7 @@ export async function* runSeoFactoryPipelineStream(
     assertPlanRepoConsistency(plan)
     const minWords = minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
+    const maxWords = maxWordsForType(contentType)
 
     yield {
       type: 'progress',
@@ -122,6 +123,7 @@ export async function* runSeoFactoryPipelineStream(
       plan,
       contentType,
       minWords,
+      maxWords,
       strategyBlock,
     })
 
@@ -138,10 +140,18 @@ export async function* runSeoFactoryPipelineStream(
     let attempts = 0
     let refineNotes: string | undefined
     let expandPasses = 0
+    let stalledCount = 0
+    const maxStalled = 2
 
+    // ── PASS 1: Main refine loop (depth + quality) ───────────────────────
     for (let i = 0; i <= maxRefine; i++) {
       attempts = i + 1
       const underDepth = Boolean(content) && countBodyWords(content) < minWords
+
+      // Capture pre-generate state for progress tracking (state from previous iteration)
+      const prevBlockers = audit.blockers.length
+      const prevScore = audit.score
+
       yield {
         type: 'progress',
         stage: 'generate',
@@ -226,6 +236,23 @@ export async function* runSeoFactoryPipelineStream(
       }
 
       if (goodEnough) break
+
+      // Progress check: compare current post-gen state against pre-gen state
+      const improved = audit.score > prevScore || audit.blockers.length < prevBlockers
+      if (improved) {
+        stalledCount = 0
+      } else {
+        stalledCount++
+        if (stalledCount >= maxStalled) {
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Refine stalled after ${attempts} attempts (score ${audit.score}, ${audit.blockers.length} blockers) — moving to depth rescue`,
+          }
+          break
+        }
+      }
+
       if (i === maxRefine) break
       const q = evaluateContentQuality({
         content,
@@ -250,8 +277,8 @@ export async function* runSeoFactoryPipelineStream(
       }
     }
 
-    // Depth rescue loop (non-stream expand/append — shows progress only)
-    const maxExpand = contentType === 'marketplace_gig' ? 2 : 4
+    // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
+    const maxExpand = contentType === 'marketplace_gig' ? 2 : 6
     while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
       expandPasses++
       attempts++
@@ -333,7 +360,98 @@ export async function* runSeoFactoryPipelineStream(
       if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
     }
 
-    // Scaffold FM / disclaimer / sources / TL;DR before final audit + ship
+    // ── PASS 3: Quality refine after depth rescue ────────────────────────
+    // Depth rescue can introduce new quality issues (AI slop from appended sections).
+    if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
+      stalledCount = 0
+      for (let j = 0; j <= Math.min(4, maxRefine); j++) {
+        attempts++
+        const prevBlockers = audit.blockers.length
+        const prevScore = audit.score
+
+        const q = evaluateContentQuality({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+        })
+        refineNotes = [
+          auditToRefineNotes({ ...audit, minWords, targetWords }),
+          !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+
+        if (!refineNotes.trim()) break
+
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: `Post-depth quality refine ${j + 1}/4 · score ${audit.score} …`,
+        }
+
+        try {
+          const ai = await generateContentText({
+            system,
+            prompt: buildFactoryUserPrompt({
+              title,
+              topic,
+              primaryKeyword,
+              region,
+              contentType,
+              tone,
+              audience: input.audience,
+              gscBlock,
+              opportunityAction: input.opportunityAction,
+              writeHint: input.writeHint,
+              refineNotes,
+            }),
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
+            temperature: 0.35,
+          })
+          if (countBodyWords(ai.text) >= minWords) {
+            content = ai.text
+            provider = ai.provider
+            model = ai.model
+          }
+        } catch (e) {
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Post-depth quality refine failed: ${e instanceof Error ? e.message : 'error'}`,
+          }
+          break
+        }
+
+        audit = auditContent({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          ownershipBlockers: plan.blockers,
+        })
+
+        yield {
+          type: 'attempt',
+          attempt: attempts,
+          score: audit.score,
+          wordCount: audit.wordCount,
+          goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+        }
+
+        if (meetsShipQuality(audit) && audit.score >= minAudit) break
+
+        const improved = audit.score > prevScore || audit.blockers.length < prevBlockers
+        if (!improved) {
+          stalledCount++
+          if (stalledCount >= maxStalled) break
+        } else {
+          stalledCount = Math.max(0, stalledCount - 1)
+        }
+      }
+    }
+
+    // ── PASS 4: Scaffold + final quality lock ────────────────────────────
     const { ensureEditorialScaffold } = await import('./editorialScaffold')
     content = ensureEditorialScaffold({
       content,
@@ -349,6 +467,76 @@ export async function* runSeoFactoryPipelineStream(
       indexable: plan.indexable,
       ownershipBlockers: plan.blockers,
     })
+
+    // After scaffold, if blockers remain, do one final targeted refine
+    if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 15) {
+      const q = evaluateContentQuality({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+      })
+      refineNotes = [
+        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (refineNotes.trim()) {
+        attempts++
+        yield {
+          type: 'progress',
+          stage: 'refine',
+          message: 'Final quality pass after scaffold — fixing remaining blockers…',
+        }
+        try {
+          const ai = await generateContentText({
+            system,
+            prompt: buildFactoryUserPrompt({
+              title,
+              topic,
+              primaryKeyword,
+              region,
+              contentType,
+              tone,
+              audience: input.audience,
+              gscBlock,
+              opportunityAction: input.opportunityAction,
+              writeHint: input.writeHint,
+              refineNotes,
+            }),
+            maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
+            temperature: 0.3,
+          })
+          if (countBodyWords(ai.text) >= minWords) {
+            content = ai.text
+            provider = ai.provider
+            model = ai.model
+          }
+        } catch (e) {
+          yield {
+            type: 'progress',
+            stage: 'refine',
+            message: `Post-scaffold refine failed: ${e instanceof Error ? e.message : 'error'}`,
+          }
+        }
+        // Re-scaffold and re-audit
+        content = ensureEditorialScaffold({
+          content,
+          title: title || primaryKeyword,
+          primaryKeyword,
+          region,
+        })
+        audit = auditContent({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          ownershipBlockers: plan.blockers,
+        })
+      }
+    }
 
     let effectiveRequested = requestedMode
     if (input.dryRun && effectiveRequested === 'none') effectiveRequested = 'merge'

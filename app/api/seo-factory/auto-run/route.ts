@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const requestedMode = String(body.shipMode || body.ship_mode || 'auto').toLowerCase() as RequestedShipMode
     const dryRun = Boolean(body.dryRun)
     const minAuditScore = body.minAuditScore != null ? Number(body.minAuditScore) : 65
-    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 3
+    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 10
     const skipRecent = body.skipRecent !== false
     const regionFilter = body.regionFilter ? String(body.regionFilter).toUpperCase() : null
     const minImpressions = Number(body.minImpressions) || 0

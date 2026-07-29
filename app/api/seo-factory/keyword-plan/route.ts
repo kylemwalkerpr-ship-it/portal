@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const limit = Math.min(5, Math.max(1, Number(body.limit) || 3))
     const dryRun = Boolean(body.dryRun)
     const minAuditScore = body.minAuditScore != null ? Number(body.minAuditScore) : 65
-    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 2
+    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 8
     const shipMode = (body.shipMode || 'pr') as 'pr' | 'auto' | 'autodeploy' | 'none'
     const lanes = (Array.isArray(body.lanes) ? body.lanes : ['refresh', 'expand', 'build_new']) as PlanLane[]
 

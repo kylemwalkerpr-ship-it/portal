@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       shipMode: (body.shipMode || body.ship_mode || 'pr') as RequestedShipMode,
       dryRun: Boolean(body.dryRun),
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
-      maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 2,
+      maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
       userId,
     })

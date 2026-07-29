@@ -1103,7 +1103,7 @@ export async function PATCH(request: NextRequest) {
         shipMode: (body.shipMode || 'pr') as any,
         dryRun: Boolean(body.dryRun),
         minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
-        maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 2,
+        maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
         userId,
       })
       // Mark old job closed; new job created by pipeline

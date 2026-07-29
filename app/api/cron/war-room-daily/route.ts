@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     const dryRun = Boolean(body.dryRun)
     const notify = body.notify !== false
     const minAuditScore = body.minAuditScore != null ? Number(body.minAuditScore) : 65
-    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 3
+    const maxRefine = body.maxRefine != null ? Number(body.maxRefine) : 10
 
     // ── plan: return top wins only ─────────────────────────────────────────
     if (phase === 'plan') {

@@ -275,7 +275,7 @@ export async function expandThinPage(
       shipMode,
       dryRun,
       minAuditScore: 65,
-      maxRefine: 4,
+      maxRefine: 10,
       opportunityAction: 'expand_or_build',
       writeHint: [
         `PLAY estate_sweep (thin page expansion).`,

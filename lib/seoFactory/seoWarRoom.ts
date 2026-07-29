@@ -610,7 +610,7 @@ export async function buildSeoWarRoom(opts?: {
       limit: Math.min(5, autoRunTerms.length || 3),
       shipMode: 'none',
       minAuditScore: 65,
-      maxRefine: 2,
+      maxRefine: 8,
       skipRecent: true,
       useKeywordPlan: false,
     },

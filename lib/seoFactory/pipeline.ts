@@ -141,7 +141,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const indexable = input.indexable !== false
   const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
   const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
-  const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 3)))
+  const maxRefine = Math.min(12, Math.max(0, Number(input.maxRefine ?? 10)))
 
   if (!topic) {
     throw new Error('topic required')
@@ -210,7 +210,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   let attempts = 0
   let refineNotes: string | undefined
   let expandPasses = 0
+  let stalledCount = 0
+  const maxStalled = 2  // consecutive non-improving attempts before giving up
 
+  // ── PASS 1: Main refine loop (depth + quality) ─────────────────────────
   for (let i = 0; i <= maxRefine; i++) {
     attempts = i + 1
     const underDepth = Boolean(content) && countBodyWords(content) < minWords
@@ -244,6 +247,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         })
 
     const prevWords = content ? countBodyWords(content) : 0
+    const prevBlockers = audit.blockers.length
+    const prevScore = audit.score
     const ai = await generateWithRetry(generateContentText, {
       system,
       prompt,
@@ -276,6 +281,21 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       audit.blockers.filter((b) => b.code !== 'ownership').length === 0
 
     if (goodEnough) break
+
+    // Progress check: break only if we've been stalled for maxStalled attempts
+    const improved = audit.score > prevScore || audit.blockers.length < prevBlockers
+    if (improved) {
+      stalledCount = 0
+    } else {
+      stalledCount++
+      if (stalledCount >= maxStalled) {
+        console.warn(
+          `[pipeline] refine stalled after ${attempts} attempts (score ${audit.score}, ${audit.blockers.length} blockers) — moving to depth rescue`,
+        )
+        break
+      }
+    }
+
     if (i === maxRefine) break
     const q = evaluateContentQuality({
       content,
@@ -295,8 +315,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       .join('\n\n')
   }
 
-  // ── Depth rescue: expand / append until floor met (or budget exhausted) ──
-  const maxExpand = contentType === 'marketplace_gig' ? 2 : 4
+  // ── PASS 2: Depth rescue (expand/append until floor met) ───────────────
+  const maxExpand = contentType === 'marketplace_gig' ? 2 : 6
   while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
     expandPasses++
     attempts++
@@ -362,11 +382,86 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       indexable: plan.indexable,
       ownershipBlockers: plan.blockers,
     })
-    if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
+    if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) {
+      break
+    }
   }
 
-  // Scaffold FM + disclaimer + official source links so audit reflects structure
-  // (any AI model may omit YAML / citations even when prose is strong).
+  // ── PASS 3: Quality refine after depth rescue ──────────────────────────
+  // Depth rescue can introduce new quality issues (AI slop from appended sections).
+  // Continue refining on quality/blocker issues even if word count is now OK.
+  if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
+    stalledCount = 0
+    for (let j = 0; j <= Math.min(4, maxRefine); j++) {
+      attempts++
+      const prevBlockers = audit.blockers.length
+      const prevScore = audit.score
+
+      const q = evaluateContentQuality({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+      })
+      refineNotes = [
+        auditToRefineNotes({ ...audit, minWords, targetWords }),
+        !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (!refineNotes.trim()) break
+
+      try {
+        const ai = await generateWithRetry(generateContentText, {
+          system,
+          prompt: buildFactoryUserPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            tone,
+            audience: input.audience,
+            gscBlock,
+            opportunityAction: input.opportunityAction,
+            writeHint: input.writeHint,
+            refineNotes,
+          }),
+          maxTokens: tokensForType(contentType, 'draft'),
+          temperature: 0.35,
+        })
+        if (countBodyWords(ai.text) >= minWords) {
+          content = ai.text
+          provider = ai.provider
+          model = ai.model
+        }
+      } catch (e) {
+        console.warn('[seoFactory/pipeline] post-depth quality refine failed', e)
+        break
+      }
+
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+
+      if (meetsShipQuality(audit) && audit.score >= minAudit) break
+
+      const improved = audit.score > prevScore || audit.blockers.length < prevBlockers
+      if (!improved) {
+        stalledCount++
+        if (stalledCount >= maxStalled) break
+      } else {
+        stalledCount = Math.max(0, stalledCount - 1)
+      }
+    }
+  }
+
+  // ── PASS 4: Scaffold + final quality lock ──────────────────────────────
   content = ensureEditorialScaffold({
     content,
     title: title || primaryKeyword,
@@ -374,7 +469,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     region,
   })
 
-  // Final audit after rescue + scaffold
+  // After scaffold, audit again. If blockers remain, do one final refine pass
+  // targeting the specific scaffold-level issues (citations, disclaimer, TL;DR).
   audit = auditContent({
     content,
     contentType,
@@ -382,6 +478,66 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     indexable: plan.indexable,
     ownershipBlockers: plan.blockers,
   })
+
+  if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 15) {
+    const q = evaluateContentQuality({
+      content,
+      contentType,
+      primaryKeyword,
+      indexable: plan.indexable,
+    })
+    refineNotes = [
+      auditToRefineNotes({ ...audit, minWords, targetWords }),
+      !q.ok || q.humanScore < 75 ? qualityToRefineNotes(q) : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+
+    if (refineNotes.trim()) {
+      try {
+        attempts++
+        const ai = await generateWithRetry(generateContentText, {
+          system,
+          prompt: buildFactoryUserPrompt({
+            title,
+            topic,
+            primaryKeyword,
+            region,
+            contentType,
+            tone,
+            audience: input.audience,
+            gscBlock,
+            opportunityAction: input.opportunityAction,
+            writeHint: input.writeHint,
+            refineNotes,
+          }),
+          maxTokens: tokensForType(contentType, 'draft'),
+          temperature: 0.3,
+        })
+        if (countBodyWords(ai.text) >= minWords) {
+          content = ai.text
+          provider = ai.provider
+          model = ai.model
+        }
+      } catch (e) {
+        console.warn('[seoFactory/pipeline] post-scaffold refine failed', e)
+      }
+      // Re-scaffold the refined content
+      content = ensureEditorialScaffold({
+        content,
+        title: title || primaryKeyword,
+        primaryKeyword,
+        region,
+      })
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+    }
+  }
 
   // Dry-run must exercise render + ship gates even if caller sent shipMode=none
   let effectiveRequested: RequestedShipMode = requestedMode
