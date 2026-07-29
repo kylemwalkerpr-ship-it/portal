@@ -95,8 +95,9 @@ async function waitForCommitCi(
       } else {
         emptyPolls++
         lastNote = 'waiting for check-runs to appear'
-        // After ~45s with zero checks, treat as "no required CI" and allow merge attempt
-        if (emptyPolls >= 3) {
+        // After ~6 polls (~2 min) with zero checks, treat as "no required CI" and allow merge attempt.
+        // GitHub Actions can take 30-90s to start runners, so 3 polls was too early.
+        if (emptyPolls >= 6) {
           return { state: 'none', note: 'no check-runs registered — merge allowed' }
         }
       }
