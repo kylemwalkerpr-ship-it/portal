@@ -53,7 +53,13 @@ export async function GET(req: Request) {
     .select('*, tiers:gig_tiers(*), provider:profiles!gigs_provider_id_fkey(id, full_name, email, username)', { count: 'exact' })
     .eq('status', 'active')
 
-  if (q.length >= 2) query = query.or(`title.ilike.%${q}%,pitch.ilike.%${q}%,description.ilike.%${q}%`)
+  if (q.length >= 2) {
+    // FTS across title, pitch, description — each has a dedicated GIN index.
+    const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+    if (safeQ) {
+      query = query.or(`title.fts.${safeQ},pitch.fts.${safeQ},description.fts.${safeQ}`)
+    }
+  }
   if (categories.length > 0) {
     const terms = Array.from(new Set(categories.flatMap(category => getCategoryFilterTerms(category))))
     if (terms.length > 0) query = query.in('category', terms)

@@ -71,7 +71,15 @@ export async function GET(req: Request) {
     if (freeOnly)       qb = qb.eq('offers_free_consult', true)
     if (minPrice > 0)   qb = qb.gte('starting_price', minPrice)
     if (maxPrice > 0)   qb = qb.lte('starting_price', maxPrice)
-    if (q)              qb = qb.or(`tagline.ilike.%${q}%,bio.ilike.%${q}%,jurisdictions.ilike.%${q}%,practice_areas.ilike.%${q}%`)
+    if (q) {
+      // FTS on natural language columns (tagline, bio) — indexed via GIN.
+      // Jurisdictions/practice_areas are short taxonomy lists handled by the
+      // post-fetch filter below — no need for DB-side ilike on those.
+      const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+      if (safeQ && safeQ.length >= 2) {
+        qb = qb.or(`tagline.fts.${safeQ},bio.fts.${safeQ}`)
+      }
+    }
     return qb
   }
 

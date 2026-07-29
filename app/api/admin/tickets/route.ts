@@ -72,7 +72,10 @@ export async function GET(req: Request) {
   // For DB-side text search we use ilike on reason (free text). Names/emails
   // are joined post-fetch from profiles, so we filter those in-memory below.
   if (q && q.length >= 2 && q.length < 80) {
-    query = query.or(`reason.ilike.%${q}%,detail.ilike.%${q}%`)
+    const safeQ = q.replace(/[^a-zA-Z0-9\s'"-]/g, ' ').trim().slice(0, 60)
+    if (safeQ) {
+      query = query.or(`reason.fts.${safeQ},detail.fts.${safeQ}`)
+    }
   }
 
   const { data: rows, error, count } = await query
