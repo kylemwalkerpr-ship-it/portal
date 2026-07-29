@@ -1,0 +1,51 @@
+# ── Content Studio Retry Cron ──────────────────────────────────────────────
+# Re-queues content_jobs stuck in 'drafting' after a cooldown period.
+# When the pipeline exhausts all refine passes and ship is withheld, jobs
+# land in 'drafting'. This cron picks them up, re-runs the pipeline, and
+# either succeeds or re-cooldowns for another attempt (up to 5 retries).
+#
+# Schedule: every 30 minutes (at :00 and :30 past each hour)
+# ───────────────────────────────────────────────────────────────────────────
+
+name: content-studio-retry
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # Every 30 minutes
+  workflow_dispatch:          # Manual trigger for debugging
+
+jobs:
+  retry-drafting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Retry drafted content jobs
+        run: |
+          set -euo pipefail
+          
+          RESPONSE=$(curl -s -w '\n%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "${{ vars.PORTAL_URL }}/api/cron/content-studio-retry" \
+            -d '{}')
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERROR: API returned HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          
+          echo "Response:"
+          echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
+          
+          # Log summary for quick inspection
+          PROCESSED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('processed', 0))" 2>/dev/null || echo "?")
+          RETRIED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('retried', 0))" 2>/dev/null || echo "?")
+          FAILED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('failed', 0))" 2>/dev/null || echo "?")
+          SKIPPED=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('skipped', 0))" 2>/dev/null || echo "?")
+          echo "--- Summary: processed=$PROCESSED retried=$RETRIED failed=$FAILED skipped=$SKIPPED ---"
