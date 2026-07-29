@@ -47,9 +47,18 @@ type Candidate = FactoryOpportunity & {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Early abort check — Cloudflare sends this signal when CPU budget is exhausted
+    if (request.signal.aborted) {
+      return NextResponse.json({ error: 'Request aborted', results: [] }, { status: 503 })
+    }
+
     const auth = await requireAdminUser()
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    if (request.signal.aborted) {
+      return NextResponse.json({ error: 'Request aborted after auth', results: [] }, { status: 503 })
     }
 
     const body = await request.json().catch(() => ({}))
@@ -324,7 +333,17 @@ export async function POST(request: NextRequest) {
 
     const results: Array<Record<string, unknown>> = []
 
+    const reqSignal = request.signal
     for (const opp of candidates) {
+      if (reqSignal.aborted) {
+        results.push({
+          ok: false,
+          term: opp.term,
+          error: 'Request aborted — Cloudflare CPU budget exceeded',
+        })
+        break
+      }
+
       try {
         // Prefer merge→main when auto mode so approved quality ships deploy
         const shipModeForRun =
@@ -432,9 +451,14 @@ export async function POST(request: NextRequest) {
     })
   } catch (err) {
     console.error('[seo-factory/auto-run]', err)
+    // Detect CPU/timeout errors and return JSON 503 instead of letting
+    // Cloudflare return an HTML 503 page that crashes the admin UI with
+    // "string did not match the expected pattern".
+    const message = err instanceof Error ? err.message : 'Auto-run failed'
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Auto-run failed' },
-      { status: 500 },
+      { error: message, results: [] },
+      { status: isCpuTimeout ? 503 : 500 },
     )
   }
 }

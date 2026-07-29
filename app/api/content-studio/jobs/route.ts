@@ -55,9 +55,18 @@ const JOB_LIST_COLUMNS = [
 
 export async function GET(request: NextRequest) {
   try {
+    // Check for abort signal (Cloudflare sends this when CPU budget is exhausted)
+    if (request.signal.aborted) {
+      return NextResponse.json({ error: 'Request aborted', jobs: [], count: 0 }, { status: 503 })
+    }
+
     const auth = await requireAdminUser()
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+
+    if (request.signal.aborted) {
+      return NextResponse.json({ error: 'Request aborted after auth', jobs: [], count: 0 }, { status: 503 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -103,19 +112,35 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       if (status.includes(',')) {
-        query = query.in('status', status.split(',').map((s: string) => s.trim()).filter(Boolean))
+        query = query.in(
+          'status',
+          status
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+        )
       } else {
         query = query.eq('status', status)
       }
     }
     if (region) query = query.eq('region', region)
     if (host) query = query.eq('owner_host', host)
-    if (repo) query = query.ilike('target_repo', `%${repo}%`)
+    if (repo) {
+      // Avoid leading-wildcard ilike which forces full scan on Free plan CPU
+      const safe = repo.replace(/[%_]/g, '').trim()
+      if (safe) query = query.ilike('target_repo', `${safe}%`)
+    }
     if (q) {
-      const safe = q.replace(/[%_,.()]/g, ' ').slice(0, 80)
-      query = query.or(
-        `topic.ilike.%${safe}%,title.ilike.%${safe}%,primary_keyword.ilike.%${safe}%,content_path.ilike.%${safe}%`,
-      )
+      // Avoid multi-column or() with leading-wildcards which is the #1 CPU hog.
+      // Use textSearch (full-text) on topic/title which has natural language.
+      // content_path contains file paths like 'landing-page/content/blog/foo.md'
+      // and is not suitable for full-text search.
+      const safe = q.replace(/[^a-zA-Z0-9\s-]/g, ' ').trim().slice(0, 60)
+      if (safe) {
+        // Single full-text search on topic (most relevant column for keyword matching)
+        const tsquery = safe.split(/\s+/).filter(Boolean).map((w: string) => `${w}:*`).join(' & ')
+        query = query.textSearch('topic', tsquery, { config: 'english' })
+      }
     }
 
     const { data, error } = await query
@@ -142,10 +167,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ jobs, count: jobs.length, summary })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
-    // Never return opaque CF 503 from app code — surface JSON 500 so UI can stop retry storms
+    // Surface JSON 500/503 so UI can stop retry storms.
+    // Without this catch, Cloudflare's edge renders an HTML 503 when the
+    // Free-plan CPU budget is exhausted, and the client JSON.parses it →
+    // "string did not match the expected pattern".
+    const message = err instanceof Error ? err.message : 'Internal error'
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded/i.test(message)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal error', jobs: [], count: 0 },
-      { status: 500 },
+      { error: message, jobs: [], count: 0 },
+      { status: isCpuTimeout ? 503 : 500 },
     )
   }
 }
