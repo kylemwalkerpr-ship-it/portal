@@ -958,51 +958,136 @@ export default function AdminSeoFactory({
     setWorkspaceOpen(true)
     setActivityLine('Auto-Pilot running…')
     pushLog('info', 'autopilot', `Start auto-run · limit ${terms?.length || autoLimit} · mode ${autoMode}`)
+
+    const body = JSON.stringify({
+      limit: terms?.length || autoLimit,
+      shipMode: autoMode,
+      dryRun,
+      minAuditScore: minAudit,
+      maxRefine,
+      skipRecent,
+      regionFilter: regionFilter || undefined,
+      terms: terms?.length ? terms : undefined,
+      useWarRoom: true,
+      minImpressions: 2,
+    })
+
+    // Try SSE streaming first; fall back to classic POST
+    let usedStream = false
     try {
-      const res = await fetch('/api/seo-factory/auto-run', {
+      const res = await fetch('/api/seo-factory/auto-run-stream', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          limit: terms?.length || autoLimit,
-          shipMode: autoMode,
-          dryRun,
-          minAuditScore: minAudit,
-          maxRefine,
-          skipRecent,
-          regionFilter: regionFilter || undefined,
-          terms: terms?.length ? terms : undefined,
-          useWarRoom: true,
-          minImpressions: 2,
-        }),
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Auto-run failed')
-      setAutoResult(data)
-      // Surface last shipped job into editor
-      const last = (data.results || []).slice().reverse().find((r: any) => r.jobId || r.content || r.ship?.prUrl)
-      if (last?.jobId) selectJob(last.jobId)
-      if (last?.content) setEditorContent(last.content)
-      for (const r of data.results || []) {
-        pushLog(
-          r.ok === false || r.error ? 'error' : 'success',
-          'autopilot',
-          `${r.term || r.keyword || r.topic || 'item'}: ${r.ship?.status || r.status || (r.error ? 'failed' : 'ok')}`,
-          r.error || r.ship?.prUrl || r.contentPreview,
-        )
+      const ct = res.headers.get('content-type') || ''
+      if (res.ok && res.body && (ct.includes('text/event-stream') || ct.includes('stream') || !ct.includes('application/json'))) {
+        usedStream = true
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let finalData: any = null
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const chunks = buffer.split('\n\n')
+          buffer = chunks.pop() || ''
+          for (const chunk of chunks) {
+            const line = chunk.split('\n').find((l) => l.startsWith('data:'))
+            if (!line) continue
+            const payload = line.slice(5).trim()
+            if (!payload || payload === '[DONE]') continue
+            let ev: any
+            try { ev = JSON.parse(payload) } catch { continue }
+
+            if (ev.type === 'progress') {
+              setActivityLine(ev.message || ev.stage)
+              if (ev.stage === 'candidate') {
+                pushLog('info', 'autopilot', ev.message)
+              }
+            } else if (ev.type === 'candidate') {
+              // Surface each result as it arrives
+              pushLog(
+                ev.ok === false || ev.error ? 'error' : 'success',
+                'autopilot',
+                `${ev.term || 'item'} [${ev.index}/${ev.total}]: ${ev.ship?.status || (ev.error ? 'failed' : 'ok')}`,
+                ev.error || ev.ship?.prUrl || ev.contentPreview,
+              )
+              // Open last successful job into editor as candidates complete
+              if (ev.jobId && ev.ok) {
+                selectJob(ev.jobId)
+              }
+            } else if (ev.type === 'final') {
+              finalData = ev
+              setAutoResult(ev)
+              setActionNotice(ev.message || `Auto-run: ${ev.shipped}/${ev.candidateCount}`)
+              pushLog('success', 'autopilot', ev.message || `Shipped ${ev.shipped}/${ev.candidateCount}`)
+            } else if (ev.type === 'error') {
+              throw new Error(ev.error || 'Auto-run stream error')
+            }
+          }
+        }
+
+        if (!finalData) throw new Error('Stream ended without final result')
+        setMetrics(null)
+        await loadJobs()
+      } else if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `Auto-run stream ${res.status}`)
       }
-      setActionNotice(data.message || `Auto-run: ${data.shipped}/${data.candidateCount}`)
-      pushLog('success', 'autopilot', data.message || `Shipped ${data.shipped}/${data.candidateCount}`)
-      setMetrics(null)
-      await loadJobs()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Auto-run failed'
-      pushLog('error', 'autopilot', msg)
-      setActionNotice(msg)
-    } finally {
-      setBusy(false)
-      setActivityLine(null)
+    } catch (streamErr) {
+      if (usedStream) {
+        // Stream attempted but failed — report error
+        const msg = streamErr instanceof Error ? streamErr.message : 'Auto-run stream failed'
+        pushLog('error', 'autopilot', msg)
+        setActionNotice(msg)
+        setBusy(false)
+        setActivityLine(null)
+        return
+      }
+      // Stream unavailable — fall back to classic POST
+      pushLog('warn', 'autopilot', `Stream unavailable — falling back to classic request: ${streamErr instanceof Error ? streamErr.message : 'fallback'}`)
     }
+
+    if (!usedStream) {
+      try {
+        const res = await fetch('/api/seo-factory/auto-run', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Auto-run failed')
+        setAutoResult(data)
+        // Surface last shipped job into editor
+        const last = (data.results || []).slice().reverse().find((r: any) => r.jobId || r.content || r.ship?.prUrl)
+        if (last?.jobId) selectJob(last.jobId)
+        if (last?.content) setEditorContent(last.content)
+        for (const r of data.results || []) {
+          pushLog(
+            r.ok === false || r.error ? 'error' : 'success',
+            'autopilot',
+            `${r.term || r.keyword || r.topic || 'item'}: ${r.ship?.status || r.status || (r.error ? 'failed' : 'ok')}`,
+            r.error || r.ship?.prUrl || r.contentPreview,
+          )
+        }
+        setActionNotice(data.message || `Auto-run: ${data.shipped}/${data.candidateCount}`)
+        pushLog('success', 'autopilot', data.message || `Shipped ${data.shipped}/${data.candidateCount}`)
+        setMetrics(null)
+        await loadJobs()
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Auto-run failed'
+        pushLog('error', 'autopilot', msg)
+        setActionNotice(msg)
+      }
+    }
+
+    setBusy(false)
+    setActivityLine(null)
   }
 
   const jobAction = async (
