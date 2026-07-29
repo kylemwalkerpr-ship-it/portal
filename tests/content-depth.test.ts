@@ -10,15 +10,15 @@ import {
 import { auditContent } from '@/lib/seoFactory/audit'
 
 describe('minWordsForType (Google depth floors)', () => {
-  it('requires comprehensive depth for legal guides / articles', () => {
-    expect(minWordsForType('legal_guide')).toBe(1800)
-    expect(minWordsForType('article')).toBe(1800)
-    expect(targetWordsForType('legal_guide')).toBeGreaterThanOrEqual(2000)
+  it('requires comprehensive depth for legal guides / articles (SEO guard: 2200–2800)', () => {
+    expect(minWordsForType('legal_guide')).toBe(2200)
+    expect(minWordsForType('article')).toBe(2200)
+    expect(targetWordsForType('legal_guide')).toBeGreaterThanOrEqual(2500)
   })
 
-  it('requires solid blogs and regionals', () => {
-    expect(minWordsForType('blog_summary')).toBe(1000)
-    expect(minWordsForType('blog_post')).toBe(1000)
+  it('requires solid blogs and regionals (SEO guard: 800–1500)', () => {
+    expect(minWordsForType('blog_summary')).toBe(800)
+    expect(minWordsForType('blog_post')).toBe(800)
     expect(minWordsForType('regional_from')).toBe(1200)
   })
 
@@ -99,7 +99,7 @@ Not legal advice. Consult an attorney.
   })
 
   it('passes when body meets floor', () => {
-    const body = Array.from({ length: 1900 }, (_, i) => `word${i}`).join(' ')
+    const body = Array.from({ length: 2400 }, (_, i) => `word${i}`).join(' ')
     const md = `---
 title: Comprehensive Student Visa Guide 2026
 description: ${'Practical steps documents and timelines for F-1 applicants seeking clear next actions. '.slice(0, 155)}
@@ -144,6 +144,6 @@ This is educational only, not legal advice. Consult an attorney for your case.
 `
     const depth = checkContentDepth({ content: md, contentType: 'legal_guide' })
     expect(depth.ok).toBe(true)
-    expect(depth.wordCount).toBeGreaterThanOrEqual(1800)
+    expect(depth.wordCount).toBeGreaterThanOrEqual(2200)
   })
 })

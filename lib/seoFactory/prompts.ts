@@ -9,6 +9,7 @@ import {
   depthPromptClause,
   minWordsForType as depthMinWords,
   targetWordsForType,
+  maxWordsForType as depthMaxWords,
 } from './contentDepth'
 import { qualityPromptBlock } from './contentQualityGate'
 
@@ -16,11 +17,13 @@ export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
   contentType: string
   minWords: number
+  maxWords?: number
   /** Compact pack from SEO strategies directory */
   strategyBlock?: string
 }): string {
   const { plan, contentType, minWords, strategyBlock } = opts
   const target = targetWordsForType(contentType)
+  const maxWords = opts.maxWords ?? depthMaxWords(contentType)
   return [
     'You are the YouSafe / MyCaseworks SEO content factory for immigration law content.',
     'Voice: calm, precise, practitioner-grade. Second person ("you"). Plain English.',
@@ -70,7 +73,7 @@ export function buildFactorySystemPrompt(opts: {
     '   - Short disclaimer: educational only, not legal advice',
     '6) Authority: use precise immigration entities (forms, visas, agencies, subclasses). No fluff.',
     '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
-    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words.`,
+    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words. HARD MAX ${maxWords} words — do NOT exceed or you will be penalized by the SEO audit.`,
     `9) Content type: ${contentType}`,
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
@@ -203,10 +206,12 @@ export function buildDepthExpandPrompt(opts: {
   contentType: string
   minWords: number
   targetWords: number
+  maxWords?: number
   currentWords: number
   draft: string
 }): string {
   const deficit = Math.max(0, opts.minWords - opts.currentWords)
+  const maxWords = opts.maxWords ?? 99999
   const draftSlice = opts.draft.length > 14000 ? opts.draft.slice(0, 14000) + '\n\n[…truncated…]' : opts.draft
   return [
     '## DEPTH EXPANSION PASS (mandatory — previous draft was REJECTED as thin)',
@@ -217,7 +222,8 @@ export function buildDepthExpandPrompt(opts: {
     `CURRENT body word count: ${opts.currentWords}`,
     `HARD MINIMUM: ${opts.minWords} body words of real prose (YAML + JSON-LD + code fences do NOT count)`,
     `TARGET: ~${opts.targetWords} words`,
-    `You must ADD about ${deficit + 200} more words of substance. Short output will be discarded again.`,
+    `HARD MAX: ${maxWords} words — do NOT exceed. Long output is penalized by the SEO audit.`,
+    `You must ADD about ${deficit + 200} more words of substance — but stay under ${maxWords} total. Short output will be discarded again.`,
     '',
     'RULES:',
     '1) Return the COMPLETE page (YAML front matter + full body + FAQ + Sources + JSON-LD + disclaimer).',
@@ -294,8 +300,8 @@ export function auditToRefineNotes(audit: {
   minWords?: number
   targetWords?: number
 }): string {
-  const min = audit.minWords ?? 1800
-  const target = audit.targetWords ?? Math.round(min * 1.2)
+  const min = audit.minWords ?? 2200
+  const target = audit.targetWords ?? Math.round(min * 1.1)
   const lines: string[] = [
     `Previous score: ${audit.score}. Body word count was ${audit.wordCount} (HARD MIN ${min}, target ~${target}).`,
   ]

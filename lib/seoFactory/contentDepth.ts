@@ -6,14 +6,17 @@
  * immigration (YMYL-adjacent) publishing we enforce conservative floors so
  * factory ships never land as thin stubs.
  *
- * Reference practice (people-first, comprehensive coverage):
- * - Pillar / legal guides: 1,800+ body words
- * - Blog / news summaries: 1,000+ body words
- * - Regional / from-country pages: 1,200+ body words
- * - Marketplace gigs: 500+ (scannable offer, not essay)
+ * SEO guard / master plan word count gates:
+ * - Pillar / legal canonicals: 2,200–2,800 body words
+ * - Blog / news summaries:   800–1,500 body words
+ * - Regional / from-country: 1,200–1,800 body words
+ * - Marketplace gigs:         500–1,200 (scannable offer, not essay)
  *
  * Absolute thin floor: never ship indexable body under 800 words (guides) /
  * 600 (blogs) regardless of type aliasing.
+ *
+ * Pages that exceed maxWords will be warned (non-blocking) so the pipeline
+ * can auto-trim or the reviewer can flag for splitting.
  */
 
 export type DepthTier = 'pillar' | 'blog' | 'regional' | 'gig' | 'default'
@@ -24,6 +27,8 @@ export interface DepthSpec {
   minWords: number
   /** Prompt target — model should aim here, not at the floor. */
   targetWords: number
+  /** Hard maximum body words. Content exceeding this triggers a warning and may be trimmed. */
+  maxWords: number
   /** Below this → always "thin content" blocker even if type floor is lower. */
   absoluteThinFloor: number
   label: string
@@ -32,22 +37,25 @@ export interface DepthSpec {
 const SPECS: Record<DepthTier, DepthSpec> = {
   pillar: {
     tier: 'pillar',
-    minWords: 1800,
-    targetWords: 2200,
+    minWords: 2200,
+    targetWords: 2500,
+    maxWords: 2800,
     absoluteThinFloor: 900,
     label: 'legal guide / article (Google comprehensive / YMYL-safe)',
   },
   blog: {
     tier: 'blog',
-    minWords: 1000,
-    targetWords: 1300,
+    minWords: 800,
+    targetWords: 1200,
+    maxWords: 1500,
     absoluteThinFloor: 600,
     label: 'blog / news summary',
   },
   regional: {
     tier: 'regional',
     minWords: 1200,
-    targetWords: 1600,
+    targetWords: 1500,
+    maxWords: 2000,
     absoluteThinFloor: 700,
     label: 'regional / university / from-country page',
   },
@@ -55,6 +63,7 @@ const SPECS: Record<DepthTier, DepthSpec> = {
     tier: 'gig',
     minWords: 500,
     targetWords: 700,
+    maxWords: 1200,
     absoluteThinFloor: 350,
     label: 'marketplace gig',
   },
@@ -62,6 +71,7 @@ const SPECS: Record<DepthTier, DepthSpec> = {
     tier: 'default',
     minWords: 1200,
     targetWords: 1500,
+    maxWords: 2000,
     absoluteThinFloor: 700,
     label: 'general editorial page',
   },
@@ -97,6 +107,11 @@ export function targetWordsForType(contentType: string): number {
   return depthSpecForType(contentType).targetWords
 }
 
+/** Hard maximum body words. Content exceeding this triggers a warning and may be trimmed. */
+export function maxWordsForType(contentType: string): number {
+  return depthSpecForType(contentType).maxWords
+}
+
 /**
  * Count prose words only: strip YAML front matter, fenced code, JSON-LD, and
  * raw <script> blocks so schema inflation cannot fake depth.
@@ -125,6 +140,7 @@ export interface DepthCheckResult {
   wordCount: number
   minWords: number
   targetWords: number
+  maxWords: number
   tier: DepthTier
   /** True when below absolute thin floor (always ship-blocking). */
   thin: boolean
@@ -170,11 +186,20 @@ export function checkContentDepth(opts: {
     )
   }
 
+  // Cap check: warn when content exceeds the max word count
+  const overMax = wordCount > spec.maxWords
+  if (overMax) {
+    warnings.push(
+      `Exceeds max word count: ${wordCount} words (max ${spec.maxWords} for ${spec.label}). Consider splitting into sub-topics or trimming redundant sections.`,
+    )
+  }
+
   return {
     ok: errors.length === 0,
     wordCount,
     minWords: spec.minWords,
     targetWords: spec.targetWords,
+    maxWords: spec.maxWords,
     tier: spec.tier,
     thin,
     belowMin,
@@ -202,9 +227,10 @@ export function assertContentDepth(opts: {
 export function depthPromptClause(contentType: string): string {
   const s = depthSpecForType(contentType)
   return [
-    `DEPTH (Google helpful-content / anti-thin): minimum ${s.minWords} body words of real prose; aim for ~${s.targetWords}.`,
+    `DEPTH (Google helpful-content / anti-thin): minimum ${s.minWords} body words of real prose; aim for ~${s.targetWords}; HARD MAX ${s.maxWords} words — do NOT exceed.`,
     'Do NOT count YAML front matter, JSON-LD, or code fences toward the minimum.',
     'Cover the query completely: definitions, eligibility/steps, documents, risks/timelines, FAQ (4–6), official sources.',
     'Padding, repetition, and keyword stuffing do not count as depth — add concrete procedures and citable facts only.',
+    `Longer than ${s.maxWords} words is penalized by the SEO audit — trim redundant sections and stay concise.`,
   ].join(' ')
 }

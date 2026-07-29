@@ -4,13 +4,22 @@ compatibility_date = "2026-05-12"
 compatibility_flags = ["nodejs_compat"]
 minify = true
 
-# ── CPU Limit ───────────────────────────────────────────────────────────
+# ── CPU & Subrequest Limits ─────────────────────────────────────────────
 # OpenNext Next.js handler is CPU-heavy. The Free plan caps CPU at 10ms
 # per invocation. If your Workers plan is upgraded to Paid, uncomment the
 # [limits] block below and set an appropriate cpu_ms value.
 #
-# [limits]
-# cpu_ms = 300000
+# Content Studio AI generation calls multiple providers as fallbacks.
+# Each provider call counts as subrequests. The default limit is 1,000,
+# which the fallback chain easily exhausts. Increase to 5,000 so that
+# DeepSeek (primary) plus Cloudflare + Groq + Gemini + OpenRouter
+# (fallbacks) all have room without hitting the wall.
+#
+# cpu_ms requires a Paid Workers plan (Free caps at 10ms).
+# subrequests=5000 works on all plans and gives the Content Studio
+# AI fallback chain enough room (~6 providers, multiple fetch calls each).
+[limits]
+subrequests = 5000
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).

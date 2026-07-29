@@ -844,10 +844,31 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
 }
 
 /**
+ * Track whether we've hit a subrequest budget error so the fallback cascade
+ * stops immediately rather than pointlessly trying every remaining provider.
+ */
+let subrequestBudgetExhausted = false
+
+/**
+ * Check if an error is (or was caused by) the Cloudflare Workers subrequest limit.
+ * When true, all remaining providers will also fail — stop the cascade.
+ */
+function isSubrequestLimitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /Too many subrequest/i.test(msg)
+}
+
+/**
  * Generate long-form content.
  * Default: DeepSeek (NVIDIA) → Cloudflare fallback → other free tiers.
+ *
+ * If the subrequest budget is exhausted mid-cascade, remaining providers are
+ * skipped immediately (they would all fail the same way).
  */
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
+  // Reset subrequest budget flag so a fresh request doesn't inherit stale state
+  subrequestBudgetExhausted = false
+
   const prefer = preferProvider()
   const errors: string[] = []
   const candidates = orderedCompleters(opts, prefer)
@@ -859,11 +880,18 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   }
 
   for (const c of candidates) {
+    if (subrequestBudgetExhausted) {
+      errors.push(`${c.label}: skipped — subrequest budget exhausted`)
+      continue
+    }
     try {
       return await c.run()
     } catch (e) {
       errors.push(`${c.label}: ${e instanceof Error ? e.message : String(e)}`)
       console.warn(`[contentAi] ${c.label} failed; trying next`)
+      if (isSubrequestLimitError(e)) {
+        subrequestBudgetExhausted = true
+      }
     }
   }
 
@@ -871,6 +899,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}. Primary: NVIDIA_API_KEY (DeepSeek). Fallback: Cloudflare Workers AI.`,
   )
 }
+
 
 /**
  * Stream long-form content into the editor. Tries true SSE stream first,
@@ -880,6 +909,9 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
 export async function* generateContentTextStream(
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
+  // Reset subrequest budget flag so a fresh request doesn't inherit stale state
+  subrequestBudgetExhausted = false
+
   const prefer = preferProvider()
   const errors: string[] = []
 
@@ -982,21 +1014,38 @@ export async function* generateContentTextStream(
   })
 
   for (const c of unique) {
+    if (subrequestBudgetExhausted) {
+      errors.push(`${c.label}: skipped — subrequest budget exhausted`)
+      continue
+    }
     if (c.stream) {
       try {
         yield* c.stream()
         return
       } catch (e) {
         errors.push(`${c.label} stream: ${e instanceof Error ? e.message : String(e)}`)
+        if (isSubrequestLimitError(e)) {
+          subrequestBudgetExhausted = true
+          continue
+        }
       }
+    }
+    if (subrequestBudgetExhausted) {
+      errors.push(`${c.label}: skipped (complete) — subrequest budget exhausted`)
+      continue
     }
     try {
       yield* completeAsStream(c.complete)
       return
     } catch (e2) {
       errors.push(`${c.label}: ${e2 instanceof Error ? e2.message : String(e2)}`)
+      if (isSubrequestLimitError(e2)) {
+        subrequestBudgetExhausted = true
+      }
     }
   }
+
+
 
   throw new Error(
     errors.length

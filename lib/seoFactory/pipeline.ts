@@ -19,17 +19,25 @@ import {
   mergeAppendedSections,
   minWordsForType,
 } from './prompts'
-import { countBodyWords, targetWordsForType } from './contentDepth'
+import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import { ensureEditorialScaffold } from './editorialScaffold'
 
-/** Token budget: NVIDIA DeepSeek V4 Pro allows 16k — use it for depth floors. */
+/**
+ * Token budget: cap generation to stay within max word count.
+ * Estimate: ~1.5 tokens per word + 1200 overhead for YAML, JSON-LD, disclaimer.
+ * Hard ceiling of 8,000 to prevent 4,000+ word blow-ups.
+ *
+ * For pillar (max 2,800w):  2,800*1.5+1,200 = 5,400 → ~3,600w max
+ * For blog   (max 1,500w):  1,500*1.5+1,200 = 3,450 → ~2,300w max
+ */
 function tokensForType(contentType: string, phase: 'draft' | 'expand' | 'append'): number {
-  if (contentType === 'marketplace_gig') return phase === 'append' ? 2500 : 4000
-  if (phase === 'append') return 8000
-  if (phase === 'expand') return 16384
-  return 16384
+  const maxWords = maxWordsForType(contentType)
+  const estimated = Math.round(maxWords * 1.5 + 1200)
+  const cap = Math.min(estimated, 8000)
+  if (phase === 'append') return Math.min(cap, 5000)
+  return cap
 }
 
 /**
@@ -168,6 +176,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   assertPlanRepoConsistency(plan)
   const minWords = minWordsForType(contentType)
   const targetWords = targetWordsForType(contentType)
+  const maxWords = maxWordsForType(contentType)
 
   const gscBrief = await buildGscContentBrief({
     topic,
@@ -184,6 +193,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     plan,
     contentType,
     minWords,
+    maxWords,
     strategyBlock,
   })
 
@@ -215,6 +225,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           contentType,
           minWords,
           targetWords,
+          maxWords,
           currentWords: countBodyWords(content),
           draft: content,
         })
@@ -303,6 +314,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             contentType,
             minWords,
             targetWords,
+            maxWords,
             currentWords,
             draft: content,
           }),
