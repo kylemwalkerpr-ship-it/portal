@@ -959,8 +959,30 @@ export async function PATCH(request: NextRequest) {
                 message: 'Existing PR merged to main · monitor started',
               })
             }
-          } catch {
-            // fall through to fresh ship to main
+          } catch (mergeErr) {
+            const msg = mergeErr instanceof Error ? mergeErr.message : 'PR merge failed'
+            console.warn(
+              `[content-studio/jobs] approve: PR #${job.pr_number} merge failed, keeping PR open: ${msg}`,
+            )
+            await supabase
+              .from('content_jobs')
+              .update({
+                error_message: `Merge failed: ${msg}. PR #${job.pr_number} still open — fix on GitHub and retry, or use forceNewShip.`,
+              })
+              .eq('id', id)
+            return NextResponse.json(
+              {
+                ok: false,
+                error: `PR merge failed: ${msg}`,
+                prNumber: job.pr_number,
+                prUrl: job.pr_url,
+                message:
+                  `PR #${job.pr_number} could not be merged (${msg}). ` +
+                  'The PR is still open. Fix the issue on GitHub and try Approve again, ' +
+                  'or use forceNewShip to commit directly to main instead.',
+              },
+              { status: 422 },
+            )
           }
         }
 
