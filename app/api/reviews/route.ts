@@ -2,8 +2,16 @@ import { ok, fail } from '@/lib/apiEnvelope'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
+export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
+  const { searchParams } = new URL(req.url)
   const gigId = searchParams.get('gig_id')
   const sellerId = searchParams.get('seller_id')
   const sellerType = searchParams.get('seller_type') // 'attorney' or 'consultant'
@@ -135,9 +143,24 @@ export async function GET(request: Request) {
     average_rating: averageRating,
     total_reviews: totalReviews,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 export async function POST(request: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (request.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const postAbortHandler = () => { /* no-op */ }
+  request.signal.addEventListener('abort', postAbortHandler)
+
+  try {
   const { userId } = await auth()
   if (!userId) {
     return fail('Authentication required', 401)
@@ -260,6 +283,13 @@ export async function POST(request: Request) {
   }
 
   return ok({ review })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    request.signal.removeEventListener('abort', postAbortHandler)
+  }
 }
 
 async function updateGigRatingStats(db: any, gigId: string) {
