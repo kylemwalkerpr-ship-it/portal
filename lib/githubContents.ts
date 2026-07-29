@@ -111,29 +111,24 @@ export async function getFileBlobSha(
   path: string,
   branch: string,
 ): Promise<string | undefined> {
-  const url = `${apiBase()}/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`
-  const res = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token()}`,
-      'X-GitHub-Api-Version': API_VERSION,
-      'User-Agent': DEFAULT_UA,
-    },
-  })
-  if (res.status === 404) return undefined
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`GitHub ${res.status} getFileBlobSha: ${text.slice(0, 300)}`)
+  try {
+    const file = await githubFetch(
+      `/repos/${owner}/${repo}/contents/${encodeRepoPath(path)}?ref=${encodeURIComponent(branch)}`,
+    )
+    if (Array.isArray(file)) {
+      throw new Error(`Path is a directory, not a file: ${path}`)
+    }
+    const sha = file?.sha as string | undefined
+    if (!sha) {
+      throw new Error(`GitHub contents response missing blob sha for ${path} @ ${branch}`)
+    }
+    return sha
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // GitHub 404 means the path doesn't exist yet — treat as undefined
+    if (/^GitHub 404:/.test(msg)) return undefined
+    throw e
   }
-  const file = await res.json()
-  if (Array.isArray(file)) {
-    throw new Error(`Path is a directory, not a file: ${path}`)
-  }
-  const sha = file?.sha as string | undefined
-  if (!sha) {
-    throw new Error(`GitHub contents response missing blob sha for ${path} @ ${branch}`)
-  }
-  return sha
 }
 
 export interface PutRepoFileOpts {
@@ -251,22 +246,33 @@ export async function mergePullRequest(opts: {
       message: String(res.message || 'merged'),
     }
   } catch (e) {
+    const primaryMsg = e instanceof Error ? e.message : String(e)
+    console.warn(
+      `[mergePullRequest] ${method} merge failed for PR #${opts.prNumber}, trying merge fallback: ${primaryMsg}`,
+    )
     if (method === 'squash') {
-      const res = await githubFetch(
-        `/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commit_title: opts.commitTitle || `merge PR #${opts.prNumber}`,
-            merge_method: 'merge',
-          }),
-        },
-      )
-      return {
-        merged: Boolean(res.merged),
-        sha: res.sha as string | undefined,
-        message: String(res.message || 'merged'),
+      try {
+        const res = await githubFetch(
+          `/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              commit_title: opts.commitTitle || `merge PR #${opts.prNumber}`,
+              merge_method: 'merge',
+            }),
+          },
+        )
+        return {
+          merged: Boolean(res.merged),
+          sha: res.sha as string | undefined,
+          message: String(res.message || 'merged'),
+        }
+      } catch (fallbackErr) {
+        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+        throw new Error(
+          `Merge PR #${opts.prNumber} failed: squash→${primaryMsg}; merge→${fallbackMsg}`,
+        )
       }
     }
     throw e
