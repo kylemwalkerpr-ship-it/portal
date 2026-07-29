@@ -8,6 +8,14 @@ import { createSupabaseAdminClient } from '@/lib/supabase'
 const CACHE_TTL_SECONDS = 60
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const url = new URL(req.url)
 
   // CPU-budget ordering (CF 1102): for anonymous traffic, hit the KV cache
@@ -143,4 +151,11 @@ export async function GET(req: Request) {
   }
   if (cacheKey) await setCached(cacheKey, payload, CACHE_TTL_SECONDS)
   return ok(payload)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }

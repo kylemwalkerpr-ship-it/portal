@@ -33,6 +33,14 @@ const SORT_COLUMN_MAP: Record<string, { col: string; asc: boolean }> = {
 }
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op — signal aborted is the check */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const db = createSupabaseAdminClient()
 
   const { searchParams } = new URL(req.url)
@@ -204,6 +212,13 @@ export async function GET(req: Request) {
     has_more: page * pageSize < total,
     facets,
   })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 // Helpers: derive most-common comma-separated tokens (e.g. "California, NY")
