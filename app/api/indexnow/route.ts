@@ -14,8 +14,7 @@
  * Verify a run by polling that table, NOT by reading the HTTP response body.
  */
 import { getCloudflareContext } from '@opennextjs/cloudflare'
-
-const INDEXNOW_KEY = '647bf2aebddc03fc34c265f475f8a3a3'
+import { INDEXNOW_KEY } from '@/lib/indexNow'
 
 // portal.yousafeconsultancy.com is intentionally NOT submitted: it is the
 // authenticated app and has no public sitemap of its own. app/sitemap.ts

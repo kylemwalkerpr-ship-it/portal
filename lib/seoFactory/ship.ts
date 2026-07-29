@@ -24,6 +24,7 @@ import {
   openPullRequest,
   putRepoFile,
 } from '@/lib/githubContents'
+import { submitUrlsToIndexNow } from '@/lib/indexNow'
 
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -236,6 +237,13 @@ export async function shipContent(opts: {
       message: `seo-factory: approve & deploy "${opts.title}" [${opts.primaryKeyword || 'content'}]`,
     })
 
+    // Fire-and-forget IndexNow submission for the new/updated page
+    if (opts.plan.canonicalUrl) {
+      submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch((e) => {
+        console.warn('[indexnow] auto-submit failed:', e instanceof Error ? e.message : e)
+      })
+    }
+
     return {
       mode: 'autodeploy',
       owner,
@@ -345,6 +353,10 @@ export async function shipContent(opts: {
         commitTitle: `seo-factory: merge "${opts.title}"`,
       })
       if (merged.merged) {
+        // Fire-and-forget IndexNow submission for the merged page
+        if (opts.plan.canonicalUrl) {
+          submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
+        }
         return {
           mode: 'merge',
           owner,
