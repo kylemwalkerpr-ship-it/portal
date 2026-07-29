@@ -23,6 +23,14 @@ const SORTABLE_COLUMNS: Record<string, string> = {
 const ESCROW_STATES = ['held', 'partial_released', 'released', 'disputed', 'frozen', 'refunded']
 
 export async function GET(req: Request) {
+  // ── abort guard: client disconnect → fast 499 ──
+  if (req.signal.aborted) {
+    return Response.json({ error: 'Request cancelled by client' }, { status: 499 })
+  }
+  const abortHandler = () => { /* no-op */ }
+  req.signal.addEventListener('abort', abortHandler)
+
+  try {
   const auth = await requireAdminUser()
   if ('error' in auth) return fail(auth.error, auth.status)
 
@@ -203,6 +211,13 @@ export async function GET(req: Request) {
     has_more: page * pageSize < total,
     summary,
   }, {}, warnings.length ? { data_warnings: warnings } : {})
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    return fail(message, isCpuTimeout ? 503 : 500)
+  } finally {
+    req.signal.removeEventListener('abort', abortHandler)
+  }
 }
 
 async function fetchSummary(db: any, warnings: string[]) {
