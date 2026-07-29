@@ -15,6 +15,7 @@
  *   page_size  — default 25, max 100
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 const SORT_COLS = ['created_at', 'deadline', 'total_amount', 'attorney_fee', 'progress'] as const
 const STATUS_MAP: Record<string, string[]> = {
@@ -180,7 +181,7 @@ export async function GET(req: Request) {
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

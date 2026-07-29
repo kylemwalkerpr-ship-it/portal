@@ -21,6 +21,7 @@
  * Self-heals if any newer column is missing.
  */
 import { createSupabaseAdminClient } from '@/lib/supabase'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { fetchAttorneyCredentialColumnsBatch } from '@/lib/attorneyCredential'
 
 const SORT_COLUMN_MAP: Record<string, { col: string; asc: boolean }> = {
@@ -214,7 +215,7 @@ export async function GET(req: Request) {
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

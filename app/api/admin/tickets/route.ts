@@ -25,7 +25,7 @@
  * missing the route logs a warning into meta.data_warnings and degrades.
  */
 import { requireAdminUser } from '@/lib/portalAuth'
-import { ok, fail } from '@/lib/apiEnvelope'
+import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 
 const SORTABLE: Record<string, string> = {
   created_at: 'created_at',
@@ -228,7 +228,7 @@ export async function GET(req: Request) {
   }, {}, warnings.length ? { data_warnings: warnings } : {})
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

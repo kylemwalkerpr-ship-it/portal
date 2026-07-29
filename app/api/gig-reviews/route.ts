@@ -1,4 +1,4 @@
-import { ok, fail } from '@/lib/apiEnvelope'
+import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   return ok({ reviews: reviews ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', abortHandler)
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   return ok({ review }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', postAbortHandler)

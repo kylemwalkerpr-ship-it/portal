@@ -22,7 +22,7 @@
 // Writes: NONE — the client applies changes via the existing
 // PATCH /api/gigs/[id] endpoint after the seller hits "Accept".
 
-import { ok, fail } from '@/lib/apiEnvelope'
+import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { runSeoCoherentFix, changesToPatch, type SeoEditableField } from '@/lib/coherentFix'
 // seoAudit (~1.1k lines incl. static rule/keyword data) is lazy-loaded inside
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
   return ok({ changes: result.changes, expectedScoreDelta })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

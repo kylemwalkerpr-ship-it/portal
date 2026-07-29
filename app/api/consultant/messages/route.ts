@@ -1,4 +1,5 @@
 import { getCurrentConsultant } from '@/lib/consultant'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { messageBodyFromFormData } from '@/lib/messageAttachments'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi } from '@/lib/fiverr'
 import { safetyGuard } from '@/lib/safety'
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
   return Response.json({ messages: data ?? [], offers: [...normalized, ...((offers ?? []).map((o) => ({ ...o, source_type: 'consultant_offer' })))] })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)
@@ -169,7 +170,7 @@ export async function POST(req: Request) {
   return Response.json({ message: data })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', postAbortHandler)

@@ -13,6 +13,7 @@
  *   counts            — { all, unread, archived, favourites, groups, totalUnread }
  */
 import { requirePortalUser } from '@/lib/portalAuth'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 export async function GET(req: Request) {
   // ── abort guard: client disconnect → fast 499 ──
@@ -169,7 +170,7 @@ export async function GET(req: Request) {
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

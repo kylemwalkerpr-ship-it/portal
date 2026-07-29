@@ -13,6 +13,7 @@
  */
 
 import { NextRequest } from 'next/server'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import {
@@ -370,7 +371,7 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Auto-run failed'
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     yield send({ type: 'error', error: message, isCpuTimeout })
   }
 }

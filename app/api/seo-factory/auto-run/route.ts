@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import {
@@ -455,7 +456,7 @@ export async function POST(request: NextRequest) {
     // Cloudflare return an HTML 503 page that crashes the admin UI with
     // "string did not match the expected pattern".
     const message = err instanceof Error ? err.message : 'Auto-run failed'
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return NextResponse.json(
       { error: message, results: [] },
       { status: isCpuTimeout ? 503 : 500 },

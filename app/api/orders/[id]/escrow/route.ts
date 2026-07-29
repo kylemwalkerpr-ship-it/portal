@@ -5,7 +5,7 @@
  *
  * Auth: requirePortalUser; must own the order (auth.profileId === order.client_id)
  */
-import { ok, fail } from '@/lib/apiEnvelope'
+import { ok, fail, CPU_TIMEOUT_REGEX } from '@/lib/apiEnvelope'
 import { requirePortalUser } from '@/lib/portalAuth'
 import { releaseEarningsForOrder } from '@/lib/earnings'
 import { mirrorMessage } from '@/lib/conversations'
@@ -144,7 +144,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return fail('Unknown action. Use approve_delivery, request_revision, or raise_dispute.', 400)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', abortHandler)
@@ -224,7 +224,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }, {}, warnings.length ? { data_warnings: warnings } : {})
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     _req.signal.removeEventListener('abort', getAbortHandler)

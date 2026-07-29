@@ -1,4 +1,5 @@
 import { ok, fail, fieldFail } from '@/lib/apiEnvelope'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { computeNetPayoutCents, computePlatformFeeCents, getPaymentSettingsForApi, normalizeRevision, toCents } from '@/lib/fiverr'
 import { requirePortalUser } from '@/lib/portalAuth'
 
@@ -115,7 +116,7 @@ export async function GET(req: Request) {
   return ok({ offers: offers ?? [] }, { status })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', abortHandler)
@@ -242,7 +243,7 @@ export async function POST(req: Request) {
   )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return fail(message, isCpuTimeout ? 503 : 500)
   } finally {
     req.signal.removeEventListener('abort', postAbortHandler)

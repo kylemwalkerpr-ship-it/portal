@@ -19,6 +19,7 @@
  *   page, page_size   — default 25, max 100
  */
 import { requireAttorney } from '@/lib/attorneyAuth'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { applyOpenQueueFilter, getAcceptedInquiryIds } from '@/lib/attorneyInquiries'
 
 const URGENCY_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 }
@@ -197,7 +198,7 @@ export async function GET(req: Request) {
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)

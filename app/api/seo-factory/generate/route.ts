@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { runSeoFactoryPipeline, type RequestedShipMode } from '@/lib/seoFactory/pipeline'
 
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error('[seo-factory/generate]', err)
     const message = err instanceof Error ? err.message : 'Generate failed'
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return NextResponse.json(
       { error: message },
       { status: isCpuTimeout ? 503 : 500 },

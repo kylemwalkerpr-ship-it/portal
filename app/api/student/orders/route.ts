@@ -15,6 +15,7 @@
  *   page_size  — default 25, max 100
  */
 import { getCurrentStudent } from '@/lib/student'
+import { CPU_TIMEOUT_REGEX } from '@/lib/cpuTimeout'
 
 function dollarsFromCents(cents: unknown) { return Number(cents || 0) / 100 }
 
@@ -203,7 +204,7 @@ export async function GET(req: Request) {
   })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    const isCpuTimeout = /CPU|timeout|abort|budget|exceeded|terminated/i.test(message)
+    const isCpuTimeout = CPU_TIMEOUT_REGEX.test(message)
     return Response.json({ error: message }, { status: isCpuTimeout ? 503 : 500 })
   } finally {
     req.signal.removeEventListener('abort', abortHandler)
