@@ -30,11 +30,14 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = dirname(__dirname)
 
-// OpenNext outputs to .vercel/output/static/; fall back to out/
+// Search for static output in Vercel, Next.js export, or OpenNext layout.
+// The portal uses OpenNext → .open-next/assets/; yousafe-consultancy
+// uses standard Next.js → out/ or .vercel/output/static/.
 function findOutDir() {
   for (const candidate of [
     join(root, '.vercel', 'output', 'static'),
     join(root, 'out'),
+    join(root, '.open-next', 'assets'),
   ]) {
     if (existsSync(candidate)) return candidate
   }
