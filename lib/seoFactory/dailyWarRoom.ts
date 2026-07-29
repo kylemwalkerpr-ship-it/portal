@@ -16,6 +16,7 @@ import {
   runSeoFactoryPipeline,
   type RequestedShipMode,
 } from './pipeline'
+import { selectThinPagesForExpansion, expandThinPage } from './estateSweep'
 
 export const DAILY_WAR_LIMIT = 5
 /** Midday Kenya = 12:00 EAT = 09:00 UTC */
@@ -322,8 +323,41 @@ export async function runDailyWarRoomBatch(opts?: {
     work.push(item)
   }
 
+  // ── Estate sweep: expand thin pages after the main batch ────────────
+  // Run estate sweep to detect pages below the content-depth floor.
+  // Expands the thinnest page found as an additional daily work item.
+  try {
+    const thinPages = await selectThinPagesForExpansion({ limit: 2, minDeficit: 200 })
+    for (let i = 0; i < thinPages.length && work.length < limit + 2; i++) {
+      const tp = thinPages[i]
+      const item = await expandThinPage(tp, {
+        shipMode: opts?.shipMode ?? 'merge',
+        dryRun: opts?.dryRun,
+        userId: 'system:war-room-daily',
+      }).then(result => ({
+        rank: work.length + 1,
+        term: tp.guessedKeyword,
+        play: 'estate_sweep',
+        priorityScore: tp.deficit,
+        estimatedGainClicks: 0,
+        region: tp.region,
+        contentType: tp.contentType,
+        ok: result.ok,
+        jobId: result.jobId,
+        canonicalUrl: result.canonicalUrl,
+        wordCount: result.wordCount,
+        host: tp.host,
+        shipStatus: result.ok ? 'merged' : 'held',
+        error: result.error,
+      } as DailyWorkItem))
+      work.push(item)
+    }
+  } catch (e) {
+    console.warn('[dailyWarRoom] estate sweep failed', e instanceof Error ? e.message : e)
+  }
+
   // Pad skipped empty queue
-  if (!wins.length) {
+  if (!wins.length && work.length === 0) {
     work.push({
       rank: 0,
       term: '(none)',
