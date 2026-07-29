@@ -74,7 +74,16 @@ export async function GET(req: Request) {
   if (urgency)   qb = qb.eq('urgency', urgency)
   if (tier)      qb = qb.eq('recommended_tier', tier)
   if (ageMaxHours > 0) qb = qb.gte('created_at', new Date(Date.now() - ageMaxHours * 3_600_000).toISOString())
-  if (q)         qb = qb.or(`case_type_label.ilike.%${q}%,country.ilike.%${q}%,full_name.ilike.%${q}%`)
+  if (q) {
+    // FTS on full_name (indexed via idx_consultant_applications_name_fts pattern);
+    // case_type_label and country are short labels — keep ilike for those.
+    const safeQ = q.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+    if (safeQ && safeQ.length >= 2) {
+      qb = qb.or(`full_name.fts.${safeQ},case_type_label.ilike.%${q}%,country.ilike.%${q}%`)
+    } else {
+      qb = qb.or(`case_type_label.ilike.%${q}%,country.ilike.%${q}%`)
+    }
+  }
 
   // Server-side sort for created_at; in-memory for the rest
   if (sort === 'created_at') qb = qb.order('created_at', { ascending: dir })

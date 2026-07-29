@@ -108,17 +108,19 @@ export async function GET(req: Request) {
     query = query.eq('escrow_status', 'held').not('status', 'in', '("cancelled","refunded")')
   }
 
-  // Full-text search — order_number gets trigram, free text uses websearch
+  // Full-text search — order_number gets trigram, free text uses FTS on revision_reason
   if (q && q.length >= 2) {
     if (/^[A-Za-z0-9_-]+$/.test(q)) {
       // Looks like an ID/order number — use ilike (trigram-indexed)
       query = query.or(`order_number.ilike.%${q}%,id::text.ilike.%${q}%`)
     } else {
-      // Free text — websearch FTS on order_number + revision_reason
-      // Note: searching client/provider names happens server-side via a follow-up
-      // join — for now, FTS catches order_number/revision_reason and the
-      // ilike below catches the rest.
-      query = query.or(`order_number.ilike.%${q}%,revision_reason.ilike.%${q}%`)
+      // Free text — FTS on revision_reason (indexed) + ilike on order_number
+      const safeQ = q.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+      if (safeQ && safeQ.length >= 2) {
+        query = query.or(`revision_reason.fts.${safeQ},order_number.ilike.%${q}%`)
+      } else {
+        query = query.ilike('order_number', `%${q}%`)
+      }
     }
   }
 

@@ -68,7 +68,14 @@ export async function GET(req: Request) {
     if (country && columns.includes('country_code')) query = query.eq('country_code', country)
     if (q.length >= 1) {
       const safe = q.replace(/[%_,]/g, m => '\\' + m)
-      query = query.or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%`)
+      // FTS on full_name (indexed via idx_consultant_applications_name_fts pattern);
+      // email is short — keep ilike.
+      const safeQ = safe.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+      if (safeQ && safeQ.length >= 2) {
+        query = query.or(`full_name.fts.${safeQ},email.ilike.%${safe}%`)
+      } else {
+        query = query.or(`email.ilike.%${safe}%`)
+      }
     }
     return query
   }

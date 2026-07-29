@@ -61,7 +61,15 @@ export async function GET(req: Request) {
     qb = qb.in('status', mapped)
   }
   if (escrowParam !== 'all') qb = qb.eq('escrow_status', escrowParam)
-  if (q && q.length >= 2) qb = qb.or(`order_number.ilike.%${q}%,requirements.ilike.%${q}%`)
+  if (q && q.length >= 2) {
+    // FTS on requirements (natural language); order_number is a code — keep ilike.
+    const safeQ = q.replace(/[^a-zA-Z0-9\s'-]/g, ' ').trim().slice(0, 60)
+    if (safeQ && safeQ.length >= 2) {
+      qb = qb.or(`requirements.fts.${safeQ},order_number.ilike.%${q}%`)
+    } else {
+      qb = qb.or(`order_number.ilike.%${q}%`)
+    }
+  }
 
   let { data: rows, error, count } = await qb
 

@@ -42,3 +42,12 @@ CREATE INDEX IF NOT EXISTS idx_gigs_pitch_fts
 CREATE INDEX IF NOT EXISTS idx_gigs_description_fts
   ON public.gigs
   USING GIN (to_tsvector('english', description));
+
+-- Orders: requirements + revision_reason (natural language prose)
+CREATE INDEX IF NOT EXISTS idx_orders_requirements_fts
+  ON public.orders
+  USING GIN (to_tsvector('english', requirements));
+
+CREATE INDEX IF NOT EXISTS idx_orders_revision_reason_fts
+  ON public.orders
+  USING GIN (to_tsvector('english', revision_reason));
