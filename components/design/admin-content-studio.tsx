@@ -747,71 +747,169 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
 
 // ── Job Detail Modal ──
 
-function JobDetail({ job, onClose }: { job: ContentJob; onClose: () => void }) {
+function JobDetail({
+  job,
+  onClose,
+  onRefresh,
+  setActionNotice,
+}: {
+  job: ContentJob
+  onClose: () => void
+  onRefresh: () => Promise<void> | void
+  setActionNotice: (msg: string) => void
+}) {
+  const [detail, setDetail] = React.useState<ContentJob>(job)
+  const [editorContent, setEditorContent] = React.useState(job.content || '')
+  const [loading, setLoading] = React.useState(true)
+  const [busy, setBusy] = React.useState(false)
+  const [actionError, setActionError] = React.useState<string | null>(null)
+  const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
+  const [audit, setAudit] = React.useState<unknown>(null)
+
+  const loadDetail = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/content-studio/jobs?id=${encodeURIComponent(job.id)}`, { credentials: 'same-origin' })
+      const data = await response.json().catch(() => ({})) as { job?: ContentJob; error?: string }
+      if (!response.ok || !data.job) throw new Error(data.error || `HTTP ${response.status}`)
+      setDetail(data.job)
+      setEditorContent(data.job.content || '')
+      setAudit((data.job as ContentJob & { audit_json?: unknown }).audit_json || null)
+      setActionError(null)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Failed to load the full job')
+    } finally {
+      setLoading(false)
+    }
+  }, [job.id])
+
+  React.useEffect(() => { void loadDetail() }, [loadDetail])
+
+  const qualityGateFailure = (message: string | null) => {
+    const value = (message || '').toLowerCase()
+    return value.includes('ship refused') || value.includes('content quality gate') ||
+      value.includes('guarantee language') || value.includes('emdash') ||
+      value.includes('sentence opening')
+  }
+
+  const runAction = async (action: string) => {
+    if (busy) return
+    if (action === 'regenerate' || action === 'approve' || action === 'merge_pr') {
+      const prompt = action === 'regenerate'
+        ? 'Regenerate this job and create a replacement job?'
+        : action === 'approve'
+          ? 'Approve this content for main and trigger deployment?'
+          : 'Merge the open pull request?'
+      if (typeof window !== 'undefined' && !window.confirm(prompt)) return
+    }
+    setBusy(true)
+    setActionError(null)
+    setLocalActionNotice(null)
+    try {
+      const body: Record<string, unknown> = { id: detail.id, action }
+      if (action === 'save' || action === 'reaudit' || action === 'reship' || action === 'approve') {
+        body.content = editorContent
+      }
+      const response = await fetch('/api/content-studio/jobs', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await response.json().catch(() => ({})) as { job?: ContentJob; audit?: unknown; message?: string; error?: string }
+      if (!response.ok) throw new Error(data.error || data.message || `HTTP ${response.status}`)
+      if (data.job) {
+        setDetail(data.job)
+        if (data.job.content != null && action !== 'regenerate') setEditorContent(data.job.content)
+      }
+      if (data.audit) setAudit(data.audit)
+      const message = data.message || `${action.replace('_', ' ')} complete`
+      setLocalActionNotice(message)
+      setActionNotice(message)
+      await onRefresh()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const dirty = editorContent !== (detail.content || '')
+  const terminal = detail.status === 'merged' || detail.status === 'closed'
+  const gateFailure = qualityGateFailure(detail.error_message)
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`,
-        maxWidth: 720, width: '90vw', maxHeight: '85vh', overflow: 'auto',
-        padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-      }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, maxWidth: 820, width: '92vw', maxHeight: '90vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
-            <h3 style={{ margin: 0, fontFamily: C.serif, fontSize: 18, color: C.text }}>{job.title || '(untitled)'}</h3>
+            <h3 style={{ margin: 0, fontFamily: C.serif, fontSize: 18, color: C.text }}>{detail.title || '(untitled)'}</h3>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              {statusBadge(job.status)}
-              {statusStepper(job.status)}
-              <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{job.region} · {job.content_type?.replace('_', ' ')}</span>
+              {statusBadge(detail.status)} {statusStepper(detail.status)}
+              <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{detail.region} · {detail.content_type?.replace('_', ' ')}</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textDim }}>×</button>
+          <button type="button" onClick={onClose} aria-label="Close job details" style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textDim }}>×</button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8, marginBottom: 14 }}>
           {[
-            { label: 'Word Count', value: job.word_count ?? '—' },
-            { label: 'SEO Score', value: job.seo_score != null ? `${job.seo_score}%` : '—' },
-            { label: 'AI Provider', value: job.ai_provider ?? '—' },
-            { label: 'Target Repo', value: job.target_repo ?? '—' },
-          ].map(m => (
-            <div key={m.label} style={{ background: C.surface2, borderRadius: 6, padding: '8px 10px' }}>
-              <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{m.label}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginTop: 2 }}>{m.value}</div>
+            { label: 'Word Count', value: detail.word_count ?? '—' },
+            { label: 'SEO Score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
+            { label: 'AI Provider', value: detail.ai_provider ?? '—' },
+            { label: 'Target Repo', value: detail.target_repo ?? '—' },
+          ].map(metric => (
+            <div key={metric.label} style={{ background: C.surface2, borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{metric.label}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginTop: 2 }}>{metric.value}</div>
             </div>
           ))}
         </div>
 
-        {(job.branch_name || job.content_path) && (
+        {(detail.branch_name || detail.content_path || detail.pr_url) && (
           <div style={{ marginBottom: 12, fontFamily: C.mono, fontSize: 10, color: C.textMuted, lineHeight: 1.8 }}>
-            {job.branch_name && <div>branch: <span style={{ color: C.text }}>{job.branch_name}</span></div>}
-            {job.content_path && <div>file: <span style={{ color: C.text }}>{job.content_path}</span></div>}
+            {detail.branch_name && <div>branch: <span style={{ color: C.text }}>{detail.branch_name}</span></div>}
+            {detail.content_path && <div>file: <span style={{ color: C.text }}>{detail.content_path}</span></div>}
+            {detail.pr_url && <div><a href={detail.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontWeight: 600 }}>Open PR ↗</a></div>}
           </div>
         )}
 
-        {/* Timeline */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>
-            ⏱ Job Timeline
-          </div>
-          <JobTimeline jobId={job.id} createdMs={new Date(job.created_at).getTime()} />
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job Timeline</div>
+          <JobTimeline jobId={detail.id} createdMs={new Date(detail.created_at).getTime()} />
         </div>
 
-        {job.error_message && (
-          <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 14, fontFamily: C.mono }}>
-            {job.error_message}
-          </div>
-        )}
+        {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
 
-        {job.content && (
-          <details open>
-            <summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 600, color: C.textMuted, fontFamily: C.mono, marginBottom: 6 }}>
-              Generated Content
-            </summary>
-            <pre style={{ maxHeight: 280, overflow: 'auto', background: C.surface3, borderRadius: 6, padding: 12, fontSize: 10, fontFamily: C.mono, lineHeight: 1.6, color: C.text, whiteSpace: 'pre-wrap', border: `1px solid ${C.border}` }}>
-              {job.content}
-            </pre>
-          </details>
-        )}
+        {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>
+          <div style={{ fontSize: 11, lineHeight: 1.5, color: '#7C2D12' }}>Edit the draft to remove the blocker, save it, re-audit it, then ship. Regenerate rewrites the full piece using the gate guidance.</div>
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{busy ? 'Working…' : 'Fix & regenerate'}</button>
+        </div>}
+
+        {actionError && <div style={{ color: C.red, fontSize: 11, marginBottom: 10 }}>{actionError}</div>}
+        {actionNotice && <div style={{ color: C.green, fontSize: 11, marginBottom: 10 }}>{actionNotice}</div>}
+
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div><div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Manual editor</div><div style={{ fontSize: 10, color: C.textMuted }}>Edit the draft, save it, and re-audit before shipping.</div></div>
+            {dirty && <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>Unsaved changes</span>}
+          </div>
+          {loading ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content…</div> : <textarea value={editorContent} onChange={e => setEditorContent(e.target.value)} placeholder="The generated draft will appear here…" spellCheck style={{ width: '100%', minHeight: 260, resize: 'vertical', boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 6, padding: 10, fontFamily: C.mono, fontSize: 10, lineHeight: 1.6, color: C.text, background: '#FFFEFC' }} />}
+        </div>
+
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+          <button type="button" disabled={busy || loading || !dirty || !editorContent.trim()} onClick={() => void runAction('save')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.gold}`, background: dirty ? '#FFFBEB' : C.surface2, color: C.text, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Save draft</button>
+          <button type="button" disabled={busy || loading || !editorContent.trim()} onClick={() => void runAction('reaudit')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.blue}`, background: C.surface, color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Re-audit</button>
+          <button type="button" disabled={busy || loading || !editorContent.trim() || terminal} onClick={() => void runAction('reship')} style={{ padding: '8px 11px', borderRadius: 6, border: 'none', background: C.cyan, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Ship PR only</button>
+          <button type="button" disabled={busy || loading || !editorContent.trim() || terminal} onClick={() => void runAction('approve')} style={{ padding: '8px 11px', borderRadius: 6, border: 'none', background: C.green, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Approve → main</button>
+          {detail.pr_number && !terminal && <button type="button" disabled={busy} onClick={() => void runAction('merge_pr')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.green}`, background: '#F0FDF4', color: C.green, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Merge open PR</button>}
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('monitor')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Monitor deploy</button>
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('duplicate')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Duplicate</button>
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Regenerate</button>
+        </div>
+
+        {audit && <details style={{ marginTop: 14 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Latest audit result</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: 6, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
       </div>
     </div>
   )
@@ -983,7 +1081,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       </div>
 
       {/* Detail modal */}
-      {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} />}
+      {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} onRefresh={fetchJobs} setActionNotice={setActionNotice} />}
     </div>
   )
 }
