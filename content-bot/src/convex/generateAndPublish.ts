@@ -31,11 +31,6 @@ function buildProvider(provider: Provider) {
   if (provider === "nvidia") {
     const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) throw new Error("NVIDIA_API_KEY is not set");
-    // NVIDIA hosts DeepSeek V4 Pro behind an OpenAI-compatible endpoint.
-    // We use the model object via createOpenAI for consistency with the
-    // other providers; the actual chat call is made with a raw REST
-    // request in generateWithNvidia so we can send the extra
-    // chat_template_kwargs body (thinking: false) that NVIDIA requires.
     const openai = createOpenAI({
       apiKey,
       baseURL:
@@ -58,11 +53,6 @@ function buildProvider(provider: Provider) {
   };
 }
 
-/**
- * Generate content via NVIDIA's OpenAI-compatible DeepSeek endpoint using a
- * raw REST call so we can pass the `chat_template_kwargs: { thinking: false }`
- * extra body (mirrors the official OpenAI Python client snippet).
- */
 async function generateWithNvidia(args: {
   system: string;
   prompt: string;
@@ -131,11 +121,6 @@ function todayStamp(): string {
 }
 
 // ---------- Ship quality gate (voice / tone / compliance) ----------
-//
-// The target repos enforce a content quality gate on PRs. Anything that
-// promises outcomes (visa approval, success rates, guaranteed results) or
-// leans on heavy em/en dash chains (a telltale machine cadence) is refused.
-// We validate locally BEFORE opening the PR so bad content never ships.
 
 const GUARANTEE_PATTERNS: Array<{ label: string; re: RegExp }> = [
   {
@@ -156,16 +141,34 @@ const GUARANTEE_PATTERNS: Array<{ label: string; re: RegExp }> = [
   },
 ];
 
-/** Count em (—) and en (–) dashes in the content. */
 function countDashes(content: string): number {
   return (content.match(/[\u2014\u2013]/g) ?? []).length;
 }
 
-/**
- * Run the content through the same quality checks the repo gate applies.
- * Returns a list of human-readable violations (empty when the content
- * passes and is safe to ship).
- */
+function findRepeatedSentenceOpenings(content: string): { count: number; opening: string } | null {
+  // Strip front matter + code fences so we only scan the prose body
+  const body = content
+    .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "")
+    .replace(/```[\s\S]*?```/g, " ");
+  const sentences = body
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.trim().length > 20);
+  if (sentences.length < 8) return null;
+
+  const starts = sentences.map((s) => s.trim().slice(0, 12).toLowerCase());
+  const freq = new Map<string, number>();
+  for (const s of starts) freq.set(s, (freq.get(s) || 0) + 1);
+  let worst = 0;
+  let worstKey = "";
+  for (const [k, v] of freq) {
+    if (v > worst) {
+      worst = v;
+      worstKey = k;
+    }
+  }
+  return worst >= 7 ? { count: worst, opening: worstKey } : null;
+}
+
 function checkQualityGate(content: string): string[] {
   const issues: string[] = [];
 
@@ -184,7 +187,99 @@ function checkQualityGate(content: string): string[] {
     );
   }
 
+  const repeated = findRepeatedSentenceOpenings(content);
+  if (repeated) {
+    issues.push(
+      `Same sentence opening repeated ${repeated.count}× ("${repeated.opening}…") — robotic rhythm → Vary sentence openings. Mix short and medium sentences. Lead with the reader's situation or a concrete noun.`,
+    );
+  }
+
   return issues;
+}
+
+// ---------- Internal interlink registry (ecosystem link map) ----------
+//
+// Maps topic keywords → internal URLs across caseworks (SEO hub),
+// yousafe-consultancy (regional sites), and portal (marketplace).
+// Inserted into every generation prompt so the AI naturally weaves
+// 1–3 internal links into the output. Add entries as content grows.
+
+interface InterlinkRule {
+  label: string
+  url: string
+  triggers: string[]
+  priority: number
+  site: "caseworks" | "regional" | "marketplace"
+  note?: string
+}
+
+const INTERLINK_RULES: InterlinkRule[] = [
+  // Marketplace (primary funnel)
+  { label: "YouSafe Marketplace — Browse Services", url: "https://portal.yousafeconsultancy.com/", triggers: ["services", "hire", "lawyer", "attorney", "consultation", "help", "apply", "filing"], priority: 10, site: "marketplace", note: "Primary conversion target" },
+  { label: "Find an Immigration Attorney", url: "https://portal.yousafeconsultancy.com/attorneys", triggers: ["attorney", "lawyer", "legal help", "representation", "legal advice", "counsel", "barrister", "solicitor"], priority: 10, site: "marketplace" },
+  // Caseworks country hubs
+  { label: "US Immigration — Complete Guide", url: "https://caseworks.com/us/", triggers: ["us immigration", "united states", "usa", "uscis", "green card", "f-1", "h-1b", "opt", "cpt", "i-765", "i-485", "i-130", "i-140", "ds-160", "n-400", "naturalization", "daca", "tps"], priority: 10, site: "caseworks" },
+  { label: "F-1 OPT: Complete Timeline", url: "https://caseworks.com/us/f1-opt/", triggers: ["f-1 opt", "optional practical training", "opt timeline", "opt application", "stem opt", "ead", "employment authorization", "sevis", "dso"], priority: 10, site: "caseworks" },
+  { label: "H-1B Visa: Application & Timeline", url: "https://caseworks.com/us/h1b/", triggers: ["h-1b", "h1b", "work visa", "specialty occupation", "lca", "i-129", "h1b cap", "h1b lottery"], priority: 10, site: "caseworks" },
+  { label: "Canada Immigration — Complete Guide", url: "https://caseworks.com/ca/", triggers: ["canada", "canadian", "express entry", "ircc", "pr card", "study permit", "pgwp", "provincial nominee", "pnp", "cec"], priority: 10, site: "caseworks" },
+  { label: "Study Permit & PGWP — Canada", url: "https://caseworks.com/ca/study-permit/", triggers: ["study permit", "pgwp", "post graduation work permit", "dlis", "canadian university", "canada college"], priority: 10, site: "caseworks" },
+  { label: "Express Entry: CRS & Timeline", url: "https://caseworks.com/ca/express-entry/", triggers: ["express entry", "crs", "comprehensive ranking system", "fswp", "fstp", "canadian experience class", "ita"], priority: 10, site: "caseworks" },
+  { label: "UK Immigration — Complete Guide", url: "https://caseworks.com/uk/", triggers: ["uk immigration", "british", "home office", "ukvi", "ilr", "indefinite leave", "british citizenship"], priority: 10, site: "caseworks" },
+  { label: "Skilled Worker Visa (UK)", url: "https://caseworks.com/uk/skilled-worker/", triggers: ["skilled worker visa", "tier 2", "uk work visa", "certificate of sponsorship", "cos", "nhs visa"], priority: 10, site: "caseworks" },
+  { label: "UK Spouse Visa: Financial Requirement", url: "https://caseworks.com/uk/spouse-visa/", triggers: ["spouse visa", "partner visa", "family visa uk", "minimum income", "financial requirement", "Appendix FM"], priority: 10, site: "caseworks" },
+  { label: "Australia Immigration — Complete Guide", url: "https://caseworks.com/au/", triggers: ["australia", "australian", "skillselect", "subclass 189", "subclass 190", "subclass 491", "anzsco", "skills assessment"], priority: 10, site: "caseworks" },
+  { label: "Australian Student Visas (Subclass 500)", url: "https://caseworks.com/au/student-visas/", triggers: ["student visa australia", "subclass 500", "australian university", "gs requirement", "genuine student"], priority: 9, site: "caseworks" },
+  { label: "Compare Countries: US vs Canada vs UK vs AU", url: "https://caseworks.com/compare/", triggers: ["compare", "comparison", "vs", "versus", "which country", "best country", "difference between", "move to", "immigrate to"], priority: 9, site: "caseworks" },
+  // Content hubs
+  { label: "Immigration Articles Library", url: "https://caseworks.com/articles/", triggers: ["articles", "blog", "reading", "resources", "learn more", "further reading", "guides", "in-depth"], priority: 7, site: "caseworks" },
+  { label: "Immigration Glossary", url: "https://caseworks.com/glossary/", triggers: ["glossary", "definition", "term", "terminology", "acronym", "what does"], priority: 7, site: "caseworks" },
+  { label: "FAQ", url: "https://caseworks.com/faq/", triggers: ["faq", "frequently asked", "common question", "q&a"], priority: 6, site: "caseworks" },
+  { label: "Free Templates & Checklists", url: "https://caseworks.com/templates/", triggers: ["template", "checklist", "form", "document", "download", "sample"], priority: 8, site: "caseworks" },
+  { label: "Step-by-Step Tracks", url: "https://caseworks.com/tracks/", triggers: ["step by step", "track", "pathway", "roadmap", "timeline", "process overview"], priority: 8, site: "caseworks" },
+  { label: "Services Overview", url: "https://caseworks.com/services/", triggers: ["services", "what we do", "help available", "offering"], priority: 7, site: "caseworks" },
+  { label: "Pricing & Plans", url: "https://caseworks.com/pricing/", triggers: ["pricing", "cost", "fee", "price", "how much", "affordable", "budget", "package"], priority: 7, site: "caseworks" },
+  // Regional landing pages
+  { label: "YouSafe Consultancy", url: "https://yousafeconsultancy.com/", triggers: ["yousafe", "you safe", "consultancy"], priority: 6, site: "regional" },
+  { label: "US Immigration Services", url: "https://yousafeconsultancy.com/usa", triggers: ["us immigration service", "usa immigration help"], priority: 8, site: "regional" },
+  { label: "Canada Immigration Services", url: "https://yousafeconsultancy.com/ca", triggers: ["canada immigration service", "canadian immigration help"], priority: 8, site: "regional" },
+  { label: "UK Immigration Services", url: "https://yousafeconsultancy.com/uk", triggers: ["uk immigration service", "british immigration help"], priority: 8, site: "regional" },
+  { label: "Australia Immigration Services", url: "https://yousafeconsultancy.com/au", triggers: ["australia immigration service", "australian immigration help"], priority: 8, site: "regional" },
+]
+
+function buildInterlinksBlock(topic: string, keywords: string[] = []): string {
+  const combined = [topic, ...keywords].filter(Boolean).map((s) => s.toLowerCase())
+  if (combined.length === 0) return ""
+
+  const matches: { rule: InterlinkRule; score: number }[] = []
+  for (const rule of INTERLINK_RULES) {
+    let matched = 0
+    for (const trigger of rule.triggers) {
+      const t = trigger.toLowerCase()
+      for (const input of combined) {
+        if (input.includes(t) || t.includes(input)) { matched++; break }
+      }
+    }
+    if (matched > 0) matches.push({ rule, score: rule.priority * matched })
+  }
+  matches.sort((a, b) => b.score - a.score)
+  const top5 = matches.slice(0, 5)
+  if (top5.length === 0) return ""
+
+  return [
+    "",
+    "=== INTERNAL LINKING (SEO funnel: caseworks → regional → marketplace) ===",
+    "Weave 1-3 of these links into the content body naturally, where contextually relevant.",
+    "Use descriptive anchor text (never \"click here\"). Always link at least one marketplace or service page.",
+    "",
+    ...top5.map((m, i) => {
+      const suffix = m.rule.note ? ` — ${m.rule.note}` : ""
+      return `${i + 1}. [${m.rule.label}](${m.rule.url}) (${m.rule.site})${suffix}`
+    }),
+    "",
+    "Only include links that fit naturally. Do not force irrelevant links.",
+    "=== END INTERNAL LINKING ===",
+    "",
+  ].join("\n")
 }
 
 function buildPrompt(args: {
@@ -200,7 +295,10 @@ function buildPrompt(args: {
     ? "Include a YAML front matter block at the very top with fields: title, date (today), slug, tags."
     : "Include a YAML front matter block at the very top with fields: title, date (today), slug, tags.";
 
-  const system = [
+  // Pre-compute interlink suggestions for the prompt
+  const interlinksBlock = buildInterlinksBlock(args.topic, args.keywords ?? []);
+
+  const systemParts = [
     "You are a precise, opinionated writer for a modern product/tech blog.",
     "Write a complete, publish-ready piece of content in valid Markdown.",
     isArticle
@@ -212,7 +310,11 @@ function buildPrompt(args: {
     "Do NOT include commentary, explanations, or anything other than the post content itself.",
     "Compliance (mandatory): Educational only. NEVER promise visa approval, success rates, or guaranteed results. No outcome guarantees of any kind. Cite official sources where relevant instead of making promises.",
     "Style (mandatory): Avoid em/en dashes entirely. Use periods and commas. Prefer short, declarative sentences. Do not chain clauses with dashes.",
-  ].join("\n\n");
+    "Rhythm (mandatory): Vary sentence openings. Never start more than two sentences with the same first few words. Mix short and medium sentences. Lead with the reader's situation or a concrete noun (agency, form, document, step), not a repeated generic phrase.",
+    interlinksBlock,
+  ];
+
+  const system = systemParts.filter(Boolean).join("\n\n");
 
   const userParts: string[] = [];
   userParts.push(`Title: ${args.title || "(derive a strong title from the topic)"}`);
@@ -286,14 +388,12 @@ async function gh<T>(
 async function getDefaultBranchSha(
   ctx: GithubCtx,
 ): Promise<{ sha: string; branch: string }> {
-  // resolve the branch name to a sha via the ref endpoint.
   const refPath = `/repos/${ctx.owner}/${ctx.repo}/git/ref/heads/${encodeURIComponent(ctx.defaultBranch)}`;
   type RefResp = { object: { sha: string } };
   let resp: RefResp;
   try {
     resp = await gh<RefResp>(ctx, refPath, { method: "GET" });
   } catch {
-    // Fall back to listing branches if the ref endpoint is unavailable.
     type BranchResp = Array<{ name: string; commit: { sha: string } }>;
     const branches = await gh<BranchResp>(
       ctx,
@@ -373,7 +473,6 @@ export const generateAndPublish = action({
     jobId: v.id("contentJobs"),
   },
   handler: async (ctx, args) => {
-    // Re-validate auth and ownership inside the action (defense in depth).
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
 
@@ -402,7 +501,6 @@ export const generateAndPublish = action({
       keywords: job.keywords,
     });
 
-    // Generate through the active provider (NVIDIA raw REST or AI SDK).
     const generate = async (sys: string, prompt: string): Promise<string> => {
       if (provider === "nvidia") {
         return await generateWithNvidia({
@@ -424,10 +522,9 @@ export const generateAndPublish = action({
 
     let content = (await generate(system, userPrompt)).trim();
 
-    // Ship quality gate: never open a PR with content the repo will refuse.
+    // Ship quality gate
     const gateIssues = checkQualityGate(content);
     if (gateIssues.length > 0) {
-      // One corrective rewrite pass with explicit instructions.
       const rewriteSystem = [
         system,
         "",
@@ -453,7 +550,7 @@ export const generateAndPublish = action({
     const slug = slugify(job.title || job.topic);
     const safeSlug = slug.length > 0 ? slug : `post-${Date.now()}`;
 
-    // Stage 2: publishing (content written)
+    // Stage 2: publishing
     await ctx.runMutation(
       internal.contentJobs._setPublishingWithContent,
       {
@@ -463,12 +560,8 @@ export const generateAndPublish = action({
       },
     );
 
-    // Stage 3: open PR via GitHub API
+    // Stage 3: open PR
     try {
-      // Short, stable suffix from the Convex jobId guarantees branch and
-      // filename uniqueness even if the user reproduces the exact same
-      // prompt twice in a day. The GitHub webhook also relies on this
-      // uniqueness for repo/branch/PR matching.
       const jobSuffix = args.jobId.slice(-8);
       const stamp = todayStamp();
       const branchName = `content/${safeSlug}-${jobSuffix}`.slice(0, 250);
