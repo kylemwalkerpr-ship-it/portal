@@ -1578,7 +1578,7 @@ export default function AdminSeoFactory({
           { label: 'Failed', value: jobCounts.failed, color: C.red },
           { label: 'GSC', value: warRoom?.kpis?.liveGsc ? 'LIVE' : '—', color: warRoom?.kpis?.liveGsc ? C.green : C.textDim },
         ].map((k) => (
-          <div key={k.label} onClick={() => handleStatusClick(k.label)} title={`Click to filter queue: ${k.label}`} style={{
+          <div key={k.label} onClick={() => handleStatusClick(k.label)} title={'Click to filter queue: ' + k.label} style={{
             padding: '10px 12px', borderRadius: 10, background: C.surface,
             border: `1px solid ${C.border}`, cursor: 'pointer',
           }}>
