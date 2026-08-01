@@ -4,10 +4,12 @@
  * Separate from lib/gscKeywordSignals.ts (which pulls per-category keyword
  * signals for the gig-draft path). This module powers the admin dashboard's
  * Search tab: property-wide clicks / impressions / CTR / position, a daily
- * series, and top queries + pages.
+ * series, and top queries / pages / devices / countries.
  *
  * Reuses the same OAuth-refresh-token credentials already configured for the
- * keyword path (GSC_OAUTH_* + GSC_SITE_URL). Edge-safe: plain fetch only.
+ * keyword path (GSC_OAUTH_* + GSC_SITE_URL), falling back to the service
+ * account JSON (GSC_SERVICE_ACCOUNT_JSON | GSC_SERVICE_ACCOUNT_KEY).
+ * Edge-safe: plain fetch only.
  */
 
 import { getGscAccess } from '@/lib/gscAuth'
@@ -28,6 +30,8 @@ export interface GscAnalytics {
   daily: Array<{ date: string; clicks: number; impressions: number }>
   topQueries: GscRow[]
   topPages: GscRow[]
+  topDevices: GscRow[]
+  topCountries: GscRow[]
   warnings: string[]
 }
 
@@ -72,6 +76,8 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     daily: [],
     topQueries: [],
     topPages: [],
+    topDevices: [],
+    topCountries: [],
     warnings,
   }
 
@@ -91,9 +97,11 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     query(token, site, { startDate: range.startDate, endDate: range.endDate, dimensions: ['date'] }),             // daily
     query(token, site, { startDate: range.startDate, endDate: range.endDate, dimensions: ['query'], rowLimit: 25 }),
     query(token, site, { startDate: range.startDate, endDate: range.endDate, dimensions: ['page'], rowLimit: 25 }),
+    query(token, site, { startDate: range.startDate, endDate: range.endDate, dimensions: ['device'], rowLimit: 10 }),
+    query(token, site, { startDate: range.startDate, endDate: range.endDate, dimensions: ['country'], rowLimit: 10 }),
   ])
 
-  const [totalsR, prevR, dailyR, queriesR, pagesR] = settled
+  const [totalsR, prevR, dailyR, queriesR, pagesR, devicesR, countriesR] = settled
   const grab = (r: PromiseSettledResult<any[]>, label: string): any[] => {
     if (r.status === 'fulfilled') return r.value
     warnings.push(`${label}: ${String((r as PromiseRejectedResult).reason).slice(0, 80)}`)
@@ -119,6 +127,8 @@ export async function fetchSiteSearchAnalytics(days = 28): Promise<GscAnalytics>
     daily,
     topQueries: mapRows(grab(queriesR, 'queries')).filter((r) => r.key),
     topPages: mapRows(grab(pagesR, 'pages')).filter((r) => r.key),
+    topDevices: mapRows(grab(devicesR, 'devices')).filter((r) => r.key),
+    topCountries: mapRows(grab(countriesR, 'countries')).filter((r) => r.key),
     warnings,
   }
 }
