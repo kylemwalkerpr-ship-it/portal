@@ -322,14 +322,14 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
 
   // ── PASS 2: Depth rescue (expand/append until floor met) ───────────────
-  const maxExpand = contentType === 'marketplace_gig' ? 1 : 2
+  const maxExpand = contentType === 'marketplace_gig' ? 1 : 5
   while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
     expandPasses++
     attempts++
     const currentWords = countBodyWords(content)
     try {
-      // Odd passes: full expand rewrite; even: append new H2s only
-      if (expandPasses % 2 === 1) {
+      // Pass 1: full expand rewrite; passes 2+: append new H2 sections only
+      if (expandPasses === 1) {
         const ai = await generateWithRetry(generateContentText, {
           system,
           prompt: buildDepthExpandPrompt({
@@ -372,6 +372,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           content = merged
           provider = ai.provider
           model = ai.model
+        } else {
+          break
         }
       }
     } catch (e) {
