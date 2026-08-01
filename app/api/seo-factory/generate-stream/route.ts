@@ -1,4 +1,29 @@
+import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
+
+function sb() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
+
+async function markSupersededJob(
+  supabase: ReturnType<typeof sb>,
+  jobId: string,
+  patch: Record<string, unknown>,
+  message: string,
+) {
+  try {
+    const { data } = await supabase.from('content_jobs').select('event_log').eq('id', jobId).single()
+    const previous = Array.isArray(data?.event_log) ? data.event_log : []
+    const entry = { id: `${Date.now()}-stream`, ts: Date.now(), level: 'info', source: 'pipeline', message }
+    const eventLog = [...previous, entry].slice(-300)
+    const { error } = await supabase.from('content_jobs').update({ ...patch, event_log: eventLog }).eq('id', jobId)
+    if (error && /event_log|column/i.test(error.message || '')) {
+      await supabase.from('content_jobs').update(patch).eq('id', jobId)
+    }
+  } catch (error) {
+    console.warn('[seo-factory/generate-stream] could not update superseded job', error)
+  }
+}
 import {
   runSeoFactoryPipelineStream,
   type PipelineStreamEvent,
@@ -59,6 +84,11 @@ export async function POST(request: Request) {
       opportunityAction: body.opportunityAction,
       userId,
     }
+    const supersedesJobId = String(body.supersedesJobId || '').trim()
+    const supabase = supersedesJobId ? sb() : null
+    if (supabase && supersedesJobId) {
+      await markSupersededJob(supabase, supersedesJobId, { status: 'drafting', error_message: null }, 'Live regeneration started')
+    }
 
     const encoder = new TextEncoder()
     let closed = false
@@ -76,14 +106,24 @@ export async function POST(request: Request) {
 
         try {
           for await (const ev of runSeoFactoryPipelineStream(input)) {
+            if (supabase && supersedesJobId && ev.type === 'final') {
+              const replacementId = ev.result?.jobId || 'new job'
+              await markSupersededJob(
+                supabase,
+                supersedesJobId,
+                { status: 'closed', closed_at: new Date().toISOString(), error_message: `Superseded by regenerate → ${replacementId}` },
+                `Replacement job created: ${replacementId}`,
+              )
+            }
             send(ev)
             if (ev.type === 'error' || ev.type === 'final') break
           }
         } catch (e) {
-          send({
-            type: 'error',
-            error: e instanceof Error ? e.message : 'Stream failed',
-          })
+          const message = e instanceof Error ? e.message : 'Stream failed'
+          if (supabase && supersedesJobId) {
+            await markSupersededJob(supabase, supersedesJobId, { status: 'failed', error_message: message }, `Regeneration failed: ${message}`)
+          }
+          send({ type: 'error', error: message })
         } finally {
           if (!closed) {
             try {
