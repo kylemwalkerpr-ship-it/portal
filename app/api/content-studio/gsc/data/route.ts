@@ -9,7 +9,7 @@ import { loadGscSnapshot } from '@/lib/seoDataLoaders'
  * POST /api/content-studio/gsc/data
  *
  * Body (optional):
- *   { siteUrl?, startDate?, endDate?, dimensions?, rowLimit?, topic?, region? }
+ *   { siteUrl?, startDate?, endDate?, days?, dimensions?, rowLimit?, topic?, region? }
  *
  * Auth: service account (GSC_SERVICE_ACCOUNT_JSON | GSC_SERVICE_ACCOUNT_KEY)
  *       or OAuth bundle; falls back to CSV snapshot for Content Studio.
@@ -25,6 +25,12 @@ export async function POST(request: NextRequest) {
     const topic = typeof body.topic === 'string' ? body.topic : ''
     const region = typeof body.region === 'string' ? body.region : 'US'
     const siteUrlOverride = typeof body.siteUrl === 'string' ? body.siteUrl : null
+    const days =
+      typeof body.days === 'number'
+        ? body.days
+        : typeof body.days === 'string' && /^\d+$/.test(body.days)
+          ? parseInt(body.days, 10)
+          : 90
 
     const access = await getGscAccess()
     const siteUrl = siteUrlOverride || access?.siteUrl || process.env.GSC_SITE_URL || null
@@ -36,9 +42,16 @@ export async function POST(request: NextRequest) {
     })
 
     // Prefer full analytics when credentials + site work
-    const live = await fetchSiteSearchAnalytics(90)
+    const live = await fetchSiteSearchAnalytics(days)
 
     if (live.configured && live.topQueries.length > 0) {
+      const shape = (q: { key: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
+        keys: [q.key],
+        clicks: q.clicks,
+        impressions: q.impressions,
+        ctr: Math.round(q.ctr * 10000) / 100,
+        position: Math.round(q.position * 10) / 10,
+      })
       return NextResponse.json({
         source: 'live',
         mode: access?.mode ?? 'unknown',
@@ -49,15 +62,10 @@ export async function POST(request: NextRequest) {
         totalsPrev: live.totalsPrev,
         daily: live.daily,
         totalRows: live.topQueries.length,
-        // Dashboard shape (ctr as percent for display)
-        rows: live.topQueries.map((q) => ({
-          keys: [q.key],
-          clicks: q.clicks,
-          impressions: q.impressions,
-          ctr: Math.round(q.ctr * 10000) / 100,
-          position: Math.round(q.position * 10) / 10,
-        })),
-        pages: live.topPages,
+        rows: live.topQueries.map(shape),
+        pages: live.topPages.map(shape),
+        devices: live.topDevices.map(shape),
+        countries: live.topCountries.map(shape),
         brief,
         warnings: live.warnings,
       })
@@ -66,13 +74,16 @@ export async function POST(request: NextRequest) {
     // Snapshot fallback from public/seo-data (CSV export distilled)
     const snap = await loadGscSnapshot()
 
-    const rows = (snap.topQueries ?? []).map((q) => ({
-      keys: [q.term],
+    const shapeSnap = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }, key: string) => ({
+      keys: [key],
       clicks: q.clicks,
       impressions: q.impressions,
       ctr: Math.round(q.ctr * 10000) / 100,
       position: Math.round(q.position * 10) / 10,
-    }))
+    })
+
+    const rows = (snap.topQueries ?? []).map((q) => shapeSnap(q, q.term))
+    const pages = (snap.topPages ?? []).map((q) => shapeSnap(q, q.url))
 
     return NextResponse.json({
       source: 'snapshot',
@@ -87,7 +98,9 @@ export async function POST(request: NextRequest) {
       },
       totalRows: rows.length,
       rows,
-      pages: snap.topPages ?? [],
+      pages,
+      devices: [],
+      countries: [],
       opportunities: snap.opportunities ?? {},
       brief,
       warnings: [
