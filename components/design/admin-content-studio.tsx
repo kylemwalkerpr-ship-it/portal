@@ -25,6 +25,7 @@ interface ContentJob {
   content_path: string | null; pr_url: string | null; pr_number: number | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
   ai_provider: string | null; word_count: number | null; seo_score: number | null
+  primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
   created_at: string; updated_at: string
 }
 
@@ -664,6 +665,45 @@ function fmtDur(ms: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m ${s}s`
 }
 
+/** Consume the existing SEO Factory SSE contract and return its final result. */
+async function consumeSseResponse(
+  response: Response,
+  onEvent: (event: any) => void,
+): Promise<any> {
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({})) as { error?: string }
+    throw new Error(failure.error || `Generation stream HTTP ${response.status}`)
+  }
+  if (!response.body) throw new Error('Generation stream returned no readable body')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResult: any = null
+  const consume = (raw: string) => {
+    const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
+    if (!dataLine) return
+    const payload = dataLine.slice(5).trim()
+    if (!payload || payload === '[DONE]') return
+    const event = JSON.parse(payload)
+    onEvent(event)
+    if (event.type === 'final') finalResult = event.result
+    if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const chunks = buffer.split(/\r?\n\r?\n/)
+    buffer = chunks.pop() || ''
+    for (const chunk of chunks) consume(chunk)
+    if (done) break
+  }
+  if (buffer.trim()) consume(buffer)
+  if (!finalResult) throw new Error('Generation stream ended before a final result was received')
+  return finalResult
+}
+
 function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number }) {
   const [entries, setEntries] = React.useState<TimelineEntry[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -832,6 +872,11 @@ function JobDetail({
   const [busy, setBusy] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [actionNotice, setLocalActionNotice] = React.useState<string | null>(null)
+  const [activeAction, setActiveAction] = React.useState<string | null>(null)
+  const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
+  const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
+  const [actionChars, setActionChars] = React.useState(0)
+  const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
 
   const loadDetail = React.useCallback(async () => {
@@ -853,6 +898,80 @@ function JobDetail({
 
   React.useEffect(() => { void loadDetail() }, [loadDetail])
 
+  const runRegenerateStream = async () => {
+    if (busy) return
+    setBusy(true)
+    setActiveAction('regenerate')
+    setActionError(null)
+    setLocalActionNotice(null)
+    setActionStartedAt(Date.now())
+    setActionChars(0)
+    setActionEvents([{
+      id: `action-${Date.now()}`, ts: Date.now(), stage: 'connect',
+      message: 'Starting a live AI regeneration stream…', level: 'info',
+    }])
+    const controller = new AbortController()
+    actionAbortRef.current = controller
+    const timeout = setTimeout(() => controller.abort(), 240_000)
+    const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
+      setActionEvents(prev => [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-60))
+    }
+    let streamedChars = 0
+    try {
+      const contentType = detail.content_type === 'article' ? 'legal_guide' : detail.content_type || 'legal_guide'
+      const response = await fetch('/api/seo-factory/generate-stream', {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({
+          topic: detail.topic,
+          title: detail.title || detail.topic,
+          primaryKeyword: detail.primary_keyword || detail.topic,
+          region: detail.region || 'US',
+          contentType,
+          tone: detail.tone || 'educational',
+          keywords: [detail.primary_keyword || detail.topic],
+          shipMode: detail.ship_mode || 'pr',
+          indexable: detail.indexable !== false,
+          minAuditScore: 55,
+          maxRefine: 2,
+          supersedesJobId: detail.id,
+        }),
+      })
+      const result = await consumeSseResponse(response, (event) => {
+        if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
+        else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
+        else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+        else if (event.type === 'delta') {
+          streamedChars += String(event.text || '').length
+          setActionChars(streamedChars)
+        } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? 'Replacement PR opened' : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
+        else if (event.type === 'final') record('complete', event.result?.jobId ? `Replacement job ${event.result.jobId} created` : 'Regeneration complete', 'success')
+      })
+      const replacementId = result?.jobId
+      const message = replacementId
+        ? `Regeneration complete. Replacement job ${replacementId} is now in the queue.`
+        : 'Regeneration complete. Refresh the queue to view the new job.'
+      setLocalActionNotice(message)
+      setActionNotice(message)
+      await loadDetail()
+      await onRefresh()
+    } catch (error) {
+      const message = error instanceof DOMException && error.name === 'AbortError'
+        ? 'The live regeneration stream timed out after 4 minutes. Refresh the queue before retrying.'
+        : error instanceof Error ? error.message : 'Regeneration failed'
+      record('error', message, 'error')
+      setActionError(message)
+      setActionNotice('Regeneration did not complete.')
+    } finally {
+      clearTimeout(timeout)
+      actionAbortRef.current = null
+      setActiveAction(null)
+      setBusy(false)
+    }
+  }
+
   const qualityGateFailure = (message: string | null) => {
     const value = (message || '').toLowerCase()
     return value.includes('ship refused') || value.includes('content quality gate') ||
@@ -870,7 +989,12 @@ function JobDetail({
           : 'Merge the open pull request?'
       if (typeof window !== 'undefined' && !window.confirm(prompt)) return
     }
+    if (action === 'regenerate') {
+      void runRegenerateStream()
+      return
+    }
     setBusy(true)
+    setActiveAction(action)
     setActionError(null)
     setLocalActionNotice(null)
     try {
@@ -898,6 +1022,7 @@ function JobDetail({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Action failed')
     } finally {
+      setActiveAction(null)
       setBusy(false)
     }
   }
@@ -952,7 +1077,20 @@ function JobDetail({
         {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>
           <div style={{ fontSize: 11, lineHeight: 1.5, color: '#7C2D12' }}>Edit the draft to remove the blocker, save it, re-audit it, then ship. Regenerate rewrites the full piece using the gate guidance.</div>
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{busy ? 'Working…' : 'Fix & regenerate'}</button>
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
+          {actionEvents.length > 0 && <div style={{ marginTop: 10, background: '#1F2937', color: '#E5E7EB', borderRadius: 6, padding: 10, fontFamily: C.mono, fontSize: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: activeAction ? '#FCD34D' : '#86EFAC', fontWeight: 700 }}>
+              <span>{activeAction ? '● LIVE AI ACTIVITY' : '✓ LAST AI ACTIVITY'}</span>
+              {actionChars > 0 && <span>{actionChars.toLocaleString()} streamed chars</span>}
+            </div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {actionEvents.slice(-6).map(event => <div key={event.id} style={{ display: 'flex', gap: 7, lineHeight: 1.4 }}>
+                <span style={{ color: event.level === 'error' ? '#FCA5A5' : event.level === 'success' ? '#86EFAC' : '#93C5FD' }}>›</span>
+                <span>{event.message}</span>
+              </div>)}
+            </div>
+            {actionStartedAt && <div style={{ marginTop: 7, color: '#9CA3AF' }}>elapsed {fmtDur(Date.now() - actionStartedAt)} · detailed timeline refreshes below</div>}
+          </div>}
         </div>}
 
         {actionError && <div style={{ color: C.red, fontSize: 11, marginBottom: 10 }}>{actionError}</div>}
