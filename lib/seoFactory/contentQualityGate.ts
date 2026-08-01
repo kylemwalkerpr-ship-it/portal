@@ -484,7 +484,7 @@ export function qualityPromptBlock(): string {
     'Q2. ZERO AI TELLS. Never use: delve, leverage, robust, seamless, holistic, game-changer, navigate the complexities, in today\'s fast-paced, tapestry, unlock the potential, rest assured, it\'s worth noting, furthermore, moreover (as filler), in conclusion.',
     'Q3. ZERO OUTCOME PROMISES. Never guarantee visas, approvals, timelines, or success rates. Educational only.',
     'Q4. ZERO HYPE. No "act now", "limited time", stacked exclamation marks, or superlative bait.',
-    'Q5. RHYTHM. Do not start five sentences the same way. Prefer periods over em-dash chains. Active voice.',
+    'Q5. RHYTHM. Vary EVERY sentence opening. The audit counts how often the first ~12 characters of a sentence repeat: 5+ repeats is a warning, 7+ hard-blocks the ship. Never start more than two sentences with the same word or phrase ("the department", "it is", "there are", "applicants"). Mix short and medium sentences. Lead with the reader\'s situation or a concrete noun (agency, form, document, step). Prefer periods over em-dash chains. Active voice.',
     'Q6. KEYWORD DISCIPLINE. Primary keyword a few times naturally — never stuff.',
     'Q7. If a sentence sounds like ChatGPT wrote it, delete and rewrite with a specific form, agency, document, or step.',
   ].join('\n')
