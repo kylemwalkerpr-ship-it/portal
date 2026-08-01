@@ -557,24 +557,65 @@ function WebhookSetupCard() {
   );
 }
 
+type GscRow = {
+  keys: string[];
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+};
+
+type GscAnalytics =
+  | null
+  | {
+      siteUrl: string;
+      dateRange: { startDate: string; endDate: string };
+      totals: GscRow | null;
+      byQuery: { rows: GscRow[] };
+      byPage: { rows: GscRow[] };
+      byDevice: { rows: GscRow[] };
+      byCountry: { rows: GscRow[] };
+      byDate: { rows: GscRow[] };
+    };
+
+const GSC_RANGES = [
+  { label: "7d", value: "7daysAgo" },
+  { label: "28d", value: "28daysAgo" },
+  { label: "90d", value: "90daysAgo" },
+] as const;
+
+const GSC_TABS = [
+  { id: "query", label: "Queries" },
+  { id: "page", label: "Pages" },
+  { id: "device", label: "Devices" },
+  { id: "country", label: "Countries" },
+] as const;
+
+type GscTabId = (typeof GSC_TABS)[number]["id"];
+
+function GscBar({ value, max }: { value: number; max: number }) {
+  const pct = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <div
+        className="h-full rounded-full bg-primary/70 transition-all duration-500"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
 function GscPanel() {
   const gscStatus = useQuery(api.gscConfig.getGscStatus);
   const connectGsc = useAction(api.gsActions.connectGsc);
-  const fetchGscData = useAction(api.gsActions.fetchGscData);
+  const fetchGscAnalytics = useAction(api.gsActions.fetchGscAnalytics);
 
   const [siteUrl, setSiteUrl] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
-  const [rows, setRows] = useState<
-    | Array<{
-        keys: string[];
-        clicks: number;
-        impressions: number;
-        ctr: number;
-        position: number;
-      }>
-    | null
-  >(null);
+  const [range, setRange] = useState<string>("28daysAgo");
+  const [tab, setTab] = useState<GscTabId>("query");
+  const [data, setData] = useState<GscAnalytics>(null);
 
   const connected = gscStatus?.connected === true;
 
@@ -594,21 +635,70 @@ function GscPanel() {
     }
   };
 
-  const handleLoad = async () => {
+  const handleLoad = async (startDate: string) => {
     if (!connected || !gscStatus?.siteUrl || loadingData) return;
     setLoadingData(true);
     try {
-      const data = await fetchGscData({
+      const res = await fetchGscAnalytics({
         siteUrl: gscStatus.siteUrl,
+        startDate,
+        endDate: "today",
         rowLimit: 10,
       });
-      setRows(data.rows);
+      setData(res as GscAnalytics);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingData(false);
     }
   };
+
+  const rowsForTab = useMemo(() => {
+    if (!data) return [];
+    switch (tab) {
+      case "page":
+        return data.byPage.rows;
+      case "device":
+        return data.byDevice.rows;
+      case "country":
+        return data.byCountry.rows;
+      default:
+        return data.byQuery.rows;
+    }
+  }, [data, tab]);
+
+  const maxClicks = useMemo(
+    () => Math.max(1, ...rowsForTab.map((r) => r.clicks)),
+    [rowsForTab],
+  );
+
+  const totals = data?.totals;
+  const statCards = [
+    {
+      label: "Clicks",
+      value: totals ? totals.clicks.toLocaleString() : "—",
+      icon: <TrendingUp className="h-4 w-4" />,
+      className: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+    },
+    {
+      label: "Impressions",
+      value: totals ? totals.impressions.toLocaleString() : "—",
+      icon: <BarChart3 className="h-4 w-4" />,
+      className: "text-blue-600 dark:text-blue-400 bg-blue-500/10",
+    },
+    {
+      label: "CTR",
+      value: totals ? `${totals.ctr}%` : "—",
+      icon: <Target className="h-4 w-4" />,
+      className: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+    },
+    {
+      label: "Avg. position",
+      value: totals ? String(totals.position) : "—",
+      icon: <Search className="h-4 w-4" />,
+      className: "text-violet-600 dark:text-violet-400 bg-violet-500/10",
+    },
+  ];
 
   return (
     <Card>
@@ -657,15 +747,35 @@ function GscPanel() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">
-                Top queries from the last 30 days.
-              </p>
+            {/* Range + refresh */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex rounded-md border border-border/70 overflow-hidden">
+                {GSC_RANGES.map((r) => {
+                  const active = range === r.value;
+                  return (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => {
+                        setRange(r.value);
+                        handleLoad(r.value);
+                      }}
+                      className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={handleLoad}
+                onClick={() => handleLoad(range)}
                 disabled={loadingData}
               >
                 {loadingData ? (
@@ -673,16 +783,76 @@ function GscPanel() {
                 ) : (
                   <TrendingUp className="h-4 w-4" />
                 )}
-                <span className="ml-2">{rows ? "Refresh" : "Load data"}</span>
+                <span className="ml-2">{data ? "Refresh" : "Load data"}</span>
               </Button>
             </div>
 
-            {rows && rows.length > 0 && (
+            {/* Summary stat cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {statCards.map((s) => (
+                <div
+                  key={s.label}
+                  className="rounded-md border border-border/60 p-2.5"
+                >
+                  <div
+                    className={`h-6 w-6 rounded-md flex items-center justify-center mb-1.5 ${s.className}`}
+                  >
+                    {s.icon}
+                  </div>
+                  <div className="text-base font-semibold leading-none">
+                    {s.value}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    {s.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tabs */}
+            <div className="flex flex-wrap gap-1.5">
+              {GSC_TABS.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTab(t.id)}
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border/70 text-muted-foreground hover:border-border hover:text-foreground"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Table */}
+            {data === null ? (
+              <p className="text-xs text-muted-foreground py-2">
+                Load data to see top {tab}s for this period.
+              </p>
+            ) : rowsForTab.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">
+                No {tab} data returned for this period.
+              </p>
+            ) : (
               <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-8 text-xs">Query</TableHead>
+                      <TableHead className="h-8 text-xs">
+                        {tab === "query"
+                          ? "Query"
+                          : tab === "page"
+                            ? "Page"
+                            : tab === "device"
+                              ? "Device"
+                              : "Country"}
+                      </TableHead>
                       <TableHead className="h-8 text-xs text-right">
                         Clicks
                       </TableHead>
@@ -698,13 +868,16 @@ function GscPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((row, i) => (
+                    {rowsForTab.map((row, i) => (
                       <TableRow key={i} className="hover:bg-muted/50">
-                        <TableCell className="py-1.5 text-xs font-medium">
+                        <TableCell className="py-1.5 text-xs font-medium max-w-[180px] truncate">
                           {row.keys[0]}
                         </TableCell>
                         <TableCell className="py-1.5 text-xs text-right">
-                          {row.clicks}
+                          <div className="flex flex-col items-end gap-1">
+                            <span>{row.clicks}</span>
+                            <GscBar value={row.clicks} max={maxClicks} />
+                          </div>
                         </TableCell>
                         <TableCell className="py-1.5 text-xs text-right hidden sm:table-cell">
                           {row.impressions}
@@ -720,12 +893,6 @@ function GscPanel() {
                   </TableBody>
                 </Table>
               </div>
-            )}
-
-            {rows && rows.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                No query data returned for this period.
-              </p>
             )}
           </>
         )}
