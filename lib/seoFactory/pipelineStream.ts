@@ -133,6 +133,7 @@ export async function* runSeoFactoryPipelineStream(
 
     let content = input.resumeContent?.trim() || ''
     const resumeMode = Boolean(content)
+    let lastDraftSent = 0
     let provider = 'unknown'
     let model = 'unknown'
     let audit: SeoFactoryAudit = auditContent({
@@ -212,7 +213,10 @@ export async function* runSeoFactoryPipelineStream(
           yield { type: 'provider', provider, model }
         } else if (ev.type === 'delta') {
           attemptText += ev.text
-          const checkpointDraft = attemptText.length >= content.length ? attemptText : content
+          const grewEnough = attemptText.length - lastDraftSent >= 2000
+          if (grewEnough) lastDraftSent = attemptText.length
+          const checkpointDraft =
+            grewEnough && attemptText.length >= content.length ? attemptText : undefined
           yield { type: 'delta', text: ev.text, attempt: attempts, draft: checkpointDraft }
         } else if (ev.type === 'done') {
           attemptText = ev.text
