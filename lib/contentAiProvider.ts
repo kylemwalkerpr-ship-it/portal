@@ -23,6 +23,12 @@ const DEFAULT_MAX_TOKENS = 8192
 /** NVIDIA DeepSeek V4 Pro supports large completions — use for depth floors. */
 const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
+// Keep the cascade deliberately small on Cloudflare Free/low-budget Workers.
+// Set CONTENT_AI_MAX_PROVIDERS=3 only when the Worker has adequate headroom.
+const MAX_PROVIDER_CANDIDATES = Math.max(
+  1,
+  Math.min(4, Number.parseInt(process.env.CONTENT_AI_MAX_PROVIDERS || '2', 10) || 2),
+)
 
 const NVIDIA_INTEGRATE_BASE =
   process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1'
@@ -83,18 +89,25 @@ export function resolveCloudflareAiAuth(): { accountId: string; token: string } 
   return { accountId, token }
 }
 
-/** Transient 429/503 retry — same pattern as gig chatProvider. */
+/**
+ * Provider retries are opt-in. A retry consumes another Worker subrequest and
+ * the ordered fallback chain already provides resilience for transient errors.
+ * Set CONTENT_AI_RETRY=1 only on a plan with sufficient subrequest headroom.
+ */
 async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn()
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    const retryable = /\b(503|429)\b|UNAVAILABLE|overload|high.demand|rate.?limit/i.test(msg)
-    if (!retryable) throw e
-    console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
-    await new Promise((r) => setTimeout(r, 1500))
-    return fn()
+  const maxAttempts = process.env.CONTENT_AI_RETRY === '1' ? 2 : 1
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      const retryable = /\b(503|429)\b|UNAVAILABLE|overload|high.demand|rate.?limit/i.test(msg)
+      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg)) throw e
+      console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
+      await new Promise((r) => setTimeout(r, 1500))
+    }
   }
+  throw new Error(`${name} failed without a response`)
 }
 
 function resolveMaxTokens(p: OpenAiCompat | null | undefined, opts: ContentAiOptions): number {
@@ -269,7 +282,9 @@ async function openRouterComplete(opts: ContentAiOptions): Promise<ContentAiResu
   const apiKey = env('OPENROUTER_API_KEY')
   if (!apiKey) throw new Error('OpenRouter not configured (OPENROUTER_API_KEY)')
   let lastErr: Error | null = null
-  for (const model of OPENROUTER_MODELS) {
+  // One OpenRouter model per invocation. Walking multiple free models can
+  // multiply requests before the outer fallback chain gets a chance to stop.
+  for (const model of OPENROUTER_MODELS.slice(0, 1)) {
     try {
       return await openAiCompatibleComplete(
         {
@@ -836,11 +851,13 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   pushChatBridge()
 
   const seen = new Set<string>()
-  return items.filter((i) => {
-    if (seen.has(i.label)) return false
-    seen.add(i.label)
-    return true
-  })
+  return items
+    .filter((i) => {
+      if (seen.has(i.label)) return false
+      seen.add(i.label)
+      return true
+    })
+    .slice(0, MAX_PROVIDER_CANDIDATES)
 }
 
 /**
@@ -1007,11 +1024,13 @@ export async function* generateContentTextStream(
 
   // Dedupe preserving order (DeepSeek first, Cloudflare second by default)
   const seen = new Set<string>()
-  const unique = candidates.filter((c) => {
-    if (seen.has(c.label)) return false
-    seen.add(c.label)
-    return true
-  })
+  const unique = candidates
+    .filter((c) => {
+      if (seen.has(c.label)) return false
+      seen.add(c.label)
+      return true
+    })
+    .slice(0, MAX_PROVIDER_CANDIDATES)
 
   for (const c of unique) {
     if (subrequestBudgetExhausted) {
@@ -1024,15 +1043,11 @@ export async function* generateContentTextStream(
         return
       } catch (e) {
         errors.push(`${c.label} stream: ${e instanceof Error ? e.message : String(e)}`)
-        if (isSubrequestLimitError(e)) {
-          subrequestBudgetExhausted = true
-          continue
-        }
+        if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
+        // Do not immediately call the same provider again through its
+        // complete endpoint. Move to the next bounded candidate instead.
+        continue
       }
-    }
-    if (subrequestBudgetExhausted) {
-      errors.push(`${c.label}: skipped (complete) — subrequest budget exhausted`)
-      continue
     }
     try {
       yield* completeAsStream(c.complete)
