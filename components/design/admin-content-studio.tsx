@@ -564,6 +564,187 @@ const tdStyle: React.CSSProperties = {
   padding: '8px 10px', fontSize: 11, color: C.text, verticalAlign: 'top',
 }
 
+// ── Job Timeline ──
+//
+// Fetches the full job row (?id=) which includes event_log — the durable
+// per-job activity log seeded at creation (pipeline) and appended by the
+// deploy monitor. Derived stage timestamps (created_at / merged_at /
+// closed_at / deployed_at / pr timestamps) are merged in so the timeline
+// shows the full lifecycle even before monitor entries exist.
+
+type LogLevel = 'success' | 'info' | 'warn' | 'error'
+
+interface TimelineEntry {
+  ts: number
+  level: LogLevel
+  source: string
+  message: string
+  detail?: string
+  kind: 'log' | 'stage'
+}
+
+const LEVEL_COLOR: Record<LogLevel, string> = {
+  success: C.green, info: C.blue, warn: C.orange, error: C.red,
+}
+
+const LEVEL_ICON: Record<LogLevel, string> = {
+  success: '✓', info: 'ℹ', warn: '▲', error: '✕',
+}
+
+function fmtTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+  } catch { return '' }
+}
+
+function fmtDur(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const m = Math.floor(ms / 60000)
+  const s = Math.round((ms % 60000) / 1000)
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m ${s}s`
+}
+
+function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number }) {
+  const [entries, setEntries] = React.useState<TimelineEntry[] | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/content-studio/jobs?id=${jobId}`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`)
+        if (cancelled) return
+        const job = (data as { job?: any }).job ?? {}
+
+        // Derived stage markers from the job row
+        const derived: TimelineEntry[] = []
+        const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
+          const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
+          if (Number.isFinite(ms)) derived.push({ ts: ms, level, source, message, detail, kind: 'stage' })
+        }
+        pushStage(job.created_at ?? createdMs, 'job', 'Job created (queued)', undefined, 'info')
+        if (job.pr_number || job.pr_url) {
+          pushStage(job.created_at ?? createdMs, 'github', `Pull request #${job.pr_number ?? ''} opened`, job.pr_url || undefined, 'info')
+        }
+        if (job.deployed_at) pushStage(job.deployed_at, 'cloudflare', 'Deployed to Cloudflare', undefined, 'success')
+        if (job.merged_at) pushStage(job.merged_at, 'github', 'Pull request merged', undefined, 'success')
+        if (job.closed_at) pushStage(job.closed_at, 'github', 'Pull request closed without merge', undefined, 'warn')
+        if (job.status === 'failed') {
+          pushStage(job.updated_at ?? Date.now(), 'pipeline', job.error_message || 'Job failed', undefined, 'error')
+        }
+
+        // event_log entries from the pipeline + deploy monitor
+        const logs: TimelineEntry[] = Array.isArray(job.event_log)
+          ? (job.event_log as any[]).map((e) => ({
+              ts: typeof e.ts === 'number' ? e.ts : new Date(String(e.ts)).getTime(),
+              level: (['success', 'info', 'warn', 'error'].includes(e.level) ? e.level : 'info') as LogLevel,
+              source: String(e.source || 'studio'),
+              message: String(e.message || ''),
+              detail: e.detail ? String(e.detail) : undefined,
+              kind: 'log' as const,
+            })).filter((e) => Number.isFinite(e.ts))
+          : []
+
+        // Merge, dedupe by (ts, message), sort ascending (oldest → newest)
+        const merged = [...logs, ...derived]
+        const seen = new Set<string>()
+        const deduped = merged
+          .filter((e) => {
+            const key = `${e.ts}-${e.message}`
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .sort((a, b) => a.ts - b.ts)
+
+        if (cancelled) return
+        setEntries(deduped.length > 0 ? deduped : [])
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to load timeline')
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [jobId, createdMs])
+
+  if (error) {
+    return <div style={{ fontSize: 11, color: C.red, fontFamily: C.mono }}>Timeline unavailable: {error}</div>
+  }
+  if (entries === null) {
+    return <div style={{ fontSize: 11, color: C.textDim, fontFamily: C.mono }}>Loading timeline…</div>
+  }
+  if (entries.length === 0) {
+    return <div style={{ fontSize: 11, color: C.textDim }}>No timeline events recorded yet.</div>
+  }
+
+  // Durations between consecutive stages
+  const withDur = entries.map((e, i) => {
+    const prev = i > 0 ? entries[i - 1] : null
+    const dur = prev && prev.ts <= e.ts ? e.ts - prev.ts : null
+    return { ...e, dur }
+  })
+
+  return (
+    <div style={{ position: 'relative', paddingLeft: 22, marginBottom: 4 }}>
+      {withDur.map((e, i) => {
+        const isLast = i === withDur.length - 1
+        const color = LEVEL_COLOR[e.level] ?? C.textDim
+        return (
+          <div key={`${e.ts}-${i}`} style={{ position: 'relative', paddingBottom: isLast ? 2 : 12 }}>
+            {/* vertical connector */}
+            {!isLast && <span style={{ position: 'absolute', left: -14, top: 16, bottom: -4, width: 2, background: C.border }} />}
+            {/* dot */}
+            <span style={{
+              position: 'absolute', left: -19, top: 2, width: 12, height: 12, borderRadius: 999,
+              background: color, color: '#FFF', fontSize: 8, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{LEVEL_ICON[e.level] ?? ''}</span>
+            {/* content */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{e.message}</span>
+                <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{fmtTime(e.ts)}</span>
+                {e.dur !== null && i > 0 && (
+                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, background: C.surface3, padding: '0 5px', borderRadius: 3 }}>
+                    +{fmtDur(e.dur)}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                <span style={{
+                  fontSize: 9, padding: '0 6px', borderRadius: 3, fontFamily: C.mono, fontWeight: 600,
+                  background: e.kind === 'stage' ? C.surface3 : color + '1A', color,
+                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                }}>
+                  {e.source} · {e.kind === 'stage' ? 'stage' : 'log'}
+                </span>
+              </div>
+              {e.detail && e.detail !== 'undefined' && (
+                <details style={{ marginTop: 4 }}>
+                  <summary style={{ fontSize: 9, color: C.textDim, cursor: 'pointer', fontFamily: C.mono }}>
+                    detail
+                  </summary>
+                  <pre style={{
+                    margin: '4px 0 0', maxHeight: 120, overflow: 'auto', background: C.surface3,
+                    borderRadius: 4, padding: 8, fontSize: 9, fontFamily: C.mono, lineHeight: 1.5,
+                    color: C.textMuted, whiteSpace: 'pre-wrap',
+                  }}>{e.detail}</pre>
+                </details>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Job Detail Modal ──
 
 function JobDetail({ job, onClose }: { job: ContentJob; onClose: () => void }) {
@@ -606,6 +787,14 @@ function JobDetail({ job, onClose }: { job: ContentJob; onClose: () => void }) {
             {job.content_path && <div>file: <span style={{ color: C.text }}>{job.content_path}</span></div>}
           </div>
         )}
+
+        {/* Timeline */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>
+            ⏱ Job Timeline
+          </div>
+          <JobTimeline jobId={job.id} createdMs={new Date(job.created_at).getTime()} />
+        </div>
 
         {job.error_message && (
           <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 14, fontFamily: C.mono }}>
