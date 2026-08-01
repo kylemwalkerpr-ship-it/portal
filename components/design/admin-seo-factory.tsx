@@ -1409,7 +1409,7 @@ export default function AdminSeoFactory({
     return c
   }, [jobs])
 
-  // ── Action helpers: clickable data → context-aware navigation ──
+  // ── Action helpers ──
   const navigateToQueue = (statusFilter: string) => {
     setJobStatusFilter(statusFilter)
     setTab('queue')
@@ -1585,7 +1585,7 @@ export default function AdminSeoFactory({
             <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: k.color, marginTop: 2 }}>{k.value}</div>
           </div>
-        ))
+        ))}
       </div>
 
       {/* ── Quick actions ── */}
@@ -2517,7 +2517,7 @@ export default function AdminSeoFactory({
                       {isQualityGateFailure(j.error_message) && (
                         <button
                           type="button"
-                          style={{ ...btnSmall, color: C.red, border: `1px solid ${C.red}`, marginLeft: 8, fontWeight: 600, background: '#FFF5F5' }}
+                          style={{ ...btnSmall, color: C.red, border: '1px solid ' + C.red, marginLeft: 8, fontWeight: 600, background: '#FFF5F5' }}
                           disabled={busy}
                           onClick={(e) => { e.stopPropagation(); selectJob(j.id); void jobAction(j.id, 'regenerate') }}
                           title="Regenerate with quality-gate guidance"
