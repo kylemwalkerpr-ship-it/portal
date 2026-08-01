@@ -64,7 +64,9 @@ export async function* runSeoFactoryPipelineStream(
     const indexable = input.indexable !== false
     const requestedMode = (input.shipMode || 'pr') as RequestedShipMode
     const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
-    const maxRefine = Math.min(4, Math.max(0, Number(input.maxRefine ?? 10)))
+    // Keep streaming generation within the Worker subrequest budget.
+    // Further remediation remains available from the job modal.
+    const maxRefine = Math.min(1, Math.max(0, Number(input.maxRefine ?? 1)))
 
     if (!topic) {
       yield { type: 'error', error: 'topic required' }
@@ -278,7 +280,7 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
-    const maxExpand = contentType === 'marketplace_gig' ? 2 : 6
+    const maxExpand = contentType === 'marketplace_gig' ? 1 : 2
     while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
       expandPasses++
       attempts++
@@ -364,7 +366,7 @@ export async function* runSeoFactoryPipelineStream(
     // Depth rescue can introduce new quality issues (AI slop from appended sections).
     if (!meetsShipQuality(audit) && countBodyWords(content) >= minWords) {
       stalledCount = 0
-      for (let j = 0; j <= Math.min(4, maxRefine); j++) {
+      for (let j = 0; j <= Math.min(1, maxRefine); j++) {
         attempts++
         const prevBlockers = audit.blockers.length
         const prevScore = audit.score
@@ -469,7 +471,7 @@ export async function* runSeoFactoryPipelineStream(
     })
 
     // After scaffold, if blockers remain, do one final targeted refine
-    if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 15) {
+    if (!meetsShipQuality(audit) && audit.blockers.length > 0 && attempts < 8) {
       const q = evaluateContentQuality({
         content,
         contentType,
