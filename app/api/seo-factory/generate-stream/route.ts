@@ -154,19 +154,22 @@ export async function POST(request: Request) {
         let lastCheckpointDraft = ''
         let lastCheckpointChars = 0
         let lastCheckpointAt = 0
+        let checkpointCount = 0
+        const MAX_CHECKPOINTS = 10
         try {
           for await (const ev of runSeoFactoryPipelineStream(input)) {
-            if (supabase && supersedesJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft) {
+            if (supabase && supersedesJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
               const draft = String(ev.draft)
               const now = Date.now()
               const shouldCheckpoint =
                 ev.type === 'attempt' ||
-                draft.length >= lastCheckpointChars + 6000 ||
-                now - lastCheckpointAt >= 5000
+                draft.length >= lastCheckpointChars + 15000 ||
+                now - lastCheckpointAt >= 30000
               if (shouldCheckpoint && draft.length >= lastCheckpointChars) {
                 lastCheckpointDraft = draft
                 lastCheckpointChars = draft.length
                 lastCheckpointAt = now
+                checkpointCount++
                 await checkpointJob(
                   supabase,
                   supersedesJobId,
