@@ -18,11 +18,20 @@ interface GscRow {
   position: number
 }
 
+interface GscTotals {
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
 interface GscDashboardProps {
   siteUrl: string
   onConnect: () => void
   onDisconnect: () => void
 }
+
+type TabKey = 'query' | 'page' | 'device' | 'country'
 
 // ── Connect state ──
 
@@ -127,9 +136,9 @@ function GscConnect({
   )
 }
 
-// ── Keyword Rankings Table ──
+// ── Rankings table (sortable, with click + position bars) ──
 
-function KeywordTable({ rows, dimension }: { rows: GscRow[]; dimension: string }) {
+function RankingTable({ rows, label }: { rows: GscRow[]; label: string }) {
   const [sortBy, setSortBy] = React.useState<'clicks' | 'impressions' | 'ctr' | 'position'>('clicks')
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc')
 
@@ -146,7 +155,7 @@ function KeywordTable({ rows, dimension }: { rows: GscRow[]; dimension: string }
   const sortArrow = (col: typeof sortBy) =>
     sortBy === col ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''
 
-  // Sparkline bar for position (inverted: lower = better = longer bar)
+  const maxClicks = Math.max(...rows.map(r => r.clicks), 1)
   const maxPos = Math.max(...rows.map(r => r.position), 1)
 
   return (
@@ -154,30 +163,29 @@ function KeywordTable({ rows, dimension }: { rows: GscRow[]; dimension: string }
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-            <th style={thStyle(dimension === 'query' ? 280 : 200)}
-              onClick={() => toggleSort('clicks')}>
+            <th style={thStyle(label === 'Queries' || label === 'Pages' ? 280 : 160)}>
+              {label}
+            </th>
+            <th style={thStyle(100)} onClick={() => toggleSort('clicks')}>
               <span style={sortHeaderStyle}>Clicks{sortArrow('clicks')}</span>
             </th>
-            <th style={thStyle(100)}
-              onClick={() => toggleSort('impressions')}>
+            <th style={thStyle(100)} onClick={() => toggleSort('impressions')}>
               <span style={sortHeaderStyle}>Impr.{sortArrow('impressions')}</span>
             </th>
-            <th style={thStyle(70)}
-              onClick={() => toggleSort('ctr')}>
+            <th style={thStyle(70)} onClick={() => toggleSort('ctr')}>
               <span style={sortHeaderStyle}>CTR{sortArrow('ctr')}</span>
             </th>
-            <th style={thStyle(80)}
-              onClick={() => toggleSort('position')}>
+            <th style={thStyle(80)} onClick={() => toggleSort('position')}>
               <span style={sortHeaderStyle}>Pos.{sortArrow('position')}</span>
             </th>
-            <th style={{ ...thStyle(120) }}>Position Bar</th>
+            <th style={{ ...thStyle(120) }}>Clicks Bar</th>
           </tr>
         </thead>
         <tbody>
           {sorted.slice(0, 50).map((row, i) => (
             <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? C.surface : C.surface2 }}>
               <td style={tdStyle}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: C.text }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: C.text, maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {row.keys[0]}
                 </div>
               </td>
@@ -197,8 +205,8 @@ function KeywordTable({ rows, dimension }: { rows: GscRow[]; dimension: string }
                 <div style={{ position: 'relative', height: 6, background: C.surface3, borderRadius: 3 }}>
                   <div style={{
                     position: 'absolute', left: 0, top: 0, height: 6, borderRadius: 3,
-                    width: `${Math.max(5, ((maxPos - row.position + 1) / maxPos) * 100)}%`,
-                    background: row.position <= 3 ? C.green : row.position <= 10 ? C.orange : C.textDim,
+                    width: `${Math.max(5, (row.clicks / maxClicks) * 100)}%`,
+                    background: row.clicks / maxClicks > 0.6 ? C.green : row.clicks / maxClicks > 0.3 ? C.gold : C.textDim,
                     transition: 'width 0.3s ease',
                   }} />
                 </div>
@@ -207,6 +215,9 @@ function KeywordTable({ rows, dimension }: { rows: GscRow[]; dimension: string }
           ))}
         </tbody>
       </table>
+      <div style={{ fontSize: 11, color: C.textDim, padding: '8px 12px', fontFamily: C.mono }}>
+        Position bar: max position {maxPos.toFixed(1)}
+      </div>
     </div>
   )
 }
@@ -225,23 +236,36 @@ const tdStyle: React.CSSProperties = {
   padding: '10px 12px', fontSize: 12, color: C.text, verticalAlign: 'middle',
 }
 
-// ── Summary cards ──
+// ── Summary cards (real totals when available) ──
 
-function GscSummary({ rows, onRefresh, loading }: { rows: GscRow[]; onRefresh: () => void; loading: boolean }) {
-  const totalClicks = rows.reduce((s, r) => s + r.clicks, 0)
-  const totalImpressions = rows.reduce((s, r) => s + r.impressions, 0)
-  const avgCtr = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.ctr, 0) / rows.length * 100) / 100 : 0
-  const avgPosition = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.position, 0) / rows.length * 10) / 10 : 0
-  const topKeywords = rows.filter(r => r.position <= 3).length
+function GscSummary({
+  totals,
+  totalsPrev,
+  rows,
+  onRefresh,
+  loading,
+  source,
+}: {
+  totals: GscTotals | null
+  totalsPrev: { clicks: number; impressions: number } | null
+  rows: GscRow[]
+  onRefresh: () => void
+  loading: boolean
+  source: string
+}) {
+  const clicks = totals?.clicks ?? rows.reduce((s, r) => s + r.clicks, 0)
+  const impressions = totals?.impressions ?? rows.reduce((s, r) => s + r.impressions, 0)
+  const ctr = totals ? Math.round(totals.ctr * 100) / 100 : rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.ctr, 0) / rows.length * 100) / 100 : 0
+  const position = totals ? Math.round(totals.position * 10) / 10 : rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.position, 0) / rows.length * 10) / 10 : 0
+  const clicksDelta = totalsPrev ? Math.round(((clicks - totalsPrev.clicks) / Math.max(totalsPrev.clicks, 1)) * 100) : null
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
       {[
-        { label: 'Total Clicks', value: totalClicks.toLocaleString(), color: C.blue },
-        { label: 'Impressions', value: totalImpressions.toLocaleString(), color: C.purple },
-        { label: 'Avg CTR', value: `${avgCtr}%`, color: C.green },
-        { label: 'Avg Position', value: avgPosition.toFixed(1), color: C.orange },
-        { label: 'Top 3 Keywords', value: topKeywords, color: C.gold },
+        { label: 'Total Clicks', value: clicks.toLocaleString(), color: C.blue, delta: clicksDelta !== null ? `${clicksDelta >= 0 ? '+' : ''}${clicksDelta}% vs prev` : null },
+        { label: 'Impressions', value: impressions.toLocaleString(), color: C.purple },
+        { label: 'CTR', value: `${ctr}%`, color: C.green },
+        { label: 'Avg Position', value: position.toFixed(1), color: C.orange },
       ].map(c => (
         <div key={c.label} style={{
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
@@ -253,9 +277,14 @@ function GscSummary({ rows, onRefresh, loading }: { rows: GscRow[]; onRefresh: (
           <div style={{ fontSize: 24, fontWeight: 700, color: C.text, marginTop: 4, fontFamily: C.serif }}>
             {c.value}
           </div>
+          {c.delta && (
+            <div style={{ fontSize: 10, color: c.delta.startsWith('+') ? C.green : C.textDim, marginTop: 2, fontFamily: C.mono }}>
+              {c.delta}
+            </div>
+          )}
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexDirection: 'column' }}>
         <button onClick={onRefresh} disabled={loading} style={{
           padding: '8px 16px', borderRadius: 6, border: `1px solid ${C.border}`,
           background: C.surface, color: C.text, cursor: loading ? 'wait' : 'pointer',
@@ -263,6 +292,9 @@ function GscSummary({ rows, onRefresh, loading }: { rows: GscRow[]; onRefresh: (
         }}>
           {loading ? '⏳' : '🔄'} Refresh
         </button>
+        <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+          {source === 'live' ? '● live' : '◌ snapshot'}
+        </span>
       </div>
     </div>
   )
@@ -280,12 +312,25 @@ type GscStatus = {
   setup?: { envRequired?: string[] }
 }
 
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'query', label: 'Queries' },
+  { key: 'page', label: 'Pages' },
+  { key: 'device', label: 'Devices' },
+  { key: 'country', label: 'Countries' },
+]
+
 export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: GscDashboardProps) {
   const [status, setStatus] = React.useState<GscStatus | null>(null)
   const [rows, setRows] = React.useState<GscRow[]>([])
+  const [pages, setPages] = React.useState<GscRow[]>([])
+  const [devices, setDevices] = React.useState<GscRow[]>([])
+  const [countries, setCountries] = React.useState<GscRow[]>([])
+  const [totals, setTotals] = React.useState<GscTotals | null>(null)
+  const [totalsPrev, setTotalsPrev] = React.useState<{ clicks: number; impressions: number } | null>(null)
+  const [source, setSource] = React.useState('snapshot')
   const [loading, setLoading] = React.useState(true)
-  const [dimension, setDimension] = React.useState<'query' | 'page'>('query')
-  const [dateRange, setDateRange] = React.useState({ start: '30daysAgo', end: 'today' })
+  const [tab, setTab] = React.useState<TabKey>('query')
+  const [days, setDays] = React.useState(90)
   const [error, setError] = React.useState<string | null>(null)
 
   // Check GSC connection status
@@ -311,23 +356,33 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           siteUrl,
-          startDate: dateRange.start,
-          endDate: dateRange.end,
-          dimensions: [dimension],
+          days,
           rowLimit: 100,
         }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setRows(data.rows ?? [])
+      setPages(data.pages ?? [])
+      setDevices(data.devices ?? [])
+      setCountries(data.countries ?? [])
+      setTotals(data.totals ?? null)
+      setTotalsPrev(data.totalsPrev ?? null)
+      setSource(data.source ?? 'snapshot')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load GSC data')
     } finally {
       setLoading(false)
     }
-  }, [status?.connected, siteUrl, dimension, dateRange])
+  }, [status?.connected, siteUrl, days])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  const activeRows =
+    tab === 'page' ? pages
+    : tab === 'device' ? devices
+    : tab === 'country' ? countries
+    : rows
 
   if (!status) return <div style={{ padding: 20, color: C.textDim, textAlign: 'center' }}>Checking GSC status...</div>
 
@@ -352,9 +407,14 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         marginBottom: 16, padding: '10px 16px', background: '#F0FDF4',
         border: '1px solid #BBF7D0', borderRadius: 8,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ color: C.green, fontWeight: 600, fontSize: 12 }}>● Connected</span>
           <span style={{ fontSize: 12, color: C.textMuted, fontFamily: C.mono }}>{status.email}</span>
+          {status.mode && (
+            <span style={{ fontSize: 11, color: C.textDim, fontFamily: C.mono, background: C.surface3, padding: '2px 8px', borderRadius: 10 }}>
+              {status.mode === 'service_account' ? 'service account' : status.mode}
+            </span>
+          )}
         </div>
         <button onClick={onDisconnect} style={{
           background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', fontSize: 11,
@@ -371,40 +431,55 @@ export default function AdminGscDashboard({ siteUrl, onConnect, onDisconnect }: 
         </div>
       )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <select value={dimension} onChange={e => setDimension(e.target.value as any)} style={selStyle}>
-          <option value="query">By Search Query</option>
-          <option value="page">By Page URL</option>
-        </select>
-        <select value={`${dateRange.start}|${dateRange.end}`} onChange={(ev) => {
-          const [s, end] = ev.target.value.split('|')
-          setDateRange({ start: s, end })
-        }} style={selStyle}>
-          <option value="7daysAgo|today">Last 7 days</option>
-          <option value="30daysAgo|today">Last 30 days</option>
-          <option value="90daysAgo|today">Last 3 months</option>
-        </select>
+      {/* Range */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em' }}>
+          Range
+        </span>
+        {[7, 28, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)} style={{
+            padding: '6px 14px', borderRadius: 6, border: `1px solid ${days === d ? C.gold : 'rgba(0,0,0,0.12)'}`,
+            background: days === d ? '#FFF9EB' : '#fff', color: days === d ? C.gold : C.text,
+            fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', fontWeight: days === d ? 700 : 400,
+          }}>
+            {d}d
+          </button>
+        ))}
       </div>
 
       {/* Summary */}
-      <GscSummary rows={rows} onRefresh={fetchData} loading={loading} />
+      <GscSummary totals={totals} totalsPrev={totalsPrev} rows={rows} onRefresh={fetchData} loading={loading} source={source} />
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: `2px solid ${C.border}` }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding: '9px 18px', border: 'none', background: 'none',
+            borderBottom: tab === t.key ? `2px solid ${C.gold}` : '2px solid transparent',
+            color: tab === t.key ? C.text : C.textDim,
+            fontWeight: tab === t.key ? 600 : 400,
+            cursor: 'pointer', fontSize: 13, fontFamily: 'inherit',
+            transition: 'all 0.15s ease',
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {/* Table */}
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>Loading GSC data...</div>
-      ) : rows.length === 0 ? (
+      ) : activeRows.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: C.textDim }}>
-          No data for this date range.
+          {source === 'snapshot' && tab !== 'query' && tab !== 'page'
+            ? 'Device / country breakdown requires live GSC data (service account or OAuth).'
+            : 'No data for this date range.'}
         </div>
       ) : (
-        <KeywordTable rows={rows} dimension={dimension} />
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+          <RankingTable rows={activeRows} label={TABS.find(t => t.key === tab)?.label ?? 'Items'} />
+        </div>
       )}
     </div>
   )
-}
-
-const selStyle: React.CSSProperties = {
-  padding: '6px 10px', borderRadius: 6, border: `1px solid rgba(0,0,0,0.12)`,
-  background: '#fff', fontSize: 12, fontFamily: 'inherit',
 }
