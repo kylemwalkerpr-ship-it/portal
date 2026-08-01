@@ -189,10 +189,12 @@ function QuickCreate({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!topic.trim()) return
+    const effectiveTitle = title.trim()
+    const effectiveTopic = topic.trim() || effectiveTitle
+    if (!effectiveTopic) return
     onGenerate({
       content_type: contentType, region, tone,
-      title: title.trim(), topic: topic.trim(),
+      title: effectiveTitle || effectiveTopic, topic: effectiveTopic,
       audience: audience.trim(),
       keywords: keywords.split(',').map(s => s.trim()).filter(Boolean),
     })
@@ -279,7 +281,7 @@ function QuickCreate({
             </div>
           </div>
 
-          <button type="submit" disabled={generating || !topic.trim()} style={{
+          <button type="submit" disabled={generating || (!topic.trim() && !title.trim())} style={{
             width: '100%', padding: '10px 0', borderRadius: 6, border: 'none',
             cursor: generating ? 'not-allowed' : 'pointer',
             background: generating ? C.textDim : C.navy, color: '#FFFFFF',
