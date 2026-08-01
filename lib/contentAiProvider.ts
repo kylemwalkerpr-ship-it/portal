@@ -23,11 +23,11 @@ const DEFAULT_MAX_TOKENS = 8192
 /** NVIDIA DeepSeek V4 Pro supports large completions — use for depth floors. */
 const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
-// Keep the cascade deliberately small on Cloudflare Free/low-budget Workers.
-// Set CONTENT_AI_MAX_PROVIDERS=3 only when the Worker has adequate headroom.
+// Keep the cascade bounded while allowing one additional configured provider
+// after a primary timeout and an exhausted quota fallback.
 const MAX_PROVIDER_CANDIDATES = Math.max(
   1,
-  Math.min(4, Number.parseInt(process.env.CONTENT_AI_MAX_PROVIDERS || '2', 10) || 2),
+  Math.min(4, Number.parseInt(process.env.CONTENT_AI_MAX_PROVIDERS || '3', 10) || 3),
 )
 
 const NVIDIA_INTEGRATE_BASE =
@@ -72,6 +72,29 @@ function env(name: string): string {
   return (process.env[name] || '').trim()
 }
 
+/** Workers AI daily-neuron exhaustion is permanent until the quota resets. */
+function isDailyQuotaError(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  return /daily free allocation|used up.*(?:daily )?allocation|free allocation.*neurons|neurons.*upgrade|account limited|error code\s*[:=]?\s*(3036|4006)/i.test(message)
+}
+
+/** 524s and exhausted quotas should not be retried against the same provider. */
+function isNoRetryProviderError(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value || '')
+  return /\b524\b|gateway timeout|upstream.*timeout|timed out/i.test(message) || isDailyQuotaError(message)
+}
+
+/** Keep provider diagnostics useful without surfacing auth/token fingerprints. */
+function formatProviderFailure(label: string, status: number, body: string): string {
+  if (isDailyQuotaError(body)) {
+    return `${label} ${status}: daily Workers AI free allocation exhausted; retry after the UTC quota reset or configure paid Workers AI`
+  }
+  if (status === 524 || /gateway timeout|upstream.*timeout/i.test(body)) {
+    return `${label} ${status}: upstream gateway timeout; try again later or use another configured provider`
+  }
+  return `${label} ${status}: ${body.slice(0, 400)}`
+}
+
 /** Resolve account + API token for Workers AI REST. */
 export function resolveCloudflareAiAuth(): { accountId: string; token: string } | null {
   const accountId =
@@ -102,7 +125,7 @@ async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       const retryable = /\b(503|429)\b|UNAVAILABLE|overload|high.demand|rate.?limit/i.test(msg)
-      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg)) throw e
+      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) throw e
       console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
       await new Promise((r) => setTimeout(r, 1500))
     }
@@ -167,7 +190,7 @@ async function openAiCompatibleComplete(
     })
     if (!res.ok) {
       const errBody = await res.text().catch(() => '')
-      throw new Error(`${p.label} ${res.status}: ${errBody.slice(0, 400)}`)
+      throw new Error(formatProviderFailure(p.label, res.status, errBody))
     }
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: unknown; reasoning_content?: string } }>
@@ -397,7 +420,7 @@ async function* openAiCompatibleStream(
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`${p.label} stream ${res.status}: ${body.slice(0, 400)}`)
+    throw new Error(formatProviderFailure(`${p.label} stream`, res.status, body))
   }
   if (!res.body) throw new Error(`${p.label} stream: empty body`)
 
@@ -451,7 +474,7 @@ async function* cloudflareAiStream(
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`cloudflare-ai stream ${res.status}: ${body.slice(0, 400)}`)
+    throw new Error(formatProviderFailure('cloudflare-ai stream', res.status, body))
   }
   if (!res.body) throw new Error('cloudflare-ai stream: empty body')
 
@@ -495,7 +518,6 @@ async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiRe
 
   const { accountId, token } = auth
   const model = CF_AI_MODEL
-  const fp = `[len=${token.length} ${token.slice(0, 4)}…${token.slice(-3)}]`
   const messages = [
     { role: 'system', content: opts.system },
     { role: 'user', content: opts.prompt },
@@ -542,15 +564,23 @@ async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiRe
       if (text) return { text, provider: 'cloudflare-ai', model }
       if (data.success === false) {
         const errs = (data.errors || []).map((e) => e.message).join(' | ')
+        if (isDailyQuotaError(errs)) {
+          throw new Error('cloudflare-ai 429: daily Workers AI free allocation exhausted; retry after the UTC quota reset or configure paid Workers AI')
+        }
         throw new Error(`chat/completions success=false: ${errs}`)
       }
       throw new Error('chat/completions empty content')
     }
 
     const body = await res.text().catch(() => '')
-    // Fall through to legacy /run on 404/not found; rethrow hard auth errors
+    // Quota/rate-limit responses are provider-level failures. Trying the legacy
+    // endpoint as well would spend another request and cannot restore quota.
+    if (res.status === 429 || isDailyQuotaError(body)) {
+      throw new Error(formatProviderFailure('cloudflare-ai', res.status, body))
+    }
+    // Fall through to legacy /run only for endpoint compatibility (normally 404).
     if (res.status === 401 || res.status === 403) {
-      throw new Error(`cloudflare-ai ${res.status} ${fp}: ${body.slice(0, 400)}`)
+      throw new Error(formatProviderFailure('cloudflare-ai', res.status, body))
     }
     chatErr = `chat/completions ${res.status}: ${body.slice(0, 200)}`
   } catch (e) {
@@ -576,7 +606,7 @@ async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiRe
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(
-      `cloudflare-ai ${res.status} ${fp}: ${body.slice(0, 300)} (also tried: ${chatErr})`,
+      `${formatProviderFailure('cloudflare-ai', res.status, body)} (also tried: ${chatErr})`,
     )
   }
 
@@ -912,8 +942,11 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     }
   }
 
+  const quotaNote = errors.some(isDailyQuotaError)
+    ? ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.'
+    : ''
   throw new Error(
-    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}. Primary: NVIDIA_API_KEY (DeepSeek). Fallback: Cloudflare Workers AI.`,
+    `All content AI providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`,
   )
 }
 
@@ -1062,9 +1095,12 @@ export async function* generateContentTextStream(
 
 
 
+  const quotaNote = errors.some(isDailyQuotaError)
+    ? ' Cloudflare Workers AI daily free allocation is exhausted; it will not recover through retries.'
+    : ''
   throw new Error(
     errors.length
-      ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}`
+      ? `All content AI stream providers failed. ${errors.map((e) => e.slice(0, 180)).join(' | ')}.${quotaNote} Configure another provider or retry after the affected quota resets.`
       : 'No content AI provider configured for streaming.',
   )
 }
