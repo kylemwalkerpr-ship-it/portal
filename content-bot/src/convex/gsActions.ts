@@ -213,6 +213,62 @@ export const fetchGscData = action({
 });
 
 /**
+ * Fetch a full GSC analytics bundle: totals + top queries + pages + devices
+ * + countries + daily trend, fetched in parallel. Called from the Dashboard
+ * GSC panel for the enhanced analytics view.
+ */
+export const fetchGscAnalytics = action({
+  args: {
+    siteUrl: v.string(),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    rowLimit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const serviceAccountKey = process.env.GSC_SERVICE_ACCOUNT_KEY;
+    if (!serviceAccountKey) {
+      throw new Error(
+        "GSC not configured. Set GSC_SERVICE_ACCOUNT_KEY in API keys.",
+      );
+    }
+
+    const accessToken = await getGscAccessToken(serviceAccountKey);
+    const startDate = args.startDate ?? "30daysAgo";
+    const endDate = args.endDate ?? "today";
+    const rowLimit = args.rowLimit ?? 10;
+
+    const base = {
+      siteUrl: args.siteUrl,
+      startDate,
+      endDate,
+      rowLimit,
+    } as const;
+
+    // All queries run in parallel against the same token.
+    const [totals, byQuery, byPage, byDevice, byCountry, byDate] =
+      await Promise.all([
+        queryGscApi(accessToken, { ...base, dimensions: [] }),
+        queryGscApi(accessToken, { ...base, dimensions: ["query"] }),
+        queryGscApi(accessToken, { ...base, dimensions: ["page"] }),
+        queryGscApi(accessToken, { ...base, dimensions: ["device"] }),
+        queryGscApi(accessToken, { ...base, dimensions: ["country"] }),
+        queryGscApi(accessToken, { ...base, dimensions: ["date"] }),
+      ]);
+
+    return {
+      siteUrl: args.siteUrl,
+      dateRange: { startDate, endDate },
+      totals: totals.rows[0] ?? null,
+      byQuery,
+      byPage,
+      byDevice,
+      byCountry,
+      byDate,
+    };
+  },
+});
+
+/**
  * Connect GSC: verify the service account can access a site and store config.
  */
 export const connectGsc = action({
