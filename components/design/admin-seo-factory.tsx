@@ -1409,6 +1409,21 @@ export default function AdminSeoFactory({
     return c
   }, [jobs])
 
+  // ── Action helpers: clickable data → context-aware navigation ──
+  const navigateToQueue = (statusFilter: string) => {
+    setJobStatusFilter(statusFilter)
+    setTab('queue')
+  }
+  const isQualityGateFailure = (msg?: string | null): boolean =>
+    !!msg && (msg.includes('Ship refused') || msg.includes('content quality gate') || msg.includes('Same sentence opening repeated'))
+
+  const handleStatusClick = (label: string) => {
+    if (label === 'GSC') { setTab('warroom'); if (!warRoom) loadWarRoom(); return }
+    const map: Record<string, string> = { 'In flight': 'drafting,publishing,pending', 'PRs open': 'pr_created', Merged: 'merged', Failed: 'failed' }
+    const f = map[label]
+    if (f) navigateToQueue(f)
+  }
+
   const warQueueFiltered = React.useMemo(() => {
     const q = (warRoom?.queue || []) as Array<Record<string, unknown>>
     if (warPlayFilter === 'all') return q
@@ -1563,14 +1578,14 @@ export default function AdminSeoFactory({
           { label: 'Failed', value: jobCounts.failed, color: C.red },
           { label: 'GSC', value: warRoom?.kpis?.liveGsc ? 'LIVE' : '—', color: warRoom?.kpis?.liveGsc ? C.green : C.textDim },
         ].map((k) => (
-          <div key={k.label} style={{
+          <div key={k.label} onClick={() => handleStatusClick(k.label)} title={`Click to filter queue: ${k.label}`} style={{
             padding: '10px 12px', borderRadius: 10, background: C.surface,
-            border: `1px solid ${C.border}`,
+            border: `1px solid ${C.border}`, cursor: 'pointer',
           }}>
             <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: k.color, marginTop: 2 }}>{k.value}</div>
           </div>
-        ))}
+        ))
       </div>
 
       {/* ── Quick actions ── */}
@@ -2479,7 +2494,16 @@ export default function AdminSeoFactory({
                     <strong>{j.title || j.topic}</strong>
                   </div>
                   <span style={{ color: C.textDim }}>
-                    {j.status} · SEO {j.seo_score ?? '—'} · {j.owner_host || '—'} · {j.ai_provider || '—'}
+                    {j.status}
+                    {' · '}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); void jobAction(j.id, 'reaudit') }}
+                      title="Click to re-audit"
+                      style={{ color: C.blue, cursor: 'pointer', fontWeight: 500 }}
+                    >
+                      SEO {j.seo_score ?? '—'}
+                    </span>
+                    {' · '}{j.owner_host || '—'}{' · '}{j.ai_provider || '—'}
                   </span>
                 </div>
                 <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>
@@ -2487,7 +2511,22 @@ export default function AdminSeoFactory({
                   {j.content_path && <> · <code style={{ fontSize: 11 }}>{j.content_path}</code></>}
                   {j.pr_url && <> · <a href={j.pr_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PR</a></>}
                   {j.indexable === false && <span style={{ color: C.orange }}> · noindex</span>}
-                  {j.error_message && <span style={{ color: C.red }}> · {j.error_message}</span>}
+                  {j.error_message && (
+                    <span style={{ color: C.red, cursor: 'default' }}>
+                      {' · '}{j.error_message}
+                      {isQualityGateFailure(j.error_message) && (
+                        <button
+                          type="button"
+                          style={{ ...btnSmall, color: C.red, border: `1px solid ${C.red}`, marginLeft: 8, fontWeight: 600, background: '#FFF5F5' }}
+                          disabled={busy}
+                          onClick={(e) => { e.stopPropagation(); selectJob(j.id); void jobAction(j.id, 'regenerate') }}
+                          title="Regenerate with quality-gate guidance"
+                        >
+                          Fix & regenerate
+                        </button>
+                      )}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                   <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open</button>
