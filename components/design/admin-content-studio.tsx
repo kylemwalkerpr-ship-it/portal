@@ -488,6 +488,55 @@ function LivePipeline({ jobs, onSelect }: { jobs: ContentJob[]; onSelect: (j: Co
   )
 }
 
+function LiveGenerationPanel({
+  active,
+  events,
+  startedAt,
+  streamedChars,
+}: {
+  active: boolean
+  events: GenerationActivity[]
+  startedAt: number | null
+  streamedChars: number
+}) {
+  if (!active && events.length === 0) return null
+  const latest = events[events.length - 1]
+  const elapsed = startedAt ? fmtDur(Date.now() - startedAt) : ''
+  const levelColor = latest?.level === 'error' ? C.red : latest?.level === 'warn' ? C.orange : latest?.level === 'success' ? C.green : C.blue
+  return (
+    <div style={{ marginBottom: 16, background: C.navy, color: '#FFF', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.14)' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: active ? '#34D399' : levelColor, boxShadow: active ? '0 0 0 4px rgba(52,211,153,0.16)' : 'none' }} />
+            {active ? 'AI work in progress' : latest?.level === 'error' ? 'Generation stopped' : 'Latest generation activity'}
+          </div>
+          <div style={{ marginTop: 3, fontSize: 10, color: 'rgba(255,255,255,0.62)', fontFamily: C.mono }}>
+            {active ? `Live pipeline · ${elapsed}${streamedChars ? ` · ${streamedChars.toLocaleString()} streamed characters` : ''}` : 'Activity captured from the generation pipeline'}
+          </div>
+        </div>
+        <span style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 4, background: active ? 'rgba(52,211,153,0.16)' : 'rgba(255,255,255,0.1)', color: active ? '#A7F3D0' : 'rgba(255,255,255,0.75)', fontSize: 9, fontFamily: C.mono, textTransform: 'uppercase' }}>
+          {active ? 'streaming' : 'complete'}
+        </span>
+      </div>
+      <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {events.slice(-6).map((event, index, visible) => (
+          <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, opacity: index === visible.length - 1 ? 1 : 0.68 }}>
+            <span style={{ width: 17, height: 17, flexShrink: 0, borderRadius: 99, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: event.level === 'error' ? 'rgba(248,113,113,0.18)' : event.level === 'warn' ? 'rgba(251,191,36,0.18)' : event.level === 'success' ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)', color: event.level === 'error' ? '#FCA5A5' : event.level === 'warn' ? '#FCD34D' : event.level === 'success' ? '#6EE7B7' : '#93C5FD', fontSize: 9, fontWeight: 800 }}>
+              {event.level === 'error' ? '!' : event.level === 'success' ? '✓' : '•'}
+            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 11, lineHeight: 1.35, color: '#F8FAFC' }}>{event.message}</div>
+              <div style={{ marginTop: 2, fontSize: 9, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono }}>{event.stage} · {fmtTime(event.ts)}</div>
+            </div>
+          </div>
+        ))}
+        {active && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono, paddingLeft: 26 }}>Waiting for the next pipeline event…</div>}
+      </div>
+    </div>
+  )
+}
+
 // ── Job History Table ──
 
 function JobHistory({ jobs, expanded, onToggle, onSelect, loading }: {
@@ -583,6 +632,14 @@ interface TimelineEntry {
   kind: 'log' | 'stage'
 }
 
+interface GenerationActivity {
+  id: string
+  ts: number
+  stage: string
+  message: string
+  level: 'info' | 'success' | 'warn' | 'error'
+}
+
 const LEVEL_COLOR: Record<LogLevel, string> = {
   success: C.green, info: C.blue, warn: C.orange, error: C.red,
 }
@@ -670,7 +727,18 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
       }
     }
     load()
-    return () => { cancelled = true }
+    // Keep the detail timeline live while the pipeline is still running. The
+    // endpoint returns the durable event_log and current lifecycle status.
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const poll = async () => {
+      await load()
+      if (!cancelled) timer = setTimeout(poll, 2500)
+    }
+    timer = setTimeout(poll, 2500)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [jobId, createdMs])
 
   if (error) {
@@ -928,6 +996,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [historyExpanded, setHistoryExpanded] = React.useState(false)
   const [topic, setTopic] = React.useState('')
   const [keywords, setKeywords] = React.useState('')
+  const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
+  const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
+  const [generationChars, setGenerationChars] = React.useState(0)
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -948,24 +1019,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   // Poll active jobs
   React.useEffect(() => {
-    const hasActive = jobs.some(j => ['pending', 'publishing'].includes(j.status))
+    const hasActive = jobs.some(j => ['pending', 'drafting', 'publishing'].includes(j.status))
     if (!hasActive) return
-    const interval = setInterval(fetchJobs, 12_000)
+    const interval = setInterval(fetchJobs, 6_000)
     return () => clearInterval(interval)
   }, [jobs, fetchJobs])
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
     setError(null)
+    setGenerationStartedAt(Date.now())
+    setGenerationChars(0)
+    setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
+
+    const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
+      setGenerationEvents(prev => [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-80))
+    }
+
     try {
       const contentTypeMap: Record<string, string> = {
         blog_post: 'blog_summary', article: 'legal_guide',
         regional_page: 'regional_page', marketplace_gig: 'marketplace_gig',
       }
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
-      const res = await fetch('/api/seo-factory/generate', {
+      const res = await fetch('/api/seo-factory/generate-stream', {
         method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           topic: formData.topic, title: formData.title || formData.topic,
           primaryKeyword: (formData.keywords && formData.keywords[0]) || formData.topic,
@@ -975,20 +1054,61 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           minAuditScore: 55, maxRefine: 2,
         }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok && !data.content) throw new Error(data.error ?? `HTTP ${res.status}`)
+      if (!res.ok) {
+        const failure = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(failure.error || `Generation stream HTTP ${res.status}`)
+      }
+      if (!res.body) throw new Error('Generation stream returned no readable body')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalResult: any = null
+      let streamChars = 0
+      const consume = (raw: string) => {
+        const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
+        if (!dataLine) return
+        const payload = dataLine.slice(5).trim()
+        if (!payload || payload === '[DONE]') return
+        const event = JSON.parse(payload) as any
+        if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
+        else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
+        else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
+        else if (event.type === 'delta') {
+          streamChars += String(event.text || '').length
+          setGenerationChars(streamChars)
+        } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? `Pull request opened · audit passed` : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
+        else if (event.type === 'final') {
+          finalResult = event.result
+          record('complete', event.result?.ship?.prUrl ? 'PR opened. The job is now ready for review.' : 'Generation complete. Job details are being refreshed.', 'success')
+        } else if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
+      }
+
+      while (true) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+        const chunks = buffer.split(/\r?\n\r?\n/)
+        buffer = chunks.pop() || ''
+        for (const chunk of chunks) consume(chunk)
+        if (done) break
+      }
+      if (buffer.trim()) consume(buffer)
+      if (!finalResult) throw new Error('Generation stream ended before a final result was received')
+
+      const data = finalResult
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
         : data.shipError
-          ? `Generated (audit ${data.audit?.score}) but ship failed: ${data.shipError}`
+          ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      // Collapse create panel, show factory
       setCreateExpanded(false)
       setShowFactory(true)
       await fetchJobs()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Generation failed')
+      const message = err instanceof Error ? err.message : 'Generation failed'
+      record('error', message, 'error')
+      setError(message)
       setActionNotice('Content generation failed.')
     } finally { setGenerating(false) }
   }
@@ -1020,6 +1140,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           }}>↻ Refresh</button>
         </div>
       </div>
+
+      {/* Live AI activity */}
+      <LiveGenerationPanel active={generating} events={generationEvents} startedAt={generationStartedAt} streamedChars={generationChars} />
 
       {/* Error banner */}
       {error && (
