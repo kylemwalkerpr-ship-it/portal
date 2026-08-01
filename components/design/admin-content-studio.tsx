@@ -491,6 +491,32 @@ function LivePipeline({ jobs, onSelect }: { jobs: ContentJob[]; onSelect: (j: Co
   )
 }
 
+const STAGE_PROGRESS: Record<string, number> = {
+  connect: 4, plan: 12, gsc: 20, generate: 35, provider: 45,
+  audit: 62, refine: 80, depth: 88, ship: 95, complete: 100,
+}
+
+function progressFromEvents(events: GenerationActivity[], active: boolean): number {
+  let p = active ? 4 : 0
+  for (const e of events) {
+    const key = String(e.stage || '').toLowerCase()
+    if (key in STAGE_PROGRESS) p = Math.max(p, STAGE_PROGRESS[key])
+    if (e.level === 'error') return 100
+  }
+  return Math.min(100, p)
+}
+
+function ProgressBar({ value, color }: { value: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.max(4, Math.min(100, value))}%`, height: '100%', borderRadius: 99, background: color, transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: 10, fontFamily: C.mono, color: 'rgba(255,255,255,0.75)', minWidth: 34, textAlign: 'right' }}>{Math.round(value)}%</span>
+    </div>
+  )
+}
+
 function LiveGenerationPanel({
   active,
   events,
@@ -521,6 +547,9 @@ function LiveGenerationPanel({
         <span style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 4, background: active ? 'rgba(52,211,153,0.16)' : 'rgba(255,255,255,0.1)', color: active ? '#A7F3D0' : 'rgba(255,255,255,0.75)', fontSize: 9, fontFamily: C.mono, textTransform: 'uppercase' }}>
           {active ? 'streaming' : 'complete'}
         </span>
+      </div>
+      <div style={{ padding: '0 16px 8px' }}>
+        <ProgressBar value={progressFromEvents(events, active)} color={active ? '#34D399' : levelColor} />
       </div>
       <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
         {events.slice(-6).map((event, index, visible) => (
@@ -1094,6 +1123,9 @@ function JobDetail({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: activeAction ? '#FCD34D' : '#86EFAC', fontWeight: 700 }}>
               <span>{activeAction ? '● LIVE AI ACTIVITY' : '✓ LAST AI ACTIVITY'}</span>
               {actionChars > 0 && <span>{actionChars.toLocaleString()} streamed chars</span>}
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <ProgressBar value={progressFromEvents(actionEvents, Boolean(activeAction))} color={activeAction ? '#FCD34D' : '#86EFAC'} />
             </div>
             <div style={{ display: 'grid', gap: 4 }}>
               {actionEvents.slice(-6).map(event => <div key={event.id} style={{ display: 'flex', gap: 7, lineHeight: 1.4 }}>
