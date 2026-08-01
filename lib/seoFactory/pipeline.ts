@@ -89,6 +89,8 @@ export interface PipelineInput {
   writeHint?: string
   userId?: string
   skipShipIfBelowScore?: boolean
+  /** Saved partial draft used when continuing an interrupted stream. */
+  resumeContent?: string
 }
 
 export interface PipelineResult {

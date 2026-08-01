@@ -28,8 +28,8 @@ import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipelin
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
   | { type: 'provider'; provider: string; model: string }
-  | { type: 'delta'; text: string; attempt: number }
-  | { type: 'attempt'; attempt: number; score: number; wordCount: number; goodEnough: boolean }
+  | { type: 'delta'; text: string; attempt: number; draft?: string }
+  | { type: 'attempt'; attempt: number; score: number; wordCount: number; goodEnough: boolean; draft?: string }
   | { type: 'ship'; ship: ShipResult | null; shipError: string | null; shipMode: string }
   | { type: 'final'; result: PipelineResult }
   | { type: 'error'; error: string }
@@ -129,11 +129,12 @@ export async function* runSeoFactoryPipelineStream(
       strategyBlock,
     })
 
-    let content = ''
+    let content = input.resumeContent?.trim() || ''
+    const resumeMode = Boolean(content)
     let provider = 'unknown'
     let model = 'unknown'
     let audit: SeoFactoryAudit = auditContent({
-      content: '',
+      content,
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
@@ -191,11 +192,15 @@ export async function* runSeoFactoryPipelineStream(
             refineNotes,
           })
 
+      const generationPrompt =
+        resumeMode && i === 0 && !underDepth
+          ? `${prompt}\n\nCONTINUE FROM THIS SAVED PARTIAL DRAFT. Preserve useful sections, improve the remaining quality issues, and output the complete revised piece.\n\nSAVED DRAFT:\n${content.slice(0, 60000)}`
+          : prompt
       const prevWords = content ? countBodyWords(content) : 0
       let attemptText = ''
       for await (const ev of generateContentTextStream({
         system,
-        prompt,
+        prompt: generationPrompt,
         maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
         temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
       })) {
@@ -205,7 +210,8 @@ export async function* runSeoFactoryPipelineStream(
           yield { type: 'provider', provider, model }
         } else if (ev.type === 'delta') {
           attemptText += ev.text
-          yield { type: 'delta', text: ev.text, attempt: attempts }
+          const checkpointDraft = attemptText.length >= content.length ? attemptText : content
+          yield { type: 'delta', text: ev.text, attempt: attempts, draft: checkpointDraft }
         } else if (ev.type === 'done') {
           attemptText = ev.text
           provider = ev.provider
@@ -235,6 +241,7 @@ export async function* runSeoFactoryPipelineStream(
         score: audit.score,
         wordCount: audit.wordCount,
         goodEnough,
+        draft: content,
       }
 
       if (goodEnough) break
@@ -358,6 +365,7 @@ export async function* runSeoFactoryPipelineStream(
         score: audit.score,
         wordCount: audit.wordCount,
         goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+        draft: content,
       }
       if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
     }
@@ -439,6 +447,7 @@ export async function* runSeoFactoryPipelineStream(
           score: audit.score,
           wordCount: audit.wordCount,
           goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
+          draft: content,
         }
 
         if (meetsShipQuality(audit) && audit.score >= minAudit) break

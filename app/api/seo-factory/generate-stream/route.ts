@@ -24,6 +24,42 @@ async function markSupersededJob(
     console.warn('[seo-factory/generate-stream] could not update superseded job', error)
   }
 }
+
+async function checkpointJob(
+  supabase: ReturnType<typeof sb>,
+  jobId: string,
+  draft: string,
+  message?: string,
+) {
+  const content = String(draft || '').trim()
+  if (!content) return
+  const patch: Record<string, unknown> = {
+    content,
+    word_count: content.split(/\s+/).filter(Boolean).length,
+    status: 'drafting',
+    error_message: null,
+  }
+  try {
+    if (message) {
+      const { data } = await supabase.from('content_jobs').select('event_log').eq('id', jobId).single()
+      const previous = Array.isArray(data?.event_log) ? data.event_log : []
+      const now = Date.now()
+      const eventLog = [
+        ...previous,
+        { id: `${now}-checkpoint`, ts: now, level: 'info', source: 'pipeline', message },
+      ].slice(-300)
+      const { error } = await supabase.from('content_jobs').update({ ...patch, event_log: eventLog }).eq('id', jobId)
+      if (error && /event_log|column/i.test(error.message || '')) {
+        await supabase.from('content_jobs').update(patch).eq('id', jobId)
+      }
+    } else {
+      await supabase.from('content_jobs').update(patch).eq('id', jobId)
+    }
+  } catch (error) {
+    console.warn('[seo-factory/generate-stream] checkpoint skipped', error)
+  }
+}
+
 import {
   runSeoFactoryPipelineStream,
   type PipelineStreamEvent,
@@ -82,12 +118,23 @@ export async function POST(request: Request) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
+      resumeContent: undefined as string | undefined,
       userId,
     }
     const supersedesJobId = String(body.supersedesJobId || '').trim()
+    const resumeRequested = body.resume === true
     const supabase = supersedesJobId ? sb() : null
+    if (supabase && supersedesJobId && resumeRequested) {
+      const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
+      if (existing?.content) input.resumeContent = String(existing.content)
+    }
     if (supabase && supersedesJobId) {
-      await markSupersededJob(supabase, supersedesJobId, { status: 'drafting', error_message: null }, 'Live regeneration started')
+      await markSupersededJob(
+        supabase,
+        supersedesJobId,
+        { status: 'drafting', error_message: null },
+        resumeRequested ? 'Continuing from the latest saved checkpoint' : 'Live regeneration started',
+      )
     }
 
     const encoder = new TextEncoder()
@@ -104,8 +151,30 @@ export async function POST(request: Request) {
           }
         }
 
+        let lastCheckpointDraft = ''
+        let lastCheckpointChars = 0
+        let lastCheckpointAt = 0
         try {
           for await (const ev of runSeoFactoryPipelineStream(input)) {
+            if (supabase && supersedesJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft) {
+              const draft = String(ev.draft)
+              const now = Date.now()
+              const shouldCheckpoint =
+                ev.type === 'attempt' ||
+                draft.length >= lastCheckpointChars + 6000 ||
+                now - lastCheckpointAt >= 5000
+              if (shouldCheckpoint && draft.length >= lastCheckpointChars) {
+                lastCheckpointDraft = draft
+                lastCheckpointChars = draft.length
+                lastCheckpointAt = now
+                await checkpointJob(
+                  supabase,
+                  supersedesJobId,
+                  draft,
+                  ev.type === 'attempt' ? `Checkpoint saved after attempt ${ev.attempt}` : undefined,
+                )
+              }
+            }
             if (supabase && supersedesJobId && ev.type === 'final') {
               const replacementId = ev.result?.jobId || 'new job'
               await markSupersededJob(
@@ -120,6 +189,9 @@ export async function POST(request: Request) {
           }
         } catch (e) {
           const message = e instanceof Error ? e.message : 'Stream failed'
+          if (supabase && supersedesJobId && lastCheckpointDraft) {
+            await checkpointJob(supabase, supersedesJobId, lastCheckpointDraft, 'Checkpoint preserved after stream interruption')
+          }
           if (supabase && supersedesJobId) {
             await markSupersededJob(supabase, supersedesJobId, { status: 'failed', error_message: message }, `Regeneration failed: ${message}`)
           }

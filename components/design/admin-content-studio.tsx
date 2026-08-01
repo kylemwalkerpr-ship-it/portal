@@ -876,6 +876,7 @@ function JobDetail({
   const [actionEvents, setActionEvents] = React.useState<GenerationActivity[]>([])
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
   const [actionChars, setActionChars] = React.useState(0)
+  const [resumeAvailable, setResumeAvailable] = React.useState(false)
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
 
@@ -898,7 +899,7 @@ function JobDetail({
 
   React.useEffect(() => { void loadDetail() }, [loadDetail])
 
-  const runRegenerateStream = async () => {
+  const runRegenerateStream = async (resume = false) => {
     if (busy) return
     setBusy(true)
     setActiveAction('regenerate')
@@ -908,7 +909,7 @@ function JobDetail({
     setActionChars(0)
     setActionEvents([{
       id: `action-${Date.now()}`, ts: Date.now(), stage: 'connect',
-      message: 'Starting a live AI regeneration stream…', level: 'info',
+      message: resume ? 'Continuing from the latest saved checkpoint…' : 'Starting a live AI regeneration stream…', level: 'info',
     }])
     const controller = new AbortController()
     actionAbortRef.current = controller
@@ -937,6 +938,7 @@ function JobDetail({
           minAuditScore: 55,
           maxRefine: 2,
           supersedesJobId: detail.id,
+          resume,
         }),
       })
       const result = await consumeSseResponse(response, (event) => {
@@ -953,17 +955,23 @@ function JobDetail({
       const message = replacementId
         ? `Regeneration complete. Replacement job ${replacementId} is now in the queue.`
         : 'Regeneration complete. Refresh the queue to view the new job.'
+      setResumeAvailable(false)
       setLocalActionNotice(message)
       setActionNotice(message)
       await loadDetail()
       await onRefresh()
     } catch (error) {
-      const message = error instanceof DOMException && error.name === 'AbortError'
-        ? 'The live regeneration stream timed out after 4 minutes. Refresh the queue before retrying.'
-        : error instanceof Error ? error.message : 'Regeneration failed'
+      const timedOut = error instanceof DOMException && error.name === 'AbortError'
+      const rawMessage = error instanceof Error ? error.message : 'Regeneration failed'
+      const resumable = timedOut || streamedChars > 0
+      const message = resumable
+        ? 'The stream stopped, but the latest partial draft was checkpointed. Continue from the saved draft instead of starting over.'
+        : rawMessage
       record('error', message, 'error')
+      setResumeAvailable(resumable)
       setActionError(message)
-      setActionNotice('Regeneration did not complete.')
+      setActionNotice(resumable ? 'Partial draft saved. Continue when ready.' : 'Regeneration did not complete.')
+      if (resumable) await onRefresh()
     } finally {
       clearTimeout(timeout)
       actionAbortRef.current = null
@@ -1030,6 +1038,7 @@ function JobDetail({
   const dirty = editorContent !== (detail.content || '')
   const terminal = detail.status === 'merged' || detail.status === 'closed'
   const gateFailure = qualityGateFailure(detail.error_message)
+  const canResume = resumeAvailable || (detail.status === 'drafting' && Boolean(detail.content))
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
@@ -1077,6 +1086,7 @@ function JobDetail({
         {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>
           <div style={{ fontSize: 11, lineHeight: 1.5, color: '#7C2D12' }}>Edit the draft to remove the blocker, save it, re-audit it, then ship. Regenerate rewrites the full piece using the gate guidance.</div>
+          {canResume && <button type="button" disabled={busy || loading} onClick={() => void runRegenerateStream(true)} style={{ marginTop: 8, marginRight: 7, padding: '8px 12px', borderRadius: 6, border: `1px solid ${C.blue}`, background: '#EFF6FF', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↻ Continue saved draft</button>}
           <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
           {actionEvents.length > 0 && <div style={{ marginTop: 10, background: '#1F2937', color: '#E5E7EB', borderRadius: 6, padding: 10, fontFamily: C.mono, fontSize: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: activeAction ? '#FCD34D' : '#86EFAC', fontWeight: 700 }}>
