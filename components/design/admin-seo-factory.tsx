@@ -56,6 +56,7 @@ export default function AdminSeoFactory({
   const [selectedJobIds, setSelectedJobIds] = React.useState<Set<string>>(new Set())
   const [queueSummary, setQueueSummary] = React.useState<any>(null)
   const [selectedOpp, setSelectedOpp] = React.useState<Set<string>>(new Set())
+  const [opportunityMode, setOpportunityMode] = React.useState<Extract<ShipMode, 'none' | 'pr' | 'autodeploy' | 'merge'>>('none')
   const [autoLimit, setAutoLimit] = React.useState(3)
   const [autoMode, setAutoMode] = React.useState<'auto' | 'pr' | 'autodeploy' | 'merge' | 'none'>('merge')
   const [autoResult, setAutoResult] = React.useState<any>(null)
@@ -952,16 +953,20 @@ export default function AdminSeoFactory({
     }
   }
 
-  const runAutoPilot = async (terms?: string[]) => {
+  const runAutoPilot = async (
+    terms?: string[],
+    mode: 'auto' | 'pr' | 'autodeploy' | 'merge' | 'none' = autoMode,
+  ) => {
+    const requestedMode = mode
     setBusy(true)
     setAutoResult(null)
     setWorkspaceOpen(true)
     setActivityLine('Auto-Pilot running…')
-    pushLog('info', 'autopilot', `Start auto-run · limit ${terms?.length || autoLimit} · mode ${autoMode}`)
+    pushLog('info', 'autopilot', `Start auto-run · limit ${terms?.length || autoLimit} · mode ${requestedMode}`)
 
     const body = JSON.stringify({
       limit: terms?.length || autoLimit,
-      shipMode: autoMode,
+      shipMode: requestedMode,
       dryRun,
       minAuditScore: minAudit,
       maxRefine,
@@ -1372,6 +1377,30 @@ export default function AdminSeoFactory({
       setBusy(false)
       setActivityLine(null)
     }
+  }
+
+  const runSelectedOpportunities = async (
+    mode = opportunityMode,
+  ) => {
+    const terms = [...selectedOpp].slice(0, 5)
+    if (!terms.length) {
+      setActionNotice('Select at least one opportunity first')
+      return
+    }
+    setAutoMode(mode)
+    await runAutoPilot(terms, mode)
+    setTab('autopilot')
+  }
+
+  const openOpportunityInCreate = (o: any) => {
+    setTopic(o.term || '')
+    setPrimaryKeyword(o.term || '')
+    setRegion(o.region || 'US')
+    setContentType(o.suggestedContentType || 'legal_guide')
+    setShipMode('none')
+    setTab('factory')
+    setWorkspaceOpen(true)
+    setActionNotice(`Create is ready for “${o.term}”. Draft first, then edit, save, re-audit, and ship from the workspace.`)
   }
 
   const toggleOpp = (term: string) => {
@@ -2150,8 +2179,8 @@ export default function AdminSeoFactory({
               <button type="button" disabled={busy} onClick={() => runAutoPilot()} style={btnSecondary}>
                 War Room auto-run
               </button>
-              <button type="button" disabled={busy || selectedOpp.size === 0} onClick={() => runAutoPilot([...selectedOpp])} style={btnSecondary}>
-                Run selected ({selectedOpp.size})
+              <button type="button" disabled={busy || selectedOpp.size === 0} onClick={() => runSelectedOpportunities()} style={btnSecondary}>
+                Create selected ({selectedOpp.size})
               </button>
               <button type="button" disabled={busy} onClick={() => { setTab('opportunities'); if (!opps) loadOpps() }} style={btnSecondary}>
                 Pick opportunities
@@ -2331,16 +2360,34 @@ export default function AdminSeoFactory({
             <div style={{ fontSize: 13, color: C.textMuted }}>
               Source: {opps?.source || '—'} · {opps?.count ?? 0} opportunities · selected {selectedOpp.size}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={opportunityMode}
+                onChange={(e) => setOpportunityMode(e.target.value as typeof opportunityMode)}
+                disabled={busy}
+                aria-label="Selected opportunity workflow"
+                style={{ ...inputStyle, width: 'auto', marginTop: 0, padding: '8px 10px' }}
+              >
+                <option value="none">Draft only, review in workspace</option>
+                <option value="pr">Create and open PR</option>
+                <option value="autodeploy">Create and approve to main</option>
+                <option value="merge">Create and merge PR</option>
+              </select>
               <button type="button" onClick={loadOpps} disabled={busy} style={btnSecondary}>Refresh</button>
               <button
                 type="button"
                 disabled={busy || selectedOpp.size === 0}
-                onClick={() => runAutoPilot([...selectedOpp])}
+                onClick={() => runSelectedOpportunities()}
                 style={btnPrimary}
+                title="Create selected opportunities using the selected workflow, then continue from the live workspace"
               >
-                Ship selected
+                {opportunityMode === 'none' ? 'Create drafts' : 'Create selected'} ({selectedOpp.size})
               </button>
+              {selectedOpp.size > 0 && (
+                <button type="button" onClick={() => setSelectedOpp(new Set())} disabled={busy} style={btnSmall}>
+                  Clear
+                </button>
+              )}
             </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -2379,13 +2426,22 @@ export default function AdminSeoFactory({
                         type="button"
                         style={btnSmall}
                         disabled={busy || o.action === 'ignore'}
+                        onClick={() => openOpportunityInCreate(o)}
+                        title="Open this opportunity in Manual Create before generating"
+                      >
+                        Open in Create
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...btnSmall, marginLeft: 4 }}
+                        disabled={busy || o.action === 'ignore'}
                         onClick={() => runGenerate({
                           topic: o.term, keyword: o.term, region: o.region,
                           contentType: o.suggestedContentType || 'legal_guide',
                           shipMode: shipMode === 'auto' ? 'merge' : shipMode,
                         })}
                       >
-                        Generate
+                        Create
                       </button>
                       <button
                         type="button"
@@ -2395,6 +2451,7 @@ export default function AdminSeoFactory({
                           topic: o.term, keyword: o.term, region: o.region,
                           contentType: o.suggestedContentType || 'legal_guide', shipMode: 'none',
                         })}
+                        title="Generate a draft without opening a PR; edit and save it in the workspace"
                       >
                         Draft only
                       </button>
