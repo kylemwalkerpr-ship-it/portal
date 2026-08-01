@@ -293,7 +293,7 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
-    const maxExpand = contentType === 'marketplace_gig' ? 1 : 2
+    const maxExpand = contentType === 'marketplace_gig' ? 1 : 5
     while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
       expandPasses++
       attempts++
@@ -304,7 +304,7 @@ export async function* runSeoFactoryPipelineStream(
         message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words…`,
       }
       try {
-        if (expandPasses % 2 === 1) {
+        if (expandPasses === 1) {
           const ai = await generateContentText({
             system,
             prompt: buildDepthExpandPrompt({
@@ -348,6 +348,8 @@ export async function* runSeoFactoryPipelineStream(
             content = merged
             provider = ai.provider
             model = ai.model
+          } else {
+            break
           }
         }
       } catch (e) {
