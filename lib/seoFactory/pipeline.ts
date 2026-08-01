@@ -146,7 +146,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const minAudit = Math.min(95, Math.max(50, Number(input.minAuditScore) || 65))
   // Bound total AI calls per Worker invocation. Quality review can continue
   // manually from the Studio after this safe initial pass.
-  const maxRefine = Math.min(1, Math.max(0, Number(input.maxRefine ?? 1)))
+  // Allow enough refine passes that a second draft is always attempted before ship.
+  const maxRefine = Math.min(3, Math.max(1, Number(input.maxRefine ?? 2)))
 
   if (!topic) {
     throw new Error('topic required')
@@ -534,6 +535,34 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeyword,
         region,
       })
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
+    }
+  }
+
+
+  // ── PASS 5: Resolve mechanical blockers before push ────────────────────
+  // Deterministic repairs for blockers the model repeatedly misses, so a
+  // small em-dash or disclaimer miss never blocks the daily ship.
+  {
+    let repaired = content
+    const dashes = (repaired.match(/[\u2014\u2013]/g) || []).length
+    if (dashes > 0) {
+      repaired = repaired
+        .replace(/(\d)\s*[\u2013\u2014]\s*(\d)/g, '$1-$2')
+        .replace(/\s+[\u2014\u2013]\s+/g, ', ')
+        .replace(/[\u2014\u2013]/g, ', ')
+    }
+    if (!/not legal advice|educational only|consult (an? )?(attorney|lawyer|solicitor|regulated)/i.test(repaired)) {
+      repaired = `${repaired.trimEnd()}\n\n---\n\n*This guide is for general information and educational purposes only. It is not legal advice. For your specific situation, consult a licensed attorney or immigration professional.*\n`
+    }
+    if (repaired !== content) {
+      content = repaired
       audit = auditContent({
         content,
         contentType,
