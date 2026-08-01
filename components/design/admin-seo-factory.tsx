@@ -1384,18 +1384,30 @@ export default function AdminSeoFactory({
   }
 
   const healthReady = health?.ready
-  const tabs: [Tab, string][] = [
-    ['warroom', 'War Room'],
-    ['autopilot', 'Auto-Pilot'],
-    ['keywords', 'Keywords'],
-    ['factory', 'Manual'],
-    ['opportunities', 'Opportunities'],
-    ['queue', 'Job queue'],
-    ['controls', 'Controls'],
-    ['strategies', 'Strategies'],
-    ['metrics', 'Metrics'],
-    ['health', 'System'],
+
+  // ── Command Center navigation: workflow phases → tabs ──
+  const NAV_GROUPS: { id: string; label: string; icon: string; items: [Tab, string][] }[] = [
+    { id: 'discover', label: 'Discover', icon: '🎯', items: [['warroom', 'War Room'], ['keywords', 'Keywords']] },
+    { id: 'create', label: 'Create', icon: '✍️', items: [['autopilot', 'Auto-Pilot'], ['factory', 'Manual']] },
+    { id: 'manage', label: 'Manage', icon: '📋', items: [['opportunities', 'Opportunities'], ['queue', 'Job queue']] },
+    { id: 'measure', label: 'Measure', icon: '📊', items: [['metrics', 'Metrics'], ['health', 'System']] },
+    { id: 'configure', label: 'Configure', icon: '⚙️', items: [['strategies', 'Strategies'], ['controls', 'Controls']] },
   ]
+  const tabs: [Tab, string][] = NAV_GROUPS.flatMap((g) => g.items)
+  const activeGroup = NAV_GROUPS.find((g) => g.items.some(([it]) => it === tab))
+
+  // Live pipeline counts for the status strip (from the loaded job queue)
+  const jobCounts = React.useMemo(() => {
+    const c = { inflight: 0, pr: 0, merged: 0, failed: 0, total: jobs.length }
+    for (const j of jobs as StudioJob[]) {
+      const s = String(j.status || '').toLowerCase()
+      if (s === 'drafting' || s === 'publishing' || s === 'pending') c.inflight++
+      else if (s === 'pr_created') c.pr++
+      else if (s === 'merged') c.merged++
+      else if (s === 'failed') c.failed++
+    }
+    return c
+  }, [jobs])
 
   const warQueueFiltered = React.useMemo(() => {
     const q = (warRoom?.queue || []) as Array<Record<string, unknown>>
@@ -1459,8 +1471,9 @@ export default function AdminSeoFactory({
         <div>
           <h1 style={{ margin: '0 0 8px', fontSize: 26, color: C.cyan, fontWeight: 700 }}>SEO War Room · Command Center</h1>
           <p style={{ margin: '0 0 12px', color: C.textMuted, fontSize: 13, maxWidth: 680 }}>
-            Live GSC → CTR-gap / strike-distance / cannibal / AEO plays → generate → audit → estate-gated ship → main.
-            Rank by estimated ranking gain, not vanity volume. Workspace pane stays open for editor + log.
+            <strong>Discover</strong> live GSC demand → <strong>Create</strong> with DeepSeek V4 Pro · CF fallback →
+            <strong> Manage</strong> the job queue → <strong>Measure</strong> impact. Every phase is one click away —
+            the workspace pane stays open for editor + log.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1538,21 +1551,92 @@ export default function AdminSeoFactory({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
-        {tabs.map(([t, label]) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            style={{
-              background: 'none', border: 'none', padding: '10px 12px', cursor: 'pointer',
-              borderBottom: tab === t ? `2px solid ${C.gold}` : '2px solid transparent',
-              fontWeight: tab === t ? 600 : 400, color: tab === t ? C.text : C.textDim, fontSize: 13,
-            }}
-          >
-            {label}
-          </button>
+      {/* ── Command Center: live status strip ── */}
+      <div style={{
+        display: 'grid', gap: 10, marginBottom: 14,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+      }}>
+        {[
+          { label: 'In flight', value: jobCounts.inflight, color: C.orange },
+          { label: 'PRs open', value: jobCounts.pr, color: C.blue },
+          { label: 'Merged', value: jobCounts.merged, color: C.green },
+          { label: 'Failed', value: jobCounts.failed, color: C.red },
+          { label: 'GSC', value: warRoom?.kpis?.liveGsc ? 'LIVE' : '—', color: warRoom?.kpis?.liveGsc ? C.green : C.textDim },
+        ].map((k) => (
+          <div key={k.label} style={{
+            padding: '10px 12px', borderRadius: 10, background: C.surface,
+            border: `1px solid ${C.border}`,
+          }}>
+            <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: k.color, marginTop: 2 }}>{k.value}</div>
+          </div>
         ))}
+      </div>
+
+      {/* ── Quick actions ── */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14,
+        padding: '10px 12px', borderRadius: 10, background: C.surface2,
+        border: `1px solid ${C.border}`, fontSize: 12,
+      }}>
+        <strong style={{ color: C.cyan }}>Quick start</strong>
+        <button type="button" style={btnPrimary} disabled={busy} onClick={() => { setTab('warroom'); if (!warRoom) loadWarRoom() }}>
+          🎯 Open War Room
+        </button>
+        <button type="button" style={{ ...btnPrimary, background: C.gold, color: '#0B1220' }} disabled={busy} onClick={() => loadOptimalPlan()}>
+          🧭 Optimal GSC plan
+        </button>
+        <button type="button" style={btnSecondary} onClick={() => setTab('autopilot')}>
+          🤖 Auto-Pilot
+        </button>
+        <button type="button" style={btnSecondary} onClick={() => setTab('factory')}>
+          ✍️ Manual generate
+        </button>
+        <button type="button" style={btnSecondary} onClick={() => { setTab('queue'); loadJobs() }}>
+          📋 Job queue
+        </button>
+        <button type="button" style={btnSecondary} disabled={busy} onClick={() => scanMonitor()}>
+          📡 Monitor scan
+        </button>
+        <span style={{ marginLeft: 'auto', color: C.textDim }}>
+          {activeGroup ? `${activeGroup.icon} ${activeGroup.label} · ` : ''}
+          {tabs.find(([t]) => t === tab)?.[1]}
+        </span>
+      </div>
+
+      {/* ── Phase-grouped navigation ── */}
+      <div style={{ display: 'grid', gap: 8, marginBottom: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        {NAV_GROUPS.map((g) => {
+          const groupActive = g.items.some(([t]) => t === tab)
+          return (
+            <div key={g.id} style={{
+              border: `1px solid ${groupActive ? C.gold : C.border}`,
+              borderRadius: 12, padding: 10, background: groupActive ? '#FFFBEB' : C.surface,
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: groupActive ? C.gold : C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                {g.icon} {g.label}
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {g.items.map(([t, label]) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    style={{
+                      background: tab === t ? C.cyan : 'transparent',
+                      color: tab === t ? '#fff' : C.textMuted,
+                      border: tab === t ? 'none' : `1px solid ${C.border}`,
+                      borderRadius: 7, padding: '5px 10px', cursor: 'pointer',
+                      fontWeight: tab === t ? 600 : 400, fontSize: 12,
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* ── Keywords research + plan ── */}
