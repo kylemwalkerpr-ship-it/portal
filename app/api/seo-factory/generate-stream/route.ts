@@ -40,21 +40,10 @@ async function checkpointJob(
     error_message: null,
   }
   try {
-    if (message) {
-      const { data } = await supabase.from('content_jobs').select('event_log').eq('id', jobId).single()
-      const previous = Array.isArray(data?.event_log) ? data.event_log : []
-      const now = Date.now()
-      const eventLog = [
-        ...previous,
-        { id: `${now}-checkpoint`, ts: now, level: 'info', source: 'pipeline', message },
-      ].slice(-300)
-      const { error } = await supabase.from('content_jobs').update({ ...patch, event_log: eventLog }).eq('id', jobId)
-      if (error && /event_log|column/i.test(error.message || '')) {
-        await supabase.from('content_jobs').update(patch).eq('id', jobId)
-      }
-    } else {
-      await supabase.from('content_jobs').update(patch).eq('id', jobId)
-    }
+    // Single subrequest per checkpoint: content preservation matters more
+    // than a timeline entry, and each SELECT+UPDATE pair eats into the
+    // Cloudflare subrequest budget (50/invocation) that kills long streams.
+    await supabase.from('content_jobs').update(patch).eq('id', jobId)
   } catch (error) {
     console.warn('[seo-factory/generate-stream] checkpoint skipped', error)
   }
@@ -155,16 +144,16 @@ export async function POST(request: Request) {
         let lastCheckpointChars = 0
         let lastCheckpointAt = 0
         let checkpointCount = 0
-        const MAX_CHECKPOINTS = 10
+        const MAX_CHECKPOINTS = 6
         try {
           for await (const ev of runSeoFactoryPipelineStream(input)) {
             if (supabase && supersedesJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
               const draft = String(ev.draft)
               const now = Date.now()
-              const shouldCheckpoint =
+            const shouldCheckpoint =
                 ev.type === 'attempt' ||
-                draft.length >= lastCheckpointChars + 15000 ||
-                now - lastCheckpointAt >= 30000
+                draft.length >= lastCheckpointChars + 25000 ||
+                now - lastCheckpointAt >= 60000
               if (shouldCheckpoint && draft.length >= lastCheckpointChars) {
                 lastCheckpointDraft = draft
                 lastCheckpointChars = draft.length
