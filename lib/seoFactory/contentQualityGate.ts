@@ -287,9 +287,19 @@ export function evaluateContentQuality(opts: {
   }
 
   // Repeated sentence starts (This / It is / There are)
-  const sentences = body.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 20)
+  // Ignore markdown list items and headings (enumerations, not prose rhythm)
+  // and strip bold/code markers, so a bullet list like "* **For the X
+  // stream:**" does not false-positive as repeated sentence openings.
+  const isMarkdownStructure = (s: string) =>
+    /^\s*(?:[-*+]|\d+[.)])\s/.test(s) || /^\s*#{1,6}\s/.test(s)
+  const stripMarkdown = (s: string) => s.trim().replace(/\*\*|__|`/g, '').trim()
+  const sentences = body
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20 && !isMarkdownStructure(s))
+    .map(stripMarkdown)
   if (sentences.length >= 8) {
-    const starts = sentences.map((s) => s.trim().slice(0, 12).toLowerCase())
+    const starts = sentences.map((s) => s.slice(0, 12).toLowerCase())
     const freq = new Map<string, number>()
     for (const s of starts) freq.set(s, (freq.get(s) || 0) + 1)
     let worst = 0
