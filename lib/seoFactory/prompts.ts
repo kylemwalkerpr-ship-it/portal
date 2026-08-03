@@ -316,6 +316,9 @@ export function auditToRefineNotes(audit: {
   for (const b of audit.blockers.slice(0, 8)) {
     if ('code' in b && b.code === 'outcome_promise') {
       lines.push('- BLOCKER: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article. Use neutral wording such as outcomes and requirements vary.')
+    } else if ('code' in b && b.code === 'sentence_start_repetition') {
+      const ev = ('evidence' in b ? (b as any).evidence : '') || ''
+      lines.push(`- BLOCKER [sentence_start_repetition]: Too many sentences start with "${ev}…". TARGETED SWEEP — rewrite only those sentences with varied openings. Do NOT regenerate the whole article.`)
     } else {
       lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
     }
