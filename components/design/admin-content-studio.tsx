@@ -1144,10 +1144,10 @@ function JobDetail({
 
         <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div><div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Manual editor</div><div style={{ fontSize: 10, color: C.textMuted }}>Edit the draft, save it, and re-audit before shipping.</div></div>
+            <div><div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Content editor</div><div style={{ fontSize: 10, color: C.textMuted }}>Edit inline, re-audit for quality gate compliance. Click issues to jump to them. Drafts auto-save every 2 seconds.</div></div>
             {dirty && <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>Unsaved changes</span>}
           </div>
-          {loading ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content…</div> : <textarea value={editorContent} onChange={e => setEditorContent(e.target.value)} placeholder="The generated draft will appear here…" spellCheck style={{ width: '100%', minHeight: 260, resize: 'vertical', boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 6, padding: 10, fontFamily: C.mono, fontSize: 10, lineHeight: 1.6, color: C.text, background: '#FFFEFC' }} />}
+          {loading ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div> : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} />}
         </div>
 
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -1161,7 +1161,7 @@ function JobDetail({
           <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Regenerate</button>
         </div>
 
-        {audit && <details style={{ marginTop: 14 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Latest audit result</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: 6, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
+        {audit && <details style={{ marginTop: 14 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Raw audit JSON</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: 6, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
       </div>
     </div>
   )
