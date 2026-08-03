@@ -127,30 +127,93 @@ function h2Overlap(aContent: string, bContent: string): number {
   return overlap / Math.min(aH2s.size, bH2s.size)
 }
 
-function anchorTextFor(page: SiteHealthPage): string {
-  const title = page.title || ''
-  const heading = page.content?.match(/^#{1,2}\s+(.+)$/m)?.[1] || ''
+/**
+ * Pick the best anchor text for a link to a target page, preferring a
+ * relevant H2 heading from that page when it aligns with the source context.
+ * Falls back to the page title or H1 when no H2 match is found.
+ */
+function anchorTextFor(
+  target: SiteHealthPage,
+  /** Optional source page content — when provided, picks the target H2 most
+   *  relevant to the source topic for more precise anchor text. */
+  sourceContent?: string,
+): string {
+  const title = target.title || ''
+  const h1 = target.content?.match(/^#{1,2}\s+(.+)$/m)?.[1] || ''
+  const h2s = [...(target.content || '').matchAll(/^##\s+(.+)$/gm)].map((m) => m[1])
+
+  // When source context is available, pick the target H2 that best overlaps
+  // with source tokens — this produces a much more contextual anchor than the
+  // generic page title.
+  if (sourceContent && h2s.length) {
+    const sourceTokens = new Set(tokenize(sourceContent))
+    let bestH2 = ''
+    let bestScore = 0
+    for (const h2 of h2s) {
+      const h2Tokens = tokenize(h2)
+      const overlap = h2Tokens.filter((t) => sourceTokens.has(t)).length
+      // Prefer H2s that are substantial (8+ chars), overlap source tokens, and
+      // are not generic section headers (FAQ, Sources, Disclaimer, etc.)
+      if (
+        h2.length >= 10 &&
+        overlap > 0 &&
+        !/^(faq|sources?|disclaimer|in 60 seconds|official sources|related guides|you might also|summary|conclusion|next steps|references)$/i.test(h2.trim())
+      ) {
+        const score = overlap * 2 - h2.length * 0.01
+        if (score > bestScore) { bestScore = score; bestH2 = h2 }
+      }
+    }
+    if (bestH2 && bestH2.length >= 15 && bestH2.length <= 100) return bestH2.trim()
+  }
+
+  // Fallback: use any non-generic H2 from the target (even without source context)
+  const goodH2 = h2s.find(
+    (h) =>
+      h.length >= 15 &&
+      h.length <= 100 &&
+      !/^(faq|sources?|disclaimer|in 60 seconds|official sources|related guides|summary|conclusion)$/i.test(h.trim()),
+  )
+  if (goodH2) return goodH2.trim()
+
+  // Final fallbacks
   if (title.length >= 15 && title.length <= 90) return title
-  if (heading.length >= 15 && heading.length <= 90) return heading
-  return title || heading || page.url
+  if (h1.length >= 15 && h1.length <= 90) return h1
+  return title || h1 || target.url
 }
 
-function bestMatchingH2(source: string, target: string): string | null {
-  const targetTokens = new Set(tokenize(target))
-  const h2s = [...source.matchAll(/^##\s+(.+)$/gm)]
-  if (!h2s.length) return null
-  let best: string | null = null
+/**
+ * Find the source page H2 heading that best matches the target page, using
+ * both the target title AND the target's own H2 headings for richer matching.
+ * Returns the source H2 heading text (for inline link placement) or null.
+ */
+function bestMatchingH2(
+  source: string,
+  target: SiteHealthPage,
+): { heading: string; anchorH2: string | null } | null {
+  // Build token set from target's title AND all its H2 headings
+  const targetText = [
+    target.title || '',
+    ...(target.content || '').match(/^##\s+(.+)$/gm)?.map((m) => m.slice(1)) || [],
+    target.content?.match(/^#{1,2}\s+(.+)$/m)?.[1] || '',
+  ].join(' ')
+
+  const targetTokens = new Set(tokenize(targetText))
+  const sourceH2s = [...source.matchAll(/^##\s+(.+)$/gm)]
+  if (!sourceH2s.length) return null
+
+  let bestSourceH2: string | null = null
   let bestScore = 0
-  for (const [match] of h2s) {
+  for (const [match] of sourceH2s) {
     const heading = match.slice(1)
     const h2Tokens = tokenize(heading)
     const overlap = h2Tokens.filter((t) => targetTokens.has(t)).length
-    // Prefer shorter headings (more specific match) and higher token overlap
     const score = overlap * 3 - heading.length * 0.02
-    if (score > bestScore) { bestScore = score; best = heading }
+    if (score > bestScore) { bestScore = score; bestSourceH2 = heading }
   }
-  // Require at least 1 overlapping token to consider it a match
-  return bestScore > 1.5 ? best : null
+
+  if (bestScore <= 1.5) return null
+
+  return { heading: bestSourceH2!, anchorH2: null }
 }
 
 /** Find the insertion point after an H2: the end of the paragraph(s) under it,
@@ -346,9 +409,9 @@ export async function auditDeepInterlink(
         url: c.page.url,
         host: c.page.host,
         title: c.page.title,
-        anchorText: anchorTextFor(c.page),
+        anchorText: anchorTextFor(c.page, content),
         score: Math.round(c.score * 1000) / 1000,
-        bestH2: bestMatchingH2(content, c.page.title),
+        bestH2: bestMatchingH2(content, c.page)?.heading ?? null,
       })),
       existingLinkUrls: existing,
     })
