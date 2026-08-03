@@ -323,7 +323,7 @@ export async function mergePullRequest(opts: {
   const { owner, repo, prNumber, commitTitle } = opts
   const method = opts.mergeMethod || 'squash'
   const syncAttempts = Math.min(2, Math.max(0, opts.syncAttempts ?? 1))
-  const mergeMethods: Array<'squash' | 'merge'> =
+  const mergeMethods: Array<'merge' | 'squash' | 'rebase'> =
     method === 'squash' ? ['squash', 'merge'] : [method]
   const errors: string[] = []
 
