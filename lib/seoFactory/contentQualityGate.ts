@@ -112,6 +112,32 @@ const OUTCOME_PROMISE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bwe promise\b/i, label: 'we promise' },
 ]
 
+function isNegatedOutcomeMention(text: string, index: number): boolean {
+  const sentenceStart = Math.max(
+    text.lastIndexOf('.', index - 1),
+    text.lastIndexOf('!', index - 1),
+    text.lastIndexOf('?', index - 1),
+    text.lastIndexOf('\n', index - 1),
+  ) + 1
+  const sentenceEndCandidates = [
+    text.indexOf('.', index),
+    text.indexOf('!', index),
+    text.indexOf('?', index),
+    text.indexOf('\n', index),
+  ].filter((value) => value >= 0)
+  const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) : text.length
+  const sentence = text.slice(sentenceStart, sentenceEnd).replace(/\s+/g, ' ').trim()
+
+  // Educational disclaimers commonly explain that outcomes are not guaranteed.
+  // They are safe and must not be mistaken for a promise. Affirmative claims
+  // such as "we guarantee approval" still match the outcome patterns below.
+  return (
+    /\b(?:does|do|did|will|would|can|could|should|is|are|was|were)\s+not\b[^.!?]{0,100}\bguarante(?:e|ed|es|eing)\b/i.test(sentence) ||
+    /\b(?:cannot|can't|can’t|never|no one can|no\s+(?:adviser|attorney|lawyer|firm|service|provider|person|agency)\s+can)\b[^.!?]{0,100}\bguarante(?:e|ed|es|eing)\b/i.test(sentence) ||
+    /\bguarante(?:e|ed|es|eing)\b[^.!?]{0,60}\b(?:not|never)\b/i.test(sentence)
+  )
+}
+
 /** Hype / sales tone that breaks calm practitioner voice. */
 const HYPE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bact now\b/i, label: 'act now' },
@@ -179,7 +205,7 @@ export function evaluateContentQuality(opts: {
   // ── 1. Outcome promises (always blocker) ─────────────────────────────────
   for (const { re, label } of OUTCOME_PROMISE_PATTERNS) {
     const m = body.match(re)
-    if (m) {
+    if (m && !isNegatedOutcomeMention(body, m.index ?? 0)) {
       add({
         code: 'outcome_promise',
         severity: 'blocker',
@@ -492,7 +518,7 @@ export function qualityPromptBlock(): string {
     '',
     'Q1. HUMAN VOICE. Write like a calm immigration specialist explaining a process to a client. Concrete nouns. Varied sentence length. Second person ("you"). No brochure voice.',
     'Q2. ZERO AI TELLS. Never use: delve, leverage, robust, seamless, holistic, game-changer, navigate the complexities, in today\'s fast-paced, tapestry, unlock the potential, rest assured, it\'s worth noting, furthermore, moreover (as filler), in conclusion.',
-    'Q3. ZERO OUTCOME PROMISES. Never guarantee visas, approvals, timelines, or success rates. Educational only.',
+    'Q3. ZERO OUTCOME PROMISES. Never make affirmative claims about visa approval, success, timelines, or results. If a disclaimer is needed, say outcomes and requirements vary; do not discuss this quality rule in the article.',
     'Q4. ZERO HYPE. No "act now", "limited time", stacked exclamation marks, or superlative bait.',
     'Q5. RHYTHM. Vary EVERY sentence opening. The audit counts how often the first ~12 characters of a sentence repeat: 5+ repeats is a warning, 7+ hard-blocks the ship. Never start more than two sentences with the same word or phrase ("the department", "it is", "there are", "applicants"). Mix short and medium sentences. Lead with the reader\'s situation or a concrete noun (agency, form, document, step). ZERO em dashes (\u2014) and en dashes (\u2013): never use them; use periods or commas instead. Active voice.',
     'Q6. KEYWORD DISCIPLINE. Primary keyword a few times naturally — never stuff.',
@@ -508,7 +534,11 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
     'Rewrite the FULL page. Keep facts; fix every blocker below. Sound human.',
   ]
   for (const b of result.blockers.slice(0, 12)) {
-    lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)
+    if (b.code === 'outcome_promise') {
+      lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
+    } else {
+      lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)
+    }
   }
   for (const w of result.warnings.slice(0, 6)) {
     lines.push(`- WARNING [${w.code}]: ${w.message}${w.fix ? ` → ${w.fix}` : ''}`)
