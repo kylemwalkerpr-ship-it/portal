@@ -223,60 +223,176 @@ export async function putRepoFile(opts: PutRepoFileOpts): Promise<PutRepoFileRes
   )
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Fetch PR details including GitHub's mergeability flags. */
+export async function getPullRequest(
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<{
+  number: number
+  state: string
+  merged: boolean
+  mergeable: boolean | null
+  mergeable_state: string
+  head: { ref: string; sha: string }
+  base: { ref: string; sha: string }
+  html_url: string
+}> {
+  const pr = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`)
+  return {
+    number: pr.number as number,
+    state: String(pr.state || ''),
+    merged: Boolean(pr.merged),
+    mergeable: pr.mergeable == null ? null : Boolean(pr.mergeable),
+    mergeable_state: String(pr.mergeable_state || 'unknown'),
+    head: { ref: String(pr.head?.ref || ''), sha: String(pr.head?.sha || '') },
+    base: { ref: String(pr.base?.ref || ''), sha: String(pr.base?.sha || '') },
+    html_url: String(pr.html_url || ''),
+  }
+}
+
+/**
+ * Merge the base branch into the PR head — the GitHub API behind the
+ * "Update branch" button. Lets us auto-resolve "dirty" PRs (stale branch)
+ * instead of failing merges with 405 "merge conflicts".
+ */
+export async function updatePullRequestBranch(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  expectedHeadSha?: string,
+): Promise<{ message: string; url?: string }> {
+  const body: Record<string, string> = {}
+  if (expectedHeadSha) body.expected_head_sha = expectedHeadSha
+  const res = await githubFetch(
+    `/repos/${owner}/${repo}/pulls/${prNumber}/update-branch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+  return {
+    message: String(res.message || 'updated'),
+    url: res.url as string | undefined,
+  }
+}
+
+async function callMerge(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  commitTitle: string | undefined,
+  method: 'merge' | 'squash' | 'rebase',
+): Promise<{ merged: boolean; sha?: string; message: string }> {
+  const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      commit_title: commitTitle || `merge PR #${prNumber}`,
+      merge_method: method,
+    }),
+  })
+  return {
+    merged: Boolean(res.merged),
+    sha: res.sha as string | undefined,
+    message: String(res.message || 'merged'),
+  }
+}
+
+/**
+ * Conflict-aware merge:
+ *  1. try squash (fallback plain merge) as before
+ *  2. if GitHub reports merge conflicts (405), sync the PR branch with base
+ *     via the update-branch API and retry (up to opts.syncAttempts)
+ *  3. if the conflict survives the sync (same-file changes on both sides),
+ *     throw a distinct "could not be auto-resolved / forceNewShip" error so
+ *     callers can fall back to committing approved content directly to main.
+ */
 export async function mergePullRequest(opts: {
   owner: string
   repo: string
   prNumber: number
   commitTitle?: string
   mergeMethod?: 'merge' | 'squash' | 'rebase'
+  /** How many branch-sync attempts to allow before giving up (default 1). */
+  syncAttempts?: number
 }): Promise<{ merged: boolean; sha?: string; message: string }> {
+  const { owner, repo, prNumber, commitTitle } = opts
   const method = opts.mergeMethod || 'squash'
-  try {
-    const res = await githubFetch(`/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        commit_title: opts.commitTitle || `merge PR #${opts.prNumber}`,
-        merge_method: method,
-      }),
-    })
-    return {
-      merged: Boolean(res.merged),
-      sha: res.sha as string | undefined,
-      message: String(res.message || 'merged'),
-    }
-  } catch (e) {
-    const primaryMsg = e instanceof Error ? e.message : String(e)
-    console.warn(
-      `[mergePullRequest] ${method} merge failed for PR #${opts.prNumber}, trying merge fallback: ${primaryMsg}`,
-    )
-    if (method === 'squash') {
+  const syncAttempts = Math.min(2, Math.max(0, opts.syncAttempts ?? 1))
+  const mergeMethods: Array<'squash' | 'merge'> =
+    method === 'squash' ? ['squash', 'merge'] : [method]
+  const errors: string[] = []
+
+  for (let attempt = 0; attempt <= syncAttempts; attempt++) {
+    let conflictDetected = false
+
+    for (const m of mergeMethods) {
       try {
-        const res = await githubFetch(
-          `/repos/${opts.owner}/${opts.repo}/pulls/${opts.prNumber}/merge`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              commit_title: opts.commitTitle || `merge PR #${opts.prNumber}`,
-              merge_method: 'merge',
-            }),
-          },
-        )
-        return {
-          merged: Boolean(res.merged),
-          sha: res.sha as string | undefined,
-          message: String(res.message || 'merged'),
+        const res = await callMerge(owner, repo, prNumber, commitTitle, m)
+        if (res.merged) return res
+        errors.push(`${m}: ${res.message}`)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        errors.push(`${m}: ${msg}`)
+        const conflict =
+          /conflict/i.test(msg) || /405/.test(msg) || /not mergeable/i.test(msg)
+        if (!conflict) {
+          // Auth / not found / branch protection — terminal, do not loop.
+          throw new Error(`Merge PR #${prNumber} failed: ${errors.join('; ')}`)
         }
-      } catch (fallbackErr) {
-        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-        throw new Error(
-          `Merge PR #${opts.prNumber} failed: squash→${primaryMsg}; merge→${fallbackMsg}`,
-        )
+        conflictDetected = true
+        break // conflicts can't be fixed by trying another merge method
       }
     }
-    throw e
+
+    if (!conflictDetected || attempt >= syncAttempts) break
+
+    // Sync the PR branch with base (merges base into head), then retry.
+    try {
+      const pr = await getPullRequest(owner, repo, prNumber)
+      if (pr.merged) {
+        return { merged: true, message: 'already merged on GitHub' }
+      }
+      await updatePullRequestBranch(owner, repo, prNumber, pr.head.sha || undefined)
+      // GitHub recomputes mergeability asynchronously — poll briefly.
+      const deadline = Date.now() + 45_000
+      let resolved = false
+      while (Date.now() < deadline && !resolved) {
+        await sleep(10_000)
+        try {
+          const p = await getPullRequest(owner, repo, prNumber)
+          if (p.merged) {
+            return { merged: true, message: 'merged during branch sync' }
+          }
+          resolved = p.mergeable_state !== 'dirty' && p.mergeable_state !== 'unknown'
+        } catch {
+          /* transient — keep polling */
+        }
+      }
+      if (!resolved) {
+        errors.push(
+          'sync-branch: base could not be merged into PR head (real file conflict)',
+        )
+      }
+    } catch (syncErr) {
+      errors.push(
+        `sync-branch: ${syncErr instanceof Error ? syncErr.message : 'failed'}`,
+      )
+      break // sync itself failed — retrying is pointless
+    }
   }
+
+  const unresolved = errors.some((e) => /conflict/i.test(e) || /sync-branch/i.test(e))
+  throw new Error(
+    `Merge PR #${prNumber} failed: ${errors.join('; ')}` +
+      (unresolved
+        ? ' — could not be auto-resolved: PR has file conflicts with base. Use forceNewShip to commit approved content directly to main.'
+        : ''),
+  )
 }
 
 export async function openPullRequest(opts: {
