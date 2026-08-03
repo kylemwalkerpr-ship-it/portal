@@ -29,6 +29,8 @@ export type SiteHealthPage = {
   indexable: boolean
   inboundLinks: number
   sampleSources: string[]
+  /** Full page source content (available after scan). */
+  content?: string
 }
 
 const CONFIGS: Record<RepoId, RepoConfig> = {
