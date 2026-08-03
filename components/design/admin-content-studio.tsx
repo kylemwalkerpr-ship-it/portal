@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
 const AdminSeoFactory = React.lazy(() => import('./admin-seo-factory'))
 
@@ -1359,6 +1360,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onTopicChange={setTopic} onKeywordsChange={setKeywords}
           />
           <AdminSiteHealthPanel setActionNotice={setActionNotice} />
+          <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
           <InterlinksMini topic={topic} keywords={keywords} />
           <GscMini />
         </div>
