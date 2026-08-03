@@ -271,7 +271,7 @@ export function buildKeywordPortfolio(brief: GscContentBrief): {
   intentSummary: string
 } {
   // GscQuerySignal has .term, .impressions, .clicks, .ctr, .position
-  const primary = brief.primaryKeywords.slice(0, 3).map((k) => k.term)
+  const primary: string[] = brief.primaryKeywords.slice(0, 3).map((k) => k.term)
   const secondary = brief.opportunityKeywords
     .filter((k) => !primary.includes(k.term))
     .map((k) => k.term)
