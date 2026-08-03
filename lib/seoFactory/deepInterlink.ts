@@ -142,11 +142,38 @@ function bestMatchingH2(source: string, target: string): string | null {
   let best: string | null = null
   let bestScore = 0
   for (const [match] of h2s) {
-    const h2Tokens = tokenize(match.slice(1))
+    const heading = match.slice(1)
+    const h2Tokens = tokenize(heading)
     const overlap = h2Tokens.filter((t) => targetTokens.has(t)).length
-    if (overlap > bestScore) { bestScore = overlap; best = match.slice(1) }
+    // Prefer shorter headings (more specific match) and higher token overlap
+    const score = overlap * 3 - heading.length * 0.02
+    if (score > bestScore) { bestScore = score; best = heading }
   }
-  return bestScore > 0 ? best : null
+  // Require at least 1 overlapping token to consider it a match
+  return bestScore > 1.5 ? best : null
+}
+
+/** Find the insertion point after an H2: the end of the paragraph(s) under it,
+ *  before the next H2 or section boundary. */
+function findInsertionAfterH2(content: string, h2Heading: string): number {
+  // Escape the heading for regex matching
+  const escaped = h2Heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const h2Regex = new RegExp(`^##\\s+${escaped}\\s*$`, 'm')
+  const h2Match = h2Regex.exec(content)
+  if (!h2Match) return -1
+
+  const h2End = h2Match.index + h2Match[0].length
+  // Find the next H2 heading after this one, or the deep interlink block, or end
+  const nextH2 = content.slice(h2End).search(/^##\s+/m)
+  const endOfSection = nextH2 >= 0 ? h2End + nextH2 : content.length
+
+  // Find the last paragraph break within this section — insert before it
+  const section = content.slice(h2End, endOfSection)
+  // Try to insert before the last meaningful line in the section
+  const lastPara = section.lastIndexOf('\\n\\n')
+  if (lastPara >= 0) return h2End + lastPara
+  // Fallback: insert right after the H2 heading
+  return h2End + 1
 }
 
 // ── Existing link detection ───────────────────────────────────────────────
@@ -182,43 +209,83 @@ function injectCrossLinks(
   const newLinks = links.filter((l) => !existing.includes(l.url))
   if (!newLinks.length) return content
 
-  // Remove any previous DEEP_INTERLINK block
-  const startMarker = '{/* DEEP_INTERLINK_START — maintained by Content Studio */}'
-  const endMarker = '{/* DEEP_INTERLINK_END */}'
-  const startIdx = content.indexOf(startMarker)
-  if (startIdx >= 0) {
-    const endIdx = content.indexOf(endMarker, startIdx)
-    if (endIdx >= 0) {
-      content = content.slice(0, startIdx) + content.slice(endIdx + endMarker.length)
+  // Clean up any previous DEEP_INTERLINK and INLINE_INTERLINK blocks
+  for (const marker of ['DEEP_INTERLINK', 'INLINE_INTERLINK']) {
+    const startTag = `{/* ${marker}_START — maintained by Content Studio */}`
+    const endTag = `{/* ${marker}_END */}`
+    let startIdx = content.indexOf(startTag)
+    while (startIdx >= 0) {
+      const endIdx = content.indexOf(endTag, startIdx)
+      if (endIdx >= 0) {
+        // Remove the entire annotated section including surrounding whitespace/newlines
+        const before = content.slice(0, startIdx).replace(/\n\s*$/, '\n')
+        const after = content.slice(endIdx + endTag.length).replace(/^\s*\n/, '\n')
+        content = before + after
+      } else {
+        break
+      }
+      startIdx = content.indexOf(startTag)
     }
   }
 
-  const linkItems: string[] = []
-  for (const link of newLinks.slice(0, 8)) {
-    linkItems.push(
+  // Split: links with a strong H2 match go inline; the rest go in the footer
+  const inlineLinks = newLinks.filter((l) => l.bestH2 != null && l.bestH2.length > 0)
+  const footerLinks = newLinks.filter((l) => !(l.bestH2 != null && l.bestH2.length > 0))
+
+  // ── Inline placement: insert <a> tags after matching H2 sections ──────
+  let modified = content
+  const h2Used = new Set<string>()
+  for (const link of inlineLinks.slice(0, 6)) {
+    const h2 = link.bestH2!
+    if (h2Used.has(h2.toLowerCase())) continue
+    h2Used.add(h2.toLowerCase())
+
+    const insertAt = findInsertionAfterH2(modified, h2)
+    if (insertAt < 0) continue
+
+    const inlineTag = (
+      `{/* INLINE_INTERLINK_START — maintained by Content Studio */}\n` +
+      `Read next: <a href="${link.url}"${link.url.startsWith('https://') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${link.anchorText.replace(/"/g, '&quot;')}</a>\n` +
+      `{/* INLINE_INTERLINK_END */}`
+    )
+    // Insert at the right position — after the paragraph, before next section
+    modified = modified.slice(0, insertAt) + '\n\n' + inlineTag + '\n' + modified.slice(insertAt)
+  }
+
+  // ── Footer block for remaining links ──────────────────────────────────
+  const remainingLinks = [
+    ...footerLinks,
+    // Also include inline links that couldn't be placed (as footer fallback)
+    ...inlineLinks.filter((l) => !h2Used.has((l.bestH2 || '').toLowerCase())),
+  ].slice(0, 10)
+
+  if (remainingLinks.length) {
+    const linkItems = remainingLinks.map((link) =>
       `              <li><a href="${link.url}"${link.url.startsWith('https://') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${link.anchorText.replace(/"/g, '&quot;')}</a></li>`,
     )
+
+    const footerBlock = [
+      '',
+      '      {/* DEEP_INTERLINK_START — maintained by Content Studio */}',
+      '      <section aria-labelledby="deep-interlink-related" style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid var(--border-color, rgba(0,0,0,0.08))" }}>',
+      '        <h2 id="deep-interlink-related" style={{ fontSize: "1.1rem" }}>You might also find helpful</h2>',
+      '        <ul style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", listStyle: "none", padding: 0 }}>',
+      ...linkItems,
+      '        </ul>',
+      '      </section>',
+      '      {/* DEEP_INTERLINK_END */}',
+      '',
+    ].join('\n')
+
+    const anchors = ['</main>', '</ArticleLayout>', '</div>']
+    for (const anchor of anchors) {
+      const at = modified.lastIndexOf(anchor)
+      if (at >= 0) return modified.slice(0, at) + footerBlock + modified.slice(at)
+    }
+    modified += '\n' + footerBlock
   }
 
-  const block = [
-    '',
-    `      ${startMarker}`,
-    '      <section aria-labelledby="deep-interlink-related" style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid var(--border-color, rgba(0,0,0,0.08))" }}>',
-    '        <h2 id="deep-interlink-related" style={{ fontSize: "1.1rem" }}>You might also find helpful</h2>',
-    '        <ul style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", listStyle: "none", padding: 0 }}>',
-    ...linkItems,
-    '        </ul>',
-    '      </section>',
-    `      ${endMarker}`,
-    '',
-  ].join('\n')
-
-  const anchors = ['</main>', '</ArticleLayout>', '</div>']
-  for (const anchor of anchors) {
-    const at = content.lastIndexOf(anchor)
-    if (at >= 0) return content.slice(0, at) + block + content.slice(at)
-  }
-  return content + '\n' + block
+  return modified
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
