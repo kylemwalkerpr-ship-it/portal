@@ -257,6 +257,12 @@ export async function buildGscContentBrief(opts: {
  * queries into a prioritised list for the AI writer, so every article
  * targets the full search-intent cluster — not just one keyword.
  */
+/**
+ * Build a dynamic, high-intent keyword portfolio from GSC data.
+ * Merges primary keywords, opportunity keywords, and related long-tail
+ * queries into a prioritised list for the AI writer, so every article
+ * targets the full search-intent cluster — not just one keyword.
+ */
 export function buildKeywordPortfolio(brief: GscContentBrief): {
   primary: string[]
   secondary: string[]
@@ -264,12 +270,15 @@ export function buildKeywordPortfolio(brief: GscContentBrief): {
   semanticGroup: string
   intentSummary: string
 } {
-  const primary = brief.primaryKeywords.slice(0, 3)
+  // GscQuerySignal has .term, .impressions, .clicks, .ctr, .position
+  const primary = brief.primaryKeywords.slice(0, 3).map((k) => k.term)
   const secondary = brief.opportunityKeywords
-    .filter((k) => !primary.includes(k))
+    .filter((k) => !primary.includes(k.term))
+    .map((k) => k.term)
     .slice(0, 6)
   const longTail = brief.relatedKeywords
-    .filter((k) => !primary.includes(k) && !secondary.includes(k))
+    .filter((k) => !primary.includes(k.term) && !secondary.includes(k.term))
+    .map((k) => k.term)
     .slice(0, 10)
 
   // Group keywords into a semantic topic cluster
