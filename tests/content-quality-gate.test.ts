@@ -82,6 +82,18 @@ describe('evaluateContentQuality', () => {
     ).toThrow(/Ship refused/)
   })
 
+  it('allows a clear disclaimer that rejects outcome guarantees', () => {
+    const safe = guide(
+      'This guide does not guarantee visa approval. No adviser can guarantee an outcome, so you verify the current rules and prepare evidence carefully.',
+    )
+    const r = evaluateContentQuality({
+      content: safe,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
+  })
+
   it('passes calm practitioner prose', () => {
     const good = guide(
       'You gather the checklist, confirm each form number, and file only when every item matches the official instructions.',
