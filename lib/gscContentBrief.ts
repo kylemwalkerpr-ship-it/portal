@@ -251,6 +251,52 @@ export async function buildGscContentBrief(opts: {
 }
 
 /** Serialize brief for the LLM prompt block. */
+/**
+ * Build a dynamic, high-intent keyword portfolio from GSC data.
+ * Merges primary keywords, opportunity keywords, and related long-tail
+ * queries into a prioritised list for the AI writer, so every article
+ * targets the full search-intent cluster — not just one keyword.
+ */
+export function buildKeywordPortfolio(brief: GscContentBrief): {
+  primary: string[]
+  secondary: string[]
+  longTail: string[]
+  semanticGroup: string
+  intentSummary: string
+} {
+  const primary = brief.primaryKeywords.slice(0, 3)
+  const secondary = brief.opportunityKeywords
+    .filter((k) => !primary.includes(k))
+    .slice(0, 6)
+  const longTail = brief.relatedKeywords
+    .filter((k) => !primary.includes(k) && !secondary.includes(k))
+    .slice(0, 10)
+
+  // Group keywords into a semantic topic cluster
+  const allTokens = new Set<string>()
+  const stopWords = ['and','the','for','with','from','your','what','that','this','how','when','where','which']
+  for (const kw of [...primary, ...secondary]) {
+    for (const t of kw.toLowerCase().split(/[\s-]+/)) {
+      if (t.length > 3 && !stopWords.includes(t)) {
+        allTokens.add(t)
+      }
+    }
+  }
+  const semanticGroup = [...allTokens].slice(0, 8).join(', ')
+
+  // Intent summary for the AI
+  let intent = 'Informational — educational guide'
+  if (primary.some((k) => /checklist|documents?|require|steps|how to|apply/i.test(k))) {
+    intent = 'Procedural — step-by-step how-to with document lists and timelines'
+  } else if (primary.some((k) => /visa|permit|status|green card|pr/i.test(k))) {
+    intent = 'Navigational — visa/permit process overview with official eligibility rules'
+  } else if (primary.some((k) => /cost|fee|price|salary|pay/i.test(k))) {
+    intent = 'Commercial — cost/fee comparison with official sources and practical estimates'
+  }
+
+  return { primary, secondary, longTail, semanticGroup, intentSummary: intent }
+}
+
 export function formatGscBriefForPrompt(brief: GscContentBrief): string {
   const lines: string[] = [
     `## Live SEO demand (Google Search Console — ${brief.source}/${brief.mode})`,
