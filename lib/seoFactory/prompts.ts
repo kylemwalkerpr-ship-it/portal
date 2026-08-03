@@ -314,7 +314,11 @@ export function auditToRefineNotes(audit: {
     )
   }
   for (const b of audit.blockers.slice(0, 8)) {
-    lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
+    if (b.code === 'outcome_promise') {
+      lines.push('- BLOCKER: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article. Use neutral wording such as outcomes and requirements vary.')
+    } else {
+      lines.push(`- BLOCKER: ${b.message}${b.fix ? ` → Fix: ${b.fix}` : ''}`)
+    }
   }
   for (const w of audit.warnings.slice(0, 8)) {
     lines.push(`- WARNING: ${w.message}${w.fix ? ` → Fix: ${w.fix}` : ''}`)
