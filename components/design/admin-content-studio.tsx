@@ -1,5 +1,6 @@
 'use client'
 import React from 'react'
+import AdminSiteHealthPanel from './admin-site-health-panel'
 const AdminSeoFactory = React.lazy(() => import('./admin-seo-factory'))
 
 // ── Color tokens (match admin-templates.tsx) ──
@@ -1357,6 +1358,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             topic={topic} keywords={keywords}
             onTopicChange={setTopic} onKeywordsChange={setKeywords}
           />
+          <AdminSiteHealthPanel setActionNotice={setActionNotice} />
           <InterlinksMini topic={topic} keywords={keywords} />
           <GscMini />
         </div>
