@@ -886,8 +886,12 @@ export async function PATCH(request: NextRequest) {
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Merge failed'
+        const unresolved = /could not be auto-resolved|forceNewShip/i.test(msg)
+        const hint = unresolved
+          ? ' — the branch has real file conflicts with main. Resolve on GitHub, or click Approve to force-ship the approved content to main.'
+          : ''
         await supabase.from('content_jobs').update({ error_message: msg }).eq('id', id)
-        return NextResponse.json({ ok: false, error: msg }, { status: 422 })
+        return NextResponse.json({ ok: false, error: msg + hint }, { status: 422 })
       }
     }
 
@@ -943,7 +947,12 @@ export async function PATCH(request: NextRequest) {
             .eq('id', id)
         }
 
-        // If PR already open and approve → merge that PR instead of new ship
+        // If PR already open and approve → merge that PR instead of new ship.
+        // mergePullRequest auto-syncs stale branches; if a real file conflict
+        // survives, fall through to forceNewShip (direct main commit) — the
+        // admin already approved this content, so don't dead-end the job with
+        // "fix on GitHub and retry".
+        let mergeFallbackNote: string | null = null
         if (
           humanApproved &&
           job.pr_number &&
@@ -992,27 +1001,11 @@ export async function PATCH(request: NextRequest) {
           } catch (mergeErr) {
             const msg = mergeErr instanceof Error ? mergeErr.message : 'PR merge failed'
             console.warn(
-              `[content-studio/jobs] approve: PR #${job.pr_number} merge failed, keeping PR open: ${msg}`,
+              `[content-studio/jobs] approve: PR #${job.pr_number} merge failed after auto-sync, force-shipping to main: ${msg}`,
             )
-            await supabase
-              .from('content_jobs')
-              .update({
-                error_message: `Merge failed: ${msg}. PR #${job.pr_number} still open — fix on GitHub and retry, or use forceNewShip.`,
-              })
-              .eq('id', id)
-            return NextResponse.json(
-              {
-                ok: false,
-                error: `PR merge failed: ${msg}`,
-                prNumber: job.pr_number,
-                prUrl: job.pr_url,
-                message:
-                  `PR #${job.pr_number} could not be merged (${msg}). ` +
-                  'The PR is still open. Fix the issue on GitHub and try Approve again, ' +
-                  'or use forceNewShip to commit directly to main instead.',
-              },
-              { status: 422 },
-            )
+            mergeFallbackNote =
+              `PR #${job.pr_number} had conflicts with main that could not be auto-resolved; ` +
+              'approved content was force-shipped directly to main instead.'
           }
         }
 
@@ -1078,11 +1071,12 @@ export async function PATCH(request: NextRequest) {
           monitor,
           job: updated,
           message:
-            ship.status === 'deployed' || ship.status === 'merged'
+            (mergeFallbackNote ? `${mergeFallbackNote} ` : '') +
+            (ship.status === 'deployed' || ship.status === 'merged'
               ? 'Approved → main · Cloudflare deploy · monitor ran'
               : ship.status === 'pr_created'
                 ? 'PR opened (merge blocked — use Approve again or fix branch protection)'
-                : 'Ship complete',
+                : 'Ship complete'),
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Ship failed'
