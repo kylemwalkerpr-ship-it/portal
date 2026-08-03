@@ -513,29 +513,63 @@ export function assertQualityGate(opts: {
 /** Inject into system prompts for every generation. */
 export function qualityPromptBlock(): string {
   return [
-    '## NON-NEGOTIABLE QUALITY GATES (output is machine-audited; failures are discarded)',
-    VOICE_PLAYBOOK,
+    '## MANDATORY QUALITY RULES — YOUR OUTPUT IS MACHINE-AUDITED BEFORE SHIPPING',
     '',
-    'Q1. HUMAN VOICE. Write like a calm immigration specialist explaining a process to a client. Concrete nouns. Varied sentence length. Second person ("you"). No brochure voice.',
-    'Q2. ZERO AI TELLS. Never use: delve, leverage, robust, seamless, holistic, game-changer, navigate the complexities, in today\'s fast-paced, tapestry, unlock the potential, rest assured, it\'s worth noting, furthermore, moreover (as filler), in conclusion.',
-    'Q3. ZERO OUTCOME PROMISES. Never make affirmative claims about visa approval, success, timelines, or results. If a disclaimer is needed, say outcomes and requirements vary; do not discuss this quality rule in the article.',
-    'Q4. ZERO HYPE. No "act now", "limited time", stacked exclamation marks, or superlative bait.',
-    'Q5. RHYTHM. Vary EVERY sentence opening. The audit counts how often the first ~12 characters of a sentence repeat: 5+ repeats is a warning, 7+ hard-blocks the ship. Never start more than two sentences with the same word or phrase ("the department", "it is", "there are", "applicants"). Mix short and medium sentences. Lead with the reader\'s situation or a concrete noun (agency, form, document, step). ZERO em dashes (\u2014) and en dashes (\u2013): never use them; use periods or commas instead. Active voice.',
-    'Q6. KEYWORD DISCIPLINE. Primary keyword a few times naturally — never stuff.',
-    'Q7. If a sentence sounds like ChatGPT wrote it, delete and rewrite with a specific form, agency, document, or step.',
+    'Every article you write is scanned by an automated quality gate. Articles that fail',
+    'any of these rules are blocked from shipping. Follow these rules from the FIRST',
+    'sentence — do not rely on post-generation fixes. Targeted rework is expensive.',
+    '',
+    '━━━ CRITICAL (hard blockers — article WILL be rejected) ━━━',
+    '',
+    'Q1. VARIED SENTENCE OPENINGS. This is the #1 rejection reason. The scanner counts',
+    '    how often the first ~12 chars of each sentence repeat. 5+ repeats = warning.',
+    '    7+ repeats = HARD BLOCK. Never start >2 consecutive sentences with the same',
+    '    prefix like "You need to", "The department", "Applicants must". Mix:',
+    '    - Lead with a concrete noun: "USCIS requires...", "Form I-765 lists..."',
+    '    - Lead with a time reference: "After filing...", "Before your start date..."',
+    '    - Lead with a condition: "If your employer...", "When the SEVIS record..."',
+    '    - Vary short (8-15 word) and medium (15-25 word) sentences.',
+    '',
+    'Q2. ZERO AI PATTERNS. Never use these words or phrases in ANY context:',
+    '    delve, leverage, robust, seamless, holistic, game-changer, revolutionize,',
+    '    bespoke, navigate the complexities, "In today\'s fast-paced", tapestry,',
+    '    unlock the potential, rest assured, "it\'s worth noting", furthermore,',
+    '    moreover (as filler), in conclusion, streamline.',
+    '',
+    'Q3. ZERO OUTCOME PROMISES. Never claim visas, approvals, timelines, or results',
+    '    are guaranteed, certain, fast-tracked, or easy. Educational tone only.',
+    '',
+    'Q4. PRACTITIONER VOICE. Write like a calm immigration specialist briefing a',
+    '    client. Second person ("you"). Concrete nouns (agency, form, document).',
+    '    One idea per sentence. Explain procedures, not aspirations.',
+    '',
+    '━━━ IMPORTANT (warnings — degrade the score) ━━━',
+    '',
+    'Q5. NO HYPE. No "act now", "limited time", stacked exclamation marks,',
+    '    or superlative bait ("best ever", "ultimate guide").',
+    '',
+    'Q6. KEYWORD DISCIPLINE. Include the primary keyword naturally 2-4 times,',
+    '    including once in the first H2. Never keyword-stuff.',
+    '',
+    'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
+    '',
+    VOICE_PLAYBOOK,
   ].join('\n')
 }
 
+/** For refine notes when quality fails. */
 /** For refine notes when quality fails. */
 export function qualityToRefineNotes(result: QualityGateResult): string {
   const lines = [
     `Quality gate: ${result.summary}`,
     `Human-voice score: ${result.humanScore}/100.`,
-    'Rewrite the FULL page. Keep facts; fix every blocker below. Sound human.',
   ]
+  // Targeted sweep mode: give specific fix instructions per blocker
   for (const b of result.blockers.slice(0, 12)) {
     if (b.code === 'outcome_promise') {
       lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
+    } else if (b.code === 'sentence_start_repetition') {
+      lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Do NOT regenerate the full article — only fix the repetitive openings.`)
     } else {
       lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)
     }
@@ -544,4 +578,47 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
     lines.push(`- WARNING [${w.code}]: ${w.message}${w.fix ? ` → ${w.fix}` : ''}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * Build a targeted sweep prompt that asks the AI to fix ONLY the flagged issues
+ * without regenerating the entire article. This is used when a draft is close to
+ * passing but has specific blocker patterns (sentence openings, AI tells, etc.).
+ */
+export function buildTargetedSweepPrompt(
+  content: string,
+  result: QualityGateResult,
+): string {
+  const issues: string[] = []
+  for (const b of result.blockers) {
+    if (b.code === 'sentence_start_repetition' && b.evidence) {
+      issues.push(
+        `FIX ONLY THIS: Rewrite every sentence that starts with "${b.evidence}…".` +
+        ` Keep the same facts but vary the opening word or phrase. Alternate between` +
+        ` concrete nouns, time references, conditions, and procedural verbs. Do NOT` +
+        ` modify any other part of the article.`,
+      )
+    }
+  }
+  // Generic blocker fixes
+  const otherBlockers = result.blockers.filter((b) => b.code !== 'sentence_start_repetition')
+  if (otherBlockers.length) {
+    issues.push('Also fix these issues (only the affected text, not the whole article):')
+    for (const b of otherBlockers) {
+      issues.push(`- ${b.code}: ${b.message} → ${b.fix || 'remove or rewrite the flagged text'}`)
+    }
+  }
+  if (!issues.length) return ''
+  return [
+    '## TARGETED SWEEP — fix ONLY the specific issues below',
+    'Do NOT regenerate the full article. Make the smallest possible edits to fix:',
+    '',
+    ...issues,
+    '',
+    'Return the complete article with only the targeted fixes applied. Preserve all',
+    'headings, structure, facts, official citations, and unchanged paragraphs.',
+    '',
+    'CURRENT ARTICLE:',
+    content.slice(0, 20000),
+  ].join('\n')
 }
