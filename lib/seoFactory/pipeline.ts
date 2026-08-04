@@ -22,6 +22,7 @@ import {
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { ensureEditorialScaffold } from './editorialScaffold'
 
 /**
@@ -190,6 +191,18 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
   })
   const gscBlock = formatGscBriefForPrompt(gscBrief)
+
+  // Build canonical SEO portfolio — the single source of truth for all
+  // keyword selection, intent classification, and conversion routing.
+  const seoCanon: SeoCanon = buildSeoCanon({
+    brief: gscBrief,
+    plan,
+    contentType,
+    region,
+    title: title || primaryKeyword,
+    topic,
+  })
+  const canonPortfolio = seoCanon.canonicalPromptBlock
   const strategyBlock = await formatStrategyForPrompt({
     topic: `${topic} ${primaryKeyword}`,
     maxChars: 4200,
@@ -246,7 +259,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           contentType,
           tone,
           audience: input.audience,
-          gscBlock,
+          gscBlock: canonPortfolio,
           opportunityAction: input.opportunityAction,
           writeHint: input.writeHint,
           refineNotes,
@@ -433,7 +446,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             contentType,
             tone,
             audience: input.audience,
-            gscBlock,
+            gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
             refineNotes,
@@ -477,6 +490,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     title: title || primaryKeyword,
     primaryKeyword,
     region,
+    conversionCtaBlock: seoCanon.conversionCtaBlock,
   })
 
   // After scaffold, audit again. If blockers remain, do one final refine pass
@@ -516,7 +530,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             contentType,
             tone,
             audience: input.audience,
-            gscBlock,
+            gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
             refineNotes,
@@ -538,6 +552,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         title: title || primaryKeyword,
         primaryKeyword,
         region,
+        conversionCtaBlock: seoCanon.conversionCtaBlock,
       })
       audit = auditContent({
         content,
