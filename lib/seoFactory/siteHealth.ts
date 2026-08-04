@@ -166,7 +166,7 @@ async function scanRepo(config: RepoConfig): Promise<ScanFile[]> {
   const items = (tree.tree || []) as TreeItem[]
   const candidates = items.filter((item) => item.type === 'blob' && shouldScanPath(item.path) && configForFile(config.repo, item.path))
   return mapLimit(candidates, 4, async (item) => {
-    const mapped = configForFile(config.repo, item.path)!
+    const mapped = configForFile(item.repo, item.path)!
     const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/blobs/${item.sha}`)
     const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
     const page = PAGE_FILE.test(item.path)
@@ -339,7 +339,7 @@ export async function auditSiteHealthChunked(
 
   for (const item of batch) {
     try {
-      const mapped = configForFile(config.repo, item.path)!
+      const mapped = configForFile(item.repo, item.path)!
       const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
       const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
       scanned++
@@ -482,7 +482,7 @@ export async function repairSiteHealthChunked(
   const pages: Array<{ repo: RepoId; host: string; path: string; url: string; title: string; indexable: boolean; content: string }> = []
   for (const item of allCandidates) {
     try {
-      const mapped = configForFile(config.repo, item.path)!
+      const mapped = configForFile(item.repo, item.path)!
       const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
       const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
       pages.push({
@@ -544,7 +544,7 @@ export async function repairSiteHealthChunked(
 
     if (!dryRun) {
       const branch = `seo/orphan-repair-${Date.now()}`
-      const { sha } = await getBranchHeadSha(config.repo)
+      const sha = await getBranchHeadSha('kylemwalkerpr-ship-it', config.repo, 'main')
       await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/refs`, {
         method: 'POST',
         body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
