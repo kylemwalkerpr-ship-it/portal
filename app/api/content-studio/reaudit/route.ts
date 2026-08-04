@@ -80,7 +80,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         'Authorization': `Bearer ${k}`,
         'Content-Type': 'application/json',
       }),
-      body: (k: string) => ({
+      body: (k: string) => JSON.stringify({
         model: 'deepseek-ai/deepseek-r1',
         messages: [
           { role: 'system', content: sys },
@@ -90,6 +90,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         max_tokens: 8192,
       }),
       key: process.env.NVIDIA_API_KEY || '',
+      extract: (data: any) => (data?.choices?.[0]?.message?.content) || '',
     },
     {
       name: 'cloudflare-ai',
@@ -98,7 +99,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         'Authorization': `Bearer ${k}`,
         'Content-Type': 'application/json',
       }),
-      body: (k: string) => ({
+      body: (k: string) => JSON.stringify({
         messages: [
           { role: 'system', content: sys },
           { role: 'user', content: prompt },
@@ -106,6 +107,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         max_tokens: 8192,
       }),
       key: process.env.CLOUDFLARE_API_TOKEN || '',
+      extract: (data: any) => (data?.result?.response) || '',
     },
     {
       name: 'groq',
@@ -114,7 +116,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         'Authorization': `Bearer ${k}`,
         'Content-Type': 'application/json',
       }),
-      body: (k: string) => ({
+      body: (k: string) => JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: sys },
@@ -124,30 +126,35 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         max_tokens: 8192,
       }),
       key: process.env.GROQ_API_KEY || '',
+      extract: (data: any) => (data?.choices?.[0]?.message?.content) || '',
     },
   ]
 
   const errors: string[] = []
   for (const p of providers) {
     if (!p.key) { errors.push(`${p.name}: no API key`); continue }
-    try:
-      req = urllib.request.Request(
-        p.url,
-        data=json.dumps(p.body(p.key)).encode(),
-        headers=p.headers(p.key),
-      )
-      with urllib.request.urlopen(req, timeout=180) as res:
-        data = json.loads(res.read().decode())
-      if p.name === 'cloudflare-ai':
-        text = data.get('result', {}).get('response', '') or ''
-      else:
-        text = data.get('choices', [{}])[0].get('message', {}).get('content', '') or ''
-      if text.strip(): return text.strip()
-      errors.append(f'{p.name}: empty response')
-    except Exception as e:
-      errors.append(f'{p.name}: {str(e)[:120]}')
-  raise RuntimeError('All AI providers failed: ' + ' | '.join(errors))
-
+    try {
+      const res = await fetch(p.url, {
+        method: 'POST',
+        headers: p.headers(p.key),
+        body: p.body(p.key),
+        signal: AbortSignal.timeout(180_000),
+      })
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '')
+        errors.push(`${p.name}: HTTP ${res.status} ${errText.slice(0, 120)}`)
+        continue
+      }
+      const data = await res.json()
+      const text = p.extract(data)
+      if (text && text.trim()) return text.trim()
+      errors.push(`${p.name}: empty response`)
+    } catch (e) {
+      errors.push(`${p.name}: ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`)
+    }
+  }
+  throw new Error('All AI providers failed: ' + errors.join(' | '))
+}
 
 export async function POST(request: NextRequest) {
   try {
