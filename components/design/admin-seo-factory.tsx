@@ -87,6 +87,8 @@ export default function AdminSeoFactory({
   const [mergeResult, setMergeResult] = React.useState<any>(null)
   const [showCompletedJobs, setShowCompletedJobs] = React.useState(false)
   const [resolvedWarTerms, setResolvedWarTerms] = React.useState<Set<string>>(new Set())
+  const [warRoomAutoRefresh, setWarRoomAutoRefresh] = React.useState(true)
+  const [warRoomLastRefreshed, setWarRoomLastRefreshed] = React.useState<Date | null>(null)
 
 
   // ── Command-center workspace state ──
@@ -499,6 +501,43 @@ export default function AdminSeoFactory({
       setActivityLine(null)
     }
   }
+
+  const pollWarRoom = React.useCallback(async () => {
+    if (!warRoomAutoRefresh) return
+    try {
+      const res = await fetch('/api/seo-factory/war-room', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          days: 90, limit: 50, minImpressions: 2,
+          regionFilter: regionFilter || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) return
+      // Diff: terms that dropped from GSC between refreshes are truly resolved.
+      const oldTerms = new Set(((warRoom as any)?.queue || []).map((o: any) => o.term))
+      const newTerms = new Set((data.queue || []).map((o: any) => o.term))
+      setResolvedWarTerms((prev) => {
+        const next = new Set(prev)
+        for (const t of prev) {
+          if (!newTerms.has(t)) next.delete(t)
+        }
+        return next
+      })
+      setWarRoom(data)
+      setWarRoomLastRefreshed(new Date())
+    } catch {
+      // silent — transient failures during background polling
+    }
+  }, [warRoomAutoRefresh, warRoom, regionFilter])
+
+  React.useEffect(() => {
+    if (tab !== 'warroom' || !warRoomAutoRefresh || !warRoom) return
+    const interval = setInterval(pollWarRoom, 300_000) // every 5 minutes
+    return () => clearInterval(interval)
+  }, [tab, warRoomAutoRefresh, pollWarRoom, warRoom])
 
   const runWarRoomStrike = async (terms?: string[]) => {
     let feed = terms?.length
@@ -1933,6 +1972,15 @@ export default function AdminSeoFactory({
               <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={btnSecondary}>
                 Full optimal stack
               </button>
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: C.textMuted, margin: 0, cursor: 'pointer' }}>
+                <input type="checkbox" checked={warRoomAutoRefresh} onChange={() => setWarRoomAutoRefresh((v) => !v)} />
+                Auto-refresh
+              </label>
+              {warRoomLastRefreshed && (
+                <span style={{ fontSize: 11, color: C.textDim }}>
+                  {Math.round((Date.now() - warRoomLastRefreshed.getTime()) / 60_000)}m ago
+                </span>
+              )}
               <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                 Play filter
                 <select value={warPlayFilter} onChange={(e) => setWarPlayFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
