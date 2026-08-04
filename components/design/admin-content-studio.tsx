@@ -46,6 +46,20 @@ interface GscMiniStats {
   topQuery: string; topQueryClicks: number
 }
 
+interface AISuggestion {
+  topic: string
+  title: string
+  primaryKeyword: string
+  keywords: string[]
+  audience: string
+  impressions: number
+  demandScore: number
+  intentCategory: string
+  profitability: 'high' | 'medium' | 'low'
+  reason: string
+}
+
+
 // ── Helpers ──
 
 const REGION_OPTIONS: { value: Region; label: string; flag: string }[] = [
@@ -179,10 +193,13 @@ function SummaryCards({ jobs }: { jobs: ContentJob[] }) {
 function QuickCreate({
   expanded, onToggle, generating, onGenerate,
   topic, keywords, onTopicChange, onKeywordsChange,
+  suggestions, suggestionsLoading, suggestionsError, onRefreshSuggestions, onApplySuggestion,
 }: {
   expanded: boolean; onToggle: () => void; generating: boolean
   onGenerate: (data: any) => void
   topic: string; keywords: string; onTopicChange: (v: string) => void; onKeywordsChange: (v: string) => void
+  suggestions?: AISuggestion[]; suggestionsLoading?: boolean; suggestionsError?: string | null
+  onRefreshSuggestions?: (region: string) => void; onApplySuggestion?: (s: AISuggestion) => void
 }) {
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
   const [region, setRegion] = React.useState<Region>('US')
@@ -220,6 +237,85 @@ function QuickCreate({
         </div>
         <span style={{ fontSize: 18, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
       </button>
+      {/* ── AI Suggestions Strip ── */}
+      {expanded && suggestions && suggestions.length > 0 && (
+        <div style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono }}>
+              🤖 AI-Powered Suggestions
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button type="button" onClick={() => onRefreshSuggestions?.('US')} disabled={suggestionsLoading} style={{
+                padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: C.surface2, color: C.textDim, fontSize: 9, fontWeight: 600, fontFamily: 'inherit',
+              }}>
+                {suggestionsLoading ? '⏳ Loading…' : '🔄 Refresh'}
+              </button>
+            </div>
+          </div>
+          {suggestionsLoading ? (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {[1,2,3].map(i => (
+                <div key={i} style={{ minWidth: 170, height: 72, borderRadius: 8, background: C.surface3, opacity: 0.5, flexShrink: 0 }} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollBehavior: 'smooth' }}>
+              {suggestions.map((s, i) => (
+                <button
+                  key={s.topic}
+                  type="button"
+                  onClick={() => onApplySuggestion?.(s)}
+                  style={{
+                    minWidth: 180, maxWidth: 220, flexShrink: 0,
+                    textAlign: 'left', padding: '10px 12px', borderRadius: 8,
+                    border: i === 0 ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+                    background: i === 0 ? C.surface2 : C.surface,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = C.surface2; e.currentTarget.style.borderColor = C.gold }}
+                  onMouseLeave={e => { e.currentTarget.style.background = i === 0 ? C.surface2 : C.surface; e.currentTarget.style.borderColor = i === 0 ? C.gold : C.border }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, paddingRight: 4 }}>
+                      {s.title.length > 60 ? s.title.slice(0, 57) + '…' : s.title}
+                    </span>
+                    {i === 0 && (
+                      <span style={{ flexShrink: 0, padding: '1px 5px', borderRadius: 3, background: C.gold, color: '#FFF', fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>
+                        TOP PICK
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    <span style={{
+                      padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
+                      background: s.demandScore >= 70 ? '#D1FAE5' : s.demandScore >= 40 ? '#FEF3C7' : '#F3F4F6',
+                      color: s.demandScore >= 70 ? C.green : s.demandScore >= 40 ? C.orange : C.textDim,
+                    }}>
+                      {s.demandScore}%
+                    </span>
+                    <span style={{
+                      padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
+                      background: s.profitability === 'high' ? '#D1FAE5' : s.profitability === 'medium' ? '#FEF3C7' : '#F3F4F6',
+                      color: s.profitability === 'high' ? C.green : s.profitability === 'medium' ? C.orange : C.textDim,
+                    }}>
+                      {s.profitability === 'high' ? '💰 High Value' : s.profitability === 'medium' ? '📊 Medium' : '📉 Low'}
+                    </span>
+                    <span style={{ fontSize: 9, color: C.textDim }}>{s.impressions.toLocaleString()} imp</span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: 9, color: C.textDim, lineHeight: 1.3 }}>
+                    {s.reason}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+          {suggestionsError && (
+            <div style={{ marginTop: 6, fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
+          )}
+        </div>
+      )}
       {expanded && (
         <form onSubmit={handleSubmit} style={{ padding: '0 18px 18px', borderTop: `1px solid ${C.border}` }}>
           {/* Content type */}
@@ -247,7 +343,7 @@ function QuickCreate({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
               <label style={labelStyle}>Region</label>
-              <select value={region} onChange={e => setRegion(e.target.value as Region)} style={inputStyle}>
+              <select value={region} onChange={e => { setRegion(e.target.value as Region); onRefreshSuggestions?.(e.target.value) }} style={inputStyle}>
                 {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
               </select>
             </div>
@@ -1184,6 +1280,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
   const [generationChars, setGenerationChars] = React.useState(0)
+  const [suggestions, setSuggestions] = React.useState<AISuggestion[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = React.useState(false)
+  const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null)
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -1199,6 +1298,28 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setError(err instanceof Error ? err.message : 'Failed to load jobs')
     } finally { setLoading(false) }
   }, [])
+
+  const fetchSuggestions = React.useCallback(async (region: string) => {
+    setSuggestionsLoading(true)
+    setSuggestionsError(null)
+    try {
+      const res = await fetch('/api/content-studio/gsc/suggestions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region, limit: 6 }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSuggestions(data.suggestions ?? [])
+      } else {
+        setSuggestionsError((data as { error?: string }).error ?? 'Failed to load suggestions')
+      }
+    } catch (err) {
+      setSuggestionsError(err instanceof Error ? err.message : 'Suggestion fetch failed')
+    } finally { setSuggestionsLoading(false) }
+  }, [])
+
+  // Load suggestions on mount
+  React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
 
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
 
@@ -1227,16 +1348,41 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         regional_page: 'regional_page', marketplace_gig: 'marketplace_gig',
       }
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
+      const region = formData.region || 'US'
+
+      // Enrich with SEO canon data from GSC before generating
+      let seoEnrichment: any = {}
+      record('seo', 'Fetching GSC keyword portfolio to enrich generation…')
+      try {
+        const gscRes = await fetch('/api/content-studio/gsc/suggestions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ region, topic: formData.topic, limit: 4 }),
+        })
+        if (gscRes.ok) {
+          const gscData = await gscRes.json()
+          seoEnrichment = {
+            suggestions: gscData.suggestions?.slice(0, 3) ?? [],
+            strategyHints: gscData.strategyHints ?? [],
+            portfolioSnapshot: gscData.portfolioSnapshot ?? {},
+            source: gscData.source ?? 'unknown',
+          }
+          record('seo', `SEO canon loaded: ${gscData.portfolioSnapshot?.primaryCount ?? 0} primary, ${gscData.portfolioSnapshot?.secondaryCount ?? 0} secondary keywords from ${gscData.source}`)
+        }
+      } catch (seoErr) {
+        record('seo', 'SEO enrichment unavailable — proceeding with user-provided keywords', 'warn')
+      }
+
       const res = await fetch('/api/seo-factory/generate-stream', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           topic: formData.topic, title: formData.title || formData.topic,
           primaryKeyword: (formData.keywords && formData.keywords[0]) || formData.topic,
-          region: formData.region || 'US', contentType: ct,
+          region, contentType: ct,
           tone: formData.tone || 'educational', audience: formData.audience,
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: 55, maxRefine: 2,
+          seoEnrichment,
         }),
       })
       if (!res.ok) {
@@ -1359,6 +1505,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             generating={generating} onGenerate={handleGenerate}
             topic={topic} keywords={keywords}
             onTopicChange={setTopic} onKeywordsChange={setKeywords}
+            suggestions={suggestions} suggestionsLoading={suggestionsLoading}
+            suggestionsError={suggestionsError}
+            onRefreshSuggestions={fetchSuggestions}
+            onApplySuggestion={(s: AISuggestion) => {
+              setTopic(s.topic)
+              setKeywords(s.keywords.join(', '))
+              setSuggestions([s, ...suggestions.filter(x => x.topic !== s.topic)])
+            }}
           />
           <AdminSiteHealthPanel />
           <AdminDeepInterlinkPanel  setActionNotice={setActionNotice} />
