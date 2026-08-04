@@ -148,7 +148,7 @@ export function ensureEditorialScaffold(opts: {
     return fm
   }
 
-const { fm, body: rawBody } = stripFm(opts.content || '')
+let { fm, body: rawBody } = stripFm(opts.content || '')
   let body = sanitizeAiSlop(rawBody || `# ${title}\n\nEditorial draft for ${opts.primaryKeyword || title}.`)
   fm = ensureIndexable(fm)
 
