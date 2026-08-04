@@ -5,6 +5,7 @@ import {
   openPullRequest,
   putRepoFile,
 } from '@/lib/githubContents'
+import { logRepairs } from './siteHealthFixes'
 
 export type SiteHealthScope = 'all' | 'caseworks' | 'yousafe-consultancy' | 'portal'
 
@@ -570,6 +571,7 @@ export async function repairSiteHealthChunked(
     if (!hub) continue
 
     const links = configOrphans.map((orphan) => ({ url: orphan.url, label: orphan.title }))
+    _repairOrphanPaths.set(config.repo, configOrphans.map((o) => o.url))
     const updatedHubContent = injectRepairSection(hub.content, links)
 
     if (!dryRun) {
@@ -605,6 +607,20 @@ export async function repairSiteHealthChunked(
     } catch { /* PR creation optional */ }
   }
 
+  // Persist this batch's interlink fixes to the site health fix history
+  if (!dryRun && repaired.length > 0) {
+    try {
+      await logRepairs(repaired.map((r) => ({
+        repo: r.repo,
+        hubPath: r.hubPath,
+        orphanPaths: configOrphansFor(r.repo),
+        prUrl,
+      })))
+    } catch (err) {
+      console.error('[site-health] repair history append failed', err)
+    }
+  }
+
   return {
     repaired,
     orphansFixed: batchOrphans.length,
@@ -612,4 +628,10 @@ export async function repairSiteHealthChunked(
     nextBatch: batchStart + batchSize < orphans.length ? batchStart + batchSize : null,
     prUrl,
   }
+}
+
+// Orphan paths per repo, captured during the repair batch
+const _repairOrphanPaths = new Map<string, string[]>()
+function configOrphansFor(repo: string): string[] {
+  return _repairOrphanPaths.get(repo) ?? []
 }
