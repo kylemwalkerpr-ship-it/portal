@@ -129,8 +129,27 @@ export function ensureEditorialScaffold(opts: {
   const region = (opts.region || 'US').toUpperCase().slice(0, 2)
   const title = titleLine(opts.title, opts.primaryKeyword)
 
+  // Canonical indexability guarantee: every generated page must be
+  // index,follow unless explicitly blocked.
+  const ensureIndexable = (frontMatter: string): string => {
+    if (!frontMatter.trim()) return 'robots: "index,follow"\nindexable: true'
+    let fm = frontMatter
+    if (!/robots/i.test(fm)) {
+      fm = 'robots: "index,follow"\n' + fm
+    } else {
+      fm = fm.replace(/robots:\s*"[^"]*"/i, 'robots: "index,follow"')
+    }
+    if (!/indexable/i.test(fm)) {
+      fm = 'indexable: true\n' + fm
+    } else {
+      fm = fm.replace(/indexable:\s*(true|false)/g, 'indexable: true')
+    }
+    return fm
+  }
+
 const { fm, body: rawBody } = stripFm(opts.content || '')
   let body = sanitizeAiSlop(rawBody || `# ${title}\n\nEditorial draft for ${opts.primaryKeyword || title}.`)
+  fm = ensureIndexable(fm)
 
   // Drop model-emitted JSON-LD / scripts — estate layout emits schema
   body = body
@@ -148,6 +167,11 @@ const { fm, body: rawBody } = stripFm(opts.content || '')
       '\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
       'Immigration rules change; verify every requirement against official government sources and consult a ' +
       'licensed attorney, solicitor, or registered migration agent for your situation.\n'
+  }
+
+  // Inject canonical conversion CTA after editorial scaffold
+  if (opts.conversionCtaBlock && !body.includes(opts.conversionCtaBlock.slice(0, 60))) {
+    body += '\n' + opts.conversionCtaBlock + '\n'
   }
 
   // Ensure at least one H1 for title extraction fallback
