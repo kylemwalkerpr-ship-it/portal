@@ -3,6 +3,7 @@ import React from 'react'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
 const AdminSeoFactory = React.lazy(() => import('./admin-seo-factory'))
+import AdminInlineEditor from './admin-inline-editor'
 
 // ── Color tokens (match admin-templates.tsx) ──
 const C = {
