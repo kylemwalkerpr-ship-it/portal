@@ -18,6 +18,7 @@ type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
 type Tab = 'warroom' | 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls'
 
 const STUDIO_PREFS_KEY = 'yousafe.contentStudio.prefs.v1'
+const WAR_RESOLVED_KEY = 'yousafe.contentStudio.warResolved.v1'
 
 type StudioPrefs = {
   dryRun: boolean
@@ -120,6 +121,19 @@ export default function AdminSeoFactory({
     } catch { /* ignore */ }
     setPrefsHydrated(true)
   }, [])
+
+  // Persist war-room resolutions so fixes stay cleared across reloads
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(WAR_RESOLVED_KEY)
+      if (raw) setResolvedWarTerms(new Set(JSON.parse(raw) as string[]))
+    } catch { /* ignore */ }
+  }, [])
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(WAR_RESOLVED_KEY, JSON.stringify([...resolvedWarTerms]))
+    } catch { /* ignore */ }
+  }, [resolvedWarTerms])
 
   React.useEffect(() => {
     if (!prefsHydrated) return
@@ -618,6 +632,67 @@ export default function AdminSeoFactory({
     } finally {
       setMergeBusy(false)
     }
+  }
+
+  const runBatchCannibalMerge = async (terms: string[]) => {
+    const q = (warRoom?.queue || []) as Array<any>
+    const cannibals = q.filter((o: any) => o.play === 'cannibal_merge' && terms.includes(o.term))
+    if (!cannibals.length) {
+      setActionNotice('No cannibal plays selected')
+      return
+    }
+    setMergeBusy(true)
+    setMergeResult(null)
+    setActivityLine(`Batch merging ${cannibals.length} cannibal plays…`)
+    pushLog('info', 'warroom', `Batch merge: ${cannibals.length} cannibal plays`)
+    const results: Array<{ term: string; ok: boolean; winner?: string; redirects?: number; files?: number; error?: string }> = []
+    const resolved: string[] = []
+    for (let i = 0; i < cannibals.length; i++) {
+      const o = cannibals[i]
+      const pages = (o.pages || []) as Array<{ url: string; impressions: number; clicks: number; position: number; ctr: number }>
+      // Auto-pick winner = highest impressions
+      const winner = [...pages].sort((a, b) => (b.impressions || 0) - (a.impressions || 0))[0]?.url || pages[0]?.url
+      if (!winner) {
+        results.push({ term: o.term, ok: false, error: 'no pages to merge' })
+        continue
+      }
+      try {
+        const losers = pages.map((p) => String(p.url || '')).filter((u) => u && u !== winner)
+        const res = await fetch('/api/seo-factory/cannibal-merge', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ term: o.term, winnerUrl: winner, loserUrls: losers, mode: mergeMode }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
+        results.push({
+          term: o.term, ok: true, winner,
+          redirects: (data.redirectsAdded || []).length,
+          files: (data.filesUpdated || []).length,
+        })
+        resolved.push(o.term)
+        pushLog('success', 'warroom', `Merged "${o.term}" → ${winner} (${(data.redirectsAdded || []).length} redirects)`)
+      } catch (e: any) {
+        results.push({ term: o.term, ok: false, error: e.message || String(e) })
+        pushLog('error', 'warroom', `Merge failed "${o.term}": ${e.message || String(e)}`)
+      }
+    }
+    setResolvedWarTerms((prev) => {
+      const next = new Set(prev)
+      for (const t of resolved) next.add(t)
+      return next
+    })
+    setSelectedWar((prev) => {
+      const next = new Set(prev)
+      for (const t of resolved) next.delete(t)
+      return next
+    })
+    setMergeResult({ batch: true, okCount: resolved.length, total: cannibals.length, results })
+    setActivityLine(null)
+    setMergeBusy(false)
+    setActionNotice(`Batch merge: ${resolved.length}/${cannibals.length} resolved`)
+    loadWarRoom()
   }
   const loadOptimalPlan = async () => {
     setBusy(true)
@@ -1545,6 +1620,34 @@ export default function AdminSeoFactory({
     return byPlay.filter((o: any) => !resolvedWarTerms.has(o.term || ''))
   }, [warRoom, warPlayFilter, resolvedWarTerms])
 
+  // Live KPIs: recompute from the unresolved queue so metrics move as fixes land
+  const warKpis = React.useMemo(() => {
+    const q = (warRoom?.queue || []) as Array<any>
+    const live = q.filter((o: any) => !resolvedWarTerms.has(o.term || ''))
+    const gain = live.reduce((s: number, o: any) => s + (Number(o.estimatedGainClicks) || 0), 0)
+    const auth = live.length
+      ? Math.round(live.reduce((s: number, o: any) => s + (Number(o.authorityScore) || 0), 0) / live.length)
+      : 0
+    return {
+      queriesAnalyzed: warRoom?.kpis?.queriesAnalyzed || 0,
+      actionable: live.length,
+      estimatedGainClicksSum: Math.round(gain * 10) / 10,
+      avgAuthority: auth,
+      liveGsc: warRoom?.kpis?.liveGsc,
+    }
+  }, [warRoom, resolvedWarTerms])
+
+  // Selected cannibal terms (for batch merge) + non-cannibal selected (for auto-pilot)
+  const selectedCannibalCount = React.useMemo(() => {
+    const q = (warRoom?.queue || []) as Array<any>
+    return q.filter((o: any) => o.play === 'cannibal_merge' && selectedWar.has(o.term)).length
+  }, [warRoom, selectedWar])
+  const selectedStrikeTerms = React.useMemo(() => {
+    const q = (warRoom?.queue || []) as Array<any>
+    const cannibal = new Set(q.filter((o: any) => o.play === 'cannibal_merge').map((o: any) => o.term))
+    return [...selectedWar].filter((t) => !cannibal.has(t))
+  }, [warRoom, selectedWar])
+
   const playLabel = (play: string) => {
     const map: Record<string, string> = {
       title_ctr_rewrite: 'CTR rewrite',
@@ -1963,11 +2066,19 @@ export default function AdminSeoFactory({
               </button>
               <button
                 type="button"
-                disabled={busy || selectedWar.size === 0}
-                onClick={() => runWarRoomStrike([...selectedWar])}
+                disabled={busy || selectedStrikeTerms.length === 0}
+                onClick={() => runWarRoomStrike(selectedStrikeTerms)}
                 style={btnSecondary}
               >
-                Run selected ({selectedWar.size})
+                Run selected ({selectedStrikeTerms.length})
+              </button>
+              <button
+                type="button"
+                disabled={busy || mergeBusy || selectedCannibalCount === 0}
+                onClick={() => runBatchCannibalMerge([...selectedWar])}
+                style={{ ...btnSecondary, borderColor: C.red, color: C.red }}
+              >
+                {mergeBusy ? 'Merging…' : `Merge selected (${selectedCannibalCount})`}
               </button>
               <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={btnSecondary}>
                 Full optimal stack
@@ -2009,11 +2120,11 @@ export default function AdminSeoFactory({
                 marginBottom: 16,
               }}>
                 {[
-                  { label: 'Queries analyzed', value: warRoom.kpis.queriesAnalyzed },
-                  { label: 'Actionable plays', value: warRoom.kpis.actionable },
-                  { label: 'Est. click gain', value: `~${warRoom.kpis.estimatedGainClicksSum}` },
-                  { label: 'Avg authority', value: `${warRoom.kpis.avgAuthority}/100` },
-                  { label: 'GSC', value: warRoom.kpis.liveGsc ? 'LIVE' : 'snapshot' },
+                  { label: 'Queries analyzed', value: warKpis.queriesAnalyzed },
+                  { label: 'Actionable plays', value: warKpis.actionable },
+                  { label: 'Est. click gain', value: `~${warKpis.estimatedGainClicksSum}` },
+                  { label: 'Avg authority', value: `${warKpis.avgAuthority}/100` },
+                  { label: 'GSC', value: warKpis.liveGsc ? 'LIVE' : 'snapshot' },
                   { label: 'Window', value: `${warRoom.rangeDays || 90}d` },
                 ].map((k) => (
                   <div key={k.label} style={{
@@ -2104,7 +2215,6 @@ export default function AdminSeoFactory({
                             type="checkbox"
                             checked={selectedWar.has(o.term)}
                             onChange={() => toggleWarTerm(o.term)}
-                            disabled={o.play === 'cannibal_merge'}
                           />
                         </td>
                         <td style={{ ...td, fontWeight: 700, color: C.cyan }}>{o.priorityScore}</td>
@@ -2175,6 +2285,31 @@ export default function AdminSeoFactory({
               </div>
             )}
           </div>
+
+          {mergeResult?.batch && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginTop: 12 }}>
+              <h3 style={{ margin: '0 0 8px', color: C.red }}>
+                Batch merge · {mergeResult.okCount}/{mergeResult.total} resolved
+              </h3>
+              <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+                {(mergeResult.results || []).map((r: any, i: number) => (
+                  <div key={i}>
+                    <strong>{r.term}</strong>{' '}
+                    {r.ok ? (
+                      <span style={{ color: C.green }}>
+                        ✓ merged → {r.winner} · {r.redirects} redirects · {r.files} files
+                      </span>
+                    ) : (
+                      <span style={{ color: C.red }}>✗ {r.error}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" style={{ ...btnSmall, marginTop: 10 }} onClick={() => setMergeResult(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {autoResult && (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
