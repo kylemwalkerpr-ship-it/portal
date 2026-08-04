@@ -203,7 +203,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     strategyBlock,
   })
 
-  let content = ''
+  let content = input.resumeContent || ''
   let provider = 'unknown'
   let model = 'unknown'
   let audit: SeoFactoryAudit = auditContent({
@@ -250,6 +250,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           opportunityAction: input.opportunityAction,
           writeHint: input.writeHint,
           refineNotes,
+          // Keep human/model fixes when resuming a saved draft (retry cron).
+          draft: content || undefined,
         })
 
     const prevWords = content ? countBodyWords(content) : 0
