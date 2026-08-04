@@ -190,10 +190,19 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     region,
     keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
   })
-  const gscBlock = formatGscBriefForPrompt(gscBrief)
-
-  // Build canonical SEO portfolio — the single source of truth for all
+  // Build canonical SEO intelligence — the single source of truth for all
   // keyword selection, intent classification, and conversion routing.
+  const seoCanon = buildSeoCanon({
+    brief: gscBrief,
+    plan,
+    contentType,
+    region,
+    title,
+    topic,
+    extraKeywords: Array.isArray(input.keywords) ? input.keywords : undefined,
+  })
+  const canonPortfolio = seoCanon.canonicalPromptBlock
+
   const strategyBlock = await formatStrategyForPrompt({
     topic: `${topic} ${primaryKeyword}`,
     maxChars: 4200,
