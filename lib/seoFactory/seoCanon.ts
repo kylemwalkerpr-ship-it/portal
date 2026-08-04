@@ -155,6 +155,7 @@ function profitabilityScore(opts: {
   impressions: number
   clicks: number
   ctr: number
+  position: number
 }): number {
   const intentMultiplier =
     opts.intent === 'transactional' ? 3.0 :
@@ -337,6 +338,7 @@ export function buildSeoCanon(opts: BuildSeoCanonOpts): SeoCanon {
       impressions,
       clicks,
       ctr,
+      position,
     })
 
     // Freshness
