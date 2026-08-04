@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { githubFetch, getBranchHeadSha, openPullRequest, putRepoFile } from '@/lib/githubContents'
-import { CONFIGS, type SiteHealthScope } from './siteHealth'
+import { type SiteHealthScope } from './siteHealth'
 
 type RepoId = Exclude<SiteHealthScope, 'all'>
 
