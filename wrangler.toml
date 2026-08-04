@@ -15,9 +15,15 @@ minify = true
 # DeepSeek (primary) plus Cloudflare + Groq + Gemini + OpenRouter
 # (fallbacks) all have room without hitting the wall.
 #
-# cpu_ms requires a Paid Workers plan (Free caps at 10ms).
-# [limits]
-#   subrequests = 5000  # uncomment when upgrading to Paid plan
+# Paid Workers plan: allow long-running AI generation chains (the
+# fallback chain waits on network I/O which does not consume CPU, but the
+# Next.js SSR handler + quality-gate scanning are CPU-heavy) and the
+# 1,000-subrequest default cap, which the 8-provider fallback chain with
+# retries can exhaust. cpu_ms requires a Paid Workers plan (Free caps at
+# 10ms and ignores this block).
+[limits]
+  cpu_ms = 300000  # 5 minutes
+  subrequests = 5000
 
 # ── KV Namespaces ───────────────────────────────────────────────────────
 # KV-based page cache for expensive operations (featured gigs, etc.).
