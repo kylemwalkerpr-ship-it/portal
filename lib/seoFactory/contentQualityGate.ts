@@ -98,6 +98,16 @@ const AI_SLOP_WORDS = [
   'whilst', // prefer "while" for US/AU plain English (flag as warning tone)
 ]
 
+/**
+ * Broad disclaimer matcher — recognizes natural disclaimer phrasing the AI
+ * actually writes (informational purposes only, does not constitute legal
+ * advice, consult a qualified attorney, …), not just three literal strings.
+ * A too-strict regex here made the gate re-block articles even after the
+ * model (or a human) added a perfectly valid disclaimer.
+ */
+export const DISCLAIMER_RE =
+  /(not legal advice|does not constitute legal advice|not a substitute for (professional )?legal advice|for (educational|informational|information)( and (editorial|informational|educational))? purposes? only|educational( and editorial| and informational)? only|editorial only|consult (an? )?(qualified |licensed |professional |immigration |experienced |registered )?(attorney|lawyer|solicitor|migration agent|immigration professional|regulator)|seek (the )?advice of (an? )?(qualified |licensed |professional |immigration )?(attorney|lawyer|solicitor|migration agent|regulator))/i
+
 /** Outcome / guarantee language — YMYL / bar-ethics risk. */
 const OUTCOME_PROMISE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bguarante(?:e|ed|es|eing)\b/i, label: 'guarantee language' },
@@ -447,7 +457,7 @@ export function evaluateContentQuality(opts: {
         fix: 'Cite USCIS / IRCC / UKVI / Home Affairs with full https URLs.',
       })
     }
-    if (!/not legal advice|educational only|consult (an? )?(attorney|lawyer|solicitor|regulated)/i.test(body)) {
+    if (!DISCLAIMER_RE.test(body)) {
       add({
         code: 'missing_disclaimer',
         severity: 'blocker',
