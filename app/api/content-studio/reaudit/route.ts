@@ -81,7 +81,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         'Content-Type': 'application/json',
       }),
       body: (k: string) => JSON.stringify({
-        model: 'deepseek-ai/deepseek-r1',
+        model: 'deepseek-ai/deepseek-v4-pro',
         messages: [
           { role: 'system', content: sys },
           { role: 'user', content: prompt },
@@ -117,7 +117,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
         'Content-Type': 'application/json',
       }),
       body: (k: string) => JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         messages: [
           { role: 'system', content: sys },
           { role: 'user', content: prompt },
