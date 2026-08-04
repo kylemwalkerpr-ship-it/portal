@@ -33,7 +33,7 @@ export type SiteHealthPage = {
   content?: string
 }
 
-const CONFIGS: Record<RepoId, RepoConfig> = {
+export const CONFIGS: Record<RepoId, RepoConfig> = {
   caseworks: {
     repo: 'caseworks',
     host: 'legal.yousafeconsultancy.com',
@@ -258,6 +258,30 @@ function routeEntry(page: SiteHealthPage): { path: string; priority: number; cha
   return { path, priority: 0.55, changefreq: 'monthly' }
 }
 
+
+// ---------- Noindex / word-count helpers (shared with siteHealthFixes) ----------
+
+/** True when page content carries an explicit noindex robots directive. */
+export function hasNoIndexFlag(content: string): boolean {
+  return /robots\s*[:=][\s\S]{0,160}(?:index\s*:\s*false|['"]noindex['"]|noindex\b)/i.test(content)
+}
+
+/** Rough word count of the visible prose (strips code, imports, JSX plumbing). */
+export function wordCount(content: string): number {
+  const body = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"]/g, ' ')
+    .replace(/[{}[\]()<>=,;:.?!|&*+_'"`#@%^~\\/-]+/g, ' ')
+  return body.split(/\s+/).filter((w) => /[A-Za-z]{2,}/.test(w)).length
+}
+
+/** True when the page has enough real prose to be indexable. */
+export function isFullyExpanded(content: string): boolean {
+  return wordCount(content) >= 400
+}
+
 export async function auditSiteHealth(scope: SiteHealthScope = 'all') {
   const configs = (Object.values(CONFIGS) as RepoConfig[]).filter((config) => scope === 'all' || config.repo === scope)
   const files = (await Promise.all(configs.map(scanRepo))).flat()
@@ -350,7 +374,9 @@ export async function auditSiteHealthChunked(
         path: item.path,
         url: `${mapped.baseUrl}${mapped.route}`,
         title: titleFromContent(content, mapped.route),
-        indexable: !BLOCKED.test(item.path),
+        indexable: !BLOCKED.test(item.path) && !hasNoIndexFlag(content),
+        noindex: hasNoIndexFlag(content),
+        words: wordCount(content),
         inboundLinks: 0,
         sampleSources: [],
         content,
