@@ -526,3 +526,206 @@ export function estimatedMonthlyValue(impressions: number, ctr: number, intent: 
     intent === 'commercial' ? 200 : 50
   return Math.round(clicks * conversionRate * avgRevenue)
 }
+      const profitDesc = (k: WeightedKeyword) =>
+        k.breakdown.profitability >= 60
+          ? 'HIGH CONVERSION POTENTIAL'
+          : k.breakdown.profitability >= 30
+            ? 'moderate commercial intent'
+            : 'seasonal/evergreen'
+      return k
+        ? `- **"${kw}"** — score ${k.canonicalScore}/100 · impressions ${k.impressions.toLocaleString()} · intent ${k.intentCategory} · ${profitDesc(k)}`
+        : `- "${kw}"`
+    }),
+    '',
+    '### Secondary / H2 / section keywords',
+    ...secondaries.map(kw => `- "${kw}"`),
+    '',
+    '### Long-tail / FAQ / People Also Ask',
+    ...(longTails.length ? longTails.map(kw => `- "${kw}"`) : ['- (none — use primary list for FAQ expansion)']),
+    '',
+    '### Semantic cluster',
+    `Tags: ${semanticCluster || 'immigration, visa, guide'}`,
+    '',
+    '### Conversion path',
+    conversionHooks.length
+      ? conversionHooks.map(h => `- ${h}: ${h === 'marketplace_gig' ? 'Marketplace → paid services' : h === 'consultation_cta' ? 'Portal → consultation' : h === 'document_review' ? 'Portal → document review' : h === 'related_services' ? 'Marketplace → cross-sell' : 'general funnel'}`).join('\n')
+      : '- (informational — no immediate conversion hook)',
+    '',
+    '### Indexability',
+    'robots: index, follow — this page MUST be indexable and non-orphaned',
+    '',
+    '### Write strategy',
+    strategyParts,
+    '',
+    '### Conversion CTA (embed at end of article)',
+    conversionCtaBlock || '(no conversion CTA for this intent)',
+  ]
+
+  return {
+    source: brief.source,
+    siteUrl: brief.siteUrl,
+    rangeNote: brief.rangeNote,
+
+    portfolio: portfolio.slice(0, portfolioLimit),
+    intentBreakdown,
+    primaryKeywords: primaries.slice(0, 3),
+    semanticCluster,
+    conversionHooks,
+    indexable: true,
+    robotsDirective: 'index, follow',
+    writeStrategy: strategyParts,
+    conversionCtaBlock,
+
+    canonicalPromptBlock: promptLines.filter(Boolean).join('\n'),
+  }
+}
+
+/** Quick indexability check — always returns true for generated content. */
+export function assertIndexable(): { indexable: boolean; directive: string } {
+  return { indexable: true, directive: 'index, follow' }
+}
+
+/** Market-value USD estimate for a keyword (very rough proxy). */
+export function estimatedMonthlyValue(impressions: number, ctr: number, intent: IntentCategory): number | null {
+  const clicks = impressions * ctr
+  const conversionRate =
+    intent === 'transactional' ? 0.04 :
+    intent === 'commercial' ? 0.015 :
+    intent === 'procedural' ? 0.005 : 0.002
+  const avgRevenue =
+    intent === 'transactional' ? 500 :
+    intent === 'commercial' ? 200 : 50
+  return Math.round(clicks * conversionRate * avgRevenue)
+}
+      ? conversionHooks.map((h) => {
+            const desc =
+              h === 'marketplace_gig'
+                ? 'Marketplace → paid services'
+                : h === 'consultation_cta'
+                  ? 'Portal → consultation'
+                  : h === 'document_review'
+                    ? 'Portal → document review'
+                    : h === 'related_services'
+                      ? 'Marketplace → cross-sell'
+                      : 'general funnel'
+            return `- ${h}: ${desc}`
+          })
+      : '- (informational — no immediate conversion hook)',
+    '',
+    '### Indexability',
+    'robots: index, follow — this page MUST be indexable and non-orphaned',
+    '',
+    '### Write strategy',
+    strategyParts,
+    '',
+    '### Conversion CTA (embed at end of article)',
+    conversionCtaBlock || '(no conversion CTA for this intent)',
+  ]
+
+  return {
+    source: brief.source,
+    siteUrl: brief.siteUrl,
+    rangeNote: brief.rangeNote,
+
+    portfolio: portfolio.slice(0, portfolioLimit),
+    intentBreakdown,
+    primaryKeywords: primaries.slice(0, 3),
+    semanticCluster,
+    conversionHooks,
+    indexable: true,
+    robotsDirective: 'index, follow',
+    writeStrategy: strategyParts,
+    conversionCtaBlock,
+
+    canonicalPromptBlock: promptLines.filter(Boolean).join('\n'),
+  }
+}
+
+/** Quick indexability check — always returns true for generated content. */
+export function assertIndexable(): { indexable: boolean; directive: string } {
+  return { indexable: true, directive: 'index, follow' }
+}
+
+/** Market-value USD estimate for a keyword (very rough proxy). */
+export function estimatedMonthlyValue(impressions: number, ctr: number, intent: IntentCategory): number | null {
+  const clicks = impressions * ctr
+  const conversionRate =
+    intent === 'transactional' ? 0.04 :
+    intent === 'commercial' ? 0.015 :
+    intent === 'procedural' ? 0.005 : 0.002
+  const avgRevenue =
+    intent === 'transactional' ? 500 :
+    intent === 'commercial' ? 200 : 50
+  return Math.round(clicks * conversionRate * avgRevenue)
+}
+      const profitDesc = (k: WeightedKeyword) =>
+        k.breakdown.profitability >= 60
+          ? 'HIGH CONVERSION POTENTIAL'
+          : k.breakdown.profitability >= 30
+            ? 'moderate commercial intent'
+            : 'seasonal/evergreen'
+      return k
+        ? `- **"${kw}"** — score ${k.canonicalScore}/100 · impressions ${k.impressions.toLocaleString()} · intent ${k.intentCategory} · ${profitDesc(k)}`
+        : `- "${kw}"`
+    }),
+    '',
+    '### Secondary / H2 / section keywords',
+    ...secondaries.map(kw => `- "${kw}"`),
+    '',
+    '### Long-tail / FAQ / People Also Ask',
+    ...(longTails.length ? longTails.map(kw => `- "${kw}"`) : ['- (none — use primary list for FAQ expansion)']),
+    '',
+    '### Semantic cluster',
+    `Tags: ${semanticCluster || 'immigration, visa, guide'}`,
+    '',
+    '### Conversion path',
+    conversionHooks.length
+      ? conversionHooks.map(h => `- ${h}: ${h === 'marketplace_gig' ? 'Marketplace → paid services' : h === 'consultation_cta' ? 'Portal → consultation' : h === 'document_review' ? 'Portal → document review' : h === 'related_services' ? 'Marketplace → cross-sell' : 'general funnel'}`).join('\n')
+      : '- (informational — no immediate conversion hook)',
+    '',
+    '### Indexability',
+    'robots: index, follow — this page MUST be indexable and non-orphaned',
+    '',
+    '### Write strategy',
+    strategyParts,
+    '',
+    '### Conversion CTA (embed at end of article)',
+    conversionCtaBlock || '(no conversion CTA for this intent)',
+  ]
+
+  return {
+    source: brief.source,
+    siteUrl: brief.siteUrl,
+    rangeNote: brief.rangeNote,
+
+    portfolio: portfolio.slice(0, portfolioLimit),
+    intentBreakdown,
+    primaryKeywords: primaries.slice(0, 3),
+    semanticCluster,
+    conversionHooks,
+    indexable: true,
+    robotsDirective: 'index, follow',
+    writeStrategy: strategyParts,
+    conversionCtaBlock,
+
+    canonicalPromptBlock: promptLines.filter(Boolean).join('\n'),
+  }
+}
+
+/** Quick indexability check — always returns true for generated content. */
+export function assertIndexable(): { indexable: boolean; directive: string } {
+  return { indexable: true, directive: 'index, follow' }
+}
+
+/** Market-value USD estimate for a keyword (very rough proxy). */
+export function estimatedMonthlyValue(impressions: number, ctr: number, intent: IntentCategory): number | null {
+  const clicks = impressions * ctr
+  const conversionRate =
+    intent === 'transactional' ? 0.04 :
+    intent === 'commercial' ? 0.015 :
+    intent === 'procedural' ? 0.005 : 0.002
+  const avgRevenue =
+    intent === 'transactional' ? 500 :
+    intent === 'commercial' ? 200 : 50
+  return Math.round(clicks * conversionRate * avgRevenue)
+}
