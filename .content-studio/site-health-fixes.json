@@ -1,0 +1,52 @@
+[
+  {
+    "id": "noindex-1785825442598-au/app/sitemap/page.tsx",
+    "timestamp": "2026-08-04T06:37:22.598Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "au/app/sitemap/page.tsx",
+    "url": "https://au.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 688 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/66"
+  },
+  {
+    "id": "noindex-1785825442938-ca/app/sitemap/page.tsx",
+    "timestamp": "2026-08-04T06:37:22.938Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "ca/app/sitemap/page.tsx",
+    "url": "https://ca.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 740 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/66"
+  },
+  {
+    "id": "noindex-1785825443274-landing-page/app/sitemap/page.tsx",
+    "timestamp": "2026-08-04T06:37:23.274Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "landing-page/app/sitemap/page.tsx",
+    "url": "https://yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 659 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/66"
+  },
+  {
+    "id": "noindex-1785825443576-uk/app/sitemap/page.tsx",
+    "timestamp": "2026-08-04T06:37:23.576Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "uk/app/sitemap/page.tsx",
+    "url": "https://uk.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 745 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/66"
+  },
+  {
+    "id": "noindex-1785825443898-usa/app/sitemap/page.tsx",
+    "timestamp": "2026-08-04T06:37:23.898Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "usa/app/sitemap/page.tsx",
+    "url": "https://usa.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex — 732 words, now indexable",
+    "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/66"
+  }
+]
