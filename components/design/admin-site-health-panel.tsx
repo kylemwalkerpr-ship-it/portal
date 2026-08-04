@@ -264,7 +264,7 @@ export default function AdminSiteHealthPanel() {
       )}
 
       {progress && (
-        <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted, fontFamily: C.mono, background: '#121722', color: '#9DE0AD', padding: '8px 12px', borderRadius: 6 }}>
+        <div style={{ marginTop: 10, fontSize: 11, fontFamily: C.mono, background: '#121722', color: '#9DE0AD', padding: '8px 12px', borderRadius: 6 }}>
           › {progress}
         </div>
       )}
