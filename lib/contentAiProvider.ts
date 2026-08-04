@@ -173,10 +173,13 @@ async function openAiCompatibleComplete(
       headers['X-Title'] = 'YouSafe Content Studio'
     }
     const maxTokens = resolveMaxTokens(p, opts)
+    // GPT-5.x / o-series reasoning models require max_completion_tokens
+    // instead of max_tokens (OpenAI rejects max_tokens on these models).
+    const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4)/i.test(p.model)
     const body: Record<string, unknown> = {
       model: p.model,
       temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-      max_tokens: maxTokens,
+      ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
       messages: [
         { role: 'system', content: opts.system },
         { role: 'user', content: opts.prompt },
