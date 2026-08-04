@@ -75,6 +75,7 @@ function titleLine(title: string, primaryKeyword: string): string {
  * may emit these; we normalize before audit/ship rather than fail the job.
  */
 export function sanitizeAiSlop(text: string): string {
+  fm = ensureIndexable(fm)
   const pairs: Array<[RegExp, string]> = [
     [/\bit is important to note that\b/gi, 'Note that'],
     [/\bit is worth noting that\b/gi, 'Note that'],
@@ -124,9 +125,30 @@ export function ensureEditorialScaffold(opts: {
   title: string
   primaryKeyword: string
   region?: string
+  /** Canonical conversion CTA block to append after the disclaimer. */
+  conversionCtaBlock?: string
 }): string {
   const region = (opts.region || 'US').toUpperCase().slice(0, 2)
   const title = titleLine(opts.title, opts.primaryKeyword)
+
+  // ── Indexability guarantee ──────────────────────────────────────────────
+  // Every generated page MUST have robots:index,follow unless explicitly
+  // blocked. This is the canonical truth — no content ships un-indexable.
+  const ensureIndexable = (fm: string): string => {
+    if (!fm.trim()) return 'robots: "index,follow"\nindexable: true'
+    let out = fm
+    if (!/robots/i.test(out)) {
+      out = out.replace(/^(---)?\n?/, `$&\nrobots: "index,follow"\n`)
+    } else {
+      out = out.replace(/robots:\s*"[^"]*"/i, 'robots: "index,follow"')
+    }
+    if (!/indexable/i.test(out)) {
+      out = out.replace(/^(---)?\n?/, `$&\nindexable: true\n`)
+    } else {
+      out = out.replace(/indexable:\s*(true|false)/, 'indexable: true')
+    }
+    return out
+  }
   const { fm, body: rawBody } = stripFm(opts.content || '')
   let body = sanitizeAiSlop(rawBody || `# ${title}\n\nEditorial draft for ${opts.primaryKeyword || title}.`)
 
@@ -146,6 +168,11 @@ export function ensureEditorialScaffold(opts: {
       '\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
       'Immigration rules change; verify every requirement against official government sources and consult a ' +
       'licensed attorney, solicitor, or registered migration agent for your situation.\n'
+  }
+
+  // Append canonical conversion CTA if provided (and not already in body)
+  if (opts.conversionCtaBlock && !body.includes(opts.conversionCtaBlock.slice(0, 60))) {
+    body += `\n${opts.conversionCtaBlock}\n`
   }
 
   // Ensure at least one H1 for title extraction fallback
