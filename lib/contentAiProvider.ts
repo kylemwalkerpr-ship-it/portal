@@ -118,14 +118,15 @@ export function resolveCloudflareAiAuth(): { accountId: string; token: string } 
  * Set CONTENT_AI_RETRY=1 only on a plan with sufficient subrequest headroom.
  */
 async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const maxAttempts = process.env.CONTENT_AI_RETRY === '1' ? 2 : 1
+  // Retry by default; set CONTENT_AI_RETRY=0 to disable
+  const maxAttempts = process.env.CONTENT_AI_RETRY === '0' ? 1 : 2
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const retryable = /\b(503|429)\b|UNAVAILABLE|overload|high.demand|rate.?limit/i.test(msg)
-      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) throw e
+      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout/i.test(msg)
+      if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
       console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
       await new Promise((r) => setTimeout(r, 1500))
     }
