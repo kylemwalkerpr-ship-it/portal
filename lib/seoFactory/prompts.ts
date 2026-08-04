@@ -159,6 +159,8 @@ export function buildFactoryUserPrompt(opts: {
   /** From authority algorithm + war-room playWriteHint */
   writeHint?: string
   refineNotes?: string
+  /** Existing draft to revise (keeps human/model fixes across retries). */
+  draft?: string
 }): string {
   const parts = [
     `Title hint: ${opts.title}`,
@@ -184,6 +186,18 @@ export function buildFactoryUserPrompt(opts: {
       '## REVISION REQUIRED',
       'A previous draft failed the SEO audit. Fix ALL of the following issues in a complete rewrite (must stay as long or longer):',
       opts.refineNotes,
+    )
+  }
+  if (opts.draft) {
+    parts.push(
+      '',
+      '## EXISTING DRAFT — REVISE, DO NOT REWRITE FROM SCRATCH',
+      'A saved draft exists for this page. Keep its good sections, facts, headings, and interlinks. ' +
+        'Apply the requested fixes and improvements to it; do not discard it or shorten it.',
+      '',
+      '```markdown',
+      opts.draft.length > 14000 ? opts.draft.slice(0, 14000) + '\n\n[…truncated…]' : opts.draft,
+      '```',
     )
   }
   return parts.filter(Boolean).join('\n')
