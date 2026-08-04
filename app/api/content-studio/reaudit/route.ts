@@ -82,7 +82,7 @@ async function callAiFix(sys: string, prompt: string): Promise<string> {
   const result = await generateContentText({
     system: sys,
     prompt,
-    maxTokens: 8192,
+    maxTokens: 4096,
     temperature: 0.2,
   })
   const text = (result?.text || '').trim()
