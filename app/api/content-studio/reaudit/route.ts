@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { evaluateContentQuality, type QualityFinding } from '@/lib/seoFactory/contentQualityGate'
+import { buildTargetedSweepPrompt } from '@/lib/seoFactory/contentQualityGate'
 
 export type InlineAnnotation = {
   id: string; line: number; col: number; endLine: number; endCol: number
@@ -10,6 +11,7 @@ export type InlineAnnotation = {
 export type ReauditResponse = {
   ok: boolean; score: number; summary: string
   annotations: InlineAnnotation[]; blockers: number; warnings: number
+  fixedContent?: string
 }
 
 function indexToLineCol(content: string, index: number) {
@@ -25,7 +27,7 @@ function findingToAnnotations(content: string, f: QualityFinding): InlineAnnotat
   const search = evidence.slice(0, 80) || f.message.split(':')[0] || ''
 
   if (f.code === 'sentence_start_repetition' && evidence) {
-    const prefix = evidence.replace(/…$/, '').trim()
+    const prefix = evidence.replace(/\u2026$/, '').trim()
     if (prefix.length >= 3) {
       const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const regex = new RegExp(
@@ -67,6 +69,86 @@ function findingToAnnotations(content: string, f: QualityFinding): InlineAnnotat
   return results
 }
 
+// ---------- AI-powered fix endpoints ----------
+
+async function callAiFix(sys: string, prompt: string): Promise<string> {
+  const providers = [
+    {
+      name: 'nvidia-deepseek',
+      url: 'https://integrate.api.nvidia.com/v1/chat/completions',
+      headers: (k: string) => ({
+        'Authorization': `Bearer ${k}`,
+        'Content-Type': 'application/json',
+      }),
+      body: (k: string) => ({
+        model: 'deepseek-ai/deepseek-r1',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 8192,
+      }),
+      key: process.env.NVIDIA_API_KEY || '',
+    },
+    {
+      name: 'cloudflare-ai',
+      url: `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID || ''}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
+      headers: (k: string) => ({
+        'Authorization': `Bearer ${k}`,
+        'Content-Type': 'application/json',
+      }),
+      body: (k: string) => ({
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 8192,
+      }),
+      key: process.env.CLOUDFLARE_API_TOKEN || '',
+    },
+    {
+      name: 'groq',
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      headers: (k: string) => ({
+        'Authorization': `Bearer ${k}`,
+        'Content-Type': 'application/json',
+      }),
+      body: (k: string) => ({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 8192,
+      }),
+      key: process.env.GROQ_API_KEY || '',
+    },
+  ]
+
+  const errors: string[] = []
+  for (const p of providers) {
+    if (!p.key) { errors.push(`${p.name}: no API key`); continue }
+    try:
+      req = urllib.request.Request(
+        p.url,
+        data=json.dumps(p.body(p.key)).encode(),
+        headers=p.headers(p.key),
+      )
+      with urllib.request.urlopen(req, timeout=180) as res:
+        data = json.loads(res.read().decode())
+      if p.name === 'cloudflare-ai':
+        text = data.get('result', {}).get('response', '') or ''
+      else:
+        text = data.get('choices', [{}])[0].get('message', {}).get('content', '') or ''
+      if text.strip(): return text.strip()
+      errors.append(f'{p.name}: empty response')
+    except Exception as e:
+      errors.append(f'{p.name}: {str(e)[:120]}')
+  raise RuntimeError('All AI providers failed: ' + ' | '.join(errors))
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
@@ -89,6 +171,101 @@ export async function POST(request: NextRequest) {
     } as ReauditResponse)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Re-audit failed'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json() as {
+      action: 'fix_all' | 'fix_one'
+      content: string
+      annotations?: InlineAnnotation[]
+      annotation?: InlineAnnotation
+      contentType?: string
+      primaryKeyword?: string
+    }
+    const { action, content, annotations, annotation, contentType, primaryKeyword } = body
+    if (!content || !action) {
+      return NextResponse.json({ error: 'content and action required' }, { status: 400 })
+    }
+
+    let fixedContent: string
+
+    if (action === 'fix_all' && annotations && annotations.length > 0) {
+      // Build a comprehensive fix prompt listing every issue
+      const blockerList = annotations
+        .filter((a) => a.severity === 'blocker')
+        .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}" -> Fix: ${a.fix}`)
+        .join('\n')
+      const warningList = annotations
+        .filter((a) => a.severity === 'warning')
+        .map((a) => `Line ${a.line}: [${a.code}] ${a.message} -> "${a.highlightedText}"`)
+        .join('\n')
+
+      const sys = 'You are a master SEO content editor. Fix ALL quality issues in the provided article while preserving its structure, facts, headings, and interlinks. Return ONLY the complete fixed article. Do not add explanations.'
+      const prompt = `## Original Article
+
+${content}
+
+## QUALITY ISSUES TO FIX (BLOCKERS - MUST FIX)
+${blockerList}
+
+## WARNINGS (FIX WHERE POSSIBLE)
+${warningList}
+
+## INSTRUCTIONS
+1. Fix EVERY blocker listed above - these are mandatory
+2. Vary sentence openings: no more than 2 consecutive sentences starting with the same word
+3. Replace AI cliches like "delve", "unlock", "In today's digital landscape" with natural language
+4. Add specific data, examples, or concrete details where the article is vague
+5. Keep all original headings, interlinks, and key facts intact
+6. Return the COMPLETE fixed article, nothing else`
+
+      fixedContent = await callAiFix(sys, prompt)
+
+    } else if (action === 'fix_one' && annotation) {
+      const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'
+      const prompt = `## Article
+
+${content}
+
+## Issue to Fix
+- Line ${annotation.line}: [${annotation.code}] ${annotation.message}
+- Problematic text: "${annotation.highlightedText}"
+- Suggested fix: ${annotation.fix}
+
+## Instructions
+Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
+
+      fixedContent = await callAiFix(sys, prompt)
+
+    } else {
+      return NextResponse.json({ error: 'Invalid action or missing annotations' }, { status: 400 })
+    }
+
+    // Re-evaluate the fixed content
+    const reResult = evaluateContentQuality({
+      content: fixedContent, contentType, primaryKeyword,
+    })
+    const reAnnotations: InlineAnnotation[] = []
+    for (const b of reResult.blockers) reAnnotations.push(...findingToAnnotations(fixedContent, b))
+    for (const w of reResult.warnings) reAnnotations.push(
+      ...findingToAnnotations(fixedContent, { ...w, severity: 'warning' as const }),
+    )
+
+    return NextResponse.json({
+      ok: reResult.ok,
+      score: reResult.humanScore,
+      summary: reResult.summary,
+      annotations: reAnnotations.slice(0, 60),
+      blockers: reResult.blockers.length,
+      warnings: reResult.warnings.length,
+      fixedContent,
+    } as ReauditResponse)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'AI fix failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
