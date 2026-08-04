@@ -120,6 +120,8 @@ export async function POST(req: Request) {
         region: String(job.region || 'US'),
         contentType,
         tone: String(job.tone || 'educational'),
+        // Resume the saved draft so manual editor fixes survive retries
+        resumeContent: job.content ? String(job.content) : undefined,
         shipMode: (job.ship_mode || 'pr') as 'pr' | 'merge' | 'auto' | 'autodeploy' | 'none',
         minAuditScore: 55,
         // More refine attempts on retry to push through quality gates
