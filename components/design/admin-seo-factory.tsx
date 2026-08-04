@@ -85,6 +85,8 @@ export default function AdminSeoFactory({
   const [mergeMode, setMergeMode] = React.useState<'merge' | 'pr'>('merge')
   const [mergeBusy, setMergeBusy] = React.useState(false)
   const [mergeResult, setMergeResult] = React.useState<any>(null)
+  const [showCompletedJobs, setShowCompletedJobs] = React.useState(false)
+  const [resolvedWarTerms, setResolvedWarTerms] = React.useState<Set<string>>(new Set())
 
 
   // ── Command-center workspace state ──
@@ -531,6 +533,11 @@ export default function AdminSeoFactory({
       return
     }
     await runAutoPilot(feed.slice(0, autoLimit))
+    setResolvedWarTerms((prev) => {
+      const next = new Set(prev)
+      for (const t of feed.slice(0, autoLimit)) next.add(t)
+      return next
+    })
   }
 
   const toggleWarTerm = (term: string) => {
@@ -564,6 +571,7 @@ export default function AdminSeoFactory({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
       setMergeResult(data)
+      setResolvedWarTerms((prev) => new Set(prev).add(mergeOpp.term))
       loadWarRoom()
       pushLog('info', 'warroom', `Cannibal merge "${mergeOpp.term}" → ${mergeWinner}`)
     } catch (e: any) {
@@ -1493,9 +1501,10 @@ export default function AdminSeoFactory({
 
   const warQueueFiltered = React.useMemo(() => {
     const q = (warRoom?.queue || []) as Array<Record<string, unknown>>
-    if (warPlayFilter === 'all') return q
-    return q.filter((o) => o.play === warPlayFilter)
-  }, [warRoom, warPlayFilter])
+    const byPlay = warPlayFilter === 'all' ? q : q.filter((o) => o.play === warPlayFilter)
+    // Hide terms the admin already resolved (ship play or cannibal merge)
+    return byPlay.filter((o: any) => !resolvedWarTerms.has(o.term || ''))
+  }, [warRoom, warPlayFilter, resolvedWarTerms])
 
   const playLabel = (play: string) => {
     const map: Record<string, string> = {
@@ -1521,9 +1530,12 @@ export default function AdminSeoFactory({
   }
 
   const filteredJobsClient = React.useMemo(() => {
-    // Server already filters; keep client fallback for multi-status chips
-    return jobs as StudioJob[]
-  }, [jobs])
+    // Server already filters; hide completed (merged/closed) by default.
+    // Toggle "Show completed" to reveal them in the queue.
+    return (jobs as StudioJob[]).filter(
+      (j) => showCompletedJobs || (j.status !== 'merged' && j.status !== 'closed'),
+    )
+  }, [jobs, showCompletedJobs])
 
   const openStrategyDoc = async (path: string, title: string) => {
     try {
@@ -2561,6 +2573,13 @@ export default function AdminSeoFactory({
             </select>
             <button type="button" onClick={loadJobs} style={btnSecondary}>Search / refresh</button>
             <button type="button" onClick={exportJobsCsv} style={btnSecondary} disabled={!jobs.length}>Export CSV</button>
+            <button
+              type="button"
+              style={{ ...btnSecondary, background: showCompletedJobs ? '#DBEAFE' : C.surface, borderColor: showCompletedJobs ? C.blue : C.border, fontSize: 11 }}
+              onClick={() => setShowCompletedJobs((v) => !v)}
+            >
+              {showCompletedJobs ? 'Hide completed' : 'Show completed'}
+            </button>
           </div>
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
