@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateContentText } from '@/lib/contentAiProvider'
 import { evaluateContentQuality, type QualityFinding } from '@/lib/seoFactory/contentQualityGate'
 import { buildTargetedSweepPrompt } from '@/lib/seoFactory/contentQualityGate'
 
@@ -71,89 +72,22 @@ function findingToAnnotations(content: string, f: QualityFinding): InlineAnnotat
 
 // ---------- AI-powered fix endpoints ----------
 
+/**
+ * AI fix through the canonical content AI provider chain
+ * (NVIDIA DeepSeek V4 Pro → Cloudflare → Groq → Gemini → OpenRouter → …).
+ * Same engine the generator uses, so fix prompts get the same model
+ * routing, retries and fallbacks as first-pass generation.
+ */
 async function callAiFix(sys: string, prompt: string): Promise<string> {
-  const providers = [
-    {
-      name: 'nvidia-deepseek',
-      url: 'https://integrate.api.nvidia.com/v1/chat/completions',
-      headers: (k: string) => ({
-        'Authorization': `Bearer ${k}`,
-        'Content-Type': 'application/json',
-      }),
-      body: (k: string) => JSON.stringify({
-        model: 'deepseek-ai/deepseek-v4-pro',
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 8192,
-      }),
-      key: process.env.NVIDIA_API_KEY || '',
-      extract: (data: any) => (data?.choices?.[0]?.message?.content) || '',
-    },
-    {
-      name: 'cloudflare-ai',
-      url: `https://api.cloudflare.com/client/v4/accounts/${process.env.CF_ACCOUNT_ID || ''}/ai/run/@cf/meta/llama-3.3-70b-instruct-fp8-fast`,
-      headers: (k: string) => ({
-        'Authorization': `Bearer ${k}`,
-        'Content-Type': 'application/json',
-      }),
-      body: (k: string) => JSON.stringify({
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 8192,
-      }),
-      key: process.env.CLOUDFLARE_API_TOKEN || '',
-      extract: (data: any) => (data?.result?.response) || '',
-    },
-    {
-      name: 'groq',
-      url: 'https://api.groq.com/openai/v1/chat/completions',
-      headers: (k: string) => ({
-        'Authorization': `Bearer ${k}`,
-        'Content-Type': 'application/json',
-      }),
-      body: (k: string) => JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 8192,
-      }),
-      key: process.env.GROQ_API_KEY || '',
-      extract: (data: any) => (data?.choices?.[0]?.message?.content) || '',
-    },
-  ]
-
-  const errors: string[] = []
-  for (const p of providers) {
-    if (!p.key) { errors.push(`${p.name}: no API key`); continue }
-    try {
-      const res = await fetch(p.url, {
-        method: 'POST',
-        headers: p.headers(p.key),
-        body: p.body(p.key),
-        signal: AbortSignal.timeout(180_000),
-      })
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '')
-        errors.push(`${p.name}: HTTP ${res.status} ${errText.slice(0, 120)}`)
-        continue
-      }
-      const data = await res.json()
-      const text = p.extract(data)
-      if (text && text.trim()) return text.trim()
-      errors.push(`${p.name}: empty response`)
-    } catch (e) {
-      errors.push(`${p.name}: ${e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)}`)
-    }
-  }
-  throw new Error('All AI providers failed: ' + errors.join(' | '))
+  const result = await generateContentText({
+    system: sys,
+    prompt,
+    maxTokens: 8192,
+    temperature: 0.2,
+  })
+  const text = (result?.text || '').trim()
+  if (!text) throw new Error('AI fix returned empty content')
+  return text
 }
 
 export async function POST(request: NextRequest) {
