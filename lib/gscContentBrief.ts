@@ -269,6 +269,8 @@ export function buildKeywordPortfolio(brief: GscContentBrief): {
   longTail: string[]
   semanticGroup: string
   intentSummary: string
+  /** 0–100 profitability composite for the cluster (market value proxy). */
+  profitabilityScore: number
 } {
   // GscQuerySignal has .term, .impressions, .clicks, .ctr, .position
   const primary: string[] = brief.primaryKeywords.slice(0, 3).map((k) => k.term)
@@ -295,15 +297,41 @@ export function buildKeywordPortfolio(brief: GscContentBrief): {
 
   // Intent summary for the AI
   let intent = 'Informational — educational guide'
-  if (primary.some((k) => /checklist|documents?|require|steps|how to|apply/i.test(k))) {
-    intent = 'Procedural — step-by-step how-to with document lists and timelines'
+  if (primary.some((k) => /hire|find an? |consult|speak to|get help/i.test(k))) {
+    intent = 'Transactional — ready-to-convert audience seeking paid services · link to Marketplace'
+  } else if (primary.some((k) => /cost|fee|price|how much|salary|pay|cheap|affordable/i.test(k))) {
+    intent = 'Commercial — cost/fee comparison with official sources · moderate conversion potential (consultation CTA)'
+  } else if (primary.some((k) => /checklist|documents?|require|steps|how to|apply|timeline|process/i.test(k))) {
+    intent = 'Procedural — step-by-step how-to with document lists and timelines · document-review CTA'
   } else if (primary.some((k) => /visa|permit|status|green card|pr/i.test(k))) {
-    intent = 'Navigational — visa/permit process overview with official eligibility rules'
-  } else if (primary.some((k) => /cost|fee|price|salary|pay/i.test(k))) {
-    intent = 'Commercial — cost/fee comparison with official sources and practical estimates'
+    intent = 'Navigational — visa/permit process overview with official eligibility rules · newsletter CTA'
   }
 
-  return { primary, secondary, longTail, semanticGroup, intentSummary: intent }
+  // Profitability composite: blend intent value, impression volume, and CTR gap
+  let profitabilityScore = 40 // baseline
+  const commercialSignals = brief.primaryKeywords.filter(
+    (k) => /cost|fee|price|hire|consult|buy|purchase|service|attorney|lawyer/i.test(k.term),
+  )
+  profitabilityScore += commercialSignals.length * 12
+  // High-impression keywords with strong commercial intent → higher score
+  const highImpressionCommercial = brief.primaryKeywords.filter(
+    (k) => k.impressions >= 100 && /visa|permit|application|immigration/i.test(k.term),
+  )
+  profitabilityScore += highImpressionCommercial.length * 8
+  // CTR gaps near the top (positions 4–20) are cheapest to capture → high ROI
+  const ctrGaps = brief.primaryKeywords.filter(
+    (k) => k.position >= 4 && k.position <= 20 && k.ctr < 0.03,
+  )
+  profitabilityScore += ctrGaps.length * 15
+
+  return {
+    primary,
+    secondary,
+    longTail,
+    semanticGroup,
+    intentSummary: intent,
+    profitabilityScore: Math.min(100, Math.round(profitabilityScore)),
+  }
 }
 
 export function formatGscBriefForPrompt(brief: GscContentBrief): string {
