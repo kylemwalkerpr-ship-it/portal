@@ -27,6 +27,10 @@ export type SiteHealthPage = {
   url: string
   title: string
   indexable: boolean
+  /** True when the page carries an explicit noindex robots directive. */
+  noindex?: boolean
+  /** Rough visible prose word count. */
+  words?: number
   inboundLinks: number
   sampleSources: string[]
   /** Full page source content (available after scan). */
