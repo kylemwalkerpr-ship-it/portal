@@ -339,7 +339,7 @@ export async function auditSiteHealthChunked(
 
   for (const item of batch) {
     try {
-      const mapped = configForFile(item.repo, item.path)!
+      const mapped = configForFile(config.repo, item.path)!
       const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
       const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
       scanned++
@@ -472,9 +472,9 @@ export async function repairSiteHealthChunked(
     const items = (tree.tree || []) as TreeItem[]
     for (const item of items) {
       if (item.type !== 'blob' || !shouldScanPath(item.path)) continue
-      const mapped = configForFile(item.repo, item.path)
+      const mapped = configForFile(config.repo, item.path)
       if (!mapped) continue
-      allCandidates.push({ repo: item.repo || config.repo, path: item.path, sha: item.sha, config })
+      allCandidates.push({ repo: config.repo, path: item.path, sha: item.sha, config })
     }
   }
 
@@ -482,7 +482,7 @@ export async function repairSiteHealthChunked(
   const pages: Array<{ repo: RepoId; host: string; path: string; url: string; title: string; indexable: boolean; content: string }> = []
   for (const item of allCandidates) {
     try {
-      const mapped = configForFile(item.repo, item.path)!
+      const mapped = configForFile(config.repo, item.path)!
       const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
       const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
       pages.push({
@@ -495,7 +495,7 @@ export async function repairSiteHealthChunked(
   }
 
   // Compute orphans
-  const files = pages as ScanFile[]
+  const files: ScanFile[] = pages.map((p) => ({ ...p, page: true }))
   const byUrl = new Map(files.map((page) => [normalizeUrl(page.url, page) as string, page]))
   const inbound = new Map<string, { count: number; sources: string[] }>()
   for (const page of files) inbound.set(normalizeUrl(page.url, page)!, { count: 0, sources: [] })
@@ -540,11 +540,11 @@ export async function repairSiteHealthChunked(
     if (!hub) continue
 
     const links = configOrphans.map((orphan) => ({ url: orphan.url, label: orphan.title }))
-    const updatedHubContent = injectRelatedGuidesBlock(hub.content, links, hub.path)
+    const updatedHubContent = injectRepairSection(hub.content, links)
 
     if (!dryRun) {
       const branch = `seo/orphan-repair-${Date.now()}`
-      const { sha } = await getBranchHeadSha(config.repo, 'main')
+      const { sha } = await getBranchHeadSha(config.repo)
       await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/refs`, {
         method: 'POST',
         body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
