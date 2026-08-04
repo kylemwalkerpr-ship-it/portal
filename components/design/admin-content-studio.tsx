@@ -1361,7 +1361,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onTopicChange={setTopic} onKeywordsChange={setKeywords}
           />
           <AdminSiteHealthPanel />
-          <AdminDeepInterlinkPanel />
+          <AdminDeepInterlinkPanel  setActionNotice={setActionNotice} />
           <InterlinksMini topic={topic} keywords={keywords} />
           <GscMini />
         </div>
