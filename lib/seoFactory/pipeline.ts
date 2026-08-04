@@ -22,6 +22,7 @@ import {
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
+import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { ensureEditorialScaffold } from './editorialScaffold'
 
 /**
@@ -249,7 +250,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           contentType,
           tone,
           audience: input.audience,
-          gscBlock,
+          gscBlock: canonPortfolio,
           opportunityAction: input.opportunityAction,
           writeHint: input.writeHint,
           refineNotes,
@@ -436,7 +437,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             contentType,
             tone,
             audience: input.audience,
-            gscBlock,
+            gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
             refineNotes,
@@ -480,6 +481,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     title: title || primaryKeyword,
     primaryKeyword,
     region,
+    conversionCtaBlock: seoCanon.conversionCtaBlock,
   })
 
   // After scaffold, audit again. If blockers remain, do one final refine pass
@@ -519,7 +521,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
             contentType,
             tone,
             audience: input.audience,
-            gscBlock,
+            gscBlock: canonPortfolio,
             opportunityAction: input.opportunityAction,
             writeHint: input.writeHint,
             refineNotes,
