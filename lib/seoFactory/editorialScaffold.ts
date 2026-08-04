@@ -6,6 +6,8 @@
  * We never invent legal facts — only structure required for estate compliance.
  */
 
+import { DISCLAIMER_RE } from './contentQualityGate'
+
 const REGION_SOURCES: Record<string, Array<{ title: string; url: string }>> = {
   US: [
     { title: 'USCIS — Students and Employment', url: 'https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/students-and-employment' },
@@ -32,9 +34,7 @@ function stripFm(content: string): { fm: string; body: string } {
 }
 
 function hasDisclaimer(body: string): boolean {
-  return /not legal advice|editorial only|consult (an? )?(attorney|lawyer|solicitor|registered migration agent)/i.test(
-    body,
-  )
+  return DISCLAIMER_RE.test(body)
 }
 
 function hasGovCitation(body: string): boolean {
