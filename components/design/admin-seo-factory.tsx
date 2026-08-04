@@ -79,6 +79,14 @@ export default function AdminSeoFactory({
   const [mixExpand, setMixExpand] = React.useState(35)
   const [mixNew, setMixNew] = React.useState(25)
 
+  // ── Cannibal merge (war room) state ──
+  const [mergeOpp, setMergeOpp] = React.useState<any>(null)
+  const [mergeWinner, setMergeWinner] = React.useState<string>('')
+  const [mergeMode, setMergeMode] = React.useState<'merge' | 'pr'>('merge')
+  const [mergeBusy, setMergeBusy] = React.useState(false)
+  const [mergeResult, setMergeResult] = React.useState<any>(null)
+
+
   // ── Command-center workspace state ──
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null)
   const [editorContent, setEditorContent] = React.useState('')
@@ -534,6 +542,36 @@ export default function AdminSeoFactory({
     })
   }
 
+  const executeCannibalMerge = async () => {
+    if (!mergeOpp || !mergeWinner) return
+    setMergeBusy(true)
+    setMergeResult(null)
+    try {
+      const losers = (mergeOpp.pages || [])
+        .map((p: any) => String(p.url || ''))
+        .filter((u: string) => u && u !== mergeWinner)
+      const res = await fetch('/api/seo-factory/cannibal-merge', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          term: mergeOpp.term,
+          winnerUrl: mergeWinner,
+          loserUrls: losers,
+          mode: mergeMode,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
+      setMergeResult(data)
+      loadWarRoom()
+      pushLog('info', 'warroom', `Cannibal merge "${mergeOpp.term}" → ${mergeWinner}`)
+    } catch (e: any) {
+      setMergeResult({ error: e.message || String(e) })
+    } finally {
+      setMergeBusy(false)
+    }
+  }
   const loadOptimalPlan = async () => {
     setBusy(true)
     setActivityLine('Building optimal GSC × War Room plan…')
@@ -2053,10 +2091,22 @@ export default function AdminSeoFactory({
                             </button>
                           )}
                           {o.play === 'cannibal_merge' && (
-                            <span style={{ fontSize: 10, color: C.orange }} title={JSON.stringify(o.pages || [])}>
-                              review URLs
-                            </span>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              style={{ ...btnSmall, borderColor: C.red, color: C.red }}
+                              onClick={() => {
+                                const pages = (o.pages || []) as Array<{ url: string; impressions: number; clicks: number; position: number }>
+                                setMergeOpp(o)
+                                setMergeWinner((pages[0] && pages[0].url) || '')
+                                setMergeMode('merge')
+                                setMergeResult(null)
+                              }}
+                            >
+                              Merge
+                            </button>
                           )}
+
                         </td>
                       </tr>
                     ))}
@@ -2825,6 +2875,138 @@ export default function AdminSeoFactory({
         </div>
       )}
 
+      {/* Cannibal merge dialog — resolve cannibal_merge plays with one click */}
+      {mergeOpp && (
+        <div
+          role="dialog"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 90,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={() => !mergeBusy && setMergeOpp(null)}
+        >
+          <div
+            style={{
+              background: '#fff', borderRadius: 12, maxWidth: 760, width: '100%',
+              maxHeight: '85vh', overflow: 'auto', padding: 22,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+              <strong style={{ color: C.red, fontSize: 15 }}>
+                Cannibal merge · “{mergeOpp.term}”
+              </strong>
+              <button type="button" onClick={() => setMergeOpp(null)} style={btnSmall}>Close</button>
+            </div>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+              Multiple estate URLs rank for this query. Pick the winner — losers get a <strong>301 redirect</strong>{' '}
+              to it, are retired at source (<code>index: false</code> + canonical), and the merged query is added to
+              the winner&apos;s frontmatter so authority consolidates on one URL.
+            </p>
+
+            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+              {((mergeOpp.pages || []) as Array<{ url: string; impressions: number; clicks: number; position: number }>)
+                .map((pg: any, i: number) => {
+                  const isWinner = mergeWinner === pg.url
+                  return (
+                    <label
+                      key={pg.url + i}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: 10,
+                        borderRadius: 8, cursor: 'pointer',
+                        border: `1px solid ${isWinner ? C.red : C.border}`,
+                        background: isWinner ? '#FEF2F2' : C.surface,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="mergeWinner"
+                        checked={isWinner}
+                        onChange={() => setMergeWinner(pg.url)}
+                      />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.text, wordBreak: 'break-all' }}>
+                          {pg.url}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                          {isWinner
+                            ? '← winner · keeps ranking · absorbs merged query'
+                            : 'loser → 301 to winner · index:false + canonical'}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, textAlign: 'right', color: C.textMuted, whiteSpace: 'nowrap' }}>
+                        <div>{pg.impressions?.toLocaleString?.() ?? pg.impressions} impr</div>
+                        <div>{((pg.ctr || 0) * 100).toFixed(1)}% ctr</div>
+                        <div>pos {Number(pg.position || 0).toFixed(1)}</div>
+                      </div>
+                    </label>
+                  )
+                })}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: C.textMuted }}>Ship:</span>
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <input type="radio" name="mergeMode" checked={mergeMode === 'merge'} onChange={() => setMergeMode('merge')} />
+                Commit to main (instant 301s)
+              </label>
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <input type="radio" name="mergeMode" checked={mergeMode === 'pr'} onChange={() => setMergeMode('pr')} />
+                Open PR for review
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                disabled={mergeBusy || !mergeWinner}
+                style={{ ...btnPrimary, background: C.red }}
+                onClick={executeCannibalMerge}
+              >
+                {mergeBusy ? 'Merging…' : 'Execute merge'}
+              </button>
+              {mergeBusy && <span style={{ fontSize: 12, color: C.textMuted }}>Writing redirects + files to GitHub…</span>}
+            </div>
+
+            {mergeResult && (
+              <div style={{ marginTop: 14, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, background: C.surface2 }}>
+                {mergeResult.error ? (
+                  <div style={{ fontSize: 12, color: C.red }}>Merge failed: {mergeResult.error}</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+                    <strong style={{ color: C.green }}>Merge executed ✓</strong>
+                    <div>
+                      301 redirects: {(mergeResult.redirectsAdded || []).length} · files updated:{' '}
+                      {(mergeResult.filesUpdated || []).length}
+                    </div>
+                    {(mergeResult.redirectsAdded || []).slice(0, 12).map((r: any, i: number) => (
+                      <div key={i} style={{ color: C.textMuted, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                        {r.from} → {r.to} (301 · {r.repo})
+                      </div>
+                    ))}
+                    {(mergeResult.commits || []).map((c: any, i: number) => (
+                      <div key={i} style={{ marginTop: 4 }}>
+                        {c.prUrl ? (
+                          <a href={c.prUrl} target="_blank" rel="noreferrer" style={{ color: C.blue }}>
+                            PR opened · {c.repo}
+                          </a>
+                        ) : (
+                          <span style={{ color: C.textMuted }}>Committed to {c.repo} · {c.branch}</span>
+                        )}
+                      </div>
+                    ))}
+                    {(mergeResult.skipped || []).length > 0 && (
+                      <div style={{ color: C.orange }}>
+                        Skipped: {(mergeResult.skipped || []).map((s: any) => s.url).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Preview modal (legacy) — prefer workspace editor */}
       {preview && (
         <div
