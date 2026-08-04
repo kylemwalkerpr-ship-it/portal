@@ -125,6 +125,7 @@ export function ensureEditorialScaffold(opts: {
   primaryKeyword: string
   region?: string
   /** Canonical conversion CTA block to append after the disclaimer. */
+  conversionCtaBlock?: string
 }): string {
   const region = (opts.region || 'US').toUpperCase().slice(0, 2)
   const title = titleLine(opts.title, opts.primaryKeyword)
