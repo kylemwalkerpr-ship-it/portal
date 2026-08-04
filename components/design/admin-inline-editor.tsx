@@ -29,10 +29,19 @@ type Props = {
 
 function scoreColor(s: number) { return s >= 70 ? C.green : s >= 50 ? C.orange : C.red }
 
+function severityBadge(s: 'blocker' | 'warning') {
+  return {
+    background: s === 'blocker' ? '#FEE2E2' : '#FFF7ED',
+    color: s === 'blocker' ? C.red : C.orange,
+  }
+}
+
 export default function AdminInlineEditor({ content, jobId, onChange, disabled, onScoreChange }: Props) {
   const [annotations, setAnnotations] = useState<InlineAnnotation[]>([])
   const [auditResult, setAuditResult] = useState<{ ok: boolean; score: number; summary: string; blockers: number; warnings: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [fixingAll, setFixingAll] = useState(false)
+  const [fixingOne, setFixingOne] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showAnnotations, setShowAnnotations] = useState(false)
@@ -41,6 +50,8 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [loadingDrafts, setLoadingDrafts] = useState(false)
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -55,11 +66,31 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jobId, content }),
         })
+        setLastSaved(new Date().toLocaleTimeString())
         setDirty(false)
       } catch { /* silent */ }
     }, 2000)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [content, dirty, jobId])
+
+  // Explicit save
+  const handleSave = useCallback(async () => {
+    setSaving(true); setError(null)
+    try {
+      const res = await fetch('/api/content-studio/drafts', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, content }),
+      })
+      if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`)
+      setDirty(false)
+      setLastSaved(new Date().toLocaleTimeString())
+      setNotice('Draft saved')
+      setTimeout(() => setNotice(null), 2000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    } finally { setSaving(false) }
+  }, [content, jobId])
 
   // Re-audit
   const handleReaudit = useCallback(async () => {
@@ -81,6 +112,53 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
   }, [content, onScoreChange])
+
+  // Fix ALL annotations via AI
+  const handleFixAll = useCallback(async () => {
+    if (!annotations.length) return
+    setFixingAll(true); setError(null); setNotice(null)
+    try {
+      const res = await fetch('/api/content-studio/reaudit', {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fix_all', content, annotations }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (data.fixedContent) {
+        onChange(data.fixedContent); setDirty(true)
+      }
+      setAuditResult(data)
+      setAnnotations(data.annotations || [])
+      onScoreChange?.(data.score)
+      setNotice(`AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI fix failed')
+    } finally { setFixingAll(false) }
+  }, [content, annotations, onChange, onScoreChange])
+
+  // Fix ONE annotation via AI
+  const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
+    setFixingOne(annotation.id); setError(null); setNotice(null)
+    try {
+      const res = await fetch('/api/content-studio/reaudit', {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fix_one', content, annotation }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (data.fixedContent) {
+        onChange(data.fixedContent); setDirty(true)
+      }
+      setAuditResult(data)
+      setAnnotations(data.annotations || [])
+      onScoreChange?.(data.score)
+      setNotice(`Fixed "${annotation.code}" - new score ${data.score}/100`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fix failed')
+    } finally { setFixingOne(null) }
+  }, [content, onChange, onScoreChange])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -116,89 +194,132 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
   const sc = auditResult ? scoreColor(auditResult.score) : C.textMuted
 
+  const allBusy = busy || fixingAll || disabled
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Score bar */}
       {auditResult && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
-          borderRadius: 8, background: auditResult.ok ? '#F0FDF4' : '#FFF7ED',
+          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+          borderRadius: 10, background: auditResult.ok ? '#F0FDF4' : '#FFF7ED',
           border: `1px solid ${auditResult.ok ? '#BBF7D0' : '#FED7AA'}`, fontSize: 12,
         }}>
           <div style={{
-            width: 44, height: 44, borderRadius: 22, background: sc, color: '#FFF',
+            width: 48, height: 48, borderRadius: 24, background: sc, color: '#FFF',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 16, fontFamily: C.mono, flexShrink: 0,
+            fontWeight: 800, fontSize: 18, fontFamily: C.mono, flexShrink: 0,
+            boxShadow: `0 2px 8px ${sc}33`,
           }}>{auditResult.score}</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, color: C.text }}>
+            <div style={{ fontWeight: 700, color: C.text, fontSize: 13 }}>
               {auditResult.ok ? 'PASS: Quality gate passed' : 'FAIL: Quality gate blocked'}
             </div>
-            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>
-              {auditResult.blockers} blocker(s) - {auditResult.warnings} warning(s) - {auditResult.summary}
+            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+              {auditResult.blockers} blocker(s) - {auditResult.warnings} warning(s)
             </div>
+          </div>
+          <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, textAlign: 'right' }}>
+            {auditResult.summary}
           </div>
         </div>
       )}
 
-      {/* Toolbar */}
+      {/* Primary Toolbar */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button" disabled={busy || disabled || !content.trim()} onClick={handleReaudit}
-          style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${C.blue}`,
-            background: '#EFF6FF', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}>
+        {/* Re-audit */}
+        <button type="button" disabled={allBusy || !content.trim()} onClick={handleReaudit}
+          style={btnStyle({ bg: '#EFF6FF', border: C.blue, color: C.blue, disabled: allBusy || !content.trim() })}>
           {busy ? 'Auditing...' : 'Re-audit'}
         </button>
 
+        {/* Fix All */}
         {annotations.length > 0 && (
-          <button type="button" disabled={busy || disabled} onClick={() => setShowAnnotations(!showAnnotations)}
-            style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.border}`,
-              background: showAnnotations ? C.surface2 : C.surface, color: C.textMuted,
-              cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}>
-            {showAnnotations ? 'Hide' : 'Show'} {annotations.length} issue{annotations.length !== 1 ? 's' : ''}
+          <button type="button" disabled={allBusy} onClick={handleFixAll}
+            style={btnStyle({ bg: '#F3E8FF', border: C.purple, color: C.purple, disabled: allBusy })}>
+            {fixingAll ? 'Fixing all...' : `Fix all (${annotations.length})`}
           </button>
         )}
 
-        <button type="button" disabled={busy || disabled} onClick={handleLoadHistory}
-          style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${C.border}`,
-            background: showHistory ? C.surface2 : C.surface, color: C.textMuted,
-            cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}>
-          {showHistory ? 'Hide' : 'Draft'} history
+        {/* Toggle annotations */}
+        {annotations.length > 0 && (
+          <button type="button" disabled={allBusy} onClick={() => setShowAnnotations(!showAnnotations)}
+            style={btnStyle({ bg: showAnnotations ? C.surface2 : C.surface, border: C.border, color: C.textMuted, disabled: allBusy })}>
+            {showAnnotations ? 'Hide issues' : `${annotations.length} issue${annotations.length !== 1 ? 's' : ''}`}
+          </button>
+        )}
+
+        {/* Draft history */}
+        <button type="button" disabled={allBusy} onClick={handleLoadHistory}
+          style={btnStyle({ bg: showHistory ? C.surface2 : C.surface, border: C.border, color: C.textMuted, disabled: allBusy })}>
+          {showHistory ? 'Hide history' : 'Draft history'}
         </button>
 
-        {dirty && (
-          <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>* Unsaved</span>
-        )}
+        {/* Explicit Save */}
+        <button type="button" disabled={saving || allBusy} onClick={handleSave}
+          style={btnStyle({ bg: '#FFFBEB', border: C.gold, color: C.gold, disabled: saving || allBusy })}>
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+
+        {/* Status indicators */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {dirty && (
+            <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono, fontWeight: 600 }}>
+              Unsaved
+            </span>
+          )}
+          {lastSaved && !dirty && (
+            <span style={{ fontSize: 10, color: C.green, fontFamily: C.mono }}>
+              Saved {lastSaved}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Error / Notice */}
-      {error && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '6px 10px', fontSize: 10, color: C.red }}>{error}</div>}
-      {notice && <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, padding: '6px 10px', fontSize: 10, color: C.green }}>{notice}</div>}
+      {error && (
+        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: C.red, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, fontSize: 16, lineHeight: 1 }}>&times;</button>
+        </div>
+      )}
+      {notice && (
+        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: C.green, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, fontSize: 16, lineHeight: 1 }}>&times;</button>
+        </div>
+      )}
 
       {/* Editor + Sidebars */}
-      <div style={{ display: 'flex', gap: 12, minHeight: 300 }}>
+      <div style={{ display: 'flex', gap: 12, minHeight: 320 }}>
         {/* Editor */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           <textarea
             ref={textareaRef} value={content}
             onChange={(e) => { onChange(e.target.value); setDirty(true) }}
-            disabled={disabled || busy}
-            placeholder="The generated draft will appear here..."
+            disabled={disabled || allBusy}
+            placeholder="The generated draft will appear here. Edit freely or use Re-audit to check quality..."
             spellCheck
             style={{
-              width: '100%', height: '100%', minHeight: 300, resize: 'vertical',
+              width: '100%', height: '100%', minHeight: 320, resize: 'vertical',
               boxSizing: 'border-box', border: `1px solid ${C.border}`, borderRadius: 8,
-              padding: 12, fontFamily: C.mono, fontSize: 11, lineHeight: 1.7,
+              padding: 14, fontFamily: C.mono, fontSize: 12, lineHeight: 1.75,
               color: C.text, background: '#FFFEFC', outline: 'none',
+              transition: 'border-color 0.2s',
             }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = C.blue }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = C.border }}
           />
           {/* Gutter markers */}
           {annotations.length > 0 && (
             <div style={{ position: 'absolute', top: 0, left: 4, width: 6, height: '100%', pointerEvents: 'none', overflow: 'hidden' }}>
               {annotations.map((a) => (
                 <div key={a.id} title={a.message} style={{
-                  position: 'absolute', top: `${Math.max(0, (a.line - 1) * 18.7)}px`,
-                  width: 6, height: 4, borderRadius: 2,
-                  background: a.severity === 'blocker' ? C.red : C.orange, opacity: 0.7,
+                  position: 'absolute', top: `${Math.max(0, (a.line - 1) * 21)}px`,
+                  width: 6, height: 5, borderRadius: 3,
+                  background: a.severity === 'blocker' ? C.red : C.orange,
+                  opacity: 0.6,
+                  transition: 'opacity 0.15s',
                 }} />
               ))}
             </div>
@@ -207,41 +328,52 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
         {/* Annotation sidebar */}
         {showAnnotations && annotations.length > 0 && (
-          <div style={{ width: 280, maxHeight: 400, overflow: 'auto', background: C.surface,
+          <div style={{ width: 300, maxHeight: 420, overflow: 'auto', background: C.surface,
             border: `1px solid ${C.border}`, borderRadius: 8, flexShrink: 0 }}>
-            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`,
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`,
               fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono,
-              textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              position: 'sticky', top: 0, background: C.surface, zIndex: 1 }}>
               Issues ({annotations.length})
             </div>
             {annotations.map((a) => (
-              <div key={a.id} onClick={() => jumpToAnnotation(a)} style={{
-                padding: '8px 12px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer',
-                background: activeAnnotationId === a.id ? '#F0F7FF' : 'transparent', transition: 'background 0.15s',
+              <div key={a.id} style={{
+                padding: '10px 14px', borderBottom: `1px solid ${C.border}`,
+                background: activeAnnotationId === a.id ? '#F0F7FF' : 'transparent',
+                transition: 'background 0.15s',
               }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                  <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 3, fontSize: 9,
+                {/* Header row */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{
+                    display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 9,
                     fontWeight: 700, fontFamily: C.mono, textTransform: 'uppercase',
-                    background: a.severity === 'blocker' ? '#FEE2E2' : '#FFF7ED',
-                    color: a.severity === 'blocker' ? C.red : C.orange, flexShrink: 0 }}>
-                    {a.severity}
-                  </span>
-                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 2 }}>L{a.line}</span>
-                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 2 }}>{a.code}</span>
+                    ...severityBadge(a.severity),
+                  }}>{a.severity}</span>
+                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>L{a.line}</span>
+                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, flex: 1 }}>{a.code}</span>
                 </div>
-                <div style={{ fontSize: 10, color: C.text, marginTop: 3, lineHeight: 1.4 }}>{a.message}</div>
+                {/* Message */}
+                <div style={{ fontSize: 11, color: C.text, lineHeight: 1.45, marginBottom: 4 }}>{a.message}</div>
+                {/* Highlighted text */}
                 {a.highlightedText && (
-                  <div style={{ fontSize: 9, color: C.textMuted, marginTop: 2, fontFamily: C.mono,
-                    background: C.surface2, borderRadius: 3, padding: '2px 5px',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    &ldquo;{a.highlightedText.slice(0, 60)}{a.highlightedText.length > 60 ? '...' : ''}&rdquo;
+                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 6, fontFamily: C.mono,
+                    background: C.surface2, borderRadius: 4, padding: '4px 8px',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    borderLeft: `3px solid ${a.severity === 'blocker' ? C.red : C.orange}` }}>
+                    &ldquo;{a.highlightedText.slice(0, 80)}{a.highlightedText.length > 80 ? '...' : ''}&rdquo;
                   </div>
                 )}
-                <div style={{ marginTop: 5 }}>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); jumpToAnnotation(a) }}
-                    style={{ padding: '3px 10px', borderRadius: 4, border: 'none', background: C.blue,
-                      color: '#FFF', cursor: 'pointer', fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}>
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" onClick={() => jumpToAnnotation(a)}
+                    style={smallBtnStyle({ bg: C.blue, color: '#FFF' })}>
                     Jump to line
+                  </button>
+                  <button type="button"
+                    disabled={fixingOne === a.id || allBusy}
+                    onClick={() => handleFixOne(a)}
+                    style={smallBtnStyle({ bg: C.purple, color: '#FFF', disabled: fixingOne === a.id || allBusy })}>
+                    {fixingOne === a.id ? 'Fixing...' : 'AI Fix'}
                   </button>
                 </div>
               </div>
@@ -251,38 +383,39 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
 
         {/* Draft history */}
         {showHistory && (
-          <div style={{ width: 260, maxHeight: 400, overflow: 'auto', background: C.surface,
+          <div style={{ width: 280, maxHeight: 420, overflow: 'auto', background: C.surface,
             border: `1px solid ${C.border}`, borderRadius: 8, flexShrink: 0 }}>
-            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`,
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`,
               fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono,
-              textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Draft history
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              position: 'sticky', top: 0, background: C.surface, zIndex: 1 }}>
+              Draft history {lastSaved && <span style={{ fontWeight: 400, color: C.textDim }}>(auto-saves)</span>}
             </div>
             {loadingDrafts ? (
-              <div style={{ padding: 16, fontSize: 11, color: C.textDim }}>Loading...</div>
+              <div style={{ padding: 20, fontSize: 11, color: C.textDim, textAlign: 'center' }}>Loading...</div>
             ) : drafts.length === 0 ? (
-              <div style={{ padding: 16, fontSize: 11, color: C.textDim }}>
-                No saved drafts yet. Edits auto-save every 2 seconds.
+              <div style={{ padding: 20, fontSize: 11, color: C.textDim, textAlign: 'center', lineHeight: 1.6 }}>
+                No saved drafts yet.<br />Edits auto-save every 2 seconds.<br />Use <strong>Save</strong> to snapshot.
               </div>
             ) : (
               drafts.slice().reverse().map((d) => (
-                <div key={d.id} style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
+                <div key={d.id} style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, fontWeight: 600 }}>
                     {new Date(d.createdAt).toLocaleString()}
                   </div>
-                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
-                    {d.wordCount} words
+                  <div style={{ fontSize: 10, color: C.textDim, marginTop: 3, display: 'flex', gap: 6 }}>
+                    <span>{d.wordCount} words</span>
                     {d.diffSummary && (
-                      <span style={{ marginLeft: 6, color: d.diffSummary.startsWith('+') ? C.green : C.red }}>
-                        {d.diffSummary}
-                      </span>
+                      <span style={{
+                        color: d.diffSummary.startsWith('+') ? C.green : d.diffSummary.startsWith('-') ? C.red : C.textDim,
+                        fontWeight: 600,
+                      }}>{d.diffSummary}</span>
                     )}
                   </div>
-                  <button type="button" onClick={() => handleRestoreDraft(d)} style={{
-                    marginTop: 5, padding: '2px 8px', borderRadius: 4,
-                    border: `1px solid ${C.gold}`, background: '#FFFBEB', color: C.gold,
-                    cursor: 'pointer', fontSize: 9, fontWeight: 600, fontFamily: 'inherit',
-                  }}>Restore</button>
+                  <button type="button" onClick={() => handleRestoreDraft(d)}
+                    style={{ marginTop: 6, ...smallBtnStyle({ bg: '#FFFBEB', color: C.gold, border: C.gold }) }}>
+                    Restore
+                  </button>
                 </div>
               ))
             )}
@@ -291,4 +424,26 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       </div>
     </div>
   )
+}
+
+function btnStyle({ bg, border, color, disabled }: { bg: string; border: string; color: string; disabled?: boolean }) {
+  return {
+    padding: '7px 16px', borderRadius: 8, border: `1px solid ${border}`,
+    background: bg, color, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+    opacity: disabled ? 0.5 : 1,
+    transition: 'all 0.15s',
+  }
+}
+
+function smallBtnStyle({ bg, color, border, disabled }: { bg: string; color: string; border?: string; disabled?: boolean }) {
+  return {
+    padding: '3px 10px', borderRadius: 5,
+    border: border ? `1px solid ${border}` : 'none',
+    background: bg, color,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
+    opacity: disabled ? 0.5 : 1,
+    transition: 'all 0.15s',
+  }
 }
