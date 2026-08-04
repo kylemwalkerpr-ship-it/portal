@@ -75,7 +75,6 @@ function titleLine(title: string, primaryKeyword: string): string {
  * may emit these; we normalize before audit/ship rather than fail the job.
  */
 export function sanitizeAiSlop(text: string): string {
-  fm = ensureIndexable(fm)
   const pairs: Array<[RegExp, string]> = [
     [/\bit is important to note that\b/gi, 'Note that'],
     [/\bit is worth noting that\b/gi, 'Note that'],
@@ -151,6 +150,7 @@ export function ensureEditorialScaffold(opts: {
   }
   const { fm, body: rawBody } = stripFm(opts.content || '')
   let body = sanitizeAiSlop(rawBody || `# ${title}\n\nEditorial draft for ${opts.primaryKeyword || title}.`)
+  fm = ensureIndexable(fm)
 
   // Drop model-emitted JSON-LD / scripts — estate layout emits schema
   body = body
