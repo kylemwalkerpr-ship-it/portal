@@ -141,6 +141,7 @@ jobs:
           # Shared secret the weekly-payouts cron route checks (Bearer). Same
           # value as the CRON_SECRET repo secret used by weekly-payouts.yml.
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CONTENT_AI_PROVIDER: ${{ secrets.CONTENT_AI_PROVIDER }}
         run: |
           # Cloudflare's secret API occasionally rejects subsequent secret
           # pushes within the same workflow run with "Secret edit failed.
@@ -230,7 +231,7 @@ jobs:
           # Always pin CONTENT_AI_PROVIDER so a stale Worker secret cannot
           # force Cloudflare-first after a code deploy. Values are fixed
           # (not from secrets) so put_secret always has a non-empty value.
-          put_secret CONTENT_AI_PROVIDER       "nvidia-deepseek"
+          put_secret CONTENT_AI_PROVIDER       "${CONTENT_AI_PROVIDER:-nvidia-deepseek}"
           put_secret NVIDIA_DEEPSEEK_MODEL     "${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-pro}"
           # NVIDIA key aliases — any one unlocks the primary path
           put_secret NVIDIA_API_KEY            "${NVIDIA_API_KEY:-$NVAPI_KEY}"
