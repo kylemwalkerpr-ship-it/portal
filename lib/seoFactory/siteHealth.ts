@@ -166,7 +166,7 @@ async function scanRepo(config: RepoConfig): Promise<ScanFile[]> {
   const items = (tree.tree || []) as TreeItem[]
   const candidates = items.filter((item) => item.type === 'blob' && shouldScanPath(item.path) && configForFile(config.repo, item.path))
   return mapLimit(candidates, 4, async (item) => {
-    const mapped = configForFile(item.repo, item.path)!
+      const mapped = configForFile(config.repo, item.path)!
     const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/blobs/${item.sha}`)
     const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
     const page = PAGE_FILE.test(item.path)
