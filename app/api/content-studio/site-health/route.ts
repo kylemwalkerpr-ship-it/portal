@@ -7,6 +7,11 @@ import {
   repairSiteHealthChunked,
   type SiteHealthScope,
 } from '@/lib/seoFactory/siteHealth'
+import {
+  fixNoIndexPagesChunked,
+  readFixHistory,
+  type NoIndexCandidate,
+} from '@/lib/seoFactory/siteHealthFixes'
 
 export const runtime = 'nodejs'
 
@@ -29,6 +34,7 @@ export async function POST(request: NextRequest) {
       dryRun?: boolean
       batchStart?: number
       batchSize?: number
+      candidates?: NoIndexCandidate[]
     }
     const scope: SiteHealthScope = body.scope === 'caseworks' || body.scope === 'yousafe-consultancy' || body.scope === 'portal' ? body.scope : 'all'
     const action = body.action || 'audit'
@@ -49,6 +55,21 @@ export async function POST(request: NextRequest) {
         : 10
       const result = await repairSiteHealthChunked(scope, batchStart, batchSize, Boolean(body.dryRun))
       return NextResponse.json({ ok: true, action, scope, ...result })
+    }
+
+    if (action === 'fix_noindex_chunked') {
+      const batchStart = typeof body.batchStart === 'number' ? body.batchStart : 0
+      const batchSize = typeof body.batchSize === 'number' && body.batchSize > 0 && body.batchSize <= 15
+        ? body.batchSize
+        : 10
+      const candidates: NoIndexCandidate[] = Array.isArray(body.candidates) ? body.candidates : []
+      const result = await fixNoIndexPagesChunked(scope, batchStart, batchSize, candidates, Boolean(body.dryRun))
+      return NextResponse.json({ ok: true, action, scope, ...result })
+    }
+
+    if (action === 'history') {
+      const fixes = await readFixHistory()
+      return NextResponse.json({ ok: true, action, fixes })
     }
 
     if (action === 'repair') {
@@ -72,7 +93,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     endpoint: '/api/content-studio/site-health',
-    actions: ['audit', 'audit_chunked', 'repair', 'repair_chunked'],
+    actions: ['audit', 'audit_chunked', 'repair', 'repair_chunked', 'fix_noindex_chunked', 'history'],
     scopes: ['all', 'caseworks', 'yousafe-consultancy', 'portal'],
     batchDefaults: { audit_batch_size: 20, repair_batch_size: 10 },
   })
