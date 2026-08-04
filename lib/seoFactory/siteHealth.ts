@@ -165,7 +165,7 @@ async function scanRepo(config: RepoConfig): Promise<ScanFile[]> {
   const tree = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/trees/main?recursive=1`)
   const items = (tree.tree || []) as TreeItem[]
   const candidates = items.filter((item) => item.type === 'blob' && shouldScanPath(item.path) && configForFile(config.repo, item.path))
-  return mapLimit(candidates, 16, async (item) => {
+  return mapLimit(candidates, 4, async (item) => {
     const mapped = configForFile(config.repo, item.path)!
     const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/blobs/${item.sha}`)
     const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
@@ -294,6 +294,78 @@ export async function auditSiteHealth(scope: SiteHealthScope = 'all') {
   }
 }
 
+/**
+ * Chunked version of site health audit. Processes files in batches to stay
+ * under the Cloudflare Workers 50-subrequest limit per invocation.
+ * Returns partial results plus a cursor for the next batch.
+ */
+export async function auditSiteHealthChunked(
+  scope: SiteHealthScope,
+  batchStart: number,
+  batchSize: number,
+): Promise<{
+  pages: SiteHealthPage[]
+  filesScanned: number
+  totalFiles: number
+  nextBatch: number | null
+}> {
+  const configs = scope === 'all'
+    ? [CONFIGS.caseworks, CONFIGS['yousafe-consultancy'], CONFIGS.portal]
+    : [CONFIGS[scope]]
+
+  // Phase 1: get all file trees (3 subrequests max)
+  const allCandidates: Array<{ repo: RepoId; path: string; sha: string; config: RepoConfig }> = []
+  for (const config of configs) {
+    const tree = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/trees/main?recursive=1`)
+    const items = (tree.tree || []) as TreeItem[]
+    for (const item of items) {
+      if (item.type !== 'blob' || !shouldScanPath(item.path)) continue
+      const mapped = configForFile(config.repo, item.path)
+      if (!mapped) continue
+      allCandidates.push({ repo: config.repo, path: item.path, sha: item.sha, config })
+    }
+  }
+
+  const totalFiles = allCandidates.length
+  const batch = allCandidates.slice(batchStart, batchStart + batchSize)
+  
+  if (batch.length === 0) {
+    return { pages: [], filesScanned: 0, totalFiles, nextBatch: null }
+  }
+
+  // Phase 2: fetch blobs for this batch only (up to batchSize subrequests)
+  const pages: SiteHealthPage[] = []
+  let scanned = 0
+
+  for (const item of batch) {
+    try {
+      const mapped = configForFile(item.repo, item.path)!
+      const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
+      const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
+      scanned++
+
+      pages.push({
+        repo: item.repo,
+        host: mapped.host,
+        path: item.path,
+        url: `${mapped.baseUrl}${mapped.route}`,
+        title: titleFromContent(content, mapped.route),
+        indexable: !BLOCKED.test(item.path),
+        inboundLinks: 0,
+        sampleSources: [],
+        content,
+      })
+    } catch {
+      // Skip files that fail to fetch — they're likely deleted
+    }
+  }
+
+  const nextBatch = batchStart + batchSize < totalFiles ? batchStart + batchSize : null
+
+  return { pages, filesScanned: scanned, totalFiles, nextBatch }
+}
+
+
 export async function repairSiteHealth(scope: SiteHealthScope = 'all', dryRun = false) {
   const report = await auditSiteHealth(scope)
   if (dryRun) return { ...report, dryRun: true, repaired: [], pullRequests: [] }
@@ -370,4 +442,144 @@ export async function repairSiteHealth(scope: SiteHealthScope = 'all', dryRun = 
     pullRequests.push({ repo: config.repo, branch, files: filesWritten, prNumber: pr.number, prUrl: pr.html_url })
   }
   return { ...report, dryRun: false, repaired, pullRequests }
+}
+
+
+
+/**
+ * Chunked repair: processes one batch and returns partial results.
+ */
+export async function repairSiteHealthChunked(
+  scope: SiteHealthScope,
+  batchStart: number,
+  batchSize: number,
+  dryRun: boolean,
+): Promise<{
+  repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }>
+  orphansFixed: number
+  totalOrphans: number
+  nextBatch: number | null
+  prUrl: string | null
+}> {
+  const configs = scope === 'all'
+    ? [CONFIGS.caseworks, CONFIGS['yousafe-consultancy'], CONFIGS.portal]
+    : [CONFIGS[scope]]
+
+  // Re-scan for full page graph (Phase 1: trees)
+  const allCandidates: Array<{ repo: RepoId; path: string; sha: string; config: RepoConfig }> = []
+  for (const config of configs) {
+    const tree = await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/trees/main?recursive=1`)
+    const items = (tree.tree || []) as TreeItem[]
+    for (const item of items) {
+      if (item.type !== 'blob' || !shouldScanPath(item.path)) continue
+      const mapped = configForFile(item.repo, item.path)
+      if (!mapped) continue
+      allCandidates.push({ repo: item.repo || config.repo, path: item.path, sha: item.sha, config })
+    }
+  }
+
+  // Phase 2: fetch blobs for this batch
+  const pages: Array<{ repo: RepoId; host: string; path: string; url: string; title: string; indexable: boolean; content: string }> = []
+  for (const item of allCandidates) {
+    try {
+      const mapped = configForFile(item.repo, item.path)!
+      const blob = await githubFetch(`/repos/kylemwalkerpr-ship-it/${item.repo}/git/blobs/${item.sha}`)
+      const content = Buffer.from(String(blob.content || ''), 'base64').toString('utf8')
+      pages.push({
+        repo: item.repo, host: mapped.host, path: item.path,
+        url: `${mapped.baseUrl}${mapped.route}`,
+        title: titleFromContent(content, mapped.route),
+        indexable: !BLOCKED.test(item.path), content,
+      })
+    } catch { /* skip */ }
+  }
+
+  // Compute orphans
+  const files = pages as ScanFile[]
+  const byUrl = new Map(files.map((page) => [normalizeUrl(page.url, page) as string, page]))
+  const inbound = new Map<string, { count: number; sources: string[] }>()
+  for (const page of files) inbound.set(normalizeUrl(page.url, page)!, { count: 0, sources: [] })
+  for (const source of files) {
+    for (const link of extractLinks(source.content, source)) {
+      const existing = inbound.get(link)
+      if (existing) { existing.count++; existing.sources.push(source.url) }
+    }
+  }
+  const orphans = [...inbound.entries()]
+    .filter(([_, v]) => v.count === 0)
+    .map(([url, v]) => {
+      const page = byUrl.get(url)
+      return {
+        repo: page?.repo || scope as RepoId,
+        host: page ? new URL(page.url).hostname : '',
+        path: new URL(url).pathname,
+        url,
+        title: page ? titleFromContent(page.content, new URL(page.url).pathname) : url.split('/').filter(Boolean).pop() || 'home',
+        indexable: page?.indexable ?? true,
+        inboundLinks: v.count,
+        sampleSources: v.sources.slice(0, 5),
+      }
+    })
+
+  // Process batch of orphans
+  const batchOrphans = orphans.slice(batchStart, batchStart + batchSize)
+  const repaired: Array<{ repo: RepoId; hubPath: string; links: number; sitemapPaths: string[] }> = []
+
+  for (const config of configs) {
+    const configOrphans = batchOrphans.filter((o) => o.repo === config.repo)
+    if (configOrphans.length === 0) continue
+
+    // Find/update hub file
+    let hub: { path: string; content: string } | null = null
+    for (const candidate of config.repairCandidates) {
+      try {
+        const c = await readRepoFile(config.repo, candidate)
+        if (c) { hub = { path: candidate, content: c }; break }
+      } catch { /* try next */ }
+    }
+    if (!hub) continue
+
+    const links = configOrphans.map((orphan) => ({ url: orphan.url, label: orphan.title }))
+    const updatedHubContent = injectRelatedGuidesBlock(hub.content, links, hub.path)
+
+    if (!dryRun) {
+      const branch = `seo/orphan-repair-${Date.now()}`
+      const { sha } = await getBranchHeadSha(config.repo, 'main')
+      await githubFetch(`/repos/kylemwalkerpr-ship-it/${config.repo}/git/refs`, {
+        method: 'POST',
+        body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+      })
+      await putRepoFile({
+        owner: 'kylemwalkerpr-ship-it', repo: config.repo, path: hub.path,
+        branch, content: updatedHubContent,
+        message: 'seo: link orphan pages in related-guides hub',
+      })
+    }
+
+    repaired.push({ repo: config.repo, hubPath: hub.path, links: links.length, sitemapPaths: config.sitemapPaths })
+  }
+
+  let prUrl: string | null = null
+  if (!dryRun && repaired.length > 0 && batchOrphans.length > 0) {
+    try {
+      const pr = await openPullRequest({
+        owner: 'kylemwalkerpr-ship-it', repo: repaired[0].repo,
+        head: `seo/orphan-repair-${Date.now()}`,
+        base: 'main',
+        title: `[Content Studio] Repair ${batchOrphans.length} orphan page(s) — chunked batch`,
+        body: `- Batch: ${batchStart}-${batchStart + batchSize}
+- Orphans: ${batchOrphans.length}
+- Repos: ${repaired.map((r) => r.repo).join(', ')}`,
+      })
+      prUrl = pr.html_url
+    } catch { /* PR creation optional */ }
+  }
+
+  return {
+    repaired,
+    orphansFixed: batchOrphans.length,
+    totalOrphans: orphans.length,
+    nextBatch: batchStart + batchSize < orphans.length ? batchStart + batchSize : null,
+    prUrl,
+  }
 }
