@@ -88,6 +88,7 @@ export default function AdminSeoFactory({
   const [mergeResult, setMergeResult] = React.useState<any>(null)
   const [showCompletedJobs, setShowCompletedJobs] = React.useState(false)
   const [resolvedWarTerms, setResolvedWarTerms] = React.useState<Set<string>>(new Set())
+  const [warResolvedHydrated, setWarResolvedHydrated] = React.useState(false)
   const [warRoomAutoRefresh, setWarRoomAutoRefresh] = React.useState(true)
   const [warRoomLastRefreshed, setWarRoomLastRefreshed] = React.useState<Date | null>(null)
 
@@ -128,12 +129,17 @@ export default function AdminSeoFactory({
       const raw = localStorage.getItem(WAR_RESOLVED_KEY)
       if (raw) setResolvedWarTerms(new Set(JSON.parse(raw) as string[]))
     } catch { /* ignore */ }
+    finally {
+      // Do not let the first render persist an empty set over saved resolutions.
+      setWarResolvedHydrated(true)
+    }
   }, [])
   React.useEffect(() => {
+    if (!warResolvedHydrated) return
     try {
       localStorage.setItem(WAR_RESOLVED_KEY, JSON.stringify([...resolvedWarTerms]))
     } catch { /* ignore */ }
-  }, [resolvedWarTerms])
+  }, [warResolvedHydrated, resolvedWarTerms])
 
   React.useEffect(() => {
     if (!prefsHydrated) return
@@ -531,7 +537,6 @@ export default function AdminSeoFactory({
       const data = await res.json()
       if (!res.ok) return
       // Diff: terms that dropped from GSC between refreshes are truly resolved.
-      const oldTerms = new Set(((warRoom as any)?.queue || []).map((o: any) => o.term))
       const newTerms = new Set((data.queue || []).map((o: any) => o.term))
       setResolvedWarTerms((prev) => {
         const next = new Set(prev)
