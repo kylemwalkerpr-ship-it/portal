@@ -2335,7 +2335,7 @@ export default function AdminSeoFactory({
                 </div>
                 <div style={{ padding: '6px 10px', background: C.surface2, borderTop: `1px solid ${C.border}`, fontSize: 10, color: C.textDim, lineHeight: 1.5 }}>Tip: The queue below filters instantly. Merging or executing a term removes it from the count via live state — no refresh needed.</div>
               </div>
-            )}            )}
+            )}
 
             {!warRoom && !busy && (
               <div style={{ color: C.textMuted, fontSize: 13 }}>Load War Room to rank live GSC opportunities.</div>
