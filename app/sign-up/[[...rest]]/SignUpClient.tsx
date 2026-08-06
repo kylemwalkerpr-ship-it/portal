@@ -114,7 +114,7 @@ export default function SignUpClient() {
       <SignUp
         routing="path"
         path={signUpPath}
-        forceRedirectUrl={redirectUrl}
+        fallbackRedirectUrl={redirectUrl}
         signInUrl={signInUrl}
         unsafeMetadata={{ requestedRole: lane, signupSource: source ?? undefined }}
         appearance={clerkAppearance}
