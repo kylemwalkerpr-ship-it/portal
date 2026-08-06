@@ -25,6 +25,7 @@ import {
   putRepoFile,
 } from '@/lib/githubContents'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
+import { verifyLiveInBackground } from './liveVerify'
 
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -244,6 +245,7 @@ export async function shipContent(opts: {
       })
     }
 
+    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo }) } catch {} }
     return {
       mode: 'autodeploy',
       owner,
@@ -357,6 +359,7 @@ export async function shipContent(opts: {
         if (opts.plan.canonicalUrl) {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
+        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo }) } catch {} }
         return {
           mode: 'merge',
           owner,
