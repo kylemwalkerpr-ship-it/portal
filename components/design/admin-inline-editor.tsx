@@ -11,6 +11,37 @@ const C = {
   mono: "var(--portal-font-mono, 'SF Mono', monospace)",
 } as const
 
+/** Fetch with a hard timeout + external abort signal so long AI fixes can never hang the UI. */
+async function fetchWithTimeout(url: string, opts: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+  const { timeoutMs = 260_000, signal, ...init } = opts
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      const cancelled = Boolean(signal?.aborted)
+      throw new Error(
+        cancelled
+          ? 'AI fix cancelled — your draft was auto-saved.'
+          : `AI fix timed out after ${Math.round(timeoutMs / 1000)}s — your draft was auto-saved. Click Re-audit to see the latest state, then try Fix again.`,
+      )
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+function fmtElapsed(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 export type InlineAnnotation = {
   id: string; line: number; col: number; endLine: number; endCol: number
   length: number; severity: 'blocker' | 'warning'; code: string
@@ -52,8 +83,14 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<string | null>(null)
+  const [fixElapsed, setFixElapsed] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fixAbortRef = useRef<AbortController | null>(null)
+  const fixSeqRef = useRef(0)
+
+  // Abort any in-flight AI fix when the editor unmounts.
+  useEffect(() => () => { fixAbortRef.current?.abort() }, [])
 
   // Auto-save (debounced 2s)
   useEffect(() => {
@@ -113,18 +150,30 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
     } finally { setBusy(false) }
   }, [content, onScoreChange])
 
-  // Fix ALL annotations via AI
+  // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {
     if (!annotations.length) return
-    setFixingAll(true); setError(null); setNotice(null)
+    if (fixingAll) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    setFixingAll(true); setError(null); setNotice(null); setFixElapsed(0)
+    const startedAt = Date.now()
+    const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
     try {
-      const res = await fetch('/api/content-studio/reaudit', {
+      const res = await fetchWithTimeout('/api/content-studio/reaudit', {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        timeoutMs: 260_000,
         body: JSON.stringify({ action: 'fix_all', content, annotations }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent); setDirty(true)
       }
@@ -133,21 +182,41 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       onScoreChange?.(data.score)
       setNotice(`AI fix applied - new score ${data.score}/100 - ${data.ok ? 'PASSED' : 'BLOCKED'}`)
     } catch (err) {
+      if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'AI fix failed')
-    } finally { setFixingAll(false) }
-  }, [content, annotations, onChange, onScoreChange])
+    } finally {
+      clearInterval(tick)
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setFixingAll(false)
+        setFixElapsed(0)
+      }
+    }
+  }, [content, annotations, fixingAll, onChange, onScoreChange])
 
-  // Fix ONE annotation via AI
+  // Fix ONE annotation via AI (clicking again while running cancels the request)
   const handleFixOne = useCallback(async (annotation: InlineAnnotation) => {
-    setFixingOne(annotation.id); setError(null); setNotice(null)
+    if (fixingOne === annotation.id) {
+      fixAbortRef.current?.abort()
+      return
+    }
+    const seq = ++fixSeqRef.current
+    const controller = new AbortController()
+    fixAbortRef.current = controller
+    setFixingOne(annotation.id); setError(null); setNotice(null); setFixElapsed(0)
+    const startedAt = Date.now()
+    const tick = setInterval(() => setFixElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000)
     try {
-      const res = await fetch('/api/content-studio/reaudit', {
+      const res = await fetchWithTimeout('/api/content-studio/reaudit', {
         method: 'PATCH', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        timeoutMs: 140_000,
         body: JSON.stringify({ action: 'fix_one', content, annotation }),
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      if (seq !== fixSeqRef.current) return
       if (data.fixedContent) {
         onChange(data.fixedContent); setDirty(true)
       }
@@ -156,9 +225,17 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       onScoreChange?.(data.score)
       setNotice(`Fixed "${annotation.code}" - new score ${data.score}/100`)
     } catch (err) {
+      if (seq !== fixSeqRef.current) return
       setError(err instanceof Error ? err.message : 'Fix failed')
-    } finally { setFixingOne(null) }
-  }, [content, onChange, onScoreChange])
+    } finally {
+      clearInterval(tick)
+      if (seq === fixSeqRef.current) {
+        fixAbortRef.current = null
+        setFixingOne(null)
+        setFixElapsed(0)
+      }
+    }
+  }, [content, fixingOne, onChange, onScoreChange])
 
   // Jump to annotation line
   const jumpToAnnotation = useCallback((a: InlineAnnotation) => {
@@ -233,11 +310,18 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
           {busy ? 'Auditing...' : 'Re-audit'}
         </button>
 
-        {/* Fix All */}
+        {/* Fix All — while running, the button becomes a live progress/cancel control */}
         {annotations.length > 0 && (
-          <button type="button" disabled={allBusy} onClick={handleFixAll}
-            style={btnStyle({ bg: '#F3E8FF', border: C.purple, color: C.purple, disabled: allBusy })}>
-            {fixingAll ? 'Fixing all...' : `Fix all (${annotations.length})`}
+          <button type="button" disabled={busy || disabled} onClick={handleFixAll}
+            style={btnStyle({
+              bg: fixingAll ? '#FEE2E2' : '#F3E8FF',
+              border: fixingAll ? C.red : C.purple,
+              color: fixingAll ? C.red : C.purple,
+              disabled: busy || disabled,
+            })}>
+            {fixingAll
+              ? `Fixing all… ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}(click to cancel)`
+              : `Fix all (${annotations.length})`}
           </button>
         )}
 
@@ -370,10 +454,16 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
                     Jump to line
                   </button>
                   <button type="button"
-                    disabled={fixingOne === a.id || allBusy}
+                    disabled={allBusy || (fixingOne !== null && fixingOne !== a.id)}
                     onClick={() => handleFixOne(a)}
-                    style={smallBtnStyle({ bg: C.purple, color: '#FFF', disabled: fixingOne === a.id || allBusy })}>
-                    {fixingOne === a.id ? 'Fixing...' : 'AI Fix'}
+                    style={smallBtnStyle({
+                      bg: fixingOne === a.id ? '#FEE2E2' : C.purple,
+                      color: '#FFF',
+                      disabled: allBusy || (fixingOne !== null && fixingOne !== a.id),
+                    })}>
+                    {fixingOne === a.id
+                      ? `Cancel · ${fixElapsed > 0 ? fmtElapsed(fixElapsed) : ''}`
+                      : 'AI Fix'}
                   </button>
                 </div>
               </div>
