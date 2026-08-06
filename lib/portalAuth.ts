@@ -88,8 +88,7 @@ export async function requirePortalUser(): Promise<
   // and protected API routes use requirePortalUser directly, so they cannot
   // rely on the dashboard page's separate recovery path. If a profile's
   // clerk_user_id changed but its verified email is unchanged, relink that
-  // existing row. Never promote a role or create an admin from a URL; only an
-  // already-existing profile row is eligible for this repair.
+  // existing row. Role and status are preserved exactly as stored.
   if ((!profile || error) && clerkUserId) {
     try {
       const clerk = await clerkClient()
@@ -101,26 +100,44 @@ export async function requirePortalUser(): Promise<
       ).trim().toLowerCase()
 
       if (clerkEmail) {
-        const byEmail = await db
+        let byEmail = await db
           .from('profiles')
           .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
           .ilike('email', clerkEmail)
           .maybeSingle()
 
-        if (byEmail.data && (!byEmail.data.clerk_user_id || byEmail.data.clerk_user_id === clerkUserId)) {
-          if (!byEmail.data.clerk_user_id) {
-            const linked = await db
+        if (byEmail.error && /column .*(country_code|country_source)/i.test(byEmail.error.message || '')) {
+          byEmail = await db
+            .from('profiles')
+            .select('id, clerk_user_id, role, status, email, full_name')
+            .ilike('email', clerkEmail)
+            .maybeSingle()
+        }
+
+        if (byEmail.data) {
+          // The email was obtained from Clerk's verified primary email. Relink
+          // the existing row even when it contains an older Clerk ID; this is
+          // the case that otherwise traps deep links in /sign-in/admin loops.
+          // No role/status is accepted from the URL or Clerk metadata.
+          const linked = await db
+            .from('profiles')
+            .update({ clerk_user_id: clerkUserId })
+            .eq('id', byEmail.data.id)
+            .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
+            .single()
+
+          if (linked.error && /column .*(country_code|country_source)/i.test(linked.error.message || '')) {
+            const legacyLinked = await db
               .from('profiles')
               .update({ clerk_user_id: clerkUserId })
               .eq('id', byEmail.data.id)
-              .is('clerk_user_id', null)
-              .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
+              .select('id, clerk_user_id, role, status, email, full_name')
               .single()
-            profile = linked.data ?? byEmail.data
-            error = linked.error
+            profile = legacyLinked.data ?? null
+            error = legacyLinked.error
           } else {
-            profile = byEmail.data
-            error = null
+            profile = linked.data ?? null
+            error = linked.error
           }
         }
       }
