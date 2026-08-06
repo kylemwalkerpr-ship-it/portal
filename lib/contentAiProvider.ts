@@ -197,15 +197,23 @@ async function openAiCompatibleComplete(
       throw new Error(formatProviderFailure(p.label, res.status, errBody))
     }
     const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: unknown; reasoning_content?: string } }>
+      choices?: Array<{
+        message?: { content?: unknown; reasoning_content?: string }
+        finish_reason?: string
+      }>
     }
-    const msg = json.choices?.[0]?.message
+    const choice = json.choices?.[0]
+    const msg = choice?.message
     let text = extractMessageText(msg?.content)
     // Some thinking models put draft in reasoning; prefer content, fallback reasoning if empty
     if (!text && msg?.reasoning_content) {
       text = String(msg.reasoning_content).trim()
     }
     if (!text) throw new Error(`${p.label} returned empty content`)
+    // Never silently accept a cut-off completion — cascade to the next provider instead.
+    if (choice?.finish_reason === 'length') {
+      throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
+    }
     return { text, provider: p.label, model: p.model }
   })
 }
@@ -916,6 +924,32 @@ function isSubrequestLimitError(err: unknown): boolean {
  * If the subrequest budget is exhausted mid-cascade, remaining providers are
  * skipped immediately (they would all fail the same way).
  */
+/**
+ * Per-attempt deadline for non-stream completions so a stalled provider can
+ * never hang the caller (env CONTENT_AI_COMPLETE_TIMEOUT_MS, default 120s).
+ */
+const COMPLETE_TIMEOUT_MS = Math.max(
+  15_000,
+  Number.parseInt(process.env.CONTENT_AI_COMPLETE_TIMEOUT_MS || '120000', 10) || 120_000,
+)
+
+async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label}: timed out after ${Math.round(ms / 1000)}s — trying next provider`)),
+          ms,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
@@ -936,7 +970,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
       continue
     }
     try {
-      return await c.run()
+      return await withDeadline(c.label, COMPLETE_TIMEOUT_MS, c.run())
     } catch (e) {
       errors.push(`${c.label}: ${e instanceof Error ? e.message : String(e)}`)
       console.warn(`[contentAi] ${c.label} failed; trying next`)
