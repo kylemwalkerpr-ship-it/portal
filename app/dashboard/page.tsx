@@ -188,13 +188,14 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     }
   }
 
-  // If the current Clerk ID is attached to a stale client row, recover only
-  // when the verified Clerk email matches a pre-existing admin row. This is
-  // deliberately not an email-to-admin promotion: the admin role must already
-  // exist in the database, and the old row is unlinked only to satisfy the
-  // unique Clerk-ID relationship.
-  if (params.lane === 'admin' && !clerkData) clerkData = await getClerkUserData(userId)
-  if (params.lane === 'admin' && clerkData?.email && profile?.role !== 'admin') {
+  // Resolve the verified identity before deciding which profile is canonical.
+  // Direct dashboard visits do not carry ?lane=admin, and an auth-provider
+  // migration can leave the current Clerk ID attached to a client row while
+  // the pre-existing, verified-email-matched row remains the administrator.
+  // The admin role is never inferred from a URL or metadata: this branch only
+  // selects an already-existing database row whose role is exactly 'admin'.
+  if (!clerkData) clerkData = await getClerkUserData(userId)
+  if (clerkData?.email && profile?.role !== 'admin') {
     const { data: adminByEmail } = await db
       .from('profiles')
       .select('id, clerk_user_id, role, status, full_name, email')
@@ -202,22 +203,17 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
       .eq('role', 'admin')
       .maybeSingle()
 
-    if (adminByEmail && (!adminByEmail.clerk_user_id || adminByEmail.clerk_user_id === userId)) {
+    if (adminByEmail) {
       if (profile && profile.id !== adminByEmail.id && profile.clerk_user_id === userId) {
         await db.from('profiles').update({ clerk_user_id: null }).eq('id', profile.id).eq('clerk_user_id', userId)
       }
-      let relinkedAdmin = adminByEmail
-      if (!adminByEmail.clerk_user_id) {
-        const { data: linked } = await db
-          .from('profiles')
-          .update({ clerk_user_id: userId })
-          .eq('id', adminByEmail.id)
-          .is('clerk_user_id', null)
-          .select('id, clerk_user_id, role, status, full_name, email')
-          .single()
-        relinkedAdmin = linked ?? adminByEmail
-      }
-      profile = relinkedAdmin
+      const { data: linked } = await db
+        .from('profiles')
+        .update({ clerk_user_id: userId })
+        .eq('id', adminByEmail.id)
+        .select('id, clerk_user_id, role, status, full_name, email')
+        .single()
+      if (linked) profile = linked
     }
   }
 
