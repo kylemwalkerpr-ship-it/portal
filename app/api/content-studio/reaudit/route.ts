@@ -78,13 +78,36 @@ function findingToAnnotations(content: string, f: QualityFinding): InlineAnnotat
  * Same engine the generator uses, so fix prompts get the same model
  * routing, retries and fallbacks as first-pass generation.
  */
-async function callAiFix(sys: string, prompt: string): Promise<string> {
-  const result = await generateContentText({
+const FIX_TIMEOUT_MS = Math.max(
+  15_000,
+  Number.parseInt(process.env.CONTENT_STUDIO_FIX_TIMEOUT_MS || '240000', 10) || 240_000,
+)
+
+/** Hard deadline so an AI fix can never hang the request past the Worker limit. */
+function withDeadline<T>(ms: number, label: string, promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s — your draft was auto-saved. Re-audit or fix the issue inline.`)),
+          ms,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promise<string> {
+  const result = await withDeadline(FIX_TIMEOUT_MS, 'AI fix', generateContentText({
     system: sys,
     prompt,
-    maxTokens: 4096,
+    maxTokens,
     temperature: 0.2,
-  })
+  }))
   const text = (result?.text || '').trim()
   if (!text) throw new Error('AI fix returned empty content')
   return text
@@ -164,7 +187,7 @@ ${warningList}
 5. Keep all original headings, interlinks, and key facts intact
 6. Return the COMPLETE fixed article, nothing else`
 
-      fixedContent = await callAiFix(sys, prompt)
+      fixedContent = await callAiFix(sys, prompt, 16384)
 
     } else if (action === 'fix_one' && annotation) {
       const sys = 'You are a surgical content editor. Fix ONLY the specified issue. Return ONLY the full article with that one fix applied. Do not change anything else.'
@@ -180,10 +203,19 @@ ${content}
 ## Instructions
 Fix ONLY this specific issue. Keep everything else exactly the same. Return the COMPLETE article.`
 
-      fixedContent = await callAiFix(sys, prompt)
+      fixedContent = await callAiFix(sys, prompt, 8192)
 
     } else {
       return NextResponse.json({ error: 'Invalid action or missing annotations' }, { status: 400 })
+    }
+
+    // Sanity: never let a truncated/partial rewrite silently replace the article.
+    const fixedWords = fixedContent.split(/\s+/).filter(Boolean).length
+    const originalWords = Math.max(1, content.split(/\s+/).filter(Boolean).length)
+    if (fixedWords < Math.max(20, Math.round(originalWords * 0.4))) {
+      throw new Error(
+        `AI fix returned a partial rewrite (${fixedWords} words vs ${originalWords} original) and was discarded. Your draft is unchanged — try Fix again or edit inline.`,
+      )
     }
 
     // Re-evaluate the fixed content
@@ -207,6 +239,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
     } as ReauditResponse)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const timedOut = /timed out/i.test(message)
+    return NextResponse.json({ error: message, timedOut }, { status: timedOut ? 504 : 500 })
   }
 }
