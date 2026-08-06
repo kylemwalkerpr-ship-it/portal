@@ -153,7 +153,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           afterSignOutUrl={PORTAL_URL}
           signInUrl="/sign-in/student"
           signUpUrl="/sign-up/student"
-          domain="yousafeconsultancy.com"
         >
           <TranslationProvider>
             {/* Language switcher now docks inside each app's nav bar
