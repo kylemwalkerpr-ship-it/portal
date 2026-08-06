@@ -198,5 +198,85 @@
     "url": "https://usa.yousafeconsultancy.com/sitemap/",
     "detail": "Removed noindex — 732 words, now indexable",
     "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/74"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/ai/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ai/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/485-pte-requirement/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/485-pte-requirement/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/485-visa-document-checklist/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/485-visa-document-checklist/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/blog/student-to-pr-pathways/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/blog/student-to-pr-pathways/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/partner-visa-820-801-guide/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/partner-visa-820-801-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/renting-nsw-international-students/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/renting-nsw-international-students/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/skills-assessment-guide/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/skills-assessment-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/subclass-500-refusal-reasons-guide/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/subclass-500-refusal-reasons-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/au/temporary-graduate-485-stream-selection/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/temporary-graduate-485-stream-selection/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009342022-https://legal.yousafeconsultancy.com/blog/canada-study-permit-financial-proof/",
+    "timestamp": "2026-08-06T09:42:22.022Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/canada-study-permit-financial-proof/",
+    "detail": "Linked from hub app/articles/page.tsx"
   }
 ]
