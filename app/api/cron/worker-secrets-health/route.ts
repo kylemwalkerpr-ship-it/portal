@@ -131,10 +131,12 @@ export async function POST(req: Request) {
         .map((c) => `\u2022 <b>${escapeHtml(c.label)}</b>: ${c.ok ? 'OK' : 'FAIL — ' + escapeHtml(c.detail)}`)
         .join('<br/>')
       try {
-        await sendEmail({
-          to: recipients,
-          subject: '[YouSafe] \u26a0\ufe0f Worker secret health check FAILED',
-          html: `
+        // sendEmail expects a single `to` string — loop per recipient.
+        for (const to of recipients) {
+          await sendEmail({
+            to,
+            subject: '[YouSafe] \u26a0\ufe0f Worker secret health check FAILED',
+            html: `
 <!doctype html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111;">
   <h2 style="margin-bottom:4px">Worker secret health check failed</h2>
@@ -147,7 +149,8 @@ export async function POST(req: Request) {
      secrets on every deploy) — push a commit or re-run the Deploy workflow.</p>
   <p>— YouSafe Ops</p>
 </body></html>`.trim(),
-        })
+          })
+        }
       } catch (e) {
         console.error('[worker-secrets-health] alert email failed', e instanceof Error ? e.message : e)
       }
