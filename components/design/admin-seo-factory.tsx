@@ -1777,7 +1777,7 @@ export default function AdminSeoFactory({
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: workspaceOpen ? 'minmax(0, 1fr) minmax(340px, 42%)' : '1fr',
+      gridTemplateColumns: workspaceOpen ? 'minmax(0, 1fr) minmax(360px, 380px)' : '1fr',
       gap: 0,
       minHeight: 'calc(100vh - 120px)',
       margin: '0 -8px',
@@ -1801,7 +1801,7 @@ export default function AdminSeoFactory({
       )}
 
       {/* ── Left: command surface ── */}
-      <div style={{ padding: 20, maxWidth: workspaceOpen ? 'none' : 1140, overflow: 'auto', minWidth: 0 }}>
+      <div style={{ padding: '16px 20px 20px', width: '100%', maxWidth: 'none', overflow: 'auto', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: '0 0 8px', fontSize: 26, color: C.cyan, fontWeight: 700 }}>SEO War Room · Command Center</h1>
@@ -1833,8 +1833,8 @@ export default function AdminSeoFactory({
 
       {/* Global admin control strip */}
       <div style={{
-        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
-        marginBottom: 12, padding: '10px 12px', borderRadius: 10,
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        marginBottom: 10, padding: '8px 12px', borderRadius: C.radiusSm,
         background: C.surface2, border: `1px solid ${C.border}`, fontSize: 12,
       }}>
         <strong style={{ color: C.cyan }}>Admin</strong>
@@ -1976,7 +1976,7 @@ export default function AdminSeoFactory({
 
       {/* ── Keywords research + plan ── */}
       {tab === 'keywords' && (
-        <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12 }}>
           <div style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
             padding: 24, borderTop: `4px solid ${C.blue}`,
@@ -2125,12 +2125,12 @@ export default function AdminSeoFactory({
       {tab === 'warroom' && (
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{
-            background: `linear-gradient(135deg, ${C.surface} 0%, ${C.surface2} 100%)`, border: `1px solid ${C.border}`, borderRadius: C.radius,
-            padding: 22, borderTop: `3px solid ${C.gold}`, boxShadow: C.shadowCard,
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
+            padding: '14px 16px', borderLeft: `3px solid ${C.gold}`, boxShadow: C.shadowCard,
           }}>
-            <div style={{ fontSize: 10, color: C.gold, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ width: 22, height: 1.5, background: C.gold, borderRadius: 999, display: 'inline-block' }} /> Technician engine · CTR curve · Strike · Cannibal · AEO · Auto 12:00 EAT</div>
-            <h2 style={{ margin: '10px 0 6px', fontSize: 20, color: C.cyan, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>SEO War Room</h2>
-            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: C.textMuted, lineHeight: 1.65, maxWidth: 720 }}>
+            <div style={{ fontSize: 10, color: C.gold, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>Technician engine · Auto 12:00 EAT</div>
+            <h2 style={{ margin: '6px 0 4px', fontSize: 18, color: C.cyan, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>SEO War Room</h2>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: C.textMuted, lineHeight: 1.6, maxWidth: 680 }}>
               Rank what to ship by <strong>estimated ranking gain</strong>, not raw impressions.
               Noise (brand, meal-plan spam, thin garbage) is filtered. Plays drive generation prompts:
               title/CTR rewrites for positions 4–15, strike-distance expands for page-2, AEO entity hubs
@@ -2155,7 +2155,7 @@ export default function AdminSeoFactory({
             )}
 
             {/* ── Command strip — Play | Region | Refresh + Last sync on one line ── */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '10px 14px', border: `1px solid ${C.border}`, borderRadius: C.radiusSm, background: C.surface, marginBottom: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.04)', backdropFilter: 'blur(8px)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: C.radiusSm, background: C.surface, marginBottom: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
               <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textDim, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 6, height: 6, borderRadius: 999, background: warRoom?.kpis?.liveGsc ? C.green : C.gold, display: 'inline-block' }} /> War Room controls
               </span>
@@ -2236,26 +2236,26 @@ export default function AdminSeoFactory({
 
             {warRoom?.kpis && (
               <>
-                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 10 }}>
+                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 8 }}>
                   {[
                     { label: 'Queries analyzed', value: warKpis.queriesAnalyzed, sub: `${warRoom.rangeDays || 90}d window · live`, accent: '#0B1220' },
                     { label: 'Actionable plays', value: warKpis.actionable, sub: warRoom?.kpis?.liveGsc ? `live · ${warPlayFilter !== 'all' ? playLabel(warPlayFilter) : 'all plays'}` : 'snapshot — refresh for live', accent: C.gold },
                     { label: 'Est. click gain', value: `~${warKpis.estimatedGainClicksSum}`, sub: 'if top half wins — per period', accent: C.green },
                   ].map((k) => (
-                    <div key={k.label} style={{ padding: '15px 15px', borderRadius: C.radiusSm, background: C.surface, border: `1px solid ${C.border}`, borderTop: `3.5px solid ${k.accent}`, boxShadow: C.shadowCard, transition: 'transform 0.15s ease, box-shadow 0.15s ease' }}>
+                    <div key={k.label} style={{ padding: '11px 12px', borderRadius: C.radiusSm, background: C.surface, border: `1px solid ${C.border}`, borderTop: `3px solid ${k.accent}`, boxShadow: C.shadowCard }}>
                       <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>{k.label}</span><span style={{ fontSize: 11 }}>{k.label === 'Queries analyzed' ? '◈' : k.label === 'Actionable plays' ? '⚑' : '↗'}</span></div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: C.cyan, marginTop: 6, letterSpacing: '-0.02em' }}>{k.value}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, lineHeight: 1.35 }}>{k.sub}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: C.cyan, marginTop: 4, letterSpacing: '-0.02em' }}>{k.value}</div>
+                      <div style={{ fontSize: 10.5, color: C.textMuted, marginTop: 3, lineHeight: 1.3 }}>{k.sub}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }}>
+                <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 12 }}>
                   {[
                     { k: 'Avg authority', v: `${warKpis.avgAuthority}/100`, s: 'AEO/SEO/GEO' },
                     { k: 'GSC', v: warKpis.liveGsc ? 'LIVE' : 'snapshot', s: warRoomLastRefreshed ? `${Math.round((Date.now()-warRoomLastRefreshed.getTime())/60000)}m ago` : '—' },
                     { k: 'Window', v: `${warRoom.rangeDays || 90}d`, s: warRoom.siteUrl ? 'sc-domain' : 'not set' },
                   ].map((c) => (
-                    <div key={c.k} style={{ borderRadius: C.radiusSm, border: `1px solid ${C.border2}`, background: C.surface2, padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div key={c.k} style={{ borderRadius: C.radiusSm, border: `1px solid ${C.border2}`, background: C.surface2, padding: '7px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: 9, letterSpacing: '0.06em', fontWeight: 700, textTransform: 'uppercase', color: C.textDim }}>{c.k}</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.v}</span>
                       <span style={{ fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.s}</span>
@@ -2266,7 +2266,7 @@ export default function AdminSeoFactory({
             )}
 
             {warRoom?.summary && (
-              <div style={{ marginBottom: 14, borderRadius: C.radiusSm, border: `1px solid ${warRoom.kpis?.liveGsc ? C.greenBorder : C.goldBorder}`, background: warRoom.kpis?.liveGsc ? C.greenSoft : C.goldSoft, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div style={{ marginBottom: 10, borderRadius: C.radiusSm, border: `1px solid ${warRoom.kpis?.liveGsc ? C.greenBorder : C.goldBorder}`, background: warRoom.kpis?.liveGsc ? C.greenSoft : C.goldSoft, overflow: 'hidden' }}>
                 <button type="button" onClick={() => setBriefOpen((v) => !v)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                   <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: warRoom.kpis?.liveGsc ? '#065F46' : '#92400E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Strategy brief</span>
                   <span style={{ fontSize: 10, fontFamily: 'ui-monospace, monospace', padding: '2px 6px', borderRadius: 999, background: '#0B1220', color: '#fff' }}>{warRoom.kpis?.liveGsc ? 'LIVE' : 'snapshot'}</span>
@@ -2298,7 +2298,7 @@ export default function AdminSeoFactory({
               </div>
             )}
             {warRoom?.buckets && typeof warRoom.buckets.title_ctr_rewrite === 'object' && (
-              <div style={{ border: `1px solid ${C.border}`, borderRadius: C.radiusSm, overflow: 'hidden', marginBottom: 14, background: C.surface, boxShadow: C.shadowCard }}>
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: C.radiusSm, overflow: 'hidden', marginBottom: 12, background: C.surface, boxShadow: C.shadowCard }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.surface2 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.text }}>Action board</span>
                   <span style={{ fontSize: 10, color: C.textDim, fontFamily: 'ui-monospace, monospace' }}>Click a row to filter · counts decrement live after merge</span>
