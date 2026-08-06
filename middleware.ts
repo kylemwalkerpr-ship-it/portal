@@ -382,6 +382,7 @@ export default clerkMiddleware(
   },
   {
     authorizedParties: AUTHORIZED_PARTIES.length > 0 ? AUTHORIZED_PARTIES : undefined,
+    domain: 'yousafeconsultancy.com',
   },
 )
 
