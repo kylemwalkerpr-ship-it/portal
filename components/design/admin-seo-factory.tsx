@@ -538,14 +538,15 @@ export default function AdminSeoFactory({
   }
 
   const loadWarRoom = async () => {
-    setBusy(true)
+    setActionLoading('warRoom', true)
     setActivityLine('Building SEO War Room…')
     pushLog('info', 'warroom', 'Build war room (CTR gap · strike · cannibal · AEO)')
     try {
-      const res = await fetch('/api/seo-factory/war-room', {
+      const res = await fetchResilient('/api/seo-factory/war-room', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        actionLabel: 'warRoom',
         body: JSON.stringify({
           days: 90,
           limit: 50,
@@ -556,6 +557,7 @@ export default function AdminSeoFactory({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'War room failed')
       setWarRoom(data)
+      setWarRoomLastRefreshed(new Date())
       for (const w of data.warnings || []) pushLog('warn', 'warroom', w)
       pushLog(
         'success',
@@ -568,12 +570,14 @@ export default function AdminSeoFactory({
           ? `War Room ready (live GSC) · ${data.kpis.actionable} plays · ~${data.kpis.estimatedGainClicksSum} est. clicks`
           : `War Room ready (snapshot) · ${data.kpis?.actionable || 0} plays — wire SA for live`,
       )
+      showToast('success', data.kpis ? `War room ready · ${data.kpis.actionable || '—'} plays` : 'War room rebuilt')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'War room failed'
       pushLog('error', 'warroom', msg)
       setActionNotice(msg)
+      showToast('error', msg)
     } finally {
-      setBusy(false)
+      setActionLoading('warRoom', false)
       setActivityLine(null)
     }
   }
@@ -665,16 +669,18 @@ export default function AdminSeoFactory({
 
   const executeCannibalMerge = async () => {
     if (!mergeOpp || !mergeWinner) return
+    setActionLoading('cannibalSingle', true)
     setMergeBusy(true)
     setMergeResult(null)
     try {
       const losers = (mergeOpp.pages || [])
         .map((p: any) => String(p.url || ''))
         .filter((u: string) => u && u !== mergeWinner)
-      const res = await fetch('/api/seo-factory/cannibal-merge', {
+      const res = await fetchResilient('/api/seo-factory/cannibal-merge', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
+        actionLabel: 'cannibalSingle',
         body: JSON.stringify({
           term: mergeOpp.term,
           winnerUrl: mergeWinner,
@@ -686,12 +692,16 @@ export default function AdminSeoFactory({
       if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
       setMergeResult(data)
       setResolvedWarTerms((prev) => new Set(prev).add(mergeOpp.term))
+      showToast('success', `Cannibal merge completed → ${mergeWinner.split('/').pop() || mergeWinner}`)
       loadWarRoom()
       pushLog('info', 'warroom', `Cannibal merge "${mergeOpp.term}" → ${mergeWinner}`)
     } catch (e: any) {
-      setMergeResult({ error: e.message || String(e) })
+      const msg = e.message || String(e)
+      setMergeResult({ error: msg })
+      showToast('error', msg)
     } finally {
       setMergeBusy(false)
+      setActionLoading('cannibalSingle', false)
     }
   }
 
