@@ -358,5 +358,85 @@
     "repo": "caseworks",
     "path": "https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-category-occupations-list-2026/",
     "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-occupations-2026-official/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-occupations-2026-official/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/ca/canada-spouse-visa-checklist/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/canada-spouse-visa-checklist/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/ca/lmia-employer-guide/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/lmia-employer-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/ca/super-visa-parents-grandparents/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/super-visa-parents-grandparents/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/intake/received/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/intake/received/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/library/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/library/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/page.tsx/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/page.tsx/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/privacy/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/privacy/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786009638241-https://legal.yousafeconsultancy.com/terms/",
+    "timestamp": "2026-08-06T09:47:18.241Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/terms/",
+    "detail": "Linked from hub app/articles/page.tsx"
   }
 ]
