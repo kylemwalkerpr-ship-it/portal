@@ -1,7 +1,9 @@
 /**
- * lib/seoFactory/liveVerify.ts — P0-1 Ship -> Live Verification
- * Purge CDN, notify search engines, fetch live URL, re-audit, log to content_jobs.
- * Every step is best-effort; failures never throw to the ship caller.
+ * portal-patch/lib/seoFactory/liveVerify.ts — P0-1 Ship → Live Verification (portal/Supabase)
+ * Copy of lib/seoFactory/liveVerify.ts with identical semantics — purge CDN → sitemap ping → IndexNow → fetch live → re-audit.
+ * Every step is best-effort; never throws to ship caller.
+ * This file lives in portal-patch so it ships to kylemwalkerpr-ship-it/portal on next Cloudflare build
+ * via `cp -r portal-patch/* ./` before next build.
  */
 import { createClient } from '@supabase/supabase-js'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
