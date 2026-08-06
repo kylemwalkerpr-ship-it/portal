@@ -202,17 +202,22 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
       .eq('role', 'admin')
       .maybeSingle()
 
-    if (adminByEmail) {
+    if (adminByEmail && (!adminByEmail.clerk_user_id || adminByEmail.clerk_user_id === userId)) {
       if (profile && profile.id !== adminByEmail.id && profile.clerk_user_id === userId) {
         await db.from('profiles').update({ clerk_user_id: null }).eq('id', profile.id).eq('clerk_user_id', userId)
       }
-      const { data: relinkedAdmin } = await db
-        .from('profiles')
-        .update({ clerk_user_id: userId })
-        .eq('id', adminByEmail.id)
-        .select('id, clerk_user_id, role, status, full_name, email')
-        .single()
-      profile = relinkedAdmin ?? adminByEmail
+      let relinkedAdmin = adminByEmail
+      if (!adminByEmail.clerk_user_id) {
+        const { data: linked } = await db
+          .from('profiles')
+          .update({ clerk_user_id: userId })
+          .eq('id', adminByEmail.id)
+          .is('clerk_user_id', null)
+          .select('id, clerk_user_id, role, status, full_name, email')
+          .single()
+        relinkedAdmin = linked ?? adminByEmail
+      }
+      profile = relinkedAdmin
     }
   }
 
