@@ -92,6 +92,62 @@ export default function AdminSeoFactory({
   const [warRoomAutoRefresh, setWarRoomAutoRefresh] = React.useState(true)
   const [warRoomLastRefreshed, setWarRoomLastRefreshed] = React.useState<Date | null>(null)
 
+  // ── Per-action loading + toast feedback ──
+  const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>({})
+  const [toast, setToast] = React.useState<{
+    type: 'success' | 'error'; message: string; id: number } | null>(null)
+  const [toastId, setToastId] = React.useState(0)
+
+  const setActionLoading = (key: string, loading: boolean) => {
+    setActionBusy((prev) => (prev[key] === loading ? prev : { ...prev, [key]: loading }))
+  }
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    const id = toastId + 1
+    setToastId(id)
+    setToast({ type, message, id })
+    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 6000)
+  }
+
+  /** Resilient fetch with timeout + abort. Never hang the UI. */
+  async function fetchResilient(
+    url: string,
+    opts: RequestInit & { timeoutMs?: number; actionLabel?: string } = {},
+  ): Promise<Response> {
+    const { timeoutMs = 210_000, actionLabel, signal, ...init } = opts
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    const onExtAbort = () => ctrl.abort()
+    signal?.addEventListener('abort', onExtAbort)
+    try {
+      return await fetch(url, { ...init, signal: ctrl.signal })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        const cancelled = Boolean(signal?.aborted)
+        const msg = cancelled
+          ? 'Cancelled'
+          : `Request timed out after ${Math.round(timeoutMs / 1000)}s — the server may still be processing. Check the queue or refresh.`
+        throw new Error(msg)
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onExtAbort)
+    }
+  }
+
+  const actionAbortRefs = React.useRef<Record<string, AbortController | null>>({})
+  const withAbort = (key: string): { signal?: AbortSignal } => {
+    const ctrl = new AbortController()
+    actionAbortRefs.current[key] = ctrl
+    return { signal: ctrl.signal }
+  }
+
+  // Cleanup abort controllers on unmount
+  React.useEffect(() => () => {
+    for (const c of Object.values(actionAbortRefs.current)) c?.abort()
+  }, [])
+
 
   // ── Command-center workspace state ──
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null)
@@ -1706,6 +1762,24 @@ export default function AdminSeoFactory({
       minHeight: 'calc(100vh - 120px)',
       margin: '0 -8px',
     }}>
+      {/* ── Toast alerts ── */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: 80, right: 24, zIndex: 9999, maxWidth: 440,
+          padding: '12px 18px', borderRadius: 10, fontSize: 13, lineHeight: 1.5,
+          background: toast.type === 'success' ? '#F0FDF4' : '#FEF2F2',
+          border: `1.5px solid ${toast.type === 'success' ? '#86EFAC' : '#FECACA'}`,
+          color: toast.type === 'success' ? C.green : C.red,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          animation: 'slideIn 0.25s ease-out',
+        }}>
+          <span style={{ fontSize: 14 }}>{toast.type === 'success' ? '✓' : '✕'}</span>
+          <span style={{ flex: 1 }}>{toast.message}</span>
+          <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+
       {/* ── Left: command surface ── */}
       <div style={{ padding: 20, maxWidth: workspaceOpen ? 'none' : 1140, overflow: 'auto', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -2063,30 +2137,45 @@ export default function AdminSeoFactory({
             )}
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-              <button type="button" disabled={busy} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: busy ? 0.7 : 1 }}>
-                {busy ? 'Scanning GSC…' : 'Refresh War Room'}
+              <button type="button" disabled={!!actionBusy['warRoom']} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: actionBusy['warRoom'] ? 0.7 : 1, cursor: actionBusy['warRoom'] ? 'not-allowed' : 'pointer' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {actionBusy['warRoom'] && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#0B1220', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
+                  {actionBusy['warRoom'] ? 'Scanning GSC…' : 'Refresh War Room'}
+                </span>
               </button>
-              <button type="button" disabled={busy} onClick={() => runWarRoomStrike()} style={{ ...btnPrimary, opacity: busy ? 0.7 : 1 }}>
-                {dryRun ? `Dry-run top × ${autoLimit}` : `Execute top plays × ${autoLimit}`}
+              <button type="button" disabled={!!actionBusy['warStrikeTop']} onClick={() => runWarRoomStrike()} style={{ ...btnPrimary, opacity: actionBusy['warStrikeTop'] ? 0.7 : 1, cursor: actionBusy['warStrikeTop'] ? 'not-allowed' : 'pointer' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {actionBusy['warStrikeTop'] && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
+                  {actionBusy['warStrikeTop'] ? 'Executing…' : dryRun ? `Dry-run top × ${autoLimit}` : `Execute top plays × ${autoLimit}`}
+                </span>
               </button>
               <button
                 type="button"
-                disabled={busy || selectedStrikeTerms.length === 0}
+                disabled={!!actionBusy['warStrikeSelected'] || selectedStrikeTerms.length === 0}
                 onClick={() => runWarRoomStrike(selectedStrikeTerms)}
-                style={btnSecondary}
+                style={{ ...btnSecondary, cursor: actionBusy['warStrikeSelected'] || selectedStrikeTerms.length === 0 ? 'not-allowed' : 'pointer', opacity: actionBusy['warStrikeSelected'] ? 0.7 : 1 }}
               >
-                Run selected ({selectedStrikeTerms.length})
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {actionBusy['warStrikeSelected'] && <span style={{ display: 'inline-block', width: 10, height: 10, border: '1.5px solid rgba(37,99,235,0.3)', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
+                  {actionBusy['warStrikeSelected'] ? 'Shipping…' : `Run selected (${selectedStrikeTerms.length})`}
+                </span>
               </button>
               <button
                 type="button"
-                disabled={busy || mergeBusy || selectedCannibalCount === 0}
+                disabled={!!actionBusy['batchCannibal'] || selectedCannibalCount === 0}
                 onClick={() => runBatchCannibalMerge([...selectedWar])}
-                style={{ ...btnSecondary, borderColor: C.red, color: C.red }}
+                style={{ ...btnSecondary, borderColor: C.red, color: C.red, cursor: actionBusy['batchCannibal'] || selectedCannibalCount === 0 ? 'not-allowed' : 'pointer', opacity: actionBusy['batchCannibal'] ? 0.7 : 1 }}
               >
-                {mergeBusy ? 'Merging…' : `Merge selected (${selectedCannibalCount})`}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {actionBusy['batchCannibal'] && <span style={{ display: 'inline-block', width: 10, height: 10, border: '1.5px solid rgba(220,38,38,0.3)', borderTopColor: C.red, borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
+                  {actionBusy['batchCannibal'] ? 'Merging…' : `Merge selected (${selectedCannibalCount})`}
+                </span>
               </button>
-              <button type="button" disabled={busy} onClick={() => loadOptimalPlan()} style={btnSecondary}>
-                Full optimal stack
+              <button type="button" disabled={!!actionBusy['optimalPlan']} onClick={() => loadOptimalPlan()} style={{ ...btnSecondary, cursor: actionBusy['optimalPlan'] ? 'not-allowed' : 'pointer', opacity: actionBusy['optimalPlan'] ? 0.7 : 1 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {actionBusy['optimalPlan'] && <span style={{ display: 'inline-block', width: 10, height: 10, border: '1.5px solid rgba(37,99,235,0.3)', borderTopColor: C.blue, borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
+                  {actionBusy['optimalPlan'] ? 'Building…' : 'Full optimal stack'}
+                </span>
               </button>
               <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: C.textMuted, margin: 0, cursor: 'pointer' }}>
                 <input type="checkbox" checked={warRoomAutoRefresh} onChange={() => setWarRoomAutoRefresh((v) => !v)} />
