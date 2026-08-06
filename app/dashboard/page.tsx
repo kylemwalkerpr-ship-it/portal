@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { currentUser } from '@clerk/nextjs/server'
 import { getClerkUserId } from '@/lib/auth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { normalizeAuthLane, type AuthLane } from '@/lib/roleLanes'
@@ -22,8 +23,36 @@ export const metadata = {
 }
 
 const SUPPORT_DASHBOARD_URL = 'https://support.yousafeconsultancy.com/dashboard'
+type DashboardRole = AuthLane | 'admin'
+
+function normalizeDashboardRole(value: unknown): DashboardRole {
+  return value === 'admin' ? 'admin' : normalizeAuthLane(value)
+}
 
 async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: AuthLane | null }> {
+  // Prefer Clerk's server SDK. It uses the verified session context and is
+  // more reliable than the REST fallback during Clerk key rotation or a
+  // transient API failure. In particular, losing this lookup must never
+  // turn a known admin email into a newly-created client profile.
+  try {
+    const clerk = await currentUser()
+    if (clerk && clerk.id === userId) {
+      const email =
+        clerk.emailAddresses.find((entry) => entry.id === clerk.primaryEmailAddressId)?.emailAddress
+        ?? clerk.emailAddresses[0]?.emailAddress
+        ?? ''
+      const metadata = (clerk.unsafeMetadata ?? {}) as Record<string, unknown>
+      const metadataRole = metadata.requestedRole ?? metadata.role
+      return {
+        email,
+        fullName: [clerk.firstName, clerk.lastName].filter(Boolean).join(' '),
+        requestedRole: metadataRole ? normalizeAuthLane(metadataRole) : null,
+      }
+    }
+  } catch {
+    // Fall through to the REST lookup for older Clerk runtime configurations.
+  }
+
   const secretKey = process.env.CLERK_SECRET_KEY
   if (!secretKey) return { email: '', fullName: '', requestedRole: null }
   try {
@@ -72,7 +101,10 @@ export default async function DashboardPage({
 
 async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertical?: string }>) {
   const params = await searchParams
-  let requestedRole = normalizeAuthLane(params.lane)
+  // Admin is a valid dashboard intent, but it is only a recovery hint.
+  // We never provision an admin profile from a URL; an existing admin row
+  // must be found by the verified Clerk identity/email below.
+  let requestedRole: DashboardRole = normalizeDashboardRole(params.lane)
   // SignUpClient writes `ys_requested_lane` as a SameSite=Lax cookie
   // before kicking off OAuth. That cookie survives every Clerk
   // round-trip mode (popup, top-level redirect, new tab) and is the
@@ -130,7 +162,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   }
 
   if (profile && !params.lane) {
-    requestedRole = normalizeAuthLane(profile.role)
+    requestedRole = normalizeDashboardRole(profile.role)
   }
 
   let clerkData: Awaited<ReturnType<typeof getClerkUserData>> | null = null
@@ -160,7 +192,7 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     const { data: existingByEmail } = await db
       .from('profiles')
       .select('id, clerk_user_id, role, status, full_name, email')
-      .eq('email', clerkData.email)
+      .ilike('email', clerkData.email.trim())
       .maybeSingle()
 
     if (existingByEmail) {
@@ -181,6 +213,13 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
         profile = existingByEmail
       }
     }
+  }
+
+  // An explicit admin sign-in must never silently create a client profile.
+  // If the verified Clerk email did not match an existing admin row, send the
+  // user back through the admin lane rather than weakening role boundaries.
+  if (!profile && params.lane === 'admin') {
+    redirect('/sign-in/admin?return_to=/dashboard')
   }
 
   // Profile not in DB yet — create it using real Clerk data
