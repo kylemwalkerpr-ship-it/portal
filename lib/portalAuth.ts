@@ -133,7 +133,9 @@ export async function requirePortalUser(): Promise<
               .eq('id', byEmail.data.id)
               .select('id, clerk_user_id, role, status, email, full_name')
               .single()
-            profile = legacyLinked.data ?? null
+            profile = legacyLinked.data
+              ? { ...legacyLinked.data, country_code: null, country_source: null }
+              : null
             error = legacyLinked.error
           } else {
             profile = linked.data ?? null
