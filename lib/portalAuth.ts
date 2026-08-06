@@ -82,7 +82,52 @@ export async function requirePortalUser(): Promise<
       .eq('clerk_user_id', clerkUserId)
       .single()
   }
-  const { data: profile, error } = profileRes
+  let { data: profile, error } = profileRes
+
+  // Verified Clerk identity recovery for stale profile links. Admin deep links
+  // and protected API routes use requirePortalUser directly, so they cannot
+  // rely on the dashboard page's separate recovery path. If a profile's
+  // clerk_user_id changed but its verified email is unchanged, relink that
+  // existing row. Never promote a role or create an admin from a URL; only an
+  // already-existing profile row is eligible for this repair.
+  if ((!profile || error) && clerkUserId) {
+    try {
+      const clerk = await clerkClient()
+      const clerkUser = await clerk.users.getUser(clerkUserId)
+      const clerkEmail = (
+        clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress
+        ?? clerkUser.emailAddresses[0]?.emailAddress
+        ?? ''
+      ).trim().toLowerCase()
+
+      if (clerkEmail) {
+        const byEmail = await db
+          .from('profiles')
+          .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
+          .ilike('email', clerkEmail)
+          .maybeSingle()
+
+        if (byEmail.data && (!byEmail.data.clerk_user_id || byEmail.data.clerk_user_id === clerkUserId)) {
+          if (!byEmail.data.clerk_user_id) {
+            const linked = await db
+              .from('profiles')
+              .update({ clerk_user_id: clerkUserId })
+              .eq('id', byEmail.data.id)
+              .is('clerk_user_id', null)
+              .select('id, clerk_user_id, role, status, email, full_name, country_code, country_source')
+              .single()
+            profile = linked.data ?? byEmail.data
+            error = linked.error
+          } else {
+            profile = byEmail.data
+            error = null
+          }
+        }
+      }
+    } catch (recoveryError) {
+      console.error('[portalAuth] verified email recovery failed:', recoveryError)
+    }
+  }
 
   if (error) return { error: error.message, status: 500 }
   if (!profile) return { error: 'Profile not found.', status: 404 }
