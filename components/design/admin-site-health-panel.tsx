@@ -1,420 +1,492 @@
 'use client'
-import { useState } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 
+// ── Color system (matches existing C palette) ─────────────────────
 const C = {
-  surface: '#FFFFFF', border: 'rgba(0,0,0,0.08)', red: '#DC2626', green: '#166534',
-  orange: '#D97706', text: '#1F2937', textMuted: '#6B7280', textDim: '#9CA3AF',
-  purple: '#7C3AED', blue: '#2563EB', amber: '#92400E', amberBg: '#FFFBEB',
+  surface: '#FFFFFF', surface2: '#F9FAFB', border: 'rgba(0,0,0,0.07)',
+  red: '#DC2626', redBg: '#FEF2F2', green: '#166534', greenBg: '#F0FDF4',
+  orange: '#D97706', orangeBg: '#FFFBEB', amber: '#92400E',
+  text: '#1F2937', textMuted: '#6B7280', textDim: '#9CA3AF',
+  purple: '#7C3AED', blue: '#2563EB', blueBg: '#EFF6FF',
   serif: "var(--portal-font-display, 'Cormorant Garamond', Garamond, Georgia, serif)",
   mono: "var(--portal-font-mono, 'SF Mono', Menlo, Monaco, monospace)",
 }
 
-type Page = {
-  repo: string; path: string; url: string; title: string
-  inboundLinks: number; indexable: boolean
-  noindex?: boolean; words?: number; sampleSources?: string[]
-}
-type FixRecord = {
-  id: string; timestamp: string; action: string; repo: string; path: string
-  url?: string; detail: string; prUrl?: string
+const GRADE_COLORS: Record<string, { bg: string; fg: string; label: string }> = {
+  A: { bg: C.greenBg, fg: C.green, label: 'Excellent' },
+  B: { bg: '#ECFDF5', fg: '#065F46', label: 'Good' },
+  C: { bg: C.orangeBg, fg: C.orange, label: 'Needs work' },
+  D: { bg: '#FEF3C7', fg: C.amber, label: 'Poor' },
+  F: { bg: C.redBg, fg: C.red, label: 'Critical' },
 }
 
 const REPO_COLORS: Record<string, string> = {
   caseworks: '#1D4ED8', 'yousafe-consultancy': '#047857', portal: '#7C3AED',
 }
 
-function fmtTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+// ── Types ──────────────────────────────────────────────────────────
+type Page = {
+  repo: string; host: string; path: string; url: string; title: string
+  inboundLinks: number; indexable: boolean
+  noindex?: boolean; words?: number; sampleSources?: string[]; content?: string
 }
+type Score = { repo: string; score: number; pages: number; orphans: number; noindex: number; thinPages: number; healthy: number; grade: string }
+type FixRecord = { id: string; timestamp: string; action: string; repo: string; path: string; url?: string; detail: string; prUrl?: string }
+type RepairResult = { orphansFixed: number; noindexFixed: number; sitemapsUpdated: number; prUrls: string[]; errors: string[]; dryRun: boolean }
+type SitemapDiff = { repo: string; liveReachable: boolean; liveUrlCount: number; expectedCount: number; missing: string[]; stale: string[]; status: 'ok'|'drift'|'error'; detail: string }
 
-function ActionBadge({ action }: { action: string }) {
-  const map: Record<string, { label: string; bg: string; fg: string }> = {
-    noindex: { label: 'noindex removed', bg: '#EDE9FE', fg: '#6D28D9' },
-    interlink: { label: 'interlinked', bg: '#DBEAFE', fg: '#1D4ED8' },
-    orphan: { label: 'orphan', bg: '#FEF3C7', fg: '#92400E' },
-    sitemap: { label: 'sitemap', bg: '#D1FAE5', fg: '#047857' },
-  }
-  const m = map[action] || { label: action, bg: '#F3F4F6', fg: '#4B5563' }
-  return (
-    <span style={{ background: m.bg, color: m.fg, borderRadius: 4, padding: '1px 6px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
-      {m.label}
-    </span>
-  )
-}
+type Filter = 'all' | 'orphans' | 'noindex' | 'thin'
 
+// ── Component ─────────────────────────────────────────────────────
 export default function AdminSiteHealthPanel() {
+  // State
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
+  const [progressPct, setProgressPct] = useState(0)
   const [error, setError] = useState('')
   const [actionNotice, setActionNotice] = useState('')
-
-  // Scan results
   const [pages, setPages] = useState<Page[]>([])
   const [scannedFiles, setScannedFiles] = useState(0)
   const [hasScanned, setHasScanned] = useState(false)
-
-  // Noindex fix results
-  const [noIndexCandidates, setNoIndexCandidates] = useState<Page[]>([])
-  const [noIndexFixed, setNoIndexFixed] = useState<Page[]>([])
-  const [noIndexSkipped, setNoIndexSkipped] = useState<{ repo: string; path: string; words: number }[]>([])
-  const [fixPrUrl, setFixPrUrl] = useState<string | null>(null)
-
-  // Repair results
-  const [repaired, setRepaired] = useState<any[]>([])
-  const [repairPrUrl, setRepairPrUrl] = useState<string | null>(null)
-
-  // History
+  const [lastScanned, setLastScanned] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
+  const [search, setSearch] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [scores, setScores] = useState<Score[]>([])
+  const [repairs, setRepairs] = useState<RepairResult | null>(null)
   const [history, setHistory] = useState<FixRecord[] | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [sitemapDiffs, setSitemapDiffs] = useState<SitemapDiff[]>([])
+  const [noIndexFixing, setNoIndexFixing] = useState<Record<string, 'fixing' | 'fixed' | 'error'>>({})
+  const [pagePreviews, setPagePreviews] = useState<Record<string, string>>({}) // before/after content
+  const scrolledRef = useRef(false)
 
-  const apiCall = async (body: Record<string, unknown>) => {
-    const response = await fetch('/api/content-studio/site-health', {
+  // ── Helpers ────────────────────────────────────────────────
+  const filtered = pages
+    .filter((p) => {
+      if (filter === 'orphans') return (p.inboundLinks || 0) === 0 && !p.url.endsWith('/')
+      if (filter === 'noindex') return p.noindex === true
+      if (filter === 'thin') return (p.words ?? 0) > 0 && (p.words ?? 0) < 400
+      return true
+    })
+    .filter((p) => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (p.title || p.path).toLowerCase().includes(q) || p.url.toLowerCase().includes(q)
+    })
+
+  const orphans = pages.filter((p) => (p.inboundLinks || 0) === 0 && !p.url.endsWith('/'))
+  const noindex = pages.filter((p) => p.noindex === true)
+  const thin = pages.filter((p) => (p.words ?? 0) > 0 && (p.words ?? 0) < 400)
+
+  const toggleExpand = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  // ── API calls ────────────────────────────────────────────────────
+  const doPost = async (path: string, body: Record<string, unknown> = {}) => {
+    const res = await fetch(`/api/content-studio${path}`, {
       method: 'POST',
-      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    const data = await response.json()
-    if (!data.ok) throw new Error(data.error || 'Site health operation failed')
-    return data
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      throw new Error(e.error || `HTTP ${res.status}`)
+    }
+    return res.json()
   }
 
-  // ── 1. Scan: accumulate chunked audit ──────────────────────────
-  const scanOrphans = async () => {
-    setBusy(true); setError(''); setActionNotice('')
-    setPages([]); setScannedFiles(0); setHasScanned(false)
-    setNoIndexCandidates([]); setNoIndexFixed([]); setNoIndexSkipped([]); setFixPrUrl(null)
-    setRepaired([]); setRepairPrUrl(null)
-    const accumulated: Page[] = []
-    let totalFiles = 0
-    let batchStart = 0
+  // ── 1. Scan / Audit ─────────────────────────────────────────
+  const runScan = useCallback(async () => {
+    setBusy(true); setError(''); setActionNotice(''); setProgress('Fetching file trees…'); setProgressPct(5)
+    setHasScanned(false); setScores([]); setRepairs(null); setSitemapDiffs([])
     try {
-      while (true) {
-        setProgress(`Scanning pages… batch ${Math.floor(batchStart / 20) + 1}`)
-        const data = await apiCall({ action: 'audit_chunked', batchStart, batchSize: 20 })
-        accumulated.push(...(data.pages || []))
-        totalFiles = data.totalFiles || 0
-        if (data.nextBatch == null) break
-        batchStart = data.nextBatch
-      }
-      const sorted = accumulated.sort((a, b) => (a.inboundLinks || 0) - (b.inboundLinks || 0))
-      setPages(sorted)
-      setScannedFiles(totalFiles)
+      const data = await doPost('/site-health/full', { dryRun: true, verifyLive: true })
+      setPages(data.pages || [])
+      setScannedFiles(data.totalPages || 0)
       setHasScanned(true)
-      const orphans = sorted.filter((p) => (p.inboundLinks || 0) === 0)
-      setActionNotice(`Scan complete: ${sorted.length} pages scanned · ${orphans.length} orphan(s) found`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed')
+      setLastScanned(new Date().toISOString())
+      setScores(data.scores || [])
+      setSitemapDiffs(data.sitemapDiffs || [])
+      setActionNotice(`${data.totalPages} pages scanned · ${data.totalOrphans} orphan(s) · ${data.totalNoindex} noindex · ${data.totalThinPages} thin`)
+      setProgressPct(100)
+    } catch (err: any) {
+      setError(err.message || 'Scan failed')
     } finally {
-      setProgress(''); setBusy(false)
+      setBusy(false); setProgress('')
     }
-  }
+  }, [])
 
-  // ── 2. Repair orphans + sync sitemap ───────────────────────────
-  const repairOrphans = async () => {
-    if (!hasScanned) return
-    setBusy(true); setError(''); setActionNotice('')
-    setRepaired([]); setRepairPrUrl(null)
-    const orphans = pages.filter((p) => (p.inboundLinks || 0) === 0)
-    if (!orphans.length) {
-      setActionNotice('No orphans to repair — every scanned page has at least one inbound link.')
-      setBusy(false); return
-    }
-    const accumulated: any[] = []
-    let prUrl: string | null = null
-    let totalOrphans = orphans.length
-    let batchStart = 0
+  // ── 2. Fix all ─────────────────────────────────────────────
+  const runFixAll = useCallback(async () => {
+    if (!hasScanned) { setError('Run a scan first to find issues'); return }
+    setBusy(true); setError(''); setActionNotice(''); setProgress('Repairing…'); setProgressPct(10)
+    setRepairs(null)
     try {
-      while (true) {
-        setProgress(`Repairing orphan links… batch ${Math.floor(batchStart / 10) + 1}`)
-        const data = await apiCall({ action: 'repair_chunked', batchStart, batchSize: 10 })
-        accumulated.push(...(data.repaired || []))
-        totalOrphans = data.totalOrphans ?? totalOrphans
-        prUrl = data.prUrl || prUrl
-        if (data.nextBatch == null) break
-        batchStart = data.nextBatch
+      const data = await doPost('/site-health/full', {
+        dryRun: false, fixOrphans: true, fixNoindex: true, fixSitemaps: true,
+        verifyLive: true,
+      })
+      if (data.repairs) {
+        setRepairs(data.repairs)
+        setActionNotice(`Fixed: ${data.repairs.orphansFixed} orphans · ${data.repairs.noindexFixed} noindex · ${data.repairs.sitemapsUpdated} sitemaps${data.repairs.prUrls.length ? ' · PRs created' : ''}`)
+        if (data.repairs.errors?.length) setError(data.repairs.errors.join('; '))
       }
-      setRepaired(accumulated)
-      setRepairPrUrl(prUrl)
-      setActionNotice(`Repair complete: ${orphans.length} orphan(s) processed · PR created`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Repair failed')
+      // Refresh after repair
+      await runScan()
+    } catch (err: any) {
+      setError(err.message || 'Repair failed')
     } finally {
-      setProgress(''); setBusy(false)
+      setBusy(false); setProgress('')
     }
-  }
+  }, [hasScanned])
 
-  // ── 3. Remove noindex from fully-expanded pages ────────────────
-  const enableIndexing = async () => {
-    if (!hasScanned) return
-    setBusy(true); setError(''); setActionNotice('')
-    setNoIndexFixed([]); setNoIndexSkipped([]); setFixPrUrl(null)
-    // Candidates: pages with noindex flag AND ≥ 400 words (fully expanded)
-    const candidates = pages
-      .filter((p) => p.noindex && (p.words ?? 0) >= 400)
-      .map((p) => ({ repo: p.repo, path: p.path, url: p.url, title: p.title, words: p.words ?? 0 }))
-    if (!candidates.length) {
-      setActionNotice('No fully-expanded noindex pages found. Pages with fewer than 400 words are kept out of the index intentionally.')
-      setBusy(false); return
-    }
-    const fixed: Page[] = []
-    const skipped: { repo: string; path: string; words: number }[] = []
-    let prUrl: string | null = null
-    let batchStart = 0
+  // ── 3. Single-page inline fix ──────────────────────────────
+  const fixSinglePage = useCallback(async (repo: string, path: string, pageKey: string) => {
+    setNoIndexFixing((prev) => ({ ...prev, [pageKey]: 'fixing' }))
     try {
-      while (true) {
-        setProgress(`Enabling indexing… ${fixed.length + skipped.length}/${candidates.length}`)
-        const data = await apiCall({
-          action: 'fix_noindex_chunked', batchStart, batchSize: 10,
-          candidates: candidates.slice(batchStart, batchStart + 10),
-        })
-        fixed.push(...(data.fixed || []))
-        skipped.push(...(data.skipped || []))
-        prUrl = data.prUrl || prUrl
-        if (data.nextBatch == null) break
-        batchStart = data.nextBatch
-      }
-      setNoIndexFixed(fixed)
-      setNoIndexSkipped(skipped)
-      setFixPrUrl(prUrl)
-      setActionNotice(`Indexing enabled on ${fixed.length} page(s)${prUrl ? ' · PR created' : ''}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Enable indexing failed')
-    } finally {
-      setProgress(''); setBusy(false)
+      await doPost('/site-health/repair-single', { repo, path, action: 'remove-noindex' })
+      setNoIndexFixing((prev) => ({ ...prev, [pageKey]: 'fixed' }))
+      // Optimistic: mark as noindex:false in pages
+      setPages((prev) => prev.map((p) => (p.path === path && p.repo === repo ? { ...p, noindex: false, indexable: true } : p)))
+    } catch (err: any) {
+      setNoIndexFixing((prev) => ({ ...prev, [pageKey]: 'error' }))
+      setError(err.message || 'Single-page fix failed')
     }
-  }
+  }, [])
 
-  // ── 4. View persisted fix history ──────────────────────────────
-  const loadHistory = async () => {
-    setHistoryLoading(true); setError('')
+  // ── 4. Load history ────────────────────────────────────────
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
     try {
-      const data = await apiCall({ action: 'history' })
-      setHistory(data.fixes || [])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load fix history')
+      const data = await doPost('/site-health/history')
+      setHistory(data.history || [])
+    } catch (err: any) {
+      setError(err.message || 'History load failed')
     } finally {
       setHistoryLoading(false)
     }
-  }
+  }, [])
 
-  const orphans = pages.filter((p) => (p.inboundLinks || 0) === 0)
-  const fullyExpandedNoindex = pages.filter((p) => p.noindex && (p.words ?? 0) >= 400)
-  const thinNoindex = pages.filter((p) => p.noindex && (p.words ?? 0) < 400)
+  // ── 5. Export ──────────────────────────────────────────────
+  const doExport = useCallback((format: 'json' | 'csv') => {
+    if (!hasScanned) return
+    let content: string
+    if (format === 'csv') {
+      content = 'repo,path,url,title,indexable,noindex,words,inboundLinks\n' +
+        pages.map((p) => [p.repo, p.path, p.url, `"${(p.title||'').replace(/"/g,'""')}"`, p.indexable, p.noindex??'', p.words??'', p.inboundLinks??0].join(',')).join('\n')
+    } else {
+      content = JSON.stringify({ scannedAt: lastScanned, scores, sitemapDiffs, totalPages: pages.length, totalOrphans: orphans.length, totalNoindex: noindex.length, totalThinPages: thin.length }, null, 2)
+    }
+    const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `site-health-${new Date().toISOString().slice(0,10)}.${format}`; a.click()
+    URL.revokeObjectURL(url)
+  }, [hasScanned, pages, scores, sitemapDiffs, orphans, noindex, thin, lastScanned])
 
-  const statChip = (label: string, value: string | number, color: string) => (
-    <div style={{ flex: 1, minWidth: 90, padding: '8px 10px', borderRadius: 8, background: C.surface, border: `1px solid ${C.border}` }}>
-      <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
-    </div>
-  )
+  // ── 6. Preview noindex removal ─────────────────────────────
+  const previewStrip = useCallback((page: Page) => {
+    if (!page.content) return 'Content not loaded — re-scan'
+    // Simple visual preview: highlight the robots line that will be changed
+    const lines = page.content.split('\n')
+    const idx = lines.findIndex((l) => /robots\s*[:=]/.test(l) && /noindex/i.test(l))
+    if (idx < 0) return 'No noindex directive found in preview'
+    const before = lines.slice(Math.max(0, idx - 2), idx + 3).join('\n')
+    const after = before.replace(/index\s*:\s*false/i, 'index: true').replace(/['"]noindex(?:,\s*nofollow)?['"]/gi, '"index, follow"')
+    return `--- before ---\n${before}\n\n--- after ---\n${after}`
+  }, [])
 
-  const btn = (label: string, onClick: () => void, disabled: boolean, variant: 'primary' | 'outline' | 'danger' = 'outline') => ({
+  // ── Button helper ──────────────────────────────────────────
+  const btn = (label: string, onClick: () => void, disabled: boolean, variant: 'primary' | 'outline' | 'danger' = 'outline', small = false) => ({
     onClick, disabled,
     style: {
+      padding: small ? '4px 12px' : '8px 18px', fontSize: small ? 12 : 13,
+      fontWeight: 600, borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
       border: variant === 'outline' ? `1px solid ${C.border}` : 'none',
-      borderRadius: 6, padding: '8px 12px', fontSize: 11, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
-      background: disabled ? '#F3F4F6' : variant === 'primary' ? C.purple : variant === 'danger' ? C.red : '#FFF',
-      color: disabled ? C.textDim : variant === 'outline' ? C.text : '#FFF',
+      background: variant === 'primary' ? C.purple : variant === 'danger' ? C.red : C.surface,
+      color: variant === 'primary' ? '#fff' : variant === 'danger' ? '#fff' : C.text,
+      opacity: disabled ? 0.5 : 1, transition: 'all 150ms',
+      whiteSpace: 'nowrap' as const,
     },
   })
 
+  const tab = (label: string, count: number, f: Filter) => ({
+    style: {
+      padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 20,
+      cursor: 'pointer', border: filter === f ? `2px solid ${C.purple}` : `1px solid ${C.border}`,
+      background: filter === f ? '#F5F3FF' : C.surface, color: filter === f ? C.purple : C.textMuted,
+      transition: 'all 150ms',
+    },
+    onClick: () => setFilter(f),
+  })
+
+  // ── Render ──────────────────────────────────────────────────────
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, background: '#FCFBF9' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', color: C.text }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h4 style={{ margin: 0, fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Site Health</h4>
-          <h3 style={{ margin: '4px 0 2px', fontFamily: C.serif, fontSize: 20, color: C.text }}>Orphan repair · indexing · sitemap sync</h3>
+          <h3 style={{ margin: '4px 0 2px', fontFamily: C.serif, fontSize: 22, color: C.text }}>Site Health · Command Center</h3>
+          <p style={{ margin: 0, fontSize: 12, color: C.textDim }}>
+            Orphan repair · indexing · sitemap sync · live verification
+          </p>
         </div>
-        <button {...btn('Fix history', loadHistory, busy || historyLoading, 'outline')}
-          style={{ ...btn('Fix history', loadHistory, busy || historyLoading).style, borderColor: C.purple, color: C.purple }}>
-          {historyLoading ? 'Loading…' : `Fix history${history ? ` (${history.length})` : ''}`}
-        </button>
-      </div>
-      <p style={{ margin: '6px 0 12px', fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>
-        Scan every repo for orphan pages, add them to a stable related-guides hub, sync sitemaps in one reviewable PR,
-        and flip fully-expanded noindex pages back into the index. All fixes are recorded to a persisted history you can re-open at any time.
-      </p>
-
-      {/* Action bar */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button {...btn(hasScanned ? 'Re-scan' : 'Scan orphans', scanOrphans, busy, 'primary')}>
-          {busy && progress.startsWith('Scanning') ? 'Scanning…' : hasScanned ? 'Re-scan' : 'Scan orphans'}
-        </button>
-        <button {...btn('Repair orphans + sync sitemap', repairOrphans, busy || !hasScanned)}>Repair + sync sitemap</button>
-        <button {...btn('Enable indexing (fully expanded)', enableIndexing, busy || !hasScanned)}
-          style={{ ...btn('Enable indexing', enableIndexing, busy || !hasScanned).style, borderColor: C.green, color: C.green }}>
-          Enable indexing{fullyExpandedNoindex.length ? ` (${fullyExpandedNoindex.length})` : ''}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button {...btn('🔍 Scan all', runScan, busy)} />
+          <button {...btn('🛠 Fix all', runFixAll, busy || !hasScanned, 'primary')} />
+          <button {...btn('📋 History', loadHistory, historyLoading)} />
+          <button {...btn('⬇ JSON', () => doExport('json'), !hasScanned, 'outline', true)} />
+          <button {...btn('⬇ CSV', () => doExport('csv'), !hasScanned, 'outline', true)} />
+        </div>
       </div>
 
-      {/* Stats */}
-      {hasScanned && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          {statChip('Pages scanned', pages.length, C.text)}
-          {statChip('Files', scannedFiles, C.textDim)}
-          {statChip('Orphans', orphans.length, C.orange)}
-          {statChip('noindex pages', pages.filter((p) => p.noindex).length, C.red)}
-          {statChip('Ready to index', fullyExpandedNoindex.length, C.green)}
+      {/* Progress bar */}
+      {busy && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
+            <span>{progress || 'Working…'}</span>
+            <span>{progressPct}%</span>
+          </div>
+          <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.4 }}
+              style={{ height: '100%', background: C.purple, borderRadius: 2 }}
+            />
+          </div>
         </div>
       )}
 
-      {progress && (
-        <div style={{ marginTop: 10, fontSize: 11, fontFamily: C.mono, background: '#121722', color: '#9DE0AD', padding: '8px 12px', borderRadius: 6 }}>
-          › {progress}
-        </div>
-      )}
-
+      {/* Error / notice */}
       {error && (
-        <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, color: C.red, fontSize: 11 }}>
-          {error}
+        <div style={{ padding: '8px 14px', background: C.redBg, border: `1px solid ${C.red}20`, borderRadius: 8, fontSize: 12, color: C.red, marginBottom: 10 }}>
+          ⚠️ {error}
         </div>
       )}
-      {actionNotice && (
-        <div style={{ marginTop: 10, padding: '8px 12px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, color: C.green, fontSize: 11 }}>
+      {actionNotice && !error && (
+        <div style={{ padding: '8px 14px', background: C.blueBg, border: `1px solid ${C.blue}20`, borderRadius: 8, fontSize: 12, color: C.blue, marginBottom: 10 }}>
           {actionNotice}
+          {lastScanned && <span style={{ color: C.textDim, marginLeft: 12 }}>· last scan: {new Date(lastScanned).toLocaleTimeString()}</span>}
         </div>
       )}
 
-      {/* Repair results */}
-      {!!repaired.length && (
-        <div style={{ marginTop: 12, padding: 10, background: '#ECFDF5', border: '1px solid #BBF7D0', borderRadius: 6, fontSize: 11 }}>
-          <strong style={{ color: C.green }}>Repair summary</strong>
-          {repaired.map((r, i) => (
-            <div key={i} style={{ marginTop: 4, color: C.text }}>
-              <span style={{ color: REPO_COLORS[r.repo] || C.purple, fontWeight: 700 }}>{r.repo}</span> — {r.links} link(s) in {r.hubPath} · sitemap: {r.sitemapPaths.join(', ')}
+      {/* Score cards */}
+      {scores.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 10, marginBottom: 14 }}>
+          {scores.map((s) => {
+            const g = GRADE_COLORS[s.grade] || GRADE_COLORS.F
+            return (
+              <div key={s.repo} style={{ padding: '12px 16px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: REPO_COLORS[s.repo] || C.text }}>{s.repo}</span>
+                  <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: g.bg, color: g.fg }}>
+                    {s.grade} · {s.score}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, fontSize: 11, color: C.textMuted, flexWrap: 'wrap' }}>
+                  <span>📄 {s.pages}</span>
+                  <span style={{ color: s.orphans ? C.red : C.textDim }}>🔗 {s.orphans}</span>
+                  <span style={{ color: s.noindex ? C.orange : C.textDim }}>🚫 {s.noindex}</span>
+                  <span style={{ color: s.thinPages ? C.amber : C.textDim }}>📏 {s.thinPages}</span>
+                  <span style={{ color: C.green }}>✓ {s.healthy}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Sitemap diffs */}
+      {sitemapDiffs.length > 0 && (
+        <div style={{ marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {sitemapDiffs.map((sd) => (
+            <div key={sd.repo} style={{
+              padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
+              background: sd.status === 'ok' ? C.greenBg : sd.status === 'drift' ? C.orangeBg : C.redBg,
+              fontSize: 11, color: sd.status === 'ok' ? C.green : sd.status === 'drift' ? C.orange : C.red,
+            }}>
+              🗺 {sd.repo}: {sd.detail} {sd.liveReachable ? `(${sd.liveUrlCount} live / ${sd.expectedCount} expected)` : '(unreachable)'}
             </div>
           ))}
-          {repairPrUrl && (
-            <div style={{ marginTop: 6 }}>
-              PR: <a href={repairPrUrl} target="_blank" rel="noopener" style={{ color: C.purple }}>{repairPrUrl}</a>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Noindex fix results */}
-      {(!!noIndexFixed.length || !!noIndexSkipped.length) && (
-        <div style={{ marginTop: 12, padding: 10, background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 6, fontSize: 11 }}>
-          <strong style={{ color: C.purple }}>Indexing fixes</strong>
-          {!!noIndexFixed.length && (
-            <div style={{ marginTop: 4 }}>
-              <div style={{ color: C.green, fontWeight: 600, marginBottom: 2 }}>✅ Indexing enabled on {noIndexFixed.length} page(s):</div>
-              {noIndexFixed.slice(0, 25).map((p, i) => (
-                <div key={i} style={{ marginTop: 1, color: C.text }}>
-                  <span style={{ color: REPO_COLORS[p.repo] || C.purple, fontWeight: 600 }}>{p.repo}</span> · <a href={p.url} target="_blank" rel="noopener" style={{ color: C.blue }}>{p.title}</a>
-                  <span style={{ color: C.textDim }}> — {p.path}</span>
-                </div>
-              ))}
-              {noIndexFixed.length > 25 && <div style={{ color: C.textDim, marginTop: 2 }}>…and {noIndexFixed.length - 25} more</div>}
-            </div>
-          )}
-          {!!noIndexSkipped.length && (
-            <div style={{ marginTop: 6 }}>
-              <div style={{ color: C.amber, fontWeight: 600, marginBottom: 2 }}>⏸ Kept out of index ({noIndexSkipped.length} page(s) under 400 words):</div>
-              {noIndexSkipped.slice(0, 8).map((p, i) => (
-                <div key={i} style={{ color: C.textDim }}>· {p.repo}/{p.path} — {p.words} words</div>
-              ))}
-            </div>
-          )}
-          {fixPrUrl && (
-            <div style={{ marginTop: 6 }}>
-              PR: <a href={fixPrUrl} target="_blank" rel="noopener" style={{ color: C.purple }}>{fixPrUrl}</a>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Fix history */}
-      {history !== null && (
-        <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', background: '#F9FAFB', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 11, color: C.text }}>Fix history — all recorded fixes</strong>
-            <button onClick={() => setHistory(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: C.textDim }}>✕ close</button>
-          </div>
-          {!history.length ? (
-            <div style={{ padding: 14, fontSize: 11, color: C.textDim }}>No fixes recorded yet. Run a repair or enable indexing to build history.</div>
-          ) : (
-            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead>
-                  <tr style={{ background: '#F9FAFB', color: C.textMuted, textAlign: 'left' }}>
-                    <th style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}`, fontWeight: 700 }}>When</th>
-                    <th style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}`, fontWeight: 700 }}>Fix</th>
-                    <th style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}`, fontWeight: 700 }}>Repo</th>
-                    <th style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}`, fontWeight: 700 }}>Path</th>
-                    <th style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}`, fontWeight: 700 }}>Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...history].reverse().map((h) => (
-                    <tr key={h.id} style={{ borderBottom: `1px solid ${C.border}`, verticalAlign: 'top' }}>
-                      <td style={{ padding: '6px 10px', color: C.textDim, whiteSpace: 'nowrap' }}>{fmtTime(h.timestamp)}</td>
-                      <td style={{ padding: '6px 10px' }}><ActionBadge action={h.action} /></td>
-                      <td style={{ padding: '6px 10px', color: REPO_COLORS[h.repo] || C.text, fontWeight: 600 }}>{h.repo}</td>
-                      <td style={{ padding: '6px 10px', fontFamily: C.mono, fontSize: 10, color: C.textMuted, wordBreak: 'break-all' }}>
-                        {h.prUrl ? <a href={h.prUrl} target="_blank" rel="noopener" style={{ color: C.purple }}>{h.path}</a> : h.path}
-                      </td>
-                      <td style={{ padding: '6px 10px', color: C.text }}>{h.detail}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Orphan list */}
-      {hasScanned && !!orphans.length && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-            Orphan pages ({orphans.length}) — no inbound links yet
-          </div>
-          <div style={{ maxHeight: 260, overflowY: 'auto', border: `1px solid ${C.border}`, borderRadius: 8 }}>
-            {orphans.slice(0, 100).map((p, i) => (
-              <div key={i} style={{ padding: '7px 10px', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, alignItems: 'center', fontSize: 11 }}>
-                <span style={{ background: REPO_COLORS[p.repo] || C.purple, color: '#FFF', borderRadius: 4, padding: '1px 6px', fontSize: 9, fontWeight: 700 }}>{p.repo}</span>
-                <a href={p.url} target="_blank" rel="noopener" style={{ color: C.blue, fontWeight: 600 }}>{p.title}</a>
-                <span style={{ color: C.textDim, fontFamily: C.mono, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.path}</span>
-              </div>
+      {/* Repair result */}
+      {repairs && (
+        <div style={{ padding: '10px 14px', background: repairs.errors.length ? C.orangeBg : C.greenBg, border: '1px solid rgba(0,0,0,0.06)', borderRadius: 10, marginBottom: 10, fontSize: 12 }}>
+          <strong>{repairs.dryRun ? 'Preview — no changes made' : 'Repairs complete'}</strong>
+          <span style={{ color: C.textMuted, marginLeft: 8 }}>
+            {repairs.orphansFixed} orphans · {repairs.noindexFixed} noindex · {repairs.sitemapsUpdated} sitemaps
+            {repairs.prUrls.length > 0 && repairs.prUrls.map((u, i) => (
+              <a key={i} href={u} target="_blank" rel="noreferrer" style={{ color: C.blue, marginLeft: 6 }}>PR #{i + 1}</a>
             ))}
-            {orphans.length > 100 && <div style={{ padding: 8, fontSize: 10, color: C.textDim }}>…and {orphans.length - 100} more</div>}
-          </div>
+          </span>
+          {repairs.errors.length > 0 && <div style={{ color: C.red, marginTop: 4 }}>{repairs.errors.join(' · ')}</div>}
         </div>
       )}
 
-      {/* Noindex inventory */}
-      {hasScanned && (!!fullyExpandedNoindex.length || !!thinNoindex.length) && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-            noindex inventory ({pages.filter((p) => p.noindex).length} pages)
+      {/* No results state */}
+      {!hasScanned && !busy && (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textDim }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>No scan data yet</div>
+          <div style={{ fontSize: 13 }}>Click <strong>Scan all</strong> to audit every page across all repos — orphans, noindex flags, word counts, and sitemap diffs.</div>
+        </div>
+      )}
+
+      {/* Results: filters + table */}
+      {hasScanned && (
+        <>
+          {/* Tabs + search */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            <button {...tab('All', pages.length, 'all')}>All ({pages.length})</button>
+            <button {...tab('Orphans', orphans.length, 'orphans')}>🔗 Orphans ({orphans.length})</button>
+            <button {...tab('Noindex', noindex.length, 'noindex')}>🚫 Noindex ({noindex.length})</button>
+            <button {...tab('Thin', thin.length, 'thin')}>📏 Thin &lt;400w ({thin.length})</button>
+            <div style={{ flex: 1 }} />
+            <input
+              placeholder="Search pages…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                padding: '6px 12px', fontSize: 12, border: `1px solid ${C.border}`,
+                borderRadius: 8, width: 180, outline: 'none', color: C.text,
+              }}
+            />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 8 }}>
-              <div style={{ fontSize: 10, color: C.green, fontWeight: 700, marginBottom: 4 }}>
-                Ready to index — ≥ 400 words ({fullyExpandedNoindex.length})
-              </div>
-              {fullyExpandedNoindex.slice(0, 12).map((p, i) => (
-                <div key={i} style={{ fontSize: 10, color: C.text, padding: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ color: REPO_COLORS[p.repo] || C.purple }}>{p.repo}</span> · {p.path} · <span style={{ color: C.textDim }}>{p.words}w</span>
-                </div>
-              ))}
+
+          {/* Page list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 500, overflowY: 'auto', scrollBehavior: 'smooth' }}
+            ref={(el) => { if (el && !scrolledRef.current) { scrolledRef.current = true } }}>
+            {filtered.slice(0, 100).map((page) => {
+              const key = `${page.repo}:${page.path}`
+              const isExpanded = expanded.has(key)
+              const nifix = noIndexFixing[key]
+              const isOrphan = (page.inboundLinks || 0) === 0 && !page.url.endsWith('/')
+              return (
+                <motion.div
+                  key={key}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  style={{
+                    padding: '8px 12px', background: isOrphan ? '#FFF7ED' : page.noindex ? '#FEF2F2' : C.surface,
+                    border: `1px solid ${isOrphan ? C.orange + '30' : page.noindex ? C.red + '20' : C.border}`,
+                    borderRadius: 8, cursor: 'pointer',
+                  }}
+                  onClick={() => toggleExpand(key)}
+                >
+                  {/* Row header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: (REPO_COLORS[page.repo] || C.textMuted) + '18', color: REPO_COLORS[page.repo] || C.textMuted }}>
+                      {page.repo}
+                    </span>
+                    <span style={{ fontWeight: 600, color: C.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {page.title || page.path.split('/').pop()?.replace(/\.(tsx?|mdx?)$/, '') || page.path}
+                    </span>
+                    {isOrphan && <span style={{ color: C.orange, fontSize: 10, fontWeight: 600 }}>🔗 orphan</span>}
+                    {page.noindex && <span style={{ color: C.red, fontSize: 10, fontWeight: 600 }}>🚫 noindex</span>}
+                    {(page.words ?? 0) > 0 && (page.words ?? 0) < 400 && <span style={{ color: C.amber, fontSize: 10, fontWeight: 600 }}>📏 {page.words}w</span>}
+                    {page.indexable && !page.noindex && <span style={{ fontSize: 10, color: C.green }}>✓ indexed</span>}
+                    <span style={{ fontSize: 10, color: C.textDim }}>⚓ {page.inboundLinks}</span>
+                    <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                      {page.url.replace(/^https?:\/\//, '').slice(0, 30)}
+                    </span>
+                  </div>
+
+                  {/* Expanded detail */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted }}>
+                          <div style={{ marginBottom: 6 }}>
+                            <strong>Full path:</strong> <code style={{ fontFamily: C.mono, fontSize: 11 }}>{page.path}</code>
+                            <span style={{ marginLeft: 8 }}>|</span>
+                            <span style={{ marginLeft: 8 }}><strong>Words:</strong> {page.words ?? '—'}</span>
+                            <span style={{ marginLeft: 8 }}>|</span>
+                            <span style={{ marginLeft: 8 }}><strong>Inbound:</strong> {page.inboundLinks}</span>
+                          </div>
+                          {page.sampleSources && page.sampleSources.length > 0 && (
+                            <div style={{ marginBottom: 6 }}>
+                              <strong>Linked from:</strong> {page.sampleSources.slice(0, 5).join(', ')}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {page.noindex && (page.words ?? 0) >= 400 && (
+                              <button {...btn(
+                                nifix === 'fixing' ? '⏳ Fixing…' : nifix === 'fixed' ? '✅ Indexed' : nifix === 'error' ? '❌ Failed' : '🔓 Enable indexing',
+                                () => { if (nifix !== 'fixing') fixSinglePage(page.repo, page.path, key) },
+                                nifix === 'fixing',
+                                nifix === 'fixed' ? 'outline' : 'primary', true
+                              )} />
+                            )}
+                            <a href={page.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue, textDecoration: 'none', padding: '4px 10px', border: `1px solid ${C.blue}30`, borderRadius: 6 }}>
+                              ↗ Visit
+                            </a>
+                            {page.content && page.noindex && (
+                              <button {...btn('👁 Preview fix', () => setPagePreviews((p) => ({ ...p, [key]: previewStrip(page) })), false, 'outline', true)} />
+                            )}
+                          </div>
+                          {pagePreviews[key] && (
+                            <pre style={{ marginTop: 8, padding: 8, background: '#1e1e1e', color: '#d4d4d4', borderRadius: 6, fontSize: 10, fontFamily: C.mono, overflowX: 'auto', maxHeight: 160 }}>
+                              {pagePreviews[key]}
+                            </pre>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )
+            })}
+          </div>
+          {filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 20, color: C.textDim, fontSize: 13 }}>
+              No pages match the current filter.
             </div>
-            <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 8 }}>
-              <div style={{ fontSize: 10, color: C.amber, fontWeight: 700, marginBottom: 4 }}>
-                Thin — kept out of index ({thinNoindex.length})
-              </div>
-              {thinNoindex.slice(0, 12).map((p, i) => (
-                <div key={i} style={{ fontSize: 10, color: C.text, padding: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ color: REPO_COLORS[p.repo] || C.purple }}>{p.repo}</span> · {p.path} · <span style={{ color: C.textDim }}>{p.words}w</span>
-                </div>
-              ))}
+          )}
+          {filtered.length > 100 && (
+            <div style={{ fontSize: 11, color: C.textDim, textAlign: 'center', marginTop: 6 }}>
+              Showing first 100 of {filtered.length} pages — use search to narrow results.
             </div>
+          )}
+        </>
+      )}
+
+      {/* Fix history panel */}
+      {history && (
+        <div style={{ marginTop: 20, padding: '12px 16px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+          <h4 style={{ margin: '0 0 8px', fontFamily: C.serif, fontSize: 16, color: C.text }}>Fix history</h4>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {history.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.textDim }}>No fixes recorded yet.</div>
+            ) : (
+              history.map((r, i) => (
+                <div key={r.id || i} style={{ padding: '4px 0', borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: C.surface, color: C.textDim }}>
+                    {r.action}
+                  </span>
+                  <span style={{ color: C.text, flex: 1 }}>{r.detail.slice(0, 100)}</span>
+                  <span style={{ color: C.textDim, fontFamily: C.mono, fontSize: 10 }}>
+                    {r.timestamp ? new Date(r.timestamp).toLocaleDateString() : ''}
+                  </span>
+                  {r.prUrl && <a href={r.prUrl} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 10 }}>PR</a>}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
