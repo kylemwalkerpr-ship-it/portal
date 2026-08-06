@@ -17,7 +17,7 @@ export default function SignInClient() {
   const isInvalidLane = Boolean(laneSegment) && !VALID_SIGN_IN_LANES.has(laneSegment)
   const returnTo = useMemo(() => safeReturnTo(searchParams.get('return_to')), [searchParams])
   const previousUrl = returnTo || referrer
-  const redirectUrl = returnTo || (laneSegment === 'admin' ? '/dashboard' : dashboardForLane(lane))
+  const redirectUrl = returnTo || (laneSegment === 'admin' ? '/dashboard?lane=admin' : dashboardForLane(lane))
   const signInPath = `/sign-in/${laneSegment || 'student'}`
   const signUpUrl = `${signUpForLane(lane)}${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ''}`
   const laneLabel = laneSegment === 'admin' ? 'admin' : lane === 'client' ? 'student / client' : lane
