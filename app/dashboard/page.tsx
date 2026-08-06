@@ -221,6 +221,37 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     }
   }
 
+  // Hydrate existing profiles from the verified Clerk identity as well as
+  // newly-created profiles. A profile row can survive an auth-provider or
+  // Clerk-ID change with a blank full_name; without this repair every role
+  // falls into the same Student Profile gate even when Clerk has the user's
+  // first and last name. Role/status are never inferred or changed here.
+  if (profile && (!profile.full_name?.trim() || !profile.email?.trim())) {
+    clerkData ??= await getClerkUserData(userId)
+    const identityPatch: Record<string, string> = {}
+    if (!profile.full_name?.trim() && clerkData.fullName.trim()) {
+      identityPatch.full_name = clerkData.fullName.trim()
+    }
+    if (!profile.email?.trim() && clerkData.email.trim()) {
+      identityPatch.email = clerkData.email.trim().toLowerCase()
+    }
+    if (Object.keys(identityPatch).length > 0) {
+      profile = { ...profile, ...identityPatch }
+      try {
+        const { data: hydrated } = await db
+          .from('profiles')
+          .update(identityPatch)
+          .eq('id', profile.id)
+          .select('id, clerk_user_id, role, status, full_name, email')
+          .single()
+        if (hydrated) profile = hydrated
+      } catch {
+        // Keep the verified local values for this render even if the
+        // best-effort persistence hits a legacy schema or transient DB error.
+      }
+    }
+  }
+
   if (!profile && clerkData?.email) {
     const { data: existingByEmail } = await db
       .from('profiles')
