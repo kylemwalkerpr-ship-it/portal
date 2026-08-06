@@ -62,7 +62,7 @@ export default function SignInClient() {
       <SignIn
         routing="path"
         path={signInPath}
-        forceRedirectUrl={redirectUrl}
+        fallbackRedirectUrl={redirectUrl}
         signUpUrl={signUpUrl}
         appearance={clerkAppearance}
       />
