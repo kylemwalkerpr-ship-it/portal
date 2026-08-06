@@ -91,6 +91,7 @@ export default function AdminSeoFactory({
   const [warResolvedHydrated, setWarResolvedHydrated] = React.useState(false)
   const [warRoomAutoRefresh, setWarRoomAutoRefresh] = React.useState(true)
   const [warRoomLastRefreshed, setWarRoomLastRefreshed] = React.useState<Date | null>(null)
+  const [briefOpen, setBriefOpen] = React.useState(false)
 
   // ── Per-action loading + toast feedback ──
   const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>({})
@@ -2146,13 +2147,50 @@ export default function AdminSeoFactory({
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
-              <button type="button" disabled={!!actionBusy['warRoom']} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: actionBusy['warRoom'] ? 0.7 : 1, cursor: actionBusy['warRoom'] ? 'not-allowed' : 'pointer' }}>
+            {/* ── Command strip — Play | Region | Refresh + Last sync on one line ── */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 10, background: C.surface2, marginBottom: 12 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textDim, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: warRoom?.kpis?.liveGsc ? C.green : C.gold, display: 'inline-block' }} /> War Room controls
+              </span>
+              <span style={{ width: 1, height: 18, background: C.border, display: 'inline-block' }} />
+              <label style={{ ...labelStyle, margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                Play filter
+                <select value={warPlayFilter} onChange={(e) => setWarPlayFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto', minWidth: 140, fontSize: 12, padding: '6px 8px' }}>
+                  <option value="all">All plays</option>
+                  <option value="title_ctr_rewrite">CTR rewrite</option>
+                  <option value="strike_distance">Strike distance</option>
+                  <option value="deep_demand_build">Deep build</option>
+                  <option value="page1_defend">Page-1 defend</option>
+                  <option value="aeo_entity_hub">AEO hub</option>
+                  <option value="cannibal_merge">Cannibal merge</option>
+                </select>
+              </label>
+              <label style={{ ...labelStyle, margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                Region
+                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto', minWidth: 90, fontSize: 12, padding: '6px 8px' }}>
+                  <option value="">All</option>
+                  {['US', 'UK', 'CA', 'AU'].map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+              <button type="button" disabled={!!actionBusy['warRoom']} onClick={() => loadWarRoom()} style={{ ...btnPrimary, background: C.gold, color: '#0B1220', opacity: actionBusy['warRoom'] ? 0.7 : 1, cursor: actionBusy['warRoom'] ? 'not-allowed' : 'pointer', padding: '7px 14px', fontSize: 12 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {actionBusy['warRoom'] && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#0B1220', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
-                  {actionBusy['warRoom'] ? 'Scanning GSC…' : 'Refresh War Room'}
+                  {actionBusy['warRoom'] ? 'Scanning GSC…' : 'Refresh'}
                 </span>
               </button>
+              {warRoomLastRefreshed ? (
+                <span style={{ fontSize: 11, color: C.textDim, fontFamily: 'ui-monospace, monospace', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  Last sync {Math.round((Date.now() - warRoomLastRefreshed.getTime()) / 60_000)}m ago
+                </span>
+              ) : (
+                <span style={{ fontSize: 11, color: C.textDim }}>— no sync yet</span>
+              )}
+              <label style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 5, color: C.textMuted, marginLeft: 'auto', cursor: 'pointer' }}>
+                <input type="checkbox" checked={warRoomAutoRefresh} onChange={() => setWarRoomAutoRefresh((v) => !v)} /> Auto-refresh
+              </label>
+              {warRoom?.siteUrl && <span style={{ fontSize: 11, color: C.textDim, fontFamily: 'ui-monospace, monospace', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={warRoom.siteUrl}>{warRoom.siteUrl.replace(/^https?:\/\//,'')}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
               <button type="button" disabled={!!actionBusy['warStrikeTop']} onClick={() => runWarRoomStrike()} style={{ ...btnPrimary, opacity: actionBusy['warStrikeTop'] ? 0.7 : 1, cursor: actionBusy['warStrikeTop'] ? 'not-allowed' : 'pointer' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {actionBusy['warStrikeTop'] && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />}
@@ -2187,107 +2225,117 @@ export default function AdminSeoFactory({
                   {actionBusy['optimalPlan'] ? 'Building…' : 'Full optimal stack'}
                 </span>
               </button>
-              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, color: C.textMuted, margin: 0, cursor: 'pointer' }}>
-                <input type="checkbox" checked={warRoomAutoRefresh} onChange={() => setWarRoomAutoRefresh((v) => !v)} />
-                Auto-refresh
-              </label>
-              {warRoomLastRefreshed && (
-                <span style={{ fontSize: 11, color: C.textDim }}>
-                  {Math.round((Date.now() - warRoomLastRefreshed.getTime()) / 60_000)}m ago
-                </span>
-              )}
-              <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                Play filter
-                <select value={warPlayFilter} onChange={(e) => setWarPlayFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
-                  <option value="all">All plays</option>
-                  <option value="title_ctr_rewrite">CTR rewrite</option>
-                  <option value="strike_distance">Strike distance</option>
-                  <option value="deep_demand_build">Deep build</option>
-                  <option value="page1_defend">Page-1 defend</option>
-                  <option value="aeo_entity_hub">AEO hub</option>
-                  <option value="cannibal_merge">Cannibal merge</option>
-                </select>
-              </label>
-              <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                Region
-                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} style={{ ...inputStyle, marginTop: 0, width: 'auto' }}>
-                  <option value="">All</option>
-                  {['US', 'UK', 'CA', 'AU'].map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </label>
             </div>
 
             {warRoom?.kpis && (
-              <div style={{
-                display: 'grid', gap: 10,
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                marginBottom: 16,
-              }}>
-                {[
-                  { label: 'Queries analyzed', value: warKpis.queriesAnalyzed },
-                  { label: 'Actionable plays', value: warKpis.actionable },
-                  { label: 'Est. click gain', value: `~${warKpis.estimatedGainClicksSum}` },
-                  { label: 'Avg authority', value: `${warKpis.avgAuthority}/100` },
-                  { label: 'GSC', value: warKpis.liveGsc ? 'LIVE' : 'snapshot' },
-                  { label: 'Window', value: `${warRoom.rangeDays || 90}d` },
-                ].map((k) => (
-                  <div key={k.label} style={{
-                    padding: '10px 12px', borderRadius: 8, background: C.surface2,
-                    border: `1px solid ${C.border}`,
-                  }}>
-                    <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.cyan, marginTop: 4 }}>{k.value}</div>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 10 }}>
+                  {[
+                    { label: 'Queries analyzed', value: warKpis.queriesAnalyzed, sub: `${warRoom.rangeDays || 90}d window · live`, accent: '#0B1220' },
+                    { label: 'Actionable plays', value: warKpis.actionable, sub: warRoom?.kpis?.liveGsc ? `live · ${warPlayFilter !== 'all' ? playLabel(warPlayFilter) : 'all plays'}` : 'snapshot — refresh for live', accent: C.gold },
+                    { label: 'Est. click gain', value: `~${warKpis.estimatedGainClicksSum}`, sub: 'if top half wins — per period', accent: C.green },
+                  ].map((k) => (
+                    <div key={k.label} style={{ padding: '14px 14px', borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, borderTop: `3px solid ${k.accent}`, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+                      <div style={{ fontSize: 10, color: C.textDim, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>{k.label}</span><span style={{ fontSize: 11 }}>{k.label === 'Queries analyzed' ? '◈' : k.label === 'Actionable plays' ? '⚑' : '↗'}</span></div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: C.cyan, marginTop: 6, letterSpacing: '-0.02em' }}>{k.value}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, lineHeight: 1.35 }}>{k.sub}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }}>
+                  {[
+                    { k: 'Avg authority', v: `${warKpis.avgAuthority}/100`, s: 'AEO/SEO/GEO' },
+                    { k: 'GSC', v: warKpis.liveGsc ? 'LIVE' : 'snapshot', s: warRoomLastRefreshed ? `${Math.round((Date.now()-warRoomLastRefreshed.getTime())/60000)}m ago` : '—' },
+                    { k: 'Window', v: `${warRoom.rangeDays || 90}d`, s: warRoom.siteUrl ? 'sc-domain' : 'not set' },
+                  ].map((c) => (
+                    <div key={c.k} style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 9, letterSpacing: '0.06em', fontWeight: 700, textTransform: 'uppercase', color: C.textDim }}>{c.k}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.v}</span>
+                      <span style={{ fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.s}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {warRoom?.summary && (
-              <div style={{
-                marginBottom: 14, padding: 12, borderRadius: 8, fontSize: 12,
-                background: warRoom.kpis?.liveGsc ? '#ECFDF5' : '#FFFBEB',
-                border: `1px solid ${C.border}`, color: C.textMuted, lineHeight: 1.5,
-              }}>
-                {warRoom.summary}
-                {warRoom.siteUrl && (
-                  <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
-                    {warRoom.siteUrl}
+              <div style={{ marginBottom: 14, borderRadius: 10, border: `1px solid ${warRoom.kpis?.liveGsc ? '#A7F3D0' : '#FDE68A'}`, background: warRoom.kpis?.liveGsc ? '#ECFDF5' : '#FFFBEB', overflow: 'hidden' }}>
+                <button type="button" onClick={() => setBriefOpen((v) => !v)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: warRoom.kpis?.liveGsc ? '#065F46' : '#92400E', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Strategy brief</span>
+                  <span style={{ fontSize: 10, fontFamily: 'ui-monospace, monospace', padding: '2px 6px', borderRadius: 999, background: '#0B1220', color: '#fff' }}>{warRoom.kpis?.liveGsc ? 'LIVE' : 'snapshot'}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: warRoom.kpis?.liveGsc ? '#065F46' : '#92400E', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{briefOpen ? 'Hide' : 'Expand'} <span style={{ transform: briefOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▾</span></span>
+                </button>
+                {briefOpen && (
+                  <div style={{ padding: '0 12px 12px', display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                      <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', padding: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textDim, marginBottom: 6 }}>What we found</div>
+                        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{warRoom.summary?.slice(0, 260)}{(warRoom.summary?.length||0)>260?'…':''} · {warKpis.queriesAnalyzed} queries → {warKpis.actionable} actions · CTR {Array.isArray(warRoom.buckets?.title_ctr_rewrite)?warRoom.buckets.title_ctr_rewrite.length:warRoom.buckets?.title_ctr_rewrite||0}, strike {Array.isArray(warRoom.buckets?.strike_distance)?warRoom.buckets.strike_distance.length:warRoom.buckets?.strike_distance||0}, cannibal {Array.isArray(warRoom.buckets?.cannibal_merge)?warRoom.buckets.cannibal_merge.length:warRoom.buckets?.cannibal_merge||0}, AEO {Array.isArray(warRoom.buckets?.aeo_entity_hub)?warRoom.buckets.aeo_entity_hub.length:warRoom.buckets?.aeo_entity_hub||0} · est. ~{warKpis.estimatedGainClicksSum}/period · authority {warKpis.avgAuthority}/100.</div>
+                        {warRoom.siteUrl && <div style={{ marginTop: 6, fontFamily: 'ui-monospace, monospace', fontSize: 10, color: C.textDim, wordBreak: 'break-all' }}>{warRoom.siteUrl}</div>}
+                      </div>
+                      <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', padding: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textDim, marginBottom: 6 }}>What to do</div>
+                        <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: C.text, lineHeight: 1.6 }}>
+                          <li><strong>Win page-1 CTR first</strong> — fastest ranking signal (positions 4–15).</li>
+                          <li><strong>Then strike-distance</strong> (11–20 → page 1) → expand &amp; interlink.</li>
+                          <li><strong>Then entity hubs for AEO/GEO</strong> — never ship noise meal-plan queries.</li>
+                        </ul>
+                      </div>
+                      <div style={{ borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', padding: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.textDim, marginBottom: 6 }}>Why</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>Keyword lanes: refresh 2 · expand 6 · new 10 · monitor 3 · defer 40. Authority AEO/SEO/GEO avg ~{warKpis.avgAuthority}/100 — prioritize discipline entities, Q&amp;A intent, LLM-citable structure, cluster fill over thin demand. Ship default for high-authority items: merge→main (Cloudflare autodeploy). Executable feed: war-room first, lanes fill gaps. {warRoomLastRefreshed ? `Snapshot ${Math.round((Date.now()-warRoomLastRefreshed.getTime())/60000)}m ago.` : ''}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             )}
-
             {warRoom?.buckets && typeof warRoom.buckets.title_ctr_rewrite === 'object' && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 11 }}>
-                {([
-                  'title_ctr_rewrite',
-                  'strike_distance',
-                  'deep_demand_build',
-                  'page1_defend',
-                  'aeo_entity_hub',
-                  'cannibal_merge',
-                ] as const).map((p) => {
-                  const n = Array.isArray(warRoom.buckets[p])
-                    ? warRoom.buckets[p].length
-                    : Number(warRoom.buckets[p]) || 0
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setWarPlayFilter(p === warPlayFilter ? 'all' : p)}
-                      style={{
-                        ...btnSmall,
-                        borderColor: playColor(p),
-                        color: playColor(p),
-                        background: warPlayFilter === p ? 'rgba(0,0,0,0.04)' : '#fff',
-                      }}
-                    >
-                      {playLabel(p)} · {n}
-                    </button>
-                  )
-                })}
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 14, background: C.surface }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.surface2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.text }}>Action board</span>
+                  <span style={{ fontSize: 10, color: C.textDim, fontFamily: 'ui-monospace, monospace' }}>Click a row to filter · counts decrement live after merge</span>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textMuted, background: C.surface2, fontSize: 11 }}>
+                        <th style={{ ...th, padding: '8px 10px' }}>Play</th>
+                        <th style={{ ...th, padding: '8px 10px' }}>Count</th>
+                        <th style={{ ...th, padding: '8px 10px' }}>Intent</th>
+                        <th style={{ ...th, padding: '8px 10px', textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {([
+                        { id: 'title_ctr_rewrite', label: 'CTR rewrite', intent: 'Low CTR on page 1 — rewrite title/meta', color: C.gold },
+                        { id: 'strike_distance', label: 'Strike distance', intent: 'Positions 11–20 — push to page 1', color: C.blue },
+                        { id: 'deep_demand_build', label: 'Deep build', intent: 'Beyond p2 — new entity content', color: C.cyan },
+                        { id: 'page1_defend', label: 'Page-1 defend', intent: 'Top 5 — protect & expand', color: C.green },
+                        { id: 'aeo_entity_hub', label: 'AEO hub', intent: 'Question intent — LLM-citable hubs', color: '#7C3AED' },
+                        { id: 'cannibal_merge', label: 'Cannibal merge', intent: 'Duplicate stems — merge & redirect', color: C.red },
+                      ] as const).map((r) => {
+                        const liveCount = (warRoom.queue as any[]).filter((o:any)=>o.play===r.id && !resolvedWarTerms.has(o.term||'')).length
+                        const active = warPlayFilter === r.id
+                        return (
+                          <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: active ? '#FFFBEB' : 'transparent' }}>
+                            <td style={{ ...td, padding: '8px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: r.color, marginRight: 6, verticalAlign: 'middle' }} />{r.label}</td>
+                            <td style={{ ...td, padding: '8px 10px' }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, fontFamily: 'ui-monospace, monospace', background: active ? '#0B1220' : C.surface2, color: active ? '#fff' : C.text, border: `1px solid ${active ? '#0B1220' : C.border}` }}>{liveCount}</span></td>
+                            <td style={{ ...td, padding: '8px 10px', color: C.textMuted, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.intent}</td>
+                            <td style={{ ...td, padding: '8px 10px', textAlign: 'right' }}>
+                              <button type="button" onClick={() => setWarPlayFilter(active ? 'all' : r.id)} style={{ ...(active ? btnPrimary : btnSecondary), padding: '5px 10px', fontSize: 11, borderColor: active ? '#0B1220' : C.border, background: active ? '#0B1220' : '#fff', color: active ? '#fff' : C.text }}>
+                                {active ? 'Clear' : `View ${liveCount}`}
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '6px 10px', background: C.surface2, borderTop: `1px solid ${C.border}`, fontSize: 10, color: C.textDim, lineHeight: 1.5 }}>Tip: The queue below filters instantly. Merging or executing a term removes it from the count via live state — no refresh needed.</div>
               </div>
-            )}
+            )}            )}
 
             {!warRoom && !busy && (
               <div style={{ color: C.textMuted, fontSize: 13 }}>Load War Room to rank live GSC opportunities.</div>
