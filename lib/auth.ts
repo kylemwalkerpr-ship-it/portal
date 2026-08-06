@@ -1,21 +1,21 @@
-import { cookies } from 'next/headers'
+import { auth } from '@clerk/nextjs/server'
 
+/**
+ * Resolve the authenticated Clerk user from Clerk's verified request context.
+ *
+ * Do not decode Clerk cookies manually here: cookie names and session formats
+ * can change between Clerk releases, and an incomplete decoder makes every
+ * role look like a new client when the dashboard cannot find clerk_user_id.
+ */
 export async function getClerkUserId(): Promise<string | null> {
-  const cookieStore = await cookies()
-  const token =
-    cookieStore.get('__session')?.value ??
-    cookieStore.get('__clerk_db_jwt')?.value
-
-  if (!token) return null
-
   try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const pad = parts[1].length % 4
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(pad ? 4 - pad : 0)
-    const payload = JSON.parse(atob(b64))
-    return typeof payload.sub === 'string' ? payload.sub : null
-  } catch {
+    const { userId } = await auth()
+    return userId ?? null
+  } catch (error) {
+    // Keep the failure explicit in server logs while preserving the normal
+    // unauthenticated contract for API callers. Never manufacture a user ID
+    // from an unverified cookie payload.
+    console.error('[auth] Clerk session resolution failed:', error)
     return null
   }
 }
