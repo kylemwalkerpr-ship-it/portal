@@ -305,3 +305,104 @@ export async function logRepairs(repairs: Array<{
 
 /** Export CONFIGS re-export for convenience. */
 export const SITE_HEALTH_SCOPES: SiteHealthScope[] = ['all', 'caseworks', 'yousafe-consultancy', 'portal']
+
+// ── Single-page repair ────────────────────────────────────────────
+
+/** Targeted repair for one page: remove noindex or add to interlink hub. */
+export async function repairSinglePage(
+  repo: RepoId,
+  path: string,
+  action: 'remove-noindex' | 'add-interlink' | 'ping-live',
+): Promise<{ ok: boolean; detail: string; prUrl?: string }> {
+  try {
+    const file = await githubFetch(`/repos/kylemwalkerpr-ship-it/${repo}/contents/${path}?ref=main`)
+    let content = Buffer.from(String(file.content || ''), 'base64').toString('utf8')
+    const sha = file.sha as string
+    let message = ''
+    if (action === 'remove-noindex') {
+      const stripped = stripNoIndex(content)
+      if (stripped === content) return { ok: true, detail: 'No noindex directive found — already indexable' }
+      content = stripped
+      message = 'seo: enable indexing on single page'
+    } else if (action === 'add-interlink') {
+      // Append a thin interlink block at bottom if not already present
+      if (!content.includes('You might also find helpful')) {
+        content = content.trimEnd() + '\n\n---\n\n*You might also find helpful:* [Browse all articles](/)'
+      }
+      message = 'seo: add interlink hook to orphan page'
+    } else {
+      // ping-live — no file change, just verify the live URL
+      const url = inferUrl(repo, path)
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+      return { ok: res.ok, detail: res.ok ? `Live URL ${url} — HTTP ${res.status}` : `Live URL ${url} — HTTP ${res.status}` }
+    }
+    const branch = `seo/single-fix-${Date.now().toString(36)}`.slice(0, 200)
+    const headSha = await getBranchHeadSha('kylemwalkerpr-ship-it', repo, 'main')
+    await githubFetch(`/repos/kylemwalkerpr-ship-it/${repo}/git/refs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: headSha }),
+    })
+    await putRepoFile({ owner: 'kylemwalkerpr-ship-it', repo, path, branch, content, message })
+    const pr = await openPullRequest({
+      owner: 'kylemwalkerpr-ship-it', repo, head: branch, base: 'main',
+      title: `[Content Studio] ${action} — ${path.split('/').pop()?.replace(/\.tsx?$/, '') || path}`,
+      body: `- File: ${path}\n- Action: ${action}`,
+    })
+    
+    await appendFixHistory([{
+      id: `single_${action}_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
+      action: action === 'remove-noindex' ? 'noindex' : 'interlink',
+      repo, path, detail: `${action}: ${path}`, prUrl: pr.html_url,
+    }])
+    
+    return { ok: true, detail: `${action} PR opened: ${pr.html_url}`, prUrl: pr.html_url }
+  } catch (e: any) {
+    return { ok: false, detail: String(e?.message ?? e).slice(0, 300) }
+  }
+}
+
+function inferUrl(repo: RepoId, path: string): string {
+  const configs: Record<string, string> = {
+    caseworks: 'https://legal.yousafeconsultancy.com',
+    portal: 'https://portal.yousafeconsultancy.com',
+    'yousafe-consultancy': 'https://yousafeconsultancy.com',
+  }
+  const base = configs[repo] || 'https://yousafeconsultancy.com'
+  const route = path.replace(/^app\//, '').replace(/\/page\.tsx$/, '')
+  return `${base}/${route}`.replace(/\/+/g, '/').replace(':/', '://')
+}
+
+// ── Batch repair all ─────────────────────────────────────────────
+
+/** One-call fix-all: orphans + noindex + sitemap sync across scoped repos. */
+export async function batchRepairAll(
+  scope: SiteHealthScope,
+  dryRun: boolean,
+): Promise<{
+  orphanFixCount: number
+  noindexFixCount: number
+  sitemapUpdateCount: number
+  prUrls: string[]
+  errors: string[]
+}> {
+  const result = { orphanFixCount: 0, noindexFixCount: 0, sitemapUpdateCount: 0, prUrls: [] as string[], errors: [] as string[] }
+  // Delegate to the full orchestrator (siteHealthComplete) when called from UI;
+  // here we provide a lightweight standalone version for route handlers.
+  // The heavy lifting is in siteHealthComplete.runFullSiteHealthCheck.
+  try {
+    const { runFullSiteHealthCheck } = await import('./siteHealthComplete')
+    const report = await runFullSiteHealthCheck({
+      scope, dryRun, fixOrphans: !dryRun, fixNoindex: !dryRun, fixSitemaps: !dryRun,
+      batchSize: 20,
+    })
+    result.orphanFixCount = report.repairs.orphansFixed
+    result.noindexFixCount = report.repairs.noindexFixed
+    result.sitemapUpdateCount = report.repairs.sitemapsUpdated
+    result.prUrls = report.repairs.prUrls
+    result.errors = report.repairs.errors
+  } catch (e: any) {
+    result.errors.push(String(e?.message ?? e).slice(0, 300))
+  }
+  return result
+}
