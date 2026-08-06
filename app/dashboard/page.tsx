@@ -29,7 +29,7 @@ function normalizeDashboardRole(value: unknown): DashboardRole {
   return value === 'admin' ? 'admin' : normalizeAuthLane(value)
 }
 
-async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: AuthLane | null }> {
+async function getClerkUserData(userId: string): Promise<{ email: string; fullName: string; requestedRole: DashboardRole | null }> {
   // Prefer Clerk's server SDK. It uses the verified session context and is
   // more reliable than the REST fallback during Clerk key rotation or a
   // transient API failure. In particular, losing this lookup must never
@@ -46,7 +46,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
       return {
         email,
         fullName: [clerk.firstName, clerk.lastName].filter(Boolean).join(' '),
-        requestedRole: metadataRole ? normalizeAuthLane(metadataRole) : null,
+        requestedRole: metadataRole ? normalizeDashboardRole(metadataRole) : null,
       }
     }
   } catch {
@@ -67,7 +67,7 @@ async function getClerkUserData(userId: string): Promise<{ email: string; fullNa
     return {
       email,
       fullName,
-      requestedRole: metadataRole ? normalizeAuthLane(metadataRole) : null,
+      requestedRole: metadataRole ? normalizeDashboardRole(metadataRole) : null,
     }
   } catch {
     return { email: '', fullName: '', requestedRole: null }
@@ -188,6 +188,34 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
     }
   }
 
+  // If the current Clerk ID is attached to a stale client row, recover only
+  // when the verified Clerk email matches a pre-existing admin row. This is
+  // deliberately not an email-to-admin promotion: the admin role must already
+  // exist in the database, and the old row is unlinked only to satisfy the
+  // unique Clerk-ID relationship.
+  if (params.lane === 'admin' && !clerkData) clerkData = await getClerkUserData(userId)
+  if (params.lane === 'admin' && clerkData?.email && profile?.role !== 'admin') {
+    const { data: adminByEmail } = await db
+      .from('profiles')
+      .select('id, clerk_user_id, role, status, full_name, email')
+      .ilike('email', clerkData.email.trim())
+      .eq('role', 'admin')
+      .maybeSingle()
+
+    if (adminByEmail) {
+      if (profile && profile.id !== adminByEmail.id && profile.clerk_user_id === userId) {
+        await db.from('profiles').update({ clerk_user_id: null }).eq('id', profile.id).eq('clerk_user_id', userId)
+      }
+      const { data: relinkedAdmin } = await db
+        .from('profiles')
+        .update({ clerk_user_id: userId })
+        .eq('id', adminByEmail.id)
+        .select('id, clerk_user_id, role, status, full_name, email')
+        .single()
+      profile = relinkedAdmin ?? adminByEmail
+    }
+  }
+
   if (!profile && clerkData?.email) {
     const { data: existingByEmail } = await db
       .from('profiles')
@@ -218,7 +246,9 @@ async function renderDashboardPage(searchParams: Promise<{ lane?: string; vertic
   // An explicit admin sign-in must never silently create a client profile.
   // If the verified Clerk email did not match an existing admin row, send the
   // user back through the admin lane rather than weakening role boundaries.
-  if (!profile && params.lane === 'admin') {
+  if (params.lane === 'admin' && profile?.role !== 'admin') {
+    // Never show the student/client profile gate for an admin-lane login.
+    // A missing admin row needs operational repair, not a privilege guess.
     redirect('/sign-in/admin?return_to=/dashboard')
   }
 
