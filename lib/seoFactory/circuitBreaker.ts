@@ -2,7 +2,7 @@
  * portal-patch/lib/seoFactory/circuitBreaker.ts — P3 provider circuit-breaker (portal/Node)
  * Same thresholds as src/convex/circuitBreaker.ts. In-memory per isolate.
  */
-export type Provider='nvidia'|'groq'|'openai'|'anthropic'
+export type Provider='xai'|'openai'|'nvidia'|'groq'|'anthropic'
 const WINDOW_MS=5*60*1000, THRESHOLD=3
 const fails=new Map<Provider,{count:number; lastAt:number}>()
 export function recordFailure(p:Provider){ const cur=fails.get(p)??{count:0,lastAt:0}; fails.set(p,{count:cur.count+1, lastAt: Date.now()}) }
