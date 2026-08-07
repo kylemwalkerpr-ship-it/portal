@@ -251,7 +251,7 @@ jobs:
           put_secret XAI_MODEL                  "$XAI_MODEL"
           put_secret DEEPSEEK_API_KEY          "$DEEPSEEK_API_KEY"
           put_secret OPENAI_API_KEY            "$OPENAI_API_KEY"
-          put_secret OPENAI_MODEL              "$OPENAI_MODEL"
+          put_secret OPENAI_MODEL              "${OPENAI_MODEL:-gpt-5.6-luna}"
           put_secret CUSTOM_AI_BASE_URL        "$CUSTOM_AI_BASE_URL"
           put_secret CUSTOM_AI_API_KEY         "$CUSTOM_AI_API_KEY"
           put_secret CUSTOM_AI_MODEL           "$CUSTOM_AI_MODEL"

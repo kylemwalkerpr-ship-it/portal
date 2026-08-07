@@ -668,7 +668,7 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
       label: 'custom',
       baseURL: env('CUSTOM_AI_BASE_URL'),
       apiKey: env('CUSTOM_AI_API_KEY'),
-      model: env('CUSTOM_AI_MODEL') || 'gpt-4o-mini',
+      model: env('CUSTOM_AI_MODEL') || 'gpt-5.6-luna',
     })
   }
   if (env('XAI_API_KEY')) {
@@ -684,7 +684,7 @@ function listOpenAiFallbackProviders(): OpenAiCompat[] {
       label: 'openai',
       baseURL: 'https://api.openai.com/v1',
       apiKey: env('OPENAI_API_KEY'),
-      model: env('OPENAI_MODEL') || 'gpt-4o-mini',
+      model: env('OPENAI_MODEL') || 'gpt-5.6-luna',
     })
   }
   if (env('DEEPSEEK_API_KEY')) {
@@ -737,7 +737,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
-    { id: 'openai', label: 'OpenAI', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
+    { id: 'openai', label: 'OpenAI (GPT-5.6 Luna)', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
     { id: 'deepseek', label: 'DeepSeek.com API', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
   ]
 }

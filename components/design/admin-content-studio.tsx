@@ -361,7 +361,7 @@ function QuickCreate({
             <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
               <option value="auto">Auto (Grok → OpenAI → rest)</option>
               <option value="grok">Grok (xAI)</option>
-              <option value="openai">OpenAI</option>
+              <option value="openai">OpenAI (GPT-5.6 Luna)</option>
               <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
               <option value="cloudflare-ai">Cloudflare Workers AI</option>
               <option value="groq">Groq (Llama)</option>
@@ -1222,7 +1222,7 @@ function JobDetail({
             <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
               <option value="auto">Auto (Grok → OpenAI → rest)</option>
               <option value="grok">Grok (xAI)</option>
-              <option value="openai">OpenAI</option>
+              <option value="openai">OpenAI (GPT-5.6 Luna)</option>
               <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
               <option value="cloudflare-ai">Cloudflare Workers AI</option>
               <option value="groq">Groq (Llama)</option>
