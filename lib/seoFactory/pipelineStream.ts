@@ -24,6 +24,7 @@ import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDe
 import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
+import { stripNoIndex } from './siteHealthFixes'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -622,6 +623,27 @@ export async function* runSeoFactoryPipelineStream(
         shipMode = audit.score >= 50 ? 'pr' : 'none'
         if (shipMode === 'none') {
           gateHold = `Ship withheld (audit ${audit.score} < 50)`
+        }
+      }
+    }
+
+    // Auto index: once every check has passed, strip any stale noindex so the
+    // stored draft and shipped page are indexable by default.
+    if (plan.indexable) {
+      const stripped = stripNoIndex(content)
+      if (stripped !== content) {
+        content = stripped
+        audit = auditContent({
+          content,
+          contentType,
+          primaryKeyword,
+          indexable: plan.indexable,
+          ownershipBlockers: plan.blockers,
+        })
+        yield {
+          type: 'progress',
+          stage: 'ship',
+          message: 'All checks passed — noindex removed, article is now indexable',
         }
       }
     }
