@@ -5,7 +5,7 @@ import {
   openPullRequest,
   putRepoFile,
 } from '@/lib/githubContents'
-import { logRepairs } from './siteHealthFixes'
+import { frontmatterBlock, logRepairs } from './siteHealthFixes'
 
 export type SiteHealthScope = 'all' | 'caseworks' | 'yousafe-consultancy' | 'portal'
 
@@ -268,7 +268,10 @@ function routeEntry(page: SiteHealthPage): { path: string; priority: number; cha
 
 /** True when page content carries an explicit noindex robots directive. */
 export function hasNoIndexFlag(content: string): boolean {
-  return /robots\s*[:=][\s\S]{0,160}(?:index\s*:\s*false|['"]noindex['"]|noindex\b)/i.test(content)
+  if (/robots\s*[:=][\s\S]{0,160}(?:index\s*:\s*false|['"]noindex['"]|noindex\b)/i.test(content)) return true
+  // Bare YAML front-matter fields used by the content repos: index: false / indexable: false
+  const fm = frontmatterBlock(content)
+  return fm !== null && /(?:^|\n)\s*(?:index|indexable)\s*:\s*false\b/i.test(fm)
 }
 
 /** Rough word count of the visible prose (strips code, imports, JSX plumbing). */
