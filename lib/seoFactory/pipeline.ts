@@ -93,6 +93,8 @@ export interface PipelineInput {
   skipShipIfBelowScore?: boolean
   /** Saved partial draft used when continuing an interrupted stream. */
   resumeContent?: string
+  /** Admin-chosen AI provider pin ('grok' | 'openai' | 'nvidia-deepseek' | 'auto'). */
+  aiProvider?: string
 }
 
 export interface PipelineResult {
@@ -276,6 +278,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       prompt,
       maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
       temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
+      aiProvider: input.aiProvider,
     })
     // Never accept a shorter body when we were expanding for depth
     if (underDepth && countBodyWords(ai.text) < prevWords) {
@@ -362,6 +365,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
           maxTokens: tokensForType(contentType, 'expand'),
           temperature: 0.42,
+          aiProvider: input.aiProvider,
         })
         if (countBodyWords(ai.text) > currentWords) {
           content = ai.text
@@ -382,6 +386,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
           maxTokens: tokensForType(contentType, 'append'),
           temperature: 0.45,
+          aiProvider: input.aiProvider,
         })
         const merged = mergeAppendedSections(content, ai.text)
         if (countBodyWords(merged) > currentWords) {
@@ -454,6 +459,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.35,
+          aiProvider: input.aiProvider,
         })
         if (countBodyWords(ai.text) >= minWords) {
           content = ai.text
@@ -561,6 +567,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           }),
           maxTokens: tokensForType(contentType, 'draft'),
           temperature: 0.3,
+          aiProvider: input.aiProvider,
         })
         if (countBodyWords(ai.text) >= minWords) {
           content = ai.text
