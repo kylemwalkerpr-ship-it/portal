@@ -48,6 +48,8 @@ export interface ContentAiOptions {
   prompt: string
   maxTokens?: number
   temperature?: number
+  /** Admin-chosen provider pin (e.g. 'grok', 'openai', 'nvidia-deepseek', 'auto'). */
+  aiProvider?: string
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -966,7 +968,7 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const prefer = preferProvider()
+  const prefer = (opts.aiProvider || '').trim().toLowerCase() || preferProvider()
   const errors: string[] = []
   const candidates = orderedCompleters(opts, prefer)
 
@@ -1012,7 +1014,7 @@ export async function* generateContentTextStream(
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const prefer = preferProvider()
+  const prefer = (opts.aiProvider || '').trim().toLowerCase() || preferProvider()
   const errors: string[] = []
 
   type Candidate = {
