@@ -968,7 +968,8 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const prefer = (opts.aiProvider || '').trim().toLowerCase() || preferProvider()
+  const explicit = (opts.aiProvider || '').trim().toLowerCase()
+  const prefer = explicit || preferProvider()
   const errors: string[] = []
   const candidates = orderedCompleters(opts, prefer)
 
@@ -986,7 +987,18 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
     try {
       return await withDeadline(c.label, COMPLETE_TIMEOUT_MS, c.run())
     } catch (e) {
-      errors.push(`${c.label}: ${e instanceof Error ? e.message : String(e)}`)
+      const msg = e instanceof Error ? e.message : String(e)
+      errors.push(`${c.label}: ${msg}`)
+      // When the admin explicitly chose this provider, stop the cascade so
+      // the dashboard sees exactly why their selection didn't ship. Silent
+      // fallback made it look like the picker was ignored.
+      if (explicit && c.label === prefer) {
+        throw new Error(
+          `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}. ` +
+          `Check the API key and model in repo secrets (OPENAI_API_KEY, etc). ` +
+          `Provider errors: ${errors.join(' | ')}`,
+        )
+      }
       console.warn(`[contentAi] ${c.label} failed; trying next`)
       if (isSubrequestLimitError(e)) {
         subrequestBudgetExhausted = true
@@ -1014,7 +1026,8 @@ export async function* generateContentTextStream(
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
-  const prefer = (opts.aiProvider || '').trim().toLowerCase() || preferProvider()
+  const explicit = (opts.aiProvider || '').trim().toLowerCase()
+  const prefer = explicit || preferProvider()
   const errors: string[] = []
 
   type Candidate = {
@@ -1117,9 +1130,18 @@ export async function* generateContentTextStream(
     })
     .slice(0, MAX_PROVIDER_CANDIDATES)
 
+  let explicitProviderFailed = false
   for (const c of unique) {
     if (subrequestBudgetExhausted) {
       errors.push(`${c.label}: skipped — subrequest budget exhausted`)
+      continue
+    }
+    // When the admin explicitly chose a provider and it's about to be skipped
+    // because its stream isn't available (no SSE), surface the gap as a visible
+    // provider event before the cascade continues.
+    if (explicit && c.label === prefer && !c.stream) {
+      explicitProviderFailed = true
+      yield { type: 'provider', provider: c.label, model: 'not streamable — falling back to next provider' }
       continue
     }
     if (c.stream) {
@@ -1127,7 +1149,20 @@ export async function* generateContentTextStream(
         yield* c.stream()
         return
       } catch (e) {
-        errors.push(`${c.label} stream: ${e instanceof Error ? e.message : String(e)}`)
+        const msg = e instanceof Error ? e.message : String(e)
+        errors.push(`${c.label} stream: ${msg}`)
+        // When the admin explicitly chose this provider, emit a visible
+        // failure event in the Livestream so they can diagnose the issue
+        // (bad API key, quota, network) instead of wondering why their
+        // selection was ignored. Continue the cascade for resilience.
+        if (explicit && c.label === prefer) {
+          explicitProviderFailed = true
+          yield {
+            type: 'provider',
+            provider: c.label,
+            model: `FAILED: ${msg.slice(0, 120)} — falling back to next provider`,
+          }
+        }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
         // Do not immediately call the same provider again through its
         // complete endpoint. Move to the next bounded candidate instead.
@@ -1138,7 +1173,11 @@ export async function* generateContentTextStream(
       yield* completeAsStream(c.complete)
       return
     } catch (e2) {
-      errors.push(`${c.label}: ${e2 instanceof Error ? e2.message : String(e2)}`)
+      const msg2 = e2 instanceof Error ? e2.message : String(e2)
+      errors.push(`${c.label}: ${msg2}`)
+      if (explicit && c.label === prefer) {
+        explicitProviderFailed = true
+      }
       if (isSubrequestLimitError(e2)) {
         subrequestBudgetExhausted = true
       }
