@@ -90,6 +90,86 @@
   --portal-accent-soft:  rgba(192,90,46,0.12);
 }
 
+[data-portal-theme="sunset-view"] {
+  /* Dusk canyon — warm rose wash with coral-ember accent over soft cream paper. */
+  --portal-bg:           #FBF1ED;
+  --portal-surface:      #FFFCFB;
+  --portal-surface-2:    #F5E0D9;
+  --portal-surface-3:    #EBC8BC;
+  --portal-ink:          #281710;
+  --portal-ink-mid:      #5C3426;
+  --portal-ink-soft:     #8C5948;
+  --portal-rule:         #EAD3C9;
+  --portal-rule-soft:    #F5E8E0;
+  --portal-accent:       #C64532;
+  --portal-accent-deep:  #8F271A;
+  --portal-accent-soft:  rgba(198,69,50,0.12);
+}
+
+[data-portal-theme="arctic-view"] {
+  /* Polar ice — crystalline blue over crisp white, anchored by deep navy. */
+  --portal-bg:           #EDF4FC;
+  --portal-surface:      #FDFEFF;
+  --portal-surface-2:    #D6E7F6;
+  --portal-surface-3:    #B2D1EC;
+  --portal-ink:          #0A182A;
+  --portal-ink-mid:      #234165;
+  --portal-ink-soft:     #4B719C;
+  --portal-rule:         #C1D8EB;
+  --portal-rule-soft:    #E0EDF7;
+  --portal-accent:       #3578BC;
+  --portal-accent-deep:  #1F4F82;
+  --portal-accent-soft:  rgba(53,120,188,0.12);
+}
+
+[data-portal-theme="meadow-view"] {
+  /* Wildflower field — soft sage green with lavender bloom over pale linen. */
+  --portal-bg:           #EEF0E4;
+  --portal-surface:      #FDFDFA;
+  --portal-surface-2:    #DEE1CD;
+  --portal-surface-3:    #C5CAAE;
+  --portal-ink:          #151C0E;
+  --portal-ink-mid:      #3A4630;
+  --portal-ink-soft:     #65755A;
+  --portal-rule:         #D3D7C0;
+  --portal-rule-soft:    #E6E9D6;
+  --portal-accent:       #7060A8;
+  --portal-accent-deep:  #4C3E82;
+  --portal-accent-soft:  rgba(112,96,168,0.12);
+}
+
+[data-portal-theme="midnight-view"] {
+  /* Dark mode — charcoal slate with cool silver accent and high-contrast white ink. */
+  --portal-bg:           #18191E;
+  --portal-surface:      #24252B;
+  --portal-surface-2:    #2E3038;
+  --portal-surface-3:    #3C3E48;
+  --portal-ink:          #E8E9ED;
+  --portal-ink-mid:      #B8BAC6;
+  --portal-ink-soft:     #7C7F8E;
+  --portal-rule:         #353740;
+  --portal-rule-soft:    #282930;
+  --portal-accent:       #949BB4;
+  --portal-accent-deep:  #6B7196;
+  --portal-accent-soft:  rgba(148,155,180,0.18);
+}
+
+[data-portal-theme="harvest-view"] {
+  /* Autumn field — warm amber gold with deep burgundy accent over wheaten paper. */
+  --portal-bg:           #F8F3E4;
+  --portal-surface:      #FFFEFA;
+  --portal-surface-2:    #EFE6C8;
+  --portal-surface-3:    #E2D3A0;
+  --portal-ink:          #1F170A;
+  --portal-ink-mid:      #4C3820;
+  --portal-ink-soft:     #7D6240;
+  --portal-rule:         #E4D7B4;
+  --portal-rule-soft:    #F0E8D0;
+  --portal-accent:       #8B3030;
+  --portal-accent-deep:  #631D1D;
+  --portal-accent-soft:  rgba(139,48,48,0.12);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Appearance preferences — typography, kerning, background pattern.
    Applied as data-attributes on <html> by lib/portalAppearance.ts and
