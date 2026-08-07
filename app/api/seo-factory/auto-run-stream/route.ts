@@ -74,6 +74,7 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
     const minImpressions = Number(body.minImpressions) || 0
     const useWarRoom = body.useWarRoom !== false
     const useKeywordPlan = body.useKeywordPlan !== false
+    const aiProvider = body.aiProvider ? String(body.aiProvider).trim() : undefined
     const days = body.days != null ? Number(body.days) : 90
     const explicitTerms: string[] = Array.isArray(body.terms)
       ? body.terms.map((t: unknown) => String(t).trim()).filter(Boolean)
@@ -291,6 +292,7 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
           maxRefine,
           opportunityAction: cand.play ? playToOpportunityAction(cand.play as WarPlay) : String(opp.action),
           writeHint: cand.writeHint,
+          aiProvider,
           userId,
         })
 
