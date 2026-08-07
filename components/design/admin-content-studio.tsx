@@ -27,7 +27,8 @@ interface ContentJob {
   slug: string | null; content: string | null; branch_name: string | null
   content_path: string | null; pr_url: string | null; pr_number: number | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
-  ai_provider: string | null; word_count: number | null; seo_score: number | null
+  ai_provider: string | null; ai_model?: string | null; word_count: number | null; seo_score: number | null
+  audit_json?: { model?: string; score?: number; grade?: string; attempts?: number } | null
   primary_keyword?: string | null; ship_mode?: string | null; indexable?: boolean
   created_at: string; updated_at: string
 }
@@ -1187,6 +1188,10 @@ function JobDetail({
   const terminal = detail.status === 'merged' || detail.status === 'closed'
   const gateFailure = qualityGateFailure(detail.error_message)
   const canResume = resumeAvailable || (detail.status === 'drafting' && Boolean(detail.content))
+  const resolvedModel = detail.ai_model || detail.audit_json?.model || null
+  const aiProviderCard = resolvedModel
+    ? `${detail.ai_provider || '—'} · ${resolvedModel}`
+    : detail.ai_provider || '—'
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
@@ -1206,7 +1211,7 @@ function JobDetail({
           {[
             { label: 'Word Count', value: detail.word_count ?? '—' },
             { label: 'SEO Score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
-            { label: 'AI Provider', value: detail.ai_provider ?? '—' },
+            { label: 'AI Provider', value: aiProviderCard },
             { label: 'Target Repo', value: detail.target_repo ?? '—' },
           ].map(metric => (
             <div key={metric.label} style={{ background: C.surface2, borderRadius: 6, padding: '8px 10px' }}>
@@ -1231,7 +1236,7 @@ function JobDetail({
             </select>
           </label>
           {aiProvider === 'auto' && detail.ai_provider && (
-            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>job default: {detail.ai_provider}</span>
+            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>job default: {aiProviderCard}</span>
           )}
           {aiProvider !== 'auto' && (
             <span style={{ fontSize: 10, color: C.blue, fontFamily: C.mono }}>regeneration will use: {aiProvider}</span>
