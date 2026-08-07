@@ -1022,6 +1022,8 @@ function JobDetail({
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
+  // AI model override for regeneration (empty/auto = use job default or cascade)
+  const [aiProvider, setAiProvider] = React.useState<string>('auto')
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
 
@@ -1084,7 +1086,7 @@ function JobDetail({
           maxRefine: 2,
           supersedesJobId: detail.id,
           resume,
-          aiProvider: (detail as { ai_provider?: string | null }).ai_provider || undefined,
+          aiProvider: aiProvider !== 'auto' ? aiProvider : (detail as { ai_provider?: string | null }).ai_provider || undefined,
         }),
       })
       const result = await consumeSseResponse(response, (event) => {
@@ -1212,6 +1214,28 @@ function JobDetail({
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginTop: 2 }}>{metric.value}</div>
             </div>
           ))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: C.text }}>
+            AI Model
+            <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
+              <option value="auto">Auto (Grok → OpenAI → rest)</option>
+              <option value="grok">Grok (xAI)</option>
+              <option value="openai">OpenAI</option>
+              <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
+              <option value="cloudflare-ai">Cloudflare Workers AI</option>
+              <option value="groq">Groq (Llama)</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </label>
+          {aiProvider === 'auto' && detail.ai_provider && (
+            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>job default: {detail.ai_provider}</span>
+          )}
+          {aiProvider !== 'auto' && (
+            <span style={{ fontSize: 10, color: C.blue, fontFamily: C.mono }}>regeneration will use: {aiProvider}</span>
+          )}
         </div>
 
         {(detail.branch_name || detail.content_path || detail.pr_url) && (
