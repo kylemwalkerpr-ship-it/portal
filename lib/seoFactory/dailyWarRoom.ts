@@ -358,6 +358,8 @@ export async function runDailyWarRoomBatch(opts?: {
     console.warn('[dailyWarRoom] estate sweep failed', e instanceof Error ? e.message : e)
   }
 
+  const shippedCount = work.filter((w) => w.ok && !w.skipped && w.shipStatus && w.shipStatus !== 'error').length
+
   // ── Cross-domain enrichment sweep: update interlinks estate-wide ──
   let crossDomainStats: Record<string, unknown> | null = null
   if (!opts?.dryRun && shippedCount > 0) {
@@ -393,7 +395,6 @@ export async function runDailyWarRoomBatch(opts?: {
   }
 
   const finishedAt = new Date().toISOString()
-  const shippedCount = work.filter((w) => w.ok && !w.skipped && w.shipStatus && w.shipStatus !== 'error').length
   const failedCount = work.filter((w) => !w.ok && !w.skipped).length
   const skippedCount = work.filter((w) => w.skipped).length
   const reportUrls = work
