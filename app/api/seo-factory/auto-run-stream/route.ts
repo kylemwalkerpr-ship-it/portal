@@ -82,7 +82,7 @@ async function* autoRunStream(request: NextRequest, signal: AbortSignal): AsyncG
     yield send({ type: 'progress', message: 'Loading GSC opportunities…', stage: 'setup' })
 
     const { source, siteUrl, opportunities } = await loadFactoryOpportunities(80)
-    const recentDays = body.recentDays != null ? Number(body.recentDays) : 14
+    const recentDays = body.recentDays != null ? Number(body.recentDays) : 90
     const recent = skipRecent ? await loadRecentPrimaryKeywords(recentDays) : new Set<string>()
 
     let candidates: Candidate[]
