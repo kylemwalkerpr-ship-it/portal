@@ -180,13 +180,13 @@ async function openAiCompatibleComplete(
     const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4)/i.test(p.model)
     const body: Record<string, unknown> = {
       model: p.model,
-      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+      ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
       ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
       messages: [
         { role: 'system', content: opts.system },
         { role: 'user', content: opts.prompt },
       ],
-      ...(p.topP != null ? { top_p: p.topP } : {}),
+      ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
       ...(p.extraBody || {}),
     }
     const res = await fetch(url, {
@@ -425,13 +425,13 @@ async function* openAiCompatibleStream(
     body: JSON.stringify({
       model: p.model,
       stream: true,
-      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
+      ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
       ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
       messages: [
         { role: 'system', content: opts.system },
         { role: 'user', content: opts.prompt },
       ],
-      ...(p.topP != null ? { top_p: p.topP } : {}),
+      ...(p.topP != null && !isReasoningModel ? { top_p: p.topP } : {}),
       ...(p.extraBody || {}),
     }),
   })
