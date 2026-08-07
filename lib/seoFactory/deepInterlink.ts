@@ -16,6 +16,12 @@ import {
   type SiteHealthPage,
   auditSiteHealth,
 } from '@/lib/seoFactory/siteHealth'
+import {
+  DOMAIN_TOPOLOGY,
+  buildTopicClusters,
+  type TopicCluster,
+} from '@/lib/seoFactory/crossDomainEnrich'
+
 
 export type InterlinkScope = SiteHealthScope
 
