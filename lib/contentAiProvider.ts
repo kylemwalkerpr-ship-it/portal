@@ -753,7 +753,7 @@ export function listConfiguredContentProviders(): Array<{
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
-    return 'nvidia-deepseek'
+    return 'xai' // Grok (xAI) is now the default primary
   }
   // Aliases → NVIDIA DeepSeek primary
   if (
@@ -816,6 +816,14 @@ type CompleteFn = () => Promise<ContentAiResult>
 function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ label: string; run: CompleteFn }> {
   const items: Array<{ label: string; run: CompleteFn }> = []
 
+  const pushGrok = () => {
+    const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
+    if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
+  }
+  const pushOpenAi = () => {
+    const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
+    if (p) items.push({ label: 'openai', run: () => openAiCompatibleComplete(p, opts) })
+  }
   const pushNvidia = () => {
     if (isNvidiaDeepseekConfigured()) {
       items.push({ label: 'nvidia-deepseek', run: () => nvidiaDeepseekComplete(opts) })
@@ -878,12 +886,16 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: DeepSeek primary, Cloudflare first fallback
+    // DEFAULT: Grok (xAI) primary, OpenAI second, then fall back
+    pushGrok()
+    pushOpenAi()
     pushNvidia()
     pushCf()
   }
 
   // Fill remaining cascade (deduped below)
+  pushGrok()
+  pushOpenAi()
   pushNvidia()
   pushCf()
   pushGroq()
