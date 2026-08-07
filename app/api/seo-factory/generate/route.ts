@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
+      aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       userId,
     })
 
