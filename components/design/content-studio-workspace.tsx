@@ -48,6 +48,7 @@ export interface StudioJob {
   target_repo?: string | null
   error_message?: string | null
   ai_provider?: string | null
+  ai_model?: string | null
   word_count?: number | null
   seo_score?: number | null
   audit_json?: any
@@ -787,7 +788,7 @@ export default function ContentStudioWorkspace({
                 <Row label="Canonical" value={job.canonical_url || '—'} mono />
                 <Row label="Indexable" value={job.indexable === false ? 'no' : 'yes'} />
                 <Row label="Ship mode" value={job.ship_mode || '—'} />
-                <Row label="AI" value={job.ai_provider || '—'} />
+                <Row label="AI" value={job.ai_provider ? `${job.ai_provider}${job.ai_model ? ` · ${job.ai_model}` : ''}` : '—'} />
                 <Row label="SEO score" value={job.seo_score != null ? String(job.seo_score) : '—'} />
                 <Row label="Words" value={job.word_count != null ? String(job.word_count) : String(words)} />
                 <Row label="Job ID" value={job.id} mono />
