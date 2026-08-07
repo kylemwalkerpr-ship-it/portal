@@ -4,9 +4,15 @@ export type PortalThemeId =
   | 'ocean-view'
   | 'forest-view'
   | 'desert-view'
+  | 'sunset-view'
+  | 'arctic-view'
+  | 'meadow-view'
+  | 'midnight-view'
+  | 'harvest-view'
 
 export const THEME_IDS: PortalThemeId[] = [
   'mountain-view', 'lake-view', 'ocean-view', 'forest-view', 'desert-view',
+  'sunset-view', 'arctic-view', 'meadow-view', 'midnight-view', 'harvest-view',
 ]
 
 export const DEFAULT_THEME: PortalThemeId = 'mountain-view'
@@ -48,5 +54,36 @@ export const PORTAL_THEMES: Record<PortalThemeId, PortalThemeMeta> = {
     name: 'Desert View',
     description: 'Sand and terracotta accent',
     swatch: { bg: '#FBF6EE', ink: '#2A1F12', accent: '#B8623E' },
+  },
+  // ── New palettes ───────────────────────────────────────────────
+  'sunset-view': {
+    id: 'sunset-view',
+    name: 'Sunset View',
+    description: 'Warm rose with coral accent',
+    swatch: { bg: '#FDF5F3', ink: '#2D1810', accent: '#C8483A' },
+  },
+  'arctic-view': {
+    id: 'arctic-view',
+    name: 'Arctic View',
+    description: 'Crisp ice with polar blue accent',
+    swatch: { bg: '#F4F9FD', ink: '#0C1A2B', accent: '#3B7FC4' },
+  },
+  'meadow-view': {
+    id: 'meadow-view',
+    name: 'Meadow View',
+    description: 'Soft sage with lavender accent',
+    swatch: { bg: '#F6F8F0', ink: '#1C2414', accent: '#7B6CB5' },
+  },
+  'midnight-view': {
+    id: 'midnight-view',
+    name: 'Midnight View',
+    description: 'Deep charcoal with silver accent',
+    swatch: { bg: '#1E1F24', ink: '#E8E9ED', accent: '#A0A5B8' },
+  },
+  'harvest-view': {
+    id: 'harvest-view',
+    name: 'Harvest View',
+    description: 'Golden amber with burgundy accent',
+    swatch: { bg: '#FBF7ED', ink: '#231A0A', accent: '#8B3A3A' },
   },
 }
