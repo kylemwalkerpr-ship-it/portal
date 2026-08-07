@@ -654,8 +654,10 @@ export default function AdminSeoFactory({
         }
       } catch { /* handled below */ }
     }
+    // Filter out terms already resolved in this session (persisted to localStorage)
+    feed = feed.filter((t: string) => !resolvedWarTerms.has(t))
     if (!feed.length) {
-      setActionNotice('War Room has no auto-run terms yet')
+      setActionNotice('All top plays already shipped — no new terms to execute')
       return
     }
     await runAutoPilot(feed.slice(0, autoLimit))
