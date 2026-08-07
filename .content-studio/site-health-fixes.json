@@ -842,51 +842,48 @@
     "detail": "Linked from hub app/articles/page.tsx"
   },
   {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/categories/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/marketplace/categories/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
+    "id": "idx_msiu3ije_au_app_sitemap_page.tsx",
+    "timestamp": "2026-08-07T11:00:59.162Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "au/app/sitemap/page.tsx",
+    "url": "https://au.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (688w): Site Map | YouSafe Australia"
   },
   {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/marketplace/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
+    "id": "idx_msiu3ije_ca_app_sitemap_page.tsx",
+    "timestamp": "2026-08-07T11:00:59.162Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "ca/app/sitemap/page.tsx",
+    "url": "https://ca.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (740w): Site Map | YouSafe Canada"
   },
   {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/providers/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/marketplace/providers/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
+    "id": "idx_msiu3ije_landing-page_app_sitemap_page.",
+    "timestamp": "2026-08-07T11:00:59.162Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "landing-page/app/sitemap/page.tsx",
+    "url": "https://yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (659w): Site Map | YouSafe Consultancy"
   },
   {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/templates/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/marketplace/templates/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
+    "id": "idx_msiu3ije_uk_app_sitemap_page.tsx",
+    "timestamp": "2026-08-07T11:00:59.162Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "uk/app/sitemap/page.tsx",
+    "url": "https://uk.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (745w): Site Map | YouSafe UK"
   },
   {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/page.tsx/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/page.tsx/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
-  },
-  {
-    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/sellers/",
-    "timestamp": "2026-08-07T11:03:28.677Z",
-    "action": "interlink",
-    "repo": "portal",
-    "path": "https://market.yousafeconsultancy.com/sellers/",
-    "detail": "Linked from hub app/marketplace/page.tsx"
+    "id": "idx_msiu3ije_usa_app_sitemap_page.tsx",
+    "timestamp": "2026-08-07T11:00:59.162Z",
+    "action": "noindex",
+    "repo": "yousafe-consultancy",
+    "path": "usa/app/sitemap/page.tsx",
+    "url": "https://usa.yousafeconsultancy.com/sitemap/",
+    "detail": "Removed noindex from fully-expanded page (732w): Site Map | YouSafe USA"
   }
 ]
