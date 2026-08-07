@@ -36,7 +36,7 @@ export async function GET() {
         label: 'Content AI chain',
         ok: false,
         detail:
-          'No providers configured. Set NVIDIA_API_KEY (DeepSeek primary) and/or Cloudflare AI token (fallback).',
+          'No providers configured. Set XAI_API_KEY (Grok primary), OPENAI_API_KEY (secondary), NVIDIA_API_KEY, or Cloudflare AI token.',
       })
     } else {
       try {
