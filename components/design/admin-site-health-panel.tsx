@@ -202,17 +202,14 @@ export default function AdminSiteHealthPanel() {
   }, [])
 
   // ── Button helper ──────────────────────────────────────────
-  const btn = (label: string, onClick: () => void, disabled: boolean, variant: 'primary' | 'outline' | 'danger' = 'outline', small = false) => ({
-    onClick, disabled,
-    style: {
-      padding: small ? '4px 12px' : '8px 18px', fontSize: small ? 12 : 13,
-      fontWeight: 600, borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
-      border: variant === 'outline' ? `1px solid ${C.border}` : 'none',
-      background: variant === 'primary' ? C.purple : variant === 'danger' ? C.red : C.surface,
-      color: variant === 'primary' ? '#fff' : variant === 'danger' ? '#fff' : C.text,
-      opacity: disabled ? 0.5 : 1, transition: 'all 150ms',
-      whiteSpace: 'nowrap' as const,
-    },
+  const btnStyle = (disabled: boolean, variant: 'primary' | 'outline' | 'danger' = 'outline', small = false): React.CSSProperties => ({
+    padding: small ? '4px 12px' : '7px 16px', fontSize: small ? 11 : 13,
+    fontWeight: 600, borderRadius: 8, cursor: disabled ? 'not-allowed' : 'pointer',
+    border: variant === 'outline' ? `1px solid ${C.border}` : 'none',
+    background: variant === 'primary' ? C.purple : variant === 'danger' ? C.red : C.surface,
+    color: variant === 'primary' ? '#fff' : variant === 'danger' ? '#fff' : C.text,
+    opacity: disabled ? 0.45 : 1, transition: 'all 150ms',
+    whiteSpace: 'nowrap' as const, lineHeight: '1.4',
   })
 
   const tab = (label: string, count: number, f: Filter) => ({
@@ -233,6 +230,10 @@ export default function AdminSiteHealthPanel() {
           from { opacity: 0; transform: translateY(-6px); max-height: 0; }
           to { opacity: 1; transform: translateY(0); max-height: 400px; }
         }
+        .sh-btn:hover:not(:disabled) { filter: brightness(0.96); }
+        .sh-btn-primary:hover:not(:disabled) { filter: brightness(1.12); }
+        .sh-tab:hover { background: #f3f4f6; }
+        .sh-row:hover { background: #fafafa; }
       `}</style>
       <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', color: C.text }}>
       {/* Header */}
@@ -244,11 +245,11 @@ export default function AdminSiteHealthPanel() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button {...btn('🔍 Scan all', runScan, busy)} />
-          <button {...btn('🛠 Fix all', runFixAll, busy || !hasScanned, 'primary')} />
-          <button {...btn('📋 History', loadHistory, historyLoading)} />
-          <button {...btn('⬇ JSON', () => doExport('json'), !hasScanned, 'outline', true)} />
-          <button {...btn('⬇ CSV', () => doExport('csv'), !hasScanned, 'outline', true)} />
+          <button onClick={runScan} disabled={busy} style={btnStyle(busy)}>Scan all</button>
+          <button onClick={runFixAll} disabled={busy || !hasScanned} style={btnStyle(busy || !hasScanned, 'primary')}>Fix all</button>
+          <button onClick={loadHistory} disabled={historyLoading} style={btnStyle(historyLoading)}>History</button>
+          <button onClick={() => doExport('json')} disabled={!hasScanned} style={btnStyle(!hasScanned, 'outline', true)}>.json</button>
+          <button onClick={() => doExport('csv')} disabled={!hasScanned} style={btnStyle(!hasScanned, 'outline', true)}>.csv</button>
         </div>
       </div>
 
@@ -270,7 +271,7 @@ export default function AdminSiteHealthPanel() {
       {/* Error / notice */}
       {error && (
         <div style={{ padding: '8px 14px', background: C.redBg, border: `1px solid ${C.red}20`, borderRadius: 8, fontSize: 12, color: C.red, marginBottom: 10 }}>
-          ⚠️ {error}
+          {error}
         </div>
       )}
       {actionNotice && !error && (
@@ -294,11 +295,11 @@ export default function AdminSiteHealthPanel() {
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, fontSize: 11, color: C.textMuted, flexWrap: 'wrap' }}>
-                  <span>📄 {s.pages}</span>
-                  <span style={{ color: s.orphans ? C.red : C.textDim }}>🔗 {s.orphans}</span>
-                  <span style={{ color: s.noindex ? C.orange : C.textDim }}>🚫 {s.noindex}</span>
-                  <span style={{ color: s.thinPages ? C.amber : C.textDim }}>📏 {s.thinPages}</span>
-                  <span style={{ color: C.green }}>✓ {s.healthy}</span>
+                  <span>Pages: {s.pages}</span>
+                  <span style={{ color: s.orphans ? C.red : C.textDim }}>Orphans: {s.orphans}</span>
+                  <span style={{ color: s.noindex ? C.orange : C.textDim }}>Noindex: {s.noindex}</span>
+                  <span style={{ color: s.thinPages ? C.amber : C.textDim }}>Thin: {s.thinPages}</span>
+                  <span style={{ color: C.green }}>OK: {s.healthy}</span>
                 </div>
               </div>
             )
@@ -315,7 +316,7 @@ export default function AdminSiteHealthPanel() {
               background: sd.status === 'ok' ? C.greenBg : sd.status === 'drift' ? C.orangeBg : C.redBg,
               fontSize: 11, color: sd.status === 'ok' ? C.green : sd.status === 'drift' ? C.orange : C.red,
             }}>
-              🗺 {sd.repo}: {sd.detail} {sd.liveReachable ? `(${sd.liveUrlCount} live / ${sd.expectedCount} expected)` : '(unreachable)'}
+              Sitemap · {sd.repo}: {sd.detail} {sd.liveReachable ? `(${sd.liveUrlCount} live / ${sd.expectedCount} expected)` : '(unreachable)'}
             </div>
           ))}
         </div>
@@ -337,10 +338,12 @@ export default function AdminSiteHealthPanel() {
 
       {/* No results state */}
       {!hasScanned && !busy && (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textDim }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>No scan data yet</div>
-          <div style={{ fontSize: 13 }}>Click <strong>Scan all</strong> to audit every page across all repos — orphans, noindex flags, word counts, and sitemap diffs.</div>
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textMuted }}>
+          <div style={{ width: 56, height: 56, margin: '0 auto 16px', borderRadius: 16, background: C.surface2, border: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.textDim} strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>No scan data yet</div>
+          <div style={{ fontSize: 13, maxWidth: 420, margin: '0 auto', lineHeight: 1.5 }}>Click <strong style={{ color: C.purple }}>Scan all</strong> to audit every page across all repos — orphans, noindex flags, word counts, and sitemap diffs.</div>
         </div>
       )}
 
@@ -350,9 +353,9 @@ export default function AdminSiteHealthPanel() {
           {/* Tabs + search */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
             <button {...tab('All', pages.length, 'all')}>All ({pages.length})</button>
-            <button {...tab('Orphans', orphans.length, 'orphans')}>🔗 Orphans ({orphans.length})</button>
-            <button {...tab('Noindex', noindex.length, 'noindex')}>🚫 Noindex ({noindex.length})</button>
-            <button {...tab('Thin', thin.length, 'thin')}>📏 Thin &lt;400w ({thin.length})</button>
+            <button {...tab('Orphans', orphans.length, 'orphans')} style={{ ...tab('Orphans', orphans.length, 'orphans').style, color: orphans.length > 0 ? C.orange : C.textMuted }}>Orphans ({orphans.length})</button>
+            <button {...tab('Noindex', noindex.length, 'noindex')} style={{ ...tab('Noindex', noindex.length, 'noindex').style, color: noindex.length > 0 ? C.red : C.textMuted }}>Noindex ({noindex.length})</button>
+            <button {...tab('Thin', thin.length, 'thin')} style={{ ...tab('Thin', thin.length, 'thin').style, color: thin.length > 0 ? C.amber : C.textMuted }}>Thin &lt;400w ({thin.length})</button>
             <div style={{ flex: 1 }} />
             <input
               placeholder="Search pages…"
@@ -391,11 +394,11 @@ export default function AdminSiteHealthPanel() {
                     <span style={{ fontWeight: 600, color: C.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {page.title || page.path.split('/').pop()?.replace(/\.(tsx?|mdx?)$/, '') || page.path}
                     </span>
-                    {isOrphan && <span style={{ color: C.orange, fontSize: 10, fontWeight: 600 }}>🔗 orphan</span>}
-                    {page.noindex && <span style={{ color: C.red, fontSize: 10, fontWeight: 600 }}>🚫 noindex</span>}
-                    {(page.words ?? 0) > 0 && (page.words ?? 0) < 400 && <span style={{ color: C.amber, fontSize: 10, fontWeight: 600 }}>📏 {page.words}w</span>}
-                    {page.indexable && !page.noindex && <span style={{ fontSize: 10, color: C.green }}>✓ indexed</span>}
-                    <span style={{ fontSize: 10, color: C.textDim }}>⚓ {page.inboundLinks}</span>
+                    {isOrphan && <span style={{ color: C.orange, fontSize: 10, fontWeight: 600 }}>orphan</span>}
+                    {page.noindex && <span style={{ color: C.red, fontSize: 10, fontWeight: 600 }}>noindex</span>}
+                    {(page.words ?? 0) > 0 && (page.words ?? 0) < 400 && <span style={{ color: C.amber, fontSize: 10, fontWeight: 600 }}>{page.words}w</span>}
+                    {page.indexable && !page.noindex && <span style={{ fontSize: 10, color: C.green }}>indexed</span>}
+                    <span style={{ fontSize: 10, color: C.textDim }}>links: {page.inboundLinks}</span>
                     <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
                       {page.url.replace(/^https?:\/\//, '').slice(0, 30)}
                     </span>
@@ -421,18 +424,22 @@ export default function AdminSiteHealthPanel() {
                           )}
                           <div style={{ display: 'flex', gap: 6 }}>
                             {page.noindex && (page.words ?? 0) >= 400 && (
-                              <button {...btn(
-                                nifix === 'fixing' ? '⏳ Fixing…' : nifix === 'fixed' ? '✅ Indexed' : nifix === 'error' ? '❌ Failed' : '🔓 Enable indexing',
-                                () => { if (nifix !== 'fixing') fixSinglePage(page.repo, page.path, key) },
-                                nifix === 'fixing',
-                                nifix === 'fixed' ? 'outline' : 'primary', true
-                              )} />
+                              <button
+                                onClick={() => { if (nifix !== 'fixing') fixSinglePage(page.repo, page.path, key) }}
+                                disabled={nifix === 'fixing'}
+                                style={btnStyle(nifix === 'fixing', nifix === 'fixed' ? 'outline' : 'primary', true)}
+                              >
+                                {nifix === 'fixing' ? 'Fixing...' : nifix === 'fixed' ? 'Indexed' : nifix === 'error' ? 'Failed' : 'Enable indexing'}
+                              </button>
                             )}
                             <a href={page.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue, textDecoration: 'none', padding: '4px 10px', border: `1px solid ${C.blue}30`, borderRadius: 6 }}>
-                              ↗ Visit
+                              Visit &rarr;
                             </a>
                             {page.content && page.noindex && (
-                              <button {...btn('👁 Preview fix', () => setPagePreviews((p) => ({ ...p, [key]: previewStrip(page) })), false, 'outline', true)} />
+                              <button
+                                onClick={() => setPagePreviews((p) => ({ ...p, [key]: previewStrip(page) }))}
+                                style={btnStyle(false, 'outline', true)}
+                              >Preview fix</button>
                             )}
                           </div>
                           {pagePreviews[key] && (
