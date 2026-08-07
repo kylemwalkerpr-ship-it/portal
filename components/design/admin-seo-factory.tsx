@@ -23,6 +23,25 @@ const C = {
   radius: 12, radiusSm: 8, radiusXs: 6,
 }
 
+// ── Provider → default model (mirrors contentAiProvider defaults) ──
+const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+  openai: 'gpt-5.6-luna',
+  custom: 'gpt-5.6-luna',
+  grok: 'grok-3',
+  deepseek: 'deepseek-chat',
+  'nvidia-deepseek': 'deepseek-ai/deepseek-v4-pro',
+  'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  groq: 'llama-3.3-70b-versatile',
+  gemini: 'gemini-2.5-flash',
+  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
+}
+
+function providerModelLabel(provider?: string | null, model?: string | null): string {
+  if (!provider) return '—'
+  const resolved = model || DEFAULT_MODEL_BY_PROVIDER[provider]
+  return resolved ? `${provider} · ${resolved}` : provider
+}
+
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
 type Tab = 'warroom' | 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls' | 'crossdomain'
 
@@ -3008,7 +3027,7 @@ export default function AdminSeoFactory({
                     >
                       SEO {j.seo_score ?? '—'}
                     </span>
-                    {' · '}{j.owner_host || '—'}{' · '}{j.ai_provider || '—'}
+                    {' · '}{j.owner_host || '—'}{' · '}{providerModelLabel(j.ai_provider, j.ai_model)}
                   </span>
                 </div>
                 <div style={{ color: C.textMuted, fontSize: 12, marginTop: 4 }}>
