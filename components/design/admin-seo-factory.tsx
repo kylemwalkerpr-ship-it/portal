@@ -24,7 +24,7 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
-type Tab = 'warroom' | 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls'
+type Tab = 'warroom' | 'autopilot' | 'keywords' | 'factory' | 'opportunities' | 'queue' | 'metrics' | 'health' | 'strategies' | 'controls' | 'crossdomain'
 
 const STUDIO_PREFS_KEY = 'yousafe.contentStudio.prefs.v1'
 const WAR_RESOLVED_KEY = 'yousafe.contentStudio.warResolved.v1'
@@ -58,6 +58,8 @@ export default function AdminSeoFactory({
   const [opps, setOpps] = React.useState<any>(null)
   const [metrics, setMetrics] = React.useState<any>(null)
   const [health, setHealth] = React.useState<any>(null)
+  const [crossDomainData, setCrossDomainData] = React.useState<any>(null)
+  const [crossDomainBusy, setCrossDomainBusy] = React.useState(false)
   const [jobs, setJobs] = React.useState<any[]>([])
   const [jobQ, setJobQ] = React.useState('')
   const [jobStatusFilter, setJobStatusFilter] = React.useState<string>('all')
@@ -3233,6 +3235,116 @@ export default function AdminSeoFactory({
             </div>
           ))}
           {!health && <div style={{ color: C.textMuted }}>Loading health…</div>}
+        </div>
+      )}
+
+      {/* ── Cross-Domain Enrich ── */}
+      {tab === 'crossdomain' && (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h3 style={{ margin: 0, color: C.violet }}>Cross-Domain Enrichment Engine</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => loadCrossDomain('audit')} disabled={crossDomainBusy} style={btnPrimary}>
+                {crossDomainBusy ? 'Scanning...' : 'Run Audit'}
+              </button>
+              <button type="button" onClick={() => loadCrossDomain('enrich')} disabled={crossDomainBusy} style={btnSecondary}>
+                {crossDomainBusy ? 'Loading...' : 'Build Briefs'}
+              </button>
+              <button type="button" onClick={() => loadCrossDomain('clusters')} disabled={crossDomainBusy} style={btnSecondary}>
+                Clusters
+              </button>
+            </div>
+          </div>
+
+          {crossDomainData?.stats && (
+            <>
+              {/* KPI cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+                {[
+                  { label: 'Total Pages', value: crossDomainData.stats.totalPages, color: C.cyan },
+                  { label: 'Total Links', value: crossDomainData.stats.totalLinks, color: C.blue },
+                  { label: 'Cross-Domain', value: crossDomainData.stats.crossDomainLinks, color: C.violet },
+                  { label: 'Bidirectional', value: crossDomainData.stats.bidirectionalLinks, color: C.green },
+                  { label: 'Orphans', value: crossDomainData.stats.orphanPages, color: crossDomainData.stats.orphanPages > 0 ? C.red : C.green },
+                ].map((kpi) => (
+                  <div key={kpi.label} style={{
+                    background: C.surface, borderRadius: C.radiusSm, padding: 12,
+                    border: `1px solid ${C.border}`, textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: kpi.color, marginTop: 2 }}>{kpi.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Domain breakdown table */}
+              {crossDomainData.stats.domainBreakdown && (
+                <div style={{ background: C.surface, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, fontWeight: 600, fontSize: 13, color: C.text }}>Domain Link Matrix</div>
+                  <div style={{ overflow: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: C.surface2 }}>
+                          <th style={th}>Domain</th>
+                          <th style={th}>Label</th>
+                          <th style={th}>Pages</th>
+                          <th style={th}>Outbound</th>
+                          <th style={th}>Cross Out</th>
+                          <th style={th}>Cross In</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(crossDomainData.stats.domainBreakdown as Record<string, any>).map(([host, stats]: [string, any]) => (
+                          <tr key={host} style={{ borderTop: `1px solid ${C.border2}` }}>
+                            <td style={td}><code style={{ fontSize: 11 }}>{host}.yousafeconsultancy.com</code></td>
+                            <td style={td}>{stats.label || host}</td>
+                            <td style={td}>{stats.pages}</td>
+                            <td style={td}>{stats.outboundLinks || 0}</td>
+                            <td style={td}><span style={{ color: C.violet, fontWeight: 600 }}>{stats.crossDomainOutbound || 0}</span></td>
+                            <td style={td}><span style={{ color: C.blue, fontWeight: 600 }}>{stats.crossDomainInbound || 0}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Topic clusters */}
+              {crossDomainData.stats.topicClusters && crossDomainData.stats.topicClusters.length > 0 && (
+                <div style={{ background: C.surface, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, padding: 12 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: C.text }}>
+                    Topic Clusters ({crossDomainData.stats.topicClusters.length})
+                  </div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {(crossDomainData.stats.topicClusters as any[]).map((c: any) => (
+                      <div key={c.label} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                        borderRadius: 8, background: C.surface2, border: `1px solid ${C.border2}`,
+                      }}>
+                        <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{c.label}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted }}>{c.pageCount} pages</div>
+                        <div style={{ fontSize: 11, color: C.textDim }}>{c.domainCount} domains</div>
+                        <div style={{
+                          fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                          background: c.cohesion > 0.3 ? C.greenSoft : C.goldSoft,
+                          color: c.cohesion > 0.3 ? C.green : C.gold,
+                        }}>
+                          {Math.round(c.cohesion * 100)}% cohesive
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {!crossDomainData && !crossDomainBusy && (
+            <div style={{ color: C.textMuted, fontSize: 13, padding: '40px 0', textAlign: 'center' }}>
+              Click <strong>Run Audit</strong> to scan the entire estate for cross-domain link opportunities, or <strong>Build Briefs</strong> to generate enrichment briefs for every page.
+            </div>
+          )}
         </div>
       )}
 
