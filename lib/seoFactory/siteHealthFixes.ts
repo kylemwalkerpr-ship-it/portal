@@ -29,9 +29,20 @@ export type SiteHealthFixRecord = {
 const FIX_LOG_PATH = '.content-studio/site-health-fixes.json'
 const FIX_LOG_REPO: RepoId = 'portal'
 
+/** Extract the leading YAML front-matter block (between `---` fences), if any. */
+export function frontmatterBlock(content: string): string | null {
+  if (!content.startsWith('---')) return null
+  const end = content.indexOf('\n---', 3)
+  if (end < 0) return null
+  return content.slice(3, end)
+}
+
 /** True when page content carries an explicit noindex robots directive. */
 export function hasNoIndexFlag(content: string): boolean {
-  return /robots\s*[:=][\s\S]{0,160}(?:index\s*:\s*false|['"]noindex['"]|noindex\b)/i.test(content)
+  if (/robots\s*[:=][\s\S]{0,160}(?:index\s*:\s*false|['"]noindex['"]|noindex\b)/i.test(content)) return true
+  // Bare YAML front-matter fields used by the content repos: index: false / indexable: false
+  const fm = frontmatterBlock(content)
+  return fm !== null && /(?:^|\n)\s*(?:index|indexable)\s*:\s*false\b/i.test(fm)
 }
 
 /** Rough word count of the visible prose (strips code, imports, JSX plumbing). */
@@ -93,6 +104,16 @@ export function stripNoIndex(content: string): string {
     /(const\s+robots\s*=\s*['"])(noindex(?:\s*,\s*(?:nofollow|follow))?)(['"])/gi,
     "$1index, follow$3",
   )
+
+  // Bare YAML front-matter fields (content repos): index: false -> true, indexable: false -> true
+  const fm = frontmatterBlock(out)
+  if (fm !== null) {
+    const fixedFm = fm.replace(
+      /(^|\n)(\s*)(index|indexable)(\s*:\s*)false(\s*)$/gim,
+      '$1$2$3$4true$5',
+    )
+    if (fixedFm !== fm) out = out.slice(0, 3) + fixedFm + out.slice(3 + fm.length)
+  }
 
   return out
 }
@@ -267,6 +288,100 @@ export async function fixNoIndexPagesChunked(
 
   const nextBatch = batchStart + batchSize < candidates.length ? batchStart + batchSize : null
   return { fixed, skipped, totalCandidates: candidates.length, nextBatch, prUrl }
+}
+
+// ---------- Batch backfill for already-shipped content ----------
+
+/** Content directories that hold shipped, page-like articles per repo. */
+const CONTENT_DIRS: Record<RepoId, string[]> = {
+  caseworks: ['content/'],
+  'yousafe-consultancy': ['usa/content/', 'uk/content/', 'ca/content/', 'au/content/', 'landing-page/content/'],
+  portal: ['content/'],
+}
+
+/** Planning/ops directories to skip when scanning shipped content. */
+const CONTENT_SKIP = /(^|\/)(docs|seo-quarter-plan|codex-handoff|seo-briefs|editorial-audits|authors?|\.seo)(\/|$)/i
+
+/** Tolerant YAML front-matter value read (handles quotes). */
+export function frontmatterKey(fm: string, key: string): string {
+  const m = fm.match(new RegExp(`(?:^|\\n)\\s*${key}\\s*:\\s*["']?([^"'\\n#]+)`, 'i'))
+  return m ? m[1].trim() : ''
+}
+
+/** Live URL path for a content file from its front-matter (canonical/slug), or null. */
+export function contentRoute(fm: string): string | null {
+  const canonical = frontmatterKey(fm, 'canonicalUrl') || frontmatterKey(fm, 'canonical')
+  if (canonical) {
+    try { return new URL(canonical).pathname } catch { /* fall through */ }
+  }
+  const slug = frontmatterKey(fm, 'slug')
+  if (slug) return slug.startsWith('/') ? slug : `/${slug}`
+  return null
+}
+
+function contentPageUrl(repo: RepoId, path: string, route: string): string {
+  let host: string
+  if (repo === 'caseworks') host = 'legal.yousafeconsultancy.com'
+  else if (repo === 'portal') host = 'market.yousafeconsultancy.com'
+  else if (path.startsWith('landing-page/')) host = 'yousafeconsultancy.com'
+  else host = `${path.split('/')[0]}.yousafeconsultancy.com`
+  return `https://${host}${route.startsWith('/') ? route : `/${route}`}`.replace(/([^:])\/{2,}/g, '$1/')
+}
+
+/**
+ * Batch backfill scan: walk the content directories of the already-shipped
+ * repos for fully-expanded pages that still carry an explicit noindex
+ * directive. Returns one batch of candidates; call with an advancing cursor
+ * until nextBatch is null (keeps each invocation under the Worker
+ * subrequest budget). The batch strip itself reuses fixNoIndexPagesChunked.
+ */
+export async function collectShippedNoIndexContent(
+  scope: SiteHealthScope,
+  batchStart = 0,
+  batchSize = 25,
+): Promise<{ candidates: NoIndexCandidate[]; totalFiles: number; nextBatch: number | null }> {
+  const repos = scope === 'all'
+    ? (Object.keys(CONTENT_DIRS) as RepoId[])
+    : [scope as RepoId]
+  const files: Array<{ repo: RepoId; path: string }> = []
+  for (const repo of repos) {
+    const dirs = CONTENT_DIRS[repo] ?? []
+    if (!dirs.length) continue
+    const tree = await githubFetch(`/repos/kylemwalkerpr-ship-it/${repo}/git/trees/main?recursive=1`)
+    const items = (tree.tree || []) as Array<{ path: string; type: string }>
+    for (const item of items) {
+      if (item.type !== 'blob') continue
+      if (!/(\.mdx?)$/i.test(item.path)) continue
+      if (CONTENT_SKIP.test(item.path)) continue
+      if (!dirs.some((d) => item.path.startsWith(d))) continue
+      files.push({ repo, path: item.path })
+    }
+  }
+  const batch = files.slice(batchStart, batchStart + batchSize)
+  const candidates: NoIndexCandidate[] = []
+  for (const f of batch) {
+    try {
+      const file = await githubFetch(`/repos/kylemwalkerpr-ship-it/${f.repo}/contents/${f.path}?ref=main`)
+      const content = Buffer.from(String(file.content || ''), 'base64').toString('utf8')
+      if (!hasNoIndexFlag(content)) continue
+      const words = wordCount(content)
+      if (words < FULLY_EXPANDED_MIN_WORDS) continue
+      const fm = frontmatterBlock(content) ?? ''
+      const route = contentRoute(fm)
+      if (!route) continue
+      candidates.push({
+        repo: f.repo,
+        path: f.path,
+        url: contentPageUrl(f.repo, f.path, route),
+        title: frontmatterKey(fm, 'title') || f.path.split('/').pop()?.replace(/\.(mdx?)$/, '') || f.path,
+        words,
+      })
+    } catch {
+      // fetch/parse failure — skip this file
+    }
+  }
+  const nextBatch = batchStart + batchSize < files.length ? batchStart + batchSize : null
+  return { candidates, totalFiles: files.length, nextBatch }
 }
 
 // ---------- Repair that logs to history (replaces the un-logged chunked repair) ----------
