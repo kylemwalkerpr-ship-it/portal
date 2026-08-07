@@ -272,7 +272,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     const prevBlockers = audit.blockers.length
     const prevScore = audit.score
     const ai = await generateWithRetry(generateContentText, {
-      system: enrichedSystem,
+      system,
       prompt,
       maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
       temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
@@ -347,7 +347,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       // Pass 1: full expand rewrite; passes 2+: append new H2 sections only
       if (expandPasses === 1) {
         const ai = await generateWithRetry(generateContentText, {
-          system: enrichedSystem,
+          system,
           prompt: buildDepthExpandPrompt({
             title,
             topic,
@@ -438,7 +438,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
       try {
         const ai = await generateWithRetry(generateContentText, {
-          system: enrichedSystem,
+          system,
           prompt: buildFactoryUserPrompt({
             title,
             topic,
