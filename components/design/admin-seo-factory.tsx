@@ -47,6 +47,7 @@ export default function AdminSeoFactory({
 }) {
   const [tab, setTab] = React.useState<Tab>('warroom')
   const [topic, setTopic] = React.useState('')
+  const [aiProvider, setAiProvider] = React.useState('auto')
   const [primaryKeyword, setPrimaryKeyword] = React.useState('')
   const [region, setRegion] = React.useState('US')
   const [contentType, setContentType] = React.useState('legal_guide')
@@ -1038,6 +1039,7 @@ export default function AdminSeoFactory({
       minAuditScore: minAudit,
       maxRefine,
       dryRun,
+      aiProvider,
     }
 
     try {
@@ -1237,6 +1239,7 @@ export default function AdminSeoFactory({
       terms: terms?.length ? terms : undefined,
       useWarRoom: true,
       minImpressions: 2,
+      aiProvider,
     })
 
     // Try SSE streaming first; fall back to classic POST
@@ -2703,6 +2706,19 @@ export default function AdminSeoFactory({
                   <option value="blog_summary">Blog summary</option>
                   <option value="regional_page">Regional page</option>
                   <option value="marketplace_gig">Marketplace gig</option>
+                </select>
+              </label>
+              <label style={labelStyle}>
+                AI Model
+                <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={inputStyle}>
+                  <option value="auto">Auto (Grok → OpenAI → rest)</option>
+                  <option value="grok">Grok (xAI)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
+                  <option value="cloudflare-ai">Cloudflare Workers AI</option>
+                  <option value="groq">Groq (Llama)</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="openrouter">OpenRouter</option>
                 </select>
               </label>
               <label style={labelStyle}>
