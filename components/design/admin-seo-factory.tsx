@@ -628,15 +628,13 @@ export default function AdminSeoFactory({
     return () => clearInterval(interval)
   }, [tab, warRoomAutoRefresh, pollWarRoom, warRoom])
 
-  const runWarRoomStrike = async (terms?: string[]) => {
-    let feed = terms?.length
-      ? terms
-      : selectedWar.size
-        ? [...selectedWar]
-        : (warRoom?.autoRunTerms as string[]) || []
+  // Execute top plays: always uses the war-room auto-generated play list.
+  // Manual term execution is handled by runAutoPilot(terms) directly
+  // so callers are never confused about which feed they're shipping.
+  const runWarRoomStrike = async () => {
+    let feed = (warRoom?.autoRunTerms as string[]) || []
     if (!feed.length) {
       await loadWarRoom()
-      // re-read via fetch result is async; use latest from state after load is awkward — re-fetch
       try {
         const res = await fetch('/api/seo-factory/war-room', {
           method: 'POST',
@@ -2207,7 +2205,7 @@ export default function AdminSeoFactory({
               <button
                 type="button"
                 disabled={!!actionBusy['warStrikeSelected'] || selectedStrikeTerms.length === 0}
-                onClick={() => runWarRoomStrike(selectedStrikeTerms)}
+                onClick={() => runAutoPilot(selectedStrikeTerms)}
                 style={{ ...btnSecondary, cursor: actionBusy['warStrikeSelected'] || selectedStrikeTerms.length === 0 ? 'not-allowed' : 'pointer', opacity: actionBusy['warStrikeSelected'] ? 0.7 : 1 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2414,7 +2412,7 @@ export default function AdminSeoFactory({
                               type="button"
                               disabled={busy}
                               style={btnSmall}
-                              onClick={() => runWarRoomStrike([o.term])}
+                              onClick={() => runAutoPilot([o.term])}
                             >
                               Ship play
                             </button>
