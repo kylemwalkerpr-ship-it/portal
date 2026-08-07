@@ -291,6 +291,25 @@ export default function AdminSeoFactory({
     setPrStatus(null)
   }, [isEditorDirty])
 
+  const loadCrossDomain = async (action = 'audit') => {
+    setCrossDomainBusy(true)
+    try {
+      const res = await fetchResilient('/api/seo-factory/cross-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, scope: 'all' }),
+        timeoutMs: 120_000,
+      })
+      const data = await res.json()
+      setCrossDomainData(data)
+      showToast('success', action === 'audit' ? 'Cross-domain audit complete' : 'Enrichment briefs loaded')
+    } catch (err: any) {
+      showToast('error', err.message || 'Cross-domain load failed')
+    } finally {
+      setCrossDomainBusy(false)
+    }
+  }
+
   const loadHealth = async () => {
     try {
       const res = await fetch('/api/seo-factory/health', { credentials: 'same-origin' })
