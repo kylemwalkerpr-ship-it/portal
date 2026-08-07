@@ -21,9 +21,22 @@
 import {
   type SiteHealthPage,
   type SiteHealthScope,
-  auditSiteHealth,
+  auditSiteHealthChunked,
   CONFIGS,
 } from '@/lib/seoFactory/siteHealth'
+
+async function loadAllPages(scope: SiteHealthScope): Promise<SiteHealthPage[]> {
+  const allPages: SiteHealthPage[] = []
+  let batchStart = 0
+  const BATCH_SIZE = 30
+  while (true) {
+    const result = await auditSiteHealthChunked(scope, batchStart, BATCH_SIZE)
+    allPages.push(...result.pages)
+    if (result.nextBatch === null) break
+    batchStart = result.nextBatch
+  }
+  return allPages
+}
 
 // ── Domain Topology ──────────────────────────────────────────────────────────
 
@@ -163,8 +176,7 @@ export interface TopicCluster {
 export async function buildTopicClusters(
   scope: SiteHealthScope = 'all',
 ): Promise<TopicCluster[]> {
-  const health = await auditSiteHealth(scope)
-  const pages = (health as any).pages as SiteHealthPage[] || []
+  const pages = await loadAllPages(scope)
 
   if (pages.length < 3) return []
 
@@ -544,8 +556,7 @@ export async function buildEnrichmentBrief(
 export async function buildAllEnrichmentBriefs(
   scope: SiteHealthScope = 'all',
 ): Promise<Map<string, EnrichmentBrief>> {
-  const health = await auditSiteHealth(scope)
-  const allPages = (health as any).pages as SiteHealthPage[] || []
+  const allPages = await loadAllPages(scope)
   if (!allPages.length) return new Map()
 
   const clusters = await buildTopicClusters(scope)
