@@ -25,6 +25,7 @@ import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGa
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { ensureEditorialScaffold } from './editorialScaffold'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
+import { stripNoIndex } from './siteHealthFixes'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -664,6 +665,22 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         gateHoldReason = formatGateHold(audit, minAudit, `audit ${audit.score} < 50`)
         shipMode = 'none'
       }
+    }
+  }
+
+  // Auto index: once every check has passed, strip any stale noindex so the
+  // stored draft and shipped page are indexable by default.
+  if (plan.indexable) {
+    const stripped = stripNoIndex(content)
+    if (stripped !== content) {
+      content = stripped
+      audit = auditContent({
+        content,
+        contentType,
+        primaryKeyword,
+        indexable: plan.indexable,
+        ownershipBlockers: plan.blockers,
+      })
     }
   }
 
