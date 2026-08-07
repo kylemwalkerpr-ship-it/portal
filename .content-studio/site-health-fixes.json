@@ -640,5 +640,205 @@
     "url": "https://usa.yousafeconsultancy.com/sitemap/",
     "detail": "Removed noindex — 732 words, now indexable",
     "prUrl": "https://github.com/kylemwalkerpr-ship-it/yousafe-consultancy/pull/76"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ai/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ai/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/485-pte-requirement/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/485-pte-requirement/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/485-visa-document-checklist/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/485-visa-document-checklist/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/blog/student-to-pr-pathways/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/blog/student-to-pr-pathways/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/partner-visa-820-801-guide/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/partner-visa-820-801-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/renting-nsw-international-students/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/renting-nsw-international-students/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/skills-assessment-guide/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/skills-assessment-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/subclass-500-refusal-reasons-guide/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/subclass-500-refusal-reasons-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/au/temporary-graduate-485-stream-selection/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/au/temporary-graduate-485-stream-selection/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/canada-study-permit-financial-proof/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/canada-study-permit-financial-proof/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/canadian-study-permit-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/canadian-study-permit-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/f1-visa-interview-questions/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/f1-visa-interview-questions/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/f1-visa-requirements-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/f1-visa-requirements-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/green-card-after-opt/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/green-card-after-opt/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/opt-vs-pgwp-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/opt-vs-pgwp-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/pgwp-canada-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/pgwp-canada-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/blog/stem-opt-extension-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/blog/stem-opt-extension-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/blog/express-entry-category-draws-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/blog/express-entry-category-draws-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/blog/pgp-2026-whats-new/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/blog/pgp-2026-whats-new/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-category-occupations-list-2026/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-category-occupations-list-2026/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-occupations-2026-official/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/canada-express-entry-stem-occupations-2026-official/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/canada-spouse-visa-checklist/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/canada-spouse-visa-checklist/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/lmia-employer-guide/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/lmia-employer-guide/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/study-permit-refusal-reapply/",
+    "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100573693-https://legal.yousafeconsultancy.com/ca/super-visa-parents-grandparents/",
+    "timestamp": "2026-08-07T11:02:53.693Z",
+    "action": "interlink",
+    "repo": "caseworks",
+    "path": "https://legal.yousafeconsultancy.com/ca/super-visa-parents-grandparents/",
+    "detail": "Linked from hub app/articles/page.tsx"
   }
 ]
