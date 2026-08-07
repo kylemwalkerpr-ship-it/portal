@@ -24,6 +24,7 @@ import {
 } from './siteHealth'
 import {
   fixNoIndexPagesChunked,
+  collectShippedNoIndexContent,
   readFixHistory,
   appendFixHistory,
   hasNoIndexFlag,
@@ -238,11 +239,19 @@ export async function runFullSiteHealthCheck(opts: SiteHealthCheckOptions = {}):
     }
   }
 
-  if (opts.fixNoindex && noindexPages.length && !opts.dryRun) {
+  if (opts.fixNoindex && !opts.dryRun) {
     try {
       const candidates: NoIndexCandidate[] = noindexPages
         .filter((p) => (p.words ?? 0) >= 400)
         .map((p) => ({ repo: p.repo, path: p.path, url: p.url, title: p.title, words: p.words! }))
+      // Batch backfill: already-shipped content files (md/mdx) that are fully
+      // expanded but still carry a noindex directive become fix candidates too.
+      let contentCursor: number | null = 0
+      while (contentCursor !== null) {
+        const contentBatch = await collectShippedNoIndexContent(scope, contentCursor, batchSize)
+        candidates.push(...contentBatch.candidates)
+        contentCursor = contentBatch.nextBatch
+      }
       if (candidates.length) {
         let nc: number | null = 0
         while (nc !== null) {
