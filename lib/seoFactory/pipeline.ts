@@ -24,6 +24,7 @@ import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { ensureEditorialScaffold } from './editorialScaffold'
+import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -482,6 +483,28 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         stalledCount = Math.max(0, stalledCount - 1)
       }
     }
+  }
+
+  // ── CROSS-DOMAIN ENRICHMENT: inject cross-domain links before scaffold ──
+  try {
+    const enrich = await buildGenerationEnrichment(
+      plan.canonicalUrl,
+      plan.host,
+      primaryKeyword,
+      'all',
+    )
+    if (enrich.crossLinkInstructions) {
+      system = `${system}\n\n---\n\n${enrich.crossLinkInstructions}\n\n---`
+      if (enrich.recommendedLinks.length > 0) {
+        const linkBlock = enrich.recommendedLinks
+          .slice(0, 4)
+          .map((l) => `- [${l.anchorText}](${l.url})`)
+          .join('\n')
+        content = `${content}\n\n<!-- CROSS_DOMAIN_ENRICH_START -->\n### Related Resources\n\n${linkBlock}\n<!-- CROSS_DOMAIN_ENRICH_END -->`
+      }
+    }
+  } catch (e) {
+    console.warn('[seoFactory/pipeline] cross-domain enrichment skipped', e)
   }
 
   // ── PASS 4: Scaffold + final quality lock ──────────────────────────────
