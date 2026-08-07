@@ -16,7 +16,8 @@ ALTER TABLE public.content_jobs
     CHECK (inspection_status IS NULL OR inspection_status IN (
       'pending', 'indexed', 'discovered', 'excluded', 'error', 'n/a'
     )),
-  ADD COLUMN IF NOT EXISTS llms_included BOOLEAN DEFAULT false;
+  ADD COLUMN IF NOT EXISTS llms_included BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS ai_model TEXT;
 
 -- Allow new statuses used by factory
 -- (Postgres cannot easily alter CHECK; add parallel unconstrained status_v2 if needed)
