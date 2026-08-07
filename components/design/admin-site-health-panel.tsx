@@ -1,6 +1,5 @@
 'use client'
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 
 // ── Color system (matches existing C palette) ─────────────────────
 const C = {
@@ -228,7 +227,14 @@ export default function AdminSiteHealthPanel() {
 
   // ── Render ──────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', color: C.text }}>
+    <>
+      <style>{`
+        @keyframes siteHealthSlideIn {
+          from { opacity: 0; transform: translateY(-6px); max-height: 0; }
+          to { opacity: 1; transform: translateY(0); max-height: 400px; }
+        }
+      `}</style>
+      <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', color: C.text }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
@@ -254,11 +260,8 @@ export default function AdminSiteHealthPanel() {
             <span>{progressPct}%</span>
           </div>
           <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPct}%` }}
-              transition={{ duration: 0.4 }}
-              style={{ height: '100%', background: C.purple, borderRadius: 2 }}
+            <div
+              style={{ height: '100%', background: C.purple, borderRadius: 2, width: `${progressPct}%`, transition: 'width 0.4s ease' }}
             />
           </div>
         </div>
@@ -371,11 +374,8 @@ export default function AdminSiteHealthPanel() {
               const nifix = noIndexFixing[key]
               const isOrphan = (page.inboundLinks || 0) === 0 && !page.url.endsWith('/')
               return (
-                <motion.div
+                <div
                   key={key}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
                   style={{
                     padding: '8px 12px', background: isOrphan ? '#FFF7ED' : page.noindex ? '#FEF2F2' : C.surface,
                     border: `1px solid ${isOrphan ? C.orange + '30' : page.noindex ? C.red + '20' : C.border}`,
@@ -402,14 +402,9 @@ export default function AdminSiteHealthPanel() {
                   </div>
 
                   {/* Expanded detail */}
-                  <AnimatePresence>
                     {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        style={{ overflow: 'hidden' }}
+                      <div
+                        style={{ overflow: 'hidden', animation: 'siteHealthSlideIn 0.2s ease' }}
                       >
                         <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.textMuted }}>
                           <div style={{ marginBottom: 6 }}>
@@ -446,10 +441,9 @@ export default function AdminSiteHealthPanel() {
                             </pre>
                           )}
                         </div>
-                      </motion.div>
+                      </div>
                     )}
-                  </AnimatePresence>
-                </motion.div>
+                </div>
               )
             })}
           </div>
@@ -490,6 +484,7 @@ export default function AdminSiteHealthPanel() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
