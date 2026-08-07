@@ -840,5 +840,53 @@
     "repo": "caseworks",
     "path": "https://legal.yousafeconsultancy.com/ca/super-visa-parents-grandparents/",
     "detail": "Linked from hub app/articles/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/categories/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/categories/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/providers/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/providers/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/marketplace/templates/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/marketplace/templates/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/page.tsx/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/page.tsx/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
+  },
+  {
+    "id": "interlink-1786100608677-https://market.yousafeconsultancy.com/sellers/",
+    "timestamp": "2026-08-07T11:03:28.677Z",
+    "action": "interlink",
+    "repo": "portal",
+    "path": "https://market.yousafeconsultancy.com/sellers/",
+    "detail": "Linked from hub app/marketplace/page.tsx"
   }
 ]
