@@ -746,6 +746,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         pr_url: shipResult?.prUrl || null,
         pr_number: shipResult?.prNumber || null,
         ai_provider: provider,
+        ai_model: model || null,
         word_count: audit.wordCount,
         seo_score: audit.score,
         // DB check allows pr|autodeploy only; map merge → autodeploy
