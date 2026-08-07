@@ -17,6 +17,7 @@ import {
   type RequestedShipMode,
 } from './pipeline'
 import { selectThinPagesForExpansion, expandThinPage } from './estateSweep'
+import { computeCrossDomainStats } from './crossDomainEnrich'
 
 export const DAILY_WAR_LIMIT = 5
 /** Midday Kenya = 12:00 EAT = 09:00 UTC */
@@ -61,6 +62,7 @@ export interface DailyWarRoomReport {
   failedCount: number
   skippedCount: number
   reportUrls: string[]
+  crossDomainStats?: Record<string, unknown>
 }
 
 function supabase() {
@@ -356,6 +358,24 @@ export async function runDailyWarRoomBatch(opts?: {
     console.warn('[dailyWarRoom] estate sweep failed', e instanceof Error ? e.message : e)
   }
 
+  // ── Cross-domain enrichment sweep: update interlinks estate-wide ──
+  let crossDomainStats: Record<string, unknown> | null = null
+  if (!opts?.dryRun && shippedCount > 0) {
+    try {
+      const enrichStats = await computeCrossDomainStats('all')
+      crossDomainStats = {
+        totalPages: enrichStats.totalPages,
+        totalLinks: enrichStats.totalLinks,
+        crossDomainLinks: enrichStats.crossDomainLinks,
+        bidirectionalLinks: enrichStats.bidirectionalLinks,
+        orphanPages: enrichStats.orphanPages,
+      }
+      console.log('[dailyWarRoom] cross-domain enrichment sweep complete', crossDomainStats)
+    } catch (e) {
+      console.warn('[dailyWarRoom] cross-domain enrichment sweep failed', e instanceof Error ? e.message : e)
+    }
+  }
+
   // Pad skipped empty queue
   if (!wins.length && work.length === 0) {
     work.push({
@@ -388,16 +408,25 @@ export async function runDailyWarRoomBatch(opts?: {
     finishedAt,
     gscSource: source,
     siteUrl,
-    summary: [
-      `Daily War Room · ${kenyaNowIso()} EAT · top ${limit} wins.`,
-      summary,
-      `Shipped ${shippedCount} · failed ${failedCount} · skipped ${skippedCount}.`,
-    ].join(' '),
+    summary: (() => {
+      const base = [
+        `Daily War Room · ${kenyaNowIso()} EAT · top ${limit} wins.`,
+        summary,
+        `Shipped ${shippedCount} · failed ${failedCount} · skipped ${skippedCount}.`,
+      ]
+      if (crossDomainStats) {
+        base.push(
+          `Cross-domain: ${crossDomainStats.crossDomainLinks} links across ${crossDomainStats.totalPages} pages · ${crossDomainStats.orphanPages} orphans`,
+        )
+      }
+      return base.join(' ')
+    })(),
     work,
     shippedCount,
     failedCount,
     skippedCount,
     reportUrls,
+    crossDomainStats: crossDomainStats || undefined,
   }
 
   await persistDailyReport(report)
