@@ -206,6 +206,7 @@ export async function* runSeoFactoryPipelineStream(
         prompt: generationPrompt,
         maxTokens: contentType === 'marketplace_gig' ? 4000 : underDepth ? 16384 : 16384,
         temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
+        aiProvider: input.aiProvider,
       })) {
         if (ev.type === 'provider') {
           provider = ev.provider
@@ -320,6 +321,7 @@ export async function* runSeoFactoryPipelineStream(
             }),
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 16384,
             temperature: 0.42,
+            aiProvider: input.aiProvider,
           })
           if (countBodyWords(ai.text) > currentWords) {
             content = ai.text
@@ -342,6 +344,7 @@ export async function* runSeoFactoryPipelineStream(
             }),
             maxTokens: 6000,
             temperature: 0.45,
+            aiProvider: input.aiProvider,
           })
           const merged = mergeAppendedSections(content, ai.text)
           if (countBodyWords(merged) > currentWords) {
@@ -426,6 +429,7 @@ export async function* runSeoFactoryPipelineStream(
             }),
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
             temperature: 0.35,
+            aiProvider: input.aiProvider,
           })
           if (countBodyWords(ai.text) >= minWords) {
             content = ai.text
@@ -527,6 +531,7 @@ export async function* runSeoFactoryPipelineStream(
             }),
             maxTokens: contentType === 'marketplace_gig' ? 4000 : 6000,
             temperature: 0.3,
+            aiProvider: input.aiProvider,
           })
           if (countBodyWords(ai.text) >= minWords) {
             content = ai.text
