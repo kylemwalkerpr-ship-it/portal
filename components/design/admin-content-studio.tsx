@@ -15,6 +15,19 @@ const C = {
   mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
 }
 
+// ── Provider → default model (mirrors contentAiProvider defaults) ──
+const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
+  openai: 'gpt-5.6-luna',
+  custom: 'gpt-5.6-luna',
+  grok: 'grok-3',
+  deepseek: 'deepseek-chat',
+  'nvidia-deepseek': 'deepseek-ai/deepseek-v4-pro',
+  'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  groq: 'llama-3.3-70b-versatile',
+  gemini: 'gemini-2.5-flash',
+  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
+}
+
 // ── Types ──
 type ContentType = 'blog_post' | 'article' | 'regional_page' | 'marketplace_gig'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
@@ -1188,7 +1201,11 @@ function JobDetail({
   const terminal = detail.status === 'merged' || detail.status === 'closed'
   const gateFailure = qualityGateFailure(detail.error_message)
   const canResume = resumeAvailable || (detail.status === 'drafting' && Boolean(detail.content))
-  const resolvedModel = detail.ai_model || detail.audit_json?.model || null
+  const resolvedModel =
+    detail.ai_model ||
+    detail.audit_json?.model ||
+    (detail.ai_provider ? DEFAULT_MODEL_BY_PROVIDER[detail.ai_provider] : null) ||
+    null
   const aiProviderCard = resolvedModel
     ? `${detail.ai_provider || '—'} · ${resolvedModel}`
     : detail.ai_provider || '—'
