@@ -26,6 +26,7 @@ import {
 } from '@/lib/githubContents'
 import { submitUrlsToIndexNow } from '@/lib/indexNow'
 import { verifyLiveInBackground } from './liveVerify'
+import { stripNoIndex } from './siteHealthFixes'
 
 /** pr = open PR only; autodeploy = commit main (human only); merge = PR→CI→main */
 export type ShipMode = 'pr' | 'autodeploy' | 'merge'
@@ -169,9 +170,14 @@ export async function shipContent(opts: {
   const owner = process.env.GITHUB_CONTENT_OWNER ?? 'kylemwalkerpr-ship-it'
   const repo = opts.plan.repo
   const branchMain = 'main'
+
+  // Auto index: this article passed every gate — strip any stale noindex
+  // directive so the shipped page is indexable by default.
+  const shipContent_ = opts.plan.indexable ? stripNoIndex(opts.content) : opts.content
+
   const { filePath, fileContent } = renderTargetFile({
     plan: opts.plan,
-    content: opts.content,
+    content: shipContent_,
     title: opts.title,
     region: opts.region,
     contentType: opts.contentType,
@@ -186,13 +192,13 @@ export async function shipContent(opts: {
   // always pass the same build-safe contract so main never red-X's deploy.
   // 1) Google depth floor (prose word count)
   assertContentDepth({
-    content: opts.content,
+    content: shipContent_,
     contentType: opts.contentType,
     indexable: opts.plan.indexable,
   })
   // 2) Voice, tonality, AI-slop, outcome promises, human cadence
   assertQualityGate({
-    content: opts.content,
+    content: shipContent_,
     contentType: opts.contentType,
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
