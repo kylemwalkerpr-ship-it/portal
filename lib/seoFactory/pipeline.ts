@@ -272,7 +272,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     const prevBlockers = audit.blockers.length
     const prevScore = audit.score
     const ai = await generateWithRetry(generateContentText, {
-      system,
+      system: enrichedSystem,
       prompt,
       maxTokens: tokensForType(contentType, underDepth ? 'expand' : 'draft'),
       temperature: i === 0 ? 0.5 : underDepth ? 0.45 : 0.35,
@@ -347,7 +347,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       // Pass 1: full expand rewrite; passes 2+: append new H2 sections only
       if (expandPasses === 1) {
         const ai = await generateWithRetry(generateContentText, {
-          system,
+          system: enrichedSystem,
           prompt: buildDepthExpandPrompt({
             title,
             topic,
@@ -438,7 +438,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
 
       try {
         const ai = await generateWithRetry(generateContentText, {
-          system,
+          system: enrichedSystem,
           prompt: buildFactoryUserPrompt({
             title,
             topic,
@@ -486,6 +486,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   }
 
   // ── CROSS-DOMAIN ENRICHMENT: inject cross-domain links before scaffold ──
+  let enrichedSystem = system
   try {
     const enrich = await buildGenerationEnrichment(
       plan.canonicalUrl,
@@ -494,7 +495,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       'all',
     )
     if (enrich.crossLinkInstructions) {
-      system = `${system}\n\n---\n\n${enrich.crossLinkInstructions}\n\n---`
+      enrichedSystem = `${system}\n\n---\n\n${enrich.crossLinkInstructions}\n\n---`
       if (enrich.recommendedLinks.length > 0) {
         const linkBlock = enrich.recommendedLinks
           .slice(0, 4)
@@ -544,7 +545,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       try {
         attempts++
         const ai = await generateWithRetry(generateContentText, {
-          system,
+          system: enrichedSystem,
           prompt: buildFactoryUserPrompt({
             title,
             topic,
