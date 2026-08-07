@@ -204,6 +204,7 @@ function QuickCreate({
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
   const [region, setRegion] = React.useState<Region>('US')
   const [tone, setTone] = React.useState<Tone>('educational')
+  const [aiProvider, setAiProvider] = React.useState('auto')
   const [title, setTitle] = React.useState('')
   const [audience, setAudience] = React.useState('')
 
@@ -217,6 +218,7 @@ function QuickCreate({
       title: effectiveTitle || effectiveTopic, topic: effectiveTopic,
       audience: audience.trim(),
       keywords: keywords.split(',').map(s => s.trim()).filter(Boolean),
+      aiProvider,
     })
   }
 
@@ -339,7 +341,7 @@ function QuickCreate({
             </div>
           </div>
 
-          {/* Region + Tone */}
+          {/* Region + Tone + AI Model */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
               <label style={labelStyle}>Region</label>
@@ -353,6 +355,19 @@ function QuickCreate({
                 {TONE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={labelStyle}>AI Model</label>
+            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
+              <option value="auto">Auto (Grok → OpenAI → rest)</option>
+              <option value="grok">Grok (xAI)</option>
+              <option value="openai">OpenAI</option>
+              <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
+              <option value="cloudflare-ai">Cloudflare Workers AI</option>
+              <option value="groq">Groq (Llama)</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
           </div>
 
           {/* Title */}
@@ -1069,6 +1084,7 @@ function JobDetail({
           maxRefine: 2,
           supersedesJobId: detail.id,
           resume,
+          aiProvider: (detail as { ai_provider?: string | null }).ai_provider || undefined,
         }),
       })
       const result = await consumeSseResponse(response, (event) => {
@@ -1383,6 +1399,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: 55, maxRefine: 2,
           seoEnrichment,
+          aiProvider: formData.aiProvider || undefined,
         }),
       })
       if (!res.ok) {
