@@ -76,6 +76,12 @@ export function stripNoIndex(content: string): string {
     "$1index, follow$3",
   )
 
+  // robots: noindex / robots: noindex, follow / robots: noindex, nofollow (bare YAML)
+  out = out.replace(
+    /^(\s*robots\s*:\s*)noindex(\s*,\s*(?:no)?follow)?\s*$/gim,
+    "$1index, follow",
+  )
+
   // meta robots name="robots" content="noindex" style tags
   out = out.replace(
     /(<meta[^>]*name=["']robots["'][^>]*content=["'])(noindex(?:\s*,\s*nofollow)?)(["'])/gi,
