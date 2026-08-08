@@ -125,7 +125,16 @@ export function isNoiseQuery(term: string): boolean {
   const t = term.toLowerCase().trim()
   if (!t || t.length < 3) return true
   if (/yousafe|mycaseworks|yousafeconsultancy/.test(t)) return true
-  if (/^[0-9\s.\-/*]+$/.test(t)) return true
+  // Quoted multi-fragment noise from GSC (PDF/snippet garbage)
+  const quoteCount = (t.match(/"/g) || []).length
+  if (quoteCount >= 2) return true
+  if (/^["'].*["']/.test(t) && t.split(/\s+/).length <= 8) return true
+  // Off-estate spam / housing meal plans / random university brochure
+  if (/meal plan|room and meal|stockton room|housing rates final/.test(t)) return true
+  // Pure number codes with no immigration context
+  if (/^\d{3,5}/.test(t) && !/485|subclass|i-?\d|form/.test(t)) return true
+  // Single stopword-ish
+  if (/^(a|the|and|or|to|for|in|on|of)$/.test(t)) return true
   if (/c[:.].*drive|onedrive|dropbox|\.pdf|\.jpg|\.png|http:|https:|@/i.test(t)) return true
   return false
 }
@@ -375,10 +384,10 @@ export async function buildSeoWarRoom(opts?: {
 // Legacy compatibility exports (used by auto-run-stream)
 
 export function inferContentType(term: string, _play?: WarPlay): string {
-  if (/blog|news|update|what is|how to/i.test(term)) return 'blog_summary'
-  if (/housing|apartment|dorm|rent|near /i.test(term)) return 'article'
-  if (/dependent|spouse|family|visa|opt|h-1b|f-1|pgwp|485/i.test(term)) return 'article'
-  return 'article'
+  if (/from [a-z]+|visa from/i.test(term)) return 'regional_from'
+  if (/university|college|campus|yale|mit|nyu|harvard/i.test(term) && !/housing|tenant/i.test(term)) return 'regional_university'
+  if (/blog|news|update|what is/i.test(term)) return 'blog_summary'
+  return 'legal_guide'
 }
 
 export function playWriteHint(play: WarPlay, opts?: { position?: number; expectedCtr?: number; ctr?: number; pages?: Array<{ url: string }> }): string {
