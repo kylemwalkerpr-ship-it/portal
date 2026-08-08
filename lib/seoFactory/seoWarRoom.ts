@@ -74,6 +74,10 @@ export interface WarOpportunity {
   signals: string[]
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   coverage?: { matched: boolean; matches: string[] }
+  /** Position trajectory (oldest → newest) when live GSC history is available. */
+  history?: Array<{ date?: string; position: number; impressions: number; clicks?: number }>
+  /** last - first position (negative = improving). */
+  positionDelta?: number
 }
 
 export interface WarRoomResult {
@@ -102,6 +106,9 @@ export interface WarRoomResult {
     avgAuthority: number
     liveGsc: boolean
   }
+  historyAvailable: boolean
+  range: { startDate: string; endDate: string; days: number } | null
+  snapshot: { generatedAt?: string; source?: string } | null
 }
 
 function expectedCtrAtPosition(pos: number): number {
@@ -158,32 +165,39 @@ export async function buildSeoWarRoom(opts?: {
   // ── 1. Search demand ────────────────────────────────────────────────────
   const queries: OpportunityQuery[] = []
   const access = await getGscAccess()
+  let liveRange: { startDate: string; endDate: string; days: number } | null = null
+  const historyByTerm = new Map<
+    string,
+    Array<{ date?: string; position: number; impressions: number; clicks?: number }>
+  >()
   if (access?.accessToken && access.siteUrl) {
     siteUrl = access.siteUrl
+    const end = new Date().toISOString().slice(0, 10)
+    const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
+    const endpoint = `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(access.siteUrl)}/searchAnalytics/query`
+    const queryOpts = {
+      method: 'POST' as const,
+      headers: {
+        Authorization: `Bearer ${access.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    }
     try {
-      const end = new Date().toISOString().slice(0, 10)
-      const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
-      const res = await fetch(
-        `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(access.siteUrl)}/searchAnalytics/query`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${access.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            startDate: start, endDate: end,
-            dimensions: ['query'],
-            rowLimit: Math.min(200, limit * 5),
-          }),
-        },
-      )
+      const res = await fetch(endpoint, {
+        ...queryOpts,
+        body: JSON.stringify({
+          startDate: start, endDate: end,
+          dimensions: ['query'],
+          rowLimit: Math.min(200, limit * 5),
+        }),
+      })
       if (res.ok) {
         const data: any = await res.json()
         source = 'live'
+        liveRange = { startDate: start, endDate: end, days }
         for (const r of (data.rows || [])) {
           const term = (r.keys?.[0] || '').trim()
-          if (!term || !isNoiseQuery(term)) continue
+          if (!term || isNoiseQuery(term)) continue
           queries.push({
             term,
             impressions: r.impressions ?? 0,
@@ -192,13 +206,52 @@ export async function buildSeoWarRoom(opts?: {
             position: r.position ?? 0,
           })
         }
+        // ── Position history: split range into 3 buckets, query each ──
+        try {
+          const startMs = Date.now() - days * 864e5
+          const third = (days * 864e5) / 3
+          const buckets = [0, 1, 2].map((i) => ({
+            startDate: new Date(startMs + i * third).toISOString().slice(0, 10),
+            endDate: new Date(startMs + (i + 1) * third).toISOString().slice(0, 10),
+          }))
+          const bucketRes = await Promise.all(
+            buckets.map((b) =>
+              fetch(endpoint, {
+                ...queryOpts,
+                body: JSON.stringify({
+                  startDate: b.startDate, endDate: b.endDate,
+                  dimensions: ['query'],
+                  rowLimit: Math.min(200, limit * 5),
+                }),
+              }).then((r) => (r.ok ? r.json() : null)),
+            ),
+          )
+          for (let i = 0; i < buckets.length; i++) {
+            const rows = (bucketRes[i] as any)?.rows || []
+            for (const r of rows) {
+              const term = (r.keys?.[0] || '').trim().toLowerCase()
+              if (!term) continue
+              if (!historyByTerm.has(term)) historyByTerm.set(term, [])
+              historyByTerm.get(term)!.push({
+                date: buckets[i].endDate,
+                position: r.position ?? 0,
+                impressions: r.impressions ?? 0,
+                clicks: r.clicks ?? 0,
+              })
+            }
+          }
+        } catch {
+          /* history optional — scores still work without it */
+        }
       }
     } catch {
       warnings.push('GSC live query failed — falling back to snapshot')
     }
   }
+  let snapshotMeta: { generatedAt?: string; source?: string } | null = null
   if (queries.length === 0) {
     const snap = await loadGscSnapshot()
+    snapshotMeta = { generatedAt: snap.generatedAt, source: snap.source }
     const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
       term: q.term || q.url || '',
       impressions: q.impressions,
@@ -221,7 +274,7 @@ export async function buildSeoWarRoom(opts?: {
     if (isNoiseQuery(t)) continue
     if (q.impressions < minImpressions) continue
     seen.add(t)
-    deduped.push({ ...q, term: t })
+    deduped.push({ ...q, term: t, history: historyByTerm.get(t) || undefined })
   }
   deduped.sort((a, b) => b.impressions - a.impressions)
 
@@ -310,6 +363,8 @@ export async function buildSeoWarRoom(opts?: {
         signals: o.signals,
         interlinks: o.interlinks,
         coverage: o.coverage,
+        history: o.history,
+        positionDelta: o.positionDelta,
       }
     })
 
@@ -379,6 +434,9 @@ export async function buildSeoWarRoom(opts?: {
       avgAuthority: avgAuth,
       liveGsc: source === 'live',
     },
+    historyAvailable: source === 'live' && historyByTerm.size > 0,
+    range: liveRange,
+    snapshot: snapshotMeta,
   }
 }
 // Legacy compatibility exports (used by auto-run-stream)
