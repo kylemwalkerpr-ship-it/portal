@@ -70,7 +70,69 @@ type OpenAiCompat = {
   maxTokensCap?: number
 }
 
+/**
+ * AI Key Vault overlay — admin-pasted keys (lib/aiKeyVault) are pushed into
+ * this module-level map by refreshAiVault() / withVaultEnv(). env() consults
+ * the overlay first so vault keys win over Worker secrets, then falls back to
+ * process.env — existing deployments keep working untouched.
+ */
+let vaultOverlay: Record<string, string> | null = null
+
+/** Replace the active vault overlay (used by refreshAiVault / withVaultEnv). */
+export function setVaultOverlay(overlay: Record<string, string> | null): void {
+  vaultOverlay = overlay
+}
+
+/**
+ * Refresh the AI Key Vault overlay from Supabase (lib/aiKeyVault). Returns the
+ * env names that became available from the vault (or [] when the vault is
+ * unreachable — the chain then continues on env vars only).
+ */
+export async function refreshAiVault(): Promise<string[]> {
+  try {
+    const { buildVaultEnvOverrides } = await import('@/lib/aiKeyVault')
+    const overlay = await buildVaultEnvOverrides(true)
+    vaultOverlay = overlay
+    return Object.keys(overlay).filter((k) => /_(?:API_KEY|TOKEN|AUTH)$/.test(k))
+  } catch (e) {
+    console.warn(
+      '[contentAi] vault overlay unavailable (is ai_provider_keys migrated?) — env vars only',
+      e instanceof Error ? e.message : e,
+    )
+    vaultOverlay = null
+    return []
+  }
+}
+
+/**
+ * Run `fn` with a temporary overlay: base vault keys merged with `extra`,
+ * then restore whatever overlay was active before.
+ */
+export async function withVaultEnv<T>(
+  extra: Record<string, string>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = vaultOverlay
+  await refreshAiVault()
+  vaultOverlay = { ...vaultOverlay, ...extra }
+  try {
+    return await fn()
+  } finally {
+    vaultOverlay = prev
+  }
+}
+
 function env(name: string): string {
+  if (vaultOverlay) {
+    const v = (vaultOverlay[name] || '').trim()
+    if (v) return v
+    // Global default model (ai_settings.default_model) applies to the
+    // OpenAI-compatible endpoints admins tune most.
+    if (name === 'OPENAI_MODEL' || name === 'CUSTOM_AI_MODEL') {
+      const dm = (vaultOverlay['CONTENT_AI_DEFAULT_MODEL'] || '').trim()
+      if (dm) return dm
+    }
+  }
   return (process.env[name] || '').trim()
 }
 
