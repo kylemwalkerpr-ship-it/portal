@@ -625,11 +625,16 @@ export default function AdminCommandCenter({
   // ── Brief / autopilot composer ───────────────────────────────────────────
   const applyBrief = (o: any) => {
     const play = playOf(o)
+    // Prefer the keyword-cluster's terms (real GSC clustering) over signal-splitting heuristics.
+    const clusterKw = Array.isArray(o.cluster?.keywords) ? o.cluster.keywords : []
+    const kw = clusterKw.length
+      ? clusterKw.slice(0, 8)
+      : [o.term, ...((o.signals || []).map((s: string) => s.split(' ').slice(0, 3).join(' ')).filter((s: string) => s.length > 4))].slice(0, 6)
     setBrief({
       topic: o.term,
       title: o.writeHint && String(o.writeHint).startsWith('PLAY') ? o.term.replace(/\b\w/g, (c: string) => c.toUpperCase()) : o.term,
       primaryKeyword: o.term,
-      keywords: [o.term, ...((o.signals || []).map((s: string) => s.split(' ').slice(0, 3).join(' ')).filter((s: string) => s.length > 4))].slice(0, 6),
+      keywords: kw,
       audience: 'international students, H-1B professionals, green card applicants',
       contentType: o.contentType || (play === 'cannibalization' || play === 'cannibal_merge' ? 'article' : 'blog_post'),
       tone: o.intent === 'commercial' ? 'persuasive' : o.intent === 'transactional' ? 'professional' : 'educational',
@@ -639,6 +644,7 @@ export default function AdminCommandCenter({
       signals: o.signals || [],
       interlinks: o.interlinks || [],
       score: scoreOf(o),
+      cluster: o.cluster || null,
     })
     setLaunchFeed([])
     setWorkspaceOpen(false)
@@ -670,6 +676,7 @@ export default function AdminCommandCenter({
           minAuditScore: minAudit, maxRefine,
           aiProvider,
           interlinks: brief.interlinks || [],
+          cluster: brief.cluster || null,
           opportunity: { primaryKeyword: brief.primaryKeyword, play: brief.play, intent: brief.intent, opportunityScore: brief.score, signals: brief.signals },
         }),
       })
@@ -1091,11 +1098,28 @@ export default function AdminCommandCenter({
                           <ScoreMeter score={scoreOf(o)} />
                         </td>
                         <td style={td}><PlayBadge play={play} /></td>
-                        <td style={{ ...td, maxWidth: 220 }}>
+                        <td style={{ ...td, maxWidth: 240 }}>
                           <strong style={{ color: C.text }}>{o.term}</strong>
                           {o.intent && (
                             <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 1 }}>
                               {INTENT_LABELS[o.intent] || o.intent} · {tm.icon} {tm.label}
+                            </div>
+                          )}
+                          {o.cluster && (
+                            <div style={{ marginTop: 3 }}>
+                              <span title={o.cluster.reason || undefined} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999,
+                                fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
+                                background: o.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
+                                color: o.cluster.mode === 'expand' ? C.gold : C.blue,
+                                border: `1px solid ${o.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
+                                cursor: 'default',
+                              }}>
+                                🕸 {o.cluster.keywords?.length || 1}-kw
+                                {o.cluster.mode === 'expand'
+                                  ? ` · expands ${String(o.cluster.targetUrl || '').split('/').filter(Boolean).slice(-2).join('/') || 'page'}`
+                                  : ' · new page'}
+                              </span>
                             </div>
                           )}
                         </td>
@@ -1178,6 +1202,22 @@ export default function AdminCommandCenter({
                   onChange={(e) => setBrief({ ...brief, keywords: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) })}
                   style={inputStyle}
                 />
+                {brief.cluster && (
+                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999,
+                      fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                      background: brief.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
+                      color: brief.cluster.mode === 'expand' ? C.gold : C.blue,
+                      border: `1px solid ${brief.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
+                    }}>
+                      🕸 Cluster · {brief.cluster.keywords?.length || 1} keywords · {brief.cluster.mode === 'expand' ? `expands ${brief.cluster.targetUrl || 'existing page'}` : 'one new unique page'}
+                    </span>
+                    {brief.cluster.reason && (
+                      <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{brief.cluster.reason}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label style={labelStyle}>Content type</label>
