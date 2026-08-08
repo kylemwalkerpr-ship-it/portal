@@ -8,6 +8,7 @@ import {
   scoreOpportunities,
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
+import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 
 export const runtime = 'nodejs'
 
@@ -119,12 +120,23 @@ export async function POST(request: NextRequest) {
       region,
     })
     const portfolio = buildKeywordPortfolio(brief)
-    const relatedByTerm: Record<string, string[]> = {}
-    for (const kw of brief.primaryKeywords) {
-      relatedByTerm[kw.term] = (brief.opportunityKeywords ?? [])
-        .map((o) => o.term)
-        .filter((t) => t !== kw.term)
-        .slice(0, 3)
+
+    // ── 4.5 Keyword clusters → canonical-page resolution (anti-cannibalization) ──
+    // Cluster every query, resolve each cluster to ONE page, and feed the
+    // engine's relatedByTerm so every suggestion carries its full cluster.
+    let clusterResult = { byTerm: {} as Record<string, ClusterResolution>, relatedByTerm: {} as Record<string, string[]> }
+    try {
+      const { loadOwnershipRegistry } = await import('@/lib/seoDataLoaders')
+      const registry = await loadOwnershipRegistry()
+      clusterResult = await buildKeywordClusters({
+        queries: queries.map((q) => ({ term: q.term, impressions: q.impressions, clicks: q.clicks, position: q.position })),
+        region,
+        registry: (registry.rows ?? []) as Array<{ primary_keyword?: string; owner_url?: string | null; owner_host?: string | null; action?: string }>,
+        coverage: coverage.map((c) => ({ title: c.title, topic: c.topic, primaryKeyword: c.primaryKeyword, status: c.status, url: c.url })),
+        minImpressions: 1,
+      })
+    } catch (err) {
+      console.warn('[content-studio/gsc/suggestions] clustering skipped', err)
     }
 
     // ── 5. Run the Opportunity Intelligence Engine ─────────────────────────
@@ -133,7 +145,7 @@ export async function POST(request: NextRequest) {
       coverage,
       interlinks,
       region,
-      relatedByTerm,
+      relatedByTerm: clusterResult.relatedByTerm,
       limit: 48,
     })
 
@@ -158,6 +170,7 @@ export async function POST(request: NextRequest) {
       intentCategory: o.intent,
       profitability: o.profitability,
       reason: o.reason,
+      cluster: clusterResult.byTerm[o.topic] || null,
       signals: o.signals,
       interlinks: o.interlinks,
       coverage: o.coverage,
