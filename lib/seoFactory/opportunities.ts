@@ -32,7 +32,7 @@ export interface FactoryOpportunity {
   action: OpportunityAction
   suggestedContentType: string
   region: string
-  ownerHint: string | null
+  ownerHint: any | null
   // Engine-native
   enginePlay?: string
   intent?: string
@@ -169,4 +169,15 @@ export async function loadFactoryOpportunities(limit = 50): Promise<{
     }))
 
   return { source, siteUrl, opportunities }
+}
+export function pickAutoRunCandidates(
+  opps: FactoryOpportunity[],
+  limit: number,
+): FactoryOpportunity[] {
+  const eligible = opps
+    .filter((o) => o.enginePlay === 'content_gap' || o.enginePlay === 'quick_win' || o.action === 'expand_or_build' || o.action === 'strike_distance')
+    .filter((o) => o.term.length >= 4)
+    .filter((o) => o.impressions >= 8)
+  eligible.sort((a, b) => b.score - a.score)
+  return eligible.slice(0, Math.max(1, Math.min(limit, 40)))
 }
