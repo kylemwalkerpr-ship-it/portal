@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     let interlinks: OpportunityEngineInput['interlinks'] = []
     try {
       const { LINKS } = await import('@/lib/interlinkRegistry')
-      interlinks = ((LINKS as Array<Record<string, unknown>>) || [])
+      interlinks = ((LINKS as unknown as Array<Record<string, unknown>>) || [])
         .map((l) => ({
           label: String(l.label || l.title || l.url || ''),
           url: String(l.url || ''),
