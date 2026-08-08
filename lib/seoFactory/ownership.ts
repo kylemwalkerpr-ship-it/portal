@@ -555,6 +555,12 @@ export async function resolveOwner(opts: {
   region: string
   slug?: string
   indexable?: boolean
+  /**
+   * Keyword-cluster override: when a cluster already resolves to an existing
+   * canonical page (owner URL or shipped job), force this generation onto that
+   * exact URL so we expand a unique page instead of creating a cannibal sibling.
+   */
+  ownerUrlHint?: string
 }): Promise<OwnerPlan> {
   const warnings: string[] = []
   const blockers: string[] = []
@@ -708,6 +714,33 @@ export async function resolveOwner(opts: {
   }
   contentType = reconciled.contentType
   intentClass = reconciled.intentClass
+
+  // ── Keyword-cluster override: ship onto an existing canonical page ───────
+  if (opts.ownerUrlHint) {
+    const hintHost = hostFromUrl(opts.ownerUrlHint)
+    if (hintHost && HOST_REPO[hintHost]) {
+      const mapped = filePathFromOwnerUrl(opts.ownerUrlHint, hintHost)
+      if (mapped) {
+        host = hintHost
+        filePath = mapped.filePath
+        urlPath = mapped.urlPath
+        canonicalUrl = opts.ownerUrlHint.replace(/\/+$/, '') + '/'
+        routingSource = 'registry_owner_url'
+        warnings.push(
+          `Keyword cluster: generation expands existing canonical page ${canonicalUrl} — no sibling created`,
+        )
+        action = 'expand'
+        // Reconcile content type with the forced path (never legal_guide on universities)
+        const re2 = reconcileContentTypeWithPath({ contentType, filePath, host, intentClass })
+        contentType = re2.contentType
+        intentClass = re2.intentClass
+      } else {
+        warnings.push(`ownerUrlHint ${opts.ownerUrlHint} could not be mapped to a file path — ignored`)
+      }
+    } else {
+      warnings.push(`ownerUrlHint ${opts.ownerUrlHint} has no known estate host — ignored`)
+    }
+  }
 
   return {
     matched,
