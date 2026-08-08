@@ -119,10 +119,27 @@ export async function* runSeoFactoryPipelineStream(
       keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
     })
     const gscBlock = formatGscBriefForPrompt(gscBrief)
-    const strategyBlock = await formatStrategyForPrompt({
+    let strategyBlock = await formatStrategyForPrompt({
       topic: `${topic} ${primaryKeyword}`,
       maxChars: 4200,
     })
+
+    // ── Opportunity Radar autopilot brief (transparency into the draft) ──
+    const opp = input.opportunity
+    const radarInterlinks = Array.isArray(input.interlinks) ? input.interlinks : []
+    const autopilotBlock = [
+      radarInterlinks.length
+        ? `### Internal linking strategy (from Opportunity Radar)\nLink naturally to these high-value targets with descriptive anchors where relevant:\n${radarInterlinks
+            .map((l) => `- ${l.label || l.url} (${l.url})${l.matchedOn?.length ? ` — matches: ${l.matchedOn.join(', ')}` : ''}`)
+            .join('\n')}`
+        : '',
+      opp
+        ? `### Opportunity brief\nPrimary keyword: ${opp.primaryKeyword || ''}\nPlay: ${opp.play || ''} · Intent: ${opp.intent || ''} · Opportunity score: ${opp.opportunityScore ?? ''}\nSignals: ${(opp.signals || []).join(' | ')}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+    if (autopilotBlock) strategyBlock = `${strategyBlock}\n\n${autopilotBlock}`
 
     const system = buildFactorySystemPrompt({
       plan,
