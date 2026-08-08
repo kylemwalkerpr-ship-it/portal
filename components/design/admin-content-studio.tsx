@@ -910,9 +910,44 @@ function LiveGenerationPanel({
 
 // ── Job History Table ──
 
-function JobHistory({ jobs, expanded, onToggle, onSelect, loading }: {
+function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex }: {
   jobs: ContentJob[]; expanded: boolean; onToggle: () => void; onSelect: (j: ContentJob) => void; loading: boolean
+  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
 }) {
+  // Does this job's page belong to a resolved (merged) cannibal cluster?
+  const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
+    const path = jobWebPath(j)
+    if (path) {
+      const hit = mergeIndex.byPath.get(path)
+      if (hit) return hit
+    }
+    const stemKey = canonicalMergeStem(j.primary_keyword ?? j.topic ?? '')
+    if (stemKey) {
+      const hit = mergeIndex.byStem.get(stemKey)
+      if (hit) return hit
+    }
+    return null
+  }
+  const mergedBadge = (hit: MergeUrlHit) => {
+    const isWinner = hit.role === 'winner'
+    return (
+      <span
+        title={
+          isWinner
+            ? `Cluster winner — ${hit.redirectsCreated} redirect${hit.redirectsCreated === 1 ? '' : 's'} point here${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
+            : `Merged — page 301s into ${hit.winnerUrl}${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
+        }
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '1px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+          background: isWinner ? '#D1FAE5' : '#FEF3C7',
+          color: isWinner ? '#065F46' : '#92400E',
+        }}
+      >
+        {isWinner ? '★ WINNER' : '⚡ MERGED'}
+      </span>
+    )
+  }
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
       <button onClick={onToggle} style={{
@@ -957,7 +992,12 @@ function JobHistory({ jobs, expanded, onToggle, onSelect, loading }: {
                     </td>
                     <td style={tdStyle}><span style={{ fontSize: 10, color: C.textMuted }}>{j.content_type?.replace('_', ' ')}</span></td>
                     <td style={tdStyle}>{j.region}</td>
-                    <td style={tdStyle}>{statusBadge(j.status)}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                        {statusBadge(j.status)}
+                        {mergeHitFor(j) && mergedBadge(mergeHitFor(j)!)}
+                      </div>
+                    </td>
                     <td style={tdStyle}>{j.seo_score != null ? `${j.seo_score}%` : '—'}</td>
                     <td style={tdStyle}>
                       {j.pr_url ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 500 }}>PR #{j.pr_number} ↗</a> : '—'}
@@ -1002,6 +1042,51 @@ interface CannibalMergeRecord {
   status: 'merged' | 'skipped'
   message?: string
   mergedAt: number
+}
+
+// ── Merge → job row badge ──
+// A Content Studio job row gets a badge when its page was part of a resolved
+// (merged) cannibalization cluster. Built from the same shared
+// GET /api/seo-factory/cannibal-merges trail the Merge History panel uses:
+//   • loser page  → "merged" badge (its URL was 301'd into the winner)
+//   • winner page → "winner" badge (canonical target of the cluster)
+// Matches job rows to merges by slug-derived web path first, then by
+// primary_keyword/topic stem, so jobs resolve even when GSC reported a
+// slightly different URL spelling.
+
+interface MergeUrlHit {
+  role: 'winner' | 'loser'
+  clusterId: string
+  stem: string
+  winnerUrl: string
+  redirectsCreated: number
+  prUrl?: string
+  prNumber?: number
+  mergedAt: number
+}
+
+function normMergePath(u: string): string {
+  try {
+    const p = new URL(u)
+    let path = p.pathname
+    if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1)
+    if (path.endsWith('/index.html')) path = path.slice(0, -'/index.html'.length)
+    return (path || '/').toLowerCase()
+  } catch {
+    return u.trim().toLowerCase()
+  }
+}
+
+function canonicalMergeStem(q: string): string {
+  return q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .split(' ').slice(0, 4).join(' ')
+}
+
+function jobWebPath(j: ContentJob): string {
+  if (!j.slug) return ''
+  const slug = j.slug.replace(/^\/+|\/+$/g, '')
+  return slug ? `/${slug.toLowerCase()}` : ''
 }
 
 function MergeHistory() {
@@ -1714,6 +1799,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [radarMeta, setRadarMeta] = React.useState<Record<string, unknown> | null>(null)
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
   const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
+  // Resolved (merged) cannibal clusters, indexed by page path + keyword stem,
+  // so job rows can show a "merged"/"winner" badge when their page was part
+  // of a resolved cluster. Refreshed alongside jobs.
+  const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -1728,6 +1817,51 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load jobs')
     } finally { setLoading(false) }
+  }, [])
+
+  // Best-effort index of merged clusters → job pages. Non-fatal: on any
+  // failure the badge simply stays hidden (Merge History panel shows errors).
+  const fetchMergeIndex = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-merges', { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = (await res.json().catch(() => ({}))) as { error?: string; merges?: CannibalMergeRecord[] }
+      const byPath = new Map<string, MergeUrlHit>()
+      const byStem = new Map<string, MergeUrlHit>()
+      for (const m of (data.merges ?? [])) {
+        if (m.status !== 'merged') continue
+        const hit: MergeUrlHit = {
+          role: 'winner',
+          clusterId: m.clusterId,
+          stem: m.stem,
+          winnerUrl: m.winnerUrl,
+          redirectsCreated: m.redirectsCreated,
+          prUrl: m.prUrl,
+          prNumber: m.prNumber,
+          mergedAt: m.mergedAt,
+        }
+        // Winner page
+        const winnerPath = normMergePath(m.winnerUrl)
+        const prevWinner = byPath.get(winnerPath)
+        if (!prevWinner || prevWinner.mergedAt < hit.mergedAt) byPath.set(winnerPath, hit)
+        // Loser pages → merged badge
+        for (const loser of m.loserUrls ?? []) {
+          const lp = normMergePath(loser)
+          const prevLoser = byPath.get(lp)
+          if (!prevLoser || prevLoser.mergedAt < hit.mergedAt) byPath.set(lp, { ...hit, role: 'loser' })
+        }
+        // Keyword stems (fallback match for jobs whose slug URL differs)
+        for (const stem of [m.stem, ...(m.terms ?? [])]) {
+          const key = canonicalMergeStem(stem)
+          if (!key) continue
+          const prevStem = byStem.get(key)
+          if (!prevStem || prevStem.mergedAt < hit.mergedAt) byStem.set(key, hit)
+        }
+      }
+      setMergeIndex({ byPath, byStem })
+    } catch {
+      // best-effort
+    }
   }, [])
 
   const fetchSuggestions = React.useCallback(async (region: string) => {
@@ -1765,6 +1899,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
 
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
+  React.useEffect(() => { fetchMergeIndex() }, [fetchMergeIndex])
 
   // Poll active jobs
   React.useEffect(() => {
@@ -1988,6 +2123,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             jobs={jobs} expanded={historyExpanded}
             onToggle={() => setHistoryExpanded(!historyExpanded)}
             onSelect={setSelectedJob} loading={loading}
+            mergeIndex={mergeIndex}
           />
 
           {/* Cannibalization Merge History — shared with the Command Center */}
