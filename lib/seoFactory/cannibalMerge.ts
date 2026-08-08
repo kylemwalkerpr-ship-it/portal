@@ -10,9 +10,16 @@
  *   3. Enriches the winner frontmatter with mergedQueries so it explicitly
  *      targets the merged term (interlink/SEO layer reads this later).
  * Writes go to main directly (mode: 'merge') or a review PR (mode: 'pr').
+ *
+ * Resolution hardening (v2): when the caller passes a bare keyword or an
+ * incomplete winner/loser set, this engine resolves the *actual competing
+ * pages* straight from Google Search Console query×page data (highest
+ * impressions = winner) instead of throwing a validation error. GSC data is
+ * the source of truth for "which pages rank for this term".
  */
 
 import { hostFromUrl, HOST_REPO, filePathFromOwnerUrl, slugify, type OwnerHost } from './ownership'
+import { getGscAccess } from '@/lib/gscAuth'
 import {
   createBranchFrom,
   encodeRepoPath,
@@ -147,6 +154,122 @@ function withMergedQuery(content: string, term: string): string | null {
   return `---\n${fm}\n---\n${m[2]}`
 }
 
+// ---------------------------------------------------------------------------
+// GSC resolution — the page set for a term comes from Google, not from guesses
+// ---------------------------------------------------------------------------
+
+/** A keyword-shaped string (no scheme/host) is a query, not a page URL. */
+function looksLikeKeyword(value: string): boolean {
+  const v = value.trim().toLowerCase()
+  if (!v) return true
+  if (/^https?:\/\//i.test(v)) return false
+  if (v.startsWith('/')) return false // path-only is still URL-ish
+  return !/\.[a-z]{2,}(\/|$)/i.test(v) // no domain-looking component → keyword
+}
+
+function canonicalStem(q: string): string {
+  return q
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 4)
+    .join(' ')
+}
+
+export interface ResolvedCannibalPage {
+  url: string
+  impressions: number
+  clicks: number
+  position: number
+}
+
+export interface CannibalResolution {
+  pages: ResolvedCannibalPage[]
+  source: 'gsc_live'
+  siteUrl: string
+}
+
+/**
+ * Query Google Search Console for every query×page row in the last 30 days,
+ * keep rows whose keyword stem overlaps the target term, and return the pages
+ * competing for it ranked by impressions. Returns null when GSC is not
+ * configured or no competing pages were found.
+ */
+export async function resolveCannibalPages(term: string): Promise<CannibalResolution | null> {
+  const trimmed = term.trim()
+  if (!trimmed) return null
+
+  const access = await getGscAccess().catch(() => null)
+  if (!access?.accessToken || !access.siteUrl) return null
+
+  const encodedSite = encodeURIComponent(access.siteUrl)
+  const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${access.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      startDate: '30daysAgo',
+      endDate: 'today',
+      dimensions: ['query', 'page'],
+      rowLimit: 1000,
+      aggregationType: 'auto',
+    }),
+  })
+  if (!res.ok) return null
+
+  const data = (await res.json()) as {
+    rows?: Array<{
+      keys: string[]
+      clicks: number
+      impressions: number
+      ctr: number
+      position: number
+    }>
+  }
+
+  const termStem = canonicalStem(trimmed)
+  const pageMap = new Map<
+    string,
+    { impressions: number; clicks: number; positions: number[] }
+  >()
+
+  for (const row of data.rows ?? []) {
+    const q = String(row.keys?.[0] ?? '').toLowerCase().trim()
+    const rawUrl = String(row.keys?.[1] ?? '').trim()
+    if (!q || q.length < 8 || !rawUrl || !/^https?:\/\//i.test(rawUrl)) continue
+    // Only rows whose stem overlaps the term belong to this cluster.
+    if (canonicalStem(q) !== termStem) continue
+
+    const urlKey = rawUrl.replace(/\/+$/, '')
+    const existing = pageMap.get(urlKey) ?? { impressions: 0, clicks: 0, positions: [] }
+    existing.impressions += row.impressions
+    existing.clicks += row.clicks
+    existing.positions.push(row.position)
+    pageMap.set(urlKey, existing)
+  }
+
+  const pages: ResolvedCannibalPage[] = [...pageMap.entries()]
+    .map(([u, d]) => ({
+      url: u,
+      impressions: d.impressions,
+      clicks: d.clicks,
+      position: Math.round((d.positions.reduce((a, b) => a + b, 0) / d.positions.length) * 10) / 10,
+    }))
+    .sort((a, b) => b.impressions - a.impressions)
+
+  if (pages.length === 0) return null
+
+  return { pages, source: 'gsc_live', siteUrl: access.siteUrl }
+}
+
 export async function executeCannibalMerge(opts: {
   term: string
   winnerUrl: string
@@ -155,8 +278,8 @@ export async function executeCannibalMerge(opts: {
 }): Promise<CannibalMergeOutcome> {
   const mode: CannibalMergeMode = opts.mode === 'pr' ? 'pr' : 'merge'
   const term = opts.term.trim().slice(0, 160)
-  const winnerUrl = opts.winnerUrl.trim()
-  const loserUrls = [...new Set(opts.loserUrls.map((u) => u.trim()).filter(Boolean))].filter(
+  let winnerUrl = opts.winnerUrl.trim()
+  let loserUrls = [...new Set(opts.loserUrls.map((u) => u.trim()).filter(Boolean))].filter(
     (u) => u !== winnerUrl,
   )
 
@@ -169,10 +292,34 @@ export async function executeCannibalMerge(opts: {
     skipped: [],
   }
 
-  if (!term || !winnerUrl || loserUrls.length === 0) {
-    throw new Error('term, winnerUrl and at least one loserUrl are required')
+  if (!term) {
+    throw new Error('A search term is required to run a cannibal merge.')
   }
 
+  // Resolution-first: if the caller passed a bare keyword, a missing winner,
+  // or an empty loser set, pull the competing pages from GSC page data.
+  if (!winnerUrl || looksLikeKeyword(winnerUrl) || loserUrls.length === 0) {
+    const resolved = await resolveCannibalPages(term)
+    if (resolved && resolved.pages.length >= 2) {
+      winnerUrl = resolved.pages[0].url
+      loserUrls = resolved.pages.slice(1).map((p) => p.url)
+      outcome.winnerUrl = winnerUrl
+      outcome.skipped.push({
+        url: `resolved:${term}`,
+        reason: `pages resolved from GSC (${resolved.pages.length} competing, winner = highest impressions)`,
+      })
+    } else {
+      throw new Error(
+        `Could not resolve competing pages for "${term}" from Google Search Console. ` +
+          'Refresh GSC data in the War Room, then retry — or pick a winner and at least one loser page explicitly.',
+      )
+    }
+  }
+
+  // Hard validation of the final (possibly resolved) page set.
+  if (!/^https?:\/\//i.test(winnerUrl)) {
+    throw new Error(`Winner is not a valid page URL: ${winnerUrl}`)
+  }
   const winnerHost = hostFromUrl(winnerUrl)
   if (!winnerHost) throw new Error(`Could not resolve host for winner URL: ${winnerUrl}`)
   const winnerPath = pathOf(winnerUrl)
