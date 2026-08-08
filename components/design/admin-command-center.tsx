@@ -163,6 +163,18 @@ const btnSmall: React.CSSProperties = {
 const th: React.CSSProperties = { padding: '8px 10px', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textDim, fontFamily: C.mono, fontWeight: 600, whiteSpace: 'nowrap' }
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 12, verticalAlign: 'middle' }
 
+type MissionEntry = {
+  id: string
+  kind: string
+  status: 'success' | 'error' | 'info' | 'warn'
+  source: string
+  message: string
+  detail: Record<string, unknown> | null
+  job_id: string | null
+  pr_url: string | null
+  created_at: string
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 export default function AdminCommandCenter({
   setActionNotice,
@@ -216,6 +228,72 @@ export default function AdminCommandCenter({
     setActionNotice(msg)
     pushLog(kind === 'success' ? 'success' : kind === 'error' ? 'error' : 'info', 'command', msg)
   }
+
+  // ── Mission Log (persistent audit trail) ─────────────────────────────────
+  const [missionLog, setMissionLog] = React.useState<MissionEntry[]>([])
+  const [missionOpen, setMissionOpen] = React.useState(true)
+  const [missionKind, setMissionKind] = React.useState('all')
+  const [missionStatus, setMissionStatus] = React.useState('all')
+  const [missionReload, setMissionReload] = React.useState(0)
+  const [missionLoading, setMissionLoading] = React.useState(false)
+
+  const recordMission = React.useCallback(
+    (entry: {
+      kind: string
+      status: 'success' | 'error' | 'info' | 'warn'
+      source?: string
+      message: string
+      detail?: Record<string, unknown>
+      jobId?: string | null
+      prUrl?: string | null
+    }) => {
+      const optimistic: MissionEntry = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        kind: entry.kind,
+        status: entry.status,
+        source: entry.source || 'command',
+        message: entry.message,
+        detail: entry.detail ?? null,
+        job_id: entry.jobId || null,
+        pr_url: entry.prUrl || null,
+        created_at: new Date().toISOString(),
+      }
+      setMissionLog((prev) => [optimistic, ...prev].slice(0, 120))
+      fetch('/api/seo-factory/mission-log', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: entry.kind, status: entry.status, source: entry.source || 'command',
+          message: entry.message, detail: entry.detail || {},
+          job_id: entry.jobId || null, pr_url: entry.prUrl || null,
+        }),
+      }).catch(() => {})
+    },
+    [],
+  )
+
+  React.useEffect(() => {
+    if (!missionOpen) return
+    let cancelled = false
+    setMissionLoading(true)
+    const q = new URLSearchParams({ limit: '60' })
+    if (missionKind !== 'all') q.set('kind', missionKind)
+    if (missionStatus !== 'all') q.set('status', missionStatus)
+    fetch(`/api/seo-factory/mission-log?${q.toString()}`, { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((data) => {
+        if (!cancelled) setMissionLog(Array.isArray(data.entries) ? data.entries : [])
+      })
+      .catch(() => {
+        if (!cancelled) setMissionLog((prev) => prev.filter((m) => m.id.startsWith('local-')))
+      })
+      .finally(() => {
+        if (!cancelled) setMissionLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [missionOpen, missionKind, missionStatus, missionReload])
 
   // ── Radar ────────────────────────────────────────────────────────────────
   const loadRadar = React.useCallback(async () => {
@@ -336,8 +414,22 @@ export default function AdminCommandCenter({
       if (!res.ok) throw new Error(data.error || 'Save failed')
       if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
       notify(`Draft saved · SEO ${data.audit?.score ?? data.job?.seo_score ?? '—'} · ${data.job?.word_count ?? '—'} words`, 'success')
+      recordMission({
+        kind: 'save', status: 'success', source: 'jobs',
+        message: `Draft saved · ${selectedJobId.slice(0, 8)}`,
+        detail: {
+          seo: data.audit?.score ?? data.job?.seo_score ?? null,
+          words: data.job?.word_count ?? null,
+        },
+        jobId: selectedJobId,
+      })
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Save failed', 'error')
+      recordMission({
+        kind: 'save', status: 'error', source: 'jobs',
+        message: `Save failed · ${e instanceof Error ? e.message : 'save error'}`,
+        jobId: selectedJobId,
+      })
     } finally {
       setBusy(false)
     }
@@ -390,6 +482,12 @@ export default function AdminCommandCenter({
       if (!res.ok) throw new Error(data.error || 'PR refresh failed')
       if (data.job) setJobs((prev) => prev.map((j) => (j.id === data.job.id ? data.job : j)))
       setPrStatus(data.prStatus || null)
+      recordMission({
+        kind: 'refresh', status: 'success', source: 'jobs',
+        message: `PR status refreshed · ${selectedJobId.slice(0, 8)}${data.prStatus?.state ? ` · ${data.prStatus.state}` : ''}`,
+        jobId: selectedJobId,
+        prUrl: data.prStatus?.url || null,
+      })
     } catch (e) {
       notify(e instanceof Error ? e.message : 'PR refresh failed', 'error')
     } finally {
@@ -457,6 +555,7 @@ export default function AdminCommandCenter({
       const decoder = new TextDecoder()
       let buffer = ''
       let jobId: string | null = null
+      let lastPrUrl: string | null = null
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -476,7 +575,10 @@ export default function AdminCommandCenter({
             if (chars) setLaunchFeed((prev) => [...prev.slice(0, -1), { ts: Date.now(), level: 'info', msg: `Drafting… ${chars} chars` }])
           }
           else if (ev.type === 'attempt') record('info', `Refine attempt ${ev.attempt} · score ${ev.audit?.score ?? '—'}`)
-          else if (ev.type === 'ship') record('success', `Shipped: ${ev.mode || 'pr'}${ev.prUrl ? ` → ${ev.prUrl}` : ''}`)
+          else if (ev.type === 'ship') {
+            record('success', `Shipped: ${ev.mode || 'pr'}${ev.prUrl ? ` → ${ev.prUrl}` : ''}`)
+            if (ev.prUrl) lastPrUrl = String(ev.prUrl)
+          }
           else if (ev.type === 'final') {
             jobId = ev.jobId || ev.job?.id || null
             record('success', `Done · job ${String(jobId || '').slice(0, 8)}`)
@@ -490,9 +592,27 @@ export default function AdminCommandCenter({
         selectJob(jobId)
       }
       notify(jobId ? `Generation complete · ${jobId.slice(0, 8)}` : 'Generation complete', 'success')
+      recordMission({
+        kind: 'launch', status: 'success', source: 'generate-stream',
+        message: `Launch complete · “${brief.topic.slice(0, 60)}”`,
+        detail: {
+          topic: brief.topic,
+          contentType: brief.contentType || null,
+          provider: aiProvider,
+          play: brief.play || null,
+          score: brief.score ?? null,
+        },
+        jobId,
+        prUrl: lastPrUrl,
+      })
     } catch (e) {
       record('error', e instanceof Error ? e.message : 'Generation failed')
       notify(e instanceof Error ? e.message : 'Generation failed', 'error')
+      recordMission({
+        kind: 'launch', status: 'error', source: 'generate-stream',
+        message: `Launch failed · ${e instanceof Error ? e.message : 'generation failed'}`,
+        detail: { topic: brief.topic },
+      })
     } finally {
       setGenerating(false)
     }
@@ -509,6 +629,7 @@ export default function AdminCommandCenter({
     setWorkspaceOpen(true)
     setActivityLine(`Auto-Pilot · ${terms.length} plays · ${shipMode}…`)
     pushLog('info', 'autopilot', `Start auto-run · ${terms.length} terms · mode ${shipMode}`)
+    let autoSummary: any = null
     const body = JSON.stringify({
       limit: terms.length, shipMode, dryRun,
       minAuditScore: minAudit, maxRefine, skipRecent: true,
@@ -545,6 +666,7 @@ export default function AdminCommandCenter({
               const m = ev.message || (ev.type === 'ship' ? `Shipped ${ev.term || ''}` : ev.type)
               if (m) pushLog('info', 'autopilot', String(m))
               if (ev.type === 'ship' && ev.prUrl) pushLog('success', 'autopilot', `PR: ${ev.prUrl}`)
+              if (ev.type === 'final') autoSummary = ev
             } else if (ev.type === 'error') {
               throw new Error(ev.error || 'Auto-pilot failed')
             }
@@ -552,9 +674,33 @@ export default function AdminCommandCenter({
         }
       }
       await loadJobs()
+      const results = Array.isArray(autoSummary?.results) ? autoSummary.results : []
+      const shipped =
+        autoSummary?.shipped != null
+          ? autoSummary.shipped
+          : results.filter((r: any) => r.ok).length
+      recordMission({
+        kind: 'autopilot', status: 'success', source: 'auto-run-stream',
+        message: `Auto-pilot complete · ${terms.length} play${terms.length === 1 ? '' : 's'} · ${shipped} shipped`,
+        detail: {
+          terms,
+          shipMode,
+          provider: aiProvider,
+          shipped,
+          candidateCount: autoSummary?.candidateCount ?? results.length,
+          results: results.slice(0, 12).map((r: any) => ({
+            term: r.term || null, ok: !!r.ok, jobId: r.jobId || null, prUrl: r.prUrl || null,
+          })),
+        },
+      })
       notify('Auto-pilot run complete', 'success')
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Auto-pilot failed', 'error')
+      recordMission({
+        kind: 'autopilot', status: 'error', source: 'auto-run-stream',
+        message: `Auto-pilot failed · ${e instanceof Error ? e.message : 'auto-pilot error'}`,
+        detail: { terms },
+      })
     } finally {
       setBusy(false)
       setActivityLine(null)
@@ -581,9 +727,19 @@ export default function AdminCommandCenter({
       if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
       setResolvedTerms((prev) => new Set(prev).add(String(o.term)))
       notify(`Merged “${o.term}” → ${winner.split('/').pop() || winner} (${(data.redirectsAdded || []).length} redirects)`, 'success')
+      recordMission({
+        kind: 'merge', status: 'success', source: 'cannibal-merge',
+        message: `Merged “${o.term}” → ${winner.split('/').pop() || winner}`,
+        detail: { term: o.term, winner, losers, redirects: (data.redirectsAdded || []).length },
+      })
       loadRadar()
     } catch (e) {
       notify(e instanceof Error ? e.message : 'cannibal merge failed', 'error')
+      recordMission({
+        kind: 'merge', status: 'error', source: 'cannibal-merge',
+        message: `Merge failed · ${e instanceof Error ? e.message : 'cannibal merge failed'}`,
+        detail: { term: o.term },
+      })
     } finally {
       setBusy(false)
     }
@@ -1060,6 +1216,74 @@ export default function AdminCommandCenter({
             </div>
           </div>
         )}
+
+        {/* ── Mission Log (persistent audit trail) ── */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button type="button" onClick={() => setMissionOpen((v) => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 10, padding: 0 }}>
+                <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>📜 Mission Log</h2>
+                <span style={{ fontSize: 12, color: C.textDim }}>{missionOpen ? '▲' : '▼'}</span>
+              </button>
+              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                persistent audit trail · {missionLog.length} shown{missionLoading ? ' · loading…' : ''}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+              {[['all', 'All'], ['launch', 'Launch'], ['autopilot', 'Autopilot'], ['merge', 'Merge'], ['save', 'Save'], ['refresh', 'Refresh']].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setMissionKind(k)} style={{
+                  padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: missionKind === k ? C.navy : C.surface2,
+                  color: missionKind === k ? '#fff' : C.textMuted,
+                }}>
+                  {label}
+                </button>
+              ))}
+              <span style={{ width: 1, height: 14, background: C.border, margin: '0 4px' }} />
+              {[['all', 'All'], ['success', '✓'], ['error', '✕'], ['warn', '⚠']].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setMissionStatus(k)} style={{
+                  padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: missionStatus === k ? C.navy : C.surface2,
+                  color: missionStatus === k ? '#fff' : C.textMuted,
+                }}>
+                  {label}
+                </button>
+              ))}
+              <button type="button" onClick={() => setMissionReload((n) => n + 1)} style={btnSmall} disabled={missionLoading}>
+                {missionLoading ? '…' : '↻'}
+              </button>
+            </div>
+          </div>
+          {missionOpen && (
+            <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+              {missionLog.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                  {missionLoading ? 'Loading mission history…' : 'No missions recorded yet — launch a play to start the audit trail.'}
+                </div>
+              )}
+              {missionLog.map((m) => (
+                <div key={m.id} style={{ padding: '9px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, marginTop: 5, flexShrink: 0,
+                    background: m.status === 'success' ? C.green : m.status === 'error' ? C.red : m.status === 'warn' ? '#D97706' : C.textDim }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted }}>{m.kind}</span>
+                      <span style={{ fontSize: 12, color: C.text, fontWeight: 500 }}>{m.message}</span>
+                      {m.pr_url && (
+                        <a href={m.pr_url} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 10, fontFamily: C.mono, textDecoration: 'none' }}>PR ↗</a>
+                      )}
+                      {m.job_id && <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>job {m.job_id.slice(0, 8)}</span>}
+                    </div>
+                    <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 2, wordBreak: 'break-word' }}>
+                      {timeAgo(m.created_at)} · {m.source}
+                      {m.detail && Object.keys(m.detail).length > 0 ? ` · ${JSON.stringify(m.detail).slice(0, 140)}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* ── Systems ── */}
         <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
