@@ -502,7 +502,7 @@ export default function AdminCommandCenter({
   const runAutopilot = async () => {
     const terms = [...selectedTerms]
     if (!terms.length) {
-      notify('Select radar plays first', 'warn')
+      notify('Select radar plays first', 'info')
       return
     }
     setBusy(true)
