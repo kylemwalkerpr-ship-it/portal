@@ -106,6 +106,24 @@ export interface PipelineInput {
   } | null
   /** Internal-link targets chosen by the Opportunity Radar autopilot. */
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }> | null
+  /**
+   * Keyword-cluster resolution (anti-cannibalization): when the Radar resolves
+   * this brief to an existing canonical page, generation expands THAT page and
+   * merges the whole cluster's keywords instead of creating a sibling.
+   */
+  cluster?: {
+    clusterId?: string
+    canonicalTerm?: string
+    keywords?: string[]
+    intent?: string
+    region?: string
+    mode?: 'expand' | 'new'
+    targetUrl?: string | null
+    targetRepo?: string | null
+    targetFilePath?: string | null
+    existingJobId?: string | null
+    reason?: string
+  } | null
 }
 
 export interface PipelineResult {
@@ -168,6 +186,20 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     throw new Error('topic required')
   }
 
+  // Keyword cluster: merge the whole cluster into the brief so ONE page answers
+  // every related query (anti-cannibalization). Resolve to an existing page
+  // when the cluster says so.
+  const clusterKeywords = Array.isArray(input.cluster?.keywords)
+    ? input.cluster!.keywords!
+    : []
+  const mergedKeywords = Array.isArray(input.keywords)
+    ? [...new Set([...input.keywords, primaryKeyword, ...clusterKeywords])].slice(0, 10)
+    : [...new Set([primaryKeyword, ...clusterKeywords])].slice(0, 10)
+  const ownerUrlHint =
+    input.cluster?.mode === 'expand' && input.cluster?.targetUrl
+      ? String(input.cluster.targetUrl)
+      : undefined
+
   // Resolve ownership FIRST from SEO strategies registry — content type may be adjusted
   const plan = await resolveOwner({
     primaryKeyword,
@@ -175,6 +207,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     region,
     indexable,
     slug: input.slug,
+    ownerUrlHint,
   })
   // Always trust plan's path/host-reconciled type (never ship legal_guide to usa universities)
   contentType = plan.contentType || contentType
@@ -202,7 +235,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   const gscBrief = await buildGscContentBrief({
     topic,
     region,
-    keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
+    keywords: mergedKeywords,
   })
   // Build canonical SEO intelligence — the single source of truth for all
   // keyword selection, intent classification, and conversion routing.
@@ -213,7 +246,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     region,
     title,
     topic,
-    extraKeywords: Array.isArray(input.keywords) ? input.keywords : undefined,
+    extraKeywords: mergedKeywords,
   })
   const canonPortfolio = seoCanon.canonicalPromptBlock
 
