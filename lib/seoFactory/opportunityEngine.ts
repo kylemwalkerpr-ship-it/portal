@@ -29,6 +29,8 @@ export interface OpportunityQuery {
   position: number // 1-100+
   page?: string
   trend?: -1 | 0 | 1
+  /** Position trajectory over time (oldest → newest). Fills trendScore when present. */
+  history?: Array<{ date?: string; position: number; impressions: number; clicks?: number }>
 }
 
 export interface CoverageItem {
@@ -75,6 +77,10 @@ export interface Opportunity {
   sourcePage?: string
   profitability: 'high' | 'medium' | 'low'
   reason: string
+  /** Position trajectory (oldest → newest) when GSC history is available. */
+  history?: Array<{ date?: string; position: number; impressions: number }>
+  /** last - first position (negative = improving, lower rank number). */
+  positionDelta?: number
 }
 
 export interface OpportunityEngineResult {
@@ -112,6 +118,23 @@ function baselineCtrFor(position: number): number {
   if (p <= 30) return 0.006
   if (p <= 50) return 0.003
   return 0.001
+}
+
+/**
+ * Derive momentum from a position trajectory (oldest → newest).
+ * Position number decreasing = ranking up = rising.
+ */
+function trendFromHistory(history?: OpportunityQuery['history']): -1 | 0 | 1 {
+  if (!history) return 0
+  const pos = history.map((h) => h.position).filter((p) => p > 0)
+  if (pos.length < 2) return 0
+  const mid = Math.floor(pos.length / 2)
+  const first = pos.slice(0, mid).reduce((a, b) => a + b, 0) / mid
+  const second = pos.slice(mid).reduce((a, b) => a + b, 0) / (pos.length - mid)
+  const delta = first - second // + = recent positions improved (lower number)
+  if (delta >= 1.5) return 1
+  if (delta <= -1.5) return -1
+  return 0
 }
 
 function fmt(n: number): string {
@@ -228,7 +251,7 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
     const clicks = Math.max(0, q.clicks || 0)
     const ctr = q.ctr > 1 ? q.ctr / 100 : q.ctr || 0
     const position = Math.max(1, Math.round(q.position || 51))
-    const trend = q.trend ?? 0
+    const trend = q.trend ?? trendFromHistory(q.history)
 
     // ── Coverage & play classification ──
     const termSet = uniqueTokens([term])
@@ -259,7 +282,18 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       position <= 20
         ? Math.min(100, Math.round(ctrGap * 100))
         : Math.min(100, Math.round((baseCtr / 0.1) * 100))
-    const trendScore = trend === 1 ? 100 : trend === -1 ? 15 : 55
+    let trendScore = trend === 1 ? 100 : trend === -1 ? 15 : 55
+    // Magnitude-scaled when a real trajectory exists (±10 positions ≈ full scale)
+    if (q.history) {
+      const pos = q.history.map((h) => h.position).filter((p) => p > 0)
+      if (pos.length >= 2) {
+        const mid = Math.floor(pos.length / 2)
+        const first = pos.slice(0, mid).reduce((a, b) => a + b, 0) / mid
+        const second = pos.slice(mid).reduce((a, b) => a + b, 0) / (pos.length - mid)
+        const delta = Math.max(-10, Math.min(10, first - second))
+        trendScore = Math.max(0, Math.min(100, Math.round(55 + delta * 6)))
+      }
+    }
     let difficultyScore = Math.min(100, Math.round(34 + position * 2.2))
     if (impressions > 8000) difficultyScore += 12
     if (impressions > 20000) difficultyScore += 12
@@ -294,6 +328,12 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       signals.push(`Reaching page 1 (~${(baselineCtrFor(10) * 100).toFixed(1)}% CTR) could add ~${fmt(baselineCtrFor(10) * impressions)} clicks/mo`)
     }
     signals.push(`Demand ${demandScore}/100 · difficulty est. ${difficultyScore}/100`)
+    if (q.history) {
+      const pos = q.history.map((h) => h.position).filter((p) => p > 0)
+      if (pos.length >= 2) {
+        signals.push(`Position #${pos[0]} → #${pos[pos.length - 1]} across ${q.history.length} windows`)
+      }
+    }
     if (trend !== 0) signals.push(trend === 1 ? 'Momentum: rising — publish while demand grows' : 'Momentum: declining — freshness matters')
     if (matches.length === 0) signals.push('Content gap: no existing page targets this query')
     else if (play === 'refresh') signals.push(`Existing page “${matches[0].slice(0, 48)}” underperforms — expand & relink`)
@@ -349,6 +389,14 @@ export function scoreOpportunities(input: OpportunityEngineInput): OpportunityEn
       sourcePage: q.page,
       profitability: profitabilityFor(intent, impressions),
       reason: `${play.replace('_', ' ')} · #${position} · ${fmt(impressions)} imp/mo · ${intent}`,
+      history: q.history
+        ? q.history.filter((h) => h.position > 0).map((h) => ({ date: h.date, position: h.position, impressions: h.impressions }))
+        : undefined,
+      positionDelta: (() => {
+        const pos = (q.history || []).map((h) => h.position).filter((p) => p > 0)
+        if (pos.length < 2) return undefined
+        return Math.round((pos[pos.length - 1] - pos[0]) * 10) / 10
+      })(),
     })
 
     if (play === 'cannibalization') {
