@@ -372,3 +372,34 @@ export async function buildSeoWarRoom(opts?: {
     },
   }
 }
+// Legacy compatibility exports (used by auto-run-stream)
+
+export function inferContentType(term: string, _play?: WarPlay): string {
+  if (/blog|news|update|what is|how to/i.test(term)) return 'blog_summary'
+  if (/housing|apartment|dorm|rent|near /i.test(term)) return 'article'
+  if (/dependent|spouse|family|visa|opt|h-1b|f-1|pgwp|485/i.test(term)) return 'article'
+  return 'article'
+}
+
+export function playWriteHint(play: WarPlay, opts?: { position?: number; expectedCtr?: number; ctr?: number; pages?: Array<{ url: string }> }): string {
+  const pos = opts?.position?.toFixed(1) ?? '?'
+  if (play === 'title_ctr_rewrite') return 'PLAY title_ctr_rewrite (pos ' + pos + '). Rewrite title + meta + H1 to maximize CTR.'
+  if (play === 'strike_distance') return 'PLAY strike_distance (pos ' + pos + '). Expand with comparison table, checklist, FAQs.'
+  if (play === 'page1_defend') return 'PLAY page1_defend (pos ' + pos + '). Protect: refresh dates, add FAQs.'
+  if (play === 'deep_demand_build') return 'PLAY deep_demand_build (pos ' + pos + '). Build definitive guide.'
+  if (play === 'cannibal_merge') return 'PLAY cannibal_merge. Write ONE canonical pillar.'
+  if (play === 'aeo_entity_hub') return 'PLAY aeo_entity_hub. AI-friendly definitions, entities, FAQs, JSON-LD.'
+  if (play === 'decay_refresh') return 'PLAY decay_refresh. Update dated claims, refresh source links.'
+  return 'Write practitioner-grade immigration content optimized for SEO + AEO.'
+}
+
+export function playToOpportunityAction(play: WarPlay): string {
+  if (play === 'title_ctr_rewrite') return 'title_rewrite'
+  if (play === 'cannibal_merge') return 'cannibal_merge'
+  if (play === 'page1_defend') return 'page1_defend'
+  if (play === 'strike_distance') return 'strike_distance'
+  if (play === 'deep_demand_build') return 'deep_demand_build'
+  if (play === 'aeo_entity_hub') return 'aeo_entity_hub'
+  if (play === 'decay_refresh') return 'decay_refresh'
+  return 'expand_or_build'
+}
