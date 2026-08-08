@@ -904,7 +904,7 @@ export default function ContentStudioWorkspace({
                 <Row label="Canonical" value={job.canonical_url || '—'} mono />
                 <Row label="Indexable" value={job.indexable === false ? 'no' : 'yes'} />
                 <Row label="Ship mode" value={job.ship_mode || '—'} />
-                <div style={{ padding: 10, borderRadius: 8, border: `1px solid ${C.goldBorder}`, background: 'rgba(251,191,36,0.08)' }}>
+                <div style={{ padding: 10, borderRadius: 8, border: `1px solid ${C.gold}`, background: 'rgba(251,191,36,0.08)' }}>
                   <div style={{ fontWeight: 700, color: C.gold, fontSize: 10, textTransform: 'uppercase', marginBottom: 6 }}>
                     AI provider · resolved model
                   </div>
