@@ -4,6 +4,7 @@ import {
   isCloudflareAiConfigured,
   generateContentText,
   listConfiguredContentProviders,
+  refreshAiVault,
 } from '@/lib/contentAiProvider'
 import { getGscAccess } from '@/lib/gscAuth'
 import { createClient } from '@supabase/supabase-js'
@@ -19,6 +20,9 @@ export async function GET() {
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
+
+    // Admin-pasted vault keys (Supabase) take priority over Worker secrets.
+    await refreshAiVault()
 
     const checks: Array<{
       id: string
