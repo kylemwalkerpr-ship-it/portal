@@ -1,148 +1,178 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { fetchSiteSearchAnalytics } from '@/lib/gscAnalytics'
+import { loadGscSnapshot } from '@/lib/seoDataLoaders'
 import { buildGscContentBrief, buildKeywordPortfolio } from '@/lib/gscContentBrief'
+import { createClient } from '@supabase/supabase-js'
+import {
+  scoreOpportunities,
+  type OpportunityEngineInput,
+} from '@/lib/seoFactory/opportunityEngine'
 
 export const runtime = 'nodejs'
 
 /**
  * POST /api/content-studio/gsc/suggestions
  *
- * Returns AI-curated topic suggestions for Quick Create.
- * Powered by the GSC keyword portfolio + SEO canon framework.
+ * Opportunity Radar API — the intelligence layer behind Quick Create.
+ *
+ * 1. Loads real search demand (live GSC analytics or CSV snapshot fallback).
+ * 2. Loads existing content inventory (content_jobs) for coverage + cannibalization.
+ * 3. Loads the ecosystem internal-link registry.
+ * 4. Runs the Opportunity Intelligence Engine → ranked, explainable suggestions
+ *    with a full signals trail, play classification, intent, and interlink strategy.
  *
  * Body: { region?, topic?, limit? }
  */
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdminUser()
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status })
-    }
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
     const region = typeof body.region === 'string' ? body.region : 'US'
     const seedTopic = typeof body.topic === 'string' && body.topic.trim() ? body.topic.trim() : ''
-    const limit = typeof body.limit === 'number' ? Math.min(12, Math.max(3, body.limit)) : 6
+    const limit = typeof body.limit === 'number' ? Math.min(16, Math.max(3, body.limit)) : 6
 
-    // Build the GSC content brief for the region
+    // ── 1. Search demand (live or snapshot) ────────────────────────────────
+    const live = await fetchSiteSearchAnalytics(90)
+    let queries: OpportunityEngineInput['queries'] = []
+    let source = 'snapshot'
+    const warnings: string[] = []
+
+    if (live.configured && live.topQueries.length > 0) {
+      source = 'live'
+      queries = live.topQueries.map((q) => ({
+        term: q.key,
+        impressions: q.impressions,
+        clicks: q.clicks,
+        ctr: q.ctr,
+        position: q.position,
+      }))
+      const prev = live.totalsPrev
+      if (prev && prev.clicks > 0) {
+        const change = ((live.totals.clicks - prev.clicks) / prev.clicks) * 100
+        warnings.push(
+          `GSC live · 90-day window · clicks ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}% vs previous period`,
+        )
+      } else {
+        warnings.push('GSC live · 90-day window')
+      }
+    } else {
+      const snap = await loadGscSnapshot()
+      const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
+        term: q.term || q.url || '',
+        impressions: q.impressions,
+        clicks: q.clicks,
+        ctr: q.ctr,
+        position: q.position,
+      })
+      queries = [
+        ...(snap.topQueries ?? []).map(shape),
+        ...((snap.opportunities?.highImpressionLowCtr as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
+        ...((snap.opportunities?.highImpressionDeepRank as Array<{ term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }> | undefined) ?? []).map(shape),
+      ]
+      warnings.push('Opportunity scoring on CSV snapshot — connect live Search Console for fresher data')
+    }
+
+    // ── 2. Existing content inventory (coverage + cannibalization) ─────────
+    let coverage: OpportunityEngineInput['coverage'] = []
+    try {
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+      const { data } = await supabase
+        .from('content_jobs')
+        .select('title, topic, primary_keyword, status, content_path')
+        .order('created_at', { ascending: false })
+        .limit(300)
+      coverage = ((data ?? []) as Array<Record<string, unknown>>)
+        .filter((j) => j && (j.title || j.topic || j.primary_keyword))
+        .map((j) => ({
+          title: String(j.title || j.topic || j.primary_keyword || ''),
+          topic: j.topic ? String(j.topic) : null,
+          primaryKeyword: j.primary_keyword ? String(j.primary_keyword) : null,
+          status: j.status ? String(j.status) : null,
+          url: j.content_path ? String(j.content_path) : null,
+        }))
+    } catch (err) {
+      console.warn('[content-studio/gsc/suggestions] coverage load failed', err)
+    }
+
+    // ── 3. Internal-link registry ──────────────────────────────────────────
+    let interlinks: OpportunityEngineInput['interlinks'] = []
+    try {
+      const { LINKS } = await import('@/lib/interlinkRegistry')
+      interlinks = ((LINKS as Array<Record<string, unknown>>) || [])
+        .map((l) => ({
+          label: String(l.label || l.title || l.url || ''),
+          url: String(l.url || ''),
+          site: String(l.site || 'caseworks'),
+          kind: String(l.kind || 'page'),
+        }))
+        .filter((l) => l.label && l.url)
+    } catch (err) {
+      console.warn('[content-studio/gsc/suggestions] interlink registry load failed', err)
+    }
+
+    // ── 4. Brief (portfolio snapshot + strategy hints, backward compat) ────
     const brief = await buildGscContentBrief({
-      topic: seedTopic || 'immigration international students visas housing jobs',
+      topic: seedTopic || 'immigration international students visas housing',
       region,
     })
-
-    // Build keyword portfolio — merges primary, opportunity, and long-tail keywords
     const portfolio = buildKeywordPortfolio(brief)
-
-    // Build suggestions from the portfolio and primary keywords
-    const suggestions: Array<{
-      topic: string
-      title: string
-      primaryKeyword: string
-      keywords: string[]
-      audience: string
-      impressions: number
-      demandScore: number
-      intentCategory: string
-      profitability: 'high' | 'medium' | 'low'
-      reason: string
-    }> = []
-
-    // Intent labels from keyword signals
-    const intentLabels: Record<string, string> = {
-      transactional: '🛒 Transactional',
-      commercial: '🔍 Commercial',
-      informational: '📖 Informational',
-      navigational: '🧭 Navigational',
-      local: '📍 Local',
+    const relatedByTerm: Record<string, string[]> = {}
+    for (const kw of brief.primaryKeywords) {
+      relatedByTerm[kw.term] = (brief.opportunityKeywords ?? [])
+        .map((o) => o.term)
+        .filter((t) => t !== kw.term)
+        .slice(0, 3)
     }
 
-    // Region-specific audience defaults
-    const audienceMap: Record<string, string> = {
-      US: 'international students, H-1B professionals, green card applicants',
-      CA: 'international students, Express Entry candidates, PGWP holders',
-      AU: 'international students, skilled migrants, 485 visa holders',
-      UK: 'international students, Skilled Worker applicants, family visa seekers',
-      COMPARE: 'international students comparing immigration pathways, professionals seeking options',
-    }
+    // ── 5. Run the Opportunity Intelligence Engine ─────────────────────────
+    const result = scoreOpportunities({
+      queries,
+      coverage,
+      interlinks,
+      region,
+      relatedByTerm,
+      limit: 48,
+    })
 
-    // Build suggestions from primary GSC keywords
-    const primaryPool = brief.primaryKeywords.slice(0, limit * 2)
-    for (let i = 0; i < primaryPool.length && suggestions.length < limit; i++) {
-      const kw = primaryPool[i]
-      const impLog = Math.log10(Math.max(1, kw.impressions) + 9)
-      const demandScore = Math.min(100, Math.round(impLog * 30 + Math.min(kw.clicks, 50) * 0.5))
-      const posLabel = kw.position <= 3 ? 'top-3' : kw.position <= 10 ? 'page-1' : kw.position <= 20 ? 'page-2' : 'deep'
-
-      // Derive intent from keyword pattern
-      let intentCategory = 'informational'
-      const term = kw.term.toLowerCase()
-      if (/apply|fee|cost|price|buy|hire|book|register|sign.up/i.test(term)) intentCategory = 'transactional'
-      else if (/best|top|vs|versus|compar|review|alternative/i.test(term)) intentCategory = 'commercial'
-      else if (/near|location|office|embassy|consulate/i.test(term)) intentCategory = 'local'
-      else if (/login|portal|account|status/i.test(term)) intentCategory = 'navigational'
-
-      const profitability: 'high' | 'medium' | 'low' =
-        intentCategory === 'transactional' ? 'high' :
-        intentCategory === 'commercial' ? 'high' :
-        kw.impressions > 500 ? 'medium' : 'low'
-
-      // Build a compelling title from the keyword
-      const titleCase = kw.term.replace(/\b\w/g, c => c.toUpperCase())
-      const yearLabel = new Date().getFullYear()
-      const titlePrefixes: Record<string, string> = {
-        informational: `Complete Guide: ${titleCase} ${yearLabel}`,
-        transactional: `How to Apply for ${titleCase} — ${yearLabel} Step-by-Step`,
-        commercial: `Best ${titleCase} Options in ${yearLabel} — Compared`,
-        local: `${titleCase} Near You — ${yearLabel} Locations & Info`,
-        navigational: `${titleCase} — Official Portal & Status Guide ${yearLabel}`,
-      }
-
-      // Related keywords from portfolio
-      const related = [
-        ...(portfolio.primary || []).filter((k: string) => k !== kw.term && k.length > 5).slice(0, 2),
-        ...(portfolio.secondary || []).slice(0, 2),
-      ].filter(Boolean).slice(0, 5)
-
-      suggestions.push({
-        topic: kw.term,
-        title: titlePrefixes[intentCategory] || titlePrefixes.informational,
-        primaryKeyword: kw.term,
-        keywords: related.length > 0 ? related : [kw.term],
-        audience: audienceMap[region] || audienceMap.US,
-        impressions: kw.impressions,
-        demandScore,
-        intentCategory,
-        profitability,
-        reason: `${posLabel} · ${kw.impressions.toLocaleString()} imp/mo · ${intentLabels[intentCategory] || '📖 Informational'}`,
-      })
-    }
-
-    // Fill remaining slots with opportunity keywords if needed
-    if (suggestions.length < limit) {
-      for (const kw of brief.opportunityKeywords) {
-        if (suggestions.length >= limit) break
-        const alreadyIn = suggestions.some(s => s.topic === kw.term)
-        if (alreadyIn) continue
-        suggestions.push({
-          topic: kw.term,
-          title: `Target: ${kw.term.replace(/\b\w/g, c => c.toUpperCase())} — High-Opportunity Topic`,
-          primaryKeyword: kw.term,
-          keywords: [kw.term],
-          audience: audienceMap[region] || audienceMap.US,
-          impressions: kw.impressions,
-          demandScore: Math.min(100, Math.round(Math.log10(Math.max(1, kw.impressions) + 9) * 25)),
-          intentCategory: 'informational',
-          profitability: kw.impressions > 300 ? 'medium' : 'low',
-          reason: `opportunity · ${kw.impressions.toLocaleString()} imp/mo · low competition`,
-        })
-      }
-    }
+    const suggestions = result.opportunities.slice(0, limit).map((o) => ({
+      topic: o.topic,
+      title: o.title,
+      primaryKeyword: o.primaryKeyword,
+      keywords: o.keywords,
+      audience: o.audience,
+      impressions: o.impressions,
+      clicks: o.clicks,
+      ctr: o.ctr,
+      position: o.position,
+      demandScore: o.demandScore,
+      upsideScore: o.upsideScore,
+      difficultyScore: o.difficultyScore,
+      opportunityScore: o.opportunityScore,
+      trend: o.trend,
+      play: o.play,
+      intent: o.intent,
+      contentType: o.contentType,
+      intentCategory: o.intent,
+      profitability: o.profitability,
+      reason: o.reason,
+      signals: o.signals,
+      interlinks: o.interlinks,
+      coverage: o.coverage,
+      sourcePage: o.sourcePage,
+    }))
 
     return NextResponse.json({
       region,
       suggestions,
-      source: brief.source,
+      opportunities: result.opportunities.slice(0, 24),
+      source,
+      coverageStats: result.coverageStats,
+      cannibalization: result.cannibalization.slice(0, 8),
       strategyHints: brief.strategyHints ?? [],
+      warnings,
       portfolioSnapshot: {
         primaryCount: portfolio.primary?.length ?? 0,
         secondaryCount: portfolio.secondary?.length ?? 0,
