@@ -96,6 +96,16 @@ export interface PipelineInput {
   resumeContent?: string
   /** Admin-chosen AI provider pin ('grok' | 'openai' | 'nvidia-deepseek' | 'auto'). */
   aiProvider?: string
+  /** Opportunity Radar brief (play, intent, signals) — threads into the prompt. */
+  opportunity?: {
+    primaryKeyword?: string
+    play?: string
+    intent?: string
+    opportunityScore?: number
+    signals?: string[]
+  } | null
+  /** Internal-link targets chosen by the Opportunity Radar autopilot. */
+  interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }> | null
 }
 
 export interface PipelineResult {
