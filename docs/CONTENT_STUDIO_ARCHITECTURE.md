@@ -23,7 +23,7 @@ ships through **one door** (`shipContent` → `putRepoFile`), and prefers
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Admin UI  /dashboard/admin/content                              │
-│  admin-seo-factory · content-studio-workspace                   │
+│  admin-command-center · content-studio-workspace                │
 └────────────────────────────┬────────────────────────────────────┘
                              │
      ┌───────────────────────┼───────────────────────┐
