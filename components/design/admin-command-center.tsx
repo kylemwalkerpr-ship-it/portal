@@ -127,7 +127,7 @@ function PlayBadge({ play }: { play?: string | null }) {
   )
 }
 
-function TrendSpark({ o }: { o: any }) {
+function TrendSpark({ o, onOpen }: { o: any; onOpen?: (row: any) => void }) {
   const hist = Array.isArray(o?.history) ? o.history.filter((h: any) => h && h.position > 0) : []
   if (hist.length < 2) {
     const tm = TREND_META[o?.trend || 'flat'] || TREND_META.flat
@@ -143,15 +143,110 @@ function TrendSpark({ o }: { o: any }) {
   const improving = last < first
   const color = improving ? '#059669' : last > first ? '#DC2626' : '#9CA3AF'
   const poly = pts.map((p, i) => `${x(i).toFixed(1)},${y(p).toFixed(1)}`).join(' ')
+  const clickable = !!onOpen
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <svg width={w} height={h} style={{ display: 'block' }}>
-        <polyline points={poly} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
-        <circle cx={x(pts.length - 1)} cy={y(last)} r={2} fill={color} />
+      <button
+        type="button"
+        onClick={() => onOpen && onOpen(o)}
+        title={clickable ? 'Open position history' : undefined}
+        style={{
+          border: 'none', background: 'none', padding: 0, cursor: clickable ? 'pointer' : 'default',
+          display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit',
+        }}
+      >
+        <svg width={w} height={h} style={{ display: 'block' }}>
+          <polyline points={poly} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+          <circle cx={x(pts.length - 1)} cy={y(last)} r={2} fill={color} />
+        </svg>
+        <span style={{ fontSize: 9, fontFamily: C.mono, color, whiteSpace: 'nowrap' }}>
+          #{first}→#{last}
+        </span>
+      </button>
+      {clickable && (
+        <span style={{ fontSize: 9, color: C.blue, cursor: 'pointer' }} title="Open position history">↗</span>
+      )}
+    </div>
+  )
+}
+
+// ── Per-query position history chart (workspace pane) ──────────────────────
+function QueryTrendChart({ o }: { o: any }) {
+  const hist = Array.isArray(o?.history) ? o.history.filter((h: any) => h && h.position > 0) : []
+  const W = 320, H = 170, padL = 28, padR = 12, padT = 14, padB = 24
+  if (hist.length < 2) {
+    return (
+      <div style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 11, fontFamily: C.mono }}>
+        No position history for this query yet.
+        <br />
+        <span style={{ fontSize: 10 }}>Connect live GSC to track movement over time.</span>
+      </div>
+    )
+  }
+  const pts = hist.map((h: any) => Number(h.position))
+  const imps = hist.map((h: any) => Number(h.impressions) || 0)
+  const maxImp = Math.max(...imps, 1)
+  const minPos = Math.min(...pts), maxPos = Math.max(...pts)
+  const posSpan = Math.max(1, maxPos - minPos)
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+  const x = (i: number) => padL + (i / (pts.length - 1)) * plotW
+  const y = (p: number) => padT + ((maxPos - p) / posSpan) * plotH
+  const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p).toFixed(1)}`).join(' ')
+  const area = `${padL},${padT + plotH} ${line} ${x(pts.length - 1).toFixed(1)},${padT + plotH}`
+  const improving = pts[pts.length - 1] < pts[0]
+  const color = improving ? '#059669' : pts[pts.length - 1] > pts[0] ? '#DC2626' : '#9CA3AF'
+  const first = pts[0], last = pts[pts.length - 1]
+  const gridVals = Array.from(new Set([minPos, Math.round((minPos + maxPos) / 2), maxPos]))
+  const dateLabel = (d?: string) => (d ? d.slice(5) : '')
+  return (
+    <div>
+      <svg width={W} height={H} style={{ display: 'block', maxWidth: '100%' }}>
+        {gridVals.map((g) => (
+          <g key={g}>
+            <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke={C.border2} strokeWidth={1} />
+            <text x={padL - 5} y={y(g) + 3} textAnchor="end" fontSize={8} fill={C.textDim} fontFamily={C.mono}>
+              #{g}
+            </text>
+          </g>
+        ))}
+        {imps.map((v, i) => {
+          const bh = Math.max(2, (v / maxImp) * plotH * 0.32)
+          return (
+            <rect key={`b${i}`} x={x(i) - 6} y={padT + plotH - bh} width={12} height={bh}
+              fill={C.cyanSoft} rx={2} opacity={0.75} />
+          )
+        })}
+        <polygon points={area} fill={color} opacity={0.08} />
+        <polyline points={line} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <g key={`d${i}`}>
+            <circle cx={x(i)} cy={y(p)} r={3.2} fill={color} stroke="#fff" strokeWidth={1.2} />
+            <text x={x(i)} y={y(p) - 7} textAnchor="middle" fontSize={8.5} fill={C.textMuted} fontFamily={C.mono} fontWeight={700}>
+              #{p}
+            </text>
+          </g>
+        ))}
+        {hist.map((h: any, i: number) => (
+          <text key={`x${i}`} x={x(i)} y={H - 6} textAnchor="middle" fontSize={8} fill={C.textDim} fontFamily={C.mono}>
+            {dateLabel(h.date)}
+          </text>
+        ))}
       </svg>
-      <span style={{ fontSize: 9, fontFamily: C.mono, color, whiteSpace: 'nowrap' }}>
-        #{first}→#{last}
-      </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        {[
+          ['First', `#${first}`],
+          ['Now', `#${last}`],
+          ['Δ', `${last - first > 0 ? '+' : ''}${last - first}`],
+          ['Peak imp', fmtN(maxImp)],
+          ['Windows', String(pts.length)],
+        ].map(([k, v]) => (
+          <div key={k} style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, lineHeight: 1.4 }}>
+            <div style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k}</div>
+            <div style={{ color: C.text, fontWeight: 700, fontSize: 11 }}>{v}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -257,6 +352,9 @@ export default function AdminCommandCenter({
     setActionNotice(msg)
     pushLog(kind === 'success' ? 'success' : kind === 'error' ? 'error' : 'info', 'command', msg)
   }
+
+  // ── Trend detail (per-query history chart) ───────────────────────────────
+  const [trendDetail, setTrendDetail] = React.useState<any | null>(null)
 
   // ── Mission Log (persistent audit trail) ─────────────────────────────────
   const [missionLog, setMissionLog] = React.useState<MissionEntry[]>([])
@@ -1002,7 +1100,9 @@ export default function AdminCommandCenter({
                           )}
                         </td>
                         <td style={{ ...td, fontFamily: C.mono }}>#{o.position ?? '—'}</td>
-                        <td style={{ ...td, minWidth: 96 }}><TrendSpark o={o} /></td>
+                        <td style={{ ...td, minWidth: 96 }}>
+                          <TrendSpark o={o} onOpen={(row) => { setTrendDetail(row); setWorkspaceOpen(true) }} />
+                        </td>
                         <td style={{ ...td, fontFamily: C.mono }}>{fmtN(o.impressions)}</td>
                         <td style={{ ...td, fontFamily: C.mono }}>{(Number(o.ctr) * 100).toFixed(1)}%</td>
                         <td style={{ ...td, color: C.green, fontWeight: 700, fontFamily: C.mono }}>~{fmtN(o.estimatedGainClicks ?? 0)}</td>
@@ -1412,6 +1512,42 @@ export default function AdminCommandCenter({
       {/* ── Workspace pane ── */}
       {workspaceOpen && (
         <div style={{ minHeight: 0, maxHeight: 'calc(100vh - 100px)', position: 'sticky', top: 0, alignSelf: 'start' }}>
+          {trendDetail && (
+            <div style={{ background: C.surface, border: `1px solid ${C.goldBorder}`, borderRadius: C.radius, boxShadow: C.shadowHover, marginBottom: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, wordBreak: 'break-word' }}>{trendDetail.term}</div>
+                  <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <PlayBadge play={playOf(trendDetail)} />
+                    <span style={{ color: (TREND_META[trendDetail.trend || 'flat'] || TREND_META.flat).color }}>
+                      {(TREND_META[trendDetail.trend || 'flat'] || TREND_META.flat).icon} {(TREND_META[trendDetail.trend || 'flat'] || TREND_META.flat).label}
+                    </span>
+                    {trendDetail.positionDelta != null ? (
+                      <span style={{ color: trendDetail.positionDelta < 0 ? C.green : trendDetail.positionDelta > 0 ? C.red : C.textDim }}>
+                        Δ{trendDetail.positionDelta > 0 ? '+' : ''}{trendDetail.positionDelta}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button type="button" style={{ ...btnSmall, background: C.navy, color: '#fff' }} onClick={() => applyBrief(trendDetail)}>
+                    ⚡ Brief
+                  </button>
+                  <button type="button" style={btnSmall} onClick={() => setTrendDetail(null)}>✕</button>
+                </div>
+              </div>
+              <div style={{ padding: '14px 14px 12px' }}>
+                <QueryTrendChart o={trendDetail} />
+                {(trendDetail.signals || []).length > 0 && (
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.border2}` }}>
+                    {(trendDetail.signals || []).slice(0, 3).map((s: string, i: number) => (
+                      <div key={i} style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>• {s}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <ContentStudioWorkspace
             job={selectedJob}
             jobs={jobs as StudioJob[]}
