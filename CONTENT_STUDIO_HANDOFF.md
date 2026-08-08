@@ -32,7 +32,7 @@ grok mcp doctor gsc
 | SEO Factory generate + **SSE stream** | `app/api/seo-factory/generate`, `generate-stream` |
 | Jobs / metrics / GitHub webhook | `app/api/content-studio/{jobs,metrics,webhook}/route.ts` |
 | GSC OAuth + analytics | `app/api/content-studio/gsc/{auth,callback,data,status}/route.ts` |
-| Admin UI (command center workspace) | `components/design/admin-seo-factory.tsx`, `content-studio-workspace.tsx` |
+| Admin UI (command center workspace) | `components/design/admin-command-center.tsx`, `content-studio-workspace.tsx` |
 | SQL migrations | `supabase/migrations/content_jobs.sql`, `gsc_tokens.sql`, `seo_factory_columns.sql`, `content_jobs_event_log.sql` |
 | Apply helper | `scripts/apply-content-studio-migrations.mjs` |
 
