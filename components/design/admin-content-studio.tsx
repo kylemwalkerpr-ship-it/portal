@@ -984,6 +984,160 @@ const tdStyle: React.CSSProperties = {
   padding: '8px 10px', fontSize: 11, color: C.text, verticalAlign: 'top',
 }
 
+// ── Cannibalization Merge History (shared with Command Center) ──
+// Renders the shared cannibal_merges trail served by
+// GET /api/seo-factory/cannibal-merges — decisions recorded by both this
+// Content Studio (source=portal) and the Command Center (source=command_center).
+
+interface CannibalMergeRecord {
+  clusterId: string
+  source: 'portal' | 'command_center'
+  stem: string
+  terms: string[]
+  winnerUrl: string
+  loserUrls: string[]
+  redirectsCreated: number
+  prUrl?: string
+  prNumber?: number
+  status: 'merged' | 'skipped'
+  message?: string
+  mergedAt: number
+}
+
+function MergeHistory() {
+  const [merges, setMerges] = React.useState<CannibalMergeRecord[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [guidance, setGuidance] = React.useState<string | null>(null)
+  const [expanded, setExpanded] = React.useState(false)
+
+  const fetchMerges = React.useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setGuidance(null)
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-merges', { credentials: 'same-origin' })
+      const data = (await res.json().catch(() => ({}))) as { error?: string; guidance?: string; merges?: CannibalMergeRecord[] }
+      if (!res.ok) {
+        setError(data.error || `HTTP ${res.status}`)
+        setGuidance(data.guidance ?? null)
+        return
+      }
+      setMerges(data.merges ?? [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load merge history')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    fetchMerges()
+  }, [fetchMerges])
+
+  const mergedCount = merges.filter(m => m.status === 'merged').length
+  const latest = merges[0]
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%', padding: '11px 16px', border: 'none', background: 'none',
+          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontFamily: 'inherit', borderBottom: expanded ? `1px solid ${C.border}` : 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: C.serif }}>🔀 Merge History</span>
+          <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>{loading ? '…' : merges.length}</span>
+        </div>
+        <span style={{ fontSize: 14, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+      </button>
+
+      {!expanded && latest && (
+        <div style={{ padding: '8px 16px', fontSize: 10, color: C.textDim, fontFamily: C.mono, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {latest.status === 'merged' ? '✅' : '⏭'} {latest.terms && latest.terms.length ? latest.terms[0] : latest.stem}
+          </span>
+          <span style={{ flexShrink: 0, color: C.textDim }}>{timeAgo(new Date(latest.mergedAt).toISOString())}</span>
+        </div>
+      )}
+
+      {expanded &&
+        (loading ? (
+          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading…</div>
+        ) : error ? (
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ fontSize: 11, color: C.orange, fontFamily: C.mono }}>⚠ {error}</div>
+            {guidance && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, marginTop: 4 }}>{guidance}</div>}
+            <button
+              onClick={fetchMerges}
+              style={{ marginTop: 8, padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: C.surface3, color: C.textMuted, fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}
+            >
+              ↻ Retry
+            </button>
+          </div>
+        ) : merges.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, marginBottom: 4 }}>🔀</div>
+            <div style={{ fontSize: 12, color: C.textMuted }}>No merge decisions yet — resolved clusters will appear here.</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', gap: 8, padding: '6px 16px 8px', flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{merges.length} decisions</span>
+              <span style={{ fontSize: 9, color: C.green, fontFamily: C.mono }}>{mergedCount} merged</span>
+              <span style={{ fontSize: 9, color: C.orange, fontFamily: C.mono }}>{merges.length - mergedCount} skipped</span>
+              <span style={{ fontSize: 9, color: C.purple, fontFamily: C.mono }}>
+                {merges.filter(m => m.source === 'command_center').length} from Command Center
+              </span>
+            </div>
+            <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+              {merges.map(m => (
+                <div key={`${m.clusterId}-${m.source}`} style={{ padding: '9px 16px', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono,
+                        background: m.status === 'merged' ? '#D1FAE5' : '#FEF3C7',
+                        color: m.status === 'merged' ? C.green : C.orange,
+                      }}
+                    >
+                      {m.status === 'merged' ? '✓ MERGED' : '⏭ SKIPPED'}
+                    </span>
+                    <span
+                      style={{
+                        padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
+                        background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF',
+                        color: m.source === 'command_center' ? C.blue : C.purple,
+                      }}
+                    >
+                      {m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}
+                    </span>
+                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgo(new Date(m.mergedAt).toISOString())}</span>
+                    {m.prNumber ? (
+                      <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
+                        PR #{m.prNumber} ↗
+                      </a>
+                    ) : null}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>
+                    {m.terms && m.terms.length ? m.terms.slice(0, 3).join(', ') : m.stem}
+                  </div>
+                  <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.loserUrls.length} loser{m.loserUrls.length === 1 ? '' : 's'} → {String(m.winnerUrl || '').replace(/^https?:\/\//, '')} · {m.redirectsCreated} redirect{m.redirectsCreated === 1 ? '' : 's'}
+                  </div>
+                  {m.message && <div style={{ fontSize: 9.5, color: C.textMuted, marginTop: 3 }}>{m.message}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+    </div>
+  )
+}
+
 // ── Job Timeline ──
 //
 // Fetches the full job row (?id=) which includes event_log — the durable
@@ -1835,6 +1989,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onToggle={() => setHistoryExpanded(!historyExpanded)}
             onSelect={setSelectedJob} loading={loading}
           />
+
+          {/* Cannibalization Merge History — shared with the Command Center */}
+          <MergeHistory />
         </div>
       </div>
 
