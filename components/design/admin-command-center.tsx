@@ -127,6 +127,35 @@ function PlayBadge({ play }: { play?: string | null }) {
   )
 }
 
+function TrendSpark({ o }: { o: any }) {
+  const hist = Array.isArray(o?.history) ? o.history.filter((h: any) => h && h.position > 0) : []
+  if (hist.length < 2) {
+    const tm = TREND_META[o?.trend || 'flat'] || TREND_META.flat
+    return <span style={{ fontSize: 10, fontFamily: C.mono, color: tm.color }}>{tm.icon} {tm.label}</span>
+  }
+  const pts = hist.map((h: any) => Number(h.position))
+  const w = 64, h = 18, pad = 2
+  const min = Math.min(...pts), max = Math.max(...pts)
+  const span = Math.max(1, max - min)
+  const x = (i: number) => pad + (i / (pts.length - 1)) * (w - pad * 2)
+  const y = (p: number) => pad + ((max - p) / span) * (h - pad * 2)
+  const first = pts[0], last = pts[pts.length - 1]
+  const improving = last < first
+  const color = improving ? '#059669' : last > first ? '#DC2626' : '#9CA3AF'
+  const poly = pts.map((p, i) => `${x(i).toFixed(1)},${y(p).toFixed(1)}`).join(' ')
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <svg width={w} height={h} style={{ display: 'block' }}>
+        <polyline points={poly} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+        <circle cx={x(pts.length - 1)} cy={y(last)} r={2} fill={color} />
+      </svg>
+      <span style={{ fontSize: 9, fontFamily: C.mono, color, whiteSpace: 'nowrap' }}>
+        #{first}→#{last}
+      </span>
+    </div>
+  )
+}
+
 function ScoreMeter({ score, max = 100 }: { score: number; max?: number }) {
   const pct = Math.max(2, Math.min(100, (Number(score) || 0) / max * 100))
   const color = score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim
@@ -936,6 +965,7 @@ export default function AdminCommandCenter({
                     <th style={th}>Play</th>
                     <th style={th}>Query</th>
                     <th style={th}>Pos</th>
+                    <th style={th}>Trend</th>
                     <th style={th}>Impr</th>
                     <th style={th}>CTR</th>
                     <th style={th}>+Clicks</th>
@@ -972,6 +1002,7 @@ export default function AdminCommandCenter({
                           )}
                         </td>
                         <td style={{ ...td, fontFamily: C.mono }}>#{o.position ?? '—'}</td>
+                        <td style={{ ...td, minWidth: 96 }}><TrendSpark o={o} /></td>
                         <td style={{ ...td, fontFamily: C.mono }}>{fmtN(o.impressions)}</td>
                         <td style={{ ...td, fontFamily: C.mono }}>{(Number(o.ctr) * 100).toFixed(1)}%</td>
                         <td style={{ ...td, color: C.green, fontWeight: 700, fontFamily: C.mono }}>~{fmtN(o.estimatedGainClicks ?? 0)}</td>
@@ -1005,7 +1036,7 @@ export default function AdminCommandCenter({
                     )
                   })}
                   {radarQueue.length === 0 && (
-                    <tr><td colSpan={11} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                    <tr><td colSpan={12} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
                       No plays for this filter — rescan or change filter.
                     </td></tr>
                   )}
@@ -1346,8 +1377,19 @@ export default function AdminCommandCenter({
               <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>🔎 GSC data source</div>
                 <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
-                  <div>Mode: <strong style={{ color: C.text, fontFamily: C.mono }}>{radar?.source || '—'}</strong></div>
+                  <div>Mode: <strong style={{ color: C.text, fontFamily: C.mono }}>{radar?.source || '—'}</strong>
+                    {radar?.historyAvailable ? <span style={{ color: C.green }}> · position history ✓</span> : null}
+                  </div>
                   <div>Site: <span style={{ fontFamily: C.mono, color: C.text, wordBreak: 'break-all' }}>{radar?.siteUrl || '—'}</span></div>
+                  {radar?.range ? (
+                    <div>Range: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.range.startDate} → {radar.range.endDate} ({radar.range.days}d)</span></div>
+                  ) : null}
+                  {radar?.snapshot?.generatedAt ? (
+                    <div>Snapshot: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.snapshot.generatedAt}</span>{radar.snapshot.source ? ` · ${radar.snapshot.source}` : ''}</div>
+                  ) : null}
+                  {radar?.source === 'live' && !radar?.historyAvailable ? (
+                    <div style={{ color: C.orange, fontSize: 10 }}>⚠ History unavailable — bucket queries failed or range too short</div>
+                  ) : null}
                   <div style={{ marginTop: 6 }}>
                     {(radar?.warnings || []).slice(0, 3).map((w: string, i: number) => (
                       <div key={i} style={{ color: C.orange, fontSize: 10 }}>⚠ {w}</div>
