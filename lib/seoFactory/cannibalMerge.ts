@@ -20,6 +20,7 @@
 
 import { hostFromUrl, HOST_REPO, filePathFromOwnerUrl, slugify, type OwnerHost } from './ownership'
 import { getGscAccess } from '@/lib/gscAuth'
+import { createSupabaseAdminClient } from '@/lib/supabase'
 import {
   createBranchFrom,
   encodeRepoPath,
@@ -178,6 +179,58 @@ function canonicalStem(q: string): string {
     .split(' ')
     .slice(0, 4)
     .join(' ')
+}
+
+/**
+ * Deterministic cluster id shared with the Command Center — both products
+ * derive the same id from the term stem so the cannibal_merges upsert key
+ * (cluster_id, source) dedupes cleanly across writers.
+ */
+export function clusterIdFromTerm(term: string): string {
+  return `cluster_${canonicalStem(term).replace(/[^a-z0-9]+/g, '_').slice(0, 48)}`
+}
+
+/**
+ * Best-effort sync of a merge decision into the shared cannibal_merges table
+ * (source = 'portal'). Mirrors the Command Center's write so the deployed
+ * Content Studio and Command Center share one audit trail. Never throws — a
+ * sync failure must not fail the merge itself.
+ */
+async function recordMergeToSupabase(payload: {
+  term: string
+  winnerUrl: string
+  loserUrls: string[]
+  redirectsCreated: number
+  prUrl?: string
+  prNumber?: number
+  status: 'merged' | 'skipped'
+  message?: string
+}): Promise<void> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    const { error } = await supabase.from('cannibal_merges').upsert(
+      {
+        cluster_id: clusterIdFromTerm(payload.term),
+        source: 'portal',
+        stem: canonicalStem(payload.term),
+        terms: JSON.stringify([payload.term]),
+        winner_url: payload.winnerUrl,
+        loser_urls: JSON.stringify(payload.loserUrls),
+        redirects_created: payload.redirectsCreated,
+        pr_url: payload.prUrl ?? null,
+        pr_number: payload.prNumber ?? null,
+        status: payload.status,
+        message: payload.message ?? null,
+        merged_at: new Date().toISOString(),
+      },
+      { onConflict: 'cluster_id,source' },
+    )
+    if (error) {
+      console.warn('[cannibalMerge] supabase history sync skipped:', error.message)
+    }
+  } catch (err) {
+    console.warn('[cannibalMerge] supabase history sync skipped:', err)
+  }
 }
 
 export interface ResolvedCannibalPage {
@@ -483,6 +536,23 @@ export async function executeCannibalMerge(opts: {
       outcome.commits.push({ repo: plan.repo, branch, commitSha: 'merged-to-main' })
     }
   }
+
+  // ── Sync the decision into the shared cannibal_merges table (best-effort) ──
+  const firstPr = outcome.commits.find((c) => c.prUrl)
+  const prNumber = firstPr?.prUrl ? Number(firstPr.prUrl.split('/').pop() || 0) || undefined : undefined
+  await recordMergeToSupabase({
+    term,
+    winnerUrl,
+    loserUrls,
+    redirectsCreated: outcome.redirectsAdded.length,
+    prUrl: firstPr?.prUrl,
+    prNumber,
+    status: outcome.commits.length > 0 ? 'merged' : 'skipped',
+    message:
+      outcome.commits.length > 0
+        ? `Merged ${outcome.redirectsAdded.length} redirect(s) across ${outcome.commits.length} repo(s)`
+        : `Skipped — ${outcome.skipped.length} URL(s) had no redirect convention`,
+  })
 
   return outcome
 }
