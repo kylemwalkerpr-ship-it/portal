@@ -107,6 +107,21 @@ export async function POST(request: Request) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
+      cluster: body.cluster
+        ? {
+            clusterId: body.cluster.clusterId ? String(body.cluster.clusterId) : undefined,
+            canonicalTerm: body.cluster.canonicalTerm ? String(body.cluster.canonicalTerm) : undefined,
+            keywords: Array.isArray(body.cluster.keywords) ? body.cluster.keywords.map(String) : undefined,
+            intent: body.cluster.intent ? String(body.cluster.intent) : undefined,
+            region: body.cluster.region ? String(body.cluster.region) : undefined,
+            mode: body.cluster.mode === 'expand' ? ('expand' as const) : ('new' as const),
+            targetUrl: body.cluster.targetUrl ? String(body.cluster.targetUrl) : null,
+            targetRepo: body.cluster.targetRepo ? String(body.cluster.targetRepo) : null,
+            targetFilePath: body.cluster.targetFilePath ? String(body.cluster.targetFilePath) : null,
+            existingJobId: body.cluster.existingJobId ? String(body.cluster.existingJobId) : null,
+            reason: body.cluster.reason ? String(body.cluster.reason) : undefined,
+          }
+        : null,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       resumeContent: undefined as string | undefined,
       userId,
