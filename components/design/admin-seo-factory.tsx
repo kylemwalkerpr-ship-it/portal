@@ -1774,6 +1774,7 @@ export default function AdminSeoFactory({
 
   const playLabel = (play: string) => {
     const map: Record<string, string> = {
+      // Legacy types
       title_ctr_rewrite: 'CTR rewrite',
       strike_distance: 'Strike distance',
       deep_demand_build: 'Deep build',
@@ -1781,17 +1782,23 @@ export default function AdminSeoFactory({
       aeo_entity_hub: 'AEO hub',
       page1_defend: 'Page-1 defend',
       decay_refresh: 'Decay refresh',
+      // Engine-native types
+      quick_win: 'Quick win',
+      content_gap: 'Content gap',
+      refresh: 'Refresh',
+      defend: 'Defend',
+      cannibalization: 'Cannibal merge',
     }
     return map[play] || play
   }
 
   const playColor = (play: string) => {
-    if (play === 'title_ctr_rewrite') return C.gold
-    if (play === 'strike_distance') return C.blue
-    if (play === 'deep_demand_build') return C.cyan
-    if (play === 'cannibal_merge') return C.red
+    if (play === 'title_ctr_rewrite' || play === 'quick_win') return C.gold
+    if (play === 'strike_distance' || play === 'content_gap') return C.blue
+    if (play === 'deep_demand_build' || play === 'refresh') return C.cyan
+    if (play === 'cannibal_merge' || play === 'cannibalization') return C.red
     if (play === 'aeo_entity_hub') return '#7C3AED'
-    if (play === 'page1_defend') return C.green
+    if (play === 'page1_defend' || play === 'defend') return C.green
     return C.textMuted
   }
 
