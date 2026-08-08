@@ -2,7 +2,7 @@
 import React from 'react'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
-const AdminSeoFactory = React.lazy(() => import('./admin-seo-factory'))
+const AdminCommandCenter = React.lazy(() => import('./admin-command-center'))
 import AdminInlineEditor from './admin-inline-editor'
 
 // ── Color tokens (match admin-templates.tsx) ──
@@ -1784,7 +1784,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {showFactory && (
         <div style={{ marginBottom: 16 }}>
           <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Command Center…</div>}>
-            <AdminSeoFactory setActionNotice={setActionNotice} />
+            <AdminCommandCenter setActionNotice={setActionNotice} />
           </React.Suspense>
         </div>
       )}
