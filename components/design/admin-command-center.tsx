@@ -18,6 +18,7 @@ import ContentStudioWorkspace, {
   type StudioJob,
   type StudioLogEntry,
 } from './content-studio-workspace'
+import AiKeyVaultPanel from './ai-key-vault-panel'
 
 // ── Color tokens (match portal identity) ──
 const C = {
@@ -1536,6 +1537,10 @@ export default function AdminCommandCenter({
                     ))}
                   </div>
                 </div>
+              </div>
+              {/* AI Keys vault */}
+              <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFDF7' }}>
+                <AiKeyVaultPanel onChanged={loadHealth} />
               </div>
             </div>
           )}
