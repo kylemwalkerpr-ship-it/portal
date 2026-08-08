@@ -38,7 +38,6 @@ const JOB_LIST_COLUMNS = [
   'pr_url',
   'pr_number',
   'ai_provider',
-  'ai_model',
   'word_count',
   'seo_score',
   'primary_keyword',
@@ -490,7 +489,7 @@ export async function PATCH(request: NextRequest) {
         audit_json: {
           ...audit,
           reauditedAt: new Date().toISOString(),
-          model: job.ai_model || job.audit_json?.model,
+          model: job.audit_json?.model,
         },
         owner_host: plan.host,
         canonical_url: plan.canonicalUrl,
@@ -584,7 +583,6 @@ export async function PATCH(request: NextRequest) {
           content: job.content,
           content_path: job.content_path,
           ai_provider: job.ai_provider,
-          ai_model: job.ai_model,
           word_count: job.word_count,
           seo_score: job.seo_score,
           ship_mode: job.ship_mode || 'pr',
@@ -631,7 +629,7 @@ export async function PATCH(request: NextRequest) {
           word_count: words,
           seo_score: typeof audit?.score === 'number' ? audit.score : job.seo_score,
           audit_json: audit
-            ? { ...audit, model: job.ai_model || job.audit_json?.model }
+            ? { ...audit, model: job.audit_json?.model }
             : job.audit_json,
           error_message: null,
           // Keep terminal states; otherwise mark as drafting after manual edit
