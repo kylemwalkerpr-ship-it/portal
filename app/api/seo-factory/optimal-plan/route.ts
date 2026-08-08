@@ -3,7 +3,7 @@ import { requireAdminUser } from '@/lib/portalAuth'
 import { buildKeywordPlan, planTermsForAutoRun } from '@/lib/seoFactory/keywordPlanner'
 import { buildSeoWarRoom, playToOpportunityAction } from '@/lib/seoFactory/seoWarRoom'
 import { getGscAccess } from '@/lib/gscAuth'
-import { listConfiguredContentProviders } from '@/lib/contentAiProvider'
+import { listConfiguredContentProviders, refreshAiVault } from '@/lib/contentAiProvider'
 import { describeEstateContract } from '@/lib/seoFactory/shipGate'
 
 /**
@@ -173,6 +173,8 @@ async function handle(request: NextRequest) {
       })
     }
 
+    // Admin-pasted vault keys (Supabase) take priority over Worker secrets.
+    await refreshAiVault()
     const providers = listConfiguredContentProviders()
     const estate = describeEstateContract()
 
