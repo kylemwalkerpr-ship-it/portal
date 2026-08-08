@@ -27,7 +27,8 @@ jobs:
           SQL="$(cat \
             supabase/migrations/content_jobs.sql \
             supabase/migrations/gsc_tokens.sql \
-            supabase/migrations/seo_factory_columns.sql)"
+            supabase/migrations/seo_factory_columns.sql \
+            supabase/migrations/mission_log.sql)"
 
           # Management API: run SQL
           RESP=$(curl -sS -w "\n%{http_code}" -X POST \
