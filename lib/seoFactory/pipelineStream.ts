@@ -76,6 +76,18 @@ export async function* runSeoFactoryPipelineStream(
       return
     }
 
+    // Keyword cluster: merge the whole cluster into the brief so ONE page answers
+    // every related query (anti-cannibalization). Resolve to an existing page
+    // when the cluster says so.
+    const clusterKeywords = Array.isArray(input.cluster?.keywords) ? input.cluster!.keywords! : []
+    const mergedKeywords = Array.isArray(input.keywords)
+      ? [...new Set([...input.keywords, primaryKeyword, ...clusterKeywords])].slice(0, 10)
+      : [...new Set([primaryKeyword, ...clusterKeywords])].slice(0, 10)
+    const ownerUrlHint =
+      input.cluster?.mode === 'expand' && input.cluster?.targetUrl
+        ? String(input.cluster.targetUrl)
+        : undefined
+
     yield { type: 'progress', stage: 'plan', message: 'Resolving ownership & content type…' }
     const plan = await resolveOwner({
       primaryKeyword,
@@ -83,6 +95,7 @@ export async function* runSeoFactoryPipelineStream(
       region,
       indexable,
       slug: input.slug,
+      ownerUrlHint,
     })
     // Trust path/host-reconciled type from ownership (never legal_guide on universities)
     contentType = plan.contentType || contentType
@@ -111,12 +124,25 @@ export async function* runSeoFactoryPipelineStream(
       stage: 'plan',
       message: `Owner ${plan.host} · ${plan.repo} · ${plan.filePath} · depth ≥${minWords} words`,
     }
+    if (input.cluster?.mode === 'expand') {
+      yield {
+        type: 'progress',
+        stage: 'plan',
+        message: `Cluster resolves to existing page ${input.cluster.targetUrl || '—'} — expanding, no sibling created`,
+      }
+    } else if (input.cluster?.keywords?.length) {
+      yield {
+        type: 'progress',
+        stage: 'plan',
+        message: `New unique page owns a ${input.cluster.keywords.length}-keyword cluster`,
+      }
+    }
 
     yield { type: 'progress', stage: 'gsc', message: 'Building GSC content brief…' }
     const gscBrief = await buildGscContentBrief({
       topic,
       region,
-      keywords: Array.isArray(input.keywords) ? input.keywords : [primaryKeyword],
+      keywords: mergedKeywords,
     })
     const gscBlock = formatGscBriefForPrompt(gscBrief)
     let strategyBlock = await formatStrategyForPrompt({
@@ -135,6 +161,9 @@ export async function* runSeoFactoryPipelineStream(
         : '',
       opp
         ? `### Opportunity brief\nPrimary keyword: ${opp.primaryKeyword || ''}\nPlay: ${opp.play || ''} · Intent: ${opp.intent || ''} · Opportunity score: ${opp.opportunityScore ?? ''}\nSignals: ${(opp.signals || []).join(' | ')}`
+        : '',
+      input.cluster?.keywords?.length
+        ? `### Keyword cluster (anti-cannibalization)\nThis article is the CANONICAL page for this keyword cluster. Cover ALL of these queries — do not split them across sibling pages:\n${input.cluster.keywords.join('\n')}\nMode: ${input.cluster.mode === 'expand' ? `EXPAND existing page ${input.cluster.targetUrl || ''}` : 'NEW unique page'}${input.cluster.reason ? `\nWhy: ${input.cluster.reason}` : ''}`
         : '',
     ]
       .filter(Boolean)
@@ -760,6 +789,16 @@ export async function* runSeoFactoryPipelineStream(
           mode: gscBrief.mode,
           primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
           opportunityAction: input.opportunityAction,
+          cluster: input.cluster
+            ? {
+                clusterId: input.cluster.clusterId || null,
+                canonicalTerm: input.cluster.canonicalTerm || null,
+                keywords: (input.cluster.keywords || []).slice(0, 10),
+                mode: input.cluster.mode || 'new',
+                targetUrl: input.cluster.targetUrl || null,
+                existingJobId: input.cluster.existingJobId || null,
+              }
+            : null,
         },
         deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
         deployed_at:
