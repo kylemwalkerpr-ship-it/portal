@@ -67,10 +67,24 @@ interface AISuggestion {
   keywords: string[]
   audience: string
   impressions: number
+  clicks?: number
+  ctr?: number
+  position?: number
   demandScore: number
+  upsideScore?: number
+  difficultyScore?: number
+  opportunityScore: number
+  trend: 'rising' | 'flat' | 'declining'
+  play: 'content_gap' | 'quick_win' | 'refresh' | 'defend' | 'cannibalization'
+  intent: 'informational' | 'commercial' | 'transactional' | 'local' | 'navigational'
+  contentType?: 'blog_post' | 'article' | 'regional_page' | 'marketplace_gig'
   intentCategory: string
   profitability: 'high' | 'medium' | 'low'
   reason: string
+  signals: string[]
+  interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  coverage?: { matched: boolean; matches: string[] }
+  sourcePage?: string
 }
 
 
@@ -98,6 +112,41 @@ const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; re
   { value: 'regional_page', label: 'Regional Page', ext: '.mdx', repo: 'yousafe-consultancy', icon: '🌐' },
   { value: 'marketplace_gig', label: 'Marketplace Gig', ext: '.mdx', repo: 'portal', icon: '🏪' },
 ]
+
+// ── Opportunity Radar presentation maps ──
+const PLAY_META: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
+  quick_win: { label: 'QUICK WIN', bg: '#D1FAE5', fg: '#065F46', icon: '⚡' },
+  content_gap: { label: 'GAP', bg: '#DBEAFE', fg: '#1E40AF', icon: '🧩' },
+  refresh: { label: 'REFRESH', bg: '#FEF3C7', fg: '#92400E', icon: '🔄' },
+  defend: { label: 'DEFEND', bg: '#EEF2FF', fg: '#3730A3', icon: '🛡️' },
+  cannibalization: { label: 'CANNIBAL', bg: '#FEE2E2', fg: '#991B1B', icon: '⚠️' },
+}
+const INTENT_LABELS: Record<string, string> = {
+  informational: '📖 Informational', commercial: '🔍 Commercial',
+  transactional: '🛒 Transactional', local: '📍 Local', navigational: '🧭 Navigational',
+}
+const TONE_FOR_INTENT: Record<string, Tone> = {
+  informational: 'educational', commercial: 'persuasive', transactional: 'professional',
+  local: 'educational', navigational: 'authoritative',
+}
+const TREND_META: Record<string, { icon: string; color: string; label: string }> = {
+  rising: { icon: '↗', color: '#059669', label: 'Rising' },
+  flat: { icon: '→', color: '#9CA3AF', label: 'Flat' },
+  declining: { icon: '↘', color: '#DC2626', label: 'Declining' },
+}
+const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh'; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'quick_win', label: '⚡ Quick Wins' },
+  { key: 'content_gap', label: '🧩 Gaps' },
+  { key: 'rising', label: '↗ Rising' },
+  { key: 'refresh', label: '🔄 Refresh' },
+]
+function fmtN(n: number | undefined | null): string {
+  const v = Number(n) || 0
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`
+  return String(Math.round(v))
+}
 
 function statusBadge(status: JobStatus) {
   const map: Record<JobStatus, { label: string; bg: string; fg: string; dot: string }> = {
@@ -202,18 +251,22 @@ function SummaryCards({ jobs }: { jobs: ContentJob[] }) {
   )
 }
 
-// ── Quick Create Panel (collapsible) ──
+// ── Opportunity Radar + Autopilot Quick Create ────────────────────────────
 
 function QuickCreate({
   expanded, onToggle, generating, onGenerate,
   topic, keywords, onTopicChange, onKeywordsChange,
   suggestions, suggestionsLoading, suggestionsError, onRefreshSuggestions, onApplySuggestion,
+  brief, briefInterlinks, onClearBrief,
 }: {
   expanded: boolean; onToggle: () => void; generating: boolean
   onGenerate: (data: any) => void
   topic: string; keywords: string; onTopicChange: (v: string) => void; onKeywordsChange: (v: string) => void
   suggestions?: AISuggestion[]; suggestionsLoading?: boolean; suggestionsError?: string | null
   onRefreshSuggestions?: (region: string) => void; onApplySuggestion?: (s: AISuggestion) => void
+  brief?: AISuggestion | null
+  briefInterlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  onClearBrief?: () => void
 }) {
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
   const [region, setRegion] = React.useState<Region>('US')
@@ -221,6 +274,31 @@ function QuickCreate({
   const [aiProvider, setAiProvider] = React.useState('auto')
   const [title, setTitle] = React.useState('')
   const [audience, setAudience] = React.useState('')
+  const [filter, setFilter] = React.useState<'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh'>('all')
+
+  // Autopilot: applying a radar card auto-fills every field, not just topic/keywords.
+  // Every value remains editable — the radar only pre-fills.
+  React.useEffect(() => {
+    if (!brief) return
+    if (brief.contentType) setContentType(brief.contentType as ContentType)
+    if (brief.intent) setTone(TONE_FOR_INTENT[brief.intent] ?? 'educational')
+    if (brief.title) setTitle(brief.title)
+    if (brief.audience) setAudience(brief.audience)
+  }, [brief])
+
+  const visibleSuggestions = React.useMemo(() => {
+    if (!suggestions) return suggestions
+    if (filter === 'all') return suggestions
+    return suggestions.filter((s) =>
+      filter === 'rising' ? s.trend === 'rising'
+      : filter === 'quick_win' ? s.play === 'quick_win'
+      : filter === 'content_gap' ? s.play === 'content_gap'
+      : filter === 'refresh' ? (s.play === 'refresh' || s.play === 'defend')
+      : true)
+  }, [suggestions, filter])
+
+  const playOf = (s: AISuggestion) => s.play ?? (s.coverage?.matched ? 'refresh' : 'content_gap')
+  const scoreOf = (s: AISuggestion) => s.opportunityScore ?? s.demandScore
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -233,6 +311,8 @@ function QuickCreate({
       audience: audience.trim(),
       keywords: keywords.split(',').map(s => s.trim()).filter(Boolean),
       aiProvider,
+      interlinks: briefInterlinks ?? [],
+      opportunity: brief,
     })
   }
 
@@ -245,179 +325,310 @@ function QuickCreate({
       }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text, fontFamily: C.serif, textAlign: 'left' }}>
-            ✨ Quick Create
+            ✨ Quick Create — Autopilot
           </h3>
           <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted, textAlign: 'left' }}>
-            AI drafts → GitHub PR. Lands in caseworks, consultancy, or portal.
+            Opportunity Radar → autofilled brief → AI draft → GitHub PR.
           </p>
         </div>
         <span style={{ fontSize: 18, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
       </button>
-      {/* ── AI Suggestions Strip ── */}
-      {expanded && suggestions && suggestions.length > 0 && (
-        <div style={{ padding: '12px 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono }}>
-              🤖 AI-Powered Suggestions
-            </span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" onClick={() => onRefreshSuggestions?.('US')} disabled={suggestionsLoading} style={{
+
+      {expanded && (
+        <>
+          {/* ── Opportunity Radar strip ── */}
+          <div style={{ padding: '0 16px 4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono }}>
+                🎯 Opportunity Radar
+              </span>
+              <button type="button" onClick={() => onRefreshSuggestions?.(region)} disabled={suggestionsLoading} style={{
                 padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
                 background: C.surface2, color: C.textDim, fontSize: 9, fontWeight: 600, fontFamily: 'inherit',
               }}>
-                {suggestionsLoading ? '⏳ Loading…' : '🔄 Refresh'}
+                {suggestionsLoading ? '⏳ Scanning…' : '🔄 Rescan'}
               </button>
             </div>
-          </div>
-          {suggestionsLoading ? (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-              {[1,2,3].map(i => (
-                <div key={i} style={{ minWidth: 170, height: 72, borderRadius: 8, background: C.surface3, opacity: 0.5, flexShrink: 0 }} />
-              ))}
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollBehavior: 'smooth' }}>
-              {suggestions.map((s, i) => (
-                <button
-                  key={s.topic}
-                  type="button"
-                  onClick={() => onApplySuggestion?.(s)}
-                  style={{
-                    minWidth: 180, maxWidth: 220, flexShrink: 0,
-                    textAlign: 'left', padding: '10px 12px', borderRadius: 8,
-                    border: i === 0 ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
-                    background: i === 0 ? C.surface2 : C.surface,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.surface2; e.currentTarget.style.borderColor = C.gold }}
-                  onMouseLeave={e => { e.currentTarget.style.background = i === 0 ? C.surface2 : C.surface; e.currentTarget.style.borderColor = i === 0 ? C.gold : C.border }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.3, flex: 1, paddingRight: 4 }}>
-                      {s.title.length > 60 ? s.title.slice(0, 57) + '…' : s.title}
-                    </span>
-                    {i === 0 && (
-                      <span style={{ flexShrink: 0, padding: '1px 5px', borderRadius: 3, background: C.gold, color: '#FFF', fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>
-                        TOP PICK
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                    <span style={{
-                      padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
-                      background: s.demandScore >= 70 ? '#D1FAE5' : s.demandScore >= 40 ? '#FEF3C7' : '#F3F4F6',
-                      color: s.demandScore >= 70 ? C.green : s.demandScore >= 40 ? C.orange : C.textDim,
-                    }}>
-                      {s.demandScore}%
-                    </span>
-                    <span style={{
-                      padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
-                      background: s.profitability === 'high' ? '#D1FAE5' : s.profitability === 'medium' ? '#FEF3C7' : '#F3F4F6',
-                      color: s.profitability === 'high' ? C.green : s.profitability === 'medium' ? C.orange : C.textDim,
-                    }}>
-                      {s.profitability === 'high' ? '💰 High Value' : s.profitability === 'medium' ? '📊 Medium' : '📉 Low'}
-                    </span>
-                    <span style={{ fontSize: 9, color: C.textDim }}>{s.impressions.toLocaleString()} imp</span>
-                  </div>
-                  <p style={{ margin: '4px 0 0', fontSize: 9, color: C.textDim, lineHeight: 1.3 }}>
-                    {s.reason}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
-          {suggestionsError && (
-            <div style={{ marginTop: 6, fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
-          )}
-        </div>
-      )}
-      {expanded && (
-        <form onSubmit={handleSubmit} style={{ padding: '0 18px 18px', borderTop: `1px solid ${C.border}` }}>
-          {/* Content type */}
-          <div style={{ marginTop: 14, marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', marginBottom: 6, fontFamily: C.mono }}>
-              Content Type
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
-              {CONTENT_TYPE_OPTIONS.map(opt => (
-                <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
-                  textAlign: 'left', padding: '8px 10px', borderRadius: 6,
-                  border: contentType === opt.value ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
-                  background: contentType === opt.value ? C.surface2 : C.surface,
-                  cursor: 'pointer', fontSize: 11, color: C.text, fontFamily: 'inherit',
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+              {RADAR_FILTERS.map((f) => (
+                <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
+                  padding: '3px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
+                  transition: 'all 0.15s',
                 }}>
-                  <span style={{ marginRight: 4 }}>{opt.icon}</span>
-                  <span style={{ fontWeight: 600 }}>{opt.label}</span>
-                  <span style={{ display: 'block', fontSize: 9, color: C.textDim, marginTop: 1 }}>{opt.ext} → {opt.repo}</span>
+                  {f.label}
                 </button>
               ))}
             </div>
+            {suggestionsLoading ? (
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+                {[1, 2, 3].map(i => (
+                  <div key={i} style={{ minWidth: 200, height: 108, borderRadius: 8, background: C.surface3, opacity: 0.5, flexShrink: 0 }} />
+                ))}
+              </div>
+            ) : (visibleSuggestions && visibleSuggestions.length > 0 ? (
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollBehavior: 'smooth' }}>
+                {visibleSuggestions.map((s) => {
+                  const pm = PLAY_META[playOf(s)] || PLAY_META.content_gap
+                  const score = scoreOf(s)
+                  const tm = TREND_META[s.trend || 'flat'] || TREND_META.flat
+                  const active = brief && brief.topic === s.topic
+                  return (
+                    <button
+                      key={s.topic}
+                      type="button"
+                      onClick={() => onApplySuggestion?.(s)}
+                      style={{
+                        minWidth: 216, maxWidth: 250, flexShrink: 0,
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 8,
+                        border: active ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+                        background: active ? '#FEF9EC' : C.surface,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2; e.currentTarget.style.borderColor = C.gold }}
+                      onMouseLeave={e => { e.currentTarget.style.background = active ? '#FEF9EC' : C.surface; e.currentTarget.style.borderColor = active ? C.gold : C.border }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                        <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg }}>
+                          {pm.icon} {pm.label}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
+                          <span style={{ fontSize: 12, color: tm.color, fontWeight: 700 }} title={tm.label}>{tm.icon}</span>
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.3, marginBottom: 5 }}>
+                        {s.title.length > 64 ? s.title.slice(0, 61) + '…' : s.title}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginBottom: 5 }}>
+                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>#{s.position ?? '—'}</span>
+                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{fmtN(s.impressions)} imp</span>
+                        <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono, background: C.surface3, color: C.textMuted }}>
+                          {INTENT_LABELS[s.intent] || s.intentCategory || '📖 Informational'}
+                        </span>
+                      </div>
+                      {(s.signals && s.signals.length ? s.signals.slice(0, 2) : [s.reason]).map((sig, si) => (
+                        <p key={si} style={{ margin: 0, fontSize: 8.5, color: C.textDim, lineHeight: 1.35 }}>• {sig}</p>
+                      ))}
+                      <div style={{ marginTop: 5, fontSize: 8.5, color: C.gold, fontFamily: C.mono }}>
+                        {s.interlinks && s.interlinks.length ? `🔗 ${s.interlinks.length} link targets` : '🔗 no registry match'}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '10px 0', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                No opportunities for this filter — rescan or switch filter.
+              </div>
+            ))}
+            {suggestionsError && (
+              <div style={{ margin: '4px 0 8px', fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
+            )}
           </div>
 
-          {/* Region + Tone + AI Model */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={labelStyle}>Region</label>
-              <select value={region} onChange={e => { setRegion(e.target.value as Region); onRefreshSuggestions?.(e.target.value) }} style={inputStyle}>
-                {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
+          {/* ── Autopilot brief preview ── */}
+          {brief && (
+            <div style={{ margin: '4px 16px 12px', border: '1px solid #F0D9A8', background: '#FEF9EC', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: C.gold, textTransform: 'uppercase', fontFamily: C.mono }}>
+                  🧭 Autopilot brief — every field pre-filled & editable
+                </span>
+                <button type="button" onClick={onClearBrief} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 10, color: C.textDim, fontFamily: 'inherit' }}>
+                  ✕ Clear
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{brief.primaryKeyword || brief.topic}</span>
+                <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: (PLAY_META[brief.play] || {}).bg || C.surface3, color: (PLAY_META[brief.play] || {}).fg || C.textMuted }}>
+                  {(brief.play || 'content_gap').replace('_', ' ')} · {scoreOf(brief)}/100
+                </span>
+                <span style={{ fontSize: 9, color: C.textMuted, fontFamily: C.mono }}>
+                  {brief.intent} · {brief.contentType || 'blog_post'} · {brief.trend}
+                </span>
+              </div>
+              {brief.keywords && brief.keywords.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                  {brief.keywords.slice(0, 8).map(k => (
+                    <span key={k} style={{ padding: '1px 6px', borderRadius: 999, background: '#FFFFFF', border: '1px solid #F0D9A8', fontSize: 8.5, color: C.textMuted, fontFamily: C.mono }}>{k}</span>
+                  ))}
+                </div>
+              )}
+              {briefInterlinks && briefInterlinks.length > 0 && (
+                <div>
+                  <span style={{ fontSize: 8.5, fontWeight: 700, color: C.gold, fontFamily: C.mono }}>🔗 INTERNAL LINKING ({briefInterlinks.length})</span>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                    {briefInterlinks.slice(0, 4).map((l, li) => (
+                      <span key={li} style={{ padding: '2px 7px', borderRadius: 4, background: '#FFFFFF', border: '1px solid #F0D9A8', fontSize: 8.5, color: C.text, fontFamily: C.mono }}>
+                        {l.label} → {String(l.url || '').replace(/^https?:\/\//, '')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ padding: '0 18px 18px', borderTop: `1px solid ${C.border}` }}>
+            {/* Content type */}
+            <div style={{ marginTop: 14, marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', marginBottom: 6, fontFamily: C.mono }}>
+                Content Type
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
+                {CONTENT_TYPE_OPTIONS.map(opt => (
+                  <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
+                    textAlign: 'left', padding: '8px 10px', borderRadius: 6,
+                    border: contentType === opt.value ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+                    background: contentType === opt.value ? C.surface2 : C.surface,
+                    cursor: 'pointer', fontSize: 11, color: C.text, fontFamily: 'inherit',
+                  }}>
+                    <span style={{ marginRight: 4 }}>{opt.icon}</span>
+                    <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                    <span style={{ display: 'block', fontSize: 9, color: C.textDim, marginTop: 1 }}>{opt.ext} → {opt.repo}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Region + Tone + AI Model */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={labelStyle}>Region</label>
+                <select value={region} onChange={e => { setRegion(e.target.value as Region); onRefreshSuggestions?.(e.target.value) }} style={inputStyle}>
+                  {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Tone</label>
+                <select value={tone} onChange={e => setTone(e.target.value as Tone)} style={inputStyle}>
+                  {TONE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>AI Model</label>
+              <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
+                <option value="auto">Auto (Grok → OpenAI → rest)</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="openai">OpenAI (GPT-5.6 Luna)</option>
+                <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
+                <option value="cloudflare-ai">Cloudflare Workers AI</option>
+                <option value="groq">Groq (Llama)</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="openrouter">OpenRouter</option>
               </select>
             </div>
-            <div>
-              <label style={labelStyle}>Tone</label>
-              <select value={tone} onChange={e => setTone(e.target.value as Tone)} style={inputStyle}>
-                {TONE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+
+            {/* Title */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>Title <span style={{ color: C.textDim, fontWeight: 400 }}>(optional — radar suggests one)</span></label>
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. F-1 OPT Application: Complete 2026 Timeline" maxLength={120} style={inputStyle} />
             </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle}>AI Model</label>
-            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
-              <option value="auto">Auto (Grok → OpenAI → rest)</option>
-              <option value="grok">Grok (xAI)</option>
-              <option value="openai">OpenAI (GPT-5.6 Luna)</option>
-              <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
-              <option value="cloudflare-ai">Cloudflare Workers AI</option>
-              <option value="groq">Groq (Llama)</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-          </div>
 
-          {/* Title */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle}>Title <span style={{ color: C.textDim, fontWeight: 400 }}>(optional)</span></label>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. F-1 OPT Application: Complete 2026 Timeline" maxLength={120} style={inputStyle} />
-          </div>
-
-          {/* Topic */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle}>Topic <span style={{ color: C.red }}>*</span></label>
-            <textarea value={topic} onChange={e => onTopicChange(e.target.value)} rows={3} required style={{ ...inputStyle, resize: 'vertical' }}
-              placeholder="Describe what to write — visa types, forms, timelines, comparison angles..." />
-          </div>
-
-          {/* Audience + Keywords */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={labelStyle}>Audience</label>
-              <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="international students, H-1B holders..." style={inputStyle} />
+            {/* Topic */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={labelStyle}>Topic <span style={{ color: C.red }}>*</span></label>
+              <textarea value={topic} onChange={e => onTopicChange(e.target.value)} rows={3} required style={{ ...inputStyle, resize: 'vertical' }}
+                placeholder="Describe what to write — visa types, forms, timelines, comparison angles..." />
             </div>
-            <div>
-              <label style={labelStyle}>Keywords (comma-separated)</label>
-              <input value={keywords} onChange={e => onKeywordsChange(e.target.value)} placeholder="F-1 visa, OPT timeline, I-765..." style={inputStyle} />
-            </div>
-          </div>
 
-          <button type="submit" disabled={generating || (!topic.trim() && !title.trim())} style={{
-            width: '100%', padding: '10px 0', borderRadius: 6, border: 'none',
-            cursor: generating ? 'not-allowed' : 'pointer',
-            background: generating ? C.textDim : C.navy, color: '#FFFFFF',
-            fontSize: 13, fontWeight: 600, fontFamily: 'inherit', opacity: generating ? 0.6 : 1,
-          }}>
-            {generating ? '⚡ Generating…' : '⚡ Generate & Open PR'}
-          </button>
-        </form>
+            {/* Audience + Keywords */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={labelStyle}>Audience</label>
+                <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="international students, H-1B holders..." style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Keywords (comma-separated)</label>
+                <input value={keywords} onChange={e => onKeywordsChange(e.target.value)} placeholder="F-1 visa, OPT timeline, I-765..." style={inputStyle} />
+              </div>
+            </div>
+
+            {brief && (
+              <p style={{ margin: '0 0 8px', fontSize: 9.5, color: C.gold, fontFamily: C.mono }}>
+                Autopilot brief applied — interlinks + opportunity signals will be sent to the generator. Review fields, then generate.
+              </p>
+            )}
+
+            <button type="submit" disabled={generating || (!topic.trim() && !title.trim())} style={{
+              width: '100%', padding: '10px 0', borderRadius: 6, border: 'none',
+              cursor: generating ? 'not-allowed' : 'pointer',
+              background: generating ? C.textDim : C.navy, color: '#FFFFFF',
+              fontSize: 13, fontWeight: 600, fontFamily: 'inherit', opacity: generating ? 0.6 : 1,
+            }}>
+              {generating ? '⚡ Generating…' : '⚡ Generate & Open PR'}
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Opportunity Radar (full scored list) ──────────────────────────────────
+
+function OpportunityRadar({ opportunities, meta, onApply }: {
+  opportunities: AISuggestion[]
+  meta?: Record<string, unknown> | null
+  onApply: (s: AISuggestion) => void
+}) {
+  const [expanded, setExpanded] = React.useState(false)
+  const list = (opportunities ?? []).slice(0, expanded ? 24 : 8)
+  const source = (meta?.source as string) || '—'
+  const coverage = (meta?.coverage as { total?: number; covered?: number; gaps?: number } | null) || null
+  const cannibal = (meta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || null
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.text, fontFamily: C.serif }}>🎯 Opportunity Radar</h4>
+          <p style={{ margin: '2px 0 0', fontSize: 9.5, color: C.textDim, fontFamily: C.mono }}>
+            {source}
+            {coverage ? ` · ${coverage.total ?? 0} known pages · ${coverage.gaps ?? 0} gaps` : ''}
+          </p>
+        </div>
+        <button type="button" onClick={() => setExpanded(!expanded)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 10, color: C.textMuted, fontFamily: 'inherit' }}>
+          {expanded ? '▲ Collapse' : '▼ Expand'}
+        </button>
+      </div>
+      <div style={{ borderTop: `1px solid ${C.border}` }}>
+        {list.map((o, i) => {
+          const pm = PLAY_META[o.play] || PLAY_META.content_gap
+          const score = o.opportunityScore ?? o.demandScore
+          return (
+            <div key={`${o.topic}-${i}`} style={{ padding: '9px 16px', borderBottom: i < list.length - 1 ? `1px solid ${C.border}` : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ minWidth: 34, fontSize: 12, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
+              <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg, whiteSpace: 'nowrap' }}>{pm.label}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.title}</div>
+                <div style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {o.signals && o.signals[0] ? o.signals[0] : o.reason}
+                </div>
+              </div>
+              <button type="button" onClick={() => onApply(o)} style={{
+                flexShrink: 0, padding: '4px 9px', borderRadius: 5, border: 'none', cursor: 'pointer',
+                background: C.navy, color: '#FFFFFF', fontSize: 9, fontWeight: 700, fontFamily: 'inherit',
+              }}>Draft</button>
+            </div>
+          )
+        })}
+        {(!list || list.length === 0) && (
+          <div style={{ padding: '14px 16px', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+            No scored opportunities yet — rescan the radar above.
+          </div>
+        )}
+      </div>
+      {cannibal && cannibal.length > 0 && (
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, background: '#FEF2F2' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: C.red, fontFamily: C.mono }}>⚠ CANNIBALIZATION WATCH ({cannibal.length})</span>
+          {cannibal.slice(0, 3).map((c, ci) => (
+            <div key={ci} style={{ fontSize: 8.5, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
+              “{c.term}” targeted by {c.pages.length} pages — consolidate, don't create another
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -1345,6 +1556,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [suggestions, setSuggestions] = React.useState<AISuggestion[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = React.useState(false)
   const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null)
+  const [radar, setRadar] = React.useState<AISuggestion[]>([])
+  const [radarMeta, setRadarMeta] = React.useState<Record<string, unknown> | null>(null)
+  const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
+  const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -1372,12 +1587,24 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const data = await res.json()
       if (res.ok) {
         setSuggestions(data.suggestions ?? [])
+        setRadar(data.opportunities ?? data.suggestions ?? [])
+        setRadarMeta({ source: data.source, coverage: data.coverageStats, cannibalization: data.cannibalization, region: data.region })
       } else {
         setSuggestionsError((data as { error?: string }).error ?? 'Failed to load suggestions')
       }
     } catch (err) {
       setSuggestionsError(err instanceof Error ? err.message : 'Suggestion fetch failed')
     } finally { setSuggestionsLoading(false) }
+  }, [])
+
+  // Autopilot: one click applies the full brief — topic, keywords, title,
+  // audience, content type, tone, interlinks — everything stays editable.
+  const applyBrief = React.useCallback((s: AISuggestion) => {
+    setTopic(s.topic)
+    setKeywords((s.keywords && s.keywords.length ? s.keywords : [s.primaryKeyword || s.topic]).join(', '))
+    setSelectedBrief(s)
+    setBriefInterlinks(s.interlinks ?? [])
+    setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
   }, [])
 
   // Load suggestions on mount
@@ -1427,6 +1654,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             strategyHints: gscData.strategyHints ?? [],
             portfolioSnapshot: gscData.portfolioSnapshot ?? {},
             source: gscData.source ?? 'unknown',
+            opportunity: selectedBrief,
+            interlinks: briefInterlinks,
           }
           record('seo', `SEO canon loaded: ${gscData.portfolioSnapshot?.primaryCount ?? 0} primary, ${gscData.portfolioSnapshot?.secondaryCount ?? 0} secondary keywords from ${gscData.source}`)
         }
@@ -1445,6 +1674,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: 55, maxRefine: 2,
           seoEnrichment,
+          interlinks: briefInterlinks,
+          opportunity: selectedBrief,
           aiProvider: formData.aiProvider || undefined,
         }),
       })
@@ -1571,12 +1802,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             suggestions={suggestions} suggestionsLoading={suggestionsLoading}
             suggestionsError={suggestionsError}
             onRefreshSuggestions={fetchSuggestions}
-            onApplySuggestion={(s: AISuggestion) => {
-              setTopic(s.topic)
-              setKeywords(s.keywords.join(', '))
-              setSuggestions([s, ...suggestions.filter(x => x.topic !== s.topic)])
-            }}
+            onApplySuggestion={applyBrief}
+            brief={selectedBrief}
+            briefInterlinks={briefInterlinks}
+            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
           />
+          <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
           <AdminSiteHealthPanel />
           <AdminDeepInterlinkPanel  setActionNotice={setActionNotice} />
           <InterlinksMini topic={topic} keywords={keywords} />
