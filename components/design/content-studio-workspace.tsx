@@ -110,7 +110,7 @@ export interface PrStatus {
   } | null
 }
 
-type PaneTab = 'editor' | 'pr' | 'log' | 'meta'
+type PaneTab = 'editor' | 'pr' | 'deploy' | 'log' | 'meta'
 type EditorMode = 'write' | 'preview' | 'split'
 
 export function createLog(
@@ -374,6 +374,7 @@ export default function ContentStudioWorkspace({
         {([
           ['editor', 'Editor'],
           ['pr', 'GitHub PR'],
+          ['deploy', 'Deploy & CI'],
           ['log', 'Debug log'],
           ['meta', 'Meta'],
         ] as [PaneTab, string][]).map(([k, label]) => (
@@ -399,6 +400,34 @@ export default function ContentStudioWorkspace({
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {pane === 'editor' && (
           <>
+            {/* AI engine card — resolved provider + model for this job */}
+            {job && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                padding: '8px 10px', borderBottom: `1px solid ${C.border}`,
+                background: 'rgba(251,191,36,0.07)', flexShrink: 0,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: 14 }}>🤖</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.gold, fontWeight: 700 }}>
+                      AI engine · resolved model
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.ai_model || job.ai_provider || ''}>
+                      {job.ai_model || job.ai_provider || 'Not resolved yet'}
+                      {job.ai_provider && job.ai_model ? (
+                        <span style={{ color: C.dim, fontWeight: 500 }}> · via {job.ai_provider}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                {job.ai_model ? (
+                  <span style={{ fontSize: 9, fontFamily: C.mono, color: C.gold, background: 'rgba(251,191,36,0.12)', padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                    resolved
+                  </span>
+                ) : null}
+              </div>
+            )}
             <div style={{
               display: 'flex', gap: 6, flexWrap: 'wrap', padding: '8px 10px',
               borderBottom: `1px solid ${C.border}`, background: C.panel, flexShrink: 0,
@@ -676,6 +705,93 @@ export default function ContentStudioWorkspace({
           </div>
         )}
 
+        {pane === 'deploy' && (
+          <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
+            {!job && <Empty>Select a job to inspect its deploy pipeline and CI.</Empty>}
+            {job && (
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                  <strong style={{ color: C.gold }}>Deploy & CI</strong>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" disabled={busy || !job} onClick={onMonitor} style={btn(C.cyan, true)}>
+                      Monitor CI
+                    </button>
+                    <button type="button" disabled={busy || !job} onClick={onRefreshPr} style={btn()}>
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <Row label="Local status" value={job.status || '—'} />
+                <Row label="Ship mode" value={job.ship_mode || '—'} />
+                <Row label="Deploy SHA" value={job.deploy_sha ? job.deploy_sha.slice(0, 12) : '—'} mono />
+                <Row label="Merged" value={job.merged_at ? new Date(job.merged_at).toLocaleString() : '—'} />
+                <Row label="Indexable" value={job.indexable === false ? 'no (noindex)' : 'yes'} />
+                {job.content_path && <Row label="Path" value={job.content_path} mono />}
+
+                {prStatus?.check_summary ? (
+                  <div style={{
+                    padding: 10, borderRadius: 8, background: C.panel,
+                    border: `1px solid ${C.border}`,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <strong style={{ fontSize: 12, color: C.text }}>CI checks</strong>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                        color: checkStateColor(prStatus.check_summary.state),
+                      }}>
+                        {prStatus.check_summary.state}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, fontFamily: C.mono, marginBottom: 8 }}>
+                      {prStatus.check_summary.total} total · {prStatus.check_summary.success} ok ·{' '}
+                      {prStatus.check_summary.failure} fail · {prStatus.check_summary.pending} pending
+                    </div>
+                    {(prStatus.checks || []).map((c, i) => (
+                      <div
+                        key={`${c.name}-${i}`}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', gap: 8,
+                          padding: '6px 0', borderTop: i ? `1px solid ${C.border}` : 'none',
+                          fontSize: 11,
+                        }}
+                      >
+                        <span style={{ color: C.text, wordBreak: 'break-word' }}>
+                          {c.html_url ? (
+                            <a href={c.html_url} target="_blank" rel="noreferrer" style={{ color: C.cyan }}>
+                              {c.name}
+                            </a>
+                          ) : c.name}
+                        </span>
+                        <span style={{
+                          color: checkStateColor(c.conclusion || c.status),
+                          fontFamily: C.mono, flexShrink: 0,
+                        }}>
+                          {c.conclusion || c.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.5 }}>
+                    {job.pr_url || job.pr_number
+                      ? 'No CI data yet — hit Monitor CI to pull check-runs for the head commit.'
+                      : 'No PR yet — ship this job (Approve → main or Ship PR only) to trigger the GitHub Actions pipeline, then monitor here.'}
+                  </div>
+                )}
+
+                <div style={{
+                  padding: 10, borderRadius: 8, background: C.panel, border: `1px solid ${C.border}`,
+                  fontSize: 11, color: C.dim, lineHeight: 1.5,
+                }}>
+                  <strong style={{ color: C.text }}>Pipeline</strong> — Approve commits and merges to{' '}
+                  <span style={{ fontFamily: C.mono, color: C.muted }}>main</span>, which triggers the Cloudflare
+                  Workers deploy and the CI monitor. Watch status live here, or open the PR for full GitHub checks.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {pane === 'log' && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -788,7 +904,24 @@ export default function ContentStudioWorkspace({
                 <Row label="Canonical" value={job.canonical_url || '—'} mono />
                 <Row label="Indexable" value={job.indexable === false ? 'no' : 'yes'} />
                 <Row label="Ship mode" value={job.ship_mode || '—'} />
-                <Row label="AI" value={job.ai_provider ? `${job.ai_provider}${job.ai_model ? ` · ${job.ai_model}` : ''}` : '—'} />
+                <div style={{ padding: 10, borderRadius: 8, border: `1px solid ${C.goldBorder}`, background: 'rgba(251,191,36,0.08)' }}>
+                  <div style={{ fontWeight: 700, color: C.gold, fontSize: 10, textTransform: 'uppercase', marginBottom: 6 }}>
+                    AI provider · resolved model
+                  </div>
+                  {job.ai_model ? (
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.text, fontFamily: C.mono }}>{job.ai_model}</div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: C.text }}>{job.ai_provider || '—'}</div>
+                  )}
+                  {job.ai_provider && job.ai_model && (
+                    <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>via {job.ai_provider}</div>
+                  )}
+                  {!job.ai_provider && !job.ai_model && (
+                    <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                      Not resolved yet — generation records the resolved provider + model on the job.
+                    </div>
+                  )}
+                </div>
                 <Row label="SEO score" value={job.seo_score != null ? String(job.seo_score) : '—'} />
                 <Row label="Words" value={job.word_count != null ? String(job.word_count) : String(words)} />
                 <Row label="Job ID" value={job.id} mono />
