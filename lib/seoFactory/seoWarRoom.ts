@@ -10,7 +10,7 @@
  * War Room, the Discover tab, and the Opportunities tab.
  */
 import { getGscAccess } from '@/lib/gscAuth'
-import { loadGscSnapshot } from '@/lib/seoDataLoaders'
+import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
 import { createClient } from '@supabase/supabase-js'
 import {
   scoreOpportunities,
@@ -18,6 +18,7 @@ import {
   type CoverageItem,
   type InterlinkOption,
 } from '@/lib/seoFactory/opportunityEngine'
+import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 
 // ── Legacy play labels (backward compat for the war-room UI) ─────────────
 const PLAY_MAP: Record<string, string> = {
@@ -78,6 +79,8 @@ export interface WarOpportunity {
   history?: Array<{ date?: string; position: number; impressions: number; clicks?: number }>
   /** last - first position (negative = improving). */
   positionDelta?: number
+  /** Keyword-cluster resolution (anti-cannibalization) when clusters were built. */
+  cluster?: ClusterResolution
 }
 
 export interface WarRoomResult {
@@ -312,12 +315,31 @@ export async function buildSeoWarRoom(opts?: {
       .filter((l) => l.label && l.url)
   } catch { /* interlinks optional */ }
 
+  // ── 3.5 Keyword clusters → canonical-page resolution (anti-cannibalization) ──
+  // Cluster every analyzed query, resolve each cluster to ONE page (existing
+  // owner URL / shipped job, or a new unique page), and feed the engine's
+  // relatedByTerm so opportunities carry their full cluster.
+  let clusterResult = { byTerm: {} as Record<string, ClusterResolution>, relatedByTerm: {} as Record<string, string[]> }
+  try {
+    const registry = await loadOwnershipRegistry()
+    clusterResult = await buildKeywordClusters({
+      queries: deduped.map((q) => ({ term: q.term, impressions: q.impressions, clicks: q.clicks, position: q.position })),
+      region: regionFilter || 'US',
+      registry: (registry.rows ?? []) as Array<{ primary_keyword?: string; owner_url?: string | null; owner_host?: string | null; action?: string }>,
+      coverage: coverage.map((c) => ({ title: c.title, topic: c.topic, primaryKeyword: c.primaryKeyword, status: c.status, url: c.url })),
+      minImpressions,
+    })
+  } catch {
+    /* clustering optional — radar still works without it */
+  }
+
   // ── 4. Run the Opportunity Intelligence Engine ──────────────────────────
   const result = scoreOpportunities({
     queries: deduped,
     coverage,
     interlinks,
     region: regionFilter || 'US',
+    relatedByTerm: clusterResult.relatedByTerm,
     limit: limit * 2,
   })
 
@@ -365,6 +387,7 @@ export async function buildSeoWarRoom(opts?: {
         coverage: o.coverage,
         history: o.history,
         positionDelta: o.positionDelta,
+        cluster: clusterResult.byTerm[o.topic],
       }
     })
 
