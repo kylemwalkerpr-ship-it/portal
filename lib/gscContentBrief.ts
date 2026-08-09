@@ -8,6 +8,7 @@
 
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot } from '@/lib/seoDataLoaders'
+import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 
 export interface GscQuerySignal {
   term: string
@@ -308,6 +309,8 @@ export function buildKeywordPortfolio(brief: GscContentBrief): {
 
 export function formatGscBriefForPrompt(brief: GscContentBrief): string {
   const lines: string[] = [
+    editorialBriefPromptBlock(),
+    '',
     `## Live SEO demand (Google Search Console — ${brief.source}/${brief.mode})`,
     `Window: ${brief.rangeNote}`,
     brief.siteUrl ? `Property: ${brief.siteUrl}` : '',

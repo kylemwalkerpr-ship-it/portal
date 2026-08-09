@@ -37,6 +37,7 @@ import {
 } from './ontology'
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
+import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
 
 export interface GscSignalInput {
   term: string
@@ -317,9 +318,10 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     if (draft) {
       try {
         const ai = await generateContentText({
-          system:
-            `You are the chief SEO strategist for an immigration marketplace. Write a tight content mission brief (5–7 sentences) for one page. ` +
-            `Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,
+          system: [
+            editorialBriefPromptBlock(),
+            `You are the chief SEO strategist for an immigration marketplace. Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,
+          ].join('\n'),
           prompt: [
             `STAGE: ${stageDef.label} (${country}) — funnel ${stageDef.funnel}, YMYL ${stageDef.ymyl}`,
             `PRIMARY TERM: ${primaryTerm}`,

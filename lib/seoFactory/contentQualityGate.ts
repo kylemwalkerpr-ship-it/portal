@@ -15,6 +15,7 @@
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
+import { EDITORIAL_FORMATTING_CONTRACT } from './editorialContract'
 
 export type QualitySeverity = 'blocker' | 'warning'
 
@@ -422,7 +423,59 @@ export function evaluateContentQuality(opts: {
     }
   }
 
-  // ── 5. Structure for indexable long-form ─────────────────────────────────
+  // ── 5. Reader engagement and structure ─────────────────────────────────────
+  // Warnings keep the format query-led while still catching walls of prose.
+  if (indexable && contentType !== 'marketplace_gig' && words >= 650) {
+    const proseBlocks = body
+      .split(/\n\s*\n/)
+      .map((block) => block
+        .replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+).*$/gm, '')
+        .replace(/\|[^\n]*\|/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+      )
+      .filter((block) => block.length > 180)
+    const longBlocks = proseBlocks.filter((block) => {
+      const sentences = (block.match(/[.!?](?:\s|$)/g) || []).length
+      return block.length > 520 || sentences >= 5
+    })
+    if (longBlocks.length >= 2) {
+      add({
+        code: 'wall_of_text',
+        severity: 'warning',
+        message: `Several prose blocks are too dense (${longBlocks.length} long blocks)`,
+        fix: 'Break dense paragraphs into 1–3 sentence units and add a useful list, step, table, example, or callout where it improves comprehension.',
+      })
+    }
+    const hasList = /(?:^|\n)\s*(?:[-*+]\s+|\d+[.)]\s+)/m.test(body)
+    const hasTable = /\|[^\n]+\|\n\|\s*:?-{2,}/.test(body)
+    if (!hasList && !hasTable) {
+      add({
+        code: 'missing_visual_break',
+        severity: 'warning',
+        message: 'Long-form page has no useful list or comparison table',
+        fix: 'Add a genuine checklist, numbered process, or comparison table only where it makes the information easier to scan.',
+      })
+    }
+    if (words >= 1100 && !/table of contents|contents|on this page/i.test(body)) {
+      add({
+        code: 'missing_reader_path',
+        severity: 'warning',
+        message: 'Long guide has no visible reading path / contents aid',
+        fix: 'Add a concise table of contents or “On this page” list linked to the major sections.',
+      })
+    }
+    if (words >= 800 && !/\b(?:for example|for instance|e\.g\.|example:)\b/i.test(body)) {
+      add({
+        code: 'missing_concrete_example',
+        severity: 'warning',
+        message: 'Long-form page has no concrete example marker',
+        fix: 'Add one accurate, clearly labeled example or scenario; do not invent a case outcome.',
+      })
+    }
+  }
+
+  // ── 6. Structure for indexable long-form ─────────────────────────────────
   if (indexable && contentType !== 'marketplace_gig') {
     if (!/in 60 seconds|tldr|key takeaways|quick answer/i.test(body)) {
       add({
@@ -570,6 +623,8 @@ export function qualityPromptBlock(): string {
     'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
     '',
     VOICE_PLAYBOOK,
+    '',
+    EDITORIAL_FORMATTING_CONTRACT,
   ].join('\n')
 }
 
