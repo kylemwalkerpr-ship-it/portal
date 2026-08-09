@@ -176,9 +176,9 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
     // Snapshot fallback — deterministic, keeps the planner useful pre-OAuth.
     const { loadGscSnapshot } = await import('@/lib/seoDataLoaders')
     const snap = await loadGscSnapshot()
-    if (snap?.queries) {
-      return (Array.isArray(snap.queries) ? snap.queries : []).slice(0, 150).map((q: Record<string, unknown>) => ({
-        term: String(q.term || q.query || ''),
+    if (snap?.topQueries?.length) {
+      return snap.topQueries.slice(0, 150).map((q) => ({
+        term: String(q.term || ''),
         clicks: Number(q.clicks) || 0,
         impressions: Number(q.impressions) || 0,
         position: Number(q.position) || 100,
