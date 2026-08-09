@@ -33,6 +33,17 @@ export interface AiProviderDef {
 
 export const AI_PROVIDERS: AiProviderDef[] = [
   {
+    id: 'nvidia-glm',
+    label: 'NVIDIA GLM 5.2 · z-ai/glm-5.2',
+    keyEnv: 'NVIDIA_API_KEY',
+    baseUrlEnv: 'NVIDIA_BASE_URL',
+    modelEnv: 'NVIDIA_GLM_MODEL',
+    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultModel: 'z-ai/glm-5.2',
+    role: 'primary',
+    hint: 'Preferred lead — verified NVIDIA Integrate endpoint',
+  },
+  {
     id: 'nvidia-deepseek',
     label: 'DeepSeek V4 Pro · NVIDIA',
     keyEnv: 'NVIDIA_API_KEY',
@@ -41,7 +52,7 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
     defaultModel: 'deepseek-ai/deepseek-v4-pro',
     role: 'primary',
-    hint: 'Default primary — long-form depth',
+    hint: 'NVIDIA fallback — long-form depth',
   },
   {
     id: 'cloudflare-ai',
