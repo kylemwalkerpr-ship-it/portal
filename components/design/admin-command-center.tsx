@@ -19,6 +19,7 @@ import ContentStudioWorkspace, {
   type StudioLogEntry,
 } from './content-studio-workspace'
 import AiKeyVaultPanel from './ai-key-vault-panel'
+import SeoMasterEngine from './admin-seo-engine'
 
 // ── Color tokens (match portal identity) ──
 const C = {
@@ -345,6 +346,7 @@ export default function AdminCommandCenter({
   const [metrics, setMetrics] = React.useState<any>(null)
   const [strategies, setStrategies] = React.useState<any>(null)
   const [systemsOpen, setSystemsOpen] = React.useState(false)
+const [engineOpen, setEngineOpen] = React.useState(false)
 
   const pushLog = (level: StudioLogEntry['level'], source: string, message: string, detail?: string) =>
     setLogs((prev) => [...prev, createLog(level, source, message, detail)].slice(-150))
@@ -1453,6 +1455,37 @@ export default function AdminCommandCenter({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── SEO Master Engine ── */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
+          <button type="button" onClick={() => setEngineOpen((v) => !v)} style={{
+            width: '100%', padding: '12px 18px', border: 'none', background: 'none', cursor: 'pointer',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit',
+          }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>🧭 SEO Master Engine</span>
+            <span style={{ fontSize: 14, color: C.textDim }}>{engineOpen ? '▲' : '▼'}</span>
+          </button>
+          {engineOpen && (
+            <div style={{ padding: '0 18px 16px' }}>
+              <SeoMasterEngine
+                onBrief={(p: any) => applyBrief({
+                  term: p.primary_term || p.primaryTerm || '',
+                  title: (p.plan && (p.plan.pillar || p.plan.title)) || p.primary_term || p.primaryTerm || '',
+                  primaryKeyword: p.primary_term || p.primaryTerm || '',
+                  keywords: [p.primary_term || p.primaryTerm || '', ...((p.related_terms || p.relatedTerms || []) as string[])].filter(Boolean).slice(0, 8),
+                  contentType: (p.plan && p.plan.contentType) || 'blog_post',
+                  intent: p.intent || 'informational',
+                  interlinks: (p.interlinks || []) as string[],
+                  signals: (p.related_terms || p.relatedTerms || []) as string[],
+                  cluster: null,
+                  stage: p.stage,
+                  country: p.country,
+                })}
+                onIngest={(r: any) => notify(`Knowledge ingested: ${r.stored} stored / ${r.fetched} fetched (${r.aiSummarized} AI-summarized)`, 'success')}
+              />
             </div>
           )}
         </div>
