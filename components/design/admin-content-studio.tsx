@@ -731,9 +731,10 @@ function CreateWizard({
                   const snapLabel = snapAt && src === 'snapshot'
                     ? ` · ${new Date(snapAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
                     : ''
+                  const mode = gscStatus?.mode === 'oauth' ? 'OAUTH' : gscStatus?.mode === 'service_account' ? 'SERVICE_ACCOUNT' : null
                   return (
-                    <span title={src === 'live' ? 'Scored from live Search Console data' : 'Scored from the committed snapshot — connect GSC for live demand'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: src === 'live' ? C.greenSoft : '#FFFBEB', color: src === 'live' ? C.green : '#92400E' }}>
-                      {src === 'live' ? '● LIVE GSC' : `◐ SNAPSHOT${snapLabel}`}
+                    <span title={src === 'live' ? `Scored from live Search Console data (${mode || 'mode unknown'})` : 'Scored from the committed snapshot — connect GSC for live demand'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: src === 'live' ? C.greenSoft : '#FFFBEB', color: src === 'live' ? C.green : '#92400E' }}>
+                      {src === 'live' ? `● LIVE GSC${mode ? ` · ${mode}` : ''}` : `◐ SNAPSHOT${snapLabel}`}
                     </span>
                   )
                 })()
@@ -746,7 +747,7 @@ function CreateWizard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 10.5, fontFamily: C.mono, color: gscStatus.connected ? C.red : '#92400E', flexWrap: 'wrap' }}>
               <span>
                 {gscStatus.connected
-                  ? `◐ TOKEN FAILURE — ${String(gscStatus.error || 'refresh failed')}`
+                  ? `◐ TOKEN FAILURE — ${String(gscStatus.error || 'refresh failed')}${gscStatus.mode === 'oauth' ? ' (OAUTH)' : gscStatus.mode === 'service_account' ? ' (SERVICE_ACCOUNT)' : ''}`
                   : '◐ GSC not connected — these scores are snapshot-based'}
               </span>
               <button type="button" onClick={onConnectGsc} style={{ padding: '2px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#F59E0B', color: '#fff', fontSize: 9.5, fontWeight: 800 }}>
@@ -2588,6 +2589,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
+              {gscStatus.connected && (gscStatus.mode === 'oauth' || gscStatus.mode === 'service_account') && (
+                <span title={gscStatus.mode === 'oauth' ? 'Google OAuth consent flow' : 'Pasted service-account key'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, fontFamily: C.mono, background: gscStatus.mode === 'oauth' ? '#EEF2FF' : '#ECFDF5', color: gscStatus.mode === 'oauth' ? '#3730A3' : '#166534', border: `1px solid ${gscStatus.mode === 'oauth' ? '#C7D2FE' : '#A7F3D0'}` }}>
+                  {gscStatus.mode === 'oauth' ? 'OAUTH' : 'SERVICE_ACCOUNT'}
+                </span>
+              )}
               {gscStatus.connected ? (
                 <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
                   <strong>GSC token is failing</strong> — {String(gscStatus.error || 'refresh failed')}. Autopilot stays on snapshot data until it's fixed.

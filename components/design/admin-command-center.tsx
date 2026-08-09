@@ -3075,8 +3075,18 @@ function RecheckDuePanel() {
           const statusColor = connected && live ? C.green : C.red
           return (
             <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.55 }}>
-              <div style={{ color: statusColor, fontWeight: 700, fontFamily: C.mono, marginBottom: 4 }}>
-                {connected ? 'CONNECTED' : 'NOT CONNECTED'} · {mode}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ color: statusColor, fontWeight: 700, fontFamily: C.mono }}>
+                  {connected ? 'CONNECTED' : 'NOT CONNECTED'}
+                </span>
+                {connected && mode !== 'NONE' && (
+                  <span
+                    title={mode === 'OAUTH' ? 'Google OAuth consent flow' : 'Pasted service-account key'}
+                    style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, fontFamily: C.mono, background: mode === 'OAUTH' ? '#EEF2FF' : '#ECFDF5', color: mode === 'OAUTH' ? '#3730A3' : '#166534', border: `1px solid ${mode === 'OAUTH' ? '#C7D2FE' : '#A7F3D0'}` }}
+                  >
+                    {mode === 'OAUTH' ? 'OAUTH' : 'SERVICE_ACCOUNT'}
+                  </span>
+                )}
               </div>
               {gscStatus.siteUrl && <div style={{ fontFamily: C.mono, marginBottom: 4 }}>{gscStatus.siteUrl}</div>}
               {gscStatus.email && <div style={{ marginBottom: 4 }}>as {gscStatus.email}</div>}
@@ -3091,7 +3101,7 @@ function RecheckDuePanel() {
               {connected && !live && (
                 <>
                   <div style={{ marginBottom: 8 }}>
-                    The stored {mode.toLowerCase()} token can't mint an access token. Re-authorize to replace it with a fresh one.
+                    The stored {mode === 'OAUTH' ? 'OAuth token' : 'service account key'} can't mint an access token. Re-authorize to replace it with a fresh one.
                   </div>
                   <button
                     type="button"

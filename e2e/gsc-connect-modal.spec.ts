@@ -2,13 +2,20 @@
  * gsc-connect-modal.spec.ts
  *
  * E2E for the GSC connect modal (Command Center → Systems → Connect Search
- * Console): mocks `window.open` (Google forbids embedding the consent screen
- * in an iframe — X-Frame-Options: DENY — so the flow opens a popup; the test
- * fakes the popup handle) and the `/api/content-studio/gsc/connect` status
- * endpoint, then asserts that reaching the CONNECTED phase fires the radar
- * refresh: a fresh POST to `/api/seo-factory/war-room` via the single refresh
- * path `modal.onConnected → loadGscStatus → connected false→true transition →
- * loadHealth + loadRadar`.
+ * Console). Two connect paths are exercised:
+ *
+ *   1. OAuth — mocks `window.open` (Google forbids embedding the consent
+ *      screen in an iframe — X-Frame-Options: DENY — so the flow opens a
+ *      popup; the test fakes the popup handle) and the status endpoint, then
+ *      asserts reaching CONNECTED fires the radar refresh.
+ *   2. Service account — switches to the Service account tab, pastes a JSON
+ *      key + site URL, mocks the POST, and asserts CONNECTED · SERVICE_ACCOUNT
+ *      fires the radar refresh.
+ *
+ * Both assert the single refresh path end-to-end:
+ * `modal.onConnected → loadGscStatus → connected false→true transition →
+ * loadHealth + loadRadar` (observable as a fresh POST to
+ * `/api/seo-factory/war-room`).
  *
  * ── Auth setup ──────────────────────────────────────────────────────────────
  * The Command Center lives at /dashboard/admin/content and requires a Clerk
@@ -65,10 +72,39 @@ async function loginAsAdmin(browser: Browser): Promise<Page | null> {
   }
 }
 
-// ── The test ───────────────────────────────────────────────────────────────
+/**
+ * Drive the UI to the connect modal: open the studio, open the Command
+ * Center, switch to the Systems tab, and click the Systems-card Connect CTA.
+ */
+async function navigateToConnectModal(page: Page): Promise<void> {
+  await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
+
+  const ccButton = page.getByRole('button', { name: /Command Center/ }).first()
+  await ccButton.waitFor({ state: 'visible', timeout: 30000 })
+  await ccButton.click()
+
+  const systemsTab = page.locator('button[title="Open Systems"]')
+  await systemsTab.waitFor({ state: 'visible', timeout: 30000 })
+  await systemsTab.click()
+
+  const connectButton = page.getByRole('button', { name: /Connect Search Console \(OAuth\)/ })
+  await connectButton.waitFor({ state: 'visible', timeout: 30000 })
+  await connectButton.click()
+}
+
+/** Attach a counter for radar refreshes (the observable of the refresh path). */
+function countWarRoomRefreshes(page: Page): { hits: () => number } {
+  let hits = 0
+  page.on('request', (req) => {
+    if (req.url().includes('/api/seo-factory/war-room')) hits++
+  })
+  return { hits: () => hits }
+}
+
+// ── The tests ──────────────────────────────────────────────────────────────
 
 test.describe('GSC connect modal (admin)', () => {
-  test('CONNECTED phase fires the radar refresh', async ({ browser }) => {
+  test('OAuth: CONNECTED phase fires the radar refresh', async ({ browser }) => {
     test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
 
     const page = await loginAsAdmin(browser)
@@ -110,28 +146,9 @@ test.describe('GSC connect modal (admin)', () => {
       })
     })
 
-    // Count radar refreshes — the observable of the connect→refresh path.
-    let warRoomHits = 0
-    page.on('request', (req) => {
-      if (req.url().includes('/api/seo-factory/war-room')) warRoomHits++
-    })
+    const warRoom = countWarRoomRefreshes(page)
 
-    // ── Navigate to the Command Center ─────────────────────────────────────
-    await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
-
-    const ccButton = page.getByRole('button', { name: /Command Center/ }).first()
-    await ccButton.waitFor({ state: 'visible', timeout: 30000 })
-    await ccButton.click()
-
-    // Go to the Systems tab.
-    const systemsTab = page.locator('button[title="Open Systems"]')
-    await systemsTab.waitFor({ state: 'visible', timeout: 30000 })
-    await systemsTab.click()
-
-    // Open the connect modal from the Systems card.
-    const connectButton = page.getByRole('button', { name: /Connect Search Console \(OAuth\)/ })
-    await connectButton.waitFor({ state: 'visible', timeout: 30000 })
-    await connectButton.click()
+    await navigateToConnectModal(page)
 
     // Ready phase → Continue to Google (popup is faked → 'waiting').
     await page.getByRole('button', { name: /Continue to Google/ }).click()
@@ -141,7 +158,7 @@ test.describe('GSC connect modal (admin)', () => {
     // The modal's own 2s poll detects the connection (no manual re-check
     // click — that would race the interval and could land after the modal
     // auto-closes 2.2s into the CONNECTED phase).
-    const hitsBefore = warRoomHits
+    const hitsBefore = warRoom.hits()
     connected = true
 
     // The CONNECTED phase appears (modal auto-closes ~2.2s later, so poll
@@ -151,6 +168,99 @@ test.describe('GSC connect modal (admin)', () => {
       .toBe(true)
 
     // And the radar refresh fired: a fresh war-room POST after the connect.
-    await expect.poll(() => warRoomHits, { timeout: 10000 }).toBeGreaterThan(hitsBefore)
+    await expect.poll(() => warRoom.hits(), { timeout: 10000 }).toBeGreaterThan(hitsBefore)
+  })
+
+  test('Service account: pasted key + URL connect fires the radar refresh', async ({ browser }) => {
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+
+    const page = await loginAsAdmin(browser)
+    test.skip(!page, 'Skipping: could not sign in')
+    if (!page) return
+
+    // ── Mocks ──────────────────────────────────────────────────────────────
+    // Method-aware status endpoint: the SA tab POSTs the pasted key + site
+    // URL (we accept it and flip `connected`), while the parent's GET polls
+    // (initial status + the post-connect transition) serve the current state.
+    let connected = false
+    await page.route('**/api/content-studio/gsc/connect', async (route) => {
+      const request = route.request()
+      if (request.method() === 'POST') {
+        const body = (request.postDataJSON?.() ?? {}) as Record<string, unknown>
+        const ok =
+          typeof body.siteUrl === 'string' &&
+          typeof body.serviceAccountKey === 'string' &&
+          body.serviceAccountKey.includes('private_key')
+        if (ok) connected = true
+        await route.fulfill({
+          status: ok ? 200 : 400,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            ok
+              ? {
+                  connected: true, live: true, mode: 'service_account',
+                  siteUrl: body.siteUrl,
+                  email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+                  missing: [], error: null,
+                }
+              : { error: 'No service account key available' },
+          ),
+        })
+        return
+      }
+      // GET — parent loadGscStatus polls + modal initial status.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          connected
+            ? {
+                connected: true, live: true, mode: 'service_account',
+                email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+                siteUrl: 'sc-domain:yousafeconsultancy.com',
+                connectedAt: new Date().toISOString(),
+                missing: [], error: null,
+              }
+            : {
+                connected: false, live: false, mode: null, email: null, siteUrl: null,
+                connectedAt: null, missing: ['site_url'], error: null,
+              },
+        ),
+      })
+    })
+
+    const warRoom = countWarRoomRefreshes(page)
+
+    await navigateToConnectModal(page)
+
+    // Switch to the Service account tab (exact match — the connect CTA below
+    // also contains "service account").
+    await page.getByRole('button', { name: 'Service account', exact: true }).click()
+
+    // Paste the JSON key into the textarea and set the property URL.
+    // Scope via getByRole('dialog').last() so the locators stay unambiguous
+    // even if another dialog mounts elsewhere in the studio tree.
+    const dialog = page.getByRole('dialog').last()
+    const SA_KEY = JSON.stringify({
+      type: 'service_account',
+      project_id: 'yousafe-gsc-reader',
+      private_key: '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n',
+      client_email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+    })
+    await dialog.locator('textarea').fill(SA_KEY)
+    await dialog.locator('input').fill('sc-domain:yousafeconsultancy.com')
+
+    // ── Connect: the POST returns connected → onConnected fires once ───────
+    const hitsBefore = warRoom.hits()
+    await page.getByRole('button', { name: /Connect service account/ }).click()
+
+    // CONNECTED · SERVICE_ACCOUNT appears (auto-closes ~2.2s later, so poll
+    // fast for it).
+    await expect
+      .poll(() => page.getByText(/CONNECTED · SERVICE_ACCOUNT/).isVisible(), { timeout: 8000, intervals: [250] })
+      .toBe(true)
+
+    // And the radar refresh fired via the same single refresh path.
+    await expect.poll(() => warRoom.hits(), { timeout: 10000 }).toBeGreaterThan(hitsBefore)
   })
 })
