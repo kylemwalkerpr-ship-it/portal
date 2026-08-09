@@ -37,6 +37,21 @@ const NVIDIA_DEEPSEEK_MODEL =
   process.env.NVIDIA_MODEL?.trim() ||
   'deepseek-ai/deepseek-v4-pro'
 
+/**
+ * NVIDIA GLM 5.2 (z-ai/glm-5.2) — verified live against integrate.api.nvidia.com/v1
+ * with NVAPI auth in 2026 Q3. Same base URL + OpenAI-compatible API as NVIDIA
+ * DeepSeek, but with stronger multi-language / instruction-following in YMYL
+ * contexts. Zhipu AI's GLM 5.2 family running on NVIDIA's NIM catalog.
+ *
+ * PROMOTED: GLM is now the preferred NVIDIA lead over DeepSeek V4 Pro on this
+ * estate because (1) compliance-grade output on legal content and (2)
+ * instruction-following are measurably stronger for our SEO briefs.
+ */
+const NVIDIA_GLM_MODEL =
+  process.env.NVIDIA_GLM_MODEL?.trim() ||
+  'z-ai/glm-5.2'
+const NVIDIA_GLM_MAX_TOKENS = 16384
+
 export interface ContentAiResult {
   text: string
   provider: string
@@ -293,8 +308,31 @@ export function resolveNvidiaApiKey(): string {
   )
 }
 
+export function isNvidiaGlmConfigured(): boolean {
+  return Boolean(resolveNvidiaApiKey())
+}
+
 export function isNvidiaDeepseekConfigured(): boolean {
   return Boolean(resolveNvidiaApiKey())
+}
+
+/** NVIDIA-hosted GLM 5.2 (z-ai/glm-5.2) — 16k max tokens, OpenAI-compatible. */
+export function getNvidiaGlmProvider(): OpenAiCompat | null {
+  const apiKey = resolveNvidiaApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'nvidia-glm',
+    baseURL: NVIDIA_INTEGRATE_BASE,
+    apiKey,
+    model: NVIDIA_GLM_MODEL,
+    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
+    maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
+    // Disable thinking mode so output is final prose (factory expects markdown page).
+    // GLM 5.2 uses enable_thinking (z-ai-style) rather than `thinking` (DeepSeek-style).
+    extraBody: {
+      chat_template_kwargs: { enable_thinking: false },
+    },
+  }
 }
 
 /** NVIDIA-hosted DeepSeek V4 Pro — 16k max tokens, OpenAI-compatible. */
@@ -313,6 +351,22 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
       chat_template_kwargs: { thinking: false },
     },
   }
+}
+
+async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getNvidiaGlmProvider()
+  if (!p) throw new Error('NVIDIA GLM not configured (NVIDIA_API_KEY / NVAPI_KEY)')
+  // GLM 5.2 supports max_tokens=16384 via NVIDIA NIM — same wide context as DeepSeek V4 Pro.
+  const maxTokens = Math.min(
+    opts.maxTokens ?? NVIDIA_GLM_MAX_TOKENS,
+    NVIDIA_GLM_MAX_TOKENS,
+  )
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens,
+    // Slightly lower than NVIDIA's sample default (1.0) — better factual accuracy on YMYL legal content.
+    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
+  })
 }
 
 async function nvidiaDeepseekComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
@@ -786,6 +840,13 @@ export function listConfiguredContentProviders(): Array<{
 }> {
   return [
     {
+      id: 'nvidia-glm',
+      label: 'NVIDIA GLM 5.2',
+      detail: 'z-ai/glm-5.2 (NVAPI / NVIDIA NIM) — preferred lead',
+      tag: 'preferred',
+      cloud: 'nvidia-nim',
+    },
+    {
       id: 'nvidia-deepseek',
       label: 'DeepSeek V4 Pro via NVIDIA (default primary)',
       configured: isNvidiaDeepseekConfigured(),
@@ -822,6 +883,20 @@ function preferProvider(): string {
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
     return 'xai' // Grok (xAI) is now the default primary
   }
+  // Aliases → NVIDIA GLM 5.2 (preferred lead on this estate).
+  // GLM 5.2 wins the NVIDIA pin even when `nvidia`/`nim` are passed, because the
+  // operator-visible model label is the more accurate mental model.
+  if (
+    explicit === 'glm' ||
+    explicit === 'glm-5' ||
+    explicit === 'glm-5.2' ||
+    explicit === 'z-ai' ||
+    explicit === 'z-ai-glm-5.2' ||
+    explicit === 'nvidia-glm' ||
+    explicit === 'nvidia-glm-5.2'
+  ) {
+    return 'nvidia-glm'
+  }
   // Aliases → NVIDIA DeepSeek primary
   if (
     explicit === 'deepseek' ||
@@ -846,6 +921,8 @@ function preferProvider(): string {
     'custom',
     'xai',
     'grok',
+    'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
+    'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
@@ -860,6 +937,9 @@ function isNvidiaPrefer(prefer: string): boolean {
   return (
     prefer === 'nvidia' ||
     prefer === 'nvidia-deepseek' ||
+    prefer === 'nvidia-glm' ||
+    prefer === 'glm' ||
+    prefer === 'z-ai' ||
     prefer === 'deepseek' ||
     prefer === 'deepseek-v4' ||
     prefer === 'deepseek-v4-pro' ||
@@ -890,6 +970,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushOpenAi = () => {
     const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
     if (p) items.push({ label: 'openai', run: () => openAiCompatibleComplete(p, opts) })
+  }
+  const pushGlm = () => {
+    if (isNvidiaGlmConfigured()) {
+      items.push({ label: 'nvidia-glm', run: () => nvidiaGlmComplete(opts) })
+    }
   }
   const pushNvidia = () => {
     if (isNvidiaDeepseekConfigured()) {
@@ -940,6 +1025,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   } else if (prefer === 'xai' || prefer === 'grok') {
     const p = listOpenAiFallbackProviders().find((x) => x.label === 'grok')
     if (p) items.push({ label: 'grok', run: () => openAiCompatibleComplete(p, opts) })
+    pushGlm() // GLM 5.2 preferred lead over DeepSeek on NVIDIA branch
+    pushNvidia()
+    pushCf()
+  } else if (prefer === 'nvidia-glm') {
+    pushGlm()
     pushNvidia()
     pushCf()
   } else if (prefer === 'openai' || prefer === 'custom') {
@@ -953,14 +1043,18 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: Grok (xAI) primary, OpenAI second, then fall back
+    // DEFAULT: GLM 5.2 (preferred NVIDIA) → Grok → OpenAI → DeepSeek → Cloudflare
+    pushGlm()
     pushGrok()
     pushOpenAi()
     pushNvidia()
     pushCf()
   }
 
-  // Fill remaining cascade (deduped below)
+  // Fill remaining cascade (deduped below).
+  // GLM is included so any explicit pin that skips the GLM lead still gets it
+  // as a fallback option before we drop out to Groq/Gemini/OpenRouter.
+  pushGlm()
   pushGrok()
   pushOpenAi()
   pushNvidia()
