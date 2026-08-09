@@ -1,31 +1,31 @@
--- ============================================================================
--- 20260813_backlink_engine.sql
---
--- BACKLINK ENGINE + KNOWLEDGE RADAR INFRASTRUCTURE
---
--- The estate's link graph has two halves:
---   1. INTERNAL links (managed by lib/seoEngine/interlink.ts → seo_interlinks +
---      seo_anchor_ledger) — these are inside our own properties.
---   2. EXTERNAL backlinks (managed here) — incoming links from third-party
---      authoritative sites they cite us from.
---
--- Both halves must be tracked in one verifiable, queryable, accountable place
--- so the War Room + Command Center can show the operator exactly what is on
--- disk and what is pending outreach.
---
--- Also widen `seo_interlinks.status` and `seo_interlinks.reason` to include
--- the closed set the compliance gate engine writes (manual / rejected /
--- paused / awaiting_gate). The engine itself is in
--- `lib/seoEngine/compliance.ts` and `lib/seoFactory/contentQualityGate.ts`.
---
--- Safe to re-run: every ALTER is guarded with IF NOT EXISTS / DO blocks.
--- ============================================================================
 
--- ── 1. Widen seo_interlinks.status + reason for compliance-gate outcomes ───
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 DO $$
 BEGIN
-  -- Drop the existing CHECK constraint (if any) so we can extend it without
-  -- needing a privileged role; we re-add a wider constraint below.
+  
+  
   IF EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'seo_interlinks_status_check'
@@ -33,7 +33,7 @@ BEGIN
     ALTER TABLE public.seo_interlinks DROP CONSTRAINT seo_interlinks_status_check;
   END IF;
 EXCEPTION WHEN undefined_table THEN
-  -- Table may live on another schema \u2014 ignore and let the CREATE below seed it.
+  
   NULL;
 END $$;
 
@@ -46,15 +46,15 @@ BEGIN
       ADD CONSTRAINT seo_interlinks_status_check
       CHECK (status IN ('planned', 'applied', 'rejected', 'manual', 'paused', 'awaiting_gate'))
       NOT VALID;
-    -- Mark it VALID after we backfill any stragglers (best-effort \u2014 most rows are
-    -- already 'planned' or 'applied').
+    
+    
     UPDATE public.seo_interlinks SET status='planned' WHERE status IS NULL OR status NOT IN ('planned','applied','rejected','manual','paused','awaiting_gate');
     ALTER TABLE public.seo_interlinks VALIDATE CONSTRAINT seo_interlinks_status_check;
   END IF;
 END $$;
 
--- Reason columns already free-text via seo_interlinks.reason. Add
--- compliance metadata columns so the gate can record what happened.
+
+
 ALTER TABLE public.seo_interlinks
   ADD COLUMN IF NOT EXISTS gate_state TEXT,
   ADD COLUMN IF NOT EXISTS gate_reason TEXT,
@@ -64,42 +64,42 @@ ALTER TABLE public.seo_interlinks
 CREATE INDEX IF NOT EXISTS idx_seo_interlinks_gate_state ON public.seo_interlinks (gate_state);
 CREATE INDEX IF NOT EXISTS idx_seo_interlinks_status ON public.seo_interlinks (status);
 
--- ── 2. seo_backlink_targets : external sites we want a backlink FROM ───────
+
 CREATE TABLE IF NOT EXISTS public.seo_backlink_targets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  domain TEXT NOT NULL,                       -- e.g. 'immigrationimpact.com' (no protocol)
-  target_url TEXT,                            -- example page or anchor URL they might link from
-  title TEXT,                                 -- human label: why this target matters
+  domain TEXT NOT NULL,                       
+  target_url TEXT,                            
+  title TEXT,                                 
   kind TEXT NOT NULL DEFAULT 'media' CHECK (kind IN
     ('media', 'gov', 'edu', 'ngo', 'industry_blog', 'partner', 'directory', 'forum')),
   lane TEXT NOT NULL DEFAULT 'editorial' CHECK (lane IN
-    ('editorial',                  \u2014 earned: they cite us because we earned it
-     'guest_post',                 \u2014 we write a piece for them
-     'resource_page',              \u2014 they maintain resource lists where we belong
-     'directory',                  \u2014 niche directories (legal-help, immigration)))
-     'podcast_interview',          \u2014 they host; we appear
-     'broken_outreach',            \u2014 they link out somewhere dead; we offer the fix
-     'community',                  \u2014 forum / Reddit / LinkedIn community mentions
-     'partner'                     \u2014 explicit partner cross-link
+    ('editorial',                  
+     'guest_post',                 
+     'resource_page',              
+     'directory',                  
+     'podcast_interview',          
+     'broken_outreach',            
+     'community',                  
+     'partner'                     
     )),
-  authority_score NUMERIC(5,2) NOT NULL DEFAULT 50.0,  -- 0\u2013100 internal heuristic
-  traffic_estimate NUMERIC(12,0),                       -- monthly visits, when known
+  authority_score NUMERIC(5,2) NOT NULL DEFAULT 50.0,  
+  traffic_estimate NUMERIC(12,0),                       
   contact_name TEXT,
   contact_email TEXT,
-  contact_handle TEXT,                                 -- twitter / linkedin handle
-  countries TEXT[] NOT NULL DEFAULT '{}',               -- which country cells this target serves
-  stages TEXT[] NOT NULL DEFAULT '{}',                   -- which life-cycle stages it fits
-  topics TEXT[] NOT NULL DEFAULT '{}',                  -- topical anchors
-  rationale TEXT,                                       -- why-this-target paragraph
+  contact_handle TEXT,                                 
+  countries TEXT[] NOT NULL DEFAULT '{}',               
+  stages TEXT[] NOT NULL DEFAULT '{}',                   
+  topics TEXT[] NOT NULL DEFAULT '{}',                  
+  rationale TEXT,                                       
   status TEXT NOT NULL DEFAULT 'identified' CHECK (status IN
     ('identified', 'researching', 'qualified', 'drafting', 'sent', 'awaiting_reply', 'responded', 'won', 'lost', 'skipped')),))
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_touched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   won_at TIMESTAMPTZ,
   lost_at TIMESTAMPTZ,
-  won_backlink_url TEXT,                                -- the actual URL that links back
+  won_backlink_url TEXT,                                
   notes TEXT,
-  -- Deterministic dedupe key so the engine can upsert without manual IDs.
+  
   dedupe_key TEXT UNIQUE
 );
 
@@ -109,17 +109,17 @@ CREATE INDEX IF NOT EXISTS idx_backlink_targets_authority ON public.seo_backlink
 CREATE INDEX IF NOT EXISTS idx_backlink_targets_countries ON public.seo_backlink_targets USING GIN (countries);
 CREATE INDEX IF NOT EXISTS idx_backlink_targets_stages ON public.seo_backlink_targets USING GIN (stages);
 
--- ── 3. seo_backlink_outreach : outreach attempts to those targets ──────────
+
 CREATE TABLE IF NOT EXISTS public.seo_backlink_outreach (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   target_id UUID NOT NULL REFERENCES public.seo_backlink_targets(id) ON DELETE CASCADE,
-  -- The channel and direction of each touch.
+  
   channel TEXT NOT NULL DEFAULT 'email' CHECK (channel IN
     ('email', 'linkedin_dm', 'twitter_dm', 'twitter_reply', 'contact_form', 'phone', 'in_person')),
   direction TEXT NOT NULL DEFAULT 'outbound' CHECK (direction IN
-    ('outbound',                    \u2014 we reached out))
-     'inbound',                     \u2014 they reached out to us first
-     'internal'                     \u2014 internal note / collaboration log
+    ('outbound',                    
+     'inbound',                     
+     'internal'                     
     )),
   subject TEXT,
   message_body TEXT NOT NULL,
@@ -144,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_backlink_outreach_status ON public.seo_backlink_o
 CREATE INDEX IF NOT EXISTS idx_backlink_outreach_follow_up ON public.seo_backlink_outreach (follow_up_due_at)
   WHERE follow_up_due_at IS NOT NULL AND status NOT IN ('won','lost','withdrawn');
 
--- View: target + latest outreach status (operator-friendly read).
+
 CREATE OR REPLACE VIEW public.seo_backlink_dashboard AS
 SELECT
   t.id,
@@ -194,8 +194,8 @@ SELECT
   ) AS wins
 FROM public.seo_backlink_targets t;
 
--- ── 4. Seed default target list (curated high-authority reference sites per
---      life-cycle lane; the dashboard table is empty until seeds run) ──────
+
+
 INSERT INTO public.seo_backlink_targets (domain, target_url, title, kind, lane, authority_score, countries, stages, topics, rationale, dedupe_key)
 VALUES
   ('uscis.gov', 'https://www.uscis.gov/', 'USCIS (US Citizenship & Immigration Services)', 'gov', 'editorial', 95.0,
@@ -204,7 +204,7 @@ VALUES
    'Direct policy source. Earned citations in our casework and FAQ content when we cite USCIS forms, processing-time data, and statutory anchors.',
    'uscis.gov'),
 
-  ('travel.state.gov', 'https://travel.state.gov/', 'US Department of State \u2014 travel & visas', 'gov', 'editorial', 94.0,
+  ('travel.state.gov', 'https://travel.state.gov/', 'US Department of State 
    ARRAY['US'], ARRAY['work','visa','settlement','family'],
    ARRAY['h-1b','l-1','k-1','cr-1','ds-160'],
    'Statutory anchor for consular processing. We earn backlinks by maintaining accurate, DS-160 / NVC walkthroughs.',
@@ -216,7 +216,7 @@ VALUES
    'Statutory anchor for UK Immigration Rules + Appendix FM. Citations in our skilled-worker and family visa guides.',
    'homeoffice.gov.uk'),
 
-  ('canada.ca', 'https://www.canada.ca/en/services/immigration-citizenship.html', 'IRCC \u2014 Government of Canada', 'gov', 'editorial', 92.0,
+  ('canada.ca', 'https://www.canada.ca/en/services/immigration-citizenship.html', 'IRCC 
    ARRAY['CA'], ARRAY['schools','work','visa','settlement','citizenship','family','relatives'],
    ARRAY['express-entry','study-permit','pgwp','spousal-sponsorship'],
    'Statutory anchor for IRPA + IRPR. Citations in Express Entry and study permit guides.',
@@ -270,7 +270,7 @@ VALUES
    'Industry association. Earned citations when we reference CRS changes + RCIC certification in our CA guides.',
    'rcic.ca'),
 
-  ('mara.gov.au', 'https://www.mara.gov.au/', 'MARA \u2014 Migration Agents Registration Authority', 'industry_blog', 'editorial', 76.0,
+  ('mara.gov.au', 'https://www.mara.gov.au/', 'MARA 
    ARRAY['AU'], ARRAY['work','visa','citizenship','family','relatives'],
    ARRAY['mara','migration-agent','skilled-occupation-list'],
    'Industry authority. Earned citations when we reference skills lists + MARA-registered agents.',
@@ -279,6 +279,6 @@ VALUES
   ('reddit.com', 'https://www.reddit.com/r/immigration/', 'Reddit r/immigration', 'forum', 'community', 84.0,
    ARRAY['US','UK','CA','AU'], ARRAY['intent','schools','work','visa','settlement','citizenship','family'],
    ARRAY['community','authentic-experience'],
-   'Authentic-experience surface \u2014 community Q&A drives linkbacks. We participate by linking to relevant casework.',
+   'Authentic-experience surface 
    'reddit.com')
 ON CONFLICT (dedupe_key) DO NOTHING;
