@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
+import { loadInterlinkGraph } from '@/lib/seoEngine/interlink'
+import { loadVisibilityFeed } from '@/lib/seoEngine/llmVisibility'
+import { loadGateRuns } from '@/lib/seoEngine/gate'
 
 /**
  * GET /api/seo-engine/status
@@ -18,12 +21,15 @@ export async function GET() {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const supabase = createSupabaseAdminClient()
-    const [cells, knowledge, plans, runs, config] = await Promise.all([
+    const [cells, knowledge, plans, runs, config, interlink, visibility, gate] = await Promise.all([
       supabase.from('seo_lifecycle_stages').select('id', { count: 'exact', head: true }),
       supabase.from('seo_knowledge').select('kind', { count: 'exact', head: true }),
       supabase.from('seo_cluster_plans').select('status', { count: 'exact', head: true }),
       latestEngineRuns(8),
       supabase.from('seo_engine_config').select('key,value'),
+      loadInterlinkGraph(200),
+      loadVisibilityFeed(200),
+      loadGateRuns(200),
     ])
 
     const kinds: Record<string, number> = {}
@@ -36,6 +42,9 @@ export async function GET() {
       lifecycle: { seededCells: cells.count ?? 0 },
       knowledge: { total: knowledge.count ?? 0, byKind: kinds },
       plans: { total: plans.count ?? 0, byStatus: statuses },
+      interlinks: { planned: interlink.planned, applied: interlink.applied, byReason: interlink.byReason },
+      llmVisibility: { total: visibility.total, cited: visibility.cited, shareOfVoice: visibility.shareOfVoice, byStage: visibility.byStage },
+      gate: { runs: gate.runs.length, passRate: gate.passRate, avgScore: gate.avgScore },
       runs: runs as Array<Record<string, unknown>>,
       sources: DEFAULT_SOURCES.map((s) => ({ id: s.id, label: s.label, kind: s.kind, countries: s.countries })),
       config: Object.fromEntries((config.data || []).map((c) => [c.key, c.value])),
