@@ -1,15 +1,21 @@
 'use client'
 /**
- * SEO Command Center — full rebuild of the war room.
+ * SEO COMMAND CENTER — v3 rebuild
  *
- * One mission surface (no tab sprawl):
- *   Command bar  → live source + controls
- *   KPI strip    → clickable mission readout
- *   Radar        → Opportunity Engine plays, ranked with signals
- *   Brief        → autopilot composer (everything auto-filled, editable)
- *   Pipeline     → live job queue + cannibal watch
- *   Systems      → health · metrics · strategies · GSC status
- *   Workspace    → pinned editor + PR + log pane
+ * Six dedicated surfaces, no buried controls:
+ *
+ *   🎯 Radar     — the full Opportunity Engine play list (signals trail on
+ *                  every row), autopilot selection, cannibal merge actions.
+ *   🚀 Launch    — the autopilot brief composer: every radar play lands here
+ *                  pre-filled and editable, with a single primary CTA.
+ *   📋 Pipeline  — every job in one filterable table with open/approve/ship.
+ *   🧭 Engine    — the full SEO Master Engine (six brain surfaces, one tab).
+ *   📜 Missions  — the persistent audit trail of every launch/merge/run.
+ *   ⚙️ Systems   — health, metrics, strategies, GSC source, AI key vault.
+ *
+ * The workspace pane stays pinned to the right whenever a job or a query
+ * history chart is open. The radar, the engine, and the pipeline all share
+ * one brain: the Opportunity Engine.
  */
 import React from 'react'
 import ContentStudioWorkspace, {
@@ -42,6 +48,7 @@ const C = {
 }
 
 type ShipMode = 'none' | 'pr' | 'autodeploy' | 'auto' | 'merge'
+type CcTab = 'radar' | 'launch' | 'pipeline' | 'engine' | 'missions' | 'systems'
 type RadarPlay =
   | 'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh' | 'defend' | 'cannibalization'
   | 'title_ctr_rewrite' | 'strike_distance' | 'deep_demand_build'
@@ -83,6 +90,24 @@ const RADAR_FILTERS: Array<{ key: RadarPlay; label: string }> = [
   { key: 'cannibalization', label: '⚠️ Cannibal' },
 ]
 
+const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
+  pending: { label: 'Queued', bg: '#F3F4F6', fg: '#6B7280' },
+  drafting: { label: 'Drafting', bg: '#FEF3C7', fg: '#D97706' },
+  publishing: { label: 'Opening PR', bg: '#DBEAFE', fg: '#3B82F6' },
+  pr_created: { label: 'PR Ready', bg: '#DBEAFE', fg: '#2563EB' },
+  merged: { label: 'Merged', bg: '#D1FAE5', fg: '#166534' },
+  closed: { label: 'Closed', bg: '#F3F4F6', fg: '#6B7280' },
+  failed: { label: 'Failed', bg: '#FEE2E2', fg: '#DC2626' },
+}
+
+const MISSION_KINDS: Array<[string, string]> = [
+  ['all', 'All'], ['launch', 'Launch'], ['autopilot', 'Autopilot'],
+  ['merge', 'Merge'], ['save', 'Save'], ['refresh', 'Refresh'],
+]
+const MISSION_STATUSES: Array<[string, string]> = [
+  ['all', 'All'], ['success', '✓'], ['error', '✕'], ['warn', '⚠'],
+]
+
 function fmtN(n: number | undefined | null): string {
   const v = Number(n) || 0
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -101,16 +126,6 @@ function timeAgo(ts: string | undefined | null): string {
   return `${Math.round(s / 86400)}d ago`
 }
 
-const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
-  pending: { label: 'Queued', bg: '#F3F4F6', fg: '#6B7280' },
-  drafting: { label: 'Drafting', bg: '#FEF3C7', fg: '#D97706' },
-  publishing: { label: 'Opening PR', bg: '#DBEAFE', fg: '#3B82F6' },
-  pr_created: { label: 'PR Ready', bg: '#DBEAFE', fg: '#2563EB' },
-  merged: { label: 'Merged', bg: '#D1FAE5', fg: '#166534' },
-  closed: { label: 'Closed', bg: '#F3F4F6', fg: '#6B7280' },
-  failed: { label: 'Failed', bg: '#FEE2E2', fg: '#DC2626' },
-}
-
 function StatusBadge({ status }: { status?: string | null }) {
   const s = STATUS_META[String(status || '')] || { label: String(status || '—'), bg: '#F3F4F6', fg: '#6B7280' }
   return (
@@ -126,6 +141,19 @@ function PlayBadge({ play }: { play?: string | null }) {
     <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg, whiteSpace: 'nowrap' }}>
       {pm.icon} {pm.label}
     </span>
+  )
+}
+
+function ScoreMeter({ score, max = 100 }: { score: number; max?: number }) {
+  const pct = Math.max(2, Math.min(100, (Number(score) || 0) / max * 100))
+  const color = score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 90 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 999, background: C.surface3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: color, transition: 'width 0.4s' }} />
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 800, fontFamily: C.mono, color, minWidth: 26, textAlign: 'right' }}>{Math.round(score)}</span>
+    </div>
   )
 }
 
@@ -253,41 +281,42 @@ function QueryTrendChart({ o }: { o: any }) {
   )
 }
 
-function ScoreMeter({ score, max = 100 }: { score: number; max?: number }) {
-  const pct = Math.max(2, Math.min(100, (Number(score) || 0) / max * 100))
-  const color = score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 90 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 999, background: C.surface3, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: color, transition: 'width 0.4s' }} />
-      </div>
-      <span style={{ fontSize: 11, fontWeight: 800, fontFamily: C.mono, color, minWidth: 26, textAlign: 'right' }}>{Math.round(score)}</span>
-    </div>
-  )
-}
-
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted,
   textTransform: 'uppercase', marginBottom: 5, fontFamily: C.mono,
 }
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${C.border}`,
-  background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit',
+  width: '100%', padding: '8px 11px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`,
+  background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box',
 }
-const btnPrimary: React.CSSProperties = {
-  padding: '8px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
-  background: C.navy, color: '#fff', fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
-}
-const btnSecondary: React.CSSProperties = {
-  padding: '8px 14px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
+  padding: '7px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
+  background: bg, color: fg, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+})
+const btnGhost: React.CSSProperties = {
+  padding: '7px 14px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 11, fontWeight: 600,
   background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
 }
 const btnSmall: React.CSSProperties = {
   padding: '4px 9px', borderRadius: 5, border: 'none', cursor: 'pointer',
   background: C.surface2, color: C.text, fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
 }
-const th: React.CSSProperties = { padding: '8px 10px', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textDim, fontFamily: C.mono, fontWeight: 600, whiteSpace: 'nowrap' }
-const td: React.CSSProperties = { padding: '8px 10px', fontSize: 12, verticalAlign: 'middle' }
+const th: React.CSSProperties = { padding: '9px 12px', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textDim, fontFamily: C.mono, fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'left' }
+const td: React.CSSProperties = { padding: '9px 12px', fontSize: 12, verticalAlign: 'middle' }
+
+function CardHeader({ icon, title, sub, right }: { icon: string; title: string; sub?: string; right?: React.ReactNode }) {
+  return (
+    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>{icon} {title}</div>
+        {sub && <div style={{ marginTop: 1, fontSize: 10.5, color: C.textMuted }}>{sub}</div>}
+      </div>
+      {right}
+    </div>
+  )
+}
 
 type MissionEntry = {
   id: string
@@ -308,6 +337,7 @@ export default function AdminCommandCenter({
   setActionNotice: (msg: string) => void
 }) {
   // ── Mission state ──
+  const [tab, setTab] = React.useState<CcTab>('radar')
   const [busy, setBusy] = React.useState(false)
   const [activityLine, setActivityLine] = React.useState<string | null>(null)
   const [dryRun, setDryRun] = React.useState(false)
@@ -345,8 +375,16 @@ export default function AdminCommandCenter({
   const [health, setHealth] = React.useState<any>(null)
   const [metrics, setMetrics] = React.useState<any>(null)
   const [strategies, setStrategies] = React.useState<any>(null)
-  const [systemsOpen, setSystemsOpen] = React.useState(false)
-const [engineOpen, setEngineOpen] = React.useState(false)
+
+  // Trend detail (per-query history chart)
+  const [trendDetail, setTrendDetail] = React.useState<any | null>(null)
+
+  // Mission Log (persistent audit trail)
+  const [missionLog, setMissionLog] = React.useState<MissionEntry[]>([])
+  const [missionKind, setMissionKind] = React.useState('all')
+  const [missionStatus, setMissionStatus] = React.useState('all')
+  const [missionReload, setMissionReload] = React.useState(0)
+  const [missionLoading, setMissionLoading] = React.useState(false)
 
   const pushLog = (level: StudioLogEntry['level'], source: string, message: string, detail?: string) =>
     setLogs((prev) => [...prev, createLog(level, source, message, detail)].slice(-150))
@@ -355,17 +393,6 @@ const [engineOpen, setEngineOpen] = React.useState(false)
     setActionNotice(msg)
     pushLog(kind === 'success' ? 'success' : kind === 'error' ? 'error' : 'info', 'command', msg)
   }
-
-  // ── Trend detail (per-query history chart) ───────────────────────────────
-  const [trendDetail, setTrendDetail] = React.useState<any | null>(null)
-
-  // ── Mission Log (persistent audit trail) ─────────────────────────────────
-  const [missionLog, setMissionLog] = React.useState<MissionEntry[]>([])
-  const [missionOpen, setMissionOpen] = React.useState(true)
-  const [missionKind, setMissionKind] = React.useState('all')
-  const [missionStatus, setMissionStatus] = React.useState('all')
-  const [missionReload, setMissionReload] = React.useState(0)
-  const [missionLoading, setMissionLoading] = React.useState(false)
 
   const recordMission = React.useCallback(
     (entry: {
@@ -403,7 +430,6 @@ const [engineOpen, setEngineOpen] = React.useState(false)
   )
 
   React.useEffect(() => {
-    if (!missionOpen) return
     let cancelled = false
     setMissionLoading(true)
     const q = new URLSearchParams({ limit: '60' })
@@ -423,7 +449,7 @@ const [engineOpen, setEngineOpen] = React.useState(false)
     return () => {
       cancelled = true
     }
-  }, [missionOpen, missionKind, missionStatus, missionReload])
+  }, [missionKind, missionStatus, missionReload])
 
   // ── Radar ────────────────────────────────────────────────────────────────
   const loadRadar = React.useCallback(async () => {
@@ -651,6 +677,7 @@ const [engineOpen, setEngineOpen] = React.useState(false)
     })
     setLaunchFeed([])
     setWorkspaceOpen(false)
+    setTab('launch')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -946,6 +973,567 @@ const [engineOpen, setEngineOpen] = React.useState(false)
   }, [jobs])
 
   // ── Render ───────────────────────────────────────────────────────────────
+  const TABS: Array<{ key: CcTab; icon: string; label: string; hint: string }> = [
+    { key: 'radar', icon: '🎯', label: 'Radar', hint: `${kpis.actionable} plays` },
+    { key: 'launch', icon: '🚀', label: 'Launch', hint: brief ? 'brief ready' : 'composer' },
+    { key: 'pipeline', icon: '📋', label: 'Pipeline', hint: `${jobs.length} jobs` },
+    { key: 'engine', icon: '🧭', label: 'Engine', hint: 'six brains' },
+    { key: 'missions', icon: '📜', label: 'Missions', hint: 'audit trail' },
+    { key: 'systems', icon: '⚙️', label: 'Systems', hint: 'health & keys' },
+  ]
+
+  const renderRadarTab = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Autopilot selection bar */}
+      {selectedTerms.size > 0 && (
+        <div style={{ padding: '10px 16px', borderRadius: C.radiusSm, background: C.cyanSoft, border: `1px solid ${C.blueBorder}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: C.cyan2, fontWeight: 700 }}>{selectedTerms.size} play(s) selected</span>
+          <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, background: C.surface }}>
+            <option value="pr">Create + PR</option>
+            <option value="autodeploy">Create + approve</option>
+            <option value="merge">Create + merge</option>
+            <option value="none">Draft only</option>
+          </select>
+          <button type="button" onClick={runAutopilot} disabled={busy} style={{ ...btnSolid(C.cyan2), padding: '7px 16px' }}>
+            {busy ? 'Running…' : `▶ Run autopilot (${selectedTerms.size})`}
+          </button>
+          <button type="button" onClick={() => setSelectedTerms(new Set())} style={btnGhost}>Clear</button>
+          <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>batch-generates every selected play → PR → merge</span>
+        </div>
+      )}
+
+      {/* Cannibal watch */}
+      {cannibals.length > 0 && (
+        <div style={{ background: '#FEF2F2', border: `1px solid ${C.redBorder}`, borderRadius: C.radius, padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: C.red, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              ⚠ Cannibalization watch ({cannibals.length})
+            </span>
+            <span style={{ fontSize: 10, color: C.textMuted }}>multiple pages compete for one query — consolidate into one winner</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {cannibals.slice(0, 8).map((o, i) => (
+              <span key={i} style={{ padding: '5px 10px', borderRadius: C.radiusXs, background: '#fff', border: `1px solid ${C.redBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                “{o.term}”
+                <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700 }} onClick={() => runCannibalMerge(o)} disabled={busy}>
+                  Merge
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Radar table */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+        <CardHeader
+          icon="🎯" title="Opportunity Radar"
+          sub="Every play carries its signals trail — the exact data that drove the score. Click a row's trend sparkline for full position history."
+          right={
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {RADAR_FILTERS.map((f) => (
+                <button key={f.key} type="button" onClick={() => setRadarFilter(f.key)} style={{
+                  padding: '4px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: radarFilter === f.key ? C.navy : C.surface2,
+                  color: radarFilter === f.key ? '#fff' : C.textMuted, transition: 'all 0.15s',
+                }}>{f.label}</button>
+              ))}
+            </div>
+          }
+        />
+        {radarBusy && !radar ? (
+          <div style={{ padding: 28, textAlign: 'center', color: C.textDim, fontSize: 13, fontFamily: C.mono }}>
+            Scanning GSC + coverage + registry…
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textDim }}>
+                  <th style={th}></th>
+                  <th style={th}>Score</th>
+                  <th style={th}>Play</th>
+                  <th style={th}>Query</th>
+                  <th style={th}>Pos</th>
+                  <th style={th}>Trend</th>
+                  <th style={th}>Impr</th>
+                  <th style={th}>CTR</th>
+                  <th style={th}>+Clicks</th>
+                  <th style={th}>Why (signals)</th>
+                  <th style={th}>Links</th>
+                  <th style={th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {radarQueue.slice(0, 30).map((o) => {
+                  const play = playOf(o)
+                  const isCannibal = play === 'cannibalization' || play === 'cannibal_merge'
+                  const tm = TREND_META[o.trend || 'flat'] || TREND_META.flat
+                  return (
+                    <tr key={o.id || o.term} style={{ borderBottom: `1px solid ${C.border2}`, transition: 'background 0.1s' }} onMouseEnter={(e) => { e.currentTarget.style.background = C.surface2 }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                      <td style={{ ...td, width: 28 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTerms.has(String(o.term))}
+                          onChange={() => toggleTerm(String(o.term))}
+                          disabled={isCannibal}
+                        />
+                      </td>
+                      <td style={{ ...td, minWidth: 100 }}>
+                        <ScoreMeter score={scoreOf(o)} />
+                      </td>
+                      <td style={td}><PlayBadge play={play} /></td>
+                      <td style={{ ...td, maxWidth: 240 }}>
+                        <strong style={{ color: C.text }}>{o.term}</strong>
+                        {o.intent && (
+                          <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 1 }}>
+                            {INTENT_LABELS[o.intent] || o.intent} · {tm.icon} {tm.label}
+                          </div>
+                        )}
+                        {o.cluster && (
+                          <div style={{ marginTop: 3 }}>
+                            <span title={o.cluster.reason || undefined} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999,
+                              fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
+                              background: o.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
+                              color: o.cluster.mode === 'expand' ? C.gold : C.blue,
+                              border: `1px solid ${o.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
+                              cursor: 'default',
+                            }}>
+                              🕸 {o.cluster.keywords?.length || 1}-kw
+                              {o.cluster.mode === 'expand'
+                                ? ` · expands ${String(o.cluster.targetUrl || '').split('/').filter(Boolean).slice(-2).join('/') || 'page'}`
+                                : ' · new page'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...td, fontFamily: C.mono }}>#{o.position ?? '—'}</td>
+                      <td style={{ ...td, minWidth: 96 }}>
+                        <TrendSpark o={o} onOpen={(row) => { setTrendDetail(row); setWorkspaceOpen(true) }} />
+                      </td>
+                      <td style={{ ...td, fontFamily: C.mono }}>{fmtN(o.impressions)}</td>
+                      <td style={{ ...td, fontFamily: C.mono }}>{(Number(o.ctr) * 100).toFixed(1)}%</td>
+                      <td style={{ ...td, color: C.green, fontWeight: 700, fontFamily: C.mono }}>~{fmtN(o.estimatedGainClicks ?? 0)}</td>
+                      <td style={{ ...td, maxWidth: 300 }}>
+                        <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4 }}>
+                          {(o.signals || [o.rationale]).slice(0, 2).map((s: string, i: number) => (
+                            <div key={i}>• {s}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ ...td, fontSize: 10, color: C.gold, fontFamily: C.mono, whiteSpace: 'nowrap' }}>
+                        {o.interlinks && o.interlinks.length ? `🔗 ${o.interlinks.length}` : '—'}
+                      </td>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                        {!isCannibal && (
+                          <button type="button" style={{ ...btnSmall, marginRight: 4 }} onClick={() => applyBrief(o)}>
+                            ✏️ Brief
+                          </button>
+                        )}
+                        {isCannibal ? (
+                          <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700 }} onClick={() => runCannibalMerge(o)} disabled={busy}>
+                            Merge
+                          </button>
+                        ) : (
+                          <button type="button" style={{ ...btnSmall, background: C.navy, color: '#fff' }} onClick={() => { setSelectedTerms(new Set([String(o.term)])); runAutopilot() }} disabled={busy}>
+                            ▶ Ship
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {radarQueue.length === 0 && (
+                  <tr><td colSpan={12} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                    No plays for this filter — rescan or change filter.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  const renderLaunchTab = () => (
+    <div style={{ background: C.surface, border: `1px solid ${brief ? C.goldBorder : C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="🚀" title="Launch play"
+        sub="Every radar brief lands here pre-filled and editable. Draft → quality gates → GitHub PR."
+        right={
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {brief && (
+              <>
+                <PlayBadge play={brief.play} />
+                <ScoreMeter score={brief.score} />
+                <button type="button" onClick={clearBrief} style={btnGhost}>✕ Clear brief</button>
+              </>
+            )}
+          </div>
+        }
+      />
+      {!brief ? (
+        <div style={{ padding: 36, textAlign: 'center' }}>
+          <div style={{ fontSize: 34, marginBottom: 6 }}>🎯</div>
+          <div style={{ fontSize: 13, color: C.textMuted, fontWeight: 600 }}>No play selected yet</div>
+          <div style={{ fontSize: 11, color: C.textDim, marginTop: 4, fontFamily: C.mono }}>
+            Pick a play in the Radar tab (✏️ Brief) or the Engine tab (⚡ Brief) — the composer will be pre-filled.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Topic <span style={{ color: C.red }}>*</span></label>
+              <input value={brief.topic} onChange={(e) => setBrief({ ...brief, topic: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Title</label>
+              <input value={brief.title} onChange={(e) => setBrief({ ...brief, title: e.target.value })} style={inputStyle} />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>Keywords (comma-separated)</label>
+              <input
+                value={(brief.keywords || []).join(', ')}
+                onChange={(e) => setBrief({ ...brief, keywords: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) })}
+                style={inputStyle}
+              />
+              {brief.cluster && (
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999,
+                    fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                    background: brief.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
+                    color: brief.cluster.mode === 'expand' ? C.gold : C.blue,
+                    border: `1px solid ${brief.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
+                  }}>
+                    🕸 Cluster · {brief.cluster.keywords?.length || 1} keywords · {brief.cluster.mode === 'expand' ? `expands ${brief.cluster.targetUrl || 'existing page'}` : 'one new unique page'}
+                  </span>
+                  {brief.cluster.reason && (
+                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{brief.cluster.reason}</span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={labelStyle}>Content type</label>
+              <select
+                value={brief.contentType}
+                onChange={(e) => setBrief({ ...brief, contentType: e.target.value })}
+                style={inputStyle}
+              >
+                <option value="blog_post">Blog Post</option>
+                <option value="article">Long-Form Article</option>
+                <option value="regional_page">Regional Page</option>
+                <option value="marketplace_gig">Marketplace Gig</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Tone</label>
+              <select value={brief.tone} onChange={(e) => setBrief({ ...brief, tone: e.target.value })} style={inputStyle}>
+                <option value="professional">Professional</option>
+                <option value="educational">Educational</option>
+                <option value="persuasive">Persuasive</option>
+                <option value="authoritative">Authoritative</option>
+                <option value="casual">Casual</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Audience</label>
+              <input value={brief.audience || ''} onChange={(e) => setBrief({ ...brief, audience: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>AI model</label>
+              <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={inputStyle}>
+                <option value="auto">Auto (Grok → OpenAI → rest)</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="openai">OpenAI (GPT-5.6 Luna)</option>
+                <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
+                <option value="cloudflare-ai">Cloudflare Workers AI</option>
+                <option value="groq">Groq (Llama)</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </div>
+            {brief.interlinks && brief.interlinks.length > 0 && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>🔗 Internal linking targets ({brief.interlinks.length})</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {brief.interlinks.slice(0, 6).map((l: any, i: number) => (
+                    <span key={i} style={{ padding: '3px 8px', borderRadius: 5, background: '#FEF9EC', border: `1px solid ${C.goldBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text }}>
+                      {l.label} → {String(l.url || '').replace(/^https?:\/\//, '')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Launch feed */}
+          {launchFeed.length > 0 && (
+            <div style={{ margin: '0 16px 12px', background: C.navy, color: '#E5E7EB', borderRadius: C.radiusSm, padding: '10px 12px', maxHeight: 180, overflowY: 'auto', fontFamily: C.mono, fontSize: 11 }}>
+              {launchFeed.map((f, i) => (
+                <div key={i} style={{ color: f.level === 'success' ? '#34D399' : f.level === 'error' ? '#F87171' : f.level === 'warn' ? '#FBBF24' : '#E5E7EB' }}>
+                  {f.level === 'success' ? '✓ ' : f.level === 'error' ? '✕ ' : '› '}{f.msg}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ padding: '0 16px 16px' }}>
+            <button
+              type="button"
+              onClick={runGenerate}
+              disabled={generating || !brief.topic.trim()}
+              style={{ ...btnSolid(C.navy), width: '100%', padding: '12px 0', fontSize: 13, opacity: generating ? 0.7 : 1, justifyContent: 'center' }}
+            >
+              {generating ? '⚡ Generating… (watch the live feed above)' : `⚡ Generate & Open PR — “${brief.topic.slice(0, 48)}${brief.topic.length > 48 ? '…' : ''}”`}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
+  const renderPipelineTab = () => (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="📋" title="Mission Pipeline"
+        sub="Live job queue — auto-refreshes while drafting."
+        right={
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {[['all', 'All'], ['drafting', 'Drafting'], ['pr_created', 'PRs'], ['merged', 'Merged'], ['failed', 'Failed']].map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setJobStatusFilter(k)} style={{
+                padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                fontFamily: C.mono, background: jobStatusFilter === k ? C.navy : C.surface2,
+                color: jobStatusFilter === k ? '#fff' : C.textMuted,
+              }}>
+                {label}{k !== 'all' && jobCounts[k] > 0 ? ` (${jobCounts[k]})` : ''}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textDim }}>
+              <th style={th}>Status</th>
+              <th style={th}>Title / Topic</th>
+              <th style={th}>Model</th>
+              <th style={th}>Words</th>
+              <th style={th}>SEO</th>
+              <th style={th}>Created</th>
+              <th style={th}>PR</th>
+              <th style={th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredJobs.slice(0, 25).map((j) => (
+              <tr key={j.id} style={{ borderBottom: `1px solid ${C.border2}`, cursor: 'pointer' }} onClick={() => selectJob(j.id)} onMouseEnter={(e) => { e.currentTarget.style.background = C.surface2 }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                <td style={td}><StatusBadge status={j.status} /></td>
+                <td style={{ ...td, maxWidth: 260 }}>
+                  <div style={{ fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.title || j.topic || j.primary_keyword || j.id.slice(0, 8)}</div>
+                  <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>
+                    {j.content_type || ''}{j.region ? ` · ${j.region}` : ''}{j.target_repo ? ` · ${j.target_repo}` : ''}
+                  </div>
+                </td>
+                <td style={{ ...td, fontSize: 10, fontFamily: C.mono, color: C.textMuted }}>
+                  {j.ai_model || j.ai_provider || '—'}
+                </td>
+                <td style={{ ...td, fontFamily: C.mono }}>{fmtN(j.word_count ?? 0)}</td>
+                <td style={{ ...td, fontFamily: C.mono, fontWeight: 700, color: (j.seo_score ?? 0) >= 70 ? C.green : (j.seo_score ?? 0) >= 55 ? C.orange : C.textDim }}>
+                  {j.seo_score ?? '—'}
+                </td>
+                <td style={{ ...td, fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{timeAgo(j.created_at)}</td>
+                <td style={{ ...td }}>
+                  {j.pr_url ? (
+                    <a href={j.pr_url} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 11, fontFamily: C.mono, textDecoration: 'none' }} onClick={(e) => e.stopPropagation()}>
+                      PR #{j.pr_number || '—'} ↗
+                    </a>
+                  ) : <span style={{ color: C.textDim, fontSize: 11 }}>—</span>}
+                </td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open</button>{' '}
+                  {j.status === 'pr_created' && (
+                    <button type="button" style={{ ...btnSmall, background: C.greenSoft, color: C.green }} onClick={() => jobAction(j.id, 'approve')}>Approve</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {filteredJobs.length === 0 && (
+              <tr><td colSpan={8} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>No jobs yet — launch a play.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  const renderEngineTab = () => (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
+      <SeoMasterEngine
+        onBrief={(p: any) => applyBrief({
+          term: p.primary_term || p.primaryTerm || '',
+          title: (p.plan && (p.plan.pillar || p.plan.title)) || p.primary_term || p.primaryTerm || '',
+          primaryKeyword: p.primary_term || p.primaryTerm || '',
+          keywords: [p.primary_term || p.primaryTerm || '', ...((p.related_terms || p.relatedTerms || []) as string[])].filter(Boolean).slice(0, 8),
+          contentType: (p.plan && p.plan.contentType) || 'blog_post',
+          intent: p.intent || 'informational',
+          interlinks: (p.interlinks || []) as string[],
+          signals: (p.related_terms || p.relatedTerms || []) as string[],
+          cluster: null,
+          stage: p.stage,
+          country: p.country,
+        })}
+        onIngest={(r: any) => notify(`Knowledge ingested: ${r.stored} stored / ${r.fetched} fetched (${r.aiSummarized} AI-summarized)`, 'success')}
+      />
+    </div>
+  )
+
+  const renderMissionsTab = () => (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="📜" title="Mission Log"
+        sub={`persistent audit trail · ${missionLog.length} shown${missionLoading ? ' · loading…' : ''}`}
+        right={
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            {MISSION_KINDS.map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setMissionKind(k)} style={{
+                padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                fontFamily: C.mono, background: missionKind === k ? C.navy : C.surface2,
+                color: missionKind === k ? '#fff' : C.textMuted,
+              }}>
+                {label}
+              </button>
+            ))}
+            <span style={{ width: 1, height: 14, background: C.border, margin: '0 4px' }} />
+            {MISSION_STATUSES.map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setMissionStatus(k)} style={{
+                padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                fontFamily: C.mono, background: missionStatus === k ? C.navy : C.surface2,
+                color: missionStatus === k ? '#fff' : C.textMuted,
+              }}>
+                {label}
+              </button>
+            ))}
+            <button type="button" onClick={() => setMissionReload((n) => n + 1)} style={btnSmall} disabled={missionLoading}>
+              {missionLoading ? '…' : '↻'}
+            </button>
+          </div>
+        }
+      />
+      <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+        {missionLog.length === 0 && (
+          <div style={{ padding: 24, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+            {missionLoading ? 'Loading mission history…' : 'No missions recorded yet — launch a play to start the audit trail.'}
+          </div>
+        )}
+        {missionLog.map((m) => (
+          <div key={m.id} style={{ padding: '9px 16px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, marginTop: 5, flexShrink: 0,
+              background: m.status === 'success' ? C.green : m.status === 'error' ? C.red : m.status === 'warn' ? '#D97706' : C.textDim }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted }}>{m.kind}</span>
+                <span style={{ fontSize: 12, color: C.text, fontWeight: 500 }}>{m.message}</span>
+                {m.pr_url && (
+                  <a href={m.pr_url} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 10, fontFamily: C.mono, textDecoration: 'none' }}>PR ↗</a>
+                )}
+                {m.job_id && <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>job {m.job_id.slice(0, 8)}</span>}
+              </div>
+              <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 2, wordBreak: 'break-word' }}>
+                {timeAgo(m.created_at)} · {m.source}
+                {m.detail && Object.keys(m.detail).length > 0 ? ` · ${JSON.stringify(m.detail).slice(0, 140)}` : ''}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  const renderSystemsTab = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+      {/* Health */}
+      <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, boxShadow: C.shadowCard }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: health?.ready ? C.green : C.orange }} />
+          System health {health?.ready ? '· ready' : '· needs setup'}
+        </div>
+        {(health?.checks || []).slice(0, 8).map((c: any, i: number) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '3px 0', borderBottom: `1px solid ${C.border2}` }}>
+            <span style={{ color: C.textMuted }}>{c.label || c.name || c.key}</span>
+            <span style={{ fontFamily: C.mono, color: c.ok ? C.green : C.red }}>{c.ok ? 'OK' : 'FAIL'}</span>
+          </div>
+        ))}
+        {(health?.checks || []).length === 0 && <div style={{ fontSize: 11, color: C.textDim }}>No checks loaded — <button type="button" style={btnSmall} onClick={loadHealth}>reload</button></div>}
+      </div>
+      {/* Metrics */}
+      <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, boxShadow: C.shadowCard }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>📊 Metrics</div>
+        {metrics ? (
+          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
+            {Object.entries(metrics).filter(([k]) => !['daily', 'byDate'].includes(k)).slice(0, 10).map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>{k.replace(/([A-Z])/g, ' $1')}</span>
+                <span style={{ fontFamily: C.mono, color: C.text }}>{typeof v === 'number' ? fmtN(v) : String(v ?? '—')}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: C.textDim }}>— <button type="button" style={btnSmall} onClick={loadMetrics}>load</button></div>
+        )}
+      </div>
+      {/* Strategies */}
+      <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, boxShadow: C.shadowCard }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>🗂 Strategies registry</div>
+        {strategies ? (
+          <div style={{ fontSize: 11, color: C.textMuted }}>
+            {(Array.isArray(strategies) ? strategies : strategies.groups || strategies.categories || []).slice(0, 8).map((s: any, i: number) => (
+              <div key={i} style={{ padding: '3px 0', borderBottom: `1px solid ${C.border2}`, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{s.title || s.label || s.name || String(s.path || s)}</span>
+                {(s.count != null || s.docs != null) && <span style={{ fontFamily: C.mono, color: C.text }}>{s.count ?? s.docs}</span>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: C.textDim }}>— <button type="button" style={btnSmall} onClick={loadStrategies}>load</button></div>
+        )}
+      </div>
+      {/* GSC status */}
+      <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, boxShadow: C.shadowCard }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>🔎 GSC data source</div>
+        <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
+          <div>Mode: <strong style={{ color: C.text, fontFamily: C.mono }}>{radar?.source || '—'}</strong>
+            {radar?.historyAvailable ? <span style={{ color: C.green }}> · position history ✓</span> : null}
+          </div>
+          <div>Site: <span style={{ fontFamily: C.mono, color: C.text, wordBreak: 'break-all' }}>{radar?.siteUrl || '—'}</span></div>
+          {radar?.range ? (
+            <div>Range: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.range.startDate} → {radar.range.endDate} ({radar.range.days}d)</span></div>
+          ) : null}
+          {radar?.snapshot?.generatedAt ? (
+            <div>Snapshot: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.snapshot.generatedAt}</span>{radar.snapshot.source ? ` · ${radar.snapshot.source}` : ''}</div>
+          ) : null}
+          {radar?.source === 'live' && !radar?.historyAvailable ? (
+            <div style={{ color: C.orange, fontSize: 10 }}>⚠ History unavailable — bucket queries failed or range too short</div>
+          ) : null}
+          <div style={{ marginTop: 6 }}>
+            {(radar?.warnings || []).slice(0, 3).map((w: string, i: number) => (
+              <div key={i} style={{ color: C.orange, fontSize: 10 }}>⚠ {w}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* AI Keys vault */}
+      <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFDF7' }}>
+        <AiKeyVaultPanel onChanged={loadHealth} />
+      </div>
+    </div>
+  )
+
   return (
     <div style={{
       display: 'grid',
@@ -974,14 +1562,14 @@ const [engineOpen, setEngineOpen] = React.useState(false)
               </span>
             </div>
             <p style={{ margin: 0, color: C.textMuted, fontSize: 13, maxWidth: 640 }}>
-              The Opportunity Engine ranks what to ship — <strong>verifiable signals, one brain</strong> for radar, brief, and pipeline.
+              Six dedicated surfaces — one brain for radar, brief, pipeline, engine, audit and systems.
               {radarLastRefreshed && <span style={{ fontFamily: C.mono, fontSize: 11, color: C.textDim }}> · last sync {Math.round((Date.now() - radarLastRefreshed.getTime()) / 60_000)}m ago</span>}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textMuted }}>
               Region
-              <select value={regionFilter} onChange={(e) => { setRegionFilter(e.target.value); setRadar(null); loadRadar() }} style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${C.border}` }}>
+              <select value={regionFilter} onChange={(e) => { setRegionFilter(e.target.value); setRadar(null); loadRadar() }} style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface }}>
                 <option value="">All</option>
                 {['US', 'UK', 'CA', 'AU', 'COMPARE'].map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -989,11 +1577,11 @@ const [engineOpen, setEngineOpen] = React.useState(false)
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textMuted }}>
               <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Dry-run
             </label>
-            <button type="button" onClick={loadRadar} disabled={radarBusy} style={{ ...btnSecondary, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" onClick={loadRadar} disabled={radarBusy} style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {radarBusy ? <span style={{ width: 11, height: 11, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: C.navy, borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} /> : '⟳'}
               {radarBusy ? 'Scanning…' : 'Rescan radar'}
             </button>
-            <button type="button" onClick={() => setWorkspaceOpen((v) => !v)} style={{ ...btnSecondary, background: workspaceOpen ? C.navy : C.surface, color: workspaceOpen ? '#fff' : C.text }}>
+            <button type="button" onClick={() => setWorkspaceOpen((v) => !v)} style={workspaceOpen ? { ...btnSolid(C.navy) } : btnGhost}>
               {workspaceOpen ? '✕ Hide workspace' : '◈ Workspace'}
             </button>
           </div>
@@ -1002,13 +1590,13 @@ const [engineOpen, setEngineOpen] = React.useState(false)
         {/* KPI strip */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
           {[
-            { label: 'Actionable plays', value: String(kpis.actionable), sub: 'in radar queue', color: C.cyan2, onClick: () => setRadarFilter('all') },
-            { label: 'Est. clicks / mo', value: `~${fmtN(kpis.gain)}`, sub: 'if plays ship', color: C.green, onClick: () => setRadarFilter('all') },
-            { label: 'Queries analyzed', value: fmtN(kpis.analyzed), sub: 'GSC signals', color: C.text, onClick: () => {} },
-            { label: 'Avg authority', value: String(kpis.authority || '—'), sub: 'win probability', color: C.violet, onClick: () => {} },
-            { label: 'In flight', value: String(kpis.inflight), sub: 'jobs drafting', color: C.orange, onClick: () => setJobStatusFilter('drafting') },
-            { label: 'PRs open', value: String(kpis.pr), sub: 'awaiting review', color: C.blue, onClick: () => setJobStatusFilter('pr_created') },
-            { label: 'Cannibal watch', value: String(kpis.cannibals), sub: 'consolidate', color: C.red, onClick: () => setRadarFilter('cannibalization') },
+            { label: 'Actionable plays', value: String(kpis.actionable), sub: 'in radar queue', color: C.cyan2, onClick: () => { setRadarFilter('all'); setTab('radar') } },
+            { label: 'Est. clicks / mo', value: `~${fmtN(kpis.gain)}`, sub: 'if plays ship', color: C.green, onClick: () => { setRadarFilter('all'); setTab('radar') } },
+            { label: 'Queries analyzed', value: fmtN(kpis.analyzed), sub: 'GSC signals', color: C.text, onClick: () => setTab('radar') },
+            { label: 'Avg authority', value: String(kpis.authority || '—'), sub: 'win probability', color: C.violet, onClick: () => setTab('radar') },
+            { label: 'In flight', value: String(kpis.inflight), sub: 'jobs drafting', color: C.orange, onClick: () => { setJobStatusFilter('drafting'); setTab('pipeline') } },
+            { label: 'PRs open', value: String(kpis.pr), sub: 'awaiting review', color: C.blue, onClick: () => { setJobStatusFilter('pr_created'); setTab('pipeline') } },
+            { label: 'Cannibal watch', value: String(kpis.cannibals), sub: 'consolidate', color: C.red, onClick: () => { setRadarFilter('cannibalization'); setTab('radar') } },
           ].map((k) => (
             <button key={k.label} type="button" onClick={k.onClick} style={{
               textAlign: 'left', padding: '10px 12px', borderRadius: C.radiusSm,
@@ -1023,561 +1611,43 @@ const [engineOpen, setEngineOpen] = React.useState(false)
           ))}
         </div>
 
-        {/* ── Opportunity Radar ── */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🎯 Opportunity Radar</h2>
-              <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
-                Every play carries its <strong>signals trail</strong> — the exact data that drove the score.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {RADAR_FILTERS.map((f) => (
-                <button key={f.key} type="button" onClick={() => setRadarFilter(f.key)} style={{
-                  padding: '4px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
-                  fontFamily: C.mono, background: radarFilter === f.key ? C.navy : C.surface2,
-                  color: radarFilter === f.key ? '#fff' : C.textMuted, transition: 'all 0.15s',
-                }}>{f.label}</button>
-              ))}
-            </div>
-          </div>
-
-          {selectedTerms.size > 0 && (
-            <div style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border}`, background: C.cyanSoft, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, color: C.cyan2, fontWeight: 600 }}>{selectedTerms.size} play(s) selected</span>
-              <select value={shipMode} onChange={(e) => setShipMode(e.target.value as ShipMode)} style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 11 }}>
-                <option value="pr">Create + PR</option>
-                <option value="autodeploy">Create + approve</option>
-                <option value="merge">Create + merge</option>
-                <option value="none">Draft only</option>
-              </select>
-              <button type="button" onClick={runAutopilot} disabled={busy} style={{ ...btnPrimary, background: C.cyan2 }}>
-                {busy ? 'Running…' : `Run autopilot (${selectedTerms.size})`}
-              </button>
-              <button type="button" onClick={() => setSelectedTerms(new Set())} style={btnSmall}>Clear</button>
-            </div>
-          )}
-
-          {radarBusy && !radar ? (
-            <div style={{ padding: 24, textAlign: 'center', color: C.textDim, fontSize: 13, fontFamily: C.mono }}>
-              Scanning GSC + coverage + registry…
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textDim }}>
-                    <th style={th}></th>
-                    <th style={th}>Score</th>
-                    <th style={th}>Play</th>
-                    <th style={th}>Query</th>
-                    <th style={th}>Pos</th>
-                    <th style={th}>Trend</th>
-                    <th style={th}>Impr</th>
-                    <th style={th}>CTR</th>
-                    <th style={th}>+Clicks</th>
-                    <th style={th}>Why (signals)</th>
-                    <th style={th}>Links</th>
-                    <th style={th}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {radarQueue.slice(0, 30).map((o) => {
-                    const play = playOf(o)
-                    const isCannibal = play === 'cannibalization' || play === 'cannibal_merge'
-                    const tm = TREND_META[o.trend || 'flat'] || TREND_META.flat
-                    return (
-                      <tr key={o.id || o.term} style={{ borderBottom: `1px solid ${C.border2}`, transition: 'background 0.1s' }} onMouseEnter={(e) => { e.currentTarget.style.background = C.surface2 }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                        <td style={{ ...td, width: 28 }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedTerms.has(String(o.term))}
-                            onChange={() => toggleTerm(String(o.term))}
-                            disabled={isCannibal}
-                          />
-                        </td>
-                        <td style={{ ...td, minWidth: 100 }}>
-                          <ScoreMeter score={scoreOf(o)} />
-                        </td>
-                        <td style={td}><PlayBadge play={play} /></td>
-                        <td style={{ ...td, maxWidth: 240 }}>
-                          <strong style={{ color: C.text }}>{o.term}</strong>
-                          {o.intent && (
-                            <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 1 }}>
-                              {INTENT_LABELS[o.intent] || o.intent} · {tm.icon} {tm.label}
-                            </div>
-                          )}
-                          {o.cluster && (
-                            <div style={{ marginTop: 3 }}>
-                              <span title={o.cluster.reason || undefined} style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 999,
-                                fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
-                                background: o.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
-                                color: o.cluster.mode === 'expand' ? C.gold : C.blue,
-                                border: `1px solid ${o.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
-                                cursor: 'default',
-                              }}>
-                                🕸 {o.cluster.keywords?.length || 1}-kw
-                                {o.cluster.mode === 'expand'
-                                  ? ` · expands ${String(o.cluster.targetUrl || '').split('/').filter(Boolean).slice(-2).join('/') || 'page'}`
-                                  : ' · new page'}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ ...td, fontFamily: C.mono }}>#{o.position ?? '—'}</td>
-                        <td style={{ ...td, minWidth: 96 }}>
-                          <TrendSpark o={o} onOpen={(row) => { setTrendDetail(row); setWorkspaceOpen(true) }} />
-                        </td>
-                        <td style={{ ...td, fontFamily: C.mono }}>{fmtN(o.impressions)}</td>
-                        <td style={{ ...td, fontFamily: C.mono }}>{(Number(o.ctr) * 100).toFixed(1)}%</td>
-                        <td style={{ ...td, color: C.green, fontWeight: 700, fontFamily: C.mono }}>~{fmtN(o.estimatedGainClicks ?? 0)}</td>
-                        <td style={{ ...td, maxWidth: 300 }}>
-                          <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4 }}>
-                            {(o.signals || [o.rationale]).slice(0, 2).map((s: string, i: number) => (
-                              <div key={i}>• {s}</div>
-                            ))}
-                          </div>
-                        </td>
-                        <td style={{ ...td, fontSize: 10, color: C.gold, fontFamily: C.mono, whiteSpace: 'nowrap' }}>
-                          {o.interlinks && o.interlinks.length ? `🔗 ${o.interlinks.length}` : '—'}
-                        </td>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                          {!isCannibal && (
-                            <button type="button" style={{ ...btnSmall, marginRight: 4 }} onClick={() => applyBrief(o)}>
-                              Brief
-                            </button>
-                          )}
-                          {isCannibal ? (
-                            <button type="button" style={{ ...btnSmall, borderColor: C.redBorder, color: C.red }} onClick={() => runCannibalMerge(o)} disabled={busy}>
-                              Merge
-                            </button>
-                          ) : (
-                            <button type="button" style={{ ...btnSmall, background: C.navy, color: '#fff' }} onClick={() => { setSelectedTerms(new Set([String(o.term)])); runAutopilot() }} disabled={busy}>
-                              Ship
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {radarQueue.length === 0 && (
-                    <tr><td colSpan={12} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
-                      No plays for this filter — rescan or change filter.
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* ── Tab navigation ── */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit',
+                background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#FFF' : C.textMuted,
+                border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
+                boxShadow: tab === t.key ? '0 3px 10px rgba(15,23,42,0.18)' : 'none',
+              }}
+            >
+              {t.icon} {t.label}
+              <span style={{ marginLeft: 6, fontSize: 9, fontFamily: C.mono, opacity: 0.75 }}>{t.hint}</span>
+            </button>
+          ))}
         </div>
 
-        {/* ── Brief composer ── */}
-        {brief && (
-          <div style={{ background: C.surface, border: `1px solid ${C.goldBorder}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.goldBorder}`, background: '#FEF9EC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 15, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🚀 Launch Play</h3>
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
-                  Autopilot brief from the radar — every field pre-filled and editable. Draft → quality gates → GitHub PR.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <PlayBadge play={brief.play} />
-                <ScoreMeter score={brief.score} />
-                <button type="button" onClick={clearBrief} style={btnSmall}>✕ Clear</button>
-              </div>
-            </div>
-            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Topic</label>
-                <input value={brief.topic} onChange={(e) => setBrief({ ...brief, topic: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Title</label>
-                <input value={brief.title} onChange={(e) => setBrief({ ...brief, title: e.target.value })} style={inputStyle} />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Keywords (comma-separated)</label>
-                <input
-                  value={(brief.keywords || []).join(', ')}
-                  onChange={(e) => setBrief({ ...brief, keywords: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) })}
-                  style={inputStyle}
-                />
-                {brief.cluster && (
-                  <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999,
-                      fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-                      background: brief.cluster.mode === 'expand' ? C.goldSoft : C.blueSoft,
-                      color: brief.cluster.mode === 'expand' ? C.gold : C.blue,
-                      border: `1px solid ${brief.cluster.mode === 'expand' ? C.goldBorder : C.blueBorder}`,
-                    }}>
-                      🕸 Cluster · {brief.cluster.keywords?.length || 1} keywords · {brief.cluster.mode === 'expand' ? `expands ${brief.cluster.targetUrl || 'existing page'}` : 'one new unique page'}
-                    </span>
-                    {brief.cluster.reason && (
-                      <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{brief.cluster.reason}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div>
-                <label style={labelStyle}>Content type</label>
-                <select
-                  value={brief.contentType}
-                  onChange={(e) => setBrief({ ...brief, contentType: e.target.value })}
-                  style={inputStyle}
-                >
-                  <option value="blog_post">Blog Post</option>
-                  <option value="article">Long-Form Article</option>
-                  <option value="regional_page">Regional Page</option>
-                  <option value="marketplace_gig">Marketplace Gig</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Tone</label>
-                <select value={brief.tone} onChange={(e) => setBrief({ ...brief, tone: e.target.value })} style={inputStyle}>
-                  <option value="professional">Professional</option>
-                  <option value="educational">Educational</option>
-                  <option value="persuasive">Persuasive</option>
-                  <option value="authoritative">Authoritative</option>
-                  <option value="casual">Casual</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Audience</label>
-                <input value={brief.audience || ''} onChange={(e) => setBrief({ ...brief, audience: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>AI Model</label>
-                <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={inputStyle}>
-                  <option value="auto">Auto (Grok → OpenAI → rest)</option>
-                  <option value="grok">Grok (xAI)</option>
-                  <option value="openai">OpenAI (GPT-5.6 Luna)</option>
-                  <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
-                  <option value="cloudflare-ai">Cloudflare Workers AI</option>
-                  <option value="groq">Groq (Llama)</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="openrouter">OpenRouter</option>
-                </select>
-              </div>
-              {brief.interlinks && brief.interlinks.length > 0 && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={labelStyle}>🔗 Internal linking targets ({brief.interlinks.length})</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {brief.interlinks.slice(0, 6).map((l: any, i: number) => (
-                      <span key={i} style={{ padding: '3px 8px', borderRadius: 5, background: '#FEF9EC', border: `1px solid ${C.goldBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text }}>
-                        {l.label} → {String(l.url || '').replace(/^https?:\/\//, '')}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+        {/* ══════════ TAB: RADAR ══════════ */}
+        {tab === 'radar' && renderRadarTab()}
 
-            {/* Launch feed */}
-            {launchFeed.length > 0 && (
-              <div style={{ margin: '0 16px 12px', background: C.navy, color: '#E5E7EB', borderRadius: C.radiusSm, padding: '10px 12px', maxHeight: 180, overflowY: 'auto', fontFamily: C.mono, fontSize: 11 }}>
-                {launchFeed.map((f, i) => (
-                  <div key={i} style={{ color: f.level === 'success' ? '#34D399' : f.level === 'error' ? '#F87171' : f.level === 'warn' ? '#FBBF24' : '#E5E7EB' }}>
-                    {f.level === 'success' ? '✓ ' : f.level === 'error' ? '✕ ' : '› '}{f.msg}
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* ══════════ TAB: LAUNCH ══════════ */}
+        {tab === 'launch' && renderLaunchTab()}
 
-            <div style={{ padding: '0 16px 16px' }}>
-              <button
-                type="button"
-                onClick={runGenerate}
-                disabled={generating || !brief.topic.trim()}
-                style={{ ...btnPrimary, width: '100%', padding: '11px 0', fontSize: 13, opacity: generating ? 0.7 : 1 }}
-              >
-                {generating ? '⚡ Generating…' : `⚡ Generate & Open PR — “${brief.topic.slice(0, 48)}${brief.topic.length > 48 ? '…' : ''}”`}
-              </button>
-            </div>
-          </div>
-        )}
+        {/* ══════════ TAB: PIPELINE ══════════ */}
+        {tab === 'pipeline' && renderPipelineTab()}
 
-        {/* ── Pipeline ── */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🔀 Mission Pipeline</h2>
-              <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Live job queue — auto-refreshes while drafting.</p>
-            </div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {[['all', 'All'], ['drafting', 'Drafting'], ['pr_created', 'PRs'], ['merged', 'Merged'], ['failed', 'Failed']].map(([k, label]) => (
-                <button key={k} type="button" onClick={() => setJobStatusFilter(k)} style={{
-                  padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
-                  fontFamily: C.mono, background: jobStatusFilter === k ? C.navy : C.surface2,
-                  color: jobStatusFilter === k ? '#fff' : C.textMuted,
-                }}>
-                  {label}{k !== 'all' && jobCounts[k] > 0 ? ` (${jobCounts[k]})` : ''}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: `1px solid ${C.border}`, color: C.textDim }}>
-                  <th style={th}>Status</th>
-                  <th style={th}>Title / Topic</th>
-                  <th style={th}>Model</th>
-                  <th style={th}>Words</th>
-                  <th style={th}>SEO</th>
-                  <th style={th}>Created</th>
-                  <th style={th}>PR</th>
-                  <th style={th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredJobs.slice(0, 25).map((j) => (
-                  <tr key={j.id} style={{ borderBottom: `1px solid ${C.border2}`, cursor: 'pointer' }} onClick={() => selectJob(j.id)} onMouseEnter={(e) => { e.currentTarget.style.background = C.surface2 }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
-                    <td style={td}><StatusBadge status={j.status} /></td>
-                    <td style={{ ...td, maxWidth: 260 }}>
-                      <div style={{ fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.title || j.topic || j.primary_keyword || j.id.slice(0, 8)}</div>
-                      <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>
-                        {j.content_type || ''}{j.region ? ` · ${j.region}` : ''}{j.target_repo ? ` · ${j.target_repo}` : ''}
-                      </div>
-                    </td>
-                    <td style={{ ...td, fontSize: 10, fontFamily: C.mono, color: C.textMuted }}>
-                      {j.ai_model || j.ai_provider || '—'}
-                    </td>
-                    <td style={{ ...td, fontFamily: C.mono }}>{fmtN(j.word_count ?? 0)}</td>
-                    <td style={{ ...td, fontFamily: C.mono, fontWeight: 700, color: (j.seo_score ?? 0) >= 70 ? C.green : (j.seo_score ?? 0) >= 55 ? C.orange : C.textDim }}>
-                      {j.seo_score ?? '—'}
-                    </td>
-                    <td style={{ ...td, fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{timeAgo(j.created_at)}</td>
-                    <td style={{ ...td }}>
-                      {j.pr_url ? (
-                        <a href={j.pr_url} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 11, fontFamily: C.mono, textDecoration: 'none' }} onClick={(e) => e.stopPropagation()}>
-                          PR #{j.pr_number || '—'} ↗
-                        </a>
-                      ) : <span style={{ color: C.textDim, fontSize: 11 }}>—</span>}
-                    </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                      <button type="button" style={btnSmall} onClick={() => selectJob(j.id)}>Open</button>{' '}
-                      {j.status === 'pr_created' && (
-                        <button type="button" style={{ ...btnSmall, background: C.greenSoft, color: C.green }} onClick={() => jobAction(j.id, 'approve')}>Approve</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {filteredJobs.length === 0 && (
-                  <tr><td colSpan={8} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>No jobs yet — launch a play.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* ══════════ TAB: ENGINE ══════════ */}
+        {tab === 'engine' && renderEngineTab()}
 
-        {/* ── Cannibal watch ── */}
-        {cannibals.length > 0 && (
-          <div style={{ background: '#FEF2F2', border: `1px solid ${C.redBorder}`, borderRadius: C.radius, padding: '12px 18px', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: C.red, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>⚠ Cannibalization watch ({cannibals.length})</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {cannibals.slice(0, 6).map((o, i) => (
-                <span key={i} style={{ padding: '4px 10px', borderRadius: 6, background: '#fff', border: `1px solid ${C.redBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  “{o.term}”
-                  <button type="button" style={{ ...btnSmall, color: C.red }} onClick={() => runCannibalMerge(o)} disabled={busy}>Merge</button>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* ══════════ TAB: MISSIONS ══════════ */}
+        {tab === 'missions' && renderMissionsTab()}
 
-        {/* ── Mission Log (persistent audit trail) ── */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button type="button" onClick={() => setMissionOpen((v) => !v)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 10, padding: 0 }}>
-                <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>📜 Mission Log</h2>
-                <span style={{ fontSize: 12, color: C.textDim }}>{missionOpen ? '▲' : '▼'}</span>
-              </button>
-              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
-                persistent audit trail · {missionLog.length} shown{missionLoading ? ' · loading…' : ''}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-              {[['all', 'All'], ['launch', 'Launch'], ['autopilot', 'Autopilot'], ['merge', 'Merge'], ['save', 'Save'], ['refresh', 'Refresh']].map(([k, label]) => (
-                <button key={k} type="button" onClick={() => setMissionKind(k)} style={{
-                  padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
-                  fontFamily: C.mono, background: missionKind === k ? C.navy : C.surface2,
-                  color: missionKind === k ? '#fff' : C.textMuted,
-                }}>
-                  {label}
-                </button>
-              ))}
-              <span style={{ width: 1, height: 14, background: C.border, margin: '0 4px' }} />
-              {[['all', 'All'], ['success', '✓'], ['error', '✕'], ['warn', '⚠']].map(([k, label]) => (
-                <button key={k} type="button" onClick={() => setMissionStatus(k)} style={{
-                  padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
-                  fontFamily: C.mono, background: missionStatus === k ? C.navy : C.surface2,
-                  color: missionStatus === k ? '#fff' : C.textMuted,
-                }}>
-                  {label}
-                </button>
-              ))}
-              <button type="button" onClick={() => setMissionReload((n) => n + 1)} style={btnSmall} disabled={missionLoading}>
-                {missionLoading ? '…' : '↻'}
-              </button>
-            </div>
-          </div>
-          {missionOpen && (
-            <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-              {missionLog.length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
-                  {missionLoading ? 'Loading mission history…' : 'No missions recorded yet — launch a play to start the audit trail.'}
-                </div>
-              )}
-              {missionLog.map((m) => (
-                <div key={m.id} style={{ padding: '9px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, marginTop: 5, flexShrink: 0,
-                    background: m.status === 'success' ? C.green : m.status === 'error' ? C.red : m.status === 'warn' ? '#D97706' : C.textDim }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', color: C.textMuted }}>{m.kind}</span>
-                      <span style={{ fontSize: 12, color: C.text, fontWeight: 500 }}>{m.message}</span>
-                      {m.pr_url && (
-                        <a href={m.pr_url} target="_blank" rel="noreferrer" style={{ color: C.blue, fontSize: 10, fontFamily: C.mono, textDecoration: 'none' }}>PR ↗</a>
-                      )}
-                      {m.job_id && <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>job {m.job_id.slice(0, 8)}</span>}
-                    </div>
-                    <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginTop: 2, wordBreak: 'break-word' }}>
-                      {timeAgo(m.created_at)} · {m.source}
-                      {m.detail && Object.keys(m.detail).length > 0 ? ` · ${JSON.stringify(m.detail).slice(0, 140)}` : ''}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── SEO Master Engine ── */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-          <button type="button" onClick={() => setEngineOpen((v) => !v)} style={{
-            width: '100%', padding: '12px 18px', border: 'none', background: 'none', cursor: 'pointer',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit',
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>🧭 SEO Master Engine</span>
-            <span style={{ fontSize: 14, color: C.textDim }}>{engineOpen ? '▲' : '▼'}</span>
-          </button>
-          {engineOpen && (
-            <div style={{ padding: '0 18px 16px' }}>
-              <SeoMasterEngine
-                onBrief={(p: any) => applyBrief({
-                  term: p.primary_term || p.primaryTerm || '',
-                  title: (p.plan && (p.plan.pillar || p.plan.title)) || p.primary_term || p.primaryTerm || '',
-                  primaryKeyword: p.primary_term || p.primaryTerm || '',
-                  keywords: [p.primary_term || p.primaryTerm || '', ...((p.related_terms || p.relatedTerms || []) as string[])].filter(Boolean).slice(0, 8),
-                  contentType: (p.plan && p.plan.contentType) || 'blog_post',
-                  intent: p.intent || 'informational',
-                  interlinks: (p.interlinks || []) as string[],
-                  signals: (p.related_terms || p.relatedTerms || []) as string[],
-                  cluster: null,
-                  stage: p.stage,
-                  country: p.country,
-                })}
-                onIngest={(r: any) => notify(`Knowledge ingested: ${r.stored} stored / ${r.fetched} fetched (${r.aiSummarized} AI-summarized)`, 'success')}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* ── Systems ── */}
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
-          <button type="button" onClick={() => setSystemsOpen((v) => !v)} style={{
-            width: '100%', padding: '12px 18px', border: 'none', background: 'none', cursor: 'pointer',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit',
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>⚙️ Systems</span>
-            <span style={{ fontSize: 14, color: C.textDim }}>{systemsOpen ? '▲' : '▼'}</span>
-          </button>
-          {systemsOpen && (
-            <div style={{ padding: '0 18px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-              {/* Health */}
-              <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 999, background: health?.ready ? C.green : C.orange }} />
-                  System health {health?.ready ? '· ready' : '· needs setup'}
-                </div>
-                {(health?.checks || []).slice(0, 8).map((c: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '3px 0', borderBottom: `1px solid ${C.border2}` }}>
-                    <span style={{ color: C.textMuted }}>{c.label || c.name || c.key}</span>
-                    <span style={{ fontFamily: C.mono, color: c.ok ? C.green : C.red }}>{c.ok ? 'OK' : 'FAIL'}</span>
-                  </div>
-                ))}
-                {(health?.checks || []).length === 0 && <div style={{ fontSize: 11, color: C.textDim }}>No checks loaded — <button type="button" style={btnSmall} onClick={loadHealth}>reload</button></div>}
-              </div>
-              {/* Metrics */}
-              <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>📊 Metrics</div>
-                {metrics ? (
-                  <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
-                    {Object.entries(metrics).filter(([k]) => !['daily', 'byDate'].includes(k)).slice(0, 10).map(([k, v]) => (
-                      <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{k.replace(/([A-Z])/g, ' $1')}</span>
-                        <span style={{ fontFamily: C.mono, color: C.text }}>{typeof v === 'number' ? fmtN(v) : String(v ?? '—')}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 11, color: C.textDim }}>— <button type="button" style={btnSmall} onClick={loadMetrics}>load</button></div>
-                )}
-              </div>
-              {/* Strategies */}
-              <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>🗂 Strategies registry</div>
-                {strategies ? (
-                  <div style={{ fontSize: 11, color: C.textMuted }}>
-                    {(Array.isArray(strategies) ? strategies : strategies.groups || strategies.categories || []).slice(0, 8).map((s: any, i: number) => (
-                      <div key={i} style={{ padding: '3px 0', borderBottom: `1px solid ${C.border2}`, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{s.title || s.label || s.name || String(s.path || s)}</span>
-                        {(s.count != null || s.docs != null) && <span style={{ fontFamily: C.mono, color: C.text }}>{s.count ?? s.docs}</span>}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 11, color: C.textDim }}>— <button type="button" style={btnSmall} onClick={loadStrategies}>load</button></div>
-                )}
-              </div>
-              {/* GSC status */}
-              <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>🔎 GSC data source</div>
-                <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>
-                  <div>Mode: <strong style={{ color: C.text, fontFamily: C.mono }}>{radar?.source || '—'}</strong>
-                    {radar?.historyAvailable ? <span style={{ color: C.green }}> · position history ✓</span> : null}
-                  </div>
-                  <div>Site: <span style={{ fontFamily: C.mono, color: C.text, wordBreak: 'break-all' }}>{radar?.siteUrl || '—'}</span></div>
-                  {radar?.range ? (
-                    <div>Range: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.range.startDate} → {radar.range.endDate} ({radar.range.days}d)</span></div>
-                  ) : null}
-                  {radar?.snapshot?.generatedAt ? (
-                    <div>Snapshot: <span style={{ fontFamily: C.mono, color: C.text }}>{radar.snapshot.generatedAt}</span>{radar.snapshot.source ? ` · ${radar.snapshot.source}` : ''}</div>
-                  ) : null}
-                  {radar?.source === 'live' && !radar?.historyAvailable ? (
-                    <div style={{ color: C.orange, fontSize: 10 }}>⚠ History unavailable — bucket queries failed or range too short</div>
-                  ) : null}
-                  <div style={{ marginTop: 6 }}>
-                    {(radar?.warnings || []).slice(0, 3).map((w: string, i: number) => (
-                      <div key={i} style={{ color: C.orange, fontSize: 10 }}>⚠ {w}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* AI Keys vault */}
-              <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFDF7' }}>
-                <AiKeyVaultPanel onChanged={loadHealth} />
-              </div>
-            </div>
-          )}
-        </div>
+        {/* ══════════ TAB: SYSTEMS ══════════ */}
+        {tab === 'systems' && renderSystemsTab()}
 
         {activityLine && (
           <div style={{ position: 'fixed', bottom: 16, right: workspaceOpen ? 404 : 20, padding: '10px 16px', borderRadius: C.radiusSm, background: C.navy, color: '#fff', fontSize: 12, fontFamily: C.mono, boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8 }}>
