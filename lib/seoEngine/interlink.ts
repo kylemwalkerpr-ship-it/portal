@@ -271,3 +271,89 @@ export async function loadInterlinkGraph(limit = 100): Promise<{
     return { edges: [], byReason: {}, applied: 0, planned: 0 }
   }
 }
+
+/**
+ * Persisted-state inspector for a single (stage × country) cell.
+ *
+ * Aggregates everything in `seo_interlinks` whose target URL belongs to the
+ * given country, broken down by reason, status, and neighbour stage (the slug
+ * encodes `<stage>-<country>` via the planner's deterministic builder).
+ *
+ * This is what the Launch-tab stage panel uses to render its persisted footer
+ * — the operator sees the real, currently-persisted plan for that cell, not
+ * just the in-memory recompute result.
+ */
+export async function loadPersistedCell(opts: {
+  stage: string
+  country: Country
+  sourceSlug?: string
+}): Promise<{
+  stage: string
+  country: string
+  total: number
+  applied: number
+  planned: number
+  byReason: Record<string, number>
+  byStage: Array<{ stage: string; count: number }>
+  topTargets: Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>
+  lastUpdated: string | null
+}> {
+  const empty = {
+    stage: opts.stage, country: opts.country,
+    total: 0, applied: 0, planned: 0,
+    byReason: {} as Record<string, number>,
+    byStage: [] as Array<{ stage: string; count: number }>,
+    topTargets: [] as Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>,
+    lastUpdated: null as string | null,
+  }
+  try {
+    const supabase = createSupabaseAdminClient()
+    let q = supabase
+      .from('seo_interlinks')
+      .select('id,source_slug,target_url,target_host,anchor_text,reason,score,status,created_at,updated_at,cluster_id')
+    if (opts.sourceSlug) {
+      q = q.eq('source_slug', opts.sourceSlug)
+    } else {
+      // Match by country prefix embedded in the slug: `<ct>-<stage>-<country>-<topic-slug>`
+      const countrySlug = opts.country.toLowerCase()
+      q = q.ilike('source_slug', `%-${opts.stage}-${countrySlug}-%`)
+    }
+    const { data } = await q.order('score', { ascending: false }).limit(200)
+    const rows = (data as Array<Record<string, unknown>>) || []
+    if (!rows.length) return empty
+    const byReason: Record<string, number> = {}
+    const byStageMap: Record<string, number> = {}
+    let applied = 0
+    let planned = 0
+    let lastUpdated: string | null = null
+    const topTargets: typeof empty.topTargets = []
+    for (const r of rows) {
+      const reason = String(r.reason || 'ontology_neighbor')
+      byReason[reason] = (byReason[reason] || 0) + 1
+      const slug = String(r.source_slug || '')
+      const m = slug.match(/^([a-z0-9-]+)-([a-z]+)-([a-z]{2})-(.+)$/)
+      if (m) byStageMap[m[2]] = (byStageMap[m[2]] || 0) + 1
+      if (r.status === 'applied') applied += 1
+      else planned += 1
+      const u = String(r.updated_at || r.created_at || '')
+      if (u && (!lastUpdated || u > lastUpdated)) lastUpdated = u
+      topTargets.push({
+        url: String(r.target_url || ''),
+        host: String(r.target_host || ''),
+        anchor: String(r.anchor_text || ''),
+        reason,
+        score: Number(r.score) || 0,
+        status: String(r.status || 'planned'),
+      })
+    }
+    return {
+      stage: opts.stage, country: opts.country,
+      total: rows.length, applied, planned,
+      byReason, byStage: Object.entries(byStageMap).map(([stage, count]) => ({ stage, count })),
+      topTargets: topTargets.slice(0, 6),
+      lastUpdated,
+    }
+  } catch {
+    return empty
+  }
+}
