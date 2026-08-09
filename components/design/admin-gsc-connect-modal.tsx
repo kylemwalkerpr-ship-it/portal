@@ -73,6 +73,10 @@ export default function GscConnectModal({
   // render would restart the interval and reset the timeout counter.
   const onConnectedRef = React.useRef(onConnected)
   onConnectedRef.current = onConnected
+  // Mirror `reconnect` in a ref so the poll/recheck callbacks can read it
+  // without adding a prop dep that would restart the interval on re-render.
+  const reconnectRef = React.useRef(reconnect)
+  reconnectRef.current = reconnect
 
   const alreadyConnected = Boolean(initialStatus?.connected && !reconnect)
 
@@ -109,7 +113,10 @@ export default function GscConnectModal({
       const res = await fetch(STATUS_URL, { credentials: 'same-origin' })
       const data = await res.json()
       setLastStatus(data)
-      if (data?.connected) {
+      // A reconnect must actually heal (mint + probe) before we declare
+      // CONNECTED — `connected` alone stays true for a broken stored token.
+      const done = data?.connected && (!reconnectRef.current || data?.live === true)
+      if (done) {
         if (!firedRef.current) {
           firedRef.current = true
           onConnectedRef.current?.()
@@ -136,7 +143,10 @@ export default function GscConnectModal({
         const res = await fetch(STATUS_URL, { credentials: 'same-origin' })
         const data = await res.json()
         setLastStatus(data)
-        if (data?.connected) {
+        // Same heal-gate as `recheck`: a reconnect must see live:true before
+        // CONNECTED, so a broken token doesn't short-circuit the consent.
+        const done = data?.connected && (!reconnectRef.current || data?.live === true)
+        if (done) {
           clearInterval(id)
           if (!firedRef.current) {
             firedRef.current = true

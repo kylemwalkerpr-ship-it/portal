@@ -15,8 +15,12 @@
  *      mode service_account), opens the modal in reconnect mode, swaps the
  *      key, and asserts the live-heal (live false→true) fires the radar
  *      refresh even though `connected` never changed.
+ *   4. OAuth reconnect — starts connected-but-broken (live:false, mode oauth),
+ *      opens the modal in reconnect mode, re-runs Google consent (faked
+ *      popup), and asserts the modal waits for the live-heal before showing
+ *      CONNECTED and firing the radar refresh.
  *
- * All three assert the single refresh path end-to-end:
+ * All four assert the single refresh path end-to-end:
  * `modal.onConnected → loadGscStatus → (connected false→true | live
  * false→true) transition → loadHealth + loadRadar` (observable as a fresh
  * POST to `/api/seo-factory/war-room`).
@@ -368,6 +372,83 @@ test.describe('GSC connect modal (admin)', () => {
 
     // And the live-heal fired the radar refresh even though `connected` was
     // already true — a fresh war-room POST after the key swap.
+    await expect.poll(() => warRoom.hits(), { timeout: 10000 }).toBeGreaterThan(hitsBefore)
+  })
+
+  test('OAuth reconnect: re-running Google consent heals the token and fires the live-heal radar refresh', async ({ browser }) => {
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+
+    const page = await loginAsAdmin(browser)
+    test.skip(!page, 'Skipping: could not sign in')
+    if (!page) return
+
+    // ── Mocks ──────────────────────────────────────────────────────────────
+    // 1) Fake the consent popup (same as the fresh-OAuth test) so the flow
+    //    reaches the 'waiting' phase without a real window opening.
+    await page.addInitScript(() => {
+      const fakePopup = { closed: false, close() { (this as { closed: boolean }).closed = true } }
+      window.open = () => fakePopup as unknown as Window
+    })
+
+    // 2) Method-state status endpoint simulating a connected-but-broken OAuth
+    //    connection: connected=true, live=false (stored token can't mint —
+    //    invalid_grant) until the consent completes, which flips live→true
+    //    while connected stays true. The modal must wait for that heal.
+    let live = false
+    await page.route('**/api/content-studio/gsc/connect', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          live
+            ? {
+                connected: true, live: true, mode: 'oauth',
+                email: 'estate@yousafeconsultancy.com',
+                siteUrl: 'sc-domain:yousafeconsultancy.com',
+                connectedAt: new Date().toISOString(),
+                missing: [], error: null,
+              }
+            : {
+                connected: true, live: false, mode: 'oauth',
+                email: 'estate@yousafeconsultancy.com',
+                siteUrl: 'sc-domain:yousafeconsultancy.com',
+                connectedAt: new Date().toISOString(),
+                missing: [], error: 'invalid_grant',
+              },
+        ),
+      })
+    })
+
+    const warRoom = countWarRoomRefreshes(page)
+
+    // Systems card shows the broken-token state → Re-connect CTA opens the
+    // modal in reconnect mode (no already-connected short-circuit).
+    await navigateToConnectModal(page, { reconnect: true })
+
+    // Reconnect copy is shown and the consent CTA reads 'Re-authorize'.
+    await expect(page.getByText(/The stored token can't mint an access token/)).toBeVisible()
+    await page.getByRole('button', { name: /Re-authorize/ }).click()
+    await expect(page.getByText(/Waiting for Google consent/)).toBeVisible({ timeout: 10000 })
+
+    // ── Regression guard: while the token is still broken the modal must
+    //    NOT claim CONNECTED — the pre-fix poll short-circuited on
+    //    `connected` alone. One poll tick (2s) is enough to catch that bug:
+    //    still waiting (positive) and no CONNECTED (negative).
+    await page.waitForTimeout(2600)
+    await expect(page.getByText(/Waiting for Google consent/)).toBeVisible()
+    await expect(page.getByText(/CONNECTED · OAUTH/)).toHaveCount(0)
+
+    // ── The consent lands: the backend mints → live-heal ───────────────────
+    const hitsBefore = warRoom.hits()
+    live = true
+
+    // CONNECTED · OAUTH appears (auto-closes ~2.2s later, so poll fast).
+    await expect
+      .poll(() => page.getByText(/CONNECTED · OAUTH/).isVisible(), { timeout: 8000, intervals: [250] })
+      .toBe(true)
+
+    // And the live-heal fired the radar refresh even though `connected` was
+    // already true — a fresh war-room POST after the re-authorization.
     await expect.poll(() => warRoom.hits(), { timeout: 10000 }).toBeGreaterThan(hitsBefore)
   })
 })
