@@ -1,0 +1,53 @@
+name: SEO Master Engine Daily
+
+# Midday Africa/Nairobi = 12:00 EAT = 09:00 UTC — same slot as War Room daily.
+# Phase 1: ingest fresh knowledge (gov feeds, Google Search Central, trends).
+# Phase 2: run the master planner against GSC demand + fresh intel.
+on:
+  schedule:
+    - cron: '15 9 * * *'
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'all | knowledge | plan'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'knowledge'
+          - 'plan'
+
+jobs:
+  seo-engine-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Run SEO Master Engine daily (knowledge → plan)
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}
+          PHASE: ${{ github.event.inputs.phase || 'all' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET is not set in repo secrets"
+            exit 1
+          fi
+          BASE="${PORTAL_URL:-https://portal.yousafeconsultancy.com}"
+          URL="${BASE}/api/cron/seo-engine-daily"
+          echo "== SEO Master Engine (phase=${PHASE}) =="
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"phase\":\"${PHASE}\",\"limitPerSource\":10,\"limit\":20}")
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -n1)
+          echo "HTTP $CODE"
+          echo "$BODY" | head -c 3000
+          echo
+          if [ "$CODE" != "200" ]; then
+            echo "::error::SEO Master Engine daily run failed (HTTP $CODE)"
+            exit 1
+          fi
+          echo "SEO Master Engine daily run complete."
