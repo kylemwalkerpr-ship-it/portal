@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
     const q = (searchParams.get('q') || '').trim()
     // Cap list size — full content is loaded per-job via ?id=
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '40', 10) || 40, 80)
+    const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0', 10) || 0)
     const includeContent = searchParams.get('full') === '1'
 
     const supabase = sb()
@@ -101,6 +102,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ jobs: data ?? [], count: data?.length ?? 0 })
     }
 
+    // Real total count — the #1 complaint was "the queue always shows 40 jobs".
+    // The list was capped at limit with count = rows.length, so the true table
+    // size was never surfaced. Query an exact head count (cheap, no row bodies)
+    // plus a status-only pass so the summary counters reflect the whole table,
+    // not just the returned window.
+    let total = 0
+    const statusTotals: Record<string, number> = {}
+    try {
+      const [exactRes, statusRes] = await Promise.all([
+        supabase.from('content_jobs').select('id', { count: 'exact', head: true }),
+        supabase.from('content_jobs').select('status').limit(5000),
+      ])
+      total = typeof exactRes.count === 'number' ? exactRes.count : 0
+      const rows = (statusRes.data ?? []) as Array<{ status?: string | null }>
+      for (const r of rows) {
+        const s = String(r.status || 'unknown')
+        statusTotals[s] = (statusTotals[s] || 0) + 1
+      }
+    } catch {
+      total = 0 // count failure must never fail the list
+    }
+
     // List without content/event_log/audit_json — those blow Worker CPU + payload size
     const selectCols = includeContent ? '*' : JOB_LIST_COLUMNS
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,7 +131,7 @@ export async function GET(request: NextRequest) {
       .from('content_jobs')
       .select(selectCols)
       .order('created_at', { ascending: false })
-      .limit(limit)
+      .range(offset, offset + limit - 1)
 
     if (status) {
       if (status.includes(',')) {
@@ -148,23 +171,36 @@ export async function GET(request: NextRequest) {
 
     const jobs = (data ?? []) as Array<Record<string, unknown>>
 
-    // Summary for admin queue dashboard
-    const byStatus = (s: string) => jobs.filter((j) => j.status === s).length
+    // Summary for admin queue dashboard — totals are the REAL table counts
+    // (query-level aggregates) rather than the window that was returned, so
+    // the queue never lies about how many jobs exist.
     const scored = jobs.filter((j) => j.seo_score != null)
+    const statusKey = (s: string) => String(s || 'unknown')
     const summary = {
-      total: jobs.length,
-      drafting: byStatus('drafting'),
-      pr_created: byStatus('pr_created'),
-      merged: byStatus('merged'),
-      failed: byStatus('failed'),
-      closed: byStatus('closed'),
+      total,
+      window: jobs.length,
+      drafting: statusTotals.drafting ?? 0,
+      pr_created: statusTotals.pr_created ?? 0,
+      merged: statusTotals.merged ?? 0,
+      failed: statusTotals.failed ?? 0,
+      closed: statusTotals.closed ?? 0,
+      pending: statusTotals.pending ?? 0,
+      publishing: statusTotals.publishing ?? 0,
       avgSeo:
         scored.length > 0
           ? Math.round(scored.reduce((s, j) => s + Number(j.seo_score), 0) / scored.length)
           : null,
     }
 
-    return NextResponse.json({ jobs, count: jobs.length, summary })
+    return NextResponse.json({
+      jobs,
+      count: jobs.length,
+      total,
+      hasMore: offset + jobs.length < total,
+      offset,
+      limit,
+      summary,
+    })
   } catch (err) {
     console.error('[content-studio/jobs]', err)
     // Surface JSON 500/503 so UI can stop retry storms.
