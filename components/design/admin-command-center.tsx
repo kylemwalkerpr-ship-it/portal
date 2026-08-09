@@ -875,26 +875,21 @@ export default function AdminCommandCenter({
     applied: number
     planned: number
     byReason: Record<string, number>
+    byStatus?: Record<string, number>
+    byStage?: Array<{ stage: string; count: number }>
     topTargets: Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>
+    manualRows?: Array<{ url: string; anchor: string; gate_reason: string | null; gate_actor: string | null; gate_updated_at: string | null }>
     lastUpdated: string | null
   }
   const [interlinkPersisted, setInterlinkPersisted] = React.useState<PersistedCell | null>(null)
   const [inspectingPersisted, setInspectingPersisted] = React.useState(false)
   const lastInspectKey = React.useRef('')
 
-  const [previewCache, setPreviewCache] = React.useState<Record<string, {
-    ok: boolean; httpStatus: number; title: string | null; isEstate: boolean;
-    wordCount: number; anchorCount: number; hasSchemaOrg: boolean;
-    finalUrl: string; error?: string;
-  } | null>>({})
-  const [auditingUrl, setAuditingUrl] = React.useState<string | null>(null)
-
   // ─────────── Backlink engine state (Knowledge Radar) ───────────
   const BACKLINK_VIEWS = ['external', 'inbound', 'outbound'] as const
   type BacklinkView = (typeof BACKLINK_VIEWS)[number]
   const [backlinkView, setBacklinkView] = React.useState<BacklinkView>('external')
-  const BACKLINK_LANES = ['all', 'gov', 'ngo', 'media', 'edu', 'industry'] as const
-  type BacklinkLane = (typeof BACKLINK_LANES)[number]
+  type BacklinkLane = 'all' | 'editorial' | 'guest_post' | 'resource_page' | 'directory' | 'podcast_interview' | 'broken_outreach' | 'community' | 'partner'
   const [backlinkLaneFilter, setBacklinkLaneFilter] = React.useState<BacklinkLane>('all')
   const [backlinkReport, setBacklinkReport] = React.useState<{
     targets: any[]; inboundGaps: any[]; outboundGaps: any[];
@@ -906,15 +901,19 @@ export default function AdminCommandCenter({
 
   // ─────────── Outreach draft modal state ───────────
   interface DraftModalContent { subject: string; body: string; model: string | null }
-  const BACKLINK_TARGET_TYPES = ['gov', 'ngo', 'media', 'edu', 'industry'] as const
   const [draftModalTarget, setDraftModalTarget] = React.useState<any | null>(null)
   const [draftModalContent, setDraftModalContent] = React.useState<DraftModalContent | null>(null)
   const [draftModalBusy, setDraftModalBusy] = React.useState(false)
   const [draftModalError, setDraftModalError] = React.useState<string | null>(null)
 
+  // ─────────── Audit-pristine cache for previewing persisted targets ───────────
+  interface AuditResult { ok: boolean; httpStatus: number; title: string | null; isEstate: boolean; wordCount: number; anchorCount: number; hasSchemaOrg: boolean; finalUrl: string; error?: string }
+  const [auditCache, setAuditCache] = React.useState<Record<string, AuditResult | null>>({})
+  const [auditingUrl, setAuditingUrl] = React.useState<string | null>(null)
+
   const auditPersistedTarget = React.useCallback(async (url: string) => {
     setAuditingUrl(url)
-    setPreviewCache((c) => ({ ...c, [url]: null }))
+    setAuditCache((c) => ({ ...c, [url]: null }))
     try {
       const res = await fetch('/api/seo-engine/interlink/preview-target', {
         method: 'POST', credentials: 'same-origin',
@@ -923,12 +922,12 @@ export default function AdminCommandCenter({
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok || !data.ok) {
-        setPreviewCache((c) => ({ ...c, [url]: { ok: false, httpStatus: 0, isEstate: false, title: null, wordCount: 0, anchorCount: 0, hasSchemaOrg: false, finalUrl: url, error: data.error || ('HTTP ' + res.status) } }))
+        setAuditCache((c) => ({ ...c, [url]: { ok: false, httpStatus: 0, title: null, isEstate: false, wordCount: 0, anchorCount: 0, hasSchemaOrg: false, finalUrl: url, error: data.error || ('HTTP ' + res.status) } }))
         return
       }
-      setPreviewCache((c) => ({ ...c, [url]: { ok: true, httpStatus: data.httpStatus || 0, title: data.title || null, isEstate: !!data.isEstate, wordCount: data.wordCount || 0, anchorCount: data.anchorCount || 0, hasSchemaOrg: !!data.hasSchemaOrg, finalUrl: data.finalUrl || url } }))
+      setAuditCache((c) => ({ ...c, [url]: { ok: true, httpStatus: data.httpStatus || 0, title: data.title || null, isEstate: !!data.isEstate, wordCount: data.wordCount || 0, anchorCount: data.anchorCount || 0, hasSchemaOrg: !!data.hasSchemaOrg, finalUrl: data.finalUrl || url } }))
     } catch (e) {
-      setPreviewCache((c) => ({ ...c, [url]: { ok: false, httpStatus: 0, isEstate: false, title: null, wordCount: 0, anchorCount: 0, hasSchemaOrg: false, finalUrl: url, error: e instanceof Error ? e.message : 'audit failed' } }))
+      setAuditCache((c) => ({ ...c, [url]: { ok: false, httpStatus: 0, title: null, isEstate: false, wordCount: 0, anchorCount: 0, hasSchemaOrg: false, finalUrl: url, error: e instanceof Error ? e.message : 'audit failed' } }))
     } finally {
       setAuditingUrl(null)
     }
@@ -1342,6 +1341,88 @@ export default function AdminCommandCenter({
     return () => clearInterval(interval)
   }, [jobs, loadJobs])
 
+  const loadBacklinkReport = React.useCallback(async (force = false) => {
+    if (backlinkBusy) return
+    if (!force && backlinkReport) return
+    setBacklinkBusy(true)
+    try {
+      const qs = regionFilter ? `?report=full&country=${encodeURIComponent(regionFilter)}` : '?report=full'
+      const res = await fetch(`/api/seo-engine/backlink${qs}`, {
+        method: 'GET', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok || !data.ok) throw new Error(data.error || 'report failed')
+      setBacklinkReport({
+        targets: data.targets || [],
+        inboundGaps: data.inboundGaps || [],
+        outboundGaps: data.outboundGaps || [],
+        totals: data.totals || undefined,
+        generatedAt: data.generatedAt || new Date().toISOString(),
+      })
+      setBacklinkLastFetched(new Date())
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Backlink report failed', 'error')
+    } finally {
+      setBacklinkBusy(false)
+    }
+  }, [backlinkBusy, backlinkReport, regionFilter])
+
+  const openDraftModal = async (target: any) => {
+    setDraftModalTarget(target)
+    setDraftModalContent(null)
+    setDraftModalError(null)
+    setDraftModalBusy(true)
+    try {
+      const res = await fetch('/api/seo-engine/backlink/outreach', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'draft',
+          target_id: target.id,
+          brief: { topic: target.title || target.domain, stage: (target.stages && target.stages[0]) || 'intent', country: (target.countries && target.countries[0]) || 'US' },
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok || !data.ok) {
+        setDraftModalError(data.error || `HTTP ${res.status}`)
+        setDraftModalContent({ subject: '', body: '', model: null })
+        return
+      }
+      setDraftModalContent({ subject: String(data.subject || ''), body: String(data.body || ''), model: data.model || null })
+    } catch (e) {
+      setDraftModalError(e instanceof Error ? e.message : 'Draft failed')
+    } finally {
+      setDraftModalBusy(false)
+    }
+  }
+
+  const saveDraftedOutreach = async (status: 'drafted' | 'sent') => {
+    if (!draftModalTarget || !draftModalContent) return
+    try {
+      const res = await fetch('/api/seo-engine/backlink/outreach', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'record',
+          target_id: draftModalTarget.id,
+          subject: draftModalContent.subject,
+          message_body: draftModalContent.body,
+          status,
+          operator_id: 'admin@portal',
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as any
+      if (!res.ok || !data.ok) throw new Error(data.error || 'save failed')
+      notify(status === 'sent' ? 'Outreach recorded as sent.' : 'Draft saved.', 'success')
+      setDraftModalTarget(null); setDraftModalContent(null)
+      void loadBacklinkReport(true)
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Save failed', 'error')
+    }
+  }
+
+
   // ── Selection helpers ────────────────────────────────────────────────────
   const toggleTerm = (term: string) =>
     setSelectedTerms((prev) => {
@@ -1371,6 +1452,7 @@ export default function AdminCommandCenter({
     { key: 'radar', icon: '🎯', label: 'Radar', hint: `${kpis.actionable} plays` },
     { key: 'launch', icon: '🚀', label: 'Launch', hint: brief ? 'brief ready' : 'composer' },
     { key: 'pipeline', icon: '📋', label: 'Pipeline', hint: jobsTotal > 0 ? `${jobsTotal} jobs` : `${jobs.length} jobs` },
+
     { key: 'knowledge', icon: '📚', label: 'Knowledge', hint: 'backlinks & gaps' },
     { key: 'engine', icon: '🧭', label: 'Engine', hint: 'six brains' },
     { key: 'missions', icon: '📜', label: 'Missions', hint: 'audit trail' },
@@ -1845,27 +1927,6 @@ function RecheckDuePanel() {
                             </span>
                           </div>
                         )}
-
-                          {(() => {
-                            const detectedStage = (o.stage || o.lifecycleStage || autoDetectStage(o.term, o.signals)) as LifecycleStage
-                            const m = stageMeta(detectedStage)
-                            if (!m) return null
-                            return (
-                              <span
-                                title={'Stage cell: ' + detectedStage + ' \u00d7 ' + (regionFilter || 'us').toLowerCase() + ' \u2014 placement fit before clicking Brief'}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
-                                  padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700,
-                                  fontFamily: C.mono, whiteSpace: 'nowrap',
-                                  background: '#FFFEF5', color: C.gold,
-                                  border: '1px dashed ' + C.goldBorder, cursor: 'default',
-                                  display: 'block', width: 'fit-content',
-                                }}
-                              >
-                                {m.icon} {m.label}
-                              </span>
-                            )
-                          })()}
                       </td>
                       <td style={{ ...td, fontFamily: C.mono }}>#{o.position ?? '—'}</td>
                       <td style={{ ...td, minWidth: 96 }}>
@@ -2271,28 +2332,7 @@ function RecheckDuePanel() {
                 {interlinkPersisted && interlinkPersisted.total > 0 && (
                   <>
                     {/* Reasons bar \u2014 proportional, deterministic */}
-                    {/* Compliance-gate rows (manual / paused / awaiting_gate / rejected) */}
-                    {interlinkPersisted.byStatus && Object.entries(interlinkPersisted.byStatus).filter(([k]) => ['manual','paused','awaiting_gate','rejected'].includes(k)).length > 0 && (
-                      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4, borderTop: '1px dashed ' + C.border2 }}>
-                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Compliance gate</span>
-                        {Object.entries(interlinkPersisted.byStatus).filter(([k]) => ['manual','paused','awaiting_gate','rejected'].includes(k)).sort((a,b)=>b[1]-a[1]).map(([k, count]) => {
-                          const map: Record<string, { bg: string; fg: string; icon: string }> = {
-                            manual:        { bg: '#FEF9EC', fg: C.gold,   icon: '\u270e' },
-                            paused:        { bg: '#FEF3C7', fg: '#92400E', icon: '\u23f8' },
-                            awaiting_gate: { bg: '#DBEAFE', fg: C.blue,   icon: '\u23f3' },
-                            rejected:      { bg: '#FEE2E2', fg: C.red,    icon: '\u2715' },
-                          }
-                          const m = map[k] || { bg: C.surface, fg: C.text, icon: '\u2022' }
-                          return (
-                            <span key={k} title={count + ' edges in ' + k + ' state \u2014 manual review or paused by the compliance gate'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 3, background: m.bg, color: m.fg, fontFamily: C.mono, fontSize: 9, fontWeight: 700 }}>
-                              {m.icon} {k.replace('_', ' ')} {count}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                                        {(() => {
+                    {(() => {
                       const reasons = Object.entries(interlinkPersisted.byReason).sort((a, b) => b[1] - a[1])
                       if (!reasons.length) return null
                       const max = reasons[0][1] || 1
@@ -2330,8 +2370,36 @@ function RecheckDuePanel() {
                               {t.anchor.length > 32 ? t.anchor.slice(0, 30) + '\u2026' : t.anchor}
                             </a>
                             <span style={{ color: C.textDim }}>\u00b7 {t.host}</span>
+                            <button type="button" onClick={() => void auditPersistedTarget(t.url)} disabled={auditingUrl === t.url}
+                              style={{ border: 'none', background: 'transparent', color: auditingUrl === t.url ? C.textDim : C.gold, fontFamily: C.mono, fontSize: 9, cursor: auditingUrl === t.url ? 'wait' : 'pointer', padding: 0 }}
+                              title={'Audit live meta for ' + t.url}>\u21bb</button>
+                            {auditCache[t.url] && (
+                              <span title={`live \u00b7 HTTP ${auditCache[t.url]?.httpStatus || 0} \u00b7 ${auditCache[t.url]?.wordCount || 0}w \u00b7 ${auditCache[t.url]?.anchorCount || 0} anchors \u00b7 ${auditCache[t.url]?.hasSchemaOrg ? 'schema.org' : 'no schema'} \u00b7 ${auditCache[t.url]?.isEstate ? 'estate' : 'external'}`}
+                                style={{ color: (auditCache[t.url]?.httpStatus || 0) >= 300 ? C.red : C.green, fontSize: 9, fontFamily: C.mono }}>
+                                {auditCache[t.url]?.ok ? '\u2713' : '\u2715'} {auditCache[t.url]?.title?.slice(0, 20) || ''}
+                              </span>
+                            )}
                           </span>
                         ))}
+                        {interlinkPersisted.byStatus && Object.entries(interlinkPersisted.byStatus).filter(([k]) => ['manual','paused','awaiting_gate','rejected'].includes(k)).length > 0 && (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4, borderTop: '1px dashed ' + C.border2, marginTop: 4 }}>
+                            <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Compliance</span>
+                            {Object.entries(interlinkPersisted.byStatus).filter(([k]) => ['manual','paused','awaiting_gate','rejected'].includes(k)).sort((a,b)=>Number(b[1]) - Number(a[1])).map(([k, count]) => {
+                              const map: Record<string, { bg: string; fg: string; icon: string }> = {
+                                manual:        { bg: '#FEF9EC', fg: C.gold,   icon: '\u270e' },
+                                paused:        { bg: '#FEF3C7', fg: '#92400E', icon: '\u23f8' },
+                                awaiting_gate: { bg: '#DBEAFE', fg: C.blue,   icon: '\u23f3' },
+                                rejected:      { bg: '#FEE2E2', fg: C.red,    icon: '\u2715' },
+                              }
+                              const m = map[k] || { bg: C.surface, fg: C.text, icon: '\u2022' }
+                              return (
+                                <span key={k} title={String(count) + ' edges in ' + k + ' state \u2014 manual review or paused by the compliance gate'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 3, background: m.bg, color: m.fg, fontFamily: C.mono, fontSize: 9, fontWeight: 700 }}>
+                                  {m.icon} {String(k).replace('_', ' ')} {String(count)}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
@@ -2441,138 +2509,6 @@ function RecheckDuePanel() {
     </div>
   )
 
-
-  const openDraftModal = async (target: any) => {
-    setDraftModalTarget(target)
-    setDraftModalContent(null)
-    setDraftModalError(null)
-    setDraftModalBusy(true)
-    try {
-      const res = await fetch('/api/seo-engine/backlink/outreach', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'draft',
-          target_id: target.id,
-          brief: { topic: target.title || target.domain, stage: (target.stages && target.stages[0]) || 'intent', country: (target.countries && target.countries[0]) || 'US' },
-        }),
-      })
-      const data = await res.json().catch(() => ({})) as any
-      if (!res.ok || !data.ok) {
-        setDraftModalError(data.error || `HTTP ${res.status}`)
-      } else {
-        setDraftModalContent({ subject: String(data.subject || ''), body: String(data.body || ''), model: data.model || null })
-      }
-    } catch (e) {
-      setDraftModalError(e instanceof Error ? e.message : 'Draft failed')
-    } finally {
-      setDraftModalBusy(false)
-    }
-  }
-
-  const saveDraftedOutreach = async (status: 'drafted' | 'sent') => {
-    if (!draftModalTarget || !draftModalContent) return
-    try {
-      const res = await fetch('/api/seo-engine/backlink/outreach', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'record',
-          target_id: draftModalTarget.id,
-          subject: draftModalContent.subject,
-          message_body: draftModalContent.body,
-          status,
-          operator_id: 'admin@portal',
-        }),
-      })
-      const data = await res.json().catch(() => ({})) as any
-      if (!res.ok || !data.ok) throw new Error(data.error || 'save failed')
-      notify(status === 'sent' ? 'Outreach recorded as sent.' : 'Draft saved.', 'success')
-      setDraftModalTarget(null); setDraftModalContent(null)
-      void loadBacklinkReport(true)
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'Save failed', 'error')
-    }
-  }
-
-
-  const loadBacklinkReport = React.useCallback(async (force = false) => {
-    if (backlinkBusy) return
-    if (!force && backlinkReport) return
-    setBacklinkBusy(true)
-    try {
-      const qs = regionFilter ? `?report=full&country=${encodeURIComponent(regionFilter)}` : '?report=full'
-      const res = await fetch(`/api/seo-engine/backlink${qs}`, {
-        method: 'GET', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const data = await res.json().catch(() => ({})) as any
-      if (!res.ok || !data.ok) throw new Error(data.error || 'report failed')
-      setBacklinkReport({
-        targets: data.targets || [],
-        inboundGaps: data.inboundGaps || [],
-        outboundGaps: data.outboundGaps || [],
-        totals: data.totals || undefined,
-        generatedAt: data.generatedAt || new Date().toISOString(),
-      })
-      setBacklinkLastFetched(new Date())
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'Backlink report failed', 'error')
-    } finally {
-      setBacklinkBusy(false)
-    }
-  }, [backlinkBusy, backlinkReport, regionFilter])
-
-  const openDraftModal = async (target: any) => {
-    setDraftModalTarget(target)
-    setDraftModalContent(null)
-    setDraftModalError(null)
-    setDraftModalBusy(true)
-    try {
-      const res = await fetch('/api/seo-engine/backlink/outreach', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'draft', target_id: target.id }),
-      })
-      const data = await res.json().catch(() => ({})) as any
-      if (!res.ok || !data.ok) {
-        setDraftModalError(data.error || `HTTP ${res.status}`)
-        setDraftModalContent({ subject: '', body: '', model: null })
-        return
-      }
-      setDraftModalContent({ subject: String(data.subject || ''), body: String(data.body || ''), model: data.model || null })
-    } catch (e) {
-      setDraftModalError(e instanceof Error ? e.message : 'Draft failed')
-    } finally {
-      setDraftModalBusy(false)
-    }
-  }
-
-  const saveDraftedOutreach = async (status: 'drafted' | 'sent') => {
-    if (!draftModalTarget || !draftModalContent) return
-    try {
-      const res = await fetch('/api/seo-engine/backlink/outreach', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'record',
-          target_id: draftModalTarget.id,
-          subject: draftModalContent.subject,
-          message_body: draftModalContent.body,
-          status,
-          operator_id: 'admin@portal',
-        }),
-      })
-      const data = await res.json().catch(() => ({})) as any
-      if (!res.ok || !data.ok) throw new Error(data.error || 'save failed')
-      notify(status === 'sent' ? 'Outreach recorded as sent.' : 'Draft saved.', 'success')
-      setDraftModalTarget(null); setDraftModalContent(null)
-      void loadBacklinkReport(true)
-    } catch (e) {
-      notify(e instanceof Error ? e.message : 'Save failed', 'error')
-    }
-  }
-
   const renderKnowledgeTab = () => {
     const targets = backlinkReport?.targets || []
     const inboundGaps = backlinkReport?.inboundGaps || []
@@ -2586,7 +2522,7 @@ function RecheckDuePanel() {
     const KINDS = [
       { key: 'external',  label: 'External targets', count: targets.length },
       { key: 'inbound',   label: 'Inbound gaps',     count: inboundGaps.length },
-      { key: 'outbound',  label: 'Outbound gaps',     count: outboundGaps.length },
+      { key: 'outbound',  label: 'Outbound gaps',    count: outboundGaps.length },
     ] as const
     return (
       <div style={{ background: C.surface, border: '1px solid ' + C.border, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
@@ -2595,7 +2531,9 @@ function RecheckDuePanel() {
             <div style={{ fontFamily: C.mono, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.gold }}>Knowledge Radar</div>
             <h2 style={{ margin: '4px 0 4px', fontFamily: C.serif, fontSize: 22, color: C.text }}>Backlinks & link-graph gaps</h2>
             <p style={{ margin: 0, fontSize: 12, color: C.textMuted, maxWidth: 720 }}>
-              Two halves of the estate\u2019s link graph: inbound referrals from external authoritative sites, and our own internal pages that need more inbound or outbound edges. Curated target list + outreach timeline + the AI cascade drafting outreach messages on demand.
+              Two halves of the estate's link graph: <strong>inbound</strong> referrals from external authoritative
+              sites, and our own internal pages that need more inbound or outbound edges. Curated target list +
+              outreach timeline + AI cascade drafting outreach messages on demand.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2619,7 +2557,7 @@ function RecheckDuePanel() {
         <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
           {KINDS.map((k) => (
             <button key={k.key} type="button" onClick={() => setBacklinkView(k.key)}
-              style={{ padding: '7px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: C.mono,
+              style={{ padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: C.mono,
                 background: backlinkView === k.key ? C.navy : C.surface,
                 color: backlinkView === k.key ? '#FFF' : C.textMuted,
                 border: '1px solid ' + (backlinkView === k.key ? C.navy : C.border),
@@ -2630,9 +2568,9 @@ function RecheckDuePanel() {
           ))}
           {backlinkView === 'external' && (
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-              {(['all','editorial','guest_post','resource_page'] as const).map((lane) => (
+              {(['all','editorial','guest_post','resource_page'] as BacklinkLane[]).map((lane) => (
                 <button key={lane} type="button" onClick={() => setBacklinkLaneFilter(lane)}
-                  style={{ padding: '4px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                  style={{ padding: '4px 9px', borderRadius: 999, cursor: 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono,
                     background: backlinkLaneFilter === lane ? C.gold : C.surface,
                     color: backlinkLaneFilter === lane ? '#FFF' : C.textMuted,
                     border: '1px solid ' + (backlinkLaneFilter === lane ? C.gold : C.border) }}>
@@ -2643,138 +2581,66 @@ function RecheckDuePanel() {
           )}
         </div>
 
-        {/* Sub-view content */}
         {backlinkView === 'external' && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid ' + C.border, color: C.textDim }}>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Domain</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Kind</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Lane</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Authority</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Geography</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stages</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTargets.slice(0, 50).map((t) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid ' + C.border2 }}>
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ fontWeight: 700, color: C.navy }}>{t.domain}</div>
-                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{t.title || '\u2014'}</div>
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10 }}>{t.kind}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10 }}>{t.lane}</td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 60, height: 6, borderRadius: 3, background: C.surface2 }}>
-                          <div style={{ width: Math.round(t.authority_score) + '%', height: 6, borderRadius: 3, background: t.authority_score >= 80 ? C.green : t.authority_score >= 60 ? C.gold : C.textDim }} />
-                        </div>
-                        <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>{Math.round(t.authority_score)}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10 }}>{(t.countries || []).join(' / ') || '\u2014'}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10 }}>{(t.stages || []).slice(0, 3).join(', ') || '\u2014'}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono }}>
-                      <span style={{ padding: '2px 7px', borderRadius: 999,
-                        background: t.status === 'won' ? C.greenSoft : t.status === 'sent' ? C.blueSoft : C.surface2,
-                        color: t.status === 'won' ? C.green : t.status === 'sent' ? C.blue : C.textMuted,
-                        fontSize: 9, fontWeight: 700 }}>{t.status}</span>
-                    </td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <button type="button" onClick={() => void openDraftModal(t)}
-                        style={{ padding: '5px 12px', borderRadius: 999, border: 'none', background: C.gold, color: '#FFF', fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>
-                        \u270d Draft message
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!filteredTargets.length && (
-                  <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: C.textDim, fontSize: 12 }}>
-                    {backlinkBusy ? 'Scanning link graph\u2026' : 'No targets match the current filter.'}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          filteredTargets.length ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
+              {filteredTargets.map((t) => (
+                <div key={t.id} style={{ background: C.surface, border: '1px solid ' + C.border, borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div>
+                      <a href={'https://' + t.domain} target="_blank" rel="noreferrer" style={{ color: C.text, fontFamily: C.mono, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>{t.domain}</a>
+                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{t.kind} \u00b7 lane {t.lane} \u00b7 authority {Math.round(t.authority_score || 0)}</div>
+                    </div>
+                    <span style={{ padding: '3px 8px', borderRadius: 999, background: t.status === 'won' ? C.greenSoft : t.status === 'sent' ? C.blueSoft : C.surface2, color: t.status === 'won' ? C.green : t.status === 'sent' ? C.blue : C.textMuted, fontFamily: C.mono, fontSize: 9, fontWeight: 700 }}>{t.status}</span>
+                  </div>
+                  {t.rationale && <p style={{ margin: 0, fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>{t.rationale}</p>}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 9, fontFamily: C.mono, color: C.textDim }}>
+                    {(t.countries || []).slice(0, 3).map((c: string) => <span key={c} style={{ padding: '2px 6px', borderRadius: 3, background: C.surface2 }}>{c}</span>)}
+                    {(t.stages || []).slice(0, 3).map((s: string) => <span key={s} style={{ padding: '2px 6px', borderRadius: 3, background: C.goldSoft, color: C.gold }}>{s}</span>)}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 4 }}>
+                    <button type="button" onClick={() => openDraftModal(t)} style={{ padding: '5px 10px', borderRadius: 5, border: 'none', background: C.navy, color: '#FFF', fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>\u270d Draft message</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontFamily: C.mono, fontSize: 12, border: '1px dashed ' + C.border, borderRadius: 8 }}>
+              {backlinkBusy ? 'Scanning link graph\u2026' : 'No targets match the current filter.'}
+            </div>
+          )
         )}
 
         {backlinkView === 'inbound' && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid ' + C.border, color: C.textDim }}>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source / page</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Inbound links</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Recommendation</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Top anchors</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inboundGaps.slice(0, 30).map((g) => (
-                  <tr key={g.source_slug} style={{ borderBottom: '1px solid ' + C.border2 }}>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 11 }}>{g.source_slug}</td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 999, background: g.inbound_links === 0 ? '#FEE2E2' : '#FEF3C7', color: g.inbound_links === 0 ? C.red : C.gold, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>{g.inbound_links}</span>
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10, color: C.textMuted }}>{g.recommendation.replace(/_/g, ' ')}</td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10, color: C.textMuted }}>
-                      {(g.inbound_anchors || []).slice(0, 3).join(' \u00b7 ') || '\u2014'}
-                    </td>
-                  </tr>
-                ))}
-                {!inboundGaps.length && (
-                  <tr><td colSpan={4} style={{ padding: 24, textAlign: 'center', color: C.green, fontSize: 12 }}>
-                     No inbound gaps \u2014 every published page has \u2265 3 inbound links.
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
+            {inboundGaps.map((g, idx) => (
+              <div key={String(g.url || g.slug || idx)} style={{ background: C.goldSoft, border: '1px solid ' + C.goldBorder, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 700, color: C.gold }}>{(g.url || g.slug || 'page ' + idx).slice(0, 60)}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{g.count || g.inboundCount || 0} inbound edge(s) \u2014 {(g.anchors || []).slice(0, 3).join(', ') || 'no anchor text'}</div>
+              </div>
+            ))}
           </div>
         )}
 
         {backlinkView === 'outbound' && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid ' + C.border, color: C.textDim }}>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Source page</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Outbound count</th>
-                  <th style={{ padding: '7px 10px', fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Recommendation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outboundGaps.slice(0, 30).map((g) => (
-                  <tr key={g.source_slug} style={{ borderBottom: '1px solid ' + C.border2 }}>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 11 }}>{g.source_slug}</td>
-                    <td style={{ padding: '8px 10px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 999, background: g.outbound_links === 0 ? '#FEE2E2' : '#FEF3C7', color: g.outbound_links === 0 ? C.red : C.gold, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>{g.outbound_links}</span>
-                    </td>
-                    <td style={{ padding: '8px 10px', fontFamily: C.mono, fontSize: 10, color: C.textMuted }}>{g.recommendation.replace(/_/g, ' ')}</td>
-                  </tr>
-                ))}
-                {!outboundGaps.length && (
-                  <tr><td colSpan={3} style={{ padding: 24, textAlign: 'center', color: C.green, fontSize: 12 }}>
-                     No outbound gaps \u2014 every published page has \u2265 3 outbound edges.
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
+            {outboundGaps.map((g, idx) => (
+              <div key={String(g.url || g.slug || idx)} style={{ background: C.blueSoft, border: '1px solid ' + C.blueBorder, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 700, color: C.blue }}>{(g.url || g.slug || 'page ' + idx).slice(0, 60)}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{g.count || g.outboundCount || 0} outbound edge(s) needed for crawl depth</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
     )
   }
 
-  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n  // Draft-message modal (Knowledge Radar \u2192 External \u2192 \u270d Draft message)\n  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   const renderDraftModal = () => {
     if (!draftModalTarget) return null
     return (
       <div role="dialog" aria-modal="true" style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000,
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
       }} onClick={() => !draftModalBusy && setDraftModalTarget(null)}>
         <div onClick={(e) => e.stopPropagation()} style={{
@@ -2786,30 +2652,25 @@ function RecheckDuePanel() {
             <div>
               <div style={{ fontFamily: C.mono, fontSize: 10, color: C.gold, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 800 }}>Outreach draft</div>
               <h3 style={{ margin: '4px 0 4px', fontFamily: C.serif, fontSize: 20, color: C.text }}>{draftModalTarget.domain}</h3>
-              <div style={{ fontSize: 11, color: C.textMuted, fontFamily: C.mono }}>{draftModalTarget.kind} \u00b7 lane {draftModalTarget.lane} \u00b7 authority {Math.round(draftModalTarget.authority_score)}</div>
+              <div style={{ fontSize: 11, color: C.textMuted, fontFamily: C.mono }}>{draftModalTarget.kind} \u00b7 lane {draftModalTarget.lane} \u00b7 authority {Math.round(draftModalTarget.authority_score || 0)}</div>
             </div>
             <button type="button" onClick={() => setDraftModalTarget(null)} disabled={draftModalBusy} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid ' + C.border, background: C.surface, color: C.textMuted, fontSize: 11, fontFamily: C.mono, cursor: draftModalBusy ? 'not-allowed' : 'pointer' }}>\u2715 Close</button>
           </div>
           {draftModalBusy && (
-            <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontFamily: C.mono, fontSize: 12 }}>
-              Drafting message via the AI cascade\u2026
-              <div style={{ marginTop: 10, fontSize: 10, color: C.textDim }}>fallback template ships if the cascade is unavailable</div>
-            </div>
+            <div style={{ padding: 28, textAlign: 'center', color: C.textMuted, fontFamily: C.mono, fontSize: 12 }}>Drafting outreach message\u2026</div>
           )}
           {draftModalError && (
             <div style={{ padding: 18, borderRadius: 8, background: '#FEE2E2', color: C.red, fontFamily: C.mono, fontSize: 12 }}>{draftModalError}</div>
           )}
           {draftModalContent && !draftModalBusy && (
             <div>
-              <label style={{ fontFamily: C.mono, fontSize: 10, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Subject</label>
               <input value={draftModalContent.subject} onChange={(e) => setDraftModalContent({ ...draftModalContent, subject: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid ' + C.border, fontFamily: C.mono, fontSize: 12, color: C.text, marginBottom: 12 }} />
-              <label style={{ fontFamily: C.mono, fontSize: 10, color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Body</label>
               <textarea value={draftModalContent.body} onChange={(e) => setDraftModalContent({ ...draftModalContent, body: e.target.value })} rows={14} style={{ width: '100%', padding: '10px 12px', borderRadius: 6, border: '1px solid ' + C.border, fontFamily: 'inherit', fontSize: 13, color: C.text, lineHeight: 1.5, marginBottom: 12 }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>model: {draftModalContent.model || '\u2014'} \u00b7 editable above</span>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" onClick={() => saveDraftedOutreach('drafted')} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid ' + C.border, background: C.surface, color: C.text, fontSize: 11, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>\u2913 Save draft</button>
-                  <button type="button" onClick={() => saveDraftedOutreach('sent')} style={{ padding: '8px 14px', borderRadius: 6, border: 'none', background: C.gold, color: '#FFF', fontSize: 11, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>\u2709 Mark as sent</button>
+                  <button type="button" onClick={() => saveDraftedOutreach('drafted')} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid ' + C.border, background: C.surface, color: C.text, fontSize: 11, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>Save draft</button>
+                  <button type="button" onClick={() => saveDraftedOutreach('sent')} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: C.navy, color: '#FFF', fontSize: 11, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>Mark sent</button>
                 </div>
               </div>
             </div>
@@ -3092,6 +2953,8 @@ function RecheckDuePanel() {
         </div>
 
         {/* ══════════ TAB: RADAR ══════════ */}
+        {tab === 'knowledge' && renderKnowledgeTab()}
+
         {tab === 'radar' && renderRadarTab()}
 
         {/* ══════════ TAB: LAUNCH ══════════ */}
@@ -3099,9 +2962,6 @@ function RecheckDuePanel() {
 
         {/* ══════════ TAB: PIPELINE ══════════ */}
         {tab === 'pipeline' && renderPipelineTab()}
-
-        {/* ═════════ TAB: KNOWLEDGE RADAR ═════════ */}
-        {tab === 'knowledge' && renderKnowledgeTab()}
 
         {/* ══════════ TAB: ENGINE ══════════ */}
         {tab === 'engine' && renderEngineTab()}
@@ -3112,9 +2972,9 @@ function RecheckDuePanel() {
         {/* ══════════ TAB: SYSTEMS ══════════ */}
         {tab === 'systems' && renderSystemsTab()}
 
-{renderDraftModal()}
+        {renderDraftModal()}
 
-                {activityLine && (
+        {activityLine && (
           <div style={{ position: 'fixed', bottom: 16, right: workspaceOpen ? 404 : 20, padding: '10px 16px', borderRadius: C.radiusSm, background: C.navy, color: '#fff', fontSize: 12, fontFamily: C.mono, boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 10, height: 10, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} />
             {activityLine}
