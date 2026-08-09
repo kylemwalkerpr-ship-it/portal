@@ -2001,6 +2001,7 @@ function RecheckDuePanel() {
       gap: 0, minHeight: 'calc(100vh - 120px)', margin: '0 -8px',
     }}>
       {/* ── Command surface ── */}
+      <div style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {/* ── Hero command band ── */}
         <div style={{
           background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%)',
