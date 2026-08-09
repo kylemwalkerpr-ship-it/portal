@@ -973,11 +973,11 @@ function QueueTable({ jobs, onSelect, loading, mergeIndex, gateByJob }: {
                           {j.status === 'pr_created' && (
                             <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                               <button type="button"
-                                onClick={() => { setSelectedJob(j); if (typeof window !== 'undefined') window.setTimeout(() => { const mergeBtn = document.querySelector(`[data-action='merge_pr-${j.id}']`) as HTMLButtonElement | null; mergeBtn?.click() }, 120) }}
+                                onClick={() => onSelect(j)}
                                 title={`Open PR #${j.pr_number} in modal and merge on GitHub`}
                                 style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: '#10B981', color: '#FFFFFF', fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>🔀 Merge</button>
                               <button type="button"
-                                onClick={() => { setSelectedJob(j); if (typeof window !== 'undefined') window.setTimeout(() => { const closeBtn = document.querySelector(`[data-action='close_pr-${j.id}']`) as HTMLButtonElement | null; closeBtn?.click() }, 120) }}
+                                onClick={() => onSelect(j)}
                                 title={`Open PR #${j.pr_number} in modal and close on GitHub`}
                                 style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #FECACA', background: '#FEF2F2', color: C.red, fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>✖ Reject</button>
                             </div>
