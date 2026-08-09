@@ -182,8 +182,8 @@ function statusBadge(status: JobStatus) {
   }
   const s = map[status]
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.bg, color: s.fg, whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
-      <span style={{ width: 6, height: 6, borderRadius: 999, background: s.dot, boxShadow: status === 'drafting' ? '0 0 0 3px ' + s.bg : 'none' }} />
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: s.background, color: s.fg, whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: s.dot, boxShadow: status === 'drafting' ? '0 0 0 3px ' + s.background : 'none' }} />
       {s.label}
     </span>
   )
@@ -243,9 +243,9 @@ const inputStyle: React.CSSProperties = {
   background: C.surface, color: C.text, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
   outline: 'none', transition: 'border 0.15s, box-shadow 0.15s',
 }
-const btnSolid = (background: string, fg = '#fff'): React.CSSProperties => ({
+const btnSolid = (bgColor: string, fg = '#fff'): React.CSSProperties => ({
   padding: '8px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
-  background: bg, color: fg, fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+  background: bgColor, color: fg, fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
   display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
   boxShadow: '0 2px 6px rgba(15,23,42,0.10)',
 })
@@ -425,7 +425,7 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
       transition: 'all 0.15s', boxShadow: active ? '0 6px 18px rgba(154,123,59,0.22)' : C.shadowCard,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-        <span style={{ padding: '2px 7px', borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg }}>
+        <span style={{ padding: '2px 7px', borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: pm.background, color: pm.fg }}>
           {pm.icon} {pm.label}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -473,7 +473,7 @@ function StepperRail({ active, completed }: { active: 1 | 2 | 3 | 4; completed: 
               <span style={{
                 width: 28, height: 28, borderRadius: 999, flexShrink: 0,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: bg, color, border: `2px solid ${color}`,
+                background: bgColor, color, border: `2px solid ${color}`,
                 fontSize: 12, fontWeight: 800, fontFamily: C.serif,
               }}>{isDone ? '✓' : s.n}</span>
               {i < steps.length - 1 && <span style={{ width: 2, flex: 1, minHeight: 28, background: isDone ? C.green : C.border, marginTop: 4, marginBottom: 4 }} />}
@@ -689,7 +689,7 @@ function CreateWizard(props: {
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: C.serif }}>{brief.primaryKeyword || brief.topic}</span>
-                  <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: (PLAY_META[brief.play] || {}).bg || C.surface3, color: (PLAY_META[brief.play] || {}).fg || C.textMuted }}>
+                  <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: (PLAY_META[brief.play] || {}).background || C.surface3, color: (PLAY_META[brief.play] || {}).fg || C.textMuted }}>
                     {(brief.play || 'content_gap').replace('_', ' ')} · {brief.opportunityScore ?? brief.demandScore}/100
                   </span>
                   <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
@@ -1115,7 +1115,7 @@ function OpportunityRadar({ opportunities, meta, onApply }: {
         return (
           <div key={`${o.topic}-${i}`} style={{ padding: '11px 18px', borderBottom: i < list.length - 1 ? `1px solid ${C.border2}` : 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ minWidth: 36, fontSize: 13, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim, textAlign: 'right' }}>{score}</span>
-            <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg, whiteSpace: 'nowrap' }}>{pm.label.toUpperCase()}</span>
+            <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: pm.background, color: pm.fg, whiteSpace: 'nowrap' }}>{pm.label.toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: C.text, fontFamily: C.serif, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.title}</div>
               <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1242,7 +1242,7 @@ function MergeHistory({ onRecheckPulse }: { onRecheckPulse?: React.Dispatch<Reac
       DEFERRED:       { background: '#FEF3C7', fg: '#92400E' },
     }
     const c = palette[t] || palette.DEFERRED
-    return <span style={{ padding: '2px 8px', borderRadius: 3, fontSize: 9, fontWeight: 800, fontFamily: C.mono, background: c.bg, color: c.fg, letterSpacing: '0.04em' }}>{t}</span>
+    return <span style={{ padding: '2px 8px', borderRadius: 3, fontSize: 9, fontWeight: 800, fontFamily: C.mono, background: c.background, color: c.fg, letterSpacing: '0.04em' }}>{t}</span>
   }
 
   return (
