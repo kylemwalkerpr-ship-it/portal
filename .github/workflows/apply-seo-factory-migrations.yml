@@ -40,6 +40,7 @@ jobs:
             supabase/migrations/ai_provider_keys.sql \
             supabase/migrations/20260811_table_guarantees.sql \
             supabase/migrations/20260812_content_jobs_hardening.sql \
+            supabase/migrations/20260813_backlink_engine.sql \
             supabase/migrations/pg_trgm_indexes.sql \
             supabase/migrations/additional_fts_indexes.sql \
             supabase/migrations/application_fts_indexes.sql \
