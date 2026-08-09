@@ -25,7 +25,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('cannibal_merges')
       .select(
-        'cluster_id,source,stem,terms,winner_url,loser_urls,redirects_created,pr_url,pr_number,status,message,merged_at',
+        'cluster_id,source,stem,terms,winner_url,loser_urls,redirects_created,pr_url,pr_number,status,message,merged_at,resolution_type,follow_up_at,differentiation_plan',
       )
       .order('merged_at', { ascending: false })
       .limit(100)
@@ -59,6 +59,10 @@ export async function GET() {
         prNumber: r.pr_number ?? undefined,
         status: r.status,
         message: r.message ?? undefined,
+        resolutionType: r.resolution_type ?? (r.status === 'merged' ? 'consolidate' : 'defer'),
+        followUpAt: r.follow_up_at ? new Date(r.follow_up_at).getTime() : undefined,
+        differentiationPlan: Array.isArray(r.differentiation_plan) ? r.differentiation_plan : undefined,
+        recheckDue: Boolean(r.follow_up_at && new Date(r.follow_up_at).getTime() <= Date.now()),
         mergedAt: r.merged_at ? new Date(r.merged_at).getTime() : Date.now(),
       })),
     })
@@ -79,10 +83,13 @@ export async function POST(request: NextRequest) {
     }
     const body = await request.json().catch(() => ({}))
     const term = String(body.term || '').trim().slice(0, 160)
+    const resolutionType = ['consolidate', 'differentiate', 'defer'].includes(String(body.resolutionType))
+      ? String(body.resolutionType)
+      : 'consolidate'
     const winnerUrl = String(body.winnerUrl || '').trim()
-    if (!term || !winnerUrl) {
+    if (!term || (resolutionType === 'consolidate' && !winnerUrl)) {
       return NextResponse.json(
-        { error: 'term and winnerUrl are required to record a cannibal merge.' },
+        { error: resolutionType === 'consolidate' ? 'term and winnerUrl are required to record a consolidation.' : 'term is required to record this resolution.' },
         { status: 400 },
       )
     }
@@ -90,9 +97,16 @@ export async function POST(request: NextRequest) {
     const loserUrls = Array.isArray(body.loserUrls)
       ? body.loserUrls.map(String).slice(0, 50)
       : []
-    const status = body.status === 'skipped' ? 'skipped' : 'merged'
+    const status = body.status === 'differentiating'
+      ? 'differentiating'
+      : body.status === 'deferred'
+        ? 'deferred'
+        : body.status === 'skipped'
+          ? 'skipped'
+          : 'merged'
     const source = body.source === 'command_center' ? 'command_center' : 'portal'
     const prNumber = Number(body.prNumber) > 0 ? Number(body.prNumber) : null
+    const followUpAt = body.followUpAt ? new Date(Number(body.followUpAt)).toISOString() : null
 
     const supabase = createSupabaseAdminClient()
     const { data, error } = await supabase
@@ -113,6 +127,9 @@ export async function POST(request: NextRequest) {
           pr_url: String(body.prUrl || '').trim() || null,
           pr_number: prNumber,
           status,
+          resolution_type: resolutionType,
+          follow_up_at: followUpAt,
+          differentiation_plan: Array.isArray(body.differentiationPlan) ? body.differentiationPlan : null,
           message: String(body.message || '').trim().slice(0, 500) || null,
           merged_at: new Date().toISOString(),
         },
