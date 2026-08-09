@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
     if (body.providerOrder != null) {
       let rawOrder: unknown = body.providerOrder
       if (typeof rawOrder === 'string') {
-        try { rawOrder = JSON.parse(rawOrder) } catch { rawOrder = rawOrder.split(',') }
+        const orderString = rawOrder
+        try { rawOrder = JSON.parse(orderString) } catch { rawOrder = orderString.split(',') }
       }
       if (!Array.isArray(rawOrder)) {
         return NextResponse.json({ error: 'Provider order must be an array of provider ids' }, { status: 400 })
