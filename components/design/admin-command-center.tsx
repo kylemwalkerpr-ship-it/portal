@@ -2070,6 +2070,7 @@ function RecheckDuePanel() {
                 <option value="auto">Auto (Grok → OpenAI → rest)</option>
                 <option value="grok">Grok (xAI)</option>
                 <option value="openai">OpenAI (GPT-5.6 Luna)</option>
+                <option value="nvidia-glm">NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred)</option>
                 <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
                 <option value="cloudflare-ai">Cloudflare Workers AI</option>
                 <option value="groq">Groq (Llama)</option>
