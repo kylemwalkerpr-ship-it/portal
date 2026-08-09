@@ -26,6 +26,9 @@ const JOB_LIST_COLUMNS = [
   'id',
   'user_id',
   'source_job_id',
+  'regeneration_reason',
+  'regeneration_mode',
+  'lineage',
   'title',
   'topic',
   'content_type',
@@ -91,7 +94,19 @@ export async function GET(request: NextRequest) {
     if (id) {
       const { data, error } = await supabase.from('content_jobs').select('*').eq('id', id).single()
       if (error) throw new Error(error.message)
-      return NextResponse.json({ job: data })
+      const lineage: Array<Record<string, unknown>> = []
+      const seen = new Set<string>()
+      let current = data as Record<string, unknown>
+      for (let depth = 0; depth < 20 && current?.id && !seen.has(String(current.id)); depth++) {
+        seen.add(String(current.id))
+        lineage.unshift({ id: current.id, source_job_id: current.source_job_id || null, title: current.title || null, topic: current.topic || null, status: current.status || null, created_at: current.created_at || null, regeneration_mode: current.regeneration_mode || null, regeneration_reason: current.regeneration_reason || null, lineage: current.lineage || null })
+        const sourceId = String(current.source_job_id || '')
+        if (!sourceId) break
+        const { data: source } = await supabase.from('content_jobs').select('*').eq('id', sourceId).maybeSingle()
+        if (!source) break
+        current = source as Record<string, unknown>
+      }
+      return NextResponse.json({ job: data, lineage })
     }
 
     if (ids.length) {

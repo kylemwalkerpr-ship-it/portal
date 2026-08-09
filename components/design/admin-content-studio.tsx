@@ -63,6 +63,9 @@ interface ContentJob {
   id: string; title: string; topic: string; content_type: ContentType
   tone: Tone; region: Region; target_repo: string; status: JobStatus
   source_job_id: string | null
+  regeneration_reason?: string | null
+  regeneration_mode?: string | null
+  lineage?: Record<string, unknown> | null
   slug: string | null; content: string | null; branch_name: string | null
   content_path: string | null; pr_url: string | null; pr_number: number | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
@@ -598,6 +601,9 @@ function CreateWizard({
   brief, onClearBrief,
   briefInterlinks, interlinkStage, setInterlinkStage, onAutoInterlink, autoInterlinkBusy,
   showRadar, setShowRadar,
+  regenerationPlays, setRegenerationPlays,
+  regenerationMinScore, setRegenerationMinScore,
+  regenerationMaxDifficulty, setRegenerationMaxDifficulty,
 }: {
   generating: boolean
   onGenerate: (data: any) => void
@@ -622,6 +628,12 @@ function CreateWizard({
   autoInterlinkBusy?: boolean
   showRadar: boolean
   setShowRadar: (v: boolean) => void
+  regenerationPlays: string[]
+  setRegenerationPlays: (v: string[]) => void
+  regenerationMinScore: number
+  setRegenerationMinScore: (v: number) => void
+  regenerationMaxDifficulty: number
+  setRegenerationMaxDifficulty: (v: number) => void
 }) {
   const [filter, setFilter] = React.useState<'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh'>('all')
   const canGenerate = Boolean(topic.trim() || title.trim())
@@ -629,13 +641,18 @@ function CreateWizard({
   const visibleSuggestions = React.useMemo(() => {
     if (!suggestions) return suggestions
     if (filter === 'all') return suggestions
-    return suggestions.filter((s) =>
-      filter === 'rising' ? s.trend === 'rising'
-      : filter === 'quick_win' ? s.play === 'quick_win'
-      : filter === 'content_gap' ? s.play === 'content_gap'
-      : filter === 'refresh' ? (s.play === 'refresh' || s.play === 'defend')
-      : true)
-  }, [suggestions, filter])
+    return suggestions.filter((s) => {
+      const configuredPlay = regenerationPlays.length === 0 || regenerationPlays.includes(s.play)
+      const scoreOk = (s.opportunityScore ?? 0) >= regenerationMinScore
+      const difficultyOk = (s.difficultyScore ?? 100) <= regenerationMaxDifficulty
+      const filterOk = filter === 'rising' ? s.trend === 'rising'
+        : filter === 'quick_win' ? s.play === 'quick_win'
+        : filter === 'content_gap' ? s.play === 'content_gap'
+        : filter === 'refresh' ? (s.play === 'refresh' || s.play === 'defend')
+        : true
+      return configuredPlay && scoreOk && difficultyOk && s.play !== 'cannibalization' && filterOk
+    })
+  }, [suggestions, filter, regenerationPlays, regenerationMinScore, regenerationMaxDifficulty])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -648,6 +665,14 @@ function CreateWizard({
       aiProvider,
       interlinks: briefInterlinks ?? [],
       opportunity: brief,
+      intelligenceLineage: brief ? {
+        modelVersion: 'seo-intelligence-v1',
+        topic: brief.topic,
+        play: brief.play,
+        opportunityScore: brief.opportunityScore,
+        signals: brief.signals,
+        sourcePage: brief.sourcePage,
+      } : null,
     })
   }
 
@@ -684,9 +709,9 @@ function CreateWizard({
 
       {/* ── STEP 0 · Autopilot radar (optional) ── */}
       {showRadar && (
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: '#FCFAF6' }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: '#FCFAF6' }}>            <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
             {RADAR_FILTERS.map((f) => (
+
               <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
                 padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
                 fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
@@ -712,6 +737,22 @@ function CreateWizard({
               No opportunities for this filter — rescan or switch filter.
             </div>
           ))}
+          <div style={{ marginTop: 10, paddingTop: 9, borderTop: `1px solid ${C.border}`, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono }}>Regeneration filters</span>
+            {(['content_gap', 'quick_win', 'refresh'] as const).map((play) => {
+              const active = regenerationPlays.includes(play)
+              return <button key={play} type="button" onClick={() => setRegenerationPlays(active ? regenerationPlays.filter((p) => p !== play) : [...regenerationPlays, play])} style={{ padding: '3px 7px', borderRadius: 999, border: `1px solid ${active ? C.blue : C.border}`, background: active ? C.blueSoft : C.surface, color: active ? C.blue : C.textDim, cursor: 'pointer', fontSize: 8.5, fontFamily: C.mono }}>{play.replace('_', ' ')}</button>
+            })}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: C.textDim, fontFamily: C.mono }}>
+              score ≥ {regenerationMinScore}
+              <input type="range" min={0} max={90} step={5} value={regenerationMinScore} onChange={(e) => setRegenerationMinScore(Number(e.target.value))} />
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: C.textDim, fontFamily: C.mono }}>
+              difficulty ≤ {regenerationMaxDifficulty}
+              <input type="range" min={20} max={100} step={5} value={regenerationMaxDifficulty} onChange={(e) => setRegenerationMaxDifficulty(Number(e.target.value))} />
+            </label>
+            <span style={{ fontSize: 8.5, color: C.green, fontFamily: C.mono }}>cannibalized terms excluded</span>
+          </div>
           {suggestionsError && (
             <div style={{ margin: '4px 0 0', fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
           )}
@@ -1433,11 +1474,16 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
         if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`)
         if (cancelled) return
         const job = (data as { job?: any }).job ?? {}
+        const lineage = Array.isArray((data as { lineage?: unknown[] }).lineage) ? (data as { lineage: any[] }).lineage : []
 
         const derived: TimelineEntry[] = []
         const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
           const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
           if (Number.isFinite(ms)) derived.push({ ts: ms, level, source, message, detail, kind: 'stage' })
+        }
+        for (const node of lineage) {
+          pushStage(node.created_at, 'lineage', `${node.regeneration_mode ? `${node.regeneration_mode} · ` : ''}${node.status || 'job'}: ${node.title || node.topic || node.id}`, node.regeneration_reason || undefined, node.status === 'failed' ? 'error' : 'info')
+          if (node.lineage?.evidence) pushStage(node.created_at, 'evidence', `Evidence snapshot attached · ${node.lineage.modelVersion || 'model'}`, JSON.stringify(node.lineage.evidence).slice(0, 600), 'info')
         }
         pushStage(job.created_at ?? createdMs, 'job', 'Job created (queued)', undefined, 'info')
         if (job.pr_number || job.pr_url) {
@@ -1642,6 +1688,9 @@ function JobDetail({
           minAuditScore: 55,
           maxRefine: 2,
           supersedesJobId: detail.id,
+          regenerationMode: resume ? 'resume' : 'refresh',
+          regenerationReason: resume ? 'Continue saved checkpoint after interrupted generation' : 'Refresh from current quality gate and evidence signals',
+          intelligenceLineage: detail.lineage || null,
           resume,
           aiProvider: aiProvider !== 'auto' ? aiProvider : (detail as { ai_provider?: string | null }).ai_provider || undefined,
         }),
@@ -1819,9 +1868,10 @@ function JobDetail({
           </div>
         )}
 
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job timeline</div>
-          <JobTimeline jobId={detail.id} createdMs={new Date(detail.created_at).getTime()} />
+        <div style={{ marginBottom: 16 }}>              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job timeline · lineage</div>
+              {detail.source_job_id && <div style={{ marginBottom: 8, padding: '7px 9px', borderRadius: C.radiusXs, background: C.blueSoft, color: C.blue, fontSize: 9.5, fontFamily: C.mono }}>↻ Replaces job {detail.source_job_id.slice(0, 12)}… · {detail.regeneration_mode || 'regeneration'}{detail.regeneration_reason ? ` · ${detail.regeneration_reason}` : ''}</div>}
+              <JobTimeline jobId={detail.id} createdMs={new Date(detail.created_at).getTime()} />
+
         </div>
 
         {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
@@ -1914,6 +1964,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [showRadar, setShowRadar] = React.useState(true)
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
   const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
+  const [regenerationPlays, setRegenerationPlays] = React.useState<string[]>(['content_gap', 'quick_win', 'refresh'])
+  const [regenerationMinScore, setRegenerationMinScore] = React.useState(45)
+  const [regenerationMaxDifficulty, setRegenerationMaxDifficulty] = React.useState(80)
+  const regenerationFiltersRef = React.useRef({ plays: regenerationPlays, minOpportunityScore: regenerationMinScore, maxDifficultyScore: regenerationMaxDifficulty })
+  React.useEffect(() => {
+    regenerationFiltersRef.current = { plays: regenerationPlays, minOpportunityScore: regenerationMinScore, maxDifficultyScore: regenerationMaxDifficulty }
+  }, [regenerationPlays, regenerationMinScore, regenerationMaxDifficulty])
 
   // Radar + suggestions
   const [suggestions, setSuggestions] = React.useState<AISuggestion[]>([])
@@ -2002,6 +2059,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           limit: 12,
           nonce: `${Date.now()}-${radarSeenTopicsRef.current.size}`,
           excludeTopics: Array.from(radarSeenTopicsRef.current).slice(-160),
+          plays: regenerationFiltersRef.current.plays,
+          excludeCannibalization: true,
+          minOpportunityScore: regenerationFiltersRef.current.minOpportunityScore,
+          maxDifficultyScore: regenerationFiltersRef.current.maxDifficultyScore,
         }),
       })
       const data = await res.json()
@@ -2416,6 +2477,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onAutoInterlink={runAutoInterlink}
           autoInterlinkBusy={autoInterlinkBusy}
           showRadar={showRadar} setShowRadar={setShowRadar}
+          regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
+          regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
+          regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
         />
       )}
 

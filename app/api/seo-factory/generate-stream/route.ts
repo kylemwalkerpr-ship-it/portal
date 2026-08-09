@@ -94,6 +94,9 @@ export async function POST(request: Request) {
     const input = {
       topic,
       sourceJobId: String(body.supersedesJobId || '').trim() || null,
+      regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
+      regenerationMode: (body.regenerationMode === 'resume' ? 'resume' : body.regenerationMode === 'expand' ? 'expand' : body.regenerationMode === 'refresh' ? 'refresh' : body.supersedesJobId ? 'manual' : 'new') as 'resume' | 'expand' | 'refresh' | 'manual' | 'new',
+      intelligenceLineage: body.intelligenceLineage && typeof body.intelligenceLineage === 'object' ? body.intelligenceLineage as Record<string, unknown> : null,
       title: String(body.title || topic).trim(),
       primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
       region: String(body.region || 'US').toUpperCase(),

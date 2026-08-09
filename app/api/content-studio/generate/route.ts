@@ -56,6 +56,10 @@ export async function POST(request: NextRequest) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 10,
       userId: auth.profileId || 'admin',
+      sourceJobId: body.sourceJobId ? String(body.sourceJobId) : null,
+      regenerationReason: body.regenerationReason ? String(body.regenerationReason).slice(0, 500) : null,
+      regenerationMode: body.regenerationMode === 'resume' ? 'resume' : body.sourceJobId ? 'manual' : 'new',
+      intelligenceLineage: body.intelligenceLineage && typeof body.intelligenceLineage === 'object' ? body.intelligenceLineage as Record<string, unknown> : null,
     })
 
     return NextResponse.json({

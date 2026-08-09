@@ -762,6 +762,14 @@ export async function* runSeoFactoryPipelineStream(
       const baseRow: Record<string, unknown> = {
         user_id: input.userId || 'admin',
         source_job_id: input.sourceJobId || null,
+        lineage: {
+          modelVersion: 'seo-intelligence-v1',
+          sourceJobId: input.sourceJobId || null,
+          regenerationMode: input.regenerationMode || null,
+          evidence: input.intelligenceLineage || null,
+        },
+        regeneration_reason: input.regenerationReason || null,
+        regeneration_mode: input.regenerationMode || null,
         title,
         topic,
         content_type: contentType === 'legal_guide' ? 'article' : contentType,
@@ -823,9 +831,11 @@ export async function* runSeoFactoryPipelineStream(
         .single()
       if (withLog.data?.id) {
         job = withLog.data
-      } else if (withLog.error && /event_log|column/i.test(withLog.error.message || '')) {
-        const without = await supabase.from('content_jobs').insert(baseRow).select('id').single()
+      } else if (withLog.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(withLog.error.message || '')) {
+        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
+        const without = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
         job = without.data
+        if (without.error) console.warn('[seoFactory/pipelineStream] legacy job insert', without.error.message)
       } else if (withLog.error) {
         console.warn('[seoFactory/pipelineStream] job insert', withLog.error.message)
       }

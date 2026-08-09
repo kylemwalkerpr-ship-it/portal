@@ -93,6 +93,11 @@ export interface PipelineInput {
   userId?: string
   /** Existing job replaced by this regeneration, shown in the queue lineage. */
   sourceJobId?: string | null
+  /** Operator-readable reason and mode for regeneration lineage. */
+  regenerationReason?: string | null
+  regenerationMode?: 'new' | 'refresh' | 'expand' | 'resume' | 'manual' | null
+  /** Evidence snapshot carried from the radar/planner into the queue. */
+  intelligenceLineage?: Record<string, unknown> | null
   skipShipIfBelowScore?: boolean
   /** Saved partial draft used when continuing an interrupted stream. */
   resumeContent?: string
@@ -773,58 +778,58 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
               ? 'drafting'
               : 'drafting'
 
-    const { data: job } = await supabase
-      .from('content_jobs')
-      .insert({
-        user_id: input.userId || 'admin',
-        source_job_id: input.sourceJobId || null,
-        title,
-        topic,
-        content_type: contentType === 'legal_guide' ? 'article' : contentType,
-        tone,
-        region,
-        target_repo: plan.repo,
-        status,
-        slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
-        content,
-        branch_name: shipResult?.branch || null,
-        content_path: shipResult?.path || plan.filePath,
-        pr_url: shipResult?.prUrl || null,
-        pr_number: shipResult?.prNumber || null,
-        ai_provider: provider,
-        word_count: audit.wordCount,
-        seo_score: audit.score,
-        // DB check allows pr|autodeploy only; map merge → autodeploy
-        ship_mode:
-          shipMode === 'none' || shipMode === 'pr'
-            ? 'pr'
-            : 'autodeploy',
-        indexable: plan.indexable,
-        canonical_url: plan.canonicalUrl,
-        owner_host: plan.host,
-        primary_keyword: primaryKeyword,
-        audit_json: { ...audit, attempts, model, minAudit },
-        gsc_json: {
-          source: gscBrief.source,
-          mode: gscBrief.mode,
-          primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
-          opportunityAction: input.opportunityAction,
-        },
-        deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
-        deployed_at:
-          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-            ? new Date().toISOString()
-            : null,
-        merged_at:
-          shipResult?.status === 'deployed' || shipResult?.status === 'merged'
-            ? new Date().toISOString()
-            : null,
-        llms_included: audit.llmsRecommended,
-        error_message: shipError,
-      })
-      .select('id')
-      .single()
-    jobId = job?.id ?? null
+    const baseRow: Record<string, unknown> = {
+      user_id: input.userId || 'admin',
+      source_job_id: input.sourceJobId || null,
+      lineage: {
+        modelVersion: 'seo-intelligence-v1',
+        sourceJobId: input.sourceJobId || null,
+        regenerationMode: input.regenerationMode || null,
+        evidence: input.intelligenceLineage || null,
+      },
+      regeneration_reason: input.regenerationReason || null,
+      regeneration_mode: input.regenerationMode || null,
+      title,
+      topic,
+      content_type: contentType === 'legal_guide' ? 'article' : contentType,
+      tone,
+      region,
+      target_repo: plan.repo,
+      status,
+      slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
+      content,
+      branch_name: shipResult?.branch || null,
+      content_path: shipResult?.path || plan.filePath,
+      pr_url: shipResult?.prUrl || null,
+      pr_number: shipResult?.prNumber || null,
+      ai_provider: provider,
+      word_count: audit.wordCount,
+      seo_score: audit.score,
+      ship_mode: shipMode === 'none' || shipMode === 'pr' ? 'pr' : 'autodeploy',
+      indexable: plan.indexable,
+      canonical_url: plan.canonicalUrl,
+      owner_host: plan.host,
+      primary_keyword: primaryKeyword,
+      audit_json: { ...audit, attempts, model, minAudit },
+      gsc_json: {
+        source: gscBrief.source,
+        mode: gscBrief.mode,
+        primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
+        opportunityAction: input.opportunityAction,
+      },
+      deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
+      deployed_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
+      merged_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
+      llms_included: audit.llmsRecommended,
+      error_message: shipError,
+    }
+    let jobInsert = await supabase.from('content_jobs').insert(baseRow).select('id').single()
+    if (jobInsert.error && /lineage|regeneration_reason|regeneration_mode|column/i.test(jobInsert.error.message || '')) {
+      const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
+      jobInsert = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
+    }
+    if (jobInsert.error) console.warn('[seoFactory/pipeline] job insert skipped', jobInsert.error.message)
+    jobId = jobInsert.data?.id ?? null
   } catch (e) {
     console.warn('[seoFactory/pipeline] job persist skipped', e)
   }

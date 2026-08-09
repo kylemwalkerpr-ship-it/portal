@@ -10,6 +10,7 @@ import {
 } from '@/lib/seoFactory/opportunityEngine'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
+import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
 
 export const runtime = 'nodejs'
 
@@ -31,9 +32,14 @@ function selectVariedOpportunities(
   limit: number,
   seed: string,
   excluded: Set<string>,
+  regenerationFilters: RegenerationFilters = {},
 ): Array<Record<string, any>> {
-  const eligible = items.filter((item) => !excluded.has(normalizedTopic(item.topic)))
-  const pool = (eligible.length >= limit ? eligible : items).slice(0, Math.max(48, limit * 8))
+  // Filters are strict: never fall back to an excluded/cannibalized item just
+  // to fill the carousel. An empty result is an honest signal to rescan or
+  // relax the operator's criteria.
+  const filtered = filterRegenerationCandidates(items, regenerationFilters)
+  const eligible = filtered.filter((item) => !excluded.has(normalizedTopic(item.topic)))
+  const pool = eligible.slice(0, Math.max(48, limit * 8))
   if (!pool.length) return []
   const offset = stableHash(seed) % pool.length
   const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
@@ -46,7 +52,7 @@ function selectVariedOpportunities(
     buckets.add(bucket)
     selected.push(item)
   }
-  for (const item of rotated) {
+  for (const item of rotated.filter((candidate) => eligible.includes(candidate))) {
     if (selected.length >= limit) break
     if (selected.some((chosen) => normalizedTopic(chosen.topic) === normalizedTopic(item.topic))) continue
     selected.push(item)
@@ -82,6 +88,16 @@ export async function POST(request: NextRequest) {
         ? body.excludeTopics.map((topic) => normalizedTopic(topic)).filter(Boolean).slice(-160)
         : [],
     )
+    const allowedPlays = new Set(['content_gap', 'quick_win', 'refresh', 'defend', 'cannibalization'])
+    const regenerationFilters: RegenerationFilters = {
+      plays: Array.isArray(body.plays) ? body.plays.map(String).filter((play) => allowedPlays.has(play)) as RegenerationFilters['plays'] : undefined,
+      excludeCannibalization: body.excludeCannibalization !== false,
+      minOpportunityScore: typeof body.minOpportunityScore === 'number' ? body.minOpportunityScore : undefined,
+      maxDifficultyScore: typeof body.maxDifficultyScore === 'number' ? body.maxDifficultyScore : undefined,
+      region: typeof body.filterRegion === 'string' ? body.filterRegion : undefined,
+      intents: Array.isArray(body.intents) ? body.intents.map(String) : undefined,
+      excludeTopics: Array.from(excludedTopics),
+    }
 
     // ── 1. Search demand (live or snapshot) ────────────────────────────────
     const live = await fetchSiteSearchAnalytics(90)
@@ -236,6 +252,7 @@ export async function POST(request: NextRequest) {
       limit,
       variationSeed,
       excludedTopics,
+      regenerationFilters,
     )
     const knowledgeTerms = new Set(knowledgeSignals.map((signal) => normalizedTopic(signal.term)))
     const suggestions = variedOpportunities.map((o) => ({

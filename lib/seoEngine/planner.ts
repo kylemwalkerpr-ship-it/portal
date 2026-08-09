@@ -38,6 +38,7 @@ import {
 import { scoreCompliance, type ComplianceResult } from './compliance'
 import type { TaggedItem } from './knowledge'
 import { editorialBriefPromptBlock } from '@/lib/seoFactory/editorialContract'
+import { freshnessScore, type PredictiveSignal } from './intelligence'
 
 export interface GscSignalInput {
   term: string
@@ -192,6 +193,19 @@ export async function pullGscSignals(): Promise<GscSignalInput[]> {
   }
 }
 
+export async function pullLatestIntelligence(limit = 100): Promise<Array<Record<string, unknown>>> {
+  try {
+    const { data } = await createSupabaseAdminClient()
+      .from('seo_intelligence_snapshots')
+      .select('topic,normalized_topic,play,confidence,freshness,regeneration_eligible,evidence,reasons,observed_at')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    return (data as Array<Record<string, unknown>>) || []
+  } catch {
+    return []
+  }
+}
+
 export async function pullLatestKnowledge(limit = 25): Promise<Array<Record<string, unknown>>> {
   try {
     const supabase = createSupabaseAdminClient()
@@ -226,7 +240,25 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
 export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> {
   const signals = req.signals || (await pullGscSignals())
   const knowledge = (req.knowledge as unknown as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
+  const intelligence = await pullLatestIntelligence()
   const bias = knowledgeBias(knowledge)
+  const predictiveByTopic = new Map<string, PredictiveSignal>()
+  for (const row of intelligence) {
+    const topic = String(row.normalized_topic || row.topic || '').trim()
+    if (!topic) continue
+    predictiveByTopic.set(topic, {
+      modelVersion: 'seo-intelligence-v1',
+      topic: String(row.topic || topic),
+      play: String(row.play || 'content_gap') as PredictiveSignal['play'],
+      opportunityScore: Number(row.opportunity_score) || 0,
+      confidence: Number(row.confidence) || 0,
+      freshness: Number(row.freshness) || freshnessScore(String(row.observed_at || '')),
+      rankability: 0,
+      evidence: Array.isArray(row.evidence) ? row.evidence as PredictiveSignal['evidence'] : [],
+      reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+      regenerationEligible: row.regeneration_eligible !== false,
+    })
+  }
   const draft = req.draftBriefs !== false
   const limit = Math.max(1, Math.min(50, req.limit ?? 20))
 
@@ -246,7 +278,13 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     if (!cell) continue
     const cellBias = bias.get(cellId(stage, country)) || 0
     const pri = stageDef.priority || 5
-    const score = opportunityScore(sig, pri, cellBias / 8)
+    const predictive = predictiveByTopic.get(sig.term.toLowerCase().replace(/[^a-z0-9\\s-]/g, ' ').replace(/\\s+/g, ' ').trim())
+    // Predictive intelligence is a bounded confidence/freshness adjustment,
+    // never a fabricated ranking factor. GSC demand remains the dominant input.
+    const predictiveAdjustment = predictive
+      ? 0.9 + Math.min(0.1, Math.max(0, predictive.confidence * predictive.freshness) * 0.1)
+      : 0.9
+    const score = opportunityScore(sig, pri, cellBias / 8) * predictiveAdjustment
     candidates.push({ sig, stage, country, stageScore: pri, matchScore: match.score })
     // Bias the top list toward cells with fresh knowledge
     candidates.sort((a, b) => opportunityScore(b.sig, b.stageScore, (bias.get(cellId(b.stage, b.country)) || 0) / 8) - opportunityScore(a.sig, a.stageScore, (bias.get(cellId(a.stage, a.country)) || 0) / 8))
@@ -312,7 +350,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
 
     const rationale =
       `#${Math.round(sig.position)} · ${fmtNum(sig.impressions)} imp/mo → gap-driven ${stageDef.label} (${country}) mission. ` +
-      `Bias from ${cellBiasFor(bias, stage, country)} fresh intel items. YMYL: ${stageDef.ymyl}.`
+      `Bias from ${cellBiasFor(bias, stage, country)} fresh intel items; predictive evidence ${predictiveByTopic.has(primaryTerm.toLowerCase().replace(/[^a-z0-9\\s-]/g, ' ').replace(/\\s+/g, ' ').trim()) ? 'present' : 'not yet linked'}. YMYL: ${stageDef.ymyl}.`
 
     let brief = ''
     if (draft) {
