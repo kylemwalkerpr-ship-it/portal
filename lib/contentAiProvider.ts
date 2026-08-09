@@ -841,10 +841,9 @@ export function listConfiguredContentProviders(): Array<{
   return [
     {
       id: 'nvidia-glm',
-      label: 'NVIDIA GLM 5.2',
-      detail: 'z-ai/glm-5.2 (NVAPI / NVIDIA NIM) — preferred lead',
-      tag: 'preferred',
-      cloud: 'nvidia-nim',
+      label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred lead)',
+      configured: isNvidiaGlmConfigured(),
+      role: 'primary',
     },
     {
       id: 'nvidia-deepseek',
