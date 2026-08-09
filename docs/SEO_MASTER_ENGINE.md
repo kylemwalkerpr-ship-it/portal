@@ -111,10 +111,29 @@ deploy → IndexNow.
 - Every run recorded in `seo_engine_runs` — verifiable, accountable,
   transparent.
 
-## 7. Manual override (human-in-the-loop)
+## 7. v2 — six brains, full enforcement
+
+Version 2 added three execution-grade capabilities that close the loop between
+planning and shipping:
+
+| Capability | Module / route | What it does |
+|---|---|---|
+| **Auto-Interlink** | `lib/seoEngine/interlink.ts` + `POST/GET /api/seo-engine/interlink` | Builds a scored link graph for any life-cycle cell: journey neighbors (prev/next), cross-country comparisons, marketplace CTA, cluster siblings — each with descriptive anchor text and H2 placement. Persisted to `seo_interlinks` (idempotent by source+target). The Content Studio's **⚡ Generate from engine** button injects the plan straight into the brief. |
+| **LLM / AEO Visibility** | `lib/seoEngine/llmVisibility.ts` + `POST/GET /api/seo-engine/llm-visibility` | Prompt audits: asks the AI cascade to answer real estate queries with sources, then checks whether the estate was cited. Records `seo_llm_visibility` (query, engine, cited, cited_urls, snippet, score) → a verifiable share-of-voice trend. Runs from the panel, cron, and the Content Studio's **🤖 LLM audit** button. |
+| **Compliance Gate** | `lib/seoEngine/gate.ts` + `POST/GET /api/seo-engine/gate` | Deterministic evidence extraction from *actual draft text* (statistics, statutes, disclaimers, author bylines, question headings, internal links, dates) → `scoreCompliance` → verdict with **explicit blockers**. YMYL-critical stages (visa/citizenship/family) require ≥85 and always fail without a statutory anchor + disclaimer. Every run persisted to `seo_gate_runs`; Job History rows in the Content Studio show ✓ PASS / ✕ BLOCK badges. |
+| **Migration v2** | `supabase/migrations/20260810_seo_engine_v2.sql` | `seo_interlinks`, `seo_llm_visibility`, `seo_gate_runs` — all RLS-protected, idempotent, wired into the Apply SEO Factory Migrations workflow. |
+| **Panel v2** | `components/design/admin-seo-engine.tsx` | Complete UX redesign: six dedicated tab surfaces (Lifecycle / Knowledge / Planner / Interlinks / LLM Voice / Compliance), KPI strip for all six brains, precise labeled buttons, per-surface audit trails. |
+| **Studio makeover** | `components/design/admin-content-studio.tsx` | Engine brain strip above the workspace (live counts + Run planner + LLM audit), **Gate column** in Job History, and the **Auto-Interlink** composer button. |
+
+Daily cron (`/api/cron/seo-engine-daily`) now also runs the LLM audit batch
+(6 queries) after knowledge → plan, so share-of-voice trends build up
+automatically.
+
+## 8. Manual override (human-in-the-loop)
 
 - Every CTA in the panel is explicit: **Ingest now**, **Run planner**, **Brief**
-  (which pre-fills the composer but still requires the admin to launch).
+  (which pre-fills the composer but still requires the admin to launch),
+  **Generate from engine** (auto-interlinks), **LLM audit**, **Run compliance gate**.
 - The planner never ships content; it only plans. Shipping stays behind the
   existing approve/PR gates.
 - Knowledge items carry source URLs + timestamps so a human can verify any
