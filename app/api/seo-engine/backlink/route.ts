@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const report = url.searchParams.get('report')?.trim() || 'full'
     const country = (url.searchParams.get('country')?.trim().toUpperCase() || undefined) as Country | undefined
-    const stage = url.searchParams.get('stage')?.trim() as LifecycleStageDef | undefined
+    const stage = url.searchParams.get('stage')?.trim() as unknown as LifecycleStageDef | undefined
     const kind = url.searchParams.get('kind') as BacklinkKind | undefined
     const lane = url.searchParams.get('lane') as BacklinkLane | undefined
     const targetStatus = url.searchParams.get('status') as TargetStatus | undefined
