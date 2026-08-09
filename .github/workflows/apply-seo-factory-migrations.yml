@@ -35,6 +35,7 @@ jobs:
             supabase/migrations/war_room_daily_runs.sql \
             supabase/migrations/20260808_cannibal_merges.sql \
             supabase/migrations/20260809_seo_master_engine.sql \
+            supabase/migrations/20260809_cannibal_rechecks.sql \
             supabase/migrations/20260810_seo_engine_v2.sql \
             supabase/migrations/ai_provider_keys.sql \
             supabase/migrations/20260811_table_guarantees.sql \
