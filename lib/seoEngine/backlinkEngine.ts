@@ -23,7 +23,7 @@
 
 import { createSupabaseAdminClient } from '@/lib/supabase'
 import { generateContentText } from '@/lib/contentAiProvider'
-import { getStage, type Country, type LifecycleStage } from './ontology'
+import { getStage, type Country, type LifecycleStageDef } from './ontology'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ export async function listInboundGaps(opts: {
     for (const l of (interlinks || []) as Array<{ source_slug: string; target_url: string; anchor_text: string }>) {
       const k = l.target_url
       if (!k) continue
-      const e = inbound.get(k) || { count: 0, anchors: new Set<string>(), sources: Set<string>() }
+      const e = inbound.get(k) || { count: 0, anchors: new Set<string>(), sources: new Set<string>() }
       e.count += 1
       if (l.anchor_text) e.anchors.add(l.anchor_text)
       e.sources.add(l.source_slug)
@@ -378,7 +378,7 @@ function rowToOutreach(r: Record<string, unknown>): OutreachTouch {
  */
 export async function draftOutreachMessage(opts: {
   target: BacklinkTarget
-  briefContext?: { topic: string; stage: LifecycleStage; country: Country; url?: string }
+  briefContext?: { topic?: string; stage?: LifecycleStage; country?: Country; url?: string }
   whyWeFit?: string
 }): Promise<{ subject: string; body: string; model: string | null }> {
   const { target, briefContext, whyWeFit } = opts
