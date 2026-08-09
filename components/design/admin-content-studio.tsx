@@ -473,7 +473,7 @@ function StepperRail({ active, completed }: { active: 1 | 2 | 3 | 4; completed: 
               <span style={{
                 width: 28, height: 28, borderRadius: 999, flexShrink: 0,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: bgColor, color, border: `2px solid ${color}`,
+                background: bg, color, border: `2px solid ${color}`,
                 fontSize: 12, fontWeight: 800, fontFamily: C.serif,
               }}>{isDone ? '✓' : s.n}</span>
               {i < steps.length - 1 && <span style={{ width: 2, flex: 1, minHeight: 28, background: isDone ? C.green : C.border, marginTop: 4, marginBottom: 4 }} />}
