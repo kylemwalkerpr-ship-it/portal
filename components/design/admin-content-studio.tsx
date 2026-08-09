@@ -134,6 +134,18 @@ const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; re
   { value: 'marketplace_gig', label: 'Marketplace Gig', ext: '.mdx', repo: 'portal', icon: '🏪', hint: 'Service listing on the marketplace' },
 ]
 
+const LIFE_CYCLE_STAGES: { value: string; label: string; hint: string }[] = [
+  { value: 'intent', label: 'Intent to move', hint: 'exploring countries and options' },
+  { value: 'schools', label: 'Schools & study', hint: 'education and student pathways' },
+  { value: 'work', label: 'Work', hint: 'jobs, permits and professional routes' },
+  { value: 'housing', label: 'Housing', hint: 'renting, buying and settling in' },
+  { value: 'visa', label: 'Visa & legal', hint: 'applications, status and compliance' },
+  { value: 'settlement', label: 'Settlement', hint: 'arrival, services and integration' },
+  { value: 'citizenship', label: 'PR & citizenship', hint: 'permanent residence and naturalization' },
+  { value: 'family', label: 'Family', hint: 'marriage, children and dependants' },
+  { value: 'relatives', label: 'Relatives', hint: 'bringing parents and extended family' },
+]
+
 const PLAY_META: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
   quick_win: { label: 'QUICK WIN', bg: '#D1FAE5', fg: '#065F46', icon: '⚡' },
   content_gap: { label: 'GAP', bg: '#DBEAFE', fg: '#1E40AF', icon: '🧩' },
@@ -559,7 +571,7 @@ function CreateWizard({
   onRefreshSuggestions,
   onApplySuggestion,
   brief, onClearBrief,
-  briefInterlinks, onAutoInterlink, autoInterlinkBusy,
+  briefInterlinks, interlinkStage, setInterlinkStage, onAutoInterlink, autoInterlinkBusy,
   showRadar, setShowRadar,
 }: {
   generating: boolean
@@ -580,6 +592,7 @@ function CreateWizard({
   brief?: AISuggestion | null
   onClearBrief?: () => void
   briefInterlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  interlinkStage: string; setInterlinkStage: (v: string) => void
   onAutoInterlink?: () => void
   autoInterlinkBusy?: boolean
   showRadar: boolean
@@ -776,6 +789,24 @@ function CreateWizard({
 
         {/* ── STEP 3 · Interlinks ── */}
         {stepLabel(3, 'Wire the internal links — who links to whom, and why', Boolean(briefInterlinks && briefInterlinks.length > 0))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px) 1fr', gap: 10, alignItems: 'end', marginBottom: 10 }}>
+          <div>
+            <label style={labelStyle}>Life-cycle stage for this link plan</label>
+            <select
+              value={interlinkStage}
+              onChange={e => setInterlinkStage(e.target.value)}
+              style={inputStyle}
+              title="Choose the immigrant journey stage whose neighboring pages should be linked"
+            >
+              {LIFE_CYCLE_STAGES.map(stage => (
+                <option key={stage.value} value={stage.value}>{stage.label} — {stage.hint}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.45 }}>
+            The engine will use this stage to choose journey neighbors, marketplace paths, and cross-country targets. Change it before generating a new plan.
+          </div>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
           <button type="button" onClick={onAutoInterlink} disabled={autoInterlinkBusy || !topic.trim()}
             title="Generate a scored internal-link plan from the SEO Master Engine (journey neighbors, marketplace CTA, cross-country)"
@@ -1817,6 +1848,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [topic, setTopic] = React.useState('')
   const [audience, setAudience] = React.useState('')
   const [keywords, setKeywords] = React.useState('')
+  const [interlinkStage, setInterlinkStage] = React.useState('visa')
   const [showRadar, setShowRadar] = React.useState(true)
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
   const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
@@ -1966,7 +1998,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'seo-page'
       const res = await fetch('/api/seo-engine/interlink', {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceSlug: slug, stage: 'visa', country, contentType: 'blog_post' }),
+        body: JSON.stringify({ sourceSlug: slug, stage: interlinkStage, country, contentType: 'blog_post' }),
       })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'interlink failed')
@@ -1977,7 +2009,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally {
       setAutoInterlinkBusy(false)
     }
-  }, [topic, region])
+  }, [topic, region, interlinkStage])
 
   // Poll active jobs
   React.useEffect(() => {
@@ -2244,6 +2276,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           brief={selectedBrief}
           onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
           briefInterlinks={briefInterlinks}
+          interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
           onAutoInterlink={runAutoInterlink}
           autoInterlinkBusy={autoInterlinkBusy}
           showRadar={showRadar} setShowRadar={setShowRadar}
