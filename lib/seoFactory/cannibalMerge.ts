@@ -242,85 +242,160 @@ export interface ResolvedCannibalPage {
 
 export interface CannibalResolution {
   pages: ResolvedCannibalPage[]
-  source: 'gsc_live'
+  source: 'gsc_live' | 'content_inventory'
   siteUrl: string
+}
+
+/** Stop-words never counted in overlap matching. */
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'for', 'of', 'to', 'in', 'on', 'at', 'by',
+  'with', 'from', 'is', 'are', 'was', 'be', 'been', 'how', 'what', 'why', 'when',
+  'where', 'do', 'does', 'can', 'vs', 'uk', 'us', 'ca', 'au', 'new', 'near', 'for',
+])
+
+function significantWords(q: string): string[] {
+  return q
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+}
+
+/**
+ * Word-overlap similarity between a GSC query and the target term. Returns
+ * the number of shared significant words (plural-safe via stem prefix match).
+ */
+function overlapScore(q: string, term: string): number {
+  const qWords = significantWords(q)
+  const tWords = significantWords(term)
+  if (!qWords.length || !tWords.length) return 0
+  let hits = 0
+  for (const tw of tWords) {
+    // match exact or plural stem (letter, letters)
+    if (qWords.some((qw) => qw === tw || qw.startsWith(tw.slice(0, Math.max(3, tw.length - 1))))) hits++
+  }
+  return hits
 }
 
 /**
  * Query Google Search Console for every query×page row in the last 30 days,
- * keep rows whose keyword stem overlaps the target term, and return the pages
- * competing for it ranked by impressions. Returns null when GSC is not
- * configured or no competing pages were found.
+ * keep rows whose keyword words overlap the target term, and return the pages
+ * competing for it ranked by impressions. Matching is fuzzy (word-overlap)
+ * instead of exact-stem so "administrative review letter template uk" also
+ * picks up sibling queries like "uk administrative review letter template"
+ * or "administrative review letter template 2026".
+ *
+ * Falls back to the content inventory (shipped/merged content_jobs) when GSC
+ * has no page-level rows for the term, so the watch is still actionable when
+ * GSC data is thin.
  */
-export async function resolveCannibalPages(term: string): Promise<CannibalResolution | null> {
+export async function resolveCannibalPages(
+  term: string,
+): Promise<CannibalResolution | null> {
   const trimmed = term.trim()
   if (!trimmed) return null
 
+  // 1) GSC page×query resolution (source of truth when present)
   const access = await getGscAccess().catch(() => null)
-  if (!access?.accessToken || !access.siteUrl) return null
-
-  const encodedSite = encodeURIComponent(access.siteUrl)
-  const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${access.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      startDate: '30daysAgo',
-      endDate: 'today',
-      dimensions: ['query', 'page'],
-      rowLimit: 1000,
-      aggregationType: 'auto',
-    }),
-  })
-  if (!res.ok) return null
-
-  const data = (await res.json()) as {
-    rows?: Array<{
-      keys: string[]
-      clicks: number
-      impressions: number
-      ctr: number
-      position: number
-    }>
+  if (access?.accessToken && access.siteUrl) {
+    try {
+      const encodedSite = encodeURIComponent(access.siteUrl)
+      const url = `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/searchAnalytics/query`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${access.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          startDate: '30daysAgo',
+          endDate: 'today',
+          dimensions: ['query', 'page'],
+          rowLimit: 1000,
+          aggregationType: 'auto',
+        }),
+      })
+      if (res.ok) {
+        const data = (await res.json()) as {
+          rows?: Array<{
+            keys: string[]
+            clicks: number
+            impressions: number
+            ctr: number
+            position: number
+          }>
+        }
+        const pageMap = new Map<
+          string,
+          { impressions: number; clicks: number; positions: number[] }
+        >()
+        for (const row of data.rows ?? []) {
+          const q = String(row.keys?.[0] ?? '').toLowerCase().trim()
+          const rawUrl = String(row.keys?.[1] ?? '').trim()
+          if (!q || q.length < 4 || !rawUrl || !/^https?:\/\//i.test(rawUrl)) continue
+          // Word-overlap gate: at least half the term's words appear in the query.
+          const tWords = significantWords(trimmed)
+          const hits = overlapScore(q, trimmed)
+          if (hits < Math.max(2, Math.ceil(tWords.length / 2))) continue
+          const urlKey = rawUrl.replace(/\/+$/, '')
+          const existing = pageMap.get(urlKey) ?? { impressions: 0, clicks: 0, positions: [] }
+          existing.impressions += row.impressions
+          existing.clicks += row.clicks
+          existing.positions.push(row.position)
+          pageMap.set(urlKey, existing)
+        }
+        const pages: ResolvedCannibalPage[] = [...pageMap.entries()]
+          .map(([u, d]) => ({
+            url: u,
+            impressions: d.impressions,
+            clicks: d.clicks,
+            position: Math.round((d.positions.reduce((a, b) => a + b, 0) / d.positions.length) * 10) / 10,
+          }))
+          .sort((a, b) => b.impressions - a.impressions)
+        if (pages.length >= 2) {
+          return { pages, source: 'gsc_live', siteUrl: access.siteUrl }
+        }
+      }
+    } catch {
+      /* fall through to inventory resolution */
+    }
   }
 
-  const termStem = canonicalStem(trimmed)
-  const pageMap = new Map<
-    string,
-    { impressions: number; clicks: number; positions: number[] }
-  >()
-
-  for (const row of data.rows ?? []) {
-    const q = String(row.keys?.[0] ?? '').toLowerCase().trim()
-    const rawUrl = String(row.keys?.[1] ?? '').trim()
-    if (!q || q.length < 8 || !rawUrl || !/^https?:\/\//i.test(rawUrl)) continue
-    // Only rows whose stem overlaps the term belong to this cluster.
-    if (canonicalStem(q) !== termStem) continue
-
-    const urlKey = rawUrl.replace(/\/+$/, '')
-    const existing = pageMap.get(urlKey) ?? { impressions: 0, clicks: 0, positions: [] }
-    existing.impressions += row.impressions
-    existing.clicks += row.clicks
-    existing.positions.push(row.position)
-    pageMap.set(urlKey, existing)
+  // 2) Content-inventory fallback: shipped/merged pages that target this term.
+  // GSC often has no page rows for fresh or low-impression terms — but the
+  // studio KNOWS which pages were built for it, so resolve from those instead
+  // of dead-ending with "could not resolve".
+  const supabase = createSupabaseAdminClient()
+  const { data: jobs } = await supabase
+    .from('content_jobs')
+    .select('id, title, topic, primary_keyword, canonical_url, content_path, status, seo_score, pr_url')
+    .in('status', ['merged', 'pr_created', 'publishing'])
+    .limit(500)
+  const tWords = significantWords(trimmed)
+  const seen = new Set<string>()
+  const pages: ResolvedCannibalPage[] = []
+  for (const j of (jobs ?? []) as Array<Record<string, unknown>>) {
+    const url = String(j.canonical_url || '').trim()
+    const hay = `${String(j.primary_keyword || '')} ${String(j.topic || '')} ${String(j.title || '')}`
+    if (!url || seen.has(url)) continue
+    const hits = overlapScore(hay, trimmed)
+    if (hits < Math.max(1, Math.ceil(tWords.length / 2))) continue
+    seen.add(url)
+    pages.push({
+      url,
+      impressions: 0,
+      clicks: 0,
+      position: 0,
+    })
+  }
+  if (pages.length >= 2) {
+    return { pages, source: 'content_inventory', siteUrl: access?.siteUrl ?? '' }
   }
 
-  const pages: ResolvedCannibalPage[] = [...pageMap.entries()]
-    .map(([u, d]) => ({
-      url: u,
-      impressions: d.impressions,
-      clicks: d.clicks,
-      position: Math.round((d.positions.reduce((a, b) => a + b, 0) / d.positions.length) * 10) / 10,
-    }))
-    .sort((a, b) => b.impressions - a.impressions)
-
-  if (pages.length === 0) return null
-
-  return { pages, source: 'gsc_live', siteUrl: access.siteUrl }
+  return null
 }
 
 export async function executeCannibalMerge(opts: {
