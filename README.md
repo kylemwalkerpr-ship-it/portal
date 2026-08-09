@@ -42,6 +42,22 @@ Both products now write/read **one** merge-decision audit trail.
 
 **Other side (Convex / Command Center):** `cannibalizeActions.ts` upserts each Command Center merge to the same table with `source = command_center`, and `pullPortalMergeHistory` pulls portal rows into the Command Center's audit trail on panel mount — so the Cannibalization Watch shows one cross-product history (`portal` badge on portal-originated rows). Env needed on Convex: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (same pair the portal already uses).
 
+## SEO Master Engine (life-cycle master planner)
+
+The strategic brain that plans the full immigrant journey (intent → schools → work → housing → visa → settlement → citizenship → family → relatives × US/UK/CA/AU) and feeds ranked, compliance-ready missions into the existing War Room / Content Studio execution pipeline.
+
+| Track | Files | What it does |
+|---|---|---|
+| **migration** | `supabase/migrations/20260809_seo_master_engine.sql` | `seo_lifecycle_stages` (ontology), `seo_knowledge` (daily intel, deduped by URL), `seo_cluster_plans` (planner output), `seo_engine_runs` (audit trail), `seo_engine_config`. **Must be run once** (added to the Apply SEO Factory Migrations workflow — dispatch it). |
+| **ontology** | `lib/seoEngine/ontology.ts` | 9 stages × 4 countries with seed keywords, statutory anchors (INA/IRPA/Immigration Rules/Migration Act), authorities, marketplace service mapping, content-type → estate-repo distribution map, interlink neighbors. |
+| **compliance** | `lib/seoEngine/compliance.ts` | Deterministic AEO (answer engines) / GEO (generative engines) / YMYL (statutes, disclaimers, author creds, freshness) / technical checklist + 0–100 scorer. |
+| **knowledge** | `lib/seoEngine/knowledge.ts` | Daily ingestion of USCIS/Home Office/IRCC/AU feeds + Google Search Central + Google Trends + Google News fallbacks; tags to stages/countries; AI summaries (best-effort). |
+| **planner** | `lib/seoEngine/planner.ts` | Ranks GSC demand × knowledge bias × lifecycle priority → cluster plans (pillar/spokes/FAQ, compliance score, distribution targets, interlink plan, AI-drafted briefs). |
+| **API** | `app/api/seo-engine/{lifecycle,knowledge,plan,status}/route.ts` | Admin-auth surfaces: seed ontology, run ingestion, run planner, engine health. |
+| **cron** | `app/api/cron/seo-engine-daily/route.ts` + `.github/workflows/seo-engine-daily.yml` | Daily (midday Kenya): knowledge → plan, every run logged for accountability. |
+| **UI** | `components/design/admin-seo-engine.tsx` (wired into `admin-command-center.tsx` as **🧭 SEO Master Engine**) | Lifecycle map with coverage, Knowledge Radar feed, ranked plan queue with compliance scores, one-click ⚡ Brief into the composer, engine health + run audit trail. |
+| **docs** | `docs/SEO_MASTER_ENGINE.md` | Full blueprint: concept, feeds, AEO/GEO/YMYL playbook, planner flow, tables, automation. |
+
 ## Apply on `portal`
 
 Run on `portal` checkout (or have its CI copy `portal-patch/*` before `next build`):
