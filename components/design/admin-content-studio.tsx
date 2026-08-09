@@ -257,7 +257,7 @@ function QuickCreate({
   expanded, onToggle, generating, onGenerate,
   topic, keywords, onTopicChange, onKeywordsChange,
   suggestions, suggestionsLoading, suggestionsError, onRefreshSuggestions, onApplySuggestion,
-  brief, briefInterlinks, onClearBrief,
+  brief, briefInterlinks, onClearBrief, onAutoInterlink, autoInterlinkBusy,
 }: {
   expanded: boolean; onToggle: () => void; generating: boolean
   onGenerate: (data: any) => void
@@ -267,6 +267,8 @@ function QuickCreate({
   brief?: AISuggestion | null
   briefInterlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   onClearBrief?: () => void
+  onAutoInterlink?: () => void
+  autoInterlinkBusy?: boolean
 }) {
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
   const [region, setRegion] = React.useState<Region>('US')
@@ -455,6 +457,24 @@ function QuickCreate({
                   ))}
                 </div>
               )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 8.5, fontWeight: 700, color: C.gold, fontFamily: C.mono }}>🔗 AUTO-INTERLINK</span>
+                <button
+                  type="button"
+                  onClick={onAutoInterlink}
+                  disabled={autoInterlinkBusy}
+                  title="Generate a scored internal-link plan from the SEO Master Engine (journey neighbors, marketplace CTA, cross-country)"
+                  style={{
+                    padding: '3px 10px', borderRadius: 5, border: 'none', cursor: 'pointer',
+                    background: '#1E1B4B', color: '#fff', fontSize: 9, fontWeight: 700, fontFamily: 'inherit',
+                  }}
+                >
+                  {autoInterlinkBusy ? '⏳ Generating…' : '⚡ Generate from engine'}
+                </button>
+                <span style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono }}>
+                  {briefInterlinks && briefInterlinks.length > 0 ? `${briefInterlinks.length} links ready` : 'no links yet'}
+                </span>
+              </div>
               {briefInterlinks && briefInterlinks.length > 0 && (
                 <div>
                   <span style={{ fontSize: 8.5, fontWeight: 700, color: C.gold, fontFamily: C.mono }}>🔗 INTERNAL LINKING ({briefInterlinks.length})</span>
@@ -910,9 +930,10 @@ function LiveGenerationPanel({
 
 // ── Job History Table ──
 
-function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex }: {
+function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex, gateByJob }: {
   jobs: ContentJob[]; expanded: boolean; onToggle: () => void; onSelect: (j: ContentJob) => void; loading: boolean
   mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
+  gateByJob?: Map<string, { score: number; passed: boolean }>
 }) {
   // Does this job's page belong to a resolved (merged) cannibal cluster?
   const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
@@ -979,6 +1000,7 @@ function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex }:
                   <th style={thStyle}>Region</th>
                   <th style={thStyle}>Status</th>
                   <th style={thStyle}>SEO</th>
+                  <th style={thStyle}>Gate</th>
                   <th style={thStyle}>PR</th>
                   <th style={thStyle}>Date</th>
                 </tr>
@@ -999,6 +1021,24 @@ function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex }:
                       </div>
                     </td>
                     <td style={tdStyle}>{j.seo_score != null ? `${j.seo_score}%` : '—'}</td>
+                    <td style={tdStyle}>
+                      {(() => {
+                        const g = gateByJob?.get(j.id)
+                        if (!g) return <span style={{ fontSize: 10, color: C.textDim }}>—</span>
+                        return (
+                          <span
+                            title={`Compliance gate ${g.score}/100 — ${g.passed ? 'passed' : 'blocked (YMYL/AEO/GEO requirements)'}`}
+                            style={{
+                              padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                              background: g.passed ? '#ECFDF5' : '#FEF2F2', color: g.passed ? C.green : C.red,
+                              whiteSpace: 'nowrap', cursor: 'help',
+                            }}
+                          >
+                            {g.passed ? '✓ PASS' : '✕ BLOCK'} {g.score}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td style={tdStyle}>
                       {j.pr_url ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 500 }}>PR #{j.pr_number} ↗</a> : '—'}
                     </td>
@@ -1803,6 +1843,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // so job rows can show a "merged"/"winner" badge when their page was part
   // of a resolved cluster. Refreshed alongside jobs.
   const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
+  // SEO Master Engine — live status + compliance gate runs (v2 makeover)
+  const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
+  const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
+  const [engineBusy, setEngineBusy] = React.useState(false)
+  const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
+
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -1900,6 +1946,59 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
   React.useEffect(() => { fetchMergeIndex() }, [fetchMergeIndex])
+
+  // Engine surfaces — non-fatal: studio works even if engine tables aren't migrated yet.
+  const fetchEngineStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/seo-engine/status', { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = await res.json().catch(() => ({}))
+      if (data.ok) setEngineStatus(data)
+    } catch { /* best-effort */ }
+  }, [])
+
+  const fetchGateRuns = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/seo-engine/gate', { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = await res.json().catch(() => ({}))
+      if (!data.ok || !Array.isArray(data.runs)) return
+      const map = new Map<string, { score: number; passed: boolean }>()
+      for (const r of data.runs as Array<Record<string, unknown>>) {
+        const id = String(r.subject_id || '')
+        if (!id) continue
+        map.set(id, { score: Number(r.score) || 0, passed: Boolean(r.passed) })
+      }
+      setGateByJob(map)
+    } catch { /* best-effort */ }
+  }, [])
+
+  React.useEffect(() => { fetchEngineStatus(); fetchGateRuns() }, [fetchEngineStatus, fetchGateRuns])
+
+  // Auto-interlink: generate a scored link plan from the engine for the current topic.
+  const runAutoInterlink = React.useCallback(async () => {
+    if (!topic.trim()) return
+    setAutoInterlinkBusy(true)
+    setError(null)
+    try {
+      const region = (document.querySelector('[name="region"]') as HTMLSelectElement | null)?.value || 'US'
+      const country = ['US', 'UK', 'CA', 'AU'].includes(region) ? region : 'US'
+      const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'seo-page'
+      const res = await fetch('/api/seo-engine/interlink', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceSlug: slug, stage: 'visa', country, contentType: 'blog_post' }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || 'interlink failed')
+      const edges: Array<{ anchor_text: string; target_url: string; target_host: string }> = data.edges || []
+      setBriefInterlinks(edges.slice(0, 6).map((e) => ({ label: e.anchor_text, url: e.target_url, site: e.target_host })))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-interlink failed')
+    } finally {
+      setAutoInterlinkBusy(false)
+    }
+  }, [topic])
+
 
   // Poll active jobs
   React.useEffect(() => {
@@ -2078,6 +2177,41 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
+      {/* ── SEO Master Engine brain strip (v2) ── */}
+      <div style={{
+        background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 10,
+        padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', gap: 12, flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: C.text, fontFamily: C.serif }}>🧠 SEO Master Engine</span>
+          <span style={{ fontSize: 9, fontFamily: C.mono, color: '#9A7B3B', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>v2</span>
+          <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
+            🗺 {(engineStatus?.lifecycle as { seededCells?: number } | undefined)?.seededCells ?? '—'} cells · 🌐 {(engineStatus?.knowledge as { total?: number } | undefined)?.total ?? '—'} intel · 🧭 {(engineStatus?.plans as { total?: number } | undefined)?.total ?? '—'} plans · 🔗 {(engineStatus?.interlinks as { planned?: number } | undefined)?.planned ?? '—'} links · 🤖 {(engineStatus?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? '—'}% LLM voice · 🛡 {(engineStatus?.gate as { passRate?: number } | undefined)?.passRate ?? '—'}% gate pass
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={async () => { setEngineBusy(true); try { await fetch('/api/seo-engine/plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10, draftBriefs: false }) }); await fetchEngineStatus() } finally { setEngineBusy(false) } }}
+            disabled={engineBusy}
+            title="Run the master planner — rank GSC demand into life-cycle missions"
+            style={{ padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer', background: C.text, color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'inherit' }}
+          >
+            {engineBusy ? '⏳ …' : '🧭 Run planner'}
+          </button>
+          <button
+            type="button"
+            onClick={async () => { setEngineBusy(true); try { await fetch('/api/seo-engine/llm-visibility', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 6 }) }); await fetchEngineStatus() } finally { setEngineBusy(false) } }}
+            disabled={engineBusy}
+            title="Run an LLM share-of-voice audit (10 estate queries)"
+            style={{ padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer', background: '#6D28D9', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'inherit' }}
+          >
+            {engineBusy ? '⏳ …' : '🤖 LLM audit'}
+          </button>
+        </div>
+      </div>
+
       {/* Main two-column grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 16, alignItems: 'start' }}>
         {/* ── LEFT COLUMN ── */}
@@ -2095,6 +2229,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             brief={selectedBrief}
             briefInterlinks={briefInterlinks}
             onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+            onAutoInterlink={runAutoInterlink}
+            autoInterlinkBusy={autoInterlinkBusy}
           />
           <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
           <AdminSiteHealthPanel />
@@ -2124,6 +2260,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onToggle={() => setHistoryExpanded(!historyExpanded)}
             onSelect={setSelectedJob} loading={loading}
             mergeIndex={mergeIndex}
+            gateByJob={gateByJob}
           />
 
           {/* Cannibalization Merge History — shared with the Command Center */}
