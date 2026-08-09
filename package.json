@@ -9,6 +9,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "sync:seo-strategies": "node scripts/sync-seo-strategies.mjs",
+    "smoke:prod": "node scripts/smoke-prod.mjs",
     "prebuild": "node scripts/sync-seo-strategies.mjs",
     "build": "next build --webpack && opennextjs-cloudflare build --skipNextBuild",
     "pages:build": "opennextjs-cloudflare build",
