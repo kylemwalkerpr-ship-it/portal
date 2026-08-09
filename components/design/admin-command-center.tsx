@@ -482,6 +482,7 @@ export default function AdminCommandCenter({
   const [health, setHealth] = React.useState<any>(null)
   const [metrics, setMetrics] = React.useState<any>(null)
   const [strategies, setStrategies] = React.useState<any>(null)
+  const [aiRuntimeProviders, setAiRuntimeProviders] = React.useState<Array<{ id: string; label: string; configured: boolean; model?: string | null }>>([])
 
   // Trend detail (per-query history chart)
   const [trendDetail, setTrendDetail] = React.useState<any | null>(null)
@@ -1322,6 +1323,20 @@ export default function AdminCommandCenter({
       if (res.ok) setStrategies(data.index || data)
     } catch { /* ignore */ }
   }
+  const loadAiRuntime = async () => {
+    try {
+      const res = await fetch('/api/seo-factory/ai-keys', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (!res.ok) return
+      const providers = Array.isArray(data.providers) ? data.providers : []
+      let order: string[] = []
+      try { order = JSON.parse(String(data.settings?.provider_order || '[]')) } catch { /* ignore */ }
+      const rank = new Map(order.map((id: string, index: number) => [id, index]))
+      setAiRuntimeProviders(providers.slice().sort((a: any, b: any) => (rank.get(a.id) ?? 10000) - (rank.get(b.id) ?? 10000)))
+      const configuredDefault = String(data.settings?.default_provider || '').trim()
+      if (configuredDefault) setAiProvider((current) => current === 'auto' ? configuredDefault : current)
+    } catch { /* ignore */ }
+  }
 
   // ── Effects ──────────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -1330,6 +1345,7 @@ export default function AdminCommandCenter({
     loadHealth()
     loadMetrics()
     loadStrategies()
+    loadAiRuntime()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -2067,15 +2083,21 @@ function RecheckDuePanel() {
             <div>
               <label style={labelStyle}>AI model</label>
               <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={inputStyle}>
-                <option value="auto">Auto (Grok → OpenAI → rest)</option>
-                <option value="grok">Grok (xAI)</option>
-                <option value="openai">OpenAI (GPT-5.6 Luna)</option>
-                <option value="nvidia-glm">NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred)</option>
-                <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
-                <option value="cloudflare-ai">Cloudflare Workers AI</option>
-                <option value="groq">Groq (Llama)</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="openrouter">OpenRouter</option>
+                <option value="auto">Auto (admin default + priority order)</option>
+                {(aiRuntimeProviders.length ? aiRuntimeProviders : [
+                  { id: 'nvidia-glm', label: 'NVIDIA GLM 5.2', configured: false, model: 'z-ai/glm-5.2' },
+                  { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-pro' },
+                  { id: 'grok', label: 'Grok (xAI)', configured: false, model: 'grok-3' },
+                  { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-luna' },
+                  { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: false, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' },
+                  { id: 'groq', label: 'Groq', configured: false, model: 'llama-3.3-70b-versatile' },
+                  { id: 'gemini', label: 'Google Gemini', configured: false, model: 'gemini-2.5-flash' },
+                  { id: 'openrouter', label: 'OpenRouter', configured: false, model: 'meta-llama/llama-3.3-70b-instruct:free' },
+                ]).map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label}{provider.model ? ` · ${provider.model}` : ''}{provider.configured ? '' : ' (not configured)'}
+                  </option>
+                ))}
               </select>
             </div>
             {/* ── Life-cycle stage for this link plan ────────────── */}
@@ -2838,7 +2860,7 @@ function RecheckDuePanel() {
       </div>
       {/* AI Keys vault */}
       <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFDF7' }}>
-        <AiKeyVaultPanel onChanged={loadHealth} />
+        <AiKeyVaultPanel onChanged={() => { loadHealth(); loadAiRuntime() }} />
       </div>
     </div>
   )
