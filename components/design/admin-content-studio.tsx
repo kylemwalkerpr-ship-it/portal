@@ -967,7 +967,23 @@ function QueueTable({ jobs, onSelect, loading, mergeIndex, gateByJob }: {
                       </div>
                     </td>
                     <td style={{ ...tdStyle }}>
-                      {j.pr_url ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: C.mono, fontSize: 11 }}>PR #{j.pr_number} ↗</a> : <span style={{ color: C.textDim }}>—</span>}
+                      {j.pr_url ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                          <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: C.mono, fontSize: 11 }}>PR #{j.pr_number} ↗</a>
+                          {j.status === 'pr_created' && (
+                            <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                              <button type="button"
+                                onClick={() => { setSelectedJob(j); if (typeof window !== 'undefined') window.setTimeout(() => { const mergeBtn = document.querySelector(`[data-action='merge_pr-${j.id}']`) as HTMLButtonElement | null; mergeBtn?.click() }, 120) }}
+                                title={`Open PR #${j.pr_number} in modal and merge on GitHub`}
+                                style={{ padding: '3px 8px', borderRadius: 4, border: 'none', background: '#10B981', color: '#FFFFFF', fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>🔀 Merge</button>
+                              <button type="button"
+                                onClick={() => { setSelectedJob(j); if (typeof window !== 'undefined') window.setTimeout(() => { const closeBtn = document.querySelector(`[data-action='close_pr-${j.id}']`) as HTMLButtonElement | null; closeBtn?.click() }, 120) }}
+                                title={`Open PR #${j.pr_number} in modal and close on GitHub`}
+                                style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #FECACA', background: '#FEF2F2', color: C.red, fontSize: 10, fontWeight: 700, fontFamily: C.mono, cursor: 'pointer' }}>✖ Reject</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : <span style={{ color: C.textDim }}>—</span>}
                     </td>
                     <td style={{ ...tdStyle, fontSize: 11, color: C.textMuted, whiteSpace: 'nowrap' }}>{formatDate(j.created_at)}</td>
                   </tr>
@@ -1575,10 +1591,13 @@ function JobDetail({ job, onClose, onRefresh, setActionNotice, gateFor }: {
 
   const runAction = async (action: string) => {
     if (busy) return
-    if (action === 'regenerate' || action === 'approve' || action === 'merge_pr') {
-      const prompt = action === 'regenerate' ? 'Regenerate this job and create a replacement job?'
-        : action === 'approve' ? 'Approve this content for main and trigger deployment?'
-        : 'Merge the open pull request?'
+    if (action === 'regenerate' || action === 'approve' || action === 'merge_pr' || action === 'close_pr') {
+      const prompt =
+        action === 'regenerate' ? 'Regenerate this job and create a replacement job?'
+          : action === 'approve' ? 'Approve this content for main and trigger deployment?'
+          : action === 'merge_pr' ? `Merge PR #${detail.pr_number} on GitHub and run the deploy monitor?`
+          : action === 'close_pr' ? `Close PR #${detail.pr_number} on GitHub and mark this job as rejected?`
+          : 'Continue?'
       if (typeof window !== 'undefined' && !window.confirm(prompt)) return
     }
     if (action === 'regenerate') { void runRegenerateStream(); return }
@@ -1699,7 +1718,81 @@ function JobDetail({ job, onClose, onRefresh, setActionNotice, gateFor }: {
             </div>
           </div>
 
-          <div style={{ padding: '18px 22px', overflow: 'auto', background: C.surface }}>
+          {(detail.pr_url || detail.pr_number) && !terminal && (
+              <div style={{
+                background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%)',
+                color: '#FFFFFF', borderRadius: C.radiusSm, padding: '16px 18px',
+                marginBottom: 14, boxShadow: '0 6px 18px rgba(15,23,42,0.18)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: '#FCD34D', textTransform: 'uppercase', letterSpacing: '0.16em', fontWeight: 700 }}>
+                      🚀 Pull request & merge
+                    </div>
+                    <div style={{ fontFamily: C.serif, fontSize: 19, color: '#FFFFFF', marginTop: 4, marginBottom: 4 }}>
+                      PR #{detail.pr_number}{detail.target_repo ? ` → ${String(detail.target_repo).split('/').pop()}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.78)', lineHeight: 1.5, maxWidth: 540 }}>
+                      Open this pull request to review the diff, then choose <strong style={{ color: '#FCD34D' }}>Merge PR</strong> to deploy via CI,
+                      <strong style={{ color: '#FCD34D' }}> Approve → main</strong> to force-ship the reviewed content, or
+                      <strong style={{ color: '#FCA5A5' }}> Reject</strong> to close the PR if the article isn't landing.
+                    </div>
+                    {detail.branch_name && (
+                      <div style={{ marginTop: 6, fontSize: 10.5, color: 'rgba(255,255,255,0.55)', fontFamily: C.mono }}>
+                        branch <span style={{ color: '#FCD34D' }}>{detail.branch_name}</span>
+                        {detail.pr_url ? <> · <a href={detail.pr_url} target="_blank" rel="noopener noreferrer" style={{ color: '#93C5FD', textDecoration: 'none' }}>open on GitHub ↗</a></> : null}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                    <span style={{
+                      padding: '4px 11px', borderRadius: 999, fontSize: 10, fontWeight: 700, fontFamily: C.mono,
+                      background: 'rgba(252,211,77,0.18)', color: '#FCD34D',
+                      letterSpacing: '0.06em', textTransform: 'uppercase',
+                    }}>awaiting human review</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  <button type="button"
+                    onClick={() => void runAction('merge_pr')}
+                    disabled={busy}
+                    title={`Merge PR #${detail.pr_number} on GitHub and run the deploy monitor`}
+                    style={{
+                      padding: '11px 18px', borderRadius: C.radiusXs, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                      background: activeAction === 'merge_pr' ? 'rgba(255,255,255,0.20)' : '#10B981',
+                      color: '#FFFFFF', fontSize: 13, fontWeight: 800, fontFamily: 'inherit',
+                      boxShadow: '0 3px 12px rgba(16,185,129,0.35)',
+                      opacity: busy ? 0.55 : 1,
+                    }}>{activeAction === 'merge_pr' ? '⏳ Merging…' : `🔀 Merge PR #${detail.pr_number}`}</button>
+                  <button type="button"
+                    onClick={() => void runAction('approve')}
+                    disabled={busy || !editorContent.trim()}
+                    title="Force-ship the reviewed content directly to main and trigger Cloudflare deploy"
+                    style={{
+                      padding: '11px 18px', borderRadius: C.radiusXs, border: 'none', cursor: (busy || !editorContent.trim()) ? 'not-allowed' : 'pointer',
+                      background: activeAction === 'approve' ? 'rgba(255,255,255,0.20)' : '#FCD34D',
+                      color: '#0F172A', fontSize: 13, fontWeight: 800, fontFamily: 'inherit',
+                      boxShadow: '0 3px 12px rgba(252,211,77,0.40)',
+                      opacity: (busy || !editorContent.trim()) ? 0.55 : 1,
+                    }}>{activeAction === 'approve' ? '⏳ Approving…' : '✅ Approve → main'}</button>
+                  <button type="button"
+                    onClick={() => void runAction('close_pr')}
+                    disabled={busy}
+                    title={`Close PR #${detail.pr_number} on GitHub without merging`}
+                    style={{
+                      padding: '11px 16px', borderRadius: C.radiusXs, cursor: busy ? 'not-allowed' : 'pointer',
+                      background: 'transparent', color: '#FCA5A5', border: '1px solid rgba(252,165,165,0.55)',
+                      fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
+                      opacity: busy ? 0.55 : 1,
+                    }}>{activeAction === 'close_pr' ? '⏳ Closing…' : '✖ Reject & close PR'}</button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: C.mono }}>
+                  Merge ⇢ standard GitHub PR + CI checks · Approve ⇢ skip gates, commit directly to main · Reject ⇢ close PR, job = closed
+                </div>
+              </div>
+            )}
+            <div style={{ padding: '18px 22px', overflow: 'auto', background: C.surface }}>
             {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '12px 14px', fontSize: 12, color: C.red, marginBottom: 12, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
 
             {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: C.radiusSm, padding: 14, marginBottom: 14 }}>
@@ -1756,7 +1849,8 @@ function JobDetail({ job, onClose, onRefresh, setActionNotice, gateFor }: {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
               {actionBtn('📦 Ship PR only', { tier: 'ship', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
               {actionBtn('✅ Approve → main', { tier: 'ship', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
-              {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { tier: 'edit', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
+              {detail.pr_number && !terminal && (<span data-action={`merge_pr-${detail.id}`}>{actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { tier: 'edit', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}</span>)}
+              {detail.pr_number && !terminal && (<span data-action={`close_pr-${detail.id}`}>{actionBtn(`✖ Close PR #${detail.pr_number}`, { tier: 'monitor', disabled: busy, onClick: () => void runAction('close_pr'), title: 'Close the open pull request on GitHub without merging' })}</span>)}
               {actionBtn('🩺 Monitor deploy', { tier: 'monitor', disabled: busy || loading, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
               {actionBtn('⧉ Duplicate', { tier: 'monitor', disabled: busy || loading, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}
             </div>
