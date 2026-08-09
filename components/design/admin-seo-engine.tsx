@@ -1,14 +1,18 @@
 'use client'
 /**
- * SEO Master Engine — the Master Planner panel for the Command Center.
+ * SEO MASTER ENGINE — v2 redesign
  *
- * One glanceable surface that embodies the full engine concept:
- *   Lifecycle map  → (stage × country) coverage of the immigrant journey
- *   Knowledge feed → fresh policy/trend intel ingested daily (verifiable sources)
- *   Plan queue     → ranked cluster plans with AEO/GEO/YMYL compliance scores
- *   Engine health  → run audit trail + source registry (accountable)
+ * One brain, six precise surfaces. No guesswork, no ambiguity:
  *
- * Every CTA is explicit and manual — the engine plans, humans command.
+ *   🗺  Lifecycle        — (stage × country) coverage of the immigrant journey
+ *   🌐  Knowledge Radar  — fresh policy/trend/guidance intel (verifiable sources)
+ *   🧭  Master Planner   — ranked cluster missions with compliance scores
+ *   🔗  Auto-Interlink   — generated link graph (who links to whom, why, score)
+ *   🤖  LLM Visibility   — share of voice in ChatGPT/Perplexity/AI Overview audits
+ *   🛡  Compliance Gate  — AEO/GEO/YMYL enforcement with explicit blockers
+ *
+ * Every button is dedicated and labeled. Every number is explained in its sub.
+ * The engine plans and measures; humans command.
  */
 import React from 'react'
 
@@ -37,6 +41,16 @@ const STAGE_LABELS: Record<string, string> = {
 }
 const COUNTRIES = ['US', 'UK', 'CA', 'AU']
 
+const TABS = [
+  { key: 'lifecycle', icon: '🗺', label: 'Lifecycle' },
+  { key: 'knowledge', icon: '🌐', label: 'Knowledge' },
+  { key: 'planner', icon: '🧭', label: 'Planner' },
+  { key: 'interlink', icon: '🔗', label: 'Interlinks' },
+  { key: 'llm', icon: '🤖', label: 'LLM Voice' },
+  { key: 'gate', icon: '🛡', label: 'Compliance' },
+] as const
+type TabKey = (typeof TABS)[number]['key']
+
 const KIND_META: Record<string, { icon: string; color: string; label: string }> = {
   policy: { icon: '🏛', color: C.navy, label: 'Policy' },
   guidance: { icon: '📘', color: C.blue, label: 'Guidance' },
@@ -44,6 +58,15 @@ const KIND_META: Record<string, { icon: string; color: string; label: string }> 
   signal: { icon: '📡', color: C.green, label: 'Signal' },
   competitor: { icon: '👀', color: C.orange, label: 'Competitor' },
   manual: { icon: '✍️', color: C.gold, label: 'Manual' },
+}
+
+const REASON_META: Record<string, { icon: string; label: string }> = {
+  ontology_neighbor: { icon: '🧩', label: 'Ontology neighbor' },
+  marketplace_cta: { icon: '🛒', label: 'Marketplace CTA' },
+  cluster_related: { icon: '🧲', label: 'Cluster related' },
+  journey_next: { icon: '➡️', label: 'Journey next' },
+  journey_prev: { icon: '⬅️', label: 'Journey prev' },
+  cross_country: { icon: '🌍', label: 'Cross-country' },
 }
 
 const STATUS_META: Record<string, { label: string; bg: string; fg: string }> = {
@@ -77,35 +100,66 @@ interface Props {
   onIngest?: (result: { stored: number; fetched: number; aiSummarized: number }) => void
 }
 
+const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
+  padding: '7px 13px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
+  background: bg, color: fg, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+})
+const btnGhost: React.CSSProperties = {
+  padding: '7px 13px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+  background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+}
+
 export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
+  const [tab, setTab] = React.useState<TabKey>('lifecycle')
   const [lifecycle, setLifecycle] = React.useState<Record<string, unknown>[] | null>(null)
   const [knowledge, setKnowledge] = React.useState<{ items: Array<Record<string, unknown>>; sources: Array<Record<string, unknown>> } | null>(null)
   const [plans, setPlans] = React.useState<{ plans: Array<Record<string, unknown>>; coverage: Array<Record<string, unknown>> } | null>(null)
+  const [interlinks, setInterlinks] = React.useState<Record<string, unknown> | null>(null)
+  const [visibility, setVisibility] = React.useState<Record<string, unknown> | null>(null)
+  const [gate, setGate] = React.useState<Record<string, unknown> | null>(null)
   const [status, setStatus] = React.useState<Record<string, unknown> | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [activePlan, setActivePlan] = React.useState<Record<string, unknown> | null>(null)
+  const [expandedPlan, setExpandedPlan] = React.useState<string | null>(null)
   const [stageFilter, setStageFilter] = React.useState<string>('all')
   const [countryFilter, setCountryFilter] = React.useState<string>('all')
+  const [ilStage, setIlStage] = React.useState<string>('visa')
+  const [ilCountry, setIlCountry] = React.useState<string>('CA')
+  const [gateDraft, setGateDraft] = React.useState<string>('')
+  const [gateVerdict, setGateVerdict] = React.useState<Record<string, unknown> | null>(null)
+  const [notice, setNotice] = React.useState<string | null>(null)
 
   const loadAll = React.useCallback(async () => {
     setError(null)
-    const [life, kn, pl, st] = await Promise.all([
+    const [life, kn, pl, il, vis, gt, st] = await Promise.all([
       fetch('/api/seo-engine/lifecycle').then((r) => r.json()).catch(() => ({ ok: false })),
       fetch('/api/seo-engine/knowledge').then((r) => r.json()).catch(() => ({ ok: false })),
       fetch('/api/seo-engine/plan').then((r) => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/seo-engine/interlink').then((r) => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/seo-engine/llm-visibility').then((r) => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/seo-engine/gate').then((r) => r.json()).catch(() => ({ ok: false })),
       fetch('/api/seo-engine/status').then((r) => r.json()).catch(() => ({ ok: false })),
     ])
     if (life.ok && Array.isArray(life.stages)) setLifecycle(life.stages)
     if (kn.ok) setKnowledge(kn)
     if (pl.ok) setPlans(pl)
+    if (il.ok) setInterlinks(il)
+    if (vis.ok) setVisibility(vis)
+    if (gt.ok) setGate(gt)
     if (st.ok) setStatus(st)
-    if (!life.ok || !kn.ok || !pl.ok || !st.ok) setError('Some engine surfaces are unreachable — is the seo_master_engine migration applied?')
+    if (!st.ok) setError('Some engine surfaces are unreachable — is the seo_master_engine migration applied?')
   }, [])
 
   React.useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  const flash = (msg: string) => {
+    setNotice(msg)
+    window.setTimeout(() => setNotice(null), 5000)
+  }
 
   const runIngest = async () => {
     setBusy(true); setError(null)
@@ -114,6 +168,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'ingestion failed')
       onIngest?.({ stored: data.itemsStored || 0, fetched: data.itemsFetched || 0, aiSummarized: data.aiSummarized || 0 })
+      flash(`Ingested ${data.itemsStored} items from ${data.sourcesRun} sources`)
       await loadAll()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ingestion failed')
@@ -128,6 +183,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const res = await fetch('/api/seo-engine/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: stageFilter === 'all' ? undefined : stageFilter, country: countryFilter === 'all' ? undefined : countryFilter, limit: 20 }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'planning failed')
+      flash(`Planner produced ${data.count} ranked cluster missions`)
       await loadAll()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'planning failed')
@@ -142,6 +198,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       const res = await fetch('/api/seo-engine/lifecycle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed: true }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || 'seed failed')
+      flash(`Ontology seeded: ${data.total} life-cycle cells`)
       await loadAll()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'seed failed')
@@ -150,297 +207,573 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
     }
   }
 
-  // ── Lifecycle coverage matrix ──
+  const generateInterlinks = async () => {
+    setBusy(true); setError(null)
+    try {
+      const slug = `seo-${ilStage}-${ilCountry.toLowerCase()}`
+      const res = await fetch('/api/seo-engine/interlink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        sourceSlug: slug, stage: ilStage, country: ilCountry,
+        contentType: ilStage === 'visa' || ilStage === 'citizenship' || ilStage === 'family' ? 'marketplace_landing' : 'regional_page',
+      }) })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || 'interlink failed')
+      flash(`Generated ${data.edges?.length || 0} interlink edges for ${STAGE_LABELS[ilStage]} · ${ilCountry}`)
+      await loadAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'interlink generation failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runLlmAudit = async () => {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 10 }) })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || 'audit failed')
+      flash(`LLM audit: ${data.cited}/${data.total} queries cited the estate (${data.shareOfVoice}% share of voice)`)
+      await loadAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'LLM audit failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runGateOnDraft = async () => {
+    if (!gateDraft.trim() || gateDraft.trim().length < 60) {
+      setError('Paste at least 60 characters of draft content to run the gate.')
+      return
+    }
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/seo-engine/gate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        subjectType: 'draft', stage: 'visa', country: 'CA', draft: gateDraft, title: 'Compliance gate draft check',
+      }) })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || 'gate failed')
+      setGateVerdict(data)
+      await loadAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'gate enforcement failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const coverageMap = new Map<string, number>()
   for (const c of plans?.coverage || []) coverageMap.set(String(c.cell || ''), Number(c.topScore) || 0)
-
-  const lifecycleCells = lifecycle || []
-  const seededCount = lifecycleCells.length
+  const seededCount = lifecycle?.length || 0
 
   const badge = (label: string, bg: string, fg: string) => (
     <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: bg, color: fg, whiteSpace: 'nowrap' }}>{label}</span>
   )
 
+  const Kpi = ({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) => (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '10px 12px', boxShadow: C.shadowCard }}>
+      <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color, fontFamily: C.mono, margin: '2px 0 0' }}>{value}</div>
+      <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1 }}>{sub}</div>
+    </div>
+  )
+
   return (
     <div>
-      {/* ── Engine status strip ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-        {[
-          { label: 'Lifecycle cells', value: String(seededCount || '—'), sub: '9 stages × 4 countries', color: C.cyan2 },
-          { label: 'Knowledge items', value: fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0)), sub: 'fresh intel ingested', color: C.violet },
-          { label: 'Cluster plans', value: String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0), sub: 'master planner queue', color: C.green },
-          { label: 'Last run', value: (status?.runs as Array<Record<string, unknown>> | undefined)?.[0] ? timeAgo(String(((status?.runs as Array<Record<string, unknown>>)[0] as Record<string, unknown>).started_at)) : '—', sub: 'engine audit trail', color: C.orange },
-        ].map((k) => (
-          <div key={k.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: '10px 12px', boxShadow: C.shadowCard }}>
-            <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: C.mono, margin: '2px 0 0' }}>{k.value}</div>
-            <div style={{ fontSize: 9, color: C.textMuted, marginTop: 1 }}>{k.sub}</div>
+      {/* ── Engine identity + command strip ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, fontFamily: C.serif, display: 'flex', alignItems: 'center', gap: 8 }}>
+            🧠 SEO Master Engine <span style={{ fontSize: 9, fontFamily: C.mono, fontWeight: 600, color: C.gold, background: C.goldSoft, padding: '2px 8px', borderRadius: 999 }}>v2 · six brains</span>
           </div>
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>
+            Life-cycle ontology · daily intel · auto-interlink · LLM share-of-voice · compliance enforcement
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" onClick={seedLifecycle} disabled={busy} style={btnGhost} title="Upsert the 36 life-cycle cells into Supabase">
+            🗺 Seed ontology
+          </button>
+          <button type="button" onClick={runIngest} disabled={busy} style={{ ...btnSolid(C.navy) }} title="Scrape all intelligence sources now">
+            {busy ? '⏳ Working…' : '🌐 Ingest knowledge'}
+          </button>
+          <button type="button" onClick={runPlan} disabled={busy} style={{ ...btnSolid(C.gold) }} title="Rank GSC demand into cluster missions">
+            {busy ? '⏳ Working…' : '🧭 Run planner'}
+          </button>
+        </div>
+      </div>
+
+      {notice && (
+        <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.greenSoft, border: `1px solid ${C.greenBorder}`, color: C.green, fontSize: 11, fontWeight: 600, marginBottom: 12 }}>✓ {notice}</div>
+      )}
+      {error && (
+        <div style={{ padding: '9px 14px', borderRadius: C.radiusSm, background: C.redSoft, border: `1px solid ${C.redBorder}`, color: C.red, fontSize: 11, fontFamily: C.mono, marginBottom: 12 }}>⚠ {error}</div>
+      )}
+
+      {/* ── KPI strip (six brains) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
+        <Kpi label="Lifecycle" value={String(seededCount || '—')} sub="cells seeded (36 max)" color={C.cyan2} />
+        <Kpi label="Knowledge" value={fmtN((status?.knowledge as { total?: number } | undefined)?.total ?? (knowledge?.items?.length ?? 0))} sub="intel items stored" color={C.violet} />
+        <Kpi label="Plans" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions" color={C.green} />
+        <Kpi label="Interlinks" value={String((status?.interlinks as { planned?: number } | undefined)?.planned ?? 0)} sub={`${(status?.interlinks as { applied?: number } | undefined)?.applied ?? 0} applied`} color={C.blue} />
+        <Kpi label="LLM voice" value={`${(status?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%`} sub="share of voice" color={C.violet} />
+        <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
+      </div>
+
+      {/* ── Tab navigation (dedicated surfaces) ── */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+              background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#fff' : C.textMuted,
+              border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
+            }}
+          >
+            {t.icon} {t.label}
+          </button>
         ))}
       </div>
 
-      {error && (
-        <div style={{ padding: '10px 14px', borderRadius: C.radiusSm, background: C.redSoft, border: `1px solid ${C.redBorder}`, color: C.red, fontSize: 11, marginBottom: 14, fontFamily: C.mono }}>
-          ⚠ {error}
+      {/* ══════════════ 1 · LIFECYCLE ══════════════ */}
+      {tab === 'lifecycle' && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🗺 Immigrant Life-cycle Map</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Every page we produce belongs to exactly one cell. Coverage = number of plans in that cell.</p>
+          </div>
+          <div style={{ overflowX: 'auto', padding: 14 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', color: C.textDim, fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stage</th>
+                  {COUNTRIES.map((c) => (
+                    <th key={c} style={{ textAlign: 'center', padding: '6px 8px', color: C.navy, fontFamily: C.mono, fontSize: 11, fontWeight: 800 }}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {STAGES.map((stage) => {
+                  const cellRow = (lifecycle || []).filter((c) => String(c.stage) === stage)
+                  return (
+                    <tr key={stage} style={{ borderTop: `1px solid ${C.border2}` }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 700, color: C.text, whiteSpace: 'nowrap' }}>
+                        {STAGE_LABELS[stage] || stage}
+                        {cellRow.some((c) => c.ymyl_level === 'critical') && (
+                          <span title="YMYL-critical stage — gate threshold 85" style={{ marginLeft: 6, cursor: 'help' }}>🛡</span>
+                        )}
+                      </td>
+                      {COUNTRIES.map((country) => {
+                        const cell = cellRow.find((c) => String(c.country) === country)
+                        const score = coverageMap.get(`${stage}|${country.toLowerCase()}`) || 0
+                        const hasPlan = score > 0
+                        const ymyl = cell ? String(cell.ymyl_level) : ''
+                        return (
+                          <td key={country} style={{ textAlign: 'center', padding: '6px 8px' }}>
+                            <div
+                              title={hasPlan ? `Plans: ${score} (opportunity score)` : cell ? `${STAGE_LABELS[stage]} · ${country}: not yet planned` : 'not seeded'}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                                minWidth: 64, padding: '5px 8px', borderRadius: C.radiusXs,
+                                background: hasPlan ? (ymyl === 'critical' ? C.goldSoft : C.greenSoft) : C.surface2,
+                                border: `1px solid ${hasPlan ? (ymyl === 'critical' ? C.goldBorder : C.greenBorder) : C.border2}`,
+                                color: hasPlan ? (ymyl === 'critical' ? C.gold : C.green) : C.textDim,
+                                fontFamily: C.mono, fontWeight: 700, fontSize: 10,
+                              }}
+                            >
+                              {hasPlan ? `★ ${score}` : ymyl === 'critical' ? '🛡' : '·'}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* ── Lifecycle map ── */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🗺 Immigrant Life-cycle Map</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>The full journey — intent → schools → work → housing → visa → settlement → citizenship → family → relatives. Coverage = plans per cell.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {seededCount === 0 && (
-              <button type="button" onClick={seedLifecycle} disabled={busy} style={{ padding: '6px 12px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer', background: C.navy, color: '#fff', fontSize: 11, fontWeight: 600, fontFamily: 'inherit' }}>
-                {busy ? '…' : 'Seed ontology'}
-              </button>
-            )}
-          </div>
-        </div>
-        <div style={{ overflowX: 'auto', padding: 14 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '6px 10px', color: C.textDim, fontFamily: C.mono, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stage</th>
-                {COUNTRIES.map((c) => (
-                  <th key={c} style={{ textAlign: 'center', padding: '6px 8px', color: C.navy, fontFamily: C.mono, fontSize: 11, fontWeight: 800 }}>{c}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {STAGES.map((stage) => {
-                const cellRow = lifecycleCells.filter((c) => String(c.stage) === stage)
-                return (
-                  <tr key={stage} style={{ borderTop: `1px solid ${C.border2}` }}>
-                    <td style={{ padding: '7px 10px', fontWeight: 700, color: C.text, whiteSpace: 'nowrap' }}>
-                      {STAGE_LABELS[stage] || stage}
-                      <span style={{ marginLeft: 6, fontSize: 9, color: C.textDim, fontFamily: C.mono }}>
-                        {cellRow.map((c) => c.ymyl_level === 'critical' ? '🛡' : '').join('')}
-                      </span>
-                    </td>
-                    {COUNTRIES.map((country) => {
-                      const cell = cellRow.find((c) => String(c.country) === country)
-                      const score = coverageMap.get(`${stage}|${country.toLowerCase()}`) || 0
-                      const hasPlan = score > 0
-                      const ymyl = cell ? String(cell.ymyl_level) : ''
-                      return (
-                        <td key={country} style={{ textAlign: 'center', padding: '6px 8px' }}>
-                          <div
-                            title={hasPlan ? `Plans: ${score} — opportunity score` : cell ? `${STAGE_LABELS[stage]} · ${country}: not yet planned` : 'not seeded'}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                              minWidth: 64, padding: '5px 8px', borderRadius: C.radiusXs,
-                              background: hasPlan ? (ymyl === 'critical' ? C.goldSoft : C.greenSoft) : C.surface2,
-                              border: `1px solid ${hasPlan ? (ymyl === 'critical' ? C.goldBorder : C.greenBorder) : C.border2}`,
-                              color: hasPlan ? (ymyl === 'critical' ? C.gold : C.green) : C.textDim,
-                              fontFamily: C.mono, fontWeight: 700, fontSize: 10,
-                            }}
-                          >
-                            {hasPlan ? `★ ${score}` : ymyl === 'critical' ? '🛡' : '·'}
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Knowledge feed ── */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🌐 Knowledge Radar</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Fresh policy, guidance & trend intel — ingested daily from official sources.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" onClick={runIngest} disabled={busy} style={{ padding: '6px 12px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer', background: C.navy, color: '#fff', fontSize: 11, fontWeight: 600, fontFamily: 'inherit' }}>
-              {busy ? '…' : '⚡ Ingest now'}
+      {/* ══════════════ 2 · KNOWLEDGE ══════════════ */}
+      {tab === 'knowledge' && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🌐 Knowledge Radar</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Fresh policy, guidance & trend intel — official sources + Google News fallbacks.</p>
+            </div>
+            <button type="button" onClick={runIngest} disabled={busy} style={{ ...btnSolid(C.navy) }}>
+              {busy ? '⏳ Ingesting…' : '⚡ Ingest now'}
             </button>
           </div>
-        </div>
-        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-          {(knowledge?.items || []).length === 0 && (
-            <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
-              No knowledge ingested yet — hit “⚡ Ingest now” to pull USCIS, Home Office, IRCC, Home Affairs & Google Trends.
-            </div>
-          )}
-          {(knowledge?.items || []).slice(0, 30).map((it) => {
-            const kind = KIND_META[String(it.kind || 'policy')] || KIND_META.policy
-            const countries = (it.countries as string[]) || []
-            const stages = (it.stages as string[]) || []
-            return (
-              <div key={String(it.id)} style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0 }}>{kind.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
-                    {badge(kind.label, C.surface2, kind.color)}
-                    {countries.map((c) => badge(c.toUpperCase(), C.blueSoft, C.blue))}
-                    {stages.map((s) => badge(STAGE_LABELS[s] || s, C.violetSoft, C.violet))}
-                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgo(String(it.fetched_at || it.published_at))}</span>
-                  </div>
-                  <a href={String(it.url)} target="_blank" rel="noreferrer" style={{ color: C.text, fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}>
-                    {String(it.title)}
-                  </a>
-                  {Boolean(it.ai_summary || it.summary) && (
-                    <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.5, marginTop: 3 }}>{String(it.ai_summary || it.summary).slice(0, 260)}</div>
-                  )}
-                </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {(knowledge?.items || []).length === 0 && (
+              <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                No knowledge ingested yet — hit “⚡ Ingest now” to pull USCIS, Home Office, IRCC, Home Affairs, Google Search Central & Trends.
               </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ── Plan queue ── */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard, marginBottom: 16 }}>
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🧭 Master Planner</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Ranked cluster missions — GSC demand × knowledge bias × lifecycle priority.</p>
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
-              <option value="all">All stages</option>
-              {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
-            </select>
-            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} style={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
-              <option value="all">All countries</option>
-              {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <button type="button" onClick={runPlan} disabled={busy} style={{ padding: '6px 12px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer', background: C.gold, color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'inherit' }}>
-              {busy ? '…' : '🧭 Run planner'}
-            </button>
-          </div>
-        </div>
-        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-          {(plans?.plans || []).length === 0 && (
-            <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
-              No cluster plans yet — run the planner to rank GSC demand into lifecycle missions.
-            </div>
-          )}
-          {(plans?.plans || []).slice(0, 25).map((p) => {
-            const score = Number(p.compliance_score) || 0
-            const st = String(p.status || 'planned')
-            const stMeta = STATUS_META[st] || STATUS_META.planned
-            const open = activePlan === p
-            return (
-              <div key={String(p.cluster_id)} style={{ borderBottom: `1px solid ${C.border2}` }}>
-                <div
-                  style={{ padding: '10px 18px', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}
-                  onClick={() => setActivePlan(open ? null : p)}
-                >
+            )}
+            {(knowledge?.items || []).slice(0, 40).map((it) => {
+              const kind = KIND_META[String(it.kind || 'policy')] || KIND_META.policy
+              const countries = (it.countries as string[]) || []
+              const stages = (it.stages as string[]) || []
+              return (
+                <div key={String(it.id)} style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0 }}>{kind.icon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
-                      {badge(stMeta.label, stMeta.bg, stMeta.fg)}
-                      {badge(String(p.country), C.blueSoft, C.blue)}
-                      {badge(STAGE_LABELS[String(p.stage)] || String(p.stage), C.cyanSoft, C.cyan2)}
-                      {String(p.ymyl) === 'critical' && badge('YMYL', C.goldSoft, C.gold)}
+                      {badge(kind.label, C.surface2, kind.color)}
+                      {countries.map((c) => badge(c.toUpperCase(), C.blueSoft, C.blue))}
+                      {stages.map((s) => badge(STAGE_LABELS[s] || s, C.violetSoft, C.violet))}
+                      <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgo(String(it.fetched_at || it.published_at))}</span>
                     </div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{String(p.primary_term)}</div>
-                    <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
-                      ★ {fmtN(Number(p.opportunity_score))} · {fmtN(Number(p.est_monthly_impressions))} imp/mo · {fmtN(Number(p.est_monthly_clicks))} clicks · pos #{Math.round(Number(p.position) || 0)}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>COMPLIANCE</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, fontFamily: C.mono, color: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }}>{score}</span>
-                    </div>
-                    <div style={{ width: 90, height: 5, borderRadius: 999, background: C.surface3, overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, score)}%`, height: '100%', borderRadius: 999, background: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }} />
-                    </div>
-                    {onBrief && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onBrief(p) }}
-                        style={{ padding: '4px 10px', borderRadius: 5, border: 'none', cursor: 'pointer', background: C.navy, color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'inherit', marginTop: 4 }}
-                      >
-                        ⚡ Brief
-                      </button>
+                    <a href={String(it.url)} target="_blank" rel="noreferrer" style={{ color: C.text, fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}>
+                      {String(it.title)}
+                    </a>
+                    {Boolean(it.ai_summary || it.summary) && (
+                      <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.5, marginTop: 3 }}>{String(it.ai_summary || it.summary).slice(0, 280)}</div>
                     )}
                   </div>
                 </div>
-                {open && (
-                  <div style={{ padding: '0 18px 14px' }}>
-                    <div style={{ background: C.surface2, borderRadius: C.radiusSm, padding: 12, fontSize: 11, color: C.textMuted, lineHeight: 1.6, marginBottom: 10 }}>
-                      {String(p.rationale || '')}
-                      {p.brief ? <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.border2}` }}>{String(p.brief)}</div> : null}
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 3 · PLANNER ══════════════ */}
+      {tab === 'planner' && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+          <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🧭 Master Planner Queue</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>Ranked missions: GSC demand × knowledge bias × lifecycle priority. ⚡ Brief hands one to the composer.</p>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} style={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                <option value="all">All stages</option>
+                {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+              </select>
+              <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} style={{ padding: '5px 8px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                <option value="all">All countries</option>
+                {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button type="button" onClick={runPlan} disabled={busy} style={{ ...btnSolid(C.gold) }}>
+                {busy ? '⏳ Planning…' : '🧭 Run planner'}
+              </button>
+            </div>
+          </div>
+          <div style={{ maxHeight: 460, overflowY: 'auto' }}>
+            {(plans?.plans || []).length === 0 && (
+              <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                No cluster plans yet — run the planner to rank GSC demand into lifecycle missions.
+              </div>
+            )}
+            {(plans?.plans || []).slice(0, 25).map((p) => {
+              const score = Number(p.compliance_score) || 0
+              const st = String(p.status || 'planned')
+              const stMeta = STATUS_META[st] || STATUS_META.planned
+              const open = expandedPlan === String(p.cluster_id)
+              return (
+                <div key={String(p.cluster_id)} style={{ borderBottom: `1px solid ${C.border2}` }}>
+                  <div style={{ padding: '10px 18px', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => setExpandedPlan(open ? null : String(p.cluster_id))}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
+                        {badge(stMeta.label, stMeta.bg, stMeta.fg)}
+                        {badge(String(p.country), C.blueSoft, C.blue)}
+                        {badge(STAGE_LABELS[String(p.stage)] || String(p.stage), C.cyanSoft, C.cyan2)}
+                        {String(p.ymyl) === 'critical' && badge('YMYL', C.goldSoft, C.gold)}
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{String(p.primary_term)}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
+                        ★ {fmtN(Number(p.opportunity_score))} · {fmtN(Number(p.est_monthly_impressions))} imp/mo · {fmtN(Number(p.est_monthly_clicks))} clicks · pos #{Math.round(Number(p.position) || 0)}
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                      <div>
-                        <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Content blueprint</div>
-                        <div style={{ fontSize: 10.5, color: C.text }}>
-                          Pillar: <strong>{String((p.plan as Record<string, unknown>)?.pillar || p.primary_term)}</strong>
-                        </div>
-                        {((p.plan as Record<string, unknown>)?.spokes as string[] | undefined)?.length ? (
-                          <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>
-                            Spokes: {((p.plan as Record<string, unknown>).spokes as string[]).slice(0, 3).join(' · ')}
-                          </div>
-                        ) : null}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>COMPLIANCE</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, fontFamily: C.mono, color: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }}>{score}</span>
                       </div>
-                      <div>
-                        <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Distribution</div>
-                        {((p.distribution as Array<Record<string, unknown>>) || []).map((d, i) => (
-                          <div key={i} style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, wordBreak: 'break-all' }}>→ {String(d.repo)}/{String(d.path)}</div>
-                        ))}
+                      <div style={{ width: 90, height: 5, borderRadius: 999, background: C.surface3, overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(100, score)}%`, height: '100%', borderRadius: 999, background: score >= 85 ? C.green : score >= 70 ? C.orange : C.red }} />
                       </div>
-                      <div>
-                        <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Interlinks</div>
-                        {((p.interlinks as string[]) || []).slice(0, 4).map((l, i) => (
-                          <div key={i} style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>↔ {l}</div>
-                        ))}
+                      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                        {onBrief && (
+                          <button type="button" onClick={(e) => { e.stopPropagation(); onBrief(p) }} style={{ ...btnSolid(C.navy), padding: '4px 10px' }} title="Pre-fill the brief composer with this mission">
+                            ⚡ Brief
+                          </button>
+                        )}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPlan(open ? null : String(p.cluster_id)) }} style={{ ...btnGhost, padding: '4px 10px' }}>
+                          {open ? '▲ Hide' : '▼ Details'}
+                        </button>
                       </div>
                     </div>
                   </div>
+                  {open && (
+                    <div style={{ padding: '0 18px 14px' }}>
+                      <div style={{ background: C.surface2, borderRadius: C.radiusSm, padding: 12, fontSize: 11, color: C.textMuted, lineHeight: 1.6, marginBottom: 10 }}>
+                        {String(p.rationale || '')}
+                        {p.brief ? <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.border2}` }}>{String(p.brief)}</div> : null}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Blueprint</div>
+                          <div style={{ fontSize: 10.5, color: C.text }}>Pillar: <strong>{String((p.plan as Record<string, unknown>)?.pillar || p.primary_term)}</strong></div>
+                          {Boolean(((p.plan as Record<string, unknown>)?.spokes as string[] | undefined)?.length) && (
+                            <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>Spokes: {((p.plan as Record<string, unknown>).spokes as string[]).slice(0, 3).join(' · ')}</div>
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Distribution</div>
+                          {((p.distribution as Array<Record<string, unknown>>) || []).map((d, i) => (
+                            <div key={i} style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, wordBreak: 'break-all' }}>→ {String(d.repo)}/{String(d.path)}</div>
+                          ))}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Interlinks</div>
+                          {((p.interlinks as string[]) || []).slice(0, 4).map((l, i) => (
+                            <div key={i} style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>↔ {l}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 4 · AUTO-INTERLINK ══════════════ */}
+      {tab === 'interlink' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
+            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif, marginBottom: 4 }}>🔗 Auto-Interlink Generator</h2>
+            <p style={{ margin: 0, fontSize: 11, color: C.textMuted, marginBottom: 14 }}>
+              Pick a life-cycle cell and the engine builds a scored link graph: journey neighbors, cross-country comparisons, marketplace CTA and cluster siblings — with anchors and H2 placement.
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, textTransform: 'uppercase' }}>Stage</label>
+              <select value={ilStage} onChange={(e) => setIlStage(e.target.value)} style={{ padding: '6px 10px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+              </select>
+              <label style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, textTransform: 'uppercase' }}>Country</label>
+              <select value={ilCountry} onChange={(e) => setIlCountry(e.target.value)} style={{ padding: '6px 10px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`, fontSize: 11, fontFamily: 'inherit', background: C.surface, color: C.text }}>
+                {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button type="button" onClick={generateInterlinks} disabled={busy} style={{ ...btnSolid(C.navy) }}>
+                {busy ? '⏳ Generating…' : '🔗 Generate interlink plan'}
+              </button>
+              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                {(status?.interlinks as { planned?: number; applied?: number } | undefined)?.planned ?? 0} planned · {(status?.interlinks as { applied?: number } | undefined)?.applied ?? 0} applied
+              </span>
+            </div>
+          </div>
+
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+              <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>Link graph ({interlinks?.edges ? (interlinks.edges as unknown[]).length : 0} edges)</h2>
+            </div>
+            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              {(!interlinks?.edges || (interlinks.edges as unknown[]).length === 0) && (
+                <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                  No interlink edges yet — generate a plan above, and every future article can embed it.
+                </div>
+              )}
+              {(interlinks?.edges as Array<Record<string, unknown>> | undefined)?.map((e) => {
+                const reason = REASON_META[String(e.reason)] || { icon: '🔗', label: String(e.reason) }
+                return (
+                  <div key={String(e.id)} style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 13, width: 20, textAlign: 'center', flexShrink: 0 }}>{reason.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
+                        {badge(reason.label, C.cyanSoft, C.cyan2)}
+                        {badge(String(e.status).toUpperCase(), e.status === 'applied' ? C.greenSoft : C.goldSoft, e.status === 'applied' ? C.green : C.gold)}
+                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>score {Number(e.score).toFixed(2)}</span>
+                      </div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text }}>{String(e.anchor_text)}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, wordBreak: 'break-all' }}>
+                        {String(e.source_slug)} → <a href={String(e.target_url)} target="_blank" rel="noreferrer" style={{ color: C.blue, textDecoration: 'none' }}>{String(e.target_url)}</a>
+                      </div>
+                      {Boolean(e.context_h2) && <div style={{ fontSize: 10, color: C.textDim }}>Place in: “{String(e.context_h2)}”</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 5 · LLM VISIBILITY ══════════════ */}
+      {tab === 'llm' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif, marginBottom: 4 }}>🤖 LLM / AEO Visibility</h2>
+                <p style={{ margin: 0, fontSize: 11, color: C.textMuted, maxWidth: 560 }}>
+                  Prompt audits: the engine asks an LLM to answer real estate queries with sources, then checks whether yousafeconsultancy.com was cited. Share of voice = cited ÷ audited.
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <button type="button" onClick={runLlmAudit} disabled={busy} style={{ ...btnSolid(C.violet) }}>
+                  {busy ? '⏳ Auditing…' : '🤖 Run audit batch (10 queries)'}
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 24, alignItems: 'center', marginTop: 14 }}>
+              <div style={{ width: 120, height: 120, borderRadius: '50%', position: 'relative', background: `conic-gradient(${C.violet} ${(visibility?.shareOfVoice as number) || 0}%, ${C.surface3} 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: 88, height: 88, borderRadius: '50%', background: C.surface, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, fontFamily: C.mono, color: C.violet }}>{(visibility?.shareOfVoice as number) || 0}%</div>
+                  <div style={{ fontSize: 8, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase' }}>share of voice</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ fontSize: 12, color: C.text }}><strong>{(visibility?.total as number) || 0}</strong> audits · <strong style={{ color: C.green }}>{(visibility?.cited as number) || 0}</strong> cited the estate</div>
+                {Object.entries((visibility?.byStage as Record<string, number>) || {}).map(([stage, count]) => (
+                  <div key={stage} style={{ fontSize: 10.5, color: C.textMuted, display: 'flex', gap: 6 }}>
+                    <span style={{ fontFamily: C.mono }}>{STAGE_LABELS[stage] || stage}</span>
+                    <span style={{ color: C.text, fontFamily: C.mono }}>{count as number}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+              <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>Audit trail ({(visibility?.audits as unknown[] | undefined)?.length || 0})</h2>
+            </div>
+            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              {(!visibility?.audits || (visibility.audits as unknown[]).length === 0) && (
+                <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                  No audits yet — run a batch to see your share of voice in generative engines.
+                </div>
+              )}
+              {(visibility?.audits as Array<Record<string, unknown>> | undefined)?.map((a) => (
+                <div key={String(a.id)} style={{ padding: '10px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 14, width: 20, textAlign: 'center', flexShrink: 0 }}>{a.cited ? '✅' : '❌'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
+                      {badge(a.cited ? 'CITED' : 'NOT CITED', a.cited ? C.greenSoft : C.redSoft, a.cited ? C.green : C.red)}
+                      {a.stage ? badge(STAGE_LABELS[String(a.stage)] || String(a.stage), C.cyanSoft, C.cyan2) : null}
+                      {a.country ? badge(String(a.country), C.blueSoft, C.blue) : null}
+                      <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{String(a.engine)} · {timeAgo(String(a.created_at))}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: C.text }}>{String(a.query)}</div>
+                    {Boolean((a.cited_urls as string[] | undefined)?.length) && (
+                      <div style={{ fontSize: 10, color: C.green, fontFamily: C.mono, wordBreak: 'break-all', marginTop: 2 }}>
+                        {(a.cited_urls as string[]).join(' · ')}
+                      </div>
+                    )}
+                    {Boolean(a.snippet) && <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3, lineHeight: 1.5 }}>“{String(a.snippet).slice(0, 220)}{String(a.snippet).length > 220 ? '…' : ''}”</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ 6 · COMPLIANCE GATE ══════════════ */}
+      {tab === 'gate' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>
+            <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif, marginBottom: 4 }}>🛡 AEO / GEO / YMYL Compliance Gate</h2>
+            <p style={{ margin: 0, fontSize: 11, color: C.textMuted, marginBottom: 14 }}>
+              Paste a draft and the gate deterministically scans evidence — statistics, statutes, disclaimers, author bylines, question headings, internal links — then scores it.
+              YMYL-critical stages (visa · citizenship · family) require ≥85 and never pass without a statutory anchor + disclaimer.
+            </p>
+            <textarea
+              value={gateDraft}
+              onChange={(e) => setGateDraft(e.target.value)}
+              placeholder="Paste draft content here (at least 60 characters) to run the compliance gate…"
+              style={{ width: '100%', minHeight: 140, padding: 10, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, fontSize: 11.5, fontFamily: C.mono, resize: 'vertical', background: C.surface, color: C.text, boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" onClick={runGateOnDraft} disabled={busy || gateDraft.trim().length < 60} style={{ ...btnSolid(C.navy) }}>
+                {busy ? '⏳ Scanning…' : '🛡 Run compliance gate'}
+              </button>
+              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+                Gate runs so far: {((status?.gate as { runs?: number } | undefined)?.runs ?? gate?.runs ? (gate.runs as unknown[]).length : 0)} · pass rate {(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%
+              </span>
+            </div>
+
+            {gateVerdict && (
+              <div style={{ marginTop: 14, borderTop: `1px solid ${C.border2}`, paddingTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  {gateVerdict.passed
+                    ? badge('PASSED', C.greenSoft, C.green)
+                    : badge('BLOCKED', C.redSoft, C.red)}
+                  <span style={{ fontSize: 24, fontWeight: 800, fontFamily: C.mono, color: Number(gateVerdict.score) >= 85 ? C.green : Number(gateVerdict.score) >= 70 ? C.orange : C.red }}>
+                    {Number(gateVerdict.score)}/100
+                  </span>
+                  <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>threshold {Number(gateVerdict.threshold)}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 10 }}>
+                  {Object.entries((gateVerdict.compliance as { byCategory?: Record<string, { met: number; total: number; score: number }> })?.byCategory || {}).map(([cat, v]) => (
+                    <div key={cat} style={{ padding: 8, borderRadius: C.radiusXs, background: C.surface2, fontSize: 10.5 }}>
+                      <div style={{ fontFamily: C.mono, textTransform: 'uppercase', color: C.textDim, letterSpacing: '0.04em' }}>{cat}</div>
+                      <div style={{ fontWeight: 700, color: Number(v.score) >= 80 ? C.green : Number(v.score) >= 60 ? C.orange : C.red, fontFamily: C.mono }}>
+                        {Number(v.met)}/{Number(v.total)} <span style={{ color: C.textDim, fontWeight: 500 }}>({Number(v.score)}%)</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {Boolean((gateVerdict.blockers as string[] | undefined)?.length) && (
+                  <div>
+                    <div style={{ fontSize: 10, color: C.red, fontFamily: C.mono, fontWeight: 700, marginBottom: 4 }}>MISSING ({((gateVerdict.blockers as string[] | undefined) || []).length}):</div>
+                    {((gateVerdict.blockers as string[]) || []).slice(0, 12).map((b, i) => (
+                      <div key={i} style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.6 }}>• {b}</div>
+                    ))}
+                  </div>
                 )}
               </div>
-            )
-          })}
-        </div>
-      </div>
+            )}
+          </div>
 
-      {/* ── Engine health / sources ── */}
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
-          <h2 style={{ margin: 0, fontSize: 16, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>⚙️ Engine Health</h2>
-        </div>
-        <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Intelligence sources</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {((status?.sources as Array<Record<string, unknown>>) || []).map((s) => (
-                <div key={String(s.id)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: C.textMuted, padding: '3px 0', borderBottom: `1px solid ${C.border2}` }}>
-                  <span>{(KIND_META[String(s.kind)] || KIND_META.policy).icon} {String(s.label)}</span>
-                  <span style={{ fontFamily: C.mono, color: C.textDim }}>{((s.countries as string[]) || []).join('/')}</span>
-                </div>
-              ))}
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+              <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>Recent gate runs</h2>
             </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Run audit trail</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {((status?.runs as Array<Record<string, unknown>>) || []).slice(0, 8).map((r) => (
-                <div key={String(r.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10.5, color: C.textMuted, padding: '3px 0', borderBottom: `1px solid ${C.border2}` }}>
-                  <span>
-                    <span style={{ fontFamily: C.mono, fontWeight: 700, color: C.text }}>{String(r.kind)}</span>
-                    <span style={{ marginLeft: 6 }}>{timeAgo(String(r.started_at))}</span>
-                  </span>
-                  {badge(String(r.status).toUpperCase(), r.status === 'success' ? C.greenSoft : r.status === 'failed' ? C.redSoft : C.goldSoft, r.status === 'success' ? C.green : r.status === 'failed' ? C.red : C.gold)}
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {(!gate?.runs || (gate.runs as unknown[]).length === 0) && (
+                <div style={{ padding: 22, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                  No gate runs yet — every draft and plan check is recorded here for full accountability.
                 </div>
-              ))}
-              {!((status?.runs as Array<Record<string, unknown>> | undefined)?.length) && (
-                <div style={{ fontSize: 10.5, color: C.textDim, fontFamily: C.mono, padding: '6px 0' }}>No runs yet — every ingest/plan is logged here for full accountability.</div>
               )}
+              {(gate?.runs as Array<Record<string, unknown>> | undefined)?.map((r) => (
+                <div key={String(r.id)} style={{ padding: '9px 18px', borderBottom: `1px solid ${C.border2}`, display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {r.passed ? badge('PASS', C.greenSoft, C.green) : badge('BLOCK', C.redSoft, C.red)}
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: C.text }}>
+                    <span style={{ fontWeight: 700 }}>{Number(r.score)}</span>
+                    <span style={{ color: C.textDim, fontFamily: C.mono }}>/{Number(r.threshold)}</span>
+                    <span style={{ color: C.textMuted }}> · {String(r.subject_type)}</span>
+                    {r.stage ? <span style={{ color: C.textDim, fontFamily: C.mono }}> · {STAGE_LABELS[String(r.stage)] || String(r.stage)}</span> : null}
+                  </div>
+                  <div style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, flexShrink: 0 }}>{timeAgo(String(r.created_at))}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Engine health footer ── */}
+      <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: C.radiusSm, background: C.surface2, border: `1px solid ${C.border2}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
+          Last run: {(status?.runs as Array<Record<string, unknown>> | undefined)?.[0]
+            ? `${String(((status?.runs as Array<Record<string, unknown>>)[0] as Record<string, unknown>).kind)} · ${timeAgo(String(((status?.runs as Array<Record<string, unknown>>)[0] as Record<string, unknown>).started_at))}`
+            : 'no runs yet'}
+        </span>
+        <button type="button" onClick={loadAll} style={btnGhost} title="Refresh all six engine surfaces">
+          ↻ Refresh all surfaces
+        </button>
       </div>
     </div>
   )
