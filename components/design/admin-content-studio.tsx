@@ -337,7 +337,11 @@ interface CannibalMergeRecord {
   redirectsCreated: number
   prUrl?: string
   prNumber?: number
-  status: 'merged' | 'skipped'
+  status: 'merged' | 'skipped' | 'differentiating' | 'deferred'
+  resolutionType?: 'consolidate' | 'differentiate' | 'defer'
+  followUpAt?: number
+  recheckDue?: boolean
+  differentiationPlan?: Array<{ url: string; targetQuery: string; angle: string }>
   message?: string
   mergedAt: number
 }
@@ -1338,6 +1342,7 @@ function MergeHistory() {
                   }}>
                     {m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}
                   </span>
+                  {m.recheckDue ? <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 800, fontFamily: C.mono, background: C.goldSoft, color: C.orange }}>⟳ RECHECK DUE</span> : null}
                   <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgoMs(m.mergedAt)}</span>
                   {m.prNumber ? (
                     <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
@@ -1351,6 +1356,7 @@ function MergeHistory() {
                 <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {m.loserUrls.length} loser{m.loserUrls.length === 1 ? '' : 's'} → {String(m.winnerUrl || '').replace(/^https?:\/\//, '')} · {m.redirectsCreated} redirect{m.redirectsCreated === 1 ? '' : 's'}
                 </div>
+                {m.followUpAt ? <div style={{ fontSize: 9.5, color: m.recheckDue ? C.orange : C.textDim, fontFamily: C.mono, marginTop: 3 }}>{m.recheckDue ? 'Recheck due — verify against fresh GSC data' : `Recheck scheduled · ${new Date(m.followUpAt).toLocaleDateString()}`}</div> : null}
                 {m.message && <div style={{ fontSize: 9.5, color: C.textMuted, marginTop: 3 }}>{m.message}</div>}
               </div>
             ))}
