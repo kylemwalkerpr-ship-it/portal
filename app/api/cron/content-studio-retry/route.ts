@@ -44,7 +44,7 @@ function backoffMinutes(attempt: number): number {
  * the quality gate / ship pipeline already emits, but expressed so the queue
  * band and War Room can group failures without parsing error_message.
  */
-const ALLOWED_KINDS = new Set([
+const ALLOWED_KINDS = [
   'compliance_gate',
   'ai_provider',
   'github_push',
@@ -54,7 +54,7 @@ const ALLOWED_KINDS = new Set([
   'config',
   'timeout',
   'unknown',
-] as const)
+] as const
 
 type FailureKind = (typeof ALLOWED_KINDS)[number]
 
