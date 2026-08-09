@@ -14,6 +14,8 @@
  * Default / auto / deepseek → NVIDIA DeepSeek primary, Cloudflare fallback.
  */
 
+import { qualityPromptBlock } from './seoFactory/contentQualityGate'
+
 const CF_AI_MODEL =
   process.env.CLOUDFLARE_AI_MODEL?.trim() ||
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
@@ -1206,6 +1208,16 @@ const COMPLETE_TIMEOUT_MS = Math.max(
   Number.parseInt(process.env.CONTENT_AI_COMPLETE_TIMEOUT_MS || '120000', 10) || 120_000,
 )
 
+function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions {
+  const marker = '## MANDATORY QUALITY RULES'
+  if (opts.system.includes(marker)) return opts
+  const system = opts.system.trim()
+  return {
+    ...opts,
+    system: system ? `${system}\n\n${qualityPromptBlock()}` : qualityPromptBlock(),
+  }
+}
+
 async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -1226,6 +1238,9 @@ async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): 
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
   // Apply the latest admin provider/key settings without requiring a redeploy.
   await refreshAiVault()
+  // Every provider receives the same compliance contract, including custom
+  // depth-rescue systems that do not pass through the factory prompt builder.
+  opts = withUniversalQualityContract(opts)
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
@@ -1286,6 +1301,8 @@ export async function* generateContentTextStream(
 ): AsyncGenerator<ContentAiStreamEvent> {
   // Apply the latest admin provider/key settings before constructing candidates.
   await refreshAiVault()
+  // Streaming and complete generation share one compliance contract.
+  opts = withUniversalQualityContract(opts)
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
