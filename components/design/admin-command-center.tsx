@@ -164,6 +164,48 @@ function stageMeta(stage: string): { label: string; icon: string } | null {
   return (STAGE_META as Record<string, { label: string; icon: string }>)[stage] || null
 }
 
+/**
+ * The journey ladder \u2014 which stage comes BEFORE and AFTER each stage in the
+ * same country. Mirrors `lib/seoEngine/ontology.ts:LIFECYCLE_STAGES[*].countries[*].neighbors`.
+ * Kept client-side so the wizard can show placement before any API call.
+ */
+const JOURNEY_NEIGHBORS: Record<LifecycleStage, { prev?: LifecycleStage; next?: LifecycleStage }> = {
+  intent:      { next: 'schools' },
+  schools:     { prev: 'intent',      next: 'work' },
+  work:        { prev: 'schools',     next: 'visa' },
+  housing:     { prev: 'visa',        next: 'settlement' },
+  visa:        { prev: 'work',        next: 'housing' },
+  settlement:  { prev: 'housing',     next: 'citizenship' },
+  citizenship: { prev: 'settlement',  next: 'family' },
+  family:      { prev: 'citizenship', next: 'relatives' },
+  relatives:   { prev: 'family' },
+}
+
+/** Mirror of ontology's `neighbors.across` \u2014 same life-cycle role across neighbour stages. */
+const STAGE_PEERS: Record<LifecycleStage, LifecycleStage[]> = {
+  intent:      ['schools', 'work', 'visa', 'settlement'],
+  schools:     ['intent', 'work', 'visa', 'citizenship'],
+  work:        ['schools', 'visa', 'citizenship', 'housing'],
+  housing:     ['work', 'settlement', 'relatives'],
+  visa:        ['work', 'housing', 'citizenship', 'family'],
+  settlement:  ['housing', 'work', 'citizenship'],
+  citizenship: ['work', 'settlement', 'family', 'relatives'],
+  family:      ['citizenship', 'relatives', 'work'],
+  relatives:   ['citizenship', 'family'],
+}
+
+interface JourneyMap {
+  prev: LifecycleStage | null
+  current: LifecycleStage
+  next: LifecycleStage | null
+  peers: LifecycleStage[]
+}
+
+function buildJourneyMap(stage: LifecycleStage): JourneyMap {
+  const nb = JOURNEY_NEIGHBORS[stage] || {}
+  return { prev: nb.prev || null, current: stage, next: nb.next || null, peers: STAGE_PEERS[stage] || [] }
+}
+
 function fmtN(n: number | undefined | null): string {
   const v = Number(n) || 0
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -814,6 +856,8 @@ export default function AdminCommandCenter({
       }))
       setBrief((prev) => prev ? { ...prev, interlinks: normalized as any } : prev)
       notify(`Link plan rebuilt for ${opts.stage} — ${normalized.length} target${normalized.length === 1 ? '' : 's'}.`, 'success')
+      // Refresh persisted-state footer so the operator sees what just landed in seo_interlinks.
+      void fetchPersistedCell(opts.stage, (opts.country || 'US').toUpperCase())
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Interlink recompute failed', 'error')
     } finally {
@@ -823,6 +867,60 @@ export default function AdminCommandCenter({
 
   // ── Region → Country normalization ───────────────────────────────────────
   const [relinking, setRelinking] = React.useState(false)
+
+  interface PersistedCell {
+    stage: string
+    country: string
+    total: number
+    applied: number
+    planned: number
+    byReason: Record<string, number>
+    topTargets: Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>
+    lastUpdated: string | null
+  }
+  const [interlinkPersisted, setInterlinkPersisted] = React.useState<PersistedCell | null>(null)
+  const [inspectingPersisted, setInspectingPersisted] = React.useState(false)
+  const lastInspectKey = React.useRef('')
+
+  const fetchPersistedCell = React.useCallback(async (stage: LifecycleStage, country: string) => {
+    const key = `${stage}|${country}`
+    if (lastInspectKey.current === key) return
+    lastInspectKey.current = key
+    setInspectingPersisted(true)
+    try {
+      const res = await fetch(`/api/seo-engine/interlink?stage=${encodeURIComponent(stage)}&country=${encodeURIComponent(country)}`, {
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; error?: string; total?: number; applied?: number; planned?: number;
+        byReason?: Record<string, number>;
+        topTargets?: Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>;
+        lastUpdated?: string | null;
+      }
+      if (!res.ok || !data.ok) return
+      setInterlinkPersisted({
+        stage, country,
+        total: data.total || 0,
+        applied: data.applied || 0,
+        planned: data.planned || 0,
+        byReason: data.byReason || {},
+        topTargets: data.topTargets || [],
+        lastUpdated: data.lastUpdated || null,
+      })
+    } catch {
+      // silent \u2014 the footer just stays in its last-known state
+    } finally {
+      setInspectingPersisted(false)
+    }
+  }, [])
+
+  // Auto-refresh the persisted-state footer whenever the operator pivots to a
+  // different (stage x country) cell, or when the recompute just landed.
+  React.useEffect(() => {
+    if (!brief || !brief.stage) return
+    lastInspectKey.current = ''
+    void fetchPersistedCell(brief.stage as LifecycleStage, brief.region || 'US')
+  }, [brief?.stage, brief?.region, (brief?.interlinks as any[] | undefined)?.length])
 
     const runGenerate = async () => {
     if (!brief) return
@@ -1911,6 +2009,97 @@ function RecheckDuePanel() {
                   {LIFECYCLE_STAGES.find((s) => s.key === brief.stage)?.hint}
                 </div>
               )}
+
+              {/* \u2500\u2500 Journey map (prev / current / next + cross-stage peers) \u2500\u2500 */}
+              {brief.stage && (() => {
+                const j = buildJourneyMap(brief.stage as LifecycleStage)
+                const country = (brief.region || 'us').toLowerCase()
+                const jumpToStage = (k: LifecycleStage) => {
+                  setBrief({ ...brief, stage: k })
+                  void recomputeInterlinks({
+                    stage: k,
+                    country: brief.region || 'US',
+                    contentType: brief.contentType || 'blog_post',
+                    keywords: brief.keywords || [],
+                    clusterId: brief.cluster?.id,
+                    topic: brief.topic,
+                  })
+                }
+                const StageChip = ({ k }: { k: LifecycleStage }) => {
+                  const m = stageMeta(k)
+                  if (!m) return null
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => jumpToStage(k)}
+                      title={`Jump to ${m.label}` + ' \u00b7 rebuild the plan for that cell'}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '4px 8px', borderRadius: 999,
+                        border: `1px solid ${C.border}`, background: C.surface,
+                        color: C.text, fontSize: 10, fontFamily: C.mono, fontWeight: 700,
+                        cursor: 'pointer', transition: 'all 0.12s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = C.goldSoft; e.currentTarget.style.borderColor = C.goldBorder }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border }}
+                    >
+                      <span>{m.icon}</span>
+                      <span>{m.label}</span>
+                    </button>
+                  )
+                }
+                const CurrentChip = () => (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '5px 12px', borderRadius: 999,
+                    background: C.gold, color: '#fff', fontSize: 11, fontFamily: C.mono, fontWeight: 800,
+                    border: `1px solid ${C.gold}`, boxShadow: '0 2px 8px rgba(154,123,59,0.30)',
+                  }} title="This is your active stage cell">
+                    <span>{stageMeta(j.current)?.icon}</span>
+                    <span>{stageMeta(j.current)?.label}</span>
+                    <span style={{ fontSize: 9, opacity: 0.85, fontWeight: 700 }}>(you are here)</span>
+                  </span>
+                )
+                return (
+                  <div style={{
+                    marginTop: 10, padding: '8px 10px', borderRadius: C.radiusSm,
+                    border: `1px dashed ${C.goldBorder}`, background: '#FFFEF5',
+                  }}>
+                    <div style={{
+                      fontSize: 9, color: C.gold, fontFamily: C.mono, fontWeight: 800,
+                      letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6,
+                    }}>
+                      \ud83e\udded Journey placement \u00b7 <span style={{
+                        textTransform: 'none', color: C.textMuted, fontWeight: 600,
+                      }}>cell <strong style={{ color: C.text }}>{brief.stage}</strong> \u00d7 <strong style={{ color: C.text }}>{country}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {j.prev && (
+                        <>
+                          <StageChip k={j.prev} />
+                          <span style={{ color: C.textDim, fontFamily: C.mono }}>\u2190</span>
+                        </>
+                      )}
+                      <CurrentChip />
+                      {j.next && (<>
+                        <span style={{ color: C.textDim, fontFamily: C.mono }}>\u2192</span>
+                        <StageChip k={j.next} />
+                      </>)}
+                    </div>
+                    {j.peers.length > 0 && (
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontSize: 9, color: C.textDim, fontFamily: C.mono, fontWeight: 700,
+                          letterSpacing: '0.06em', textTransform: 'uppercase',
+                        }}>Cross-stage peers</span>
+                        {j.peers.slice(0, 6).map((p) => (
+                          <StageChip key={String(p)} k={p} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               {brief.interlinks && (brief.interlinks as any[]).length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -1953,6 +2142,106 @@ function RecheckDuePanel() {
                   No target edges yet — click <strong>Recompute for stage</strong> to build the plan.
                 </div>
               )}
+
+              {/* \u2500\u2500 Persisted-state footer (what is currently in seo_interlinks) \u2500\u2500 */}
+              <div style={{
+                marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.goldBorder}`,
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: C.mono, fontSize: 10, flexWrap: 'wrap' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '3px 8px', borderRadius: 999,
+                      background: C.navy, color: '#fff', fontWeight: 800, fontSize: 9,
+                      letterSpacing: '0.06em',
+                    }}>\ud83d\uddc4 seo_interlinks</span>
+                    {interlinkPersisted ? (
+                      <>
+                        <span style={{ color: C.textMuted }}>
+                          <strong style={{ color: C.text, fontSize: 11 }}>{interlinkPersisted.total}</strong> planned
+                        </span>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 7px', borderRadius: 999,
+                          background: C.greenSoft, color: C.green, fontFamily: C.mono, fontSize: 9,
+                          fontWeight: 700,
+                        }}>
+                          <strong>{interlinkPersisted.applied}</strong> applied
+                        </span>
+                        <span style={{ color: C.textMuted }}>
+                          awaiting <strong style={{ color: C.gold }}>{interlinkPersisted.planned}</strong>
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: C.textDim }}>{inspectingPersisted ? 'Inspecting persisted rows\u2026' : 'No persisted rows inspected yet.'}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => brief?.stage && void fetchPersistedCell(brief.stage as LifecycleStage, brief.region || 'US')}
+                      title="Re-run the persisted-cell inspector against seo_interlinks"
+                      style={{
+                        marginLeft: 6, padding: '3px 9px', borderRadius: 999,
+                        border: `1px solid ${C.border}`, background: C.surface,
+                        color: C.textMuted, fontFamily: C.mono, fontSize: 9,
+                        fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >\u21bb Inspect</button>
+                  </div>
+                  {interlinkPersisted?.lastUpdated && (
+                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>
+                      last write \u00b7 {timeAgo(interlinkPersisted.lastUpdated)}
+                    </span>
+                  )}
+                </div>
+                {interlinkPersisted && interlinkPersisted.total > 0 && (
+                  <>
+                    {/* Reasons bar \u2014 proportional, deterministic */}
+                    {(() => {
+                      const reasons = Object.entries(interlinkPersisted.byReason).sort((a, b) => b[1] - a[1])
+                      if (!reasons.length) return null
+                      const max = reasons[0][1] || 1
+                      return (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {reasons.slice(0, 6).map(([reason, count]) => {
+                            const m = REASON_META[reason] || REASON_META.cluster_related
+                            const w = Math.max(8, Math.round((count / max) * 80))
+                            return (
+                              <span key={reason} title={`${m.label} \u00b7 ${count} persisted`} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 7px', borderRadius: 3,
+                                background: m.bg, color: '#111', fontFamily: C.mono, fontSize: 9,
+                              }}>
+                                <span style={{ width: w, height: 6, borderRadius: 3, background: m.fg, display: 'inline-block' }} />
+                                <span style={{ fontWeight: 700 }}>{m.label}</span>
+                                <span style={{ color: m.fg, fontWeight: 700 }}>{count}</span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
+                    {/* Top persisted targets (compact) */}
+                    {interlinkPersisted.topTargets.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {interlinkPersisted.topTargets.slice(0, 4).map((t, i) => (
+                          <span key={i} style={{
+                            fontSize: 9, fontFamily: C.mono, color: C.textMuted,
+                            padding: '2px 7px', borderRadius: 3, background: C.surface,
+                            border: `1px solid ${C.border}`,
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                          }} title={`${t.url} \u00b7 status=${t.status} \u00b7 score=${t.score.toFixed(2)}`}>
+                            <a href={t.url} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontWeight: 700 }}>
+                              {t.anchor.length > 32 ? t.anchor.slice(0, 30) + '\u2026' : t.anchor}
+                            </a>
+                            <span style={{ color: C.textDim }}>\u00b7 {t.host}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
