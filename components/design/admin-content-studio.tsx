@@ -10,7 +10,7 @@ const AdminCommandCenter = React.lazy(() => import('./admin-command-center'))
 import AdminInlineEditor from './admin-inline-editor'
 
 const C = {
-  bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
+  background: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
   border: 'rgba(0,0,0,0.08)', border2: 'rgba(0,0,0,0.05)',
   cyan: '#3C3B6E', red: '#DC2626', green: '#166534', greenSoft: '#ECFDF5',
   orange: '#D97706', purple: '#7C3AED', text: '#1F2937', textMuted: '#6B7280',
@@ -89,13 +89,13 @@ const LIFE_CYCLE_STAGES: { value: string; label: string; hint: string }[] = [
   { value: 'citizenship', label: 'Citizenship & PR', hint: 'naturalization, ILR, green card' },
   { value: 'relocation', label: 'Move relatives', hint: 'family reunification, parent visas' },
 ]
-const PLAY_META: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
-  quick_win: { label: 'Quick win', bg: '#FEF3C7', fg: '#92400E', icon: '⚡' },
-  content_gap: { label: 'Content gap', bg: '#FEE2E2', fg: '#991B1B', icon: '⛰' },
-  rising: { label: 'Rising', bg: '#D1FAE5', fg: '#065F46', icon: '📈' },
-  refresh: { label: 'Refresh', bg: '#DBEAFE', fg: '#1E40AF', icon: '♻' },
-  defend: { label: 'Defend', bg: '#EDE9FE', fg: '#5B21B6', icon: '🛡' },
-  cannibal: { label: 'Watch cannibal.', bg: '#FCE7F3', fg: '#9D174D', icon: '⚠' },
+const PLAY_META: Record<string, { label: string; background: string; fg: string; icon: string }> = {
+  quick_win: { label: 'Quick win', background: '#FEF3C7', fg: '#92400E', icon: '⚡' },
+  content_gap: { label: 'Content gap', background: '#FEE2E2', fg: '#991B1B', icon: '⛰' },
+  rising: { label: 'Rising', background: '#D1FAE5', fg: '#065F46', icon: '📈' },
+  refresh: { label: 'Refresh', background: '#DBEAFE', fg: '#1E40AF', icon: '♻' },
+  defend: { label: 'Defend', background: '#EDE9FE', fg: '#5B21B6', icon: '🛡' },
+  cannibal: { label: 'Watch cannibal.', background: '#FCE7F3', fg: '#9D174D', icon: '⚠' },
 }
 const INTENT_LABELS: Record<string, string> = {
   informational: '📖 Informational', transactional: '🛒 Transactional', navigational: '🧭 Navigational',
@@ -171,14 +171,14 @@ function progressFromEvents(events: GenerationActivity[], active: boolean): numb
 }
 
 function statusBadge(status: JobStatus) {
-  const map: Record<JobStatus, { label: string; bg: string; fg: string; dot: string }> = {
-    pending: { label: 'Queued', bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    drafting: { label: 'Drafting', bg: '#FEF3C7', fg: '#D97706', dot: '#F59E0B' },
-    publishing: { label: 'Opening PR', bg: '#DBEAFE', fg: '#3B82F6', dot: '#60A5FA' },
-    pr_created: { label: 'PR Ready', bg: '#DBEAFE', fg: '#2563EB', dot: '#3B82F6' },
-    merged: { label: 'Merged', bg: '#D1FAE5', fg: '#166534', dot: '#10B981' },
-    closed: { label: 'Closed', bg: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
-    failed: { label: 'Failed', bg: '#FEE2E2', fg: '#DC2626', dot: '#EF4444' },
+  const map: Record<JobStatus, { label: string; background: string; fg: string; dot: string }> = {
+    pending: { label: 'Queued', background: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
+    drafting: { label: 'Drafting', background: '#FEF3C7', fg: '#D97706', dot: '#F59E0B' },
+    publishing: { label: 'Opening PR', background: '#DBEAFE', fg: '#3B82F6', dot: '#60A5FA' },
+    pr_created: { label: 'PR Ready', background: '#DBEAFE', fg: '#2563EB', dot: '#3B82F6' },
+    merged: { label: 'Merged', background: '#D1FAE5', fg: '#166534', dot: '#10B981' },
+    closed: { label: 'Closed', background: '#F3F4F6', fg: '#6B7280', dot: '#9CA3AF' },
+    failed: { label: 'Failed', background: '#FEE2E2', fg: '#DC2626', dot: '#EF4444' },
   }
   const s = map[status]
   return (
@@ -243,7 +243,7 @@ const inputStyle: React.CSSProperties = {
   background: C.surface, color: C.text, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
   outline: 'none', transition: 'border 0.15s, box-shadow 0.15s',
 }
-const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
+const btnSolid = (background: string, fg = '#fff'): React.CSSProperties => ({
   padding: '8px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
   background: bg, color: fg, fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
   display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
@@ -1236,10 +1236,10 @@ function MergeHistory({ onRecheckPulse }: { onRecheckPulse?: React.Dispatch<Reac
   ]
   const resolutionBadgeFor = (m: CannibalMergeRecord) => {
     const t = m.resolutionType || (m.status === 'merged' ? 'CONSOLIDATED' : m.status === 'skipped' ? 'DEFERRED' : 'DIFFERENTIATED')
-    const palette: Record<string, { bg: string; fg: string }> = {
-      CONSOLIDATED:   { bg: '#D1FAE5', fg: '#065F46' },
-      DIFFERENTIATED: { bg: '#DBEAFE', fg: '#1E40AF' },
-      DEFERRED:       { bg: '#FEF3C7', fg: '#92400E' },
+    const palette: Record<string, { background: string; fg: string }> = {
+      CONSOLIDATED:   { background: '#D1FAE5', fg: '#065F46' },
+      DIFFERENTIATED: { background: '#DBEAFE', fg: '#1E40AF' },
+      DEFERRED:       { background: '#FEF3C7', fg: '#92400E' },
     }
     const c = palette[t] || palette.DEFERRED
     return <span style={{ padding: '2px 8px', borderRadius: 3, fontSize: 9, fontWeight: 800, fontFamily: C.mono, background: c.bg, color: c.fg, letterSpacing: '0.04em' }}>{t}</span>
@@ -1616,9 +1616,9 @@ function JobDetail({ job, onClose, onRefresh, setActionNotice, gateFor }: {
 
   const actionBtn = (label: string, opts: { tier?: 'edit' | 'ship' | 'monitor'; disabled?: boolean; onClick: () => void; title?: string }) => {
     const tierStyles: Record<string, React.CSSProperties> = {
-      edit: { bg: dirty ? '#FFFBEB' : C.surface, color: C.text, border: `1px solid ${C.gold}` },
-      ship: { bg: C.cyan, color: '#FFF', border: 'none' },
-      monitor: { bg: C.surface, color: C.text, border: `1px solid ${C.border}` },
+      edit: { background: dirty ? '#FFFBEB' : C.surface, color: C.text, border: `1px solid ${C.gold}` },
+      ship: { background: C.cyan, color: '#FFF', border: 'none' },
+      monitor: { background: C.surface, color: C.text, border: `1px solid ${C.border}` },
     }
     const s = { ...(tierStyles[opts.tier || 'edit']) }
     return (
