@@ -26,7 +26,27 @@ export async function POST(request: NextRequest) {
       await setAiSetting('default_model', String(body.defaultModel).trim())
     }
     if (body.maxProviders != null && String(body.maxProviders).trim()) {
-      await setAiSetting('max_providers', String(body.maxProviders).trim())
+      const max = Number.parseInt(String(body.maxProviders).trim(), 10)
+      if (!Number.isFinite(max) || max < 1 || max > 10) {
+        return NextResponse.json({ error: 'Max providers must be between 1 and 10' }, { status: 400 })
+      }
+      await setAiSetting('max_providers', String(max))
+    }
+    if (body.providerOrder != null) {
+      let rawOrder: unknown = body.providerOrder
+      if (typeof rawOrder === 'string') {
+        try { rawOrder = JSON.parse(rawOrder) } catch { rawOrder = rawOrder.split(',') }
+      }
+      if (!Array.isArray(rawOrder)) {
+        return NextResponse.json({ error: 'Provider order must be an array of provider ids' }, { status: 400 })
+      }
+      const ids = rawOrder.map((value) => String(value).trim()).filter(Boolean)
+      const known = new Set(AI_PROVIDERS.map((provider) => provider.id))
+      const unknown = ids.find((id) => !known.has(id))
+      if (unknown) {
+        return NextResponse.json({ error: `Unknown provider order entry: ${unknown}` }, { status: 400 })
+      }
+      await setAiSetting('provider_order', JSON.stringify([...new Set(ids)]))
     }
     const settings = await getAiSettings(true)
     return NextResponse.json({ ok: true, settings })
