@@ -53,6 +53,9 @@ const NVIDIA_GLM_MODEL =
   process.env.NVIDIA_GLM_MODEL?.trim() ||
   'z-ai/glm-5.2'
 const NVIDIA_GLM_MAX_TOKENS = 16384
+const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
+const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
+const BASETEN_MAX_TOKENS = DEFAULT_MAX_TOKENS
 
 export interface ContentAiResult {
   text: string
@@ -353,6 +356,36 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
       chat_template_kwargs: { thinking: false },
     },
   }
+}
+
+/** Baseten-hosted DeepSeek V4 Flash — OpenAI-compatible complete + SSE stream. */
+export function resolveBasetenApiKey(): string {
+  return env('BASETEN_API_KEY')
+}
+
+export function isBasetenConfigured(): boolean {
+  return Boolean(resolveBasetenApiKey())
+}
+
+export function getBasetenProvider(): OpenAiCompat | null {
+  const apiKey = resolveBasetenApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'baseten-deepseek',
+    baseURL: env('BASETEN_BASE_URL') || BASETEN_BASE_URL,
+    apiKey,
+    model: env('BASETEN_MODEL') || BASETEN_MODEL,
+    maxTokensCap: BASETEN_MAX_TOKENS,
+  }
+}
+
+async function basetenComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getBasetenProvider()
+  if (!p) throw new Error('Baseten not configured (BASETEN_API_KEY)')
+  return openAiCompatibleComplete(p, {
+    ...opts,
+    maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+  })
 }
 
 async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
@@ -782,6 +815,11 @@ async function cloudflareAiComplete(opts: ContentAiOptions): Promise<ContentAiRe
 function listOpenAiFallbackProviders(): OpenAiCompat[] {
   const out: OpenAiCompat[] = []
 
+  // Baseten DeepSeek V4 Flash — OpenAI-compatible inference endpoint.
+  if (isBasetenConfigured()) {
+    const p = getBasetenProvider()
+    if (p) out.push(p)
+  }
   // 1) Groq — primary free tier for gigs (fastest)
   if (env('GROQ_API_KEY')) {
     out.push({
@@ -855,6 +893,12 @@ export function listConfiguredContentProviders(): Array<{
       id: 'nvidia-glm',
       label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred lead)',
       configured: isNvidiaGlmConfigured(),
+      role: 'primary',
+    },
+    {
+      id: 'baseten-deepseek',
+      label: 'DeepSeek V4 Flash via Baseten',
+      configured: isBasetenConfigured(),
       role: 'primary',
     },
     {
@@ -933,6 +977,7 @@ function preferProvider(): string {
     'xai',
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
+    'baseten', 'baseten-deepseek',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
@@ -974,6 +1019,7 @@ function configuredProviderOrder(): string[] {
   if (!Array.isArray(values)) return []
   const aliases: Record<string, string> = {
     glm: 'nvidia-glm', 'glm-5.2': 'nvidia-glm', 'z-ai': 'nvidia-glm',
+    baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
     nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
@@ -1010,6 +1056,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushGlm = () => {
     if (isNvidiaGlmConfigured()) {
       items.push({ label: 'nvidia-glm', run: () => nvidiaGlmComplete(opts) })
+    }
+  }
+  const pushBaseten = () => {
+    if (isBasetenConfigured()) {
+      items.push({ label: 'baseten-deepseek', run: () => basetenComplete(opts) })
     }
   }
   const pushNvidia = () => {
@@ -1064,6 +1115,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm() // GLM 5.2 preferred lead over DeepSeek on NVIDIA branch
     pushNvidia()
     pushCf()
+  } else if (prefer === 'baseten-deepseek') {
+    pushBaseten()
+    pushGlm()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'nvidia-glm') {
     pushGlm()
     pushNvidia()
@@ -1079,8 +1135,9 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: GLM 5.2 (preferred NVIDIA) → Grok → OpenAI → DeepSeek → Cloudflare
+    // DEFAULT: GLM 5.2 → Baseten DeepSeek Flash → Grok → OpenAI → Cloudflare
     pushGlm()
+    pushBaseten()
     pushGrok()
     pushOpenAi()
     pushNvidia()
@@ -1088,9 +1145,10 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   }
 
   // Fill remaining cascade (deduped below).
-  // GLM is included so any explicit pin that skips the GLM lead still gets it
-  // as a fallback option before we drop out to Groq/Gemini/OpenRouter.
+  // GLM and Baseten are included so an explicit pin still gets the preferred
+  // long-form providers before we drop out to the broader fallback set.
   pushGlm()
+  pushBaseten()
   pushGrok()
   pushOpenAi()
   pushNvidia()
@@ -1260,6 +1318,20 @@ export async function* generateContentTextStream(
     })
   }
 
+  // Baseten DeepSeek V4 Flash is a first-class streaming provider.
+  const baseten = getBasetenProvider()
+  if (baseten) {
+    candidates.push({
+      label: 'baseten-deepseek',
+      stream: () =>
+        openAiCompatibleStream(baseten, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? BASETEN_MAX_TOKENS, BASETEN_MAX_TOKENS),
+        }),
+      complete: () => basetenComplete(opts),
+    })
+  }
+
   // NVIDIA DeepSeek remains available as a separate fallback/explicit pin.
   const nvidia = getNvidiaDeepseekProvider()
   if (nvidia) {
@@ -1327,6 +1399,12 @@ export async function* generateContentTextStream(
   }
   if (isCloudflareExclusive(prefer)) {
     const idx = candidates.findIndex((c) => c.label === 'cloudflare-ai')
+    if (idx > 0) {
+      const [pref] = candidates.splice(idx, 1)
+      candidates.unshift(pref)
+    }
+  } else if (prefer === 'baseten-deepseek') {
+    const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)

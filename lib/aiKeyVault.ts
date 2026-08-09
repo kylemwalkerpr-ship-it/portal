@@ -55,6 +55,17 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     hint: 'NVIDIA fallback — long-form depth',
   },
   {
+    id: 'baseten-deepseek',
+    label: 'DeepSeek V4 Flash · Baseten',
+    keyEnv: 'BASETEN_API_KEY',
+    baseUrlEnv: 'BASETEN_BASE_URL',
+    modelEnv: 'BASETEN_MODEL',
+    fixedBaseUrl: 'https://inference.baseten.co/v1',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Flash-0731',
+    role: 'primary',
+    hint: 'Preferred DeepSeek Flash endpoint — OpenAI-compatible streaming',
+  },
+  {
     id: 'cloudflare-ai',
     label: 'Cloudflare Workers AI',
     keyEnv: 'CLOUDFLARE_AI_TOKEN',
@@ -139,7 +150,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
-  'nvidia-glm', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai',
+  'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai',
   'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
 ] as const
 

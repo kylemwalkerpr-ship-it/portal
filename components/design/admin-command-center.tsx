@@ -2086,6 +2086,7 @@ function RecheckDuePanel() {
                 <option value="auto">Auto (admin default + priority order)</option>
                 {(aiRuntimeProviders.length ? aiRuntimeProviders : [
                   { id: 'nvidia-glm', label: 'NVIDIA GLM 5.2', configured: false, model: 'z-ai/glm-5.2' },
+                   { id: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten', configured: false, model: 'deepseek-ai/DeepSeek-V4-Flash-0731' },
                   { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-pro' },
                   { id: 'grok', label: 'Grok (xAI)', configured: false, model: 'grok-3' },
                   { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-luna' },
