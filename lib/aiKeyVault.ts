@@ -254,11 +254,25 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
     if (row.base_url && def.baseUrlEnv) out[def.baseUrlEnv] = row.base_url
     if (row.model && def.modelEnv) out[def.modelEnv] = row.model
   }
-  // Default provider / model pins
+  // Default provider / model pins. A provider-specific model wins; otherwise
+  // the admin's default model is applied to the selected primary provider.
   if (settings.default_provider) out['CONTENT_AI_PROVIDER'] = settings.default_provider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
   if (settings.provider_order) out['CONTENT_AI_PROVIDER_ORDER'] = settings.provider_order
+  if (settings.default_model) {
+    let primary = settings.default_provider || ''
+    if (!primary && settings.provider_order) {
+      try {
+        const order = JSON.parse(settings.provider_order)
+        primary = Array.isArray(order) ? String(order[0] || '') : ''
+      } catch { /* malformed order falls back to the runtime default */ }
+    }
+    const primaryDef = providerDef(primary) || providerDef('grok')
+    if (primaryDef?.modelEnv && !out[primaryDef.modelEnv]) {
+      out[primaryDef.modelEnv] = settings.default_model
+    }
+  }
   return out
 }
 
