@@ -2400,7 +2400,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         <JobDetail
           job={selectedJob}
           onClose={() => setSelectedJob(null)}
-          onRefresh={fetchJobs}
+          onRefresh={async () => { await fetchJobs() }}
           setActionNotice={setActionNotice}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
         />
