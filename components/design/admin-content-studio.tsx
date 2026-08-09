@@ -1934,7 +1934,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     try {
       const res = await fetch('/api/content-studio/jobs?limit=80', { credentials: 'same-origin' })
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
-      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary }
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       const nextJobs = data.jobs ?? []
       setJobs(nextJobs)
