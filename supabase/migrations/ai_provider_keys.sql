@@ -5,7 +5,7 @@
 -- Idempotent: safe to re-run.
 
 CREATE TABLE IF NOT EXISTS public.ai_provider_keys (
-  provider TEXT PRIMARY KEY,              -- openai | groq | gemini | openrouter | custom | grok | nvidia-deepseek | cloudflare-ai | deepseek
+  provider TEXT PRIMARY KEY,              -- openai | groq | gemini | openrouter | custom | grok | nvidia-glm | nvidia-deepseek | cloudflare-ai | deepseek
   api_key TEXT,                           -- the actual credential (admin-only read via service role)
   base_url TEXT,                          -- override endpoint (custom providers)
   model TEXT,                             -- model override (e.g. gpt-5.6-luna)
@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_provider_keys_enabled
   ON public.ai_provider_keys (enabled);
 
 COMMENT ON TABLE public.ai_provider_keys IS
-  'SEO Command Center: admin-pasted API keys for content AI providers (stored in Supabase, read by the Worker at runtime)';
+  'SEO Command Center: admin-pasted API keys for content AI providers, including NVIDIA GLM 5.2 (stored in Supabase, read by the Worker at runtime)';
 
 COMMENT ON TABLE public.ai_settings IS
   'SEO Command Center: key/value AI defaults (default provider, default model, provider count cap)';
