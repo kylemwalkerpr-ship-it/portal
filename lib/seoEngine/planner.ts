@@ -224,7 +224,7 @@ function knowledgeBias(knowledge: Array<Record<string, unknown>>): Map<string, n
 
 export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> {
   const signals = req.signals || (await pullGscSignals())
-  const knowledge = (req.knowledge as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
+  const knowledge = (req.knowledge as unknown as Array<Record<string, unknown>>) || (await pullLatestKnowledge())
   const bias = knowledgeBias(knowledge)
   const draft = req.draftBriefs !== false
   const limit = Math.max(1, Math.min(50, req.limit ?? 20))
@@ -351,8 +351,8 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
       opportunityScore: opportunityScore(sig, stageDef.priority || 5, cellBiasFor(bias, stage, country) / 8),
       estMonthlyImpressions: sig.impressions,
       estMonthlyClicks: sig.clicks,
-      position: sig.position,
-      ctr: sig.ctr,
+      position: sig.position ?? null,
+      ctr: sig.ctr ?? null,
       plan: {
         pillar: `${stageDef.label} in ${country}: the complete guide`,
         spokes: related.slice(0, 3).map((t) => `${t}: deep dive`),
