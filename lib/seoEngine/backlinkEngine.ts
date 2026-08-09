@@ -500,3 +500,5 @@ export async function runBacklinkReport(opts: {
     },
   }
 }
+
+export type LifecycleStage = LifecycleStageDef
