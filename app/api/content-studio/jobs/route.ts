@@ -366,19 +366,21 @@ function ghHeaders(token: string): GhHeaders {
 /**
  * PATCH /api/content-studio/jobs
  * Actions: reship | regenerate | abandon | save | refresh_pr | append_log |
- *          approve | merge_pr | monitor | reaudit | update_meta | duplicate
+ *          approve | merge_pr | close_pr | monitor | reaudit | update_meta | duplicate
  *
  * Body: {
  *   id,
  *   action: 'reship'|'regenerate'|'abandon'|'save'|'refresh_pr'|'append_log'|
- *           'approve'|'merge_pr'|'monitor'|'reaudit'|'update_meta'|'duplicate',
+ *           'approve'|'merge_pr'|'close_pr'|'monitor'|'reaudit'|'update_meta'|'duplicate',
  *   content?, title?, shipMode?, minAuditScore?, maxRefine?, dryRun?,
  *   indexable?, region?, primary_keyword?, tone?,
  *   entries?: StudioLogEntry[]  // for append_log
  * }
  *
- * approve — admin reviewed content: commit/merge to main → Cloudflare deploy,
- *           then run CI/deploy monitor (Workers AI diagnosis on failure).
+ * approve   — admin reviewed content: commit/merge to main → Cloudflare deploy,
+ *             then run CI/deploy monitor (Workers AI diagnosis on failure).
+ * merge_pr  — merge the open GitHub PR head into main (no regenerate).
+ * close_pr  — decline the open PR: PATCH /pulls/:n { state: 'closed' } + status='closed'.
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -898,6 +900,126 @@ export async function PATCH(request: NextRequest) {
           : ''
         await supabase.from('content_jobs').update({ error_message: msg }).eq('id', id)
         return NextResponse.json({ ok: false, error: msg + hint }, { status: 422 })
+      }
+    }
+
+    if (action === 'close_pr') {
+      // Reject the open PR on GitHub + mark the job closed locally.
+      // Safe to call when the PR is already closed: GitHub returns 422 but we
+      // still reconcile the local status so the operator doesn't need to do it.
+      const prNumber = job.pr_number
+      if (!prNumber) {
+        return NextResponse.json({ error: 'Job has no PR to close' }, { status: 400 })
+      }
+      const { owner, repo } = parseRepoSlug(String(job.target_repo || ''))
+      const now = new Date().toISOString()
+      const supabase2 = sb()
+      let ghState: string | null = null
+      let ghMerged: boolean | null = null
+      try {
+        const token = process.env.GITHUB_TOKEN || process.env.CONTENT_STUDIO_GITHUB_TOKEN
+        if (!token) {
+          return NextResponse.json(
+            { ok: false, error: 'GITHUB_TOKEN not configured — cannot close remote PR' },
+            { status: 503 },
+          )
+        }
+        const headers = ghHeaders(token)
+        const resp = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+          {
+            method: 'PATCH',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: 'closed' }),
+          },
+        )
+        const text = await resp.text().catch(() => '')
+        if (!resp.ok) {
+          // If GitHub says it's already closed (422) we still proceed locally.
+          const already = resp.status === 422 || /already closed/i.test(text)
+          if (!already) {
+            await supabase2
+              .from('content_jobs')
+              .update({ error_message: `Close PR failed: GitHub ${resp.status} — ${text.slice(0, 200)}` })
+              .eq('id', id)
+            return NextResponse.json(
+              { ok: false, error: `GitHub ${resp.status}: ${text.slice(0, 200)}` },
+              { status: 502 },
+            )
+          }
+        } else {
+          const body = (text ? JSON.parse(text) : {}) as {
+            state?: string
+            merged?: boolean
+            merged_at?: string | null
+          }
+          ghState = body.state || 'closed'
+          ghMerged = Boolean(body.merged)
+        }
+        // Reconcile: if GitHub reports the PR was actually merged, prefer 'merged'.
+        const finalStatus = ghMerged ? 'merged' : 'closed'
+        const patch: Record<string, unknown> = {
+          status: finalStatus,
+          closed_at: finalStatus === 'closed' ? now : job.closed_at,
+          merged_at:
+            finalStatus === 'merged'
+              ? (job.merged_at || now)
+              : job.merged_at,
+          error_message:
+            finalStatus === 'merged'
+              ? null
+              : 'PR closed on GitHub from Content Studio — job was rejected by admin.',
+          last_failure_kind: 'github_merge',
+        }
+        const { data: updated, error: upErr } = await supabase2
+          .from('content_jobs')
+          .update(patch)
+          .eq('id', id)
+          .select()
+          .single()
+        if (upErr) throw upErr
+        // Append an audit event for the operator timeline.
+        try {
+          const prevLog = Array.isArray(updated?.event_log) ? updated!.event_log : Array.isArray(job.event_log) ? job.event_log : []
+          const next = [
+            ...prevLog.slice(-200),
+            {
+              id: `close-pr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              ts: Date.now(),
+              level: 'warn',
+              source: 'admin:close_pr',
+              message:
+                finalStatus === 'merged'
+                  ? `Close clicked but PR was already merged on GitHub — synced status to merged`
+                  : `PR #${prNumber} closed on GitHub · job set to ${finalStatus}`,
+              detail: `owner=${owner} repo=${repo} pr=${prNumber}`,
+            },
+          ]
+          await supabase2
+            .from('content_jobs')
+            .update({ event_log: next })
+            .eq('id', id)
+        } catch {
+          /* event_log may not exist yet; harmless */
+        }
+        return NextResponse.json({
+          ok: true,
+          closed: finalStatus === 'closed',
+          merged: finalStatus === 'merged',
+          pr_state: ghState,
+          job: updated,
+          message:
+            finalStatus === 'merged'
+              ? 'PR was already merged on GitHub — status synced to merged.'
+              : `PR #${prNumber} closed on GitHub · status set to closed.`,
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Close PR failed'
+        await supabase2
+          .from('content_jobs')
+          .update({ error_message: msg })
+          .eq('id', id)
+        return NextResponse.json({ ok: false, error: msg }, { status: 422 })
       }
     }
 
