@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS public.seo_backlink_targets (
     ('editorial',                  \u2014 earned: they cite us because we earned it
      'guest_post',                 \u2014 we write a piece for them
      'resource_page',              \u2014 they maintain resource lists where we belong
-     'directory',                  \u2014 niche directories (legal-help, immigration)
+     'directory',                  \u2014 niche directories (legal-help, immigration)))
      'podcast_interview',          \u2014 they host; we appear
      'broken_outreach',            \u2014 they link out somewhere dead; we offer the fix
      'community',                  \u2014 forum / Reddit / LinkedIn community mentions
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS public.seo_backlink_targets (
   topics TEXT[] NOT NULL DEFAULT '{}',                  -- topical anchors
   rationale TEXT,                                       -- why-this-target paragraph
   status TEXT NOT NULL DEFAULT 'identified' CHECK (status IN
-    ('identified', 'researching', 'qualified', 'drafting', 'sent', 'awaiting_reply', 'responded', 'won', 'lost', 'skipped')),
+    ('identified', 'researching', 'qualified', 'drafting', 'sent', 'awaiting_reply', 'responded', 'won', 'lost', 'skipped')),))
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_touched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   won_at TIMESTAMPTZ,
@@ -117,14 +117,14 @@ CREATE TABLE IF NOT EXISTS public.seo_backlink_outreach (
   channel TEXT NOT NULL DEFAULT 'email' CHECK (channel IN
     ('email', 'linkedin_dm', 'twitter_dm', 'twitter_reply', 'contact_form', 'phone', 'in_person')),
   direction TEXT NOT NULL DEFAULT 'outbound' CHECK (direction IN
-    ('outbound',                    \u2014 we reached out
+    ('outbound',                    \u2014 we reached out))
      'inbound',                     \u2014 they reached out to us first
      'internal'                     \u2014 internal note / collaboration log
     )),
   subject TEXT,
   message_body TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'drafted' CHECK (status IN
-    ('drafted', 'queued', 'sent', 'bounced', 'responded', 'replied_positive', 'replied_negative', 'replied_neutral',
+    ('drafted', 'queued', 'sent', 'bounced', 'responded', 'replied_positive', 'replied_negative', 'replied_neutral',))
      'follow_up_due', 'follow_up_sent', 'won', 'lost', 'withdrawn')),
   drafted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   sent_at TIMESTAMPTZ,
@@ -134,9 +134,9 @@ CREATE TABLE IF NOT EXISTS public.seo_backlink_outreach (
   replied_summary TEXT,
   reply_text TEXT,
   lost_reason TEXT,
-  operator_id TEXT,                                       -- who drafted / sent
-  source_brief JSONB DEFAULT '{}',                        -- reference to the SEO brief that motivated outreach
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  operator_id TEXT,                                       
+  source_brief JSONB DEFAULT '{}',                        
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now())
 );
 
 CREATE INDEX IF NOT EXISTS idx_backlink_outreach_target ON public.seo_backlink_outreach (target_id, drafted_at DESC);
