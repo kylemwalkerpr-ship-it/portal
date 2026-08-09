@@ -40,6 +40,8 @@ export interface LifecycleStageDef {
   /** Marketplace category ids whose listings this stage should feed traffic to. */
   services: string[]
   contentTypes: ContentType[]
+  /** Strategic weight for planner ranking (1–10); bottom-funnel YMYL stages score highest. */
+  priority: number
   /** What this stage must prove to the reader (E-E-A-T requirement). */
   proofPoints: string[]
   countries: Record<Country, CountryCell>
@@ -68,6 +70,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'awareness',
     funnel: 'top',
     ymyl: 'medium',
+    priority: 6,
     intentMix: { informational: 80, commercial: 15, transactional: 5, navigational: 0 },
     services: ['visa', 'consultation'],
     contentTypes: ['blog_post', 'regional_page', 'faq_hub'],
@@ -106,6 +109,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'consideration',
     funnel: 'top',
     ymyl: 'high',
+    priority: 7,
     intentMix: { informational: 60, commercial: 30, transactional: 10, navigational: 0 },
     services: ['study-permits', 'academic', 'visa'],
     contentTypes: ['regional_page', 'blog_post', 'casework', 'marketplace_landing'],
@@ -144,6 +148,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'consideration',
     funnel: 'middle',
     ymyl: 'high',
+    priority: 8,
     intentMix: { informational: 45, commercial: 40, transactional: 15, navigational: 0 },
     services: ['work-permits', 'career', 'business', 'visa'],
     contentTypes: ['regional_page', 'blog_post', 'casework', 'marketplace_landing', 'faq_hub'],
@@ -182,6 +187,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'decision',
     funnel: 'middle',
     ymyl: 'medium',
+    priority: 6,
     intentMix: { informational: 40, commercial: 45, transactional: 15, navigational: 0 },
     services: ['settlement', 'business'],
     contentTypes: ['regional_page', 'blog_post', 'casework', 'faq_hub'],
@@ -220,6 +226,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'decision',
     funnel: 'bottom',
     ymyl: 'critical',
+    priority: 9,
     intentMix: { informational: 30, commercial: 30, transactional: 40, navigational: 0 },
     services: ['immigration', 'legal-consultation', 'visa', 'credentials'],
     contentTypes: ['regional_page', 'casework', 'marketplace_landing', 'faq_hub'],
@@ -258,6 +265,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'settlement',
     funnel: 'middle',
     ymyl: 'medium',
+    priority: 5,
     intentMix: { informational: 60, commercial: 30, transactional: 10, navigational: 0 },
     services: ['settlement', 'credentials', 'career'],
     contentTypes: ['blog_post', 'regional_page', 'faq_hub', 'casework'],
@@ -296,6 +304,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'decision',
     funnel: 'bottom',
     ymyl: 'critical',
+    priority: 9,
     intentMix: { informational: 35, commercial: 25, transactional: 40, navigational: 0 },
     services: ['immigration', 'legal-consultation', 'credentials'],
     contentTypes: ['regional_page', 'casework', 'marketplace_landing', 'faq_hub'],
@@ -334,10 +343,11 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'loyalty',
     funnel: 'bottom',
     ymyl: 'critical',
+    priority: 8,
     intentMix: { informational: 40, commercial: 25, transactional: 35, navigational: 0 },
     services: ['immigration', 'legal-consultation', 'visa'],
     contentTypes: ['regional_page', 'casework', 'marketplace_landing', 'faq_hub'],
-    proofPoints: ['spouse visa rules', 'children's schools', 'family reunification', 'marriage evidence', 'case outcomes'],
+    proofPoints: ['spouse visa rules', 'children\'s schooling', 'family reunification', 'marriage evidence', 'case outcomes'],
     countries: {
       US: {
         seedKeywords: K(['spouse visa usa k1 cr1', 'i-130 family petition guide', 'bring parents to usa green card', 'marriage green card timeline', 'children visa usa']),
@@ -372,6 +382,7 @@ export const LIFECYCLE_STAGES: LifecycleStageDef[] = [
     phase: 'loyalty',
     funnel: 'bottom',
     ymyl: 'high',
+    priority: 7,
     intentMix: { informational: 45, commercial: 25, transactional: 30, navigational: 0 },
     services: ['immigration', 'visa', 'legal-consultation'],
     contentTypes: ['blog_post', 'casework', 'marketplace_landing', 'faq_hub'],
