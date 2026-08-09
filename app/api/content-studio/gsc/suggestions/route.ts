@@ -9,8 +9,50 @@ import {
   type OpportunityEngineInput,
 } from '@/lib/seoFactory/opportunityEngine'
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
+import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 
 export const runtime = 'nodejs'
+
+function normalizedTopic(value: unknown): string {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function selectVariedOpportunities(
+  items: Array<Record<string, any>>,
+  limit: number,
+  seed: string,
+  excluded: Set<string>,
+): Array<Record<string, any>> {
+  const eligible = items.filter((item) => !excluded.has(normalizedTopic(item.topic)))
+  const pool = (eligible.length >= limit ? eligible : items).slice(0, Math.max(48, limit * 8))
+  if (!pool.length) return []
+  const offset = stableHash(seed) % pool.length
+  const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
+  const selected: Array<Record<string, any>> = []
+  const buckets = new Set<string>()
+  for (const item of rotated) {
+    if (selected.length >= limit) break
+    const bucket = `${item.play || 'unknown'}|${item.contentType || 'article'}|${item.region || 'all'}`
+    if (buckets.has(bucket)) continue
+    buckets.add(bucket)
+    selected.push(item)
+  }
+  for (const item of rotated) {
+    if (selected.length >= limit) break
+    if (selected.some((chosen) => normalizedTopic(chosen.topic) === normalizedTopic(item.topic))) continue
+    selected.push(item)
+  }
+  return selected
+}
 
 /**
  * POST /api/content-studio/gsc/suggestions
@@ -34,6 +76,12 @@ export async function POST(request: NextRequest) {
     const region = typeof body.region === 'string' ? body.region : 'US'
     const seedTopic = typeof body.topic === 'string' && body.topic.trim() ? body.topic.trim() : ''
     const limit = typeof body.limit === 'number' ? Math.min(16, Math.max(3, body.limit)) : 6
+    const variationSeed = typeof body.nonce === 'string' && body.nonce.trim() ? body.nonce : new Date().toISOString()
+    const excludedTopics = new Set(
+      Array.isArray(body.excludeTopics)
+        ? body.excludeTopics.map((topic) => normalizedTopic(topic)).filter(Boolean).slice(-160)
+        : [],
+    )
 
     // ── 1. Search demand (live or snapshot) ────────────────────────────────
     const live = await fetchSiteSearchAnalytics(90)
@@ -121,6 +169,40 @@ export async function POST(request: NextRequest) {
     })
     const portfolio = buildKeywordPortfolio(brief)
 
+    // ── 4.25 Full strategy corpus ──────────────────────────────────────────
+    // GSC is the demand signal, but it is not the whole editorial brain. Add a
+    // bounded, clearly low-demand knowledge signal pool from the strategy corpus
+    // so the radar can surface authority gaps and not repeat the same GSC rows.
+    const topicTokens = new Set(
+      `${seedTopic} ${region}`.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3),
+    )
+    const knowledgeSignals = STRATEGIC_KEYWORDS
+      .map((keyword, index) => {
+        const haystack = `${keyword.term} ${keyword.cluster} ${keyword.intent}`.toLowerCase()
+        const relevance = [...topicTokens].reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0)
+        return { keyword, relevance, tie: stableHash(`${variationSeed}:${keyword.term}:${index}`) }
+      })
+      .filter(({ keyword }) => keyword.surface !== 'marketplace' || /service|help|consult|review/i.test(keyword.term))
+      .sort((a, b) => b.relevance - a.relevance || a.tie - b.tie)
+      .slice(0, 160)
+      .map(({ keyword, tie }) => ({
+        term: keyword.term,
+        clicks: 0,
+        impressions: 1,
+        ctr: 0,
+        position: 60 + (tie % 20),
+        url: '',
+        knowledgeBase: true,
+      }))
+    const knownTerms = new Set(queries.map((query) => normalizedTopic(query.term)))
+    for (const signal of knowledgeSignals) {
+      if (!knownTerms.has(normalizedTopic(signal.term))) {
+        queries.push(signal)
+        knownTerms.add(normalizedTopic(signal.term))
+      }
+    }
+    warnings.push(`Strategy knowledge corpus active · ${knowledgeSignals.length} supplemental authority signals`)
+
     // ── 4.5 Keyword clusters → canonical-page resolution (anti-cannibalization) ──
     // Cluster every query, resolve each cluster to ONE page, and feed the
     // engine's relatedByTerm so every suggestion carries its full cluster.
@@ -149,7 +231,14 @@ export async function POST(request: NextRequest) {
       limit: 48,
     })
 
-    const suggestions = result.opportunities.slice(0, limit).map((o) => ({
+    const variedOpportunities = selectVariedOpportunities(
+      result.opportunities as Array<Record<string, any>>,
+      limit,
+      variationSeed,
+      excludedTopics,
+    )
+    const knowledgeTerms = new Set(knowledgeSignals.map((signal) => normalizedTopic(signal.term)))
+    const suggestions = variedOpportunities.map((o) => ({
       topic: o.topic,
       title: o.title,
       primaryKeyword: o.primaryKeyword,
@@ -171,7 +260,10 @@ export async function POST(request: NextRequest) {
       profitability: o.profitability,
       reason: o.reason,
       cluster: clusterResult.byTerm[o.topic] || null,
-      signals: o.signals,
+      signals: [
+        ...(o.signals || []),
+        ...(knowledgeTerms.has(normalizedTopic(o.topic)) ? ['Strategy knowledge-base authority signal'] : []),
+      ],
       interlinks: o.interlinks,
       coverage: o.coverage,
       sourcePage: o.sourcePage,
@@ -180,7 +272,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       region,
       suggestions,
-      opportunities: result.opportunities.slice(0, 24),
+      opportunities: selectVariedOpportunities(
+        result.opportunities as Array<Record<string, any>>,
+        24,
+        `${variationSeed}:insights`,
+        excludedTopics,
+      ),
       source,
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),
