@@ -983,14 +983,162 @@ export default function AdminCommandCenter({
   ]
 
 // ── Recheck-due fix verification ────────────────────────────────────────
+// Visual cohesion: matches the Command Center's KPI strip / Cannibalization
+// Watch by using the same gold channel accent, mono typography, and 12px
+// radius language. The panel is split into a hero stats strip, a filterable
+// source chip row, and a dense table-style list with overdue escalation.
+const RES_BADGE: Record<string, { label: string; dot: string; bg: string; fg: string }> = {
+  consolidate:    { label: 'CONSOLIDATED',    dot: '●', bg: C.orangeSoft, fg: C.orange },
+  differentiate:  { label: 'DIFFERENTIATED',  dot: '◆', bg: C.blueSoft,   fg: C.blue   },
+  defer:          { label: 'DEFERRED',        dot: '○', bg: C.surface2,   fg: C.textMuted },
+}
+
+function daysBetween(a: number, b: number): number {
+  const ms = Math.abs(a - b)
+  return Math.max(0, Math.round(ms / 86_400_000))
+}
+
+function HeroStat({ label, value, sub, accent }: { label: string; value: string | number; sub: string; accent: 'gold' | 'green' | 'navy' }) {
+  const color = accent === 'gold' ? C.gold : accent === 'green' ? C.green : C.text
+  return (
+    <div style={{ flex: '1 1 0', minWidth: 140, padding: '10px 14px', borderRight: `1px solid ${C.border2}` }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+        <span style={{ fontFamily: C.serif, fontSize: 26, fontWeight: 700, color, lineHeight: 1 }}>{value}</span>
+        <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{sub}</span>
+      </div>
+    </div>
+  )
+}
+
+function RefreshSpinner() {
+  return (
+    <span style={{
+      display: 'inline-block', width: 11, height: 11, border: '2px solid rgba(0,0,0,0.18)',
+      borderTopColor: C.gold, borderRadius: '50%', animation: 'spin 0.6s linear infinite',
+    }} />
+  )
+}
+
+function EmptyState({ upcoming, onRefresh }: { upcoming: number; onRefresh: () => void }) {
+  return (
+    <div style={{ padding: 26, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: '50%', background: C.greenSoft, color: C.green,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700,
+        border: `1px solid ${C.greenBorder}`,
+      }}>✓</div>
+      <div style={{ fontSize: 13, color: C.green, fontWeight: 700 }}>No fixes due for verification</div>
+      <div style={{ fontSize: 10.5, color: C.textMuted, textAlign: 'center', maxWidth: 380 }}>
+        {upcoming > 0
+          ? `${upcoming} resolution${upcoming === 1 ? '' : 's'} still in the verification window — they will surface here automatically when their recheck is due.`
+          : 'Resolve a cluster (in the Radar or Content Studio) to schedule its verification against fresh GSC data.'}
+      </div>
+      <button type="button" onClick={onRefresh} style={{ ...btnGhost, marginTop: 4 }}>↻ Re-check</button>
+    </div>
+  )
+}
+
+function RecheckRow({ m }: { m: any }) {
+  const badge = RES_BADGE[m.resolutionType ?? 'consolidate'] ?? RES_BADGE.consolidate
+  const overdueHours = m.recheckDue && m.followUpAt
+  const inWindow = !m.recheckDue && !!m.followUpAt
+  const elapsed = m.followUpAt ? daysBetween(m.followUpAt, Date.now()) : 0
+  const overdueTone = !overdueHours ? C.textMuted
+    : elapsed >= 14 ? C.orange
+      : C.gold
+  const title = (m.terms && m.terms.length ? m.terms : [m.stem]).slice(0, 4).join(' · ') || m.stem
+  const detail = m.resolutionType === 'consolidate'
+    ? `${(m.loserUrls || []).length} duplicate${(m.loserUrls || []).length === 1 ? '' : 's'} → ${String(m.winnerUrl || '').replace(/^https?:\/\//, '')}`
+    : m.resolutionType === 'differentiate'
+      ? `${(m.differentiationPlan || []).length} page angle${(m.differentiationPlan || []).length === 1 ? '' : 's'} to verify`
+      : 'Deferred for monitoring'
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) auto auto auto',
+      gap: 0, padding: '11px 16px', borderBottom: `1px solid ${C.border2}`,
+      alignItems: 'center',
+      background: overdueHours && elapsed >= 14 ? '#FFFBF4' : overdueHours ? '#FFFCF1' : 'transparent',
+      transition: 'background 0.15s',
+    }} onMouseEnter={(e) => { e.currentTarget.style.background = overdueHours && elapsed >= 14 ? '#FFF4E6' : overdueHours ? '#FFF7E3' : C.bg }} onMouseLeave={(e) => { e.currentTarget.style.background = overdueHours && elapsed >= 14 ? '#FFFBF4' : overdueHours ? '#FFFCF1' : 'transparent' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {title}
+          {m.prNumber ? <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 6, color: C.blue, fontSize: 10, fontFamily: C.mono }}>PR #{m.prNumber} ↗</a> : null}
+        </div>
+        <div style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {detail}
+        </div>
+      </div>
+      <div style={{ padding: '0 12px' }}>
+        <span style={{
+          padding: '3px 9px', borderRadius: 999, background: badge.bg, color: badge.fg,
+          fontSize: 9, fontWeight: 800, fontFamily: C.mono, whiteSpace: 'nowrap',
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+        }}>
+          <span style={{ fontSize: 10 }}>{badge.dot}</span>{badge.label}
+        </span>
+      </div>
+      <div style={{ padding: '0 12px' }}>
+        <span style={{
+          padding: '3px 8px', borderRadius: 6,
+          background: m.source === 'command_center' ? C.blueSoft : C.surface2,
+          color: m.source === 'command_center' ? C.blue : C.textMuted,
+          fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap',
+          border: `1px solid ${m.source === 'command_center' ? C.blueBorder : C.border}`,
+        }}>
+          {m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}
+        </span>
+      </div>
+      <div style={{ textAlign: 'right', paddingLeft: 12 }}>
+        <span style={{
+          fontFamily: C.mono, fontSize: 11, fontWeight: 800,
+          color: overdueHours ? overdueTone : inWindow ? C.textMuted : C.textDim,
+        }}>
+          {overdueHours ? `${elapsed}d overdue` : inWindow ? `${elapsed}d` : 'unverified'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function RecheckDueTable({ rows }: { rows: Array<any> }) {
+  return (
+    <div>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) auto auto auto',
+        gap: 0, padding: '8px 16px', background: C.surface2,
+        borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`,
+        fontSize: 9, fontWeight: 700, fontFamily: C.mono, textTransform: 'uppercase',
+        letterSpacing: '0.06em', color: C.textDim,
+      }}>
+        <span>Subject</span>
+        <span>Resolution</span>
+        <span>Source</span>
+        <span style={{ textAlign: 'right' }}>Overdue</span>
+      </div>
+      <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        {rows.length === 0 ? (
+          <div style={{ padding: 18, fontSize: 11, color: C.textMuted, textAlign: 'center', fontStyle: 'italic' }}>
+            No clusters match the current source filter.
+          </div>
+        ) : rows.map((m) => <RecheckRow key={`${m.clusterId}-${m.source}`} m={m} />)}
+      </div>
+      <div style={{ padding: '9px 16px', borderTop: `1px solid ${C.border}`, background: C.bg, fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>
+        Hint: hit <strong style={{ color: C.text }}>Rescan radar</strong> in the Command Center to refresh GSC, then verify whether overlap has cleared. If it persists, resolve again with the correct intent path (consolidate / differentiate / defer).
+      </div>
+    </div>
+  )
+}
+
 function RecheckDuePanel() {
   const [merges, setMerges] = React.useState<Array<any>>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [sourceFilter, setSourceFilter] = React.useState<'all' | 'command_center' | 'portal'>('all')
 
   const fetchMerges = React.useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       const res = await fetch('/api/seo-factory/cannibal-merges', { credentials: 'same-origin' })
       const data = (await res.json().catch(() => ({}))) as { error?: string; merges?: Array<any> }
@@ -998,62 +1146,108 @@ function RecheckDuePanel() {
       setMerges(data.merges ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load fix verification queue')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [])
 
   React.useEffect(() => { fetchMerges() }, [fetchMerges])
 
   const due = merges.filter((m) => m.recheckDue)
-  const resolutionLabel = (type: string | undefined) =>
-    type === 'differentiate' ? 'DIFFERENTIATED' : type === 'defer' ? 'DEFERRED' : 'CONSOLIDATED'
-  const resolutionColor = (type: string | undefined) =>
-    type === 'differentiate' ? C.blue : type === 'defer' ? C.textMuted : C.orange
+  const upcoming = merges.filter((m) => m.followUpAt && !m.recheckDue)
+  const consolidated = merges.filter((m) => m.resolutionType === 'consolidate').length
+  const differentiated = merges.filter((m) => m.resolutionType === 'differentiate').length
+  const deferred = merges.filter((m) => m.resolutionType === 'defer').length
+  const oldestOverdue = due
+    .map((m) => ({ m, days: m.followUpAt ? daysBetween(m.followUpAt, Date.now()) : 0 }))
+    .sort((a, b) => b.days - a.days)[0]
+
+  const filteredDue = sourceFilter === 'all'
+    ? due
+    : due.filter((m) => m.source === sourceFilter)
+  const upcomingFirstDays = upcoming[0]?.followUpAt
+    ? Math.max(0, Math.round((upcoming[0].followUpAt - Date.now()) / 86_400_000)) : null
+  const oldestLabel = oldestOverdue
+    ? `${oldestOverdue.days}d overdue`
+    : 'none outstanding'
+  const oldestTint: 'gold' | 'green' = due.length === 0
+    ? 'green'
+    : (oldestOverdue && oldestOverdue.days >= 14) ? 'gold' : 'gold'
+
+  const dueTint = due.length === 0
+    ? C.green
+    : oldestOverdue && oldestOverdue.days >= 14 ? C.orange : C.gold
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${due.length ? C.goldBorder : C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${due.length ? C.goldBorder : C.border}`,
+      borderLeft: `6px solid ${dueTint}`,
+      borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard,
+    }}>
       <CardHeader
-        icon="⟳" title="Fix verification"
-        sub="Resolved clusters resurface here when fresh GSC verification is due."
+        icon="⟳"
+        title="Fix verification"
+        sub={`Google-aligned: resolutions stay hidden from the radar until fresh GSC data verifies them. Currently ${due.length} due · ${upcoming.length} in window.`}
         right={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {due.length > 0 && <span style={{ padding: '2px 7px', borderRadius: 999, background: C.goldSoft, color: C.orange, fontSize: 9, fontWeight: 800, fontFamily: C.mono }}>{due.length} RECHECK DUE</span>}
-            <button type="button" onClick={fetchMerges} disabled={loading} style={btnGhost}>{loading ? '…' : '↻'}</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              padding: '3px 10px', borderRadius: 999,
+              background: due.length ? C.goldSoft : C.greenSoft,
+              color: due.length ? C.orange : C.green,
+              fontSize: 9.5, fontWeight: 800, fontFamily: C.mono,
+            }}>
+              {due.length ? `${due.length} RECHECK${due.length === 1 ? '' : 'S'} DUE` : '✓ ALL VERIFIED'}
+            </span>
+            <button type="button" onClick={fetchMerges} disabled={loading} style={btnGhost}
+              title="Re-read the shared cannibal merge history from the portal and Command Center">
+              {loading ? '…' : '↻'}
+            </button>
           </div>
         }
       />
+
+      {/* Hero stats strip — three KPIs share a row */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, background: C.bg, flexWrap: 'wrap' }}>
+        <HeroStat label="Recheck due" value={due.length} sub={oldestLabel} accent={oldestTint} />
+        <HeroStat label="In verification window" value={upcoming.length}
+          sub={upcomingFirstDays === null ? 'no future checks' : `next in ${upcomingFirstDays}d`} accent="navy" />
+        <HeroStat label="Resolution mix" value={`${consolidated}/${differentiated}/${deferred}`}
+          sub="consolidate · differentiate · defer" accent="navy" />
+      </div>
+
+      {/* Source filter chips */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: '#FAFAFB', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 9, fontFamily: C.mono, fontWeight: 700, color: C.textDim, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Source</span>
+        {([
+          { k: 'all',            label: 'All',            count: due.length },
+          { k: 'command_center', label: 'Command Center', count: due.filter((m) => m.source === 'command_center').length },
+          { k: 'portal',         label: 'Portal',         count: due.filter((m) => m.source === 'portal').length },
+        ] as const).map((f) => {
+          const active = sourceFilter === f.k
+          return (
+            <button key={f.k} type="button" onClick={() => setSourceFilter(f.k)} style={{
+              padding: '4px 10px', borderRadius: 999, border: `1px solid ${active ? C.goldBorder : C.border}`,
+              background: active ? C.goldSoft : C.surface, color: active ? C.orange : C.textMuted,
+              fontSize: 10, fontWeight: active ? 800 : 600, fontFamily: C.mono, cursor: 'pointer',
+            }}>
+              {f.label} <span style={{ opacity: 0.7 }}>· {f.count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {loading ? (
-        <div style={{ padding: 18, textAlign: 'center', fontSize: 11, color: C.textDim }}>Checking resolution follow-ups…</div>
+        <div style={{ padding: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: C.textDim, fontSize: 11, fontFamily: C.mono }}>
+          <RefreshSpinner />
+          Checking resolution follow-ups…
+        </div>
       ) : error ? (
-        <div style={{ padding: '12px 16px', fontSize: 11, color: C.orange, fontFamily: C.mono }}>⚠ {error}</div>
+        <div style={{ padding: '12px 16px', fontSize: 11, color: C.orange, fontFamily: C.mono }}>
+          <strong>⚠ Could not load verification queue.</strong> {error}
+        </div>
       ) : due.length === 0 ? (
-        <div style={{ padding: 18, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 4 }}>✓</div>
-          <div style={{ fontSize: 11.5, color: C.green, fontWeight: 700 }}>No fixes due for verification</div>
-          <div style={{ fontSize: 10, color: C.textDim, marginTop: 3 }}>{merges.filter((m) => m.followUpAt && !m.recheckDue).length} resolution(s) still in the verification window.</div>
-        </div>
+        <EmptyState upcoming={upcoming.length} onRefresh={fetchMerges} />
       ) : (
-        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-          {due.slice(0, 10).map((m) => (
-            <div key={`${m.clusterId}-${m.source}`} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border2}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ padding: '1px 6px', borderRadius: 3, background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF', color: m.source === 'command_center' ? C.blue : C.violet, fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>{m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}</span>
-                <span style={{ padding: '1px 6px', borderRadius: 3, background: `${resolutionColor(m.resolutionType)}18`, color: resolutionColor(m.resolutionType), fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>{resolutionLabel(m.resolutionType)}</span>
-                <span style={{ padding: '1px 6px', borderRadius: 3, background: C.goldSoft, color: C.orange, fontSize: 8, fontWeight: 800, fontFamily: C.mono }}>RECHECK DUE</span>
-                <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginLeft: 'auto' }}>{m.followUpAt ? new Date(m.followUpAt).toLocaleDateString() : 'now'}</span>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginTop: 5 }}>{(m.terms || []).slice(0, 3).join(' · ') || m.stem}</div>
-              <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {m.resolutionType === 'consolidate' ? `${(m.loserUrls || []).length} duplicate(s) → ${String(m.winnerUrl || '').replace(/^https?:\/\//, '')}` : m.resolutionType === 'differentiate' ? `${(m.differentiationPlan || []).length} page angle(s) to verify` : 'Deferred for monitoring'}
-              </div>
-              {m.prNumber ? <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 4, color: C.blue, fontSize: 9, fontFamily: C.mono }}>PR #{m.prNumber} ↗</a> : null}
-            </div>
-          ))}
-          <div style={{ padding: '9px 16px', background: C.surface2, fontSize: 10, color: C.textMuted }}>
-            Refresh GSC, then re-run the radar to verify whether overlap has cleared. If it persists, resolve again using the correct intent path.
-          </div>
-        </div>
+        <RecheckDueTable rows={filteredDue} />
       )}
     </div>
   )
