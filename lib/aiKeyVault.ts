@@ -137,6 +137,12 @@ export const AI_PROVIDERS: AiProviderDef[] = [
 export const providerDef = (id: string): AiProviderDef | undefined =>
   AI_PROVIDERS.find((p) => p.id === id)
 
+/** Safe default cascade; Settings can override it without a redeploy. */
+export const DEFAULT_PROVIDER_ORDER = [
+  'nvidia-glm', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai',
+  'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+] as const
+
 export interface VaultKeyRow {
   provider: string
   api_key: string | null
@@ -167,6 +173,8 @@ export interface AiSettings {
   default_provider?: string | null
   default_model?: string | null
   max_providers?: string | null
+  /** JSON array of provider ids, highest priority first. */
+  provider_order?: string | null
 }
 
 function sb() {
@@ -250,6 +258,7 @@ export async function buildVaultEnvOverrides(force = false): Promise<Record<stri
   if (settings.default_provider) out['CONTENT_AI_PROVIDER'] = settings.default_provider
   if (settings.default_model) out['CONTENT_AI_DEFAULT_MODEL'] = settings.default_model
   if (settings.max_providers) out['CONTENT_AI_MAX_PROVIDERS'] = settings.max_providers
+  if (settings.provider_order) out['CONTENT_AI_PROVIDER_ORDER'] = settings.provider_order
   return out
 }
 
