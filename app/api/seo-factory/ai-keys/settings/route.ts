@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       }
       await setAiSetting('default_provider', v === 'auto' ? '' : v)
     }
-    if (body.defaultModel != null && String(body.defaultModel).trim()) {
+    if (body.defaultModel != null) {
       await setAiSetting('default_model', String(body.defaultModel).trim())
     }
     if (body.maxProviders != null && String(body.maxProviders).trim()) {
