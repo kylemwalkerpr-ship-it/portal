@@ -109,6 +109,61 @@ const MISSION_STATUSES: Array<[string, string]> = [
   ['all', 'All'], ['success', '✓'], ['error', '✕'], ['warn', '⚠'],
 ]
 
+// ── Life-cycle ontology (mirrors lib/seoEngine/ontology.ts) ────────────
+type LifecycleStage =
+  | 'intent' | 'schools' | 'work' | 'housing' | 'visa'
+  | 'settlement' | 'citizenship' | 'family' | 'relatives'
+
+const LIFECYCLE_STAGES: Array<{
+  key: LifecycleStage
+  label: string
+  short: string
+  icon: string
+  hint: string
+  funnel: 'top' | 'middle' | 'bottom'
+}> = [
+  { key: 'intent',      label: 'Intent to move',      short: 'Why move & where',        icon: '🧭', hint: 'Awareness · top funnel · why-this-country comparisons',          funnel: 'top' },
+  { key: 'schools',     label: 'Schools & study',     short: 'Secure education',        icon: '🎓', hint: 'Study permits, admissions, tuition → PGWP / OPT bridge',              funnel: 'top' },
+  { key: 'work',        label: 'Work & career',       short: 'Secure employment',       icon: '💼', hint: 'H-1B / Skilled Worker / 189-190 / Express Entry — sponsor logic', funnel: 'middle' },
+  { key: 'housing',     label: 'Housing & settling',  short: 'Secure housing',          icon: '🏠', hint: 'Rentals, deposits, neighborhoods, transit, tenant rights',            funnel: 'middle' },
+  { key: 'visa',        label: 'Visa & legal',        short: 'The application',         icon: '📝', hint: 'Forms, fees, processing times, refusals → marketplace conversion',funnel: 'bottom' },
+  { key: 'settlement',  label: 'Settlement',          short: 'Banking, health, docs',   icon: '🏢', hint: 'SSN / NI / SIN / TFN, healthcare, driving licence, day-1 logistics',   funnel: 'middle' },
+  { key: 'citizenship', label: 'PR & citizenship',    short: 'Secure permanent status', icon: '🏛', hint: 'Naturalisation tests, residence requirements, dual-citizenship',       funnel: 'bottom' },
+  { key: 'family',      label: 'Family & marriage',   short: 'Bring the family',        icon: '👨‍👩‍👧‍👦', hint: 'Spouse, partner, children, dependants → YMYL — cite statutes',     funnel: 'bottom' },
+  { key: 'relatives',   label: 'Moving relatives',    short: 'Extended family',         icon: '🧑', hint: 'Parents, siblings, dependent relatives — sponsor backlog-aware',     funnel: 'bottom' },
+]
+
+const STAGE_META: Record<LifecycleStage, { label: string; icon: string }> =
+  Object.fromEntries(LIFECYCLE_STAGES.map((s) => [s.key, { label: s.label, icon: s.icon }])) as Record<LifecycleStage, { label: string; icon: string }>
+
+const REASON_META: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
+  journey_prev:       { label: 'Journey back',     bg: '#EDE9FE', fg: '#5B21B6', icon: '←' },
+  journey_next:       { label: 'Journey next',     bg: '#DBEAFE', fg: '#1D4ED8', icon: '→' },
+  cross_country:      { label: 'Cross-country',    bg: '#FEF3C7', fg: '#92400E', icon: '🌐' },
+  marketplace_cta:    { label: 'Marketplace',      bg: '#D1FAE5', fg: '#166534', icon: '🛍' },
+  cluster_related:    { label: 'Cluster sibling',  bg: '#FEE2E2', fg: '#991B1B', icon: '🕵' },
+  ontology_neighbor:  { label: 'Neighbor',         bg: '#E5E7EB', fg: '#374151', icon: '🔗' },
+}
+
+/** Heuristic to map an opportunity's signals / topic to the most plausible life-cycle stage. */
+function autoDetectStage(topic: string, signals: string[] | undefined): LifecycleStage {
+  const hay = `${topic} ${(signals || []).join(' ')}`.toLowerCase()
+  if (/(citizenship|naturali[sz]ation|n-400|life in (the )?uk test|ilr|p\.?r|permanent residence|dual citizens|passport)/.test(hay)) return 'citizenship'
+  if (/(spouse|partner|marriage|fianc[eé]|family[- ]?based|i-130|i-129f|k-?1|820|801|dependent child)/.test(hay)) return 'family'
+  if (/(parent|sibling|brother|sister|aunt|uncle|f4|f2a|grandparent|aged parent)/.test(hay)) return 'relatives'
+  if (/(housing|rent|apartment|landlord|tenant|nhk|deposit|neighbourhood|neighborhood)/.test(hay)) return 'housing'
+  if (/(ssn|national insurance|\bsin\b|tfn|medicare|nhs|gp\b|driv(e|ing) licen[cs]e|open(ing)? a bank|tax file)/.test(hay)) return 'settlement'
+  if (/(h-?1b|skilled worker|tier ?2|subclass ?(189|190|491|482)|express entry|lmia|pnp|\b485\b|opt\b|i-?765|ead\b|cpt\b)/.test(hay)) return 'work'
+  if (/(f-?1\b|j-?1\b|student visa|study permit|sevp|i-20|ds-?2019|\bcoe\b|\bcas\b|graduate route|subclass ?500)/.test(hay)) return 'schools'
+  if (/(visa|permit|application|form|filing|consulate|embassy|uscis|home office|ircc|mara|processing time|refus)/.test(hay)) return 'visa'
+  if (/(why|compare|best country|move to|immigrate to|life in|cost of living)/.test(hay)) return 'intent'
+  return 'visa'
+}
+
+function stageMeta(stage: string): { label: string; icon: string } | null {
+  return (STAGE_META as Record<string, { label: string; icon: string }>)[stage] || null
+}
+
 function fmtN(n: number | undefined | null): string {
   const v = Number(n) || 0
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
@@ -687,6 +742,7 @@ export default function AdminCommandCenter({
       play,
       intent: o.intent || 'informational',
       signals: o.signals || [],
+      stage: (o.stage || o.lifecycleStage || autoDetectStage(o.term, o.signals)) as LifecycleStage,
       interlinks: o.interlinks || [],
       score: scoreOf(o),
       cluster: o.cluster || null,
@@ -695,11 +751,80 @@ export default function AdminCommandCenter({
     setWorkspaceOpen(false)
     setTab('launch')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    // Fire-and-forget: rebuild the link plan for the detected stage so the Launch
+    // tab lands with stage-aware edges instead of plain registry hits.
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        const stage = (o.stage || o.lifecycleStage || autoDetectStage(o.term, o.signals)) as LifecycleStage
+        void recomputeInterlinks({
+          stage,
+          country: regionFilter || 'US',
+          contentType: o.contentType || (play === 'cannibalization' || play === 'cannibal_merge' ? 'article' : 'blog_post'),
+          keywords: kw,
+          clusterId: o.cluster?.id,
+          topic: o.term,
+        })
+      }, 30)
+    }
   }
 
   const clearBrief = () => setBrief(null)
 
-  const runGenerate = async () => {
+  const recomputeInterlinks = async (opts: {
+    stage: LifecycleStage
+    country: string
+    contentType: string
+    keywords: string[]
+    clusterId?: string
+    topic: string
+  }) => {
+    setRelinking(true)
+    try {
+      const slugBase = `${(opts.contentType || 'blog_post').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${opts.stage}-${(opts.country || 'US').toLowerCase()}-${(opts.topic || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)}`
+      const res = await fetch('/api/seo-engine/interlink', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceSlug: slugBase,
+          stage: opts.stage,
+          country: (opts.country || 'US').toUpperCase(),
+          contentType: ['regional_page', 'blog_post', 'casework', 'marketplace_landing', 'faq_hub'].includes(opts.contentType)
+            ? opts.contentType : 'blog_post',
+          clusterId: opts.clusterId,
+          relatedTerms: (opts.keywords || []).slice(0, 4),
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; error?: string; edges?: Array<{
+          sourceSlug: string; targetUrl: string; targetHost: string;
+          anchorText: string; contextH2?: string; reason: string; score: number
+        }>
+      }
+      if (!res.ok || !data.ok) {
+        notify(data.error || `Could not build the link plan for "${opts.stage}"`, 'error')
+        return
+      }
+      const normalized = (data.edges || []).map((e) => ({
+        label: e.anchorText,
+        url: e.targetUrl,
+        reason: e.reason,
+        contextH2: e.contextH2 || '',
+        score: e.score,
+        host: e.targetHost || 'apex',
+      }))
+      setBrief((prev) => prev ? { ...prev, interlinks: normalized as any } : prev)
+      notify(`Link plan rebuilt for ${opts.stage} — ${normalized.length} target${normalized.length === 1 ? '' : 's'}.`, 'success')
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Interlink recompute failed', 'error')
+    } finally {
+      setRelinking(false)
+    }
+  }
+
+  // ── Region → Country normalization ───────────────────────────────────────
+  const [relinking, setRelinking] = React.useState(false)
+
+    const runGenerate = async () => {
     if (!brief) return
     setGenerating(true)
     setLaunchFeed([{ ts: Date.now(), level: 'info', msg: 'Connecting to the SEO generation pipeline…' }])
@@ -721,6 +846,8 @@ export default function AdminCommandCenter({
           keywords: brief.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: minAudit, maxRefine,
           aiProvider,
+          stage: brief.stage || 'visa',
+          lifeCycleStage: brief.stage || 'visa',
           interlinks: brief.interlinks || [],
           cluster: brief.cluster || null,
           opportunity: { primaryKeyword: brief.primaryKeyword, play: brief.play, intent: brief.intent, opportunityScore: brief.score, signals: brief.signals },
@@ -1717,18 +1844,116 @@ function RecheckDuePanel() {
                 <option value="openrouter">OpenRouter</option>
               </select>
             </div>
-            {brief.interlinks && brief.interlinks.length > 0 && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>🔗 Internal linking targets ({brief.interlinks.length})</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {brief.interlinks.slice(0, 6).map((l: any, i: number) => (
-                    <span key={i} style={{ padding: '3px 8px', borderRadius: 5, background: '#FEF9EC', border: `1px solid ${C.goldBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text }}>
-                      {l.label} → {String(l.url || '').replace(/^https?:\/\//, '')}
-                    </span>
-                  ))}
-                </div>
+            {/* ── Life-cycle stage for this link plan ────────────── */}
+            <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFBEB', boxShadow: C.shadowCard }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                <label style={{ ...labelStyle, marginBottom: 0, color: C.gold }}>
+                  🎯 LIFE-CYCLE STAGE FOR THIS LINK PLAN
+                </label>
+                {brief.stage && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '3px 9px', borderRadius: 999, fontSize: 10, fontWeight: 700, fontFamily: C.mono,
+                    background: C.goldSoft, color: C.gold, border: `1px solid ${C.goldBorder}`,
+                  }} title={`Stage cell: ${brief.stage} × ${brief.region || 'US'}`}>
+                    {stageMeta(brief.stage)?.icon} {stageMeta(brief.stage)?.label}
+                  </span>
+                )}
               </div>
-            )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
+                <select
+                  value={brief.stage || 'visa'}
+                  onChange={(e) => {
+                    const newStage = e.target.value as LifecycleStage
+                    setBrief({ ...brief, stage: newStage })
+                    void recomputeInterlinks({
+                      stage: newStage,
+                      country: brief.region || 'US',
+                      contentType: brief.contentType || 'blog_post',
+                      keywords: brief.keywords || [],
+                      clusterId: brief.cluster?.id,
+                      topic: brief.topic,
+                    })
+                  }}
+                  style={{ ...inputStyle, fontWeight: 700 }}
+                  title="Picking the right life-cycle stage anchors the link plan to the correct cell in the (stage × country) matrix. Neighbors, cross-country comparisons, and marketplace CTA will all re-target."
+                >
+                  {LIFECYCLE_STAGES.map((s) => (
+                    <option key={s.key} value={s.key}>{s.icon} {s.label} · {s.short}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => recomputeInterlinks({
+                    stage: (brief.stage || 'visa') as LifecycleStage,
+                    country: brief.region || 'US',
+                    contentType: brief.contentType || 'blog_post',
+                    keywords: brief.keywords || [],
+                    clusterId: brief.cluster?.id,
+                    topic: brief.topic,
+                  })}
+                  disabled={relinking}
+                  style={{
+                    padding: '7px 12px', borderRadius: 6, cursor: relinking ? 'wait' : 'pointer',
+                    border: 'none', background: C.navy, color: '#FFFFFF', fontSize: 11, fontWeight: 700,
+                    fontFamily: C.mono, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                  title="Rebuild the link plan for the chosen stage and country"
+                >
+                  {relinking
+                    ? '… Rebuilding'
+                    : '↻ Recompute for stage'}
+                </button>
+              </div>
+              {brief.stage && (
+                <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6, fontFamily: C.mono, lineHeight: 1.5 }}>
+                  <strong style={{ color: C.gold }}>Why this matters.</strong>{' '}
+                  {LIFECYCLE_STAGES.find((s) => s.key === brief.stage)?.hint}
+                </div>
+              )}
+              {brief.interlinks && (brief.interlinks as any[]).length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Internal linking targets ({(brief.interlinks as any[]).length})
+                    </span>
+                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>
+                      cell: {brief.stage} × {(brief.region || 'US').toLowerCase()}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(brief.interlinks as any[]).slice(0, 8).map((l: any, i: number) => {
+                      const r = REASON_META[l.reason] || REASON_META.cluster_related
+                      const ctx = l.contextH2 ? `In section “${l.contextH2}” · score ${(Number(l.score) || 0).toFixed(2)}` : `score ${(Number(l.score) || 0).toFixed(2)}`
+                      return (
+                        <span
+                          key={i}
+                          title={ctx}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                            padding: '3px 8px 3px 4px', borderRadius: 5,
+                            background: r.bg, border: `1px solid ${C.border}`,
+                            fontSize: 10, fontFamily: C.mono, color: '#111',
+                          }}
+                        >
+                          <span style={{
+                            fontSize: 9, padding: '2px 6px', borderRadius: 3,
+                            background: r.fg, color: '#fff', fontWeight: 700, letterSpacing: '0.04em',
+                          }}>{r.icon} {r.label}</span>
+                          <span style={{ color: r.fg, fontWeight: 600 }}>{l.label}</span>
+                          <span style={{ color: C.textMuted }}>→ {String(l.url || '').replace(/^https?:\/\//, '').slice(0, 48)}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {brief.interlinks && (brief.interlinks as any[]).length === 0 && (
+                <div style={{ fontSize: 10, color: C.textDim, marginTop: 6, fontFamily: C.mono }}>
+                  No target edges yet — click <strong>Recompute for stage</strong> to build the plan.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Launch feed */}
