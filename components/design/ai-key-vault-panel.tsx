@@ -51,12 +51,22 @@ interface AiSettings {
   default_provider?: string | null
   default_model?: string | null
   max_providers?: string | null
+  provider_order?: string | null
 }
 
 interface Draft {
   key: string
   baseUrl: string
   model: string
+}
+
+function parseProviderOrder(value: string | null | undefined, fallback: string[]): string[] {
+  let raw: unknown = value || ''
+  if (typeof raw === 'string' && raw.trim()) {
+    try { raw = JSON.parse(raw) } catch { raw = raw.split(',') }
+  }
+  const ids = Array.isArray(raw) ? raw.map((id) => String(id).trim()).filter(Boolean) : []
+  return [...new Set([...ids, ...fallback])].filter((id) => fallback.includes(id))
 }
 
 const input = (w: string): React.CSSProperties => ({
@@ -87,6 +97,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
   const [defaultProvider, setDefaultProvider] = React.useState('auto')
   const [defaultModel, setDefaultModel] = React.useState('')
   const [maxProviders, setMaxProviders] = React.useState('3')
+  const [providerOrder, setProviderOrder] = React.useState<string[]>([])
   const [busy, setBusy] = React.useState<string | null>(null)
   const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -98,9 +109,11 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
       const res = await fetch('/api/seo-factory/ai-keys', { credentials: 'same-origin' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const d = await res.json()
-      setRows(d.providers || [])
+      const nextRows = (d.providers || []) as VaultStatusRow[]
+      setRows(nextRows)
       const s = (d.settings || {}) as AiSettings
       setSettings(s)
+      setProviderOrder(parseProviderOrder(s.provider_order, nextRows.map((row) => row.id)))
       setDefaultProvider(s.default_provider || 'auto')
       setDefaultModel(s.default_model || '')
       setMaxProviders(s.max_providers || '3')
@@ -218,6 +231,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
           defaultProvider: defaultProvider === 'auto' ? 'auto' : defaultProvider,
           defaultModel,
           maxProviders,
+          providerOrder,
         }),
       })
       const j = await res.json().catch(() => ({}))
@@ -233,6 +247,23 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
 
   const setD = (id: string, patch: Partial<Draft>) =>
     setDrafts((prev) => ({ ...prev, [id]: { ...draft(id), ...patch } }))
+
+  const moveProvider = (id: string, delta: -1 | 1) => {
+    setProviderOrder((current) => {
+      const index = current.indexOf(id)
+      const nextIndex = index + delta
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current
+      const next = [...current]
+      const [item] = next.splice(index, 1)
+      if (item) next.splice(nextIndex, 0, item)
+      return next
+    })
+  }
+
+  const orderedRows = React.useMemo(() => {
+    const byId = new Map((rows || []).map((row) => [row.id, row]))
+    return providerOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
+  }, [rows, providerOrder])
 
   return (
     <div>
@@ -291,9 +322,28 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         </button>
       </div>
 
+      {/* Provider priority */}
+      <div style={{ padding: 10, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: '#fff', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Provider priority</div>
+          <div style={{ fontSize: 9, color: C.textDim }}>Top = first eligible lead · arrows change fallback order · Save defaults applies it everywhere</div>
+        </div>
+        <div style={{ display: 'grid', gap: 4 }}>
+          {orderedRows.map((r, index) => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px', borderRadius: C.radiusXs, background: index === 0 ? C.goldSoft : C.surface2, border: `1px solid ${index === 0 ? C.goldBorder : C.border2}` }}>
+              <span style={{ width: 20, fontFamily: C.mono, fontSize: 10, color: index === 0 ? C.gold : C.textDim, fontWeight: 800 }}>{index + 1}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: C.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+              <SourceBadge source={r.source} />
+              <button type="button" onClick={() => moveProvider(r.id, -1)} disabled={index === 0} aria-label={`Move ${r.label} up`} style={{ ...btn(), padding: '3px 7px', opacity: index === 0 ? 0.4 : 1 }}>↑</button>
+              <button type="button" onClick={() => moveProvider(r.id, 1)} disabled={index === orderedRows.length - 1} aria-label={`Move ${r.label} down`} style={{ ...btn(), padding: '3px 7px', opacity: index === orderedRows.length - 1 ? 0.4 : 1 }}>↓</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Provider rows */}
       <div style={{ display: 'grid', gap: 6, maxHeight: 330, overflow: 'auto', paddingRight: 2 }}>
-        {(rows || []).map((r) => {
+        {orderedRows.map((r) => {
           const d = draft(r.id)
           const probing = probe[r.id]
           const isBusy = busy === `save-${r.id}` || busy === `del-${r.id}` || busy === `test-${r.id}`
