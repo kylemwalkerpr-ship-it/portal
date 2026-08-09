@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       const targets = await listTargetOpportunities({ limit: 200 })
       const target = targets.find((t) => t.id === target_id)
       if (!target) return NextResponse.json({ ok: false, error: 'target not found' }, { status: 404 })
-      const brief = (body.brief as { topic?: string; stage?: LifecycleStage; country?: Country; url?: string } | undefined) || undefined
+      const brief = (body.brief as { topic?: string; stage?: LifecycleStageDef; country?: Country; url?: string } | undefined) || undefined
       const draft = await draftOutreachMessage({ target, briefContext: brief, whyWeFit: typeof body.whyWeFit === 'string' ? body.whyWeFit : undefined })
       return NextResponse.json({ ok: true, ...draft })
     }
