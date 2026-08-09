@@ -24,8 +24,8 @@
  * Auth: `Authorization: Bearer <CRON_SECRET>`.
  * Schedule: every 15 minutes.
  */
-import { createClient } from '@supabase/supabase-js'
-import { runSeoFactoryPipeline } from '@/lib/seoFactory/pipeline'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { runSeoFactoryPipeline, type PipelineResult } from '@/lib/seoFactory/pipeline'
 
 const BATCH_SIZE = 3
 const COOLDOWN_MINUTES = 15
@@ -38,6 +38,44 @@ function backoffMinutes(attempt: number): number {
   return Math.round(base + jitter)
 }
 
+/**
+ * Classify a PipelineResult that just failed into one of the closed set of
+ * last_failure_kind values the schema constraint accepts. This mirrors what
+ * the quality gate / ship pipeline already emits, but expressed so the queue
+ * band and War Room can group failures without parsing error_message.
+ */
+const ALLOWED_KINDS = new Set([
+  'compliance_gate',
+  'ai_provider',
+  'github_push',
+  'github_merge',
+  'cloudflare_deploy',
+  'schema',
+  'config',
+  'timeout',
+  'unknown',
+] as const)
+
+type FailureKind = (typeof ALLOWED_KINDS)[number]
+
+function classifyAuditBlockers(audit: PipelineResult['audit'] | undefined): FailureKind {
+  if (!audit) return 'unknown'
+  // Ownership / YMYL / hard ship blockers → always compliance_gate.
+  if (Array.isArray(audit.blockers) && audit.blockers.length > 0) return 'compliance_gate'
+  // Score-wise we can't ship but no blockers → still compliance_gate (dry-report).
+  if (typeof audit.score === 'number' && audit.score < 50) return 'compliance_gate'
+  return 'unknown'
+}
+
+function classifyShipFailure(result: PipelineResult): FailureKind {
+  const err = (result.shipError || result.error || '').toString()
+  if (/rate.?limit|quota|429|exceeded/i.test(err)) return 'ai_provider'
+  if (/branch|sha|conflict|github.*file/i.test(err)) return 'github_push'
+  if (/merge|pr.*closed|cannot.*merge/i.test(err)) return 'github_merge'
+  if (/timeout|abort|deadline|ETIMEDOUT/i.test(err)) return 'timeout'
+  return classifyAuditBlockers(result.audit)
+}
+
 interface RetryResult {
   id: string
   ok: boolean
@@ -46,8 +84,53 @@ interface RetryResult {
   attempt: number
   score: number | null
   nextAttemptAt?: string
-  failureKind?: string
+  failureKind?: FailureKind
   error?: string
+}
+
+interface JobRow {
+  id: string
+  status?: string | null
+  title?: string | null
+  topic?: string | null
+  primary_keyword?: string | null
+  region?: string | null
+  content_type?: string | null
+  tone?: string | null
+  content?: string | null
+  ship_mode?: string | null
+  event_log?: unknown
+  attempt_count?: number | null
+  next_attempt_at?: string | null
+  last_attempt_at?: string | null
+  last_failure_kind?: string | null
+  seo_score?: number | null
+  user_id?: string | null
+  ship_error?: string | null
+  error_message?: string | null
+  /** Mirrors the columns migration 20260812 adds — present after it runs. */
+  ship_provider?: string | null
+  ship_target_repo?: string | null
+}
+
+async function appendEvent(
+  sb: SupabaseClient,
+  jobId: string,
+  entry: Record<string, unknown>,
+) {
+  const { data: row } = await sb
+    .from('content_jobs')
+    .select('event_log')
+    .eq('id', jobId)
+    .maybeSingle()
+  const base = Array.isArray((row as { event_log?: unknown } | null)?.event_log)
+    ? ((row as { event_log: unknown[] }).event_log)
+    : []
+  const next = [
+    ...base.slice(-200),
+    { id: `retry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, ts: Date.now(), ...entry },
+  ]
+  await sb.from('content_jobs').update({ event_log: next }).eq('id', jobId)
 }
 
 export async function POST(req: Request) {
@@ -64,12 +147,11 @@ export async function POST(req: Request) {
 
   // ── 1. Find jobs that are due for a retry ──────────────────────────────
   const legacyCutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60 * 1000).toISOString()
-  // We OR two selection branches via Union-style queries because `.or()` still
-  // requires the row to satisfy all of the loose predicates. We keep it
-  // simple: query the staged bucket first, then the legacy bucket.
-  const { data: stagedJobs, error: stagedErr } = await supabase
+  const { data: stagedRaw, error: stagedErr } = await supabase
     .from('content_jobs')
-    .select('*')
+    .select(
+      'id, status, title, topic, primary_keyword, region, content_type, tone, content, ship_mode, user_id, event_log, attempt_count, next_attempt_at, last_failure_kind, seo_score, ship_error, error_message',
+    )
     .in('status', ['drafting', 'pending', 'failed'])
     .lte('next_attempt_at', new Date().toISOString())
     .lt('attempt_count', MAX_ATTEMPTS)
@@ -80,16 +162,18 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, error: stagedErr.message }, { status: 500 })
   }
 
-  let picked = stagedJobs ?? []
+  const stagedJobs = (stagedRaw as unknown as JobRow[]) ?? []
+  let picked: JobRow[] = stagedJobs
   if (picked.length < BATCH_SIZE) {
     const remainder = BATCH_SIZE - picked.length
-    const { data: legacyJobs, error: legacyErr } = await supabase
+    const { data: legacyRaw, error: legacyErr } = await supabase
       .from('content_jobs')
-      .select('*')
+      .select(
+        'id, status, title, topic, primary_keyword, region, content_type, tone, content, ship_mode, user_id, event_log, attempt_count, next_attempt_at, last_failure_kind, seo_score, ship_error, error_message',
+      )
       .eq('status', 'drafting')
       .is('next_attempt_at', null)
       .lt('updated_at', legacyCutoff)
-      // Only take rows that have NOT already exceeded the cap (protect legacy rows)
       .or(`attempt_count.is.null,attempt_count.lt.${MAX_ATTEMPTS}`)
       .order('updated_at', { ascending: true })
       .limit(remainder)
@@ -100,7 +184,8 @@ export async function POST(req: Request) {
         { status: 500 },
       )
     }
-    picked = picked.concat(legacyJobs ?? [])
+    const legacyJobs = (legacyRaw as unknown as JobRow[]) ?? []
+    picked = picked.concat(legacyJobs)
   }
 
   if (!picked.length) {
@@ -109,7 +194,6 @@ export async function POST(req: Request) {
       retried: 0,
       succeeded: 0,
       failed: 0,
-      skipped: 0,
       escalated: 0,
       message: 'No retry-due jobs found',
       cooldownMinutes: COOLDOWN_MINUTES,
@@ -126,8 +210,7 @@ export async function POST(req: Request) {
   for (const job of picked) {
     const title = String(job.title || job.topic || 'untitled').slice(0, 120)
     const topic = String(job.topic || title)
-    const priorAttempts =
-      typeof job.attempt_count === 'number' ? job.attempt_count : 0
+    const priorAttempts = typeof job.attempt_count === 'number' ? job.attempt_count : 0
     const attemptNumber = priorAttempts + 1
 
     // Already at max attempts → escalate to permanently failed (operator picks up).
@@ -149,7 +232,7 @@ export async function POST(req: Request) {
         topic,
         attempt: priorAttempts,
         score: typeof job.seo_score === 'number' ? job.seo_score : null,
-        failureKind: job.last_failure_kind || 'unknown',
+        failureKind: (job.last_failure_kind as FailureKind) || 'unknown',
         error: 'max attempts exceeded',
       })
       continue
@@ -172,7 +255,7 @@ export async function POST(req: Request) {
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
 
-      const result = await runSeoFactoryPipeline({
+      const result: PipelineResult = await runSeoFactoryPipeline({
         topic,
         title,
         primaryKeyword,
@@ -180,40 +263,29 @@ export async function POST(req: Request) {
         contentType,
         tone: String(job.tone || 'educational'),
         resumeContent: job.content ? String(job.content) : undefined,
-        shipMode: (job.ship_mode || 'pr') as 'pr' | 'merge' | 'auto' | 'autodeploy' | 'none',
+        shipMode: (job.ship_mode || 'pr') as PipelineResult['shipMode'],
         minAuditScore: 55,
         // More refine attempts on retry to push through quality gates.
         maxRefine: 12,
         userId: job.user_id || 'system:cron',
       })
 
-      const baseLog = Array.isArray(job.event_log) ? job.event_log : []
-      const nextLog = [
-        ...baseLog.slice(-200),
-        {
-          id: `retry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          ts: Date.now(),
-          level: result.ok ? 'success' : 'warn',
-          source: 'retry-cron',
-          attempt: attemptNumber,
-          message: result.ok
-            ? `Retry succeeded · audit ${result.audit.score} · ${result.ship?.status || 'no ship'}`
-            : `Retry failed · audit ${result.audit.score} · ${result.shipError || 'gates held'}`,
-          detail: result.error || result.shipError || undefined,
-          failureKind: result.failureKind || null,
-        },
-      ]
-
       if (result.ok) {
         await supabase
           .from('content_jobs')
           .update({
-            event_log: nextLog,
             next_attempt_at: null,
             last_failure_kind: null,
             ship_error: null,
           })
           .eq('id', job.id)
+        await appendEvent(supabase, job.id, {
+          level: 'success',
+          source: 'retry-cron',
+          attempt: attemptNumber,
+          message: `Retry succeeded · audit ${result.audit.score} · ${result.ship?.status || 'no ship'}`,
+          failureKind: null,
+        })
         succeeded++
         results.push({
           id: job.id,
@@ -226,23 +298,31 @@ export async function POST(req: Request) {
       } else {
         // Pipeline returned but gates held / ship errored.
         // Reschedule the next attempt with exponential backoff.
+        const failureKind = classifyShipFailure(result)
         const wait = backoffMinutes(attemptNumber)
         const next = new Date(Date.now() + wait * 60 * 1000).toISOString()
         await supabase
           .from('content_jobs')
           .update({
-            event_log: nextLog,
             seo_score: result.audit.score,
             word_count: result.audit.wordCount,
             audit_json: result.audit,
             status: 'drafting',
             error_message: result.error || result.shipError || null,
             ship_error: result.shipError || null,
-            ship_provider: result.ship?.provider || null,
-            last_failure_kind: result.failureKind || 'unknown',
+            ship_target_repo: result.ship?.repo || null,
+            last_failure_kind: failureKind,
             next_attempt_at: next,
           })
           .eq('id', job.id)
+        await appendEvent(supabase, job.id, {
+          level: 'warn',
+          source: 'retry-cron',
+          attempt: attemptNumber,
+          message: `Retry failed · audit ${result.audit.score} · ${result.shipError || 'gates held'}`,
+          detail: result.error || result.shipError || undefined,
+          failureKind,
+        })
         failed++
         results.push({
           id: job.id,
@@ -252,46 +332,32 @@ export async function POST(req: Request) {
           attempt: attemptNumber,
           score: result.audit.score,
           nextAttemptAt: next,
-          failureKind: result.failureKind || 'unknown',
+          failureKind,
           error: result.error || result.shipError || 'gates held',
         })
       }
     } catch (e) {
       // Pipeline crashed (rate limit, timeout, schema mismatch, …).
       const msg = e instanceof Error ? e.message : 'Pipeline crash during retry'
-      const baseLog = Array.isArray(job.event_log) ? job.event_log : []
-      const failureKind =
-        /rate.?limit|quota|429/i.test(msg)
-          ? 'ai_provider'
-          : /github|branch|sha|conflict/i.test(msg)
-            ? 'github_push'
-            : /timeout|abort|deadline/i.test(msg)
-              ? 'timeout'
-              : 'unknown'
+      const failureKind = classifyTextFailure(msg)
       const wait = backoffMinutes(attemptNumber)
       const next = new Date(Date.now() + wait * 60 * 1000).toISOString()
-      const nextLog = [
-        ...baseLog.slice(-200),
-        {
-          id: `retry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          ts: Date.now(),
-          level: 'error',
-          source: 'retry-cron',
-          attempt: attemptNumber,
-          message: `Retry crashed: ${msg.slice(0, 200)}`,
-          detail: msg,
-          failureKind,
-        },
-      ]
       await supabase
         .from('content_jobs')
         .update({
-          event_log: nextLog,
           error_message: msg.slice(0, 500),
           last_failure_kind: failureKind,
           next_attempt_at: next,
         })
         .eq('id', job.id)
+      await appendEvent(supabase, job.id, {
+        level: 'error',
+        source: 'retry-cron',
+        attempt: attemptNumber,
+        message: `Retry crashed: ${msg.slice(0, 200)}`,
+        detail: msg,
+        failureKind,
+      })
       failed++
       results.push({
         id: job.id,
@@ -326,4 +392,13 @@ export async function POST(req: Request) {
       error: r.error?.slice(0, 150),
     })),
   })
+}
+
+function classifyTextFailure(msg: string): FailureKind {
+  if (/rate.?limit|quota|429/i.test(msg)) return 'ai_provider'
+  if (/github|branch|sha|conflict/i.test(msg)) return 'github_push'
+  if (/timeout|abort|deadline|ETIMEDOUT/i.test(msg)) return 'timeout'
+  if (/schema|column.*does not exist|relation.*does not exist/i.test(msg)) return 'schema'
+  if (/env|config|missing|MISSING/i.test(msg)) return 'config'
+  return 'unknown'
 }
