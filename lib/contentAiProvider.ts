@@ -25,10 +25,12 @@ const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
 // Keep the cascade bounded while allowing one additional configured provider
 // after a primary timeout and an exhausted quota fallback.
-const MAX_PROVIDER_CANDIDATES = Math.max(
-  1,
-  Math.min(4, Number.parseInt(process.env.CONTENT_AI_MAX_PROVIDERS || '3', 10) || 3),
-)
+function maxProviderCandidates(): number {
+  return Math.max(
+    1,
+    Math.min(10, Number.parseInt(env('CONTENT_AI_MAX_PROVIDERS') || '3', 10) || 3),
+  )
+}
 
 const NVIDIA_INTEGRATE_BASE =
   process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1'
@@ -890,7 +892,7 @@ export function listConfiguredContentProviders(): Array<{
 function preferProvider(): string {
   const explicit = (env('CONTENT_AI_PROVIDER') || env('AI_PROVIDER') || '').toLowerCase().trim()
   if (!explicit || explicit === 'auto' || explicit === 'default' || explicit === 'primary') {
-    return 'xai' // Grok (xAI) is now the default primary
+    return configuredProviderOrder()[0] || 'xai'
   }
   // Aliases → NVIDIA GLM 5.2 (preferred lead on this estate).
   // GLM 5.2 wins the NVIDIA pin even when `nvidia`/`nim` are passed, because the
@@ -961,6 +963,31 @@ function isNvidiaPrefer(prefer: string): boolean {
 
 function isCloudflareExclusive(prefer: string): boolean {
   return prefer === 'cloudflare' || prefer === 'cloudflare-ai' || prefer === 'workers-ai'
+}
+
+/** Parse the admin-saved order defensively (JSON or CSV). */
+function configuredProviderOrder(): string[] {
+  const raw = env('CONTENT_AI_PROVIDER_ORDER').trim()
+  if (!raw) return []
+  let values: unknown = raw
+  try { values = JSON.parse(raw) } catch { values = raw.split(',') }
+  if (!Array.isArray(values)) return []
+  const aliases: Record<string, string> = {
+    glm: 'nvidia-glm', 'glm-5.2': 'nvidia-glm', 'z-ai': 'nvidia-glm',
+    nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
+    cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
+  }
+  return [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
+}
+
+function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
+  const order = configuredProviderOrder()
+  if (!order.length) return items
+  const rank = new Map(order.map((id, index) => [id, index]))
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => (rank.get(a.item.label) ?? 10000) - (rank.get(b.item.label) ?? 10000) || a.index - b.index)
+    .map(({ item }) => item)
 }
 
 type CompleteFn = () => Promise<ContentAiResult>
@@ -1074,14 +1101,20 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   pushRest()
   pushChatBridge()
 
+  const orderedItems = sortByAdminOrder(items)
+  const preferredIndex = orderedItems.findIndex((item) => item.label === prefer)
+  if (preferredIndex > 0) {
+    const [preferred] = orderedItems.splice(preferredIndex, 1)
+    if (preferred) orderedItems.unshift(preferred)
+  }
   const seen = new Set<string>()
-  return items
+  return orderedItems
     .filter((i) => {
       if (seen.has(i.label)) return false
       seen.add(i.label)
       return true
     })
-    .slice(0, MAX_PROVIDER_CANDIDATES)
+    .slice(0, maxProviderCandidates())
 }
 
 /**
@@ -1133,6 +1166,8 @@ async function withDeadline<T>(label: string, ms: number, promise: Promise<T>): 
 }
 
 export async function generateContentText(opts: ContentAiOptions): Promise<ContentAiResult> {
+  // Apply the latest admin provider/key settings without requiring a redeploy.
+  await refreshAiVault()
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
@@ -1191,6 +1226,8 @@ export async function generateContentText(opts: ContentAiOptions): Promise<Conte
 export async function* generateContentTextStream(
   opts: ContentAiOptions,
 ): AsyncGenerator<ContentAiStreamEvent> {
+  // Apply the latest admin provider/key settings before constructing candidates.
+  await refreshAiVault()
   // Reset subrequest budget flag so a fresh request doesn't inherit stale state
   subrequestBudgetExhausted = false
 
@@ -1282,8 +1319,12 @@ export async function* generateContentTextStream(
     complete: () => chatProviderBridge(opts),
   })
 
-  // Default stream order is already DeepSeek → Cloudflare (built above).
-  // Only reorder when CONTENT_AI_PROVIDER explicitly pins Cloudflare (or other).
+  // Admin order controls the default stream cascade; manual pins still win.
+  const adminOrder = configuredProviderOrder()
+  if (adminOrder.length) {
+    const rank = new Map(adminOrder.map((id, index) => [id, index]))
+    candidates.sort((a, b) => (rank.get(a.label) ?? 10000) - (rank.get(b.label) ?? 10000))
+  }
   if (isCloudflareExclusive(prefer)) {
     const idx = candidates.findIndex((c) => c.label === 'cloudflare-ai')
     if (idx > 0) {
@@ -1319,7 +1360,7 @@ export async function* generateContentTextStream(
       seen.add(c.label)
       return true
     })
-    .slice(0, MAX_PROVIDER_CANDIDATES)
+    .slice(0, maxProviderCandidates())
 
   let explicitProviderFailed = false
   for (const c of unique) {
