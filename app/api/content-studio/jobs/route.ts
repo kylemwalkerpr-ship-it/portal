@@ -6,6 +6,7 @@ import { shipContent, mergePullRequest, parseRepoSlug, type ShipMode } from '@/l
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
+import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 
 function sb() {
   return createClient(
@@ -84,8 +85,9 @@ export async function GET(request: NextRequest) {
     const host = searchParams.get('host') || searchParams.get('owner_host')
     const repo = searchParams.get('repo') || searchParams.get('target_repo')
     const q = (searchParams.get('q') || '').trim()
-    // Cap list size — full content is loaded per-job via ?id=
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? '40', 10) || 40, 80)
+    // Cap list size — full content is loaded per-job via ?id=. 100 matches
+    // the admin queue's claimed window (the UI says "most recent 100").
+    const limit = Math.min(parseInt(searchParams.get('limit') ?? '40', 10) || 40, 100)
     const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0', 10) || 0)
     const includeContent = searchParams.get('full') === '1'
 
@@ -190,23 +192,13 @@ export async function GET(request: NextRequest) {
     // Summary for admin queue dashboard — totals are the REAL table counts
     // (query-level aggregates) rather than the window that was returned, so
     // the queue never lies about how many jobs exist.
-    const scored = jobs.filter((j) => j.seo_score != null)
-    const statusKey = (s: string) => String(s || 'unknown')
-    const summary = {
+    // buildJobSummary filters null scores itself — the guard lives in one place.
+    const summary = buildJobSummary({
       total,
       window: jobs.length,
-      drafting: statusTotals.drafting ?? 0,
-      pr_created: statusTotals.pr_created ?? 0,
-      merged: statusTotals.merged ?? 0,
-      failed: statusTotals.failed ?? 0,
-      closed: statusTotals.closed ?? 0,
-      pending: statusTotals.pending ?? 0,
-      publishing: statusTotals.publishing ?? 0,
-      avgSeo:
-        scored.length > 0
-          ? Math.round(scored.reduce((s, j) => s + Number(j.seo_score), 0) / scored.length)
-          : null,
-    }
+      statusTotals,
+      scored: jobs,
+    })
 
     return NextResponse.json({
       jobs,

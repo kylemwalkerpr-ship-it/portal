@@ -196,9 +196,17 @@ export async function buildSeoWarRoom(opts?: {
       })
       if (res.ok) {
         const data: any = await res.json()
-        source = 'live'
-        liveRange = { startDate: start, endDate: end, days }
-        for (const r of (data.rows || [])) {
+        const rows: Array<{ keys?: string[]; impressions?: number; clicks?: number; ctr?: number; position?: number }> = Array.isArray(data.rows) ? data.rows : []
+        // Truthfulness gate: a 200 with zero rows is NOT live data. Only brand
+        // the run as 'live' when the property actually returned queries, so the
+        // dashboard never shows the LIVE badge over snapshot-derived plays.
+        if (rows.length > 0) {
+          source = 'live'
+          liveRange = { startDate: start, endDate: end, days }
+        } else {
+          warnings.push('GSC live query returned 0 rows — using snapshot data')
+        }
+        for (const r of rows) {
           const term = (r.keys?.[0] || '').trim()
           if (!term || isNoiseQuery(term)) continue
           queries.push({
@@ -210,41 +218,45 @@ export async function buildSeoWarRoom(opts?: {
           })
         }
         // ── Position history: split range into 3 buckets, query each ──
-        try {
-          const startMs = Date.now() - days * 864e5
-          const third = (days * 864e5) / 3
-          const buckets = [0, 1, 2].map((i) => ({
-            startDate: new Date(startMs + i * third).toISOString().slice(0, 10),
-            endDate: new Date(startMs + (i + 1) * third).toISOString().slice(0, 10),
-          }))
-          const bucketRes = await Promise.all(
-            buckets.map((b) =>
-              fetch(endpoint, {
-                ...queryOpts,
-                body: JSON.stringify({
-                  startDate: b.startDate, endDate: b.endDate,
-                  dimensions: ['query'],
-                  rowLimit: Math.min(200, limit * 5),
-                }),
-              }).then((r) => (r.ok ? r.json() : null)),
-            ),
-          )
-          for (let i = 0; i < buckets.length; i++) {
-            const rows = (bucketRes[i] as any)?.rows || []
-            for (const r of rows) {
-              const term = (r.keys?.[0] || '').trim().toLowerCase()
-              if (!term) continue
-              if (!historyByTerm.has(term)) historyByTerm.set(term, [])
-              historyByTerm.get(term)!.push({
-                date: buckets[i].endDate,
-                position: r.position ?? 0,
-                impressions: r.impressions ?? 0,
-                clicks: r.clicks ?? 0,
-              })
+        // Only worth the extra API calls when the property actually returned
+        // rows — on the 0-rows path all of this would be discarded anyway.
+        if (rows.length > 0) {
+          try {
+            const startMs = Date.now() - days * 864e5
+            const third = (days * 864e5) / 3
+            const buckets = [0, 1, 2].map((i) => ({
+              startDate: new Date(startMs + i * third).toISOString().slice(0, 10),
+              endDate: new Date(startMs + (i + 1) * third).toISOString().slice(0, 10),
+            }))
+            const bucketRes = await Promise.all(
+              buckets.map((b) =>
+                fetch(endpoint, {
+                  ...queryOpts,
+                  body: JSON.stringify({
+                    startDate: b.startDate, endDate: b.endDate,
+                    dimensions: ['query'],
+                    rowLimit: Math.min(200, limit * 5),
+                  }),
+                }).then((r) => (r.ok ? r.json() : null)),
+              ),
+            )
+            for (let i = 0; i < buckets.length; i++) {
+              const rows = (bucketRes[i] as any)?.rows || []
+              for (const r of rows) {
+                const term = (r.keys?.[0] || '').trim().toLowerCase()
+                if (!term) continue
+                if (!historyByTerm.has(term)) historyByTerm.set(term, [])
+                historyByTerm.get(term)!.push({
+                  date: buckets[i].endDate,
+                  position: r.position ?? 0,
+                  impressions: r.impressions ?? 0,
+                  clicks: r.clicks ?? 0,
+                })
+              }
             }
+          } catch {
+            /* history optional — scores still work without it */
           }
-        } catch {
-          /* history optional — scores still work without it */
         }
       }
     } catch {

@@ -1,0 +1,28 @@
+name: Forecast Reward Weekly
+
+# Every Monday 06:00 UTC — feeds forecast-vs-actual GSC deltas back into the
+# ranking model's reward ledger + bounded recalibration (seo_reward_events /
+# seo_model_calibration). Can also be run on demand from the Actions tab.
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  forecast-reward:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly forecast-reward pass
+        run: |
+          set -euo pipefail
+          URL="${PORTAL_URL:-https://portal.yousafeconsultancy.com}/api/cron/forecast-reward-weekly"
+          echo "POST $URL"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -X POST "$URL" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{"limit":400}')
+          echo "HTTP $code"; cat /tmp/resp.json || true
+          test "$code" = "200"
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PORTAL_URL: ${{ vars.PORTAL_URL }}

@@ -91,6 +91,38 @@ export async function POST(request: Request) {
       (auth as { profileId?: string }).profileId ||
       'admin'
 
+    // Ranking-model guidance (recommendedActions + forecast) from the radar /
+    // launch composer — sanitized so the pipeline prompt is written against the
+    // model's weak families, never against raw client objects. `body.ranking`
+    // is accepted as a back-compat alias.
+    const mgSource = (body.modelGuidance || body.ranking) as
+      | { total?: unknown; confidence?: unknown; recommendedActions?: unknown; forecast?: unknown }
+      | null
+      | undefined
+    const modelGuidance = mgSource && typeof mgSource === 'object'
+      ? {
+          total: mgSource.total != null ? Number(mgSource.total) : undefined,
+          confidence: mgSource.confidence != null ? Number(mgSource.confidence) : undefined,
+          recommendedActions: Array.isArray(mgSource.recommendedActions)
+            ? mgSource.recommendedActions.map(String).filter(Boolean).slice(0, 8)
+            : undefined,
+          forecast:
+            mgSource.forecast && typeof mgSource.forecast === 'object'
+              ? {
+                  points: Array.isArray((mgSource.forecast as { points?: unknown }).points)
+                    ? ((mgSource.forecast as { points: Array<Record<string, unknown>> }).points).slice(0, 3).map((p) => ({
+                        horizonDays: p?.horizonDays != null ? Number(p.horizonDays) : undefined,
+                        projectedPosition: p?.projectedPosition != null ? Number(p.projectedPosition) : undefined,
+                        projectedImpressions: p?.projectedImpressions != null ? Number(p.projectedImpressions) : undefined,
+                        projectedClicks: p?.projectedClicks != null ? Number(p.projectedClicks) : undefined,
+                        probabilityOfTop10: p?.probabilityOfTop10 != null ? Number(p.probabilityOfTop10) : undefined,
+                      }))
+                    : undefined,
+                }
+              : undefined,
+        }
+      : null
+
     const input = {
       topic,
       sourceJobId: String(body.supersedesJobId || '').trim() || null,
@@ -111,6 +143,18 @@ export async function POST(request: Request) {
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
       opportunityAction: body.opportunityAction,
+      // Radar play/intent/signals — feeds the streaming pipeline's autopilot
+      // transparency block (was previously dropped at this route).
+      opportunity: body.opportunity && typeof body.opportunity === 'object'
+        ? {
+            primaryKeyword: body.opportunity.primaryKeyword ? String(body.opportunity.primaryKeyword) : undefined,
+            play: body.opportunity.play ? String(body.opportunity.play) : undefined,
+            intent: body.opportunity.intent ? String(body.opportunity.intent) : undefined,
+            opportunityScore: body.opportunity.opportunityScore != null ? Number(body.opportunity.opportunityScore) : undefined,
+            signals: Array.isArray(body.opportunity.signals) ? body.opportunity.signals.map(String) : undefined,
+          }
+        : null,
+      modelGuidance,
       cluster: body.cluster
         ? {
             clusterId: body.cluster.clusterId ? String(body.cluster.clusterId) : undefined,

@@ -18,6 +18,10 @@
  * enforces the compliance gate with dedicated action groups.
  */
 import React from 'react'
+import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
+import { RankingModelBlock } from './admin-ranking-model-block'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
+import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
 const AdminCommandCenter = React.lazy(() => import('./admin-command-center'))
@@ -87,6 +91,7 @@ interface InterlinkSuggestion {
 interface GscMiniStats {
   clicks: number; impressions: number; ctr: number; position: number
   topQuery: string; topQueryClicks: number
+  source: 'live' | 'snapshot' | null
 }
 
 interface AISuggestion {
@@ -114,6 +119,8 @@ interface AISuggestion {
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   coverage?: { matched: boolean; matches: string[] }
   sourcePage?: string
+  /** Lean ranking-model view (total · confidence · recommendedActions · forecast) — attached by the suggestions API. */
+  ranking?: LeanRanking
 }
 
 // ── Options ──
@@ -595,7 +602,7 @@ function CreateWizard({
   topic, setTopic,
   audience, setAudience,
   keywords, setKeywords,
-  suggestions, suggestionsLoading, suggestionsError,
+  suggestions, suggestionsLoading, suggestionsError, radarMeta, gscStatus, onConnectGsc,
   onRefreshSuggestions,
   onApplySuggestion,
   brief, onClearBrief,
@@ -618,6 +625,9 @@ function CreateWizard({
   suggestions?: AISuggestion[]
   suggestionsLoading?: boolean
   suggestionsError?: string | null
+  radarMeta?: Record<string, unknown> | null
+  gscStatus?: Record<string, unknown> | null
+  onConnectGsc?: () => void
   onRefreshSuggestions?: (region: string) => void
   onApplySuggestion?: (s: AISuggestion) => void
   brief?: AISuggestion | null
@@ -709,7 +719,42 @@ function CreateWizard({
 
       {/* ── STEP 0 · Autopilot radar (optional) ── */}
       {showRadar && (
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: '#FCFAF6' }}>            <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: '#FCFAF6' }}>
+          {/* Data-source truthfulness: never let snapshot suggestions look live */}
+          {(radarMeta?.source || suggestionsLoading) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 9, fontWeight: 800, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textDim }}>Autopilot radar</span>
+              {radarMeta?.source && (
+                (() => {
+                  const src = String(radarMeta.source)
+                  const snapAt = (radarMeta.snapshot as { generatedAt?: string } | null)?.generatedAt
+                  const snapLabel = snapAt && src === 'snapshot'
+                    ? ` · ${new Date(snapAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    : ''
+                  return (
+                    <span title={src === 'live' ? 'Scored from live Search Console data' : 'Scored from the committed snapshot — connect GSC for live demand'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: src === 'live' ? C.greenSoft : '#FFFBEB', color: src === 'live' ? C.green : '#92400E' }}>
+                      {src === 'live' ? '● LIVE GSC' : `◐ SNAPSHOT${snapLabel}`}
+                    </span>
+                  )
+                })()
+              )}
+              {suggestionsLoading && <span style={{ fontSize: 9, fontFamily: C.mono, color: C.textDim }}>scanning…</span>}
+            </div>
+          )}
+          {/* GSC live probe + connect CTA — snapshot-vs-live is obvious here too */}
+          {gscStatus && !(gscStatus.connected && gscStatus.live) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 10.5, fontFamily: C.mono, color: gscStatus.connected ? C.red : '#92400E', flexWrap: 'wrap' }}>
+              <span>
+                {gscStatus.connected
+                  ? `◐ TOKEN FAILURE — ${String(gscStatus.error || 'refresh failed')}`
+                  : '◐ GSC not connected — these scores are snapshot-based'}
+              </span>
+              <button type="button" onClick={onConnectGsc} style={{ padding: '2px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#F59E0B', color: '#fff', fontSize: 9.5, fontWeight: 800 }}>
+                {gscStatus.connected ? 'Re-connect →' : 'Connect GSC →'}
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
             {RADAR_FILTERS.map((f) => (
 
               <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
@@ -847,6 +892,12 @@ function CreateWizard({
                 ))}
               </div>
             )}
+            {/* Ranking model block (score · recommended actions · forecast) — same brain as the command-center launch composer */}
+            {brief.ranking && (
+              <div style={{ marginBottom: 8 }}>
+                <RankingModelBlock ranking={brief.ranking} />
+              </div>
+            )}
             <p style={{ margin: 0, fontSize: 9.5, color: C.gold, fontFamily: C.mono }}>
               Opportunity signals + interlinks will be sent to the generator. Review the fields above, then generate.
             </p>
@@ -969,7 +1020,7 @@ function QueueStats({ jobs, total: totalOverride, summary }: {
   )
 }
 
-function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId }: {
+function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore }: {
   jobs: ContentJob[]
   total?: number
   summary?: QueueSummary | null
@@ -978,6 +1029,7 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
   mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
   gateByJob?: Map<string, { score: number; passed: boolean }>
   focusJobId?: string | null
+  onLoadMore?: () => void
 }) {
   const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
   const [search, setSearch] = React.useState('')
@@ -1147,10 +1199,15 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
         )}
       </div>
       {filtered.length > 12 && (
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={() => setShowAll(!showAll)} style={btnGhost}>
             {showAll ? '▲ Show fewer' : `▼ Show all ${filtered.length} matching`}
           </button>
+          {typeof total === 'number' && total > 0 && jobs.length < total && onLoadMore && (
+            <button type="button" onClick={onLoadMore} style={btnGhost}>
+              Load more ({total - jobs.length} remaining)
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1181,6 +1238,7 @@ function GscMini() {
           position: data.totals.position ?? 0,
           topQuery: top?.keys?.[0] ?? '—',
           topQueryClicks: top?.clicks ?? 0,
+          source: data.source === 'snapshot' ? 'snapshot' : 'live',
         })
       } else if (data.source === 'snapshot') {
         setStats({
@@ -1189,6 +1247,7 @@ function GscMini() {
           ctr: 0, position: 0,
           topQuery: data.rows?.[0]?.keys?.[0] ?? '—',
           topQueryClicks: data.rows?.[0]?.clicks ?? 0,
+          source: 'snapshot',
         })
       } else { setError(data.error || 'No data') }
     } catch { setError('Failed to load') } finally { setLoading(false) }
@@ -1202,9 +1261,16 @@ function GscMini() {
         icon="📊" title="GSC overview (28d)"
         sub="Live Search Console when credentials work, snapshot otherwise."
         right={
-          <button type="button" onClick={fetchGsc} disabled={loading} style={{ ...btnGhost, padding: '4px 10px' }}>
-            {loading ? '…' : '↻'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {stats && stats.source && (
+              <span title={stats.source === 'live' ? 'Scored from live Search Console data' : 'Committed snapshot — connect GSC for live numbers'} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono, background: stats.source === 'live' ? C.greenSoft : '#FFFBEB', color: stats.source === 'live' ? C.green : '#92400E' }}>
+                {stats.source === 'live' ? '● LIVE' : '◐ SNAPSHOT'}
+              </span>
+            )}
+            <button type="button" onClick={fetchGsc} disabled={loading} style={{ ...btnGhost, padding: '4px 10px' }}>
+              {loading ? '…' : '↻'}
+            </button>
+          </div>
         }
       />
       {stats ? (
@@ -1213,8 +1279,8 @@ function GscMini() {
             {[
               { label: 'Clicks', value: stats.clicks.toLocaleString(), color: C.green },
               { label: 'Impressions', value: stats.impressions.toLocaleString(), color: C.blue },
-              { label: 'CTR', value: `${stats.ctr.toFixed(1)}%`, color: C.purple },
-              { label: 'Avg Pos', value: stats.position.toFixed(1), color: C.orange },
+              { label: 'CTR', value: stats.source === 'snapshot' && stats.ctr === 0 ? '—' : `${stats.ctr.toFixed(1)}%`, color: C.purple },
+              { label: 'Avg Pos', value: stats.source === 'snapshot' && stats.position === 0 ? '—' : stats.position.toFixed(1), color: C.orange },
             ].map(m => (
               <div key={m.label} style={{ background: C.surface2, borderRadius: C.radiusXs, padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{m.label}</div>
@@ -1980,6 +2046,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [radarMeta, setRadarMeta] = React.useState<Record<string, unknown> | null>(null)
   const radarSeenTopicsRef = React.useRef<Set<string>>(new Set())
 
+  // GSC live probe (polled) + connect modal — snapshot-vs-live must be obvious
+  // before generating.
+  const [gscStatus, setGscStatus] = React.useState<Record<string, unknown> | null>(null)
+  const gscStatusRef = React.useRef<Record<string, unknown> | null>(null)
+  const [gscConnectOpen, setGscConnectOpen] = React.useState(false)
+
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
@@ -1999,7 +2071,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return []
     try {
-      const res = await fetch('/api/content-studio/jobs?limit=80', { credentials: 'same-origin' })
+      const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin' })
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
       const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
@@ -2082,6 +2154,32 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setSuggestionsError(err instanceof Error ? err.message : 'Suggestion fetch failed')
     } finally { setSuggestionsLoading(false) }
   }, [])
+
+  // GSC live probe — polled so the composer shows token health + a connect
+  // CTA. On the false→true transition the radar rescans so suggestions flip
+  // from snapshot to live immediately after connecting.
+  const loadGscStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/gsc/connect', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (!res.ok) return
+      const prev = gscStatusRef.current
+      gscStatusRef.current = data
+      setGscStatus(data)
+      // Refresh when the connection becomes usable: fresh connect OR a healed
+      // token after re-authorization (live false→true) — both flip the radar
+      // suggestions to live.
+      if ((!prev?.connected && data.connected) || (!prev?.live && data.live)) {
+        fetchSuggestions(region)
+      }
+    } catch { /* silent */ }
+  }, [fetchSuggestions, region])
+
+  React.useEffect(() => {
+    loadGscStatus()
+    const id = setInterval(loadGscStatus, 30_000)
+    return () => clearInterval(id)
+  }, [loadGscStatus])
 
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
@@ -2186,6 +2284,23 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }, [topic, region, interlinkStage])
 
+  // Page further into the queue — older jobs stay reachable beyond the window.
+  const loadMoreJobs = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/content-studio/jobs?limit=100&offset=${jobs.length}`, { credentials: 'same-origin' })
+      if (res.status === 503) return
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary; error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const more = data.jobs ?? []
+      setJobs(prev => {
+        const seen = new Set(prev.map(j => j.id))
+        return [...prev, ...more.filter(j => !seen.has(j.id))]
+      })
+      if (typeof data.total === 'number') setJobTotal(data.total)
+      if (data.summary) setJobSummary(data.summary)
+    } catch { /* silent */ }
+  }, [jobs.length])
+
   // Poll active jobs
   React.useEffect(() => {
     const hasActive = jobs.some(j => ['pending', 'drafting', 'publishing'].includes(j.status))
@@ -2193,6 +2308,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const interval = setInterval(fetchJobs, 6_000)
     return () => clearInterval(interval)
   }, [jobs, fetchJobs])
+
+  // Background jobs poll — queue badges stay fresh even when nothing is drafting.
+  React.useEffect(() => {
+    const id = setInterval(fetchJobs, 30_000)
+    return () => clearInterval(id)
+  }, [fetchJobs])
+
+  // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE refreshes the queue
+  // instantly — a draft finishing or a PR landing shows up without a poll.
+  React.useEffect(() => {
+    const off = subscribeToTable('content_jobs', 'public', () => { fetchJobs() })
+    return off
+  }, [fetchJobs])
 
   const handleGenerate = async (formData: any) => {
     setGenerating(true)
@@ -2456,31 +2584,60 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
       {/* ══════════ CREATE ══════════ */}
       {tab === 'create' && (
-        <CreateWizard
-          generating={generating}
-          onGenerate={handleGenerate}
-          contentType={contentType} setContentType={setContentType}
-          region={region} setRegion={setRegion}
-          tone={tone} setTone={setTone}
-          aiProvider={aiProvider} setAiProvider={setAiProvider}
-          title={title} setTitle={setTitle}
-          topic={topic} setTopic={setTopic}
-          audience={audience} setAudience={setAudience}
-          keywords={keywords} setKeywords={setKeywords}
-          suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError}
-          onRefreshSuggestions={fetchSuggestions}
-          onApplySuggestion={applyBrief}
-          brief={selectedBrief}
-          onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-          briefInterlinks={briefInterlinks}
-          interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
-          onAutoInterlink={runAutoInterlink}
-          autoInterlinkBusy={autoInterlinkBusy}
-          showRadar={showRadar} setShowRadar={setShowRadar}
-          regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
-          regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
-          regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
-        />
+        <>
+          {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
+          {gscStatus && !(gscStatus.connected && gscStatus.live) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
+              {gscStatus.connected ? (
+                <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
+                  <strong>GSC token is failing</strong> — {String(gscStatus.error || 'refresh failed')}. Autopilot stays on snapshot data until it's fixed.
+                </span>
+              ) : (
+                <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
+                  <strong>Suggestions are scored from the committed snapshot</strong>
+                  {(() => {
+                    const raw = (radarMeta.snapshot as { generatedAt?: string } | null)?.generatedAt
+                    const d = raw ? new Date(raw) : null
+                    return radarMeta?.source === 'snapshot' && d && !Number.isNaN(d.getTime())
+                      ? ` (${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`
+                      : ''
+                  })()}
+                  {' '}— connect Search Console to score from real queries and clicks.
+                </span>
+              )}
+              <button type="button" onClick={() => setGscConnectOpen(true)} style={{ padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#F59E0B', color: '#fff', fontSize: 10.5, fontWeight: 800 }}>
+                {gscStatus.connected ? 'Re-connect GSC →' : 'Connect GSC →'}
+              </button>
+            </div>
+          )}
+          <CreateWizard
+            generating={generating}
+            onGenerate={handleGenerate}
+            contentType={contentType} setContentType={setContentType}
+            region={region} setRegion={setRegion}
+            tone={tone} setTone={setTone}
+            aiProvider={aiProvider} setAiProvider={setAiProvider}
+            title={title} setTitle={setTitle}
+            topic={topic} setTopic={setTopic}
+            audience={audience} setAudience={setAudience}
+            keywords={keywords} setKeywords={setKeywords}
+            suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
+            gscStatus={gscStatus}
+            onConnectGsc={() => setGscConnectOpen(true)}
+            onRefreshSuggestions={fetchSuggestions}
+            onApplySuggestion={applyBrief}
+            brief={selectedBrief}
+            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+            briefInterlinks={briefInterlinks}
+            interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
+            onAutoInterlink={runAutoInterlink}
+            autoInterlinkBusy={autoInterlinkBusy}
+            showRadar={showRadar} setShowRadar={setShowRadar}
+            regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
+            regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
+            regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
+          />
+        </>
       )}
 
       {/* ══════════ QUEUE ══════════ */}
@@ -2496,6 +2653,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             loading={loading}
             mergeIndex={mergeIndex}
             gateByJob={gateByJob}
+            onLoadMore={loadMoreJobs}
           />
         </div>
       )}
@@ -2525,6 +2683,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           setActionNotice={setActionNotice}
           onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); setTab('queue') }}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
+        />
+      )}
+
+      {/* ── GSC connect modal (reuses the command-center flow) ── */}
+      {gscConnectOpen && (
+        <GscConnectModal
+          initialStatus={gscStatus}
+          reconnect={Boolean(gscStatus?.connected && !gscStatus?.live)}
+          onConnected={() => loadGscStatus()}
+          onClose={() => setGscConnectOpen(false)}
         />
       )}
     </div>

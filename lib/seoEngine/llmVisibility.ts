@@ -192,9 +192,14 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
 }> {
   try {
     const supabase = createSupabaseAdminClient()
+    // Base feed = prompt-audit bank only. Fan-out sub-query audits are a
+    // different population (they roll into the recent-50 window daily and
+    // would silently change what the headline share-of-voice means); they
+    // surface separately via loadVisibilityByCluster on the same GET.
     const { data } = await supabase
       .from('seo_llm_visibility')
-      .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,created_at')
+      .select('id,query,engine,model,cited,cited_urls,brand_mentions,snippet,raw_score,stage,country,fan_out,cluster_id,source_field,created_at')
+      .eq('fan_out', false)
       .order('created_at', { ascending: false })
       .limit(limit)
     const rows = (data as Array<Record<string, unknown>>) || []
@@ -213,5 +218,208 @@ export async function loadVisibilityFeed(limit = 50): Promise<{
     }
   } catch {
     return { audits: [], shareOfVoice: 0, cited: 0, total: 0, byStage: {} }
+  }
+}
+
+// ── Fan-out audit bank (per-cluster sub-queries) ─────────────────────────────
+export type FanOutSource = 'primary' | 'faq' | 'related'
+
+export interface FanOutAuditQuery {
+  clusterId: string
+  primaryTerm: string
+  query: string
+  source: FanOutSource
+}
+
+/** Shape of a cluster-plan row as consumed by the fan-out builder. */
+export interface FanOutPlanRow {
+  cluster_id?: string | null
+  primary_term?: string | null
+  related_terms?: unknown
+  plan?: unknown
+}
+
+function normalizeAuditQuery(q: string): string {
+  return String(q || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Build the fan-out audit bank for the top cluster plans: every sub-query an
+ * LLM might ask around a cluster's primary term — FAQ questions first (the
+ * exact phrasing answer engines quote), then GSC related terms, then the
+ * primary term itself. Deterministic, de-duplicated, and capped per plan so
+ * the audit batch stays bounded. No AI — pure projection from the plan.
+ */
+export function buildFanOutAuditQueries(
+  plans: FanOutPlanRow[],
+  opts: { maxPlans?: number; maxPerPlan?: number } = {},
+): FanOutAuditQuery[] {
+  const maxPlans = Math.max(1, Math.min(20, opts.maxPlans ?? 10))
+  const maxPerPlan = Math.max(2, Math.min(12, opts.maxPerPlan ?? 6))
+  const out: FanOutAuditQuery[] = []
+  // Per-cluster dedup (NOT global): a sub-query shared by two clusters is
+  // audited once per cluster, so each cluster's byCluster cited/total — and
+  // its aeoGeo bonus — reflects its own coverage. Global dedup would silently
+  // undercount the second cluster by attributing the shared audit only to the
+  // first. Caps are per-plan, so the batch stays bounded either way.
+  const push = (clusterId: string, primaryTerm: string, query: string, source: FanOutSource, seen: Set<string>) => {
+    const q = String(query || '').trim()
+    if (!q || q.length < 5) return
+    const key = normalizeAuditQuery(q)
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({ clusterId, primaryTerm: String(primaryTerm || ''), query: q, source })
+  }
+
+  for (const p of plans.slice(0, maxPlans)) {
+    const seen = new Set<string>()
+    const clusterId = String(p.cluster_id || '')
+    const primaryTerm = String(p.primary_term || '')
+    if (!clusterId || !primaryTerm) continue
+    // Reserve one slot for the primary hub query so it is always audited; the
+    // fan-out sub-queries (faq + related) fill the rest.
+    const subBudget = Math.max(1, maxPerPlan - 1)
+    let count = 0
+    const plan = p.plan as { faq?: string[] } | null | undefined
+    const faq = Array.isArray(plan?.faq) ? (plan.faq as string[]) : []
+    const related = Array.isArray(p.related_terms)
+      ? (p.related_terms as Array<unknown>).map((t) => String(t)).filter(Boolean)
+      : []
+    // 1) FAQ questions — exact phrasing answer engines quote. Highest value.
+    for (const q of faq) {
+      if (count >= subBudget) break
+      push(clusterId, primaryTerm, q, 'faq', seen)
+      count += 1
+    }
+    // 2) GSC related terms — the sub-queries around the primary term.
+    for (const t of related) {
+      if (count >= subBudget) break
+      push(clusterId, primaryTerm, t, 'related', seen)
+      count += 1
+    }
+    // 3) The primary term itself (the hub query) — guaranteed slot.
+    push(clusterId, primaryTerm, primaryTerm, 'primary', seen)
+  }
+  return out
+}
+
+export interface FanOutAuditRunResult {
+  audits: VisibilityAuditResult[]
+  clusters: number
+  cited: number
+  total: number
+  shareOfVoice: number
+  /** cluster_id → { cited, total } for the aeoGeo family feed. */
+  byCluster: Record<string, { cited: number; total: number }>
+}
+
+/**
+ * Run the fan-out audit batch: build sub-queries from the top cluster plans,
+ * audit each against an LLM, and persist with cluster provenance. Results are
+ * also returned grouped by cluster so the ranking model's aeoGeo family can
+ * consume measured (not guessed) fan-out citation evidence.
+ */
+export async function runFanOutVisibilityAudits(opts: {
+  planLimit?: number
+  maxPerPlan?: number
+  maxAudits?: number
+  engineLabel?: string
+} = {}): Promise<FanOutAuditRunResult> {
+  const engine = opts.engineLabel || 'deepseek'
+  const empty: FanOutAuditRunResult = { audits: [], clusters: 0, cited: 0, total: 0, shareOfVoice: 0, byCluster: {} }
+  try {
+    const { loadPlansDashboard } = await import('./planner')
+    const { plans } = await loadPlansDashboard(opts.planLimit || 10)
+    const queries = buildFanOutAuditQueries(plans as FanOutPlanRow[], {
+      maxPlans: opts.planLimit || 10,
+      maxPerPlan: opts.maxPerPlan,
+    }).slice(0, Math.min(30, opts.maxAudits ?? 18))
+    if (!queries.length) return empty
+
+    const audits: VisibilityAuditResult[] = []
+    const byCluster: Record<string, { cited: number; total: number }> = {}
+    const supabase = createSupabaseAdminClient()
+    for (const fq of queries) {
+      const result = await auditQuery(fq.query, engine)
+      audits.push(result)
+      const cell = byCluster[fq.clusterId] || { cited: 0, total: 0 }
+      cell.total += 1
+      if (result.cited) cell.cited += 1
+      byCluster[fq.clusterId] = cell
+      try {
+        await supabase.from('seo_llm_visibility').insert({
+          query: result.query,
+          engine: result.engine,
+          model: result.model,
+          cited: result.cited,
+          cited_urls: result.citedUrls,
+          brand_mentions: result.brandMentions,
+          snippet: result.snippet,
+          raw_score: result.rawScore,
+          stage: result.stage,
+          country: result.country,
+          fan_out: true,
+          cluster_id: fq.clusterId,
+          source_field: fq.source,
+        })
+      } catch {
+        // storage best-effort — the audit itself stands
+      }
+    }
+    const cited = audits.filter((a) => a.cited).length
+    return {
+      audits,
+      clusters: Object.keys(byCluster).length,
+      cited,
+      total: audits.length,
+      shareOfVoice: audits.length ? Math.round((cited / audits.length) * 100) : 0,
+      byCluster,
+    }
+  } catch {
+    return empty
+  }
+}
+
+/**
+ * Load measured fan-out citation evidence grouped by cluster, for the ranking
+ * model's aeoGeo family.
+ *
+ * Honesty guard: the cap is PER CLUSTER, not global — a cluster's cited/total
+ * always reflects ITS OWN most-recent audits, never a window diluted by other
+ * clusters' newer rows. (A global cap would let busy clusters push a quiet
+ * cluster's evidence out of the count while the reason string implies the
+ * full measured set.) Best-effort: returns {} on any failure.
+ */
+export async function loadVisibilityByCluster(perCluster = 12, maxClusters = 50): Promise<Record<string, { cited: number; total: number }>> {
+  try {
+    const supabase = createSupabaseAdminClient()
+    // Most recently active clusters first, so quota goes to live plans.
+    const { data: clusters } = await supabase
+      .from('seo_llm_visibility')
+      .select('cluster_id')
+      .eq('fan_out', true)
+      .not('cluster_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(maxClusters)
+    const ids = [...new Set(((clusters as Array<{ cluster_id: string | null }>) || []).map((r) => String(r.cluster_id || '')).filter(Boolean))]
+    const byCluster: Record<string, { cited: number; total: number }> = {}
+    for (const id of ids) {
+      const { data: rows } = await supabase
+        .from('seo_llm_visibility')
+        .select('cluster_id,cited')
+        .eq('cluster_id', id)
+        .eq('fan_out', true)
+        .order('created_at', { ascending: false })
+        .limit(perCluster)
+      for (const r of (rows as Array<{ cited: boolean | null }>) || []) {
+        const cell = byCluster[id] || { cited: 0, total: 0 }
+        cell.total += 1
+        if (r.cited) cell.cited += 1
+        byCluster[id] = cell
+      }
+    }
+    return byCluster
+  } catch {
+    return {}
   }
 }

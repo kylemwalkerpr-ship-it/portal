@@ -286,7 +286,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
   return result
 }
 
-export async function recordEngineRun(kind: 'knowledge' | 'plan' | 'daily' | 'manual', status: 'running' | 'success' | 'partial' | 'failed', summary: Record<string, unknown>, errors: string[] = [], triggeredBy = 'cron'): Promise<void> {
+export async function recordEngineRun(kind: 'knowledge' | 'plan' | 'daily' | 'forecast-reward' | 'manual', status: 'running' | 'success' | 'partial' | 'failed', summary: Record<string, unknown>, errors: string[] = [], triggeredBy = 'cron'): Promise<void> {
   try {
     await createSupabaseAdminClient().from('seo_engine_runs').insert({ kind, status, summary, errors: errors.slice(0, 20), triggered_by: triggeredBy, finished_at: status === 'running' ? null : new Date().toISOString() })
   } catch { /* best effort */ }

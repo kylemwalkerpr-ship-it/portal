@@ -19,11 +19,18 @@ import {
   type WarOpportunity,
   type WarPlay,
 } from '@/lib/seoFactory/seoWarRoom'
+import {
+  enrichQueueWithRanking,
+  modelTotalForOpportunity,
+  orderTermsByModel,
+  sortByModelTotal,
+} from '@/lib/seoEngine/rankingModel'
 
 type Candidate = FactoryOpportunity & {
   writeHint?: string
   play?: string
   estimatedGainClicks?: number
+  modelTotal?: number | null
 }
 
 /**
@@ -108,6 +115,7 @@ export async function POST(request: NextRequest) {
         writeHint: o.writeHint,
         play: o.play,
         estimatedGainClicks: o.estimatedGainClicks,
+        modelTotal: (o as WarOpportunity & { ranking?: { total?: number } }).ranking?.total ?? null,
       }
     }
 
@@ -122,11 +130,14 @@ export async function POST(request: NextRequest) {
             minImpressions: minImpressions || 2,
             regionFilter: regionFilter || undefined,
           })
+          // Attach ranking-model scores so matched explicit terms carry modelTotal.
+          const enriched = enrichQueueWithRanking(room.queue)
+          room.queue = enriched.queue as WarOpportunity[]
           planMeta = {
             mode: 'explicit+war-room',
             summary: room.summary,
             source: room.source,
-            kpis: room.kpis,
+            kpis: { ...room.kpis, modelAvg: enriched.modelAvg },
           }
           for (const o of room.queue) warByTerm.set(o.term.toLowerCase(), o)
         } catch {
@@ -171,11 +182,14 @@ export async function POST(request: NextRequest) {
         minImpressions: minImpressions || 2,
         regionFilter: regionFilter || undefined,
       })
+      // Autopilot picks are ordered by ranking-model total (fallback: priority score).
+      const enriched = enrichQueueWithRanking(room.queue)
+      room.queue = sortByModelTotal(enriched.queue, (o) => (o as WarOpportunity).priorityScore || 0) as WarOpportunity[]
       planMeta = {
         mode: 'war-room',
         summary: room.summary,
         source: room.source,
-        kpis: room.kpis,
+        kpis: { ...room.kpis, modelAvg: enriched.modelAvg },
         buckets: Object.fromEntries(
           Object.entries(room.buckets).map(([k, v]) => [k, (v as WarOpportunity[]).length]),
         ),
@@ -199,7 +213,7 @@ export async function POST(request: NextRequest) {
         })
         planMeta = { ...planMeta, keywordFill: kwPlan.summary, mix: kwPlan.mix }
         const have = new Set(candidates.map((c) => c.term.toLowerCase()))
-        for (const term of planTermsForAutoRun(kwPlan.plan, limit * 2)) {
+        for (const term of orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)) {
           if (candidates.length >= limit) break
           if (have.has(term.toLowerCase())) continue
           if (skipRecent && recent.has(term.toLowerCase())) continue
@@ -213,6 +227,7 @@ export async function POST(request: NextRequest) {
             ctr: item?.ctr || 0,
             position: item?.position || 50,
             score: item?.authorityScore || item?.demandScore || 0,
+            modelTotal: modelTotalForOpportunity(item ? { term, impressions: item.impressions, clicks: 0, ctr: item.ctr, position: item.position, region: item.region } : { term }),
             action: item?.lane === 'refresh' ? 'title_rewrite' : 'expand_or_build',
             suggestedContentType: contentType,
             region,
@@ -236,7 +251,7 @@ export async function POST(request: NextRequest) {
         targetMix: kwPlan.targetMix,
         source: kwPlan.source,
       }
-      const terms = planTermsForAutoRun(kwPlan.plan, limit)
+      const terms = orderTermsByModel(planTermsForAutoRun(kwPlan.plan, Math.max(limit * 4, 16)), kwPlan.plan)
       candidates = []
       for (const term of terms) {
         const item = kwPlan.plan.find((p) => p.term === term)
@@ -254,6 +269,7 @@ export async function POST(request: NextRequest) {
           ctr: item?.ctr || 0,
           position: item?.position || 50,
           score: item?.authorityScore || item?.demandScore || 0,
+          modelTotal: modelTotalForOpportunity(item ? { term, impressions: item.impressions, clicks: 0, ctr: item.ctr, position: item.position, region: item.region } : { term }),
           action: item?.lane === 'refresh' ? 'title_rewrite' : 'expand_or_build',
           suggestedContentType: contentType,
           region,
@@ -286,6 +302,8 @@ export async function POST(request: NextRequest) {
             minImpressions: minImpressions || 2,
             regionFilter: regionFilter || undefined,
           })
+          const enrichedRelaxed = enrichQueueWithRanking(room.queue)
+          room.queue = sortByModelTotal(enrichedRelaxed.queue, (o) => (o as WarOpportunity).priorityScore || 0) as WarOpportunity[]
           candidates = []
           for (const o of room.queue) {
             if (candidates.length >= limit) break
@@ -378,6 +396,7 @@ export async function POST(request: NextRequest) {
           term: opp.term,
           play: cand.play || opp.action,
           estimatedGainClicks: cand.estimatedGainClicks,
+          modelTotal: cand.modelTotal ?? null,
           jobId: result.jobId,
           provider: result.provider,
           model: result.model,

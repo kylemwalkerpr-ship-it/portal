@@ -1,28 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { getGscAccessToken } from '@/lib/gsc-service-account'
+import { getGscConfig, saveGscConnection } from '@/lib/gscConfig'
+import { probeLiveGsc, __resetGscProbeCache } from '@/lib/gscConnectProbe'
 
 /**
  * POST /api/content-studio/gsc/connect
- * Connects GSC using a service account. Verifies the service account can
- * access the given site URL, then stores the configuration.
+ * Connects GSC using a service account — either a pasted JSON key (the
+ * "Service account" tab in the connect modal) or the env-configured key.
+ * Verifies the service account can access the given site URL, then stores
+ * the configuration.
  *
- * Body: { siteUrl: string }
+ * Body: { siteUrl: string, serviceAccountKey?: string }
  *
  * No OAuth redirects needed — service account auth is server-to-server.
  */
 export async function POST(request: NextRequest) {
   try {
-    const serviceAccountKey = process.env.GSC_SERVICE_ACCOUNT_KEY
+    const body = await request.json()
+    const siteUrl =
+      typeof body.siteUrl === 'string' ? body.siteUrl.trim() : body.siteUrl
+    const serviceAccountKey =
+      typeof body.serviceAccountKey === 'string' && body.serviceAccountKey.trim()
+        ? body.serviceAccountKey.trim()
+        : process.env.GSC_SERVICE_ACCOUNT_KEY ||
+          process.env.GSC_SERVICE_ACCOUNT_JSON ||
+          null
+
     if (!serviceAccountKey) {
       return NextResponse.json(
-        { error: 'GSC_SERVICE_ACCOUNT_KEY not configured in Cloudflare secrets' },
-        { status: 500 },
+        { error: 'No service account key available — paste a service account JSON key or configure GSC_SERVICE_ACCOUNT_KEY' },
+        { status: 400 },
       )
     }
-
-    const body = await request.json()
-    const { siteUrl } = body
 
     if (!siteUrl) {
       return NextResponse.json(
@@ -31,7 +40,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get an access token from the service account
+    // Get an access token from the service account (pasted key or env key)
     const accessToken = await getGscAccessToken(serviceAccountKey)
 
     // Verify the service account can access this GSC property
@@ -68,12 +77,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: 400 })
     }
 
-    // Store the connection in Supabase
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
-
+    // Persist into public.gsc_connection (the row the runtime auth resolver
+    // reads — gsc_tokens has no site_url column and was never consulted).
     let serviceAccountEmail = ''
     try {
       const key = JSON.parse(serviceAccountKey)
@@ -82,28 +87,30 @@ export async function POST(request: NextRequest) {
       // key parsing failed — still store what we can
     }
 
-    const { error: dbError } = await supabase.from('gsc_tokens').upsert(
-      {
-        id: 'default',
-        access_token: accessToken,
-        refresh_token: '', // not used with service accounts
-        expires_at: new Date(Date.now() + 50 * 60 * 1000).toISOString(),
-        google_email: serviceAccountEmail || 'service-account',
+    try {
+      await saveGscConnection({
         site_url: siteUrl,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' },
-    )
-
-    if (dbError) {
-      console.error('[gsc/connect] Supabase error:', dbError)
-      return NextResponse.json({ error: `Failed to store config: ${dbError.message}` }, { status: 500 })
+        connected_email: serviceAccountEmail || 'service-account',
+        // A pasted key must be stored so the runtime auth resolver can mint
+        // tokens without any env config; env keys are resolved by
+        // getGscConfig()'s fallback chain, so overwriting the column with the
+        // same key is harmless.
+        service_account_key: serviceAccountKey,
+      })
+      // A fresh connection invalidates the cached probe so the card doesn't
+      // flash a stale token failure right after connecting.
+      __resetGscProbeCache()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'persist failed'
+      console.error('[gsc/connect] Supabase error:', msg)
+      return NextResponse.json({ error: `Failed to store config: ${msg}` }, { status: 500 })
     }
 
     return NextResponse.json({
       connected: true,
       siteUrl,
-      email: serviceAccountEmail,
+      email: serviceAccountEmail || 'service-account',
+      mode: 'service_account',
     })
   } catch (err) {
     console.error('[gsc/connect]', err)
@@ -114,33 +121,48 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/content-studio/gsc/connect
- * Returns connection status.
+ * Returns LIVE connection status: whether a property is configured, whether
+ * an access token can be minted right now, what's missing, and since when.
+ * The Systems card polls this so the connect state stays current.
  */
 export async function GET() {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
-
-    const { data, error } = await supabase
-      .from('gsc_tokens')
-      .select('google_email, site_url, expires_at, updated_at')
-      .eq('id', 'default')
-      .single()
-
-    if (error || !data || !data.site_url) {
-      return NextResponse.json({ connected: false })
+    const cfg = await getGscConfig()
+    const connected = Boolean(cfg.siteUrl)
+    const { live, error: probeError } = await probeLiveGsc()
+    const saConfigured = Boolean(cfg.serviceAccountKey)
+    const missing: string[] = []
+    // Service-account mode needs only a site URL; OAuth needs the client bundle.
+    if (saConfigured) {
+      if (!cfg.siteUrl) missing.push('site_url')
+    } else {
+      if (!cfg.clientId) missing.push('client_id')
+      if (!cfg.clientSecret) missing.push('client_secret')
+      if (!cfg.refreshToken) missing.push('refresh_token')
+      if (!cfg.siteUrl) missing.push('site_url')
     }
-
     return NextResponse.json({
-      connected: true,
-      email: data.google_email,
-      siteUrl: data.site_url,
-      expiresAt: data.expires_at,
-      updatedAt: data.updated_at,
+      connected,
+      live,
+      // OAuth is getGscAccess()'s priority #1 — label the live path by it
+      // even if an SA key is also stored (saConfigured only drives missing[]).
+      mode: connected ? (cfg.refreshToken ? 'oauth' : 'service_account') : null,
+      email: cfg.connectedEmail ?? null,
+      siteUrl: cfg.siteUrl,
+      connectedAt: cfg.connectedAt ?? null,
+      missing,
+      error: probeError,
     })
-  } catch {
-    return NextResponse.json({ connected: false })
+  } catch (e) {
+    return NextResponse.json({
+      connected: false,
+      live: false,
+      mode: null,
+      email: null,
+      siteUrl: null,
+      connectedAt: null,
+      missing: [],
+      error: e instanceof Error ? e.message : 'connect status unavailable',
+    })
   }
 }

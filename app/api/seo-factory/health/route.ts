@@ -6,7 +6,8 @@ import {
   listConfiguredContentProviders,
   refreshAiVault,
 } from '@/lib/contentAiProvider'
-import { getGscAccess } from '@/lib/gscAuth'
+import { detectGscAuthMode, getGscAccess } from '@/lib/gscAuth'
+import { getGscConfig } from '@/lib/gscConfig'
 import { createClient } from '@supabase/supabase-js'
 import { loadStrategiesIndex, loadStrategyPromptPack } from '@/lib/seoDataLoaders'
 
@@ -29,6 +30,9 @@ export async function GET() {
       label: string
       ok: boolean
       detail: string
+      mode?: string | null
+      siteUrl?: string | null
+      missing?: string[]
     }> = []
 
     // Content AI chain: DeepSeek (NVIDIA) primary → Cloudflare fallback → free tiers
@@ -134,12 +138,23 @@ export async function GET() {
     // GSC
     try {
       const access = await getGscAccess()
+      const cfg = await getGscConfig()
+      const saConfigured = !!(process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY)
+      const missing: string[] = []
+      if (!cfg.clientId) missing.push('client_id')
+      if (!cfg.clientSecret) missing.push('client_secret')
+      if (!cfg.refreshToken) missing.push('refresh_token')
+      if (!cfg.siteUrl && !access?.siteUrl) missing.push('site_url')
+      const mode = access?.mode ?? (await detectGscAuthMode()) ?? (saConfigured ? 'service_account' : null)
       if (access?.accessToken && access.siteUrl) {
         checks.push({
           id: 'gsc',
           label: 'Google Search Console',
           ok: true,
           detail: `${access.mode} · ${access.siteUrl}`,
+          mode: access.mode,
+          siteUrl: access.siteUrl,
+          missing: [],
         })
       } else {
         checks.push({
@@ -147,6 +162,9 @@ export async function GET() {
           label: 'Google Search Console',
           ok: false,
           detail: 'No live credentials — snapshot fallback only',
+          mode,
+          siteUrl: cfg.siteUrl ?? null,
+          missing,
         })
       }
     } catch (e) {
@@ -155,6 +173,9 @@ export async function GET() {
         label: 'Google Search Console',
         ok: false,
         detail: e instanceof Error ? e.message.slice(0, 140) : 'GSC error',
+        mode: null,
+        siteUrl: null,
+        missing: ['unknown'],
       })
     }
 

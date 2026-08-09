@@ -11,7 +11,15 @@ import { runVisibilityAudits } from '@/lib/seoEngine/llmVisibility'
  * Phases:
  *   { phase: 'knowledge', limitPerSource? }   — ingest fresh intel only
  *   { phase: 'plan', limit?, draftBriefs? }   — run master planner only
- *   { phase: 'all' }                          — knowledge → plan (default)
+ *   { phase: 'rank', limit? }                 — run the ranking model + forecasts
+ *                                                over top planner missions
+ *   { phase: 'rewards' }                      — attribute shipped-job outcomes
+ *                                                into the reward ledger
+ *   { phase: 'track' }                        — forecast vs actual execution
+ *                                                tracker (matured 30/60/90d runs)
+ *   { phase: 'all' }                          — knowledge → plan → rank → rewards
+ *                                                → track (+ optional LLM audits)
+ *                                                (default)
  *
  * GET — latest engine runs (audit trail).
  */
@@ -42,8 +50,47 @@ export async function POST(req: NextRequest) {
     }
     if (phase === 'llm') {
       const vis = await runVisibilityAudits({ maxAudits: 8 })
-      await recordEngineRun('daily', 'success', { phase, cited: vis.cited, total: vis.total, shareOfVoice: vis.shareOfVoice }, [], 'cron')
-      return NextResponse.json({ ok: true, phase, ...vis })
+      // Fan-out sub-query audits per top cluster — feeds the aeoGeo family with
+      // measured citation evidence (per-cluster map returned for attribution).
+      let fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} as Record<string, { cited: number; total: number }> }
+      try {
+        const { runFanOutVisibilityAudits } = await import('@/lib/seoEngine/llmVisibility')
+        fanOut = await runFanOutVisibilityAudits({ planLimit: 8, maxPerPlan: 5, maxAudits: 16 })
+      } catch {
+        fanOut = { cited: 0, total: 0, clusters: 0, byCluster: {} }
+      }
+      await recordEngineRun('daily', 'success', {
+        phase, cited: vis.cited, total: vis.total, shareOfVoice: vis.shareOfVoice,
+        fanOutCited: fanOut.cited, fanOutTotal: fanOut.total, fanOutClusters: fanOut.clusters,
+      }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, ...vis, fanOut })
+    }
+    if (phase === 'rank') {
+      const { runRankingPassForPlans } = await import('@/lib/seoEngine/rankingModel')
+      const rank = await runRankingPassForPlans(body.limit || 15)
+      await recordEngineRun('daily', rank.computed ? 'success' : 'partial', { phase, computed: rank.computed, topScores: rank.topScores }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, ...rank })
+    }
+    if (phase === 'rewards') {
+      const { attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+      const reward = await attributizeOutcomes()
+      await recordEngineRun('daily', 'success', { phase, events: reward.events }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, ...reward })
+    }
+    if (phase === 'track') {
+      const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
+      const tracker = await loadForecastTracker({ limit: 200 })
+      await recordEngineRun('daily', 'success', {
+        phase,
+        evaluated: tracker.summary.evaluated,
+        inFlight: tracker.summary.inFlight,
+        onTrackRate: tracker.summary.onTrackRate,
+        overPredicted: tracker.summary.byVerdict.over_predicted,
+        underPredicted: tracker.summary.byVerdict.under_predicted,
+        positionBias: tracker.summary.positionBias,
+        avgPositionError: tracker.summary.avgPositionError,
+      }, [], 'cron')
+      return NextResponse.json({ ok: true, phase, tracker: tracker.summary })
     }
 
     // knowledge (or all): ingest first
@@ -51,9 +98,24 @@ export async function POST(req: NextRequest) {
     let plans = 0
     let llmAudits = 0
     let cited = 0
+    let rankComputed = 0
+    let rewardEvents = 0
+    let tracked = 0
+    let onTrackRate = 0
+    const topScores: Array<{ topic: string; total: number }> = []
     if (phase === 'all') {
       const result = await runPlanner({ draftBriefs: body.draftBriefs !== false, limit: body.limit || 15 })
       plans = result.length
+      const { runRankingPassForPlans, attributizeOutcomes } = await import('@/lib/seoEngine/rankingModel')
+      const rank = await runRankingPassForPlans(body.limit || 15)
+      rankComputed = rank.computed
+      topScores.push(...rank.topScores)
+      const reward = await attributizeOutcomes()
+      rewardEvents = reward.events
+      const { loadForecastTracker } = await import('@/lib/seoEngine/forecastTracker')
+      const tracker = await loadForecastTracker({ limit: 200 })
+      tracked = tracker.summary.evaluated
+      onTrackRate = tracker.summary.onTrackRate
       if (body.llmAudits !== false) {
         const vis = await runVisibilityAudits({ maxAudits: 6 })
         llmAudits = vis.total
@@ -67,11 +129,16 @@ export async function POST(req: NextRequest) {
       fetched: ingest.itemsFetched,
       aiSummarized: ingest.aiSummarized,
       plans,
+      rankComputed,
+      rewardEvents,
+      tracked,
+      onTrackRate,
+      topScores,
       llmAudits,
       llmCited: cited,
     }, ingest.errors, 'cron')
 
-    return NextResponse.json({ ok: true, phase, ingest: { fetched: ingest.itemsFetched, stored: ingest.itemsStored, aiSummarized: ingest.aiSummarized, errors: ingest.errors.slice(0, 5) }, plans, llmAudits, llmCited: cited })
+    return NextResponse.json({ ok: true, phase, ingest: { fetched: ingest.itemsFetched, stored: ingest.itemsStored, aiSummarized: ingest.aiSummarized, errors: ingest.errors.slice(0, 5) }, plans, rankComputed, rewardEvents, tracked, onTrackRate, topScores, llmAudits, llmCited: cited })
   } catch (e) {
     await recordEngineRun('daily', 'failed', { phase }, [e instanceof Error ? e.message : 'unknown'], 'cron')
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'daily run failed' }, { status: 500 })

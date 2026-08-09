@@ -18,6 +18,7 @@ import {
   extractH2Titles,
   mergeAppendedSections,
   minWordsForType,
+  type ModelGuidanceInput,
 } from './prompts'
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
@@ -103,7 +104,11 @@ export interface PipelineInput {
   resumeContent?: string
   /** Admin-chosen AI provider pin ('grok' | 'openai' | 'nvidia-deepseek' | 'auto'). */
   aiProvider?: string
-  /** Opportunity Radar brief (play, intent, signals) — threads into the prompt. */
+  /**
+   * Opportunity Radar brief (play, intent, signals) — consumed by the streaming
+   * pipeline's autopilot transparency block. Complement to `modelGuidance`
+   * (which carries the ranking model's recommendedActions + forecast).
+   */
   opportunity?: {
     primaryKeyword?: string
     play?: string
@@ -111,6 +116,11 @@ export interface PipelineInput {
     opportunityScore?: number
     signals?: string[]
   } | null
+  /**
+   * Ranking-model guidance (recommendedActions + forecast) — threads into the
+   * generation prompt so the draft is written against the model's weak families.
+   */
+  modelGuidance?: ModelGuidanceInput | null
   /** Internal-link targets chosen by the Opportunity Radar autopilot. */
   interlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }> | null
   /**
@@ -316,6 +326,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
           gscBlock: canonPortfolio,
           opportunityAction: input.opportunityAction,
           writeHint: input.writeHint,
+          modelGuidance: input.modelGuidance || undefined,
           refineNotes,
           // Keep human/model fixes when resuming a saved draft (retry cron).
           draft: content || undefined,

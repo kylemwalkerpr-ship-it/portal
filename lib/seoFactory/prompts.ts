@@ -146,6 +146,62 @@ function playbookDirective(action?: string): string {
   ].join(' ')
 }
 
+/**
+ * Ranking-model guidance threaded into the generation prompt: the model's
+ * recommendedActions + 30/60/90 forecast, so every draft is written against
+ * the topic's weak signal families instead of generic advice.
+ */
+export interface ModelGuidanceInput {
+  total?: number
+  confidence?: number
+  recommendedActions?: string[]
+  forecast?: {
+    points?: Array<{
+      horizonDays?: number
+      projectedPosition?: number
+      projectedImpressions?: number
+      projectedClicks?: number
+      probabilityOfTop10?: number
+    }>
+  }
+}
+
+/** Render the model guidance as a directive block for the generation prompt. */
+export function modelGuidanceBlock(guidance: ModelGuidanceInput): string {
+  const actions = Array.isArray(guidance.recommendedActions)
+    ? guidance.recommendedActions.map((a) => String(a)).filter(Boolean).slice(0, 6)
+    : []
+  const points = Array.isArray(guidance.forecast?.points) ? guidance.forecast.points.filter((p) => p && p.projectedPosition != null) : []
+  const total = Number(guidance.total) || 0
+  const confidence = Number(guidance.confidence) || 0
+  const lines: string[] = [
+    'RANKING MODEL GUIDANCE — the ranking model scored this exact topic. Write the draft so it closes the model\'s flagged weak families:',
+  ]
+  // Never fabricate a zero: each fragment renders only when actually present.
+  const scoreLine = [
+    total > 0 ? `Model total: ${Math.round(total)}/100` : '',
+    confidence > 0 ? `confidence ${Math.round(confidence * 100)}%` : '',
+  ].filter(Boolean).join(' · ')
+  if (scoreLine) lines.push(`- ${scoreLine}`)
+  if (actions.length) {
+    lines.push('- Model-recommended actions — fold each into the structure, do not just mention it:')
+    for (const a of actions) lines.push(`  · ${a}`)
+  }
+  if (points.length >= 1) {
+    const last = points[points.length - 1]
+    const mid = points.length >= 2 ? points[Math.floor(points.length / 2)] : null
+    const head = points[0]
+    const chain = [head, ...(mid && mid !== head && mid !== last ? [mid] : []), last]
+      .map((p) => `#${Math.round(Number(p.projectedPosition))}${p.horizonDays ? ` (${p.horizonDays}d)` : ''}`)
+      .join(' → ')
+    lines.push(`- Model forecast: projected position ${chain}${last.probabilityOfTop10 != null ? ` · top-10 probability ${Math.round(Number(last.probabilityOfTop10) * 100)}% at ${last.horizonDays || 90}d` : ''}`)
+  }
+  lines.push(
+    '- Weak-family rule: model says answer/FAQ/schema → lead with a quotable 60-second answer, self-contained FAQ, Article+FAQPage JSON-LD. Model says E-E-A-T → named author, official .gov citations, YMYL disclaimer. Model says links/interlinks → naturally link the estate hub + pillar. Model says depth → concrete procedures, document checklists, timelines.',
+  )
+  return lines.filter(Boolean).join('\n')
+}
+
 export function buildFactoryUserPrompt(opts: {
   title: string
   topic: string
@@ -161,6 +217,8 @@ export function buildFactoryUserPrompt(opts: {
   refineNotes?: string
   /** Existing draft to revise (keeps human/model fixes across retries). */
   draft?: string
+  /** Ranking-model guidance (recommendedActions + forecast) — threads into the prompt. */
+  modelGuidance?: ModelGuidanceInput | null
 }): string {
   const parts = [
     `Title hint: ${opts.title}`,
@@ -174,6 +232,8 @@ export function buildFactoryUserPrompt(opts: {
     opts.gscBlock,
     '',
     opts.writeHint ? `War-room / authority brief:\n${opts.writeHint}` : '',
+    '',
+    opts.modelGuidance ? modelGuidanceBlock(opts.modelGuidance) : '',
     '',
     playbookDirective(opts.opportunityAction),
     '',

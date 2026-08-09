@@ -12,7 +12,10 @@ export interface GscConfig {
   clientId: string | null
   clientSecret: string | null
   refreshToken: string | null
+  serviceAccountKey: string | null
   siteUrl: string | null
+  connectedEmail: string | null
+  connectedAt: string | null
 }
 
 export async function getGscConfig(): Promise<GscConfig> {
@@ -37,7 +40,14 @@ export async function getGscConfig(): Promise<GscConfig> {
       process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
       null,
     refreshToken: row?.refresh_token || process.env.GSC_OAUTH_REFRESH_TOKEN || null,
+    serviceAccountKey:
+      row?.service_account_key ||
+      process.env.GSC_SERVICE_ACCOUNT_JSON ||
+      process.env.GSC_SERVICE_ACCOUNT_KEY ||
+      null,
     siteUrl: row?.site_url || process.env.GSC_SITE_URL || null,
+    connectedEmail: row?.connected_email || null,
+    connectedAt: row?.connected_at || null,
   }
 }
 
@@ -45,6 +55,7 @@ export async function saveGscConnection(fields: {
   refresh_token?: string
   site_url?: string
   connected_email?: string
+  service_account_key?: string
 }): Promise<void> {
   const db = createSupabaseAdminClient()
   await db.from('gsc_connection').upsert({

@@ -15,6 +15,7 @@
  * The engine plans and measures; humans command.
  */
 import React from 'react'
+import AdminRankingModel from './admin-ranking-model'
 
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
@@ -47,6 +48,7 @@ const TABS = [
   { key: 'planner', icon: '🧭', label: 'Planner' },
   { key: 'interlink', icon: '🔗', label: 'Interlinks' },
   { key: 'llm', icon: '🤖', label: 'LLM Voice' },
+  { key: 'rank', icon: '📊', label: 'Ranking' },
   { key: 'gate', icon: '🛡', label: 'Compliance' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
@@ -241,6 +243,21 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
     }
   }
 
+  const runFanOutAudit = async () => {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch('/api/seo-engine/llm-visibility', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fanOut: true, planLimit: 10, maxPerPlan: 6, maxAudits: 18 }) })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || 'fan-out audit failed')
+      flash(`Fan-out audit: ${data.cited}/${data.total} sub-queries across ${data.clusters} clusters cited the estate (${data.shareOfVoice}%)`)
+      await loadAll()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'fan-out audit failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const runGateOnDraft = async () => {
     if (!gateDraft.trim() || gateDraft.trim().length < 60) {
       setError('Paste at least 60 characters of draft content to run the gate.')
@@ -284,10 +301,10 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, fontFamily: C.serif, display: 'flex', alignItems: 'center', gap: 8 }}>
-            🧠 SEO Master Engine <span style={{ fontSize: 9, fontFamily: C.mono, fontWeight: 600, color: C.gold, background: C.goldSoft, padding: '2px 8px', borderRadius: 999 }}>v2 · six brains</span>
+            🧠 SEO Master Engine <span style={{ fontSize: 9, fontFamily: C.mono, fontWeight: 600, color: C.gold, background: C.goldSoft, padding: '2px 8px', borderRadius: 999 }}>v2 · seven brains</span>
           </div>
           <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>
-            Life-cycle ontology · daily intel · auto-interlink · LLM share-of-voice · compliance enforcement
+            Life-cycle ontology · daily intel · auto-interlink · LLM share-of-voice · ranking model · compliance enforcement
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -317,6 +334,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         <Kpi label="Plans" value={String((status?.plans as { total?: number } | undefined)?.total ?? plans?.plans?.length ?? 0)} sub="cluster missions" color={C.green} />
         <Kpi label="Interlinks" value={String((status?.interlinks as { planned?: number } | undefined)?.planned ?? 0)} sub={`${(status?.interlinks as { applied?: number } | undefined)?.applied ?? 0} applied`} color={C.blue} />
         <Kpi label="LLM voice" value={`${(status?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? 0}%`} sub="share of voice" color={C.violet} />
+        <Kpi label="Model" value={`${(status?.rankingModel as { latestTotal?: number } | undefined)?.latestTotal ?? '—'}`} sub={`${(status?.rankingModel as { computed?: number } | undefined)?.computed ?? 0} scored`} color={C.gold} />
         <Kpi label="Gate" value={`${(status?.gate as { passRate?: number } | undefined)?.passRate ?? 0}%`} sub={`avg ${(status?.gate as { avgScore?: number } | undefined)?.avgScore ?? 0}/100`} color={C.orange} />
       </div>
 
@@ -620,9 +638,12 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                   Prompt audits: the engine asks an LLM to answer real estate queries with sources, then checks whether yousafeconsultancy.com was cited. Share of voice = cited ÷ audited.
                 </p>
               </div>
-              <div style={{ textAlign: 'right' }}>
+              <div style={{ textAlign: 'right', display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <button type="button" onClick={runLlmAudit} disabled={busy} style={{ ...btnSolid(C.violet) }}>
                   {busy ? '⏳ Auditing…' : '🤖 Run audit batch (10 queries)'}
+                </button>
+                <button type="button" onClick={runFanOutAudit} disabled={busy} style={{ ...btnGhost, color: C.violet, borderColor: C.violetSoft }} title="Build sub-queries from the top cluster plans (FAQ + related terms) and audit each for estate citations — the results feed the aeoGeo family score">
+                  {busy ? '⏳ Auditing…' : '🕸 Fan-out audits (per cluster)'}
                 </button>
               </div>
             </div>
@@ -645,6 +666,43 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
             </div>
           </div>
 
+          {/* Fan-out share-of-voice per cluster — feeds the aeoGeo family */}
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+            <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
+              <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>🕸 Fan-out voice by cluster</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 10, color: C.textMuted }}>
+                Measured sub-query citations per top cluster — the ranking model's aeoGeo family consumes exactly this (cited ÷ total).
+              </p>
+            </div>
+            <div style={{ maxHeight: 260, overflowY: 'auto', padding: '10px 18px' }}>
+              {!visibility?.byCluster || Object.keys((visibility.byCluster as Record<string, unknown>) || {}).length === 0 ? (
+                <div style={{ padding: 14, textAlign: 'center', color: C.textDim, fontSize: 11, fontFamily: C.mono }}>
+                  No fan-out audits yet — run “🕸 Fan-out audits” to measure per-cluster answer-engine voice.
+                </div>
+              ) : (
+                Object.entries((visibility.byCluster as Record<string, { cited: number; total: number }>) || {}).slice(0, 20).map(([cid, cell]) => {
+                  const rate = cell.total ? Math.round((cell.cited / cell.total) * 100) : 0
+                  const plan = (plans?.plans || []).find((p) => String(p.cluster_id) === cid)
+                  return (
+                    <div key={cid} style={{ padding: '7px 0', borderBottom: `1px solid ${C.border2}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 3 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: C.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cid}>
+                          {String(plan?.primary_term || cid)}
+                        </span>
+                        <span style={{ fontSize: 9.5, fontFamily: C.mono, color: C.textMuted, flexShrink: 0 }}>
+                          {cell.cited}/{cell.total} · <b style={{ color: rate >= 50 ? C.green : rate > 0 ? C.orange : C.red }}>{rate}%</b>
+                        </span>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 999, background: C.surface3, overflow: 'hidden' }}>
+                        <div style={{ width: `${rate}%`, height: '100%', borderRadius: 999, background: rate >= 50 ? C.violet : rate > 0 ? C.gold : C.red, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
             <div style={{ padding: '12px 18px', borderBottom: `1px solid ${C.border}` }}>
               <h2 style={{ margin: 0, fontSize: 14, color: C.navy, fontWeight: 700, fontFamily: C.serif }}>Audit trail ({(visibility?.audits as unknown[] | undefined)?.length || 0})</h2>
@@ -661,6 +719,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
                       {badge(a.cited ? 'CITED' : 'NOT CITED', a.cited ? C.greenSoft : C.redSoft, a.cited ? C.green : C.red)}
+                      {a.fan_out ? badge(`FAN-OUT ${String(a.source_field || '').toUpperCase()}`, C.violetSoft, C.violet) : null}
                       {a.stage ? badge(STAGE_LABELS[String(a.stage)] || String(a.stage), C.cyanSoft, C.cyan2) : null}
                       {a.country ? badge(String(a.country), C.blueSoft, C.blue) : null}
                       <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{String(a.engine)} · {timeAgo(String(a.created_at))}</span>
@@ -680,7 +739,10 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
         </div>
       )}
 
-      {/* ══════════════ 6 · COMPLIANCE GATE ══════════════ */}
+      {/* ══════════════ 6 · RANKING MODEL ══════════════ */}
+      {tab === 'rank' && <AdminRankingModel />}
+
+      {/* ══════════════ 7 · COMPLIANCE GATE ══════════════ */}
       {tab === 'gate' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, padding: 16, boxShadow: C.shadowCard }}>

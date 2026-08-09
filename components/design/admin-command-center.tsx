@@ -26,6 +26,10 @@ import ContentStudioWorkspace, {
 } from './content-studio-workspace'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import SeoMasterEngine from './admin-seo-engine'
+import { RankingModelBlock } from './admin-ranking-model-block'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
+import type { JobSummary } from '@/lib/seoFactory/jobSummary'
+import GscConnectModal from './admin-gsc-connect-modal'
 
 // ── Color tokens (match portal identity) ──
 const C = {
@@ -446,6 +450,7 @@ export default function AdminCommandCenter({
   const [radar, setRadar] = React.useState<any>(null)
   const [radarBusy, setRadarBusy] = React.useState(false)
   const [radarFilter, setRadarFilter] = React.useState<RadarPlay>('all')
+  const [radarSortModel, setRadarSortModel] = React.useState(false)
   const [radarLastRefreshed, setRadarLastRefreshed] = React.useState<Date | null>(null)
   const [resolvedTerms, setResolvedTerms] = React.useState<Set<string>>(new Set())
   const [selectedTerms, setSelectedTerms] = React.useState<Set<string>>(new Set())
@@ -463,7 +468,14 @@ export default function AdminCommandCenter({
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])
   const [jobsTotal, setJobsTotal] = React.useState(0)
+  // Real table totals from the jobs API summary — pills/KPIs must never use
+  // window-derived counts as the truth.
+  const [jobSummary, setJobSummary] = React.useState<JobSummary | null>(null)
   const [jobStatusFilter, setJobStatusFilter] = React.useState('all')
+  // Tick every 30s so the "last sync Xm ago" label stays live (the interval
+  // below calls setNowTick; the value itself is intentionally unread — any
+  // state update re-renders, which re-derives the elapsed-since label).
+  const [, setNowTick] = React.useState(0)
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null)
   const [selectedJob, setSelectedJob] = React.useState<StudioJob | null>(null)
   const [editorContent, setEditorContent] = React.useState('')
@@ -481,6 +493,12 @@ export default function AdminCommandCenter({
   // Systems
   const [health, setHealth] = React.useState<any>(null)
   const [metrics, setMetrics] = React.useState<any>(null)
+  // Live GSC connect status (polled from the connect endpoint) + last-poll
+  // timestamp so the Systems card shows connected/expires state in realtime.
+  const [gscStatus, setGscStatus] = React.useState<any>(null)
+  const [gscStatusAt, setGscStatusAt] = React.useState<number | null>(null)
+  const gscStatusRef = React.useRef<any>(null)
+  const [gscConnectOpen, setGscConnectOpen] = React.useState(false)
   const [strategies, setStrategies] = React.useState<any>(null)
   const [aiRuntimeProviders, setAiRuntimeProviders] = React.useState<Array<{ id: string; label: string; configured: boolean; model?: string | null }>>([])
 
@@ -589,17 +607,34 @@ export default function AdminCommandCenter({
 
   const playOf = (o: any): string => o.enginePlay || o.play || 'content_gap'
   const scoreOf = (o: any): number => o.opportunityScore ?? o.priorityScore ?? 0
+  const modelOf = (o: any): number | null =>
+    o?.ranking?.total != null ? Math.round(Number(o.ranking.total)) : null
+  const modelTooltip = (o: any): string => {
+    const r = o?.ranking
+    if (!r) return 'No ranking model score for this play'
+    const lines = [`Ranking model: ${Math.round(r.total)}/100 · confidence ${Math.round((r.confidence || 0) * 100)}%`]
+    if (Array.isArray(r.recommendedActions)) lines.push(`Actions: ${r.recommendedActions.slice(0, 3).join(' · ')}`)
+    const f = r.forecast?.points
+    if (Array.isArray(f) && f.length === 3) {
+      lines.push(`Forecast: #${Math.round(f[0].projectedPosition)} (30d) → #${Math.round(f[1].projectedPosition)} (60d) → #${Math.round(f[2].projectedPosition)} (90d)`)
+    }
+    return lines.join('\n')
+  }
 
   const radarQueue = React.useMemo(() => {
-    const q: any[] = (radar?.queue || []).filter((o: any) => !resolvedTerms.has(String(o.term || '')))
-    if (radarFilter === 'all') return q
-    if (radarFilter === 'rising') return q.filter((o) => o.trend === 'rising')
-    if (radarFilter === 'quick_win') return q.filter((o) => playOf(o) === 'quick_win' || playOf(o) === 'strike_distance')
-    if (radarFilter === 'content_gap') return q.filter((o) => playOf(o) === 'content_gap' || playOf(o) === 'deep_demand_build')
-    if (radarFilter === 'refresh') return q.filter((o) => playOf(o) === 'refresh' || playOf(o) === 'decay_refresh' || playOf(o) === 'title_ctr_rewrite')
-    if (radarFilter === 'defend') return q.filter((o) => playOf(o) === 'defend' || playOf(o) === 'page1_defend')
-    return q.filter((o) => playOf(o) === radarFilter || o.play === radarFilter)
-  }, [radar, radarFilter, resolvedTerms])
+    let q: any[] = (radar?.queue || []).filter((o: any) => !resolvedTerms.has(String(o.term || '')))
+    if (radarFilter === 'all') { /* keep */ }
+    else if (radarFilter === 'rising') q = q.filter((o) => o.trend === 'rising')
+    else if (radarFilter === 'quick_win') q = q.filter((o) => playOf(o) === 'quick_win' || playOf(o) === 'strike_distance')
+    else if (radarFilter === 'content_gap') q = q.filter((o) => playOf(o) === 'content_gap' || playOf(o) === 'deep_demand_build')
+    else if (radarFilter === 'refresh') q = q.filter((o) => playOf(o) === 'refresh' || playOf(o) === 'decay_refresh' || playOf(o) === 'title_ctr_rewrite')
+    else if (radarFilter === 'defend') q = q.filter((o) => playOf(o) === 'defend' || playOf(o) === 'page1_defend')
+    else q = q.filter((o) => playOf(o) === radarFilter || o.play === radarFilter)
+    // Client-side only — re-rank the queue by the ranking model's total, never
+    // re-fetching. Unscored rows fall to the bottom (modelOf → null → -1).
+    if (radarSortModel) q = [...q].sort((a, b) => (modelOf(b) ?? -1) - (modelOf(a) ?? -1))
+    return q
+  }, [radar, radarFilter, resolvedTerms, radarSortModel])
 
   const cannibals = React.useMemo(() => {
     const fromQueue = (radar?.queue || []).filter((o: any) => playOf(o) === 'cannibalization' || o.play === 'cannibal_merge')
@@ -619,33 +654,79 @@ export default function AdminCommandCenter({
       else if (s === 'merged') c.merged++
       else if (s === 'failed') c.failed++
     }
+    // Prefer the API's real table totals (whole queue) over window-derived
+    // counts — "In flight" / "PRs open" must stay correct beyond 100 rows.
+    const s = jobSummary
+    const inflight = s ? s.drafting + s.publishing + s.pending : c.inflight
+    const pr = s ? s.pr_created : c.pr
+    const merged = s ? s.merged : c.merged
+    const failed = s ? s.failed : c.failed
     return {
       actionable: rk.actionable ?? radarQueue.length,
-      gain: Math.round(rk.estimatedGainClicksSum ?? radarQueue.reduce((s, o) => s + (Number(o.estimatedGainClicks) || 0), 0)),
+      gain: Math.round(rk.estimatedGainClicksSum ?? radarQueue.reduce((a, o) => a + (Number(o.estimatedGainClicks) || 0), 0)),
       analyzed: rk.queriesAnalyzed ?? 0,
       authority: rk.avgAuthority ?? 0,
-      inflight: c.inflight, pr: c.pr, failed: c.failed,
+      // Surfaces the war-room's precomputed average of the per-row ranking
+      // model totals (kpis.modelAvg) on the command-center KPI strip.
+      modelAvg: rk.modelAvg ?? 0,
+      inflight, pr, merged, failed,
       liveGsc: rk.liveGsc ?? false,
       cannibals: cannibals.length,
     }
-  }, [radar, radarQueue, jobs, cannibals])
+  }, [radar, radarQueue, jobs, cannibals, jobSummary])
+
+  // Snapshot age label (e.g. "· Jul 22") shown next to the SNAPSHOT badge so
+  // operators can see exactly how stale the radar's demand data is.
+  const snapshotDate = radar?.snapshot?.generatedAt ? new Date(String(radar.snapshot.generatedAt)) : null
+  const snapshotLabel =
+    snapshotDate && !Number.isNaN(snapshotDate.getTime())
+      ? ` · ${snapshotDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+      : ''
 
   // ── Jobs / workspace ─────────────────────────────────────────────────────
   const loadJobs = React.useCallback(async () => {
     try {
-      // limit=100 so the queue shows more than the old hard 40; the API now
-      // returns total + hasMore so the pill shows the real table size.
+      // limit=100 matches the API cap; the response carries the REAL table
+      // summary (exact totals + avgSeo) alongside the window, so the pills,
+      // KPIs and totals all reflect the whole queue, not just what's shown.
       const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin' })
       const data = await res.json()
       if (res.ok) {
         setJobs((data as { jobs?: StudioJob[] }).jobs ?? [])
         const total = (data as { total?: number }).total
         if (typeof total === 'number') setJobsTotal(total)
+        const s = (data as { summary?: JobSummary }).summary
+        if (s) setJobSummary(s)
       }
     } catch {
       /* silent background poll */
     }
   }, [])
+
+  // Page further into the queue without touching the current window — the
+  // table can reach every job, not just the most recent 100.
+  const loadMoreJobs = React.useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/content-studio/jobs?limit=100&offset=${jobs.length}`,
+        { credentials: 'same-origin' },
+      )
+      const data = await res.json()
+      if (res.ok) {
+        const more = (data as { jobs?: StudioJob[] }).jobs ?? []
+        setJobs((prev) => {
+          const seen = new Set(prev.map((j) => j.id))
+          return [...prev, ...more.filter((j) => !seen.has(j.id))]
+        })
+        const total = (data as { total?: number }).total
+        if (typeof total === 'number') setJobsTotal(total)
+        const s = (data as { summary?: JobSummary }).summary
+        if (s) setJobSummary(s)
+      }
+    } catch {
+      /* silent */
+    }
+  }, [jobs.length])
 
   const selectJob = React.useCallback(async (id: string) => {
     setSelectedJobId(id)
@@ -788,6 +869,8 @@ export default function AdminCommandCenter({
       stage: (o.stage || o.lifecycleStage || autoDetectStage(o.term, o.signals)) as LifecycleStage,
       interlinks: o.interlinks || [],
       score: scoreOf(o),
+      ranking: o.ranking || null,
+      modelTotal: o.ranking?.total ?? null,
       cluster: o.cluster || null,
     })
     setLaunchFeed([])
@@ -1000,7 +1083,11 @@ export default function AdminCommandCenter({
           lifeCycleStage: brief.stage || 'visa',
           interlinks: brief.interlinks || [],
           cluster: brief.cluster || null,
+          // Radar play/intent/signals → the stream's autopilot transparency block.
           opportunity: { primaryKeyword: brief.primaryKeyword, play: brief.play, intent: brief.intent, opportunityScore: brief.score, signals: brief.signals },
+          // Ranking-model recommendedActions + forecast → the generation prompt,
+          // so the brief is written against the topic's weak families.
+          modelGuidance: brief.ranking || null,
         }),
       })
       if (!res.ok) {
@@ -1077,7 +1164,9 @@ export default function AdminCommandCenter({
 
   // ── Autopilot (batch run selected radar plays) ───────────────────────────
   const runAutopilot = async () => {
-    const terms = [...selectedTerms]
+    // Autopilot picks run in ranking-model order (fallback: selection order).
+    const byTermModel = new Map(radarQueue.map((o: any) => [String(o.term), modelOf(o) ?? -1]))
+    const terms = [...selectedTerms].sort((a, b) => (byTermModel.get(b) ?? -1) - (byTermModel.get(a) ?? -1))
     if (!terms.length) {
       notify('Select radar plays first', 'info')
       return
@@ -1302,13 +1391,35 @@ export default function AdminCommandCenter({
   }
 
   // ── Systems loaders ──────────────────────────────────────────────────────
-  const loadHealth = async () => {
+  const loadHealth = React.useCallback(async () => {
     try {
       const res = await fetch('/api/seo-factory/health', { credentials: 'same-origin' })
       const data = await res.json()
       if (res.ok) setHealth(data)
     } catch { /* ignore */ }
-  }
+  }, [])
+
+  // GSC connect status — live polled. On the false→true transition the whole
+  // studio reacts: health re-checks AND the radar re-scans so the badge flips
+  // from SNAPSHOT to LIVE GSC in the same breath the connection lands.
+  const loadGscStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/gsc/connect', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (!res.ok) return
+      const prev = gscStatusRef.current
+      gscStatusRef.current = data
+      setGscStatus(data)
+      setGscStatusAt(Date.now())
+      // Refresh when the connection becomes usable: a fresh connect (false→true)
+      // OR a healed token after re-authorization (live false→true while
+      // connected stayed true). Both should flip the studio to live data.
+      if ((!prev?.connected && data.connected) || (!prev?.live && data.live)) {
+        loadHealth()
+        loadRadar()
+      }
+    } catch { /* silent */ }
+  }, [loadHealth, loadRadar])
   const loadMetrics = async () => {
     try {
       const res = await fetch('/api/seo-factory/metrics', { credentials: 'same-origin' })
@@ -1356,6 +1467,82 @@ export default function AdminCommandCenter({
     const interval = setInterval(loadJobs, 6_000)
     return () => clearInterval(interval)
   }, [jobs, loadJobs])
+
+  // Background jobs poll — keeps pipeline pills/KPIs fresh even when nothing
+  // is drafting (status changes arrive within 30s worst-case).
+  React.useEffect(() => {
+    const id = setInterval(loadJobs, 30_000)
+    return () => clearInterval(id)
+  }, [loadJobs])
+
+  // Non-content columns safe to merge into the open workspace job on a
+  // realtime event. `content` and `event_log` are handled separately (content
+  // is never touched so in-progress editor edits can't be clobbered).
+  const LIVE_JOB_FIELDS = [
+    'status', 'pr_url', 'pr_number', 'branch_name', 'content_path',
+    'seo_score', 'word_count', 'error_message', 'merged_at', 'deployed_at',
+    'closed_at', 'deploy_sha', 'ai_provider', 'ai_model', 'title', 'topic',
+    'primary_keyword', 'region', 'target_repo', 'updated_at',
+  ] as const
+
+  // REAL-TIME: any content_jobs INSERT/UPDATE/DELETE instantly refreshes the
+  // pipeline AND the open workspace job — an article finishing, a PR opening,
+  // a merge landing all propagate to the pills, KPIs, table and workspace
+  // status/PR panes without waiting for a poll.
+  React.useEffect(() => {
+    const off = subscribeToTable('content_jobs', 'public', (payload) => {
+      const live = (payload.new ?? {}) as Record<string, unknown>
+      const id = typeof live.id === 'string' ? live.id : null
+      if (id) {
+        // Side effects live outside the updater — React may double-invoke
+        // updaters in StrictMode dev.
+        if (Array.isArray(live.event_log)) {
+          setLogs((live.event_log as StudioLogEntry[]).slice(-150))
+        }
+        setSelectedJob((prev) => {
+          if (!prev || prev.id !== id) return prev
+          const patch: Record<string, unknown> = {}
+          for (const k of LIVE_JOB_FIELDS) {
+            const v = live[k]
+            if (v !== undefined) patch[k] = v
+          }
+          return { ...prev, ...patch }
+        })
+      }
+      loadJobs()
+    })
+    return off
+  }, [loadJobs])
+
+  // Radar auto-refresh (5 min) + refresh on window focus so the KPI strip and
+  // radar always reflect the latest GSC pass while the center is open.
+  React.useEffect(() => {
+    const id = setInterval(loadRadar, 5 * 60_000)
+    const onFocus = () => {
+      loadRadar()
+      loadJobs()
+      loadGscStatus()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [loadRadar, loadJobs, loadGscStatus])
+
+  // GSC connect status — live poll (15s; the endpoint caches its token probe
+  // for 10s so this stays cheap). Keeps connected/expires state current.
+  React.useEffect(() => {
+    loadGscStatus()
+    const id = setInterval(loadGscStatus, 15_000)
+    return () => clearInterval(id)
+  }, [loadGscStatus])
+
+  // Tick every 30s so "last sync Xm ago" keeps counting up.
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTick((t) => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const loadBacklinkReport = React.useCallback(async (force = false) => {
     if (backlinkBusy) return
@@ -1453,13 +1640,24 @@ export default function AdminCommandCenter({
   )
 
   const jobCounts = React.useMemo(() => {
+    // Truth: pills show REAL table totals from the API summary, never the
+    // fetched window (window counts drifted from the DB: 33/41 vs 68/80).
+    if (jobSummary) {
+      return {
+        all: jobSummary.total,
+        drafting: jobSummary.drafting,
+        pr_created: jobSummary.pr_created,
+        merged: jobSummary.merged,
+        failed: jobSummary.failed,
+      }
+    }
     const c: Record<string, number> = { all: jobs.length, drafting: 0, pr_created: 0, merged: 0, failed: 0 }
     for (const j of jobs) {
       const s = String(j.status || '')
       if (c[s] !== undefined) c[s]++
     }
     return c
-  }, [jobs])
+  }, [jobs, jobSummary])
 
   // ── Render ───────────────────────────────────────────────────────────────
   // Pipeline hint uses the REAL table total (jobsTotal) instead of the fetched
@@ -1866,7 +2064,7 @@ function RecheckDuePanel() {
           icon="🎯" title="Opportunity Radar"
           sub="Every play carries its signals trail — the exact data that drove the score. Click a row's trend sparkline for full position history."
           right={
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
               {RADAR_FILTERS.map((f) => (
                 <button key={f.key} type="button" onClick={() => setRadarFilter(f.key)} style={{
                   padding: '4px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
@@ -1874,6 +2072,19 @@ function RecheckDuePanel() {
                   color: radarFilter === f.key ? '#fff' : C.textMuted, transition: 'all 0.15s',
                 }}>{f.label}</button>
               ))}
+              <span style={{ width: 1, height: 14, background: C.border, margin: '0 4px' }} />
+              <button
+                type="button"
+                onClick={() => setRadarSortModel((v) => !v)}
+                title={radarSortModel ? 'Queue re-ranked by ranking-model total (click to restore server order)' : 'Re-rank the queue by ranking-model total — client-side only, no re-fetch'}
+                style={{
+                  padding: '4px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: radarSortModel ? C.gold : C.surface2,
+                  color: radarSortModel ? '#fff' : C.textMuted, transition: 'all 0.15s',
+                }}
+              >
+                {radarSortModel ? '⇅ By model ✓' : '⇅ By model'}
+              </button>
             </div>
           }
         />
@@ -1915,8 +2126,14 @@ function RecheckDuePanel() {
                           disabled={isCannibal}
                         />
                       </td>
-                      <td style={{ ...td, minWidth: 100 }}>
+                      <td style={{ ...td, minWidth: 104 }}>
                         <ScoreMeter score={scoreOf(o)} />
+                        {modelOf(o) != null && (
+                          <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 5, cursor: 'help' }} title={modelTooltip(o)}>
+                            <span style={{ fontSize: 8, color: C.gold, fontFamily: C.mono, fontWeight: 800, letterSpacing: '0.04em' }}>MODEL</span>
+                            <ScoreMeter score={modelOf(o) as number} />
+                          </div>
+                        )}
                       </td>
                       <td style={td}><PlayBadge play={play} /></td>
                       <td style={{ ...td, maxWidth: 240 }}>
@@ -2004,6 +2221,11 @@ function RecheckDuePanel() {
               <>
                 <PlayBadge play={brief.play} />
                 <ScoreMeter score={brief.score} />
+                {brief.modelTotal != null && (
+                  <span title="Ranking model total (0–100) · deterministic composite">
+                    <ScoreMeter score={brief.modelTotal} />
+                  </span>
+                )}
                 <button type="button" onClick={clearBrief} style={btnGhost}>✕ Clear brief</button>
               </>
             )}
@@ -2259,6 +2481,14 @@ function RecheckDuePanel() {
                   </div>
                 )
               })()}
+
+              {/* ── Ranking model block (score · recommended actions · forecast) ── */}
+              {brief.ranking && (
+                <div style={{ marginTop: 10 }}>
+                  <RankingModelBlock ranking={brief.ranking} />
+                </div>
+              )}
+
               {brief.interlinks && (brief.interlinks as any[]).length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -2462,7 +2692,7 @@ function RecheckDuePanel() {
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
       <CardHeader
         icon="📋" title="Mission Pipeline"
-        sub={jobsTotal > 0 ? `Live job queue — ${filteredJobs.length} of ${jobsTotal} jobs shown (window is the most recent 100).` : 'Live job queue — auto-refreshes while drafting.'}
+        sub={jobsTotal > 0 ? `Live job queue — ${jobs.length} of ${jobsTotal} jobs loaded (auto-refreshes on change).` : 'Live job queue — auto-refreshes while drafting.'}
         right={
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {[['all', 'All'], ['drafting', 'Drafting'], ['pr_created', 'PRs'], ['merged', 'Merged'], ['failed', 'Failed']].map(([k, label]) => (
@@ -2525,11 +2755,32 @@ function RecheckDuePanel() {
               </tr>
             ))}
             {filteredJobs.length === 0 && (
-              <tr><td colSpan={8} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>No jobs yet — launch a play.</td></tr>
+              <tr><td colSpan={8} style={{ padding: 18, textAlign: 'center', color: C.textDim, fontSize: 12, fontFamily: C.mono }}>
+                {jobs.length === 0
+                  ? 'No jobs yet — launch a play.'
+                  : jobStatusFilter === 'all'
+                    ? 'Queue is empty.'
+                    : jobStatusFilter === 'pr_created'
+                      ? 'No PRs open right now — draft and ship a play to open one.'
+                      : jobStatusFilter === 'drafting'
+                        ? 'Nothing drafting right now.'
+                        : jobStatusFilter === 'merged'
+                          ? 'No merged plays yet.'
+                          : jobStatusFilter === 'failed'
+                            ? 'No failures — clean queue.'
+                            : 'No jobs match this filter.'}
+              </td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {jobs.length < jobsTotal && (
+        <div style={{ padding: 10, textAlign: 'center', borderTop: `1px solid ${C.border2}` }}>
+          <button type="button" onClick={loadMoreJobs} style={btnSmall}>
+            Load more ({jobsTotal - jobs.length} remaining)
+          </button>
+        </div>
+      )}
     </div>
   )
 
@@ -2803,6 +3054,88 @@ function RecheckDuePanel() {
         ))}
         {(health?.checks || []).length === 0 && <div style={{ fontSize: 11, color: C.textDim }}>No checks loaded — <button type="button" style={btnSmall} onClick={loadHealth}>reload</button></div>}
       </div>
+      {/* GSC connection — live status polled from the connect endpoint */}
+      <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.goldBorder}`, background: '#FFFDF7', boxShadow: C.shadowCard }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: gscStatus?.connected && gscStatus?.live ? C.green : C.orange }} />
+          Google Search Console
+          {gscStatusAt && (
+            <span style={{ marginLeft: 'auto', fontWeight: 400, color: C.textDim, fontSize: 9 }}>
+              {Math.max(0, Math.round((Date.now() - gscStatusAt) / 1000))}s ago
+            </span>
+          )}
+        </div>
+        {gscStatus ? (() => {
+          const connected = Boolean(gscStatus.connected)
+          const live = Boolean(gscStatus.live)
+          const missing: string[] = Array.isArray(gscStatus.missing) ? gscStatus.missing : []
+          const mode = String(gscStatus.mode || 'none').toUpperCase()
+          // Green only when a token can actually be minted — a connected-but-
+          // broken connection (revoked token) must never look healthy.
+          const statusColor = connected && live ? C.green : C.red
+          return (
+            <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.55 }}>
+              <div style={{ color: statusColor, fontWeight: 700, fontFamily: C.mono, marginBottom: 4 }}>
+                {connected ? 'CONNECTED' : 'NOT CONNECTED'} · {mode}
+              </div>
+              {gscStatus.siteUrl && <div style={{ fontFamily: C.mono, marginBottom: 4 }}>{gscStatus.siteUrl}</div>}
+              {gscStatus.email && <div style={{ marginBottom: 4 }}>as {gscStatus.email}</div>}
+              {gscStatus.connectedAt && <div style={{ marginBottom: 4 }}>connected {timeAgo(gscStatus.connectedAt)}</div>}
+              <div style={{ marginBottom: 6 }}>
+                {connected
+                  ? (live
+                      ? <span style={{ color: C.green, fontFamily: C.mono, fontWeight: 700 }}>● LIVE — token OK, queries will work</span>
+                      : <span style={{ color: C.red, fontFamily: C.mono, fontWeight: 700 }}>◐ TOKEN FAILURE — {gscStatus.error || 'refresh failed'}</span>)
+                  : (gscStatus.error ? `Probe: ${gscStatus.error}` : 'No live credentials — snapshot fallback only')}
+              </div>
+              {connected && !live && (
+                <>
+                  <div style={{ marginBottom: 8 }}>
+                    The stored {mode.toLowerCase()} token can't mint an access token. Re-authorize to replace it with a fresh one.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGscConnectOpen(true)}
+                    style={{ padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', background: C.gold, color: '#fff', fontSize: 10.5, fontWeight: 800 }}
+                  >
+                    Re-connect (re-authorize) →
+                  </button>
+                </>
+              )}
+              {!connected && missing.length > 0 && (
+                <div style={{ marginBottom: 8 }}>Missing: {missing.join(', ')}</div>
+              )}
+              {!connected && (
+                <>
+                  <div style={{ marginBottom: 8 }}>
+                    Radar plays are scored from the committed snapshot. Set up OAuth (or a service account) then connect:
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGscConnectOpen(true)}
+                    style={{ padding: '6px 12px', borderRadius: 999, border: 'none', cursor: 'pointer', background: C.gold, color: '#fff', fontSize: 10.5, fontWeight: 800 }}
+                  >
+                    Connect Search Console (OAuth) →
+                  </button>
+                  <div style={{ marginTop: 8, fontFamily: C.mono, fontSize: 9.5, color: C.textDim }}>
+                    Redirect URI must be registered on the OAuth client:<br />{typeof window !== 'undefined' ? window.location.origin : ''}/api/admin/analytics/gsc/callback
+                  </div>
+                  {missing.includes('client_secret') && (
+                    <div style={{ marginTop: 6, color: C.orange }}>
+                      Tip: set GOOGLE_CLIENT_SECRET (or GSC_OAUTH_CLIENT_SECRET) in the deployment env — the client id is already registered.
+                    </div>
+                  )}
+                </>
+              )}
+              <div style={{ marginTop: 8 }}>
+                <button type="button" style={btnSmall} onClick={loadGscStatus}>re-check</button>
+              </div>
+            </div>
+          )
+        })() : (
+          <div style={{ fontSize: 11, color: C.textDim }}>Checking… <button type="button" style={btnSmall} onClick={loadGscStatus}>re-check</button></div>
+        )}
+      </div>
       {/* Metrics */}
       <div style={{ padding: 12, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, boxShadow: C.shadowCard }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.text, fontFamily: C.mono, marginBottom: 8 }}>📊 Metrics</div>
@@ -2894,7 +3227,7 @@ function RecheckDuePanel() {
                   fontFamily: C.mono, background: kpis.liveGsc ? 'rgba(52,211,153,0.16)' : 'rgba(252,211,77,0.16)',
                   color: kpis.liveGsc ? '#A7F3D0' : '#FCD34D', letterSpacing: '0.06em',
                 }}>
-                  {kpis.liveGsc ? '● LIVE GSC' : '◐ SNAPSHOT'}
+                  {kpis.liveGsc ? '● LIVE GSC' : `◐ SNAPSHOT${snapshotLabel}`}
                 </span>
               </div>
               <p style={{ margin: 0, color: 'rgba(255,255,255,0.72)', fontSize: 13, maxWidth: 660 }}>
@@ -2924,6 +3257,20 @@ function RecheckDuePanel() {
           </div>
         </div>
 
+        {/* ── GSC truthfulness banner — never let snapshot data masquerade as live ── */}
+        {radar && !kpis.liveGsc && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14 }}>◐</span>
+            <span style={{ color: '#92400E', flex: 1, minWidth: 220, lineHeight: 1.45 }}>
+              <strong>Radar is running on the committed GSC snapshot{snapshotLabel || ''} — not live demand.</strong>{' '}
+              Every play is scored from that static data. Connect Search Console to score from real queries and clicks.
+            </span>
+            <button type="button" onClick={() => setTab('systems')} style={{ padding: '5px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', background: '#F59E0B', color: '#fff', fontSize: 10.5, fontWeight: 800 }}>
+              Fix in Systems →
+            </button>
+          </div>
+        )}
+
         {/* ── KPI command cards — each navigates to the surface it reports ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
           {[
@@ -2931,6 +3278,7 @@ function RecheckDuePanel() {
             { label: 'Est. clicks / mo', value: `~${fmtN(kpis.gain)}`, sub: 'if plays ship', icon: '📈', color: C.green, to: () => { setRadarFilter('all'); setTab('radar') } },
             { label: 'Queries analyzed', value: fmtN(kpis.analyzed), sub: 'GSC signals', icon: '🔍', color: C.text, to: () => setTab('radar') },
             { label: 'Avg authority', value: String(kpis.authority || '—'), sub: 'win probability', icon: '🏛', color: C.violet, to: () => setTab('radar') },
+            { label: 'Model avg', value: kpis.modelAvg > 0 ? String(kpis.modelAvg) : '—', sub: 'radar queue score', icon: '🧠', color: C.gold, to: () => { setRadarSortModel(true); setTab('radar') } },
             { label: 'In flight', value: String(kpis.inflight), sub: 'jobs drafting', icon: '⚙️', color: C.orange, to: () => { setJobStatusFilter('drafting'); setTab('pipeline') } },
             { label: 'PRs open', value: String(kpis.pr), sub: 'awaiting review', icon: '🔀', color: C.blue, to: () => { setJobStatusFilter('pr_created'); setTab('pipeline') } },
             { label: 'Cannibal watch', value: String(kpis.cannibals), sub: 'consolidate', icon: '⚠️', color: C.red, to: () => { setRadarFilter('cannibalization'); setTab('radar') } },
@@ -2997,6 +3345,19 @@ function RecheckDuePanel() {
         {tab === 'systems' && renderSystemsTab()}
 
         {renderDraftModal()}
+
+        {gscConnectOpen && (
+          <GscConnectModal
+            initialStatus={gscStatus}
+            // Connected-but-broken opens as a reconnect so consent is re-run
+            // and a fresh token is minted instead of short-circuiting.
+            reconnect={Boolean(gscStatus?.connected && !gscStatus?.live)}
+            // Single refresh path: loadGscStatus's transition fires
+            // loadHealth + loadRadar exactly once — no redundant burst.
+            onConnected={() => loadGscStatus()}
+            onClose={() => setGscConnectOpen(false)}
+          />
+        )}
 
         {activityLine && (
           <div style={{ position: 'fixed', bottom: 16, right: workspaceOpen ? 404 : 20, padding: '10px 16px', borderRadius: C.radiusSm, background: C.navy, color: '#fff', fontSize: 12, fontFamily: C.mono, boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8 }}>

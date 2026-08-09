@@ -119,9 +119,7 @@ async function tokenFromRefresh(
 export async function detectGscAuthMode(): Promise<GscAuthMode> {
   const cfg = await getGscConfig()
   if (cfg.refreshToken && cfg.clientId && cfg.clientSecret) return 'oauth'
-  if (process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY) {
-    return 'service_account'
-  }
+  if (cfg.serviceAccountKey) return 'service_account'
   return null
 }
 
@@ -142,8 +140,12 @@ export async function getGscAccess(): Promise<GscAccess | null> {
     }
   }
 
-  // Accept either secret name (Content Studio vs concurrent SA wiring)
-  const saJson = process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY
+  // Stored pasted key first, then either secret name (Content Studio vs
+  // concurrent SA wiring)
+  const saJson =
+    cfg.serviceAccountKey ||
+    process.env.GSC_SERVICE_ACCOUNT_JSON ||
+    process.env.GSC_SERVICE_ACCOUNT_KEY
   if (saJson) {
     try {
       const sa = JSON.parse(saJson) as ServiceAccount
@@ -158,9 +160,13 @@ export async function getGscAccess(): Promise<GscAccess | null> {
   return null
 }
 
-export function serviceAccountEmail(): string | null {
+export async function serviceAccountEmail(): Promise<string | null> {
   try {
-    const raw = process.env.GSC_SERVICE_ACCOUNT_JSON || process.env.GSC_SERVICE_ACCOUNT_KEY
+    const cfg = await getGscConfig()
+    const raw =
+      cfg.serviceAccountKey ||
+      process.env.GSC_SERVICE_ACCOUNT_JSON ||
+      process.env.GSC_SERVICE_ACCOUNT_KEY
     if (!raw) return null
     const sa = JSON.parse(raw) as { client_email?: string }
     return sa.client_email ?? null

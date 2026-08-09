@@ -47,6 +47,15 @@ export interface RegenerationFilters {
   intents?: string[]
   /** Exclude terms the operator has already seen or shipped. */
   excludeTopics?: string[]
+  /** Ranking-model floor: items carry an optional `rankingScore` (0-100). */
+  minRankingScore?: number
+  /** Evidence-confidence floor: items carry an optional `confidence` (0-1). */
+  minConfidence?: number
+  /** AEO/GEO citation-potential floor: items carry an optional `aeoGeoScore` (0-100). */
+  minAeoGeo?: number
+  /** Only items whose evidence is fresher than this window (days). Uses `freshness`
+   *  (0-1) when present, else derives from `observedAt` via the 45-day half-life. */
+  freshnessWindowDays?: number
 }
 
 export interface PredictiveSignal {
@@ -154,6 +163,11 @@ export function filterRegenerationCandidates<T extends {
   difficultyScore?: number
   intent?: string
   region?: string
+  rankingScore?: number
+  confidence?: number
+  aeoGeoScore?: number
+  freshness?: number
+  observedAt?: string | Date
 }>(items: T[], filters: RegenerationFilters = {}): T[] {
   const plays = new Set(filters.plays || [])
   const excluded = new Set((filters.excludeTopics || []).map(normalizeTopic).filter(Boolean))
@@ -161,6 +175,12 @@ export function filterRegenerationCandidates<T extends {
   const maxDifficulty = Number.isFinite(filters.maxDifficultyScore) ? Number(filters.maxDifficultyScore) : 100
   const intents = new Set((filters.intents || []).map((v) => String(v).toLowerCase()))
   const region = String(filters.region || '').toLowerCase()
+  const minRanking = Number.isFinite(filters.minRankingScore) ? Number(filters.minRankingScore) : 0
+  const minConfidence = Number.isFinite(filters.minConfidence) ? Number(filters.minConfidence) : 0
+  const minAeoGeo = Number.isFinite(filters.minAeoGeo) ? Number(filters.minAeoGeo) : 0
+  const freshnessWindowDays = Number.isFinite(filters.freshnessWindowDays) ? Math.max(0, Number(filters.freshnessWindowDays)) : null
+  const minFreshness = freshnessWindowDays == null ? 0 : Math.pow(0.5, freshnessWindowDays / 45)
+  const now = Date.now()
 
   return items.filter((item) => {
     const topic = normalizeTopic(item.topic)
@@ -172,6 +192,17 @@ export function filterRegenerationCandidates<T extends {
     if (difficulty > maxDifficulty) return false
     if (intents.size && !intents.has(String(item.intent || '').toLowerCase())) return false
     if (region && String(item.region || '').toLowerCase() && String(item.region || '').toLowerCase() !== region) return false
+    // ── Ranking-model filters (strict; an item lacking the field fails the gate) ──
+    if (minRanking > 0 && (Number(item.rankingScore) || 0) < minRanking) return false
+    if (minConfidence > 0 && (Number(item.confidence) || 0) < minConfidence) return false
+    if (minAeoGeo > 0 && (Number(item.aeoGeoScore) || 0) < minAeoGeo) return false
+    if (freshnessWindowDays != null) {
+      // `Number(undefined)` is NaN — nullish coalescing does NOT catch that, so
+      // fall back to observedAt explicitly when the field is absent.
+      const raw = item.freshness == null ? Number.NaN : Number(item.freshness)
+      const fresh = Number.isFinite(raw) ? raw : freshnessScore(item.observedAt, now)
+      if (Number.isFinite(fresh) && fresh < minFreshness) return false
+    }
     return true
   })
 }

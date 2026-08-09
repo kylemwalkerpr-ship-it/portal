@@ -43,7 +43,7 @@ export async function GET(_request: NextRequest) {
     let liveDetail: string | null = null
     try {
       mode = await detectGscAuthMode()
-      saEmail = serviceAccountEmail()
+      saEmail = await serviceAccountEmail()
       // Prove live token mint (same path as War Room / factory)
       const access = await getGscAccess()
       if (access?.accessToken) {

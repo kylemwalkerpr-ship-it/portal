@@ -5,6 +5,7 @@ import { latestEngineRuns, DEFAULT_SOURCES } from '@/lib/seoEngine/knowledge'
 import { loadInterlinkGraph } from '@/lib/seoEngine/interlink'
 import { loadVisibilityFeed } from '@/lib/seoEngine/llmVisibility'
 import { loadGateRuns } from '@/lib/seoEngine/gate'
+import { loadRankingScores } from '@/lib/seoEngine/rankingModel'
 
 /**
  * GET /api/seo-engine/status
@@ -21,7 +22,7 @@ export async function GET() {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const supabase = createSupabaseAdminClient()
-    const [cells, knowledge, plans, runs, config, interlink, visibility, gate] = await Promise.all([
+    const [cells, knowledge, plans, runs, config, interlink, visibility, gate, ranking] = await Promise.all([
       supabase.from('seo_lifecycle_stages').select('id', { count: 'exact', head: true }),
       supabase.from('seo_knowledge').select('kind', { count: 'exact', head: true }),
       supabase.from('seo_cluster_plans').select('status', { count: 'exact', head: true }),
@@ -30,6 +31,7 @@ export async function GET() {
       loadInterlinkGraph(200),
       loadVisibilityFeed(200),
       loadGateRuns(200),
+      loadRankingScores({ limit: 3 }),
     ])
 
     const kinds: Record<string, number> = {}
@@ -44,6 +46,11 @@ export async function GET() {
       plans: { total: plans.count ?? 0, byStatus: statuses },
       interlinks: { planned: interlink.planned, applied: interlink.applied, byReason: interlink.byReason },
       llmVisibility: { total: visibility.total, cited: visibility.cited, shareOfVoice: visibility.shareOfVoice, byStage: visibility.byStage },
+      rankingModel: {
+        computed: ranking.length,
+        latestTotal: ranking[0] ? Math.round(Number(ranking[0].total) || 0) : null,
+        latestTopic: ranking[0] ? String(ranking[0].topic) : null,
+      },
       gate: { runs: gate.runs.length, passRate: gate.passRate, avgScore: gate.avgScore },
       runs: runs as Array<Record<string, unknown>>,
       sources: DEFAULT_SOURCES.map((s) => ({ id: s.id, label: s.label, kind: s.kind, countries: s.countries })),

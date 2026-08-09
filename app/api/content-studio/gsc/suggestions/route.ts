@@ -11,6 +11,7 @@ import {
 import { buildKeywordClusters, type ClusterResolution } from '@/lib/seoFactory/keywordCluster'
 import { STRATEGIC_KEYWORDS } from '@/lib/seoKnowledgeBase'
 import { filterRegenerationCandidates, type RegenerationFilters } from '@/lib/seoEngine/intelligence'
+import { leanRanking, rankingForOpportunity } from '@/lib/seoEngine/rankingModel'
 
 export const runtime = 'nodejs'
 
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
     const live = await fetchSiteSearchAnalytics(90)
     let queries: OpportunityEngineInput['queries'] = []
     let source = 'snapshot'
+    let snapshotMeta: { generatedAt?: string } | null = null
     const warnings: string[] = []
 
     if (live.configured && live.topQueries.length > 0) {
@@ -125,6 +127,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       const snap = await loadGscSnapshot()
+      snapshotMeta = { generatedAt: snap.generatedAt }
       const shape = (q: { term?: string; url?: string; clicks: number; impressions: number; ctr: number; position: number }) => ({
         term: q.term || q.url || '',
         impressions: q.impressions,
@@ -255,7 +258,19 @@ export async function POST(request: NextRequest) {
       regenerationFilters,
     )
     const knowledgeTerms = new Set(knowledgeSignals.map((signal) => normalizedTopic(signal.term)))
-    const suggestions = variedOpportunities.map((o) => ({
+    const suggestions = variedOpportunities.map((o) => {
+      // Deterministic ranking-model enrichment (lean view) — same brain as the
+      // command-center radar so Quick Create briefs can show score + forecast.
+      const ranking = leanRanking(rankingForOpportunity({
+        term: o.topic,
+        impressions: Number(o.impressions) || 0,
+        clicks: Number(o.clicks) || 0,
+        ctr: Number(o.ctr) || 0,
+        position: Number(o.position) || 100,
+        region,
+        lifecycleStage: o.stage || undefined,
+      }))
+      return {
       topic: o.topic,
       title: o.title,
       primaryKeyword: o.primaryKeyword,
@@ -284,7 +299,9 @@ export async function POST(request: NextRequest) {
       interlinks: o.interlinks,
       coverage: o.coverage,
       sourcePage: o.sourcePage,
-    }))
+      ranking,
+      }
+    })
 
     return NextResponse.json({
       region,
@@ -296,6 +313,7 @@ export async function POST(request: NextRequest) {
         excludedTopics,
       ),
       source,
+      snapshot: snapshotMeta,
       coverageStats: result.coverageStats,
       cannibalization: result.cannibalization.slice(0, 8),
       strategyHints: brief.strategyHints ?? [],
