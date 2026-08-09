@@ -288,7 +288,7 @@ export default function SeoMasterEngine({ onBrief, onIngest }: Props) {
                   <a href={String(it.url)} target="_blank" rel="noreferrer" style={{ color: C.text, fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}>
                     {String(it.title)}
                   </a>
-                  {(it.ai_summary || it.summary) && (
+                  {Boolean(it.ai_summary || it.summary) && (
                     <div style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.5, marginTop: 3 }}>{String(it.ai_summary || it.summary).slice(0, 260)}</div>
                   )}
                 </div>
