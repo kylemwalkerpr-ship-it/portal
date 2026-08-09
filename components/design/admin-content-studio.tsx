@@ -880,12 +880,26 @@ const QUEUE_FILTERS: Array<{ key: 'all' | 'active' | 'pr_created' | 'merged' | '
   { key: 'failed', label: 'Failed' },
 ]
 
-function QueueStats({ jobs }: { jobs: ContentJob[] }) {
-  const total = jobs.length
-  const merged = jobs.filter(j => j.status === 'merged').length
-  const inProgress = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length
-  const prReady = jobs.filter(j => j.status === 'pr_created').length
-  const failed = jobs.filter(j => j.status === 'failed').length
+type QueueSummary = {
+  total?: number
+  [status: string]: number | undefined
+}
+
+function QueueStats({ jobs, total: totalOverride, summary }: {
+  jobs: ContentJob[]
+  total?: number
+  summary?: QueueSummary | null
+}) {
+  const count = (status: string, fallback: number) =>
+    typeof summary?.[status] === 'number' ? Number(summary[status]) : fallback
+  const total = totalOverride ?? summary?.total ?? jobs.length
+  const merged = count('merged', jobs.filter(j => j.status === 'merged').length)
+  const failed = count('failed', jobs.filter(j => j.status === 'failed').length)
+  const closed = count('closed', jobs.filter(j => j.status === 'closed').length)
+  const inProgress = summary?.total != null || totalOverride != null
+    ? Math.max(0, total - merged - failed - closed)
+    : jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length
+  const prReady = count('pr_created', jobs.filter(j => j.status === 'pr_created').length)
   const cards = [
     { label: 'Total jobs', value: total, color: C.cyan, icon: '📋' },
     { label: 'In progress', value: inProgress, color: C.orange, icon: '⚙️' },
@@ -911,8 +925,10 @@ function QueueStats({ jobs }: { jobs: ContentJob[] }) {
   )
 }
 
-function QueueTable({ jobs, onSelect, loading, mergeIndex, gateByJob }: {
+function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob }: {
   jobs: ContentJob[]
+  total?: number
+  summary?: QueueSummary | null
   onSelect: (j: ContentJob) => void
   loading: boolean
   mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
@@ -949,6 +965,19 @@ function QueueTable({ jobs, onSelect, loading, mergeIndex, gateByJob }: {
   }
 
   const countFor = (key: 'all' | 'active' | 'pr_created' | 'merged' | 'failed') => {
+    // Status totals come from the database-wide summary when there is no
+    // search term. The table window is intentionally small, but its badges
+    // must never pretend that the window is the whole queue.
+    if (!search.trim() && summary) {
+      if (key === 'all') return total ?? summary.total ?? jobs.length
+      if (key === 'merged') return summary.merged ?? 0
+      if (key === 'failed') return summary.failed ?? 0
+      if (key === 'pr_created') return summary.pr_created ?? 0
+      if (key === 'active') {
+        const all = total ?? summary.total ?? jobs.length
+        return Math.max(0, all - (summary.merged ?? 0) - (summary.closed ?? 0) - (summary.failed ?? 0))
+      }
+    }
     if (key === 'all') return jobs.length
     let list = jobs
     if (key === 'active') list = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status))
@@ -1855,6 +1884,8 @@ function JobDetail({
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
   const [tab, setTab] = React.useState<StudioTab>('create')
   const [jobs, setJobs] = React.useState<ContentJob[]>([])
+  const [jobTotal, setJobTotal] = React.useState(0)
+  const [jobSummary, setJobSummary] = React.useState<QueueSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [generating, setGenerating] = React.useState(false)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
@@ -1881,6 +1912,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null)
   const [radar, setRadar] = React.useState<AISuggestion[]>([])
   const [radarMeta, setRadarMeta] = React.useState<Record<string, unknown> | null>(null)
+  const radarSeenTopicsRef = React.useRef<Set<string>>(new Set())
 
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
@@ -1900,12 +1932,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return []
     try {
-      const res = await fetch('/api/content-studio/jobs?limit=40', { credentials: 'same-origin' })
+      const res = await fetch('/api/content-studio/jobs?limit=80', { credentials: 'same-origin' })
       if (res.status === 503) { setError('Server busy (503). Waiting before next refresh…'); return [] }
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error((data as { error?: string }).error || `HTTP ${res.status}`)
-      const nextJobs = (data as { jobs?: ContentJob[] }).jobs ?? []
+      const data = await res.json().catch(() => ({})) as { jobs?: ContentJob[]; total?: number; summary?: QueueSummary }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const nextJobs = data.jobs ?? []
       setJobs(nextJobs)
+      setJobTotal(typeof data.total === 'number' ? data.total : nextJobs.length)
+      setJobSummary(data.summary ?? null)
       setError(null)
       return nextJobs
     } catch (err) {
@@ -1953,12 +1987,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     try {
       const res = await fetch('/api/content-studio/gsc/suggestions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ region: regionArg, limit: 6 }),
+        body: JSON.stringify({
+          region: regionArg,
+          limit: 12,
+          nonce: `${Date.now()}-${radarSeenTopicsRef.current.size}`,
+          excludeTopics: Array.from(radarSeenTopicsRef.current).slice(-160),
+        }),
       })
       const data = await res.json()
       if (res.ok) {
-        setSuggestions(data.suggestions ?? [])
-        setRadar(data.opportunities ?? data.suggestions ?? [])
+        const nextSuggestions = data.suggestions ?? []
+        const nextRadar = data.opportunities ?? nextSuggestions
+        for (const item of [...nextSuggestions, ...nextRadar]) {
+          if (item?.topic) radarSeenTopicsRef.current.add(String(item.topic).toLowerCase())
+        }
+        setSuggestions(nextSuggestions)
+        setRadar(nextRadar)
         setRadarMeta({ source: data.source, coverage: data.coverageStats, cannibalization: data.cannibalization, region: data.region })
       } else {
         setSuggestionsError((data as { error?: string }).error ?? 'Failed to load suggestions')
@@ -2238,7 +2282,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   const TABS: Array<{ key: StudioTab; icon: string; label: string; hint: string }> = [
     { key: 'create', icon: '✏️', label: 'Create', hint: 'Launch new content' },
-    { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobs.length} jobs` },
+    { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobTotal || jobs.length} jobs` },
     { key: 'insights', icon: '📊', label: 'Insights', hint: 'Radar · GSC · merges' },
   ]
 
@@ -2368,9 +2412,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* ══════════ QUEUE ══════════ */}
       {tab === 'queue' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {!loading && jobs.length > 0 && <QueueStats jobs={jobs} />}
+          {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
           <QueueTable
             jobs={jobs}
+            total={jobTotal}
+            summary={jobSummary}
             onSelect={setSelectedJob}
             loading={loading}
             mergeIndex={mergeIndex}
