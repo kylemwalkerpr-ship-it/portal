@@ -303,3 +303,54 @@ jobs:
             raise SystemExit(1)
           print('Worker secrets healthy')
           PY
+
+      # Post-deploy contract gate: the studio must be reachable, the
+      # auth-gate + GSC-401 contract must hold, and the served _next buildId
+      # must be fresh and consistent (no stale CDN serves). Failing this step
+      # fails the deploy, so a broken contract can never ship silently.
+      #
+      # EXPECTED_BUILD_ID is pinned to the buildId this workflow JUST built
+      # (.next/BUILD_ID is written by the build step) — the check asserts the
+      # exact bundle we deployed is what production is serving. Retries with
+      # backoff because Cloudflare propagates the new build across PoPs over
+      # a few minutes; the smoke script's STALE/MIXED flag during that window
+      # is expected, and a persistent failure after all attempts is a real
+      # break.
+      - name: Post-deploy smoke test (studio contract + build freshness)
+        if: github.event_name != 'pull_request'
+        timeout-minutes: 10
+        env:
+          PROD_BASE_URL: ${{ vars.PORTAL_URL }}
+        run: |
+          set +e
+          EXPECTED=""
+          if [ -f .next/BUILD_ID ]; then
+            EXPECTED=$(cat .next/BUILD_ID)
+            echo "Built bundle buildId: ${EXPECTED} — asserting the deploy serves exactly this."
+          else
+            echo "::warning::.next/BUILD_ID not found — skipping the exact-buildId assert (consistency checks still run)."
+          fi
+          run_smoke() {
+            if [ -n "$EXPECTED" ]; then
+              EXPECTED_BUILD_ID="$EXPECTED" pnpm smoke:prod
+            else
+              pnpm smoke:prod
+            fi
+          }
+          for attempt in 1 2 3 4 5 6; do
+            echo "::group::Smoke test attempt $attempt/6"
+            run_smoke
+            rc=$?
+            echo "::endgroup::"
+            if [ $rc -eq 0 ]; then
+              echo "Post-deploy smoke test passed (attempt $attempt)."
+              exit 0
+            fi
+            if [ $attempt -lt 6 ]; then
+              wait_sec=$((attempt * 20))
+              echo "::warning::Smoke test failed on attempt $attempt (rc=$rc) — deploy may still be propagating. Retrying in ${wait_sec}s."
+              sleep $wait_sec
+            fi
+          done
+          echo "::error::Post-deploy smoke test failed after 6 attempts — studio contract broken."
+          exit 1
