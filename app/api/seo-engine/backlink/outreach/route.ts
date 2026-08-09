@@ -6,7 +6,7 @@ import {
   draftOutreachMessage,
   listTargetOpportunities,
 } from '@/lib/seoEngine/backlinkEngine'
-import type { Country, LifecycleStage } from '@/lib/seoEngine/ontology'
+import type { Country, LifecycleStageDef } from '@/lib/seoEngine/ontology'
 
 /**
  * POST /api/seo-engine/backlink/outreach
