@@ -279,6 +279,8 @@ export default function ContentStudioWorkspace({
           (l.detail || '').toLowerCase().includes(find.toLowerCase()),
       )
     : logs
+  const latestLog = filteredLogs.length ? filteredLogs[filteredLogs.length - 1] : null
+  const activityIsLive = Boolean(busy || activityLine)
 
   const checkStateColor = (state?: string) => {
     const s = (state || '').toLowerCase()
@@ -354,18 +356,35 @@ export default function ContentStudioWorkspace({
           ))}
         </select>
 
-        {activityLine && (
-          <div style={{
-            marginTop: 8, fontSize: 11, color: C.gold, fontFamily: C.mono,
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: 999, background: C.gold,
-              boxShadow: `0 0 0 3px rgba(251,191,36,0.25)`,
-              animation: 'studioPulse 1.2s infinite',
-            }} />
-            {activityLine}
-          </div>
+        {(activityLine || latestLog) && (
+          <button
+            type="button"
+            onClick={() => setPane('log')}
+            title="Open latest generation activity"
+            style={{
+              width: '100%', marginTop: 9, padding: '9px 10px', textAlign: 'left',
+              borderRadius: 9, border: `1px solid ${activityIsLive ? 'rgba(52,211,153,0.35)' : C.border}`,
+              background: activityIsLive ? 'rgba(16,185,129,0.10)' : 'rgba(255,255,255,0.035)',
+              color: C.text, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: 999,
+                background: activityIsLive ? C.green : C.gold,
+                boxShadow: activityIsLive ? '0 0 0 3px rgba(52,211,153,0.18)' : '0 0 0 3px rgba(251,191,36,0.18)',
+                animation: activityIsLive ? 'studioPulse 1.2s infinite' : 'none',
+                flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: activityIsLive ? C.green : C.gold, fontWeight: 800 }}>
+                Latest generation activity
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 9, color: C.cyan, fontFamily: C.mono }}>OPEN ↗</span>
+            </div>
+            <div style={{ marginTop: 4, fontSize: 10, color: C.muted, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activityLine || latestLog?.message || 'Activity captured from the generation pipeline'}
+            </div>
+          </button>
         )}
       </div>
 
@@ -375,7 +394,7 @@ export default function ContentStudioWorkspace({
           ['editor', 'Editor'],
           ['pr', 'GitHub PR'],
           ['deploy', 'Deploy & CI'],
-          ['log', 'Debug log'],
+          ['log', 'Live activity'],
           ['meta', 'Meta'],
         ] as [PaneTab, string][]).map(([k, label]) => (
           <button
@@ -793,40 +812,114 @@ export default function ContentStudioWorkspace({
         )}
 
         {pane === 'log' && (
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-            <div style={{ display: 'flex', gap: 8, padding: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, background: C.bg }}>
+            {/* Livestream masthead */}
+            <div style={{
+              padding: '16px 14px 13px', flexShrink: 0,
+              background: 'linear-gradient(145deg, rgba(30,41,59,0.98), rgba(15,23,42,0.98))',
+              borderBottom: `1px solid ${C.border}`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.gold, fontWeight: 800 }}>
+                    Workspace livestream
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 17, lineHeight: 1.15, fontWeight: 800, color: C.text }}>
+                    Latest generation activity
+                  </div>
+                  <div style={{ marginTop: 5, fontSize: 10, color: C.muted, fontFamily: C.mono }}>
+                    Activity captured from the generation pipeline
+                  </div>
+                </div>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                  padding: '4px 7px', borderRadius: 999, fontSize: 9, fontWeight: 800,
+                  color: activityIsLive ? C.green : C.muted,
+                  background: activityIsLive ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${activityIsLive ? 'rgba(52,211,153,0.26)' : C.border}`,
+                  fontFamily: C.mono,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: activityIsLive ? C.green : C.dim, animation: activityIsLive ? 'studioPulse 1.2s infinite' : 'none' }} />
+                  {activityIsLive ? 'LIVE' : 'IDLE'}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 13 }}>
+                {[
+                  ['EVENTS', String(logs.length)],
+                  ['LAST', latestLog ? new Date(latestLog.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'],
+                  ['STATE', activityIsLive ? 'RUNNING' : (job?.status || 'READY').replace(/_/g, ' ').toUpperCase()],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ padding: '7px 8px', borderRadius: 7, background: 'rgba(255,255,255,0.055)', border: `1px solid ${C.border}`, minWidth: 0 }}>
+                    <div style={{ fontSize: 8, color: C.dim, letterSpacing: '0.08em', fontFamily: C.mono }}>{label}</div>
+                    <div style={{ marginTop: 3, fontSize: 11, color: C.text, fontWeight: 800, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Search and actions */}
+            <div style={{ display: 'flex', gap: 7, padding: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
               <input
                 value={find}
                 onChange={(e) => setFind(e.target.value)}
-                placeholder="Filter log…"
+                placeholder="Filter pipeline activity…"
+                aria-label="Filter pipeline activity"
                 style={{
-                  flex: 1, padding: '6px 8px', borderRadius: 6, border: `1px solid ${C.border}`,
-                  background: C.surface, color: C.text, fontSize: 12,
+                  flex: 1, padding: '7px 9px', borderRadius: 7, border: `1px solid ${C.border}`,
+                  background: C.surface, color: C.text, fontSize: 11, fontFamily: C.mono,
                 }}
               />
-              <button type="button" onClick={onClearLogs} style={btn()}>Clear</button>
+              <button type="button" onClick={onClearLogs} style={{ ...btn(), padding: '6px 10px' }}>Clear</button>
             </div>
-            <div style={{ flex: 1, overflow: 'auto', padding: 10, fontFamily: C.mono, fontSize: 11 }}>
-              {filteredLogs.length === 0 && <Empty>No events yet. Run generate, plan, or ship to stream activity here.</Empty>}
-              {filteredLogs.map((l) => (
-                <div key={l.id} style={{ marginBottom: 10, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                    <span style={{ color: C.dim }}>{new Date(l.ts).toLocaleTimeString()}</span>
-                    <span style={{ color: levelColor(l.level), fontWeight: 700, textTransform: 'uppercase' }}>{l.level}</span>
-                    <span style={{ color: C.gold }}>{l.source}</span>
-                  </div>
-                  <div style={{ color: C.text, marginTop: 3, lineHeight: 1.45 }}>{l.message}</div>
-                  {l.detail && (
-                    <pre style={{
-                      margin: '6px 0 0', whiteSpace: 'pre-wrap', color: C.muted, fontSize: 10,
-                      background: C.panel, padding: 8, borderRadius: 6, maxHeight: 120, overflow: 'auto',
-                    }}>
-                      {l.detail.slice(0, 4000)}
-                    </pre>
-                  )}
+
+            {/* Event timeline */}
+            <div style={{ flex: 1, overflow: 'auto', padding: '12px 12px 20px', fontFamily: C.mono, fontSize: 11 }}>
+              {filteredLogs.length === 0 ? (
+                <div style={{ padding: '36px 16px', textAlign: 'center', border: `1px dashed ${C.border}`, borderRadius: 10, background: 'rgba(255,255,255,0.025)' }}>
+                  <div style={{ fontSize: 24, marginBottom: 9, opacity: 0.8 }}>◌</div>
+                  <div style={{ color: C.text, fontWeight: 700, fontFamily: 'inherit' }}>No generation activity yet</div>
+                  <div style={{ marginTop: 5, color: C.dim, fontSize: 10, lineHeight: 1.5 }}>Run generate, plan, or ship to stream actions here.</div>
                 </div>
-              ))}
-              <div ref={logEndRef} />
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <div style={{ position: 'absolute', left: 7, top: 9, bottom: 10, width: 1, background: C.border }} />
+                  {filteredLogs.map((l, index) => {
+                    const isLatest = index === filteredLogs.length - 1
+                    const tone = levelColor(l.level)
+                    return (
+                      <div key={l.id} style={{ position: 'relative', display: 'flex', gap: 10, paddingBottom: 11, minWidth: 0 }}>
+                        <span style={{
+                          position: 'relative', zIndex: 1, width: 15, height: 15, marginTop: 7, flexShrink: 0,
+                          borderRadius: 999, background: isLatest ? tone : C.panel,
+                          border: `2px solid ${tone}`, boxShadow: isLatest ? `0 0 0 4px ${tone}22` : 'none',
+                        }} />
+                        <div style={{
+                          flex: 1, minWidth: 0, padding: '8px 9px', borderRadius: 8,
+                          background: isLatest ? `${tone}12` : 'rgba(255,255,255,0.025)',
+                          border: `1px solid ${isLatest ? `${tone}44` : C.border}`,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                            <span style={{ color: C.dim, fontSize: 9 }}>{new Date(l.ts).toLocaleTimeString()}</span>
+                            <span style={{ color: tone, fontSize: 9, fontWeight: 800, textTransform: 'uppercase' }}>{l.level}</span>
+                            <span style={{ color: C.gold, fontSize: 9 }}>{l.source}</span>
+                            {isLatest && <span style={{ marginLeft: 'auto', color: C.green, fontSize: 8, fontWeight: 800 }}>LATEST</span>}
+                          </div>
+                          <div style={{ color: C.text, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{l.message}</div>
+                          {l.detail && (
+                            <pre style={{
+                              margin: '6px 0 0', whiteSpace: 'pre-wrap', color: C.muted, fontSize: 9,
+                              background: C.panel, padding: 7, borderRadius: 6, maxHeight: 120, overflow: 'auto',
+                            }}>
+                              {l.detail.slice(0, 4000)}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={logEndRef} />
+                </div>
+              )}
             </div>
           </div>
         )}
