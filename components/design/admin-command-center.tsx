@@ -1038,7 +1038,7 @@ function RecheckDuePanel() {
           {due.slice(0, 10).map((m) => (
             <div key={`${m.clusterId}-${m.source}`} style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border2}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ padding: '1px 6px', borderRadius: 3, background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF', color: m.source === 'command_center' ? C.blue : C.purple, fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>{m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}</span>
+                <span style={{ padding: '1px 6px', borderRadius: 3, background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF', color: m.source === 'command_center' ? C.blue : C.violet, fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>{m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}</span>
                 <span style={{ padding: '1px 6px', borderRadius: 3, background: `${resolutionColor(m.resolutionType)}18`, color: resolutionColor(m.resolutionType), fontSize: 8, fontWeight: 700, fontFamily: C.mono }}>{resolutionLabel(m.resolutionType)}</span>
                 <span style={{ padding: '1px 6px', borderRadius: 3, background: C.goldSoft, color: C.orange, fontSize: 8, fontWeight: 800, fontFamily: C.mono }}>RECHECK DUE</span>
                 <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, marginLeft: 'auto' }}>{m.followUpAt ? new Date(m.followUpAt).toLocaleDateString() : 'now'}</span>
