@@ -25,6 +25,7 @@ function sb() {
 const JOB_LIST_COLUMNS = [
   'id',
   'user_id',
+  'source_job_id',
   'title',
   'topic',
   'content_type',
@@ -1263,6 +1264,7 @@ export async function PATCH(request: NextRequest) {
         minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 55,
         maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
         userId,
+        sourceJobId: id,
       })
       // Mark old job closed; new job created by pipeline
       await supabase

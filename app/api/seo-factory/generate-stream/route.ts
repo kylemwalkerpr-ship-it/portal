@@ -93,6 +93,7 @@ export async function POST(request: Request) {
 
     const input = {
       topic,
+      sourceJobId: String(body.supersedesJobId || '').trim() || null,
       title: String(body.title || topic).trim(),
       primaryKeyword: String(body.primaryKeyword || body.primary_keyword || topic).trim(),
       region: String(body.region || 'US').toUpperCase(),

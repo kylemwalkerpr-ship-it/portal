@@ -62,6 +62,7 @@ type StudioTab = 'create' | 'queue' | 'insights'
 interface ContentJob {
   id: string; title: string; topic: string; content_type: ContentType
   tone: Tone; region: Region; target_repo: string; status: JobStatus
+  source_job_id: string | null
   slug: string | null; content: string | null; branch_name: string | null
   content_path: string | null; pr_url: string | null; pr_number: number | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
@@ -927,7 +928,7 @@ function QueueStats({ jobs, total: totalOverride, summary }: {
   )
 }
 
-function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob }: {
+function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId }: {
   jobs: ContentJob[]
   total?: number
   summary?: QueueSummary | null
@@ -935,6 +936,7 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
   loading: boolean
   mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
   gateByJob?: Map<string, { score: number; passed: boolean }>
+  focusJobId?: string | null
 }) {
   const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
   const [search, setSearch] = React.useState('')
@@ -958,6 +960,8 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter(j =>
+        (j.id || '').toLowerCase().includes(q) ||
+        (j.source_job_id || '').toLowerCase().includes(q) ||
         (j.title || '').toLowerCase().includes(q) ||
         (j.topic || '').toLowerCase().includes(q) ||
         (j.primary_keyword || '').toLowerCase().includes(q) ||
@@ -1056,12 +1060,13 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
                 const hit = mergeHitFor(j)
                 const g = gateByJob?.get(j.id)
                 return (
-                  <tr key={j.id} onClick={() => onSelect(j)} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s' }}
+                  <tr key={j.id} onClick={() => onSelect(j)} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s', background: j.id === focusJobId ? '#EFF6FF' : 'transparent' }}
                     onMouseEnter={e => { e.currentTarget.style.background = '#FAFAF7' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    onMouseLeave={e => { e.currentTarget.style.background = j.id === focusJobId ? '#EFF6FF' : 'transparent' }}>
                     <td style={{ padding: '9px 12px', maxWidth: 240 }}>
                       <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title || '(untitled)'}</div>
                       <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.topic?.slice(0, 60)}</div>
+                      {j.source_job_id && <div style={{ marginTop: 3, color: C.blue, fontSize: 9, fontFamily: C.mono, fontWeight: 700 }}>↻ REGENERATION · replaces {j.source_job_id.slice(0, 8)}…</div>}
                     </td>
                     <td style={{ padding: '9px 12px', color: C.textMuted, fontSize: 10, whiteSpace: 'nowrap' }}>{j.content_type?.replace('_', ' ')}</td>
                     <td style={{ padding: '9px 12px', fontSize: 10, whiteSpace: 'nowrap' }}>{j.region}</td>
@@ -1555,12 +1560,13 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
 
 // ── JOB DETAIL MODAL ──
 function JobDetail({
-  job, onClose, onRefresh, setActionNotice, gateFor,
+  job, onClose, onRefresh, setActionNotice, gateFor, onReplacementJob,
 }: {
   job: ContentJob
   onClose: () => void
   onRefresh: () => Promise<void> | void
   setActionNotice: (msg: string) => void
+  onReplacementJob?: (jobId: string) => void
   gateFor?: { score: number; passed: boolean } | null
 }) {
   const [detail, setDetail] = React.useState<ContentJob>(job)
@@ -1657,6 +1663,7 @@ function JobDetail({
       setResumeAvailable(false)
       setLocalActionNotice(message)
       setActionNotice(message)
+      if (replacementId) onReplacementJob?.(String(replacementId))
       await loadDetail()
       await onRefresh()
     } catch (error) {
@@ -1928,6 +1935,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
   const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
   const [engineBusy, setEngineBusy] = React.useState(false)
+  const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
 
   // Fetch jobs
@@ -2419,7 +2427,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             jobs={jobs}
             total={jobTotal}
             summary={jobSummary}
-            onSelect={setSelectedJob}
+            onSelect={(job) => { setQueueFocusJobId(null); setSelectedJob(job) }}
+            focusJobId={queueFocusJobId}
             loading={loading}
             mergeIndex={mergeIndex}
             gateByJob={gateByJob}
@@ -2450,6 +2459,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onClose={() => setSelectedJob(null)}
           onRefresh={async () => { await fetchJobs() }}
           setActionNotice={setActionNotice}
+          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); setTab('queue') }}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
         />
       )}

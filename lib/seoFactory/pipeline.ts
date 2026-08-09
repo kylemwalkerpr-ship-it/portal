@@ -91,6 +91,8 @@ export interface PipelineInput {
   opportunityAction?: string
   writeHint?: string
   userId?: string
+  /** Existing job replaced by this regeneration, shown in the queue lineage. */
+  sourceJobId?: string | null
   skipShipIfBelowScore?: boolean
   /** Saved partial draft used when continuing an interrupted stream. */
   resumeContent?: string
@@ -775,6 +777,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       .from('content_jobs')
       .insert({
         user_id: input.userId || 'admin',
+        source_job_id: input.sourceJobId || null,
         title,
         topic,
         content_type: contentType === 'legal_guide' ? 'article' : contentType,
