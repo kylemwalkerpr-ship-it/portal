@@ -29,7 +29,8 @@ jobs:
             supabase/migrations/gsc_tokens.sql \
             supabase/migrations/seo_factory_columns.sql \
             supabase/migrations/mission_log.sql \
-            supabase/migrations/20260808_cannibal_merges.sql)"
+            supabase/migrations/20260808_cannibal_merges.sql \
+            supabase/migrations/20260809_seo_master_engine.sql)"
 
           # Management API: run SQL
           RESP=$(curl -sS -w "\n%{http_code}" -X POST \
