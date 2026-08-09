@@ -1,4 +1,22 @@
 'use client'
+/**
+ * CONTENT STUDIO — v3 rebuild
+ *
+ * One workspace, three dedicated surfaces. No guessing, no buried controls.
+ *
+ *   ✏️  Create   — numbered wizard: Target → Brief → Interlinks → Generate.
+ *                  Autopilot cards pre-fill every field (always editable),
+ *                  the engine link plan is one click, and there is exactly
+ *                  one primary CTA: “Generate & Open PR”.
+ *   📋  Queue    — every job in one searchable, filterable table with
+ *                  status, compliance gate, SEO score and merge badges.
+ *   📊  Insights — GSC overview, scored Opportunity Radar, merge history,
+ *                  interlink suggestions, site health, deep interlinks.
+ *
+ * The SEO Master Engine strip on top keeps the six brain surfaces one
+ * command away (ingest / plan / LLM audit) and every job's detail modal
+ * enforces the compliance gate with dedicated action groups.
+ */
 import React from 'react'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
@@ -8,11 +26,15 @@ import AdminInlineEditor from './admin-inline-editor'
 // ── Color tokens (match admin-templates.tsx) ──
 const C = {
   bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
-  border: 'rgba(0,0,0,0.08)', cyan: '#3C3B6E', red: '#DC2626', green: '#166534',
+  border: 'rgba(0,0,0,0.08)', border2: 'rgba(0,0,0,0.05)',
+  cyan: '#3C3B6E', red: '#DC2626', green: '#166534', greenSoft: '#ECFDF5',
   orange: '#D97706', purple: '#7C3AED', text: '#1F2937', textMuted: '#6B7280',
-  textDim: '#9CA3AF', gold: '#9A7B3B', navy: '#0F172A', blue: '#2563EB',
+  textDim: '#9CA3AF', gold: '#9A7B3B', goldSoft: '#FEF3C7', navy: '#0F172A',
+  blue: '#2563EB', blueSoft: '#EFF6FF',
   serif: "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)",
   mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
+  shadowCard: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04)',
+  radius: 12, radiusSm: 8, radiusXs: 6,
 }
 
 // ── Provider → default model (mirrors contentAiProvider defaults) ──
@@ -33,6 +55,7 @@ type ContentType = 'blog_post' | 'article' | 'regional_page' | 'marketplace_gig'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
+type StudioTab = 'create' | 'queue' | 'insights'
 
 interface ContentJob {
   id: string; title: string; topic: string; content_type: ContentType
@@ -87,9 +110,7 @@ interface AISuggestion {
   sourcePage?: string
 }
 
-
-// ── Helpers ──
-
+// ── Options ──
 const REGION_OPTIONS: { value: Region; label: string; flag: string }[] = [
   { value: 'US', label: 'United States', flag: '🇺🇸' },
   { value: 'CA', label: 'Canada', flag: '🇨🇦' },
@@ -106,14 +127,13 @@ const TONE_OPTIONS: { value: Tone; label: string }[] = [
   { value: 'casual', label: 'Casual' },
 ]
 
-const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; repo: string; icon: string }[] = [
-  { value: 'blog_post', label: 'Blog Post', ext: '.md', repo: 'caseworks', icon: '📝' },
-  { value: 'article', label: 'Long-Form Article', ext: '.mdx', repo: 'caseworks', icon: '📄' },
-  { value: 'regional_page', label: 'Regional Page', ext: '.mdx', repo: 'yousafe-consultancy', icon: '🌐' },
-  { value: 'marketplace_gig', label: 'Marketplace Gig', ext: '.mdx', repo: 'portal', icon: '🏪' },
+const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; repo: string; icon: string; hint: string }[] = [
+  { value: 'blog_post', label: 'Blog Post', ext: '.md', repo: 'caseworks', icon: '📝', hint: 'Short-form thought leadership' },
+  { value: 'article', label: 'Long-Form Article', ext: '.mdx', repo: 'caseworks', icon: '📄', hint: 'Deep legal guides & explainers' },
+  { value: 'regional_page', label: 'Regional Page', ext: '.mdx', repo: 'yousafe-consultancy', icon: '🌐', hint: 'Country / city landing pages' },
+  { value: 'marketplace_gig', label: 'Marketplace Gig', ext: '.mdx', repo: 'portal', icon: '🏪', hint: 'Service listing on the marketplace' },
 ]
 
-// ── Opportunity Radar presentation maps ──
 const PLAY_META: Record<string, { label: string; bg: string; fg: string; icon: string }> = {
   quick_win: { label: 'QUICK WIN', bg: '#D1FAE5', fg: '#065F46', icon: '⚡' },
   content_gap: { label: 'GAP', bg: '#DBEAFE', fg: '#1E40AF', icon: '🧩' },
@@ -141,11 +161,68 @@ const RADAR_FILTERS: Array<{ key: 'all' | 'quick_win' | 'content_gap' | 'rising'
   { key: 'rising', label: '↗ Rising' },
   { key: 'refresh', label: '🔄 Refresh' },
 ]
+const AI_PROVIDER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'auto', label: 'Auto (Grok → OpenAI → rest)' },
+  { value: 'grok', label: 'Grok (xAI)' },
+  { value: 'openai', label: 'OpenAI (GPT-5.6 Luna)' },
+  { value: 'nvidia-deepseek', label: 'NVIDIA DeepSeek' },
+  { value: 'cloudflare-ai', label: 'Cloudflare Workers AI' },
+  { value: 'groq', label: 'Groq (Llama)' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'openrouter', label: 'OpenRouter' },
+]
+
+// ── Helpers ──
 function fmtN(n: number | undefined | null): string {
   const v = Number(n) || 0
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`
   return String(Math.round(v))
+}
+function fmtTime(ts: number): string {
+  try {
+    return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch { return '' }
+}
+function fmtDur(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const m = Math.floor(ms / 60000)
+  const s = Math.round((ms % 60000) / 1000)
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m ${s}s`
+}
+function formatDate(iso: string) {
+  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+  catch { return iso }
+}
+function timeAgo(iso: string): string {
+  try {
+    const diff = Date.now() - new Date(iso).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    return `${Math.floor(hrs / 24)}d ago`
+  } catch { return '' }
+}
+function timeAgoMs(ts: number): string {
+  try { return timeAgo(new Date(ts).toISOString()) } catch { return '' }
+}
+
+const STAGE_PROGRESS: Record<string, number> = {
+  connect: 4, plan: 12, gsc: 20, generate: 35, provider: 45,
+  audit: 62, refine: 80, depth: 88, ship: 95, complete: 100,
+}
+
+function progressFromEvents(events: GenerationActivity[], active: boolean): number {
+  let p = active ? 4 : 0
+  for (const e of events) {
+    const key = String(e.stage || '').toLowerCase()
+    if (key in STAGE_PROGRESS) p = Math.max(p, STAGE_PROGRESS[key])
+    if (e.level === 'error') return 100
+  }
+  return Math.min(100, p)
 }
 
 function statusBadge(status: JobStatus) {
@@ -159,9 +236,11 @@ function statusBadge(status: JobStatus) {
     failed:     { label: 'Failed',     bg: '#FEE2E2', fg: '#DC2626', dot: '#EF4444' },
   }
   const s = map[status]
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: s.bg, color: s.fg }}>
-    <span style={{ width: 5, height: 5, borderRadius: 999, background: s.dot }} />{s.label}
-  </span>
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600, background: s.bg, color: s.fg, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 5, height: 5, borderRadius: 999, background: s.dot }} />{s.label}
+    </span>
+  )
 }
 
 function statusStepper(status: JobStatus) {
@@ -178,7 +257,7 @@ function statusStepper(status: JobStatus) {
   if (isFailed) return <span style={{ fontSize: 10, color: C.red, fontWeight: 600, fontFamily: C.mono }}>⚠ Failed</span>
   if (isClosed) return <span style={{ fontSize: 10, color: C.textDim, fontWeight: 600, fontFamily: C.mono }}>✕ Closed</span>
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0 }} title={steps.map(s => s.label).join(' → ')}>
       {steps.map((s, i) => {
         const done = i < currentIdx
         const active = i === currentIdx
@@ -188,10 +267,9 @@ function statusStepper(status: JobStatus) {
         return (
           <React.Fragment key={s.key}>
             {i > 0 && <span style={{ width: 12, height: 1, background: done ? C.green : C.border, flexShrink: 0 }} />}
-            <span title={s.label} style={{
+            <span style={{
               width: 8, height: 8, borderRadius: 999, flexShrink: 0,
-              background: active ? bg : 'transparent',
-              border: `2px solid ${color}`,
+              background: active ? bg : 'transparent', border: `2px solid ${color}`,
             }} />
           </React.Fragment>
         )
@@ -200,93 +278,315 @@ function statusStepper(status: JobStatus) {
   )
 }
 
-function formatDate(iso: string) {
-  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
-  catch { return iso }
-}
-
-function timeAgo(iso: string): string {
-  try {
-    const diff = Date.now() - new Date(iso).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
-    return `${Math.floor(hrs / 24)}d ago`
-  } catch { return '' }
-}
-
-// ── Summary Cards ──
-
-function SummaryCards({ jobs }: { jobs: ContentJob[] }) {
-  const total = jobs.length
-  const merged = jobs.filter(j => j.status === 'merged').length
-  const inProgress = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length
-  const prReady = jobs.filter(j => j.status === 'pr_created').length
-  const failed = jobs.filter(j => j.status === 'failed').length
-  const cards = [
-    { label: 'Total Jobs', value: total, color: C.cyan, icon: '📋' },
-    { label: 'In Progress', value: inProgress, color: C.orange, icon: '⚙️' },
-    { label: 'PR Ready', value: prReady, color: C.blue, icon: '🔀' },
-    { label: 'Merged', value: merged, color: C.green, icon: '✅' },
-    { label: 'Failed', value: failed, color: C.red, icon: '⚠️' },
-  ]
+function gateBadge(score: number | null | undefined, passed: boolean | null | undefined) {
+  if (score == null) return <span style={{ fontSize: 10, color: C.textDim }}>—</span>
+  const ok = passed !== false
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
-      {cards.map(c => (
-        <div key={c.label} style={{
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-          padding: '14px 16px', borderTop: `3px solid ${c.color}`,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 22 }}>{c.icon}</span>
-          <div>
-            <div style={{ fontSize: 10, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.mono }}>{c.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: C.text, fontFamily: C.serif }}>{c.value}</div>
-          </div>
-        </div>
-      ))}
+    <span
+      title={`Compliance gate ${score}/100 — ${ok ? 'passed' : 'blocked (YMYL/AEO/GEO requirements)'}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 999,
+        fontSize: 9, fontWeight: 700, fontFamily: C.mono, whiteSpace: 'nowrap', cursor: 'help',
+        background: ok ? '#ECFDF5' : '#FEF2F2', color: ok ? C.green : C.red,
+      }}
+    >
+      {ok ? '✓ PASS' : '✕ BLOCK'} {score}
+    </span>
+  )
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted,
+  textTransform: 'uppercase', marginBottom: 5, fontFamily: C.mono,
+}
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 11px', borderRadius: C.radiusXs, border: `1px solid ${C.border}`,
+  background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box',
+}
+const btnSolid = (bg: string, fg = '#fff'): React.CSSProperties => ({
+  padding: '7px 14px', borderRadius: C.radiusXs, border: 'none', cursor: 'pointer',
+  background: bg, color: fg, fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+})
+const btnGhost: React.CSSProperties = {
+  padding: '7px 14px', borderRadius: C.radiusXs, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+  background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+}
+
+// ── Cannibalization merge records (shared with Command Center) ──
+interface CannibalMergeRecord {
+  clusterId: string
+  source: 'portal' | 'command_center'
+  stem: string
+  terms: string[]
+  winnerUrl: string
+  loserUrls: string[]
+  redirectsCreated: number
+  prUrl?: string
+  prNumber?: number
+  status: 'merged' | 'skipped'
+  message?: string
+  mergedAt: number
+}
+
+interface MergeUrlHit {
+  role: 'winner' | 'loser'
+  clusterId: string
+  stem: string
+  winnerUrl: string
+  redirectsCreated: number
+  prUrl?: string
+  prNumber?: number
+  mergedAt: number
+}
+
+function normMergePath(u: string): string {
+  try {
+    const p = new URL(u)
+    let path = p.pathname
+    if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1)
+    if (path.endsWith('/index.html')) path = path.slice(0, -'/index.html'.length)
+    return (path || '/').toLowerCase()
+  } catch {
+    return u.trim().toLowerCase()
+  }
+}
+function canonicalMergeStem(q: string): string {
+  return q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .split(' ').slice(0, 4).join(' ')
+}
+function jobWebPath(j: ContentJob): string {
+  if (!j.slug) return ''
+  const slug = j.slug.replace(/^\/+|\/+$/g, '')
+  return slug ? `/${slug.toLowerCase()}` : ''
+}
+
+type LogLevel = 'success' | 'info' | 'warn' | 'error'
+interface TimelineEntry {
+  ts: number
+  level: LogLevel
+  source: string
+  message: string
+  detail?: string
+  kind: 'log' | 'stage'
+}
+interface GenerationActivity {
+  id: string
+  ts: number
+  stage: string
+  message: string
+  level: 'info' | 'success' | 'warn' | 'error'
+}
+const LEVEL_COLOR: Record<LogLevel, string> = {
+  success: C.green, info: C.blue, warn: C.orange, error: C.red,
+}
+const LEVEL_ICON: Record<LogLevel, string> = {
+  success: '✓', info: 'ℹ', warn: '▲', error: '✕',
+}
+
+/** Consume the SEO Factory SSE contract and return its final result. */
+async function consumeSseResponse(
+  response: Response,
+  onEvent: (event: any) => void,
+): Promise<any> {
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({})) as { error?: string }
+    throw new Error(failure.error || `Generation stream HTTP ${response.status}`)
+  }
+  if (!response.body) throw new Error('Generation stream returned no readable body')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResult: any = null
+  const consume = (raw: string) => {
+    const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
+    if (!dataLine) return
+    const payload = dataLine.slice(5).trim()
+    if (!payload || payload === '[DONE]') return
+    const event = JSON.parse(payload)
+    onEvent(event)
+    if (event.type === 'final') finalResult = event.result
+    if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const chunks = buffer.split(/\r?\n\r?\n/)
+    buffer = chunks.pop() || ''
+    for (const chunk of chunks) consume(chunk)
+    if (done) break
+  }
+  if (buffer.trim()) consume(buffer)
+  if (!finalResult) throw new Error('Generation stream ended before a final result was received')
+  return finalResult
+}
+
+// ── Section header — used by every card ──
+function CardHeader({ icon, title, sub, right }: { icon: string; title: string; sub?: string; right?: React.ReactNode }) {
+  return (
+    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: C.serif }}>{icon} {title}</div>
+        {sub && <div style={{ marginTop: 1, fontSize: 10.5, color: C.textMuted }}>{sub}</div>}
+      </div>
+      {right}
     </div>
   )
 }
 
-// ── Opportunity Radar + Autopilot Quick Create ────────────────────────────
+// ── Live generation activity ──
+function ProgressBar({ value, color }: { value: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.max(4, Math.min(100, value))}%`, height: '100%', borderRadius: 99, background: color, transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: 10, fontFamily: C.mono, color: 'rgba(255,255,255,0.75)', minWidth: 34, textAlign: 'right' }}>{Math.round(value)}%</span>
+    </div>
+  )
+}
 
-function QuickCreate({
-  expanded, onToggle, generating, onGenerate,
-  topic, keywords, onTopicChange, onKeywordsChange,
-  suggestions, suggestionsLoading, suggestionsError, onRefreshSuggestions, onApplySuggestion,
-  brief, briefInterlinks, onClearBrief, onAutoInterlink, autoInterlinkBusy,
+function LiveGenerationPanel({
+  active, events, startedAt, streamedChars,
 }: {
-  expanded: boolean; onToggle: () => void; generating: boolean
+  active: boolean
+  events: GenerationActivity[]
+  startedAt: number | null
+  streamedChars: number
+}) {
+  if (!active && events.length === 0) return null
+  const latest = events[events.length - 1]
+  const elapsed = startedAt ? fmtDur(Date.now() - startedAt) : ''
+  const levelColor = latest?.level === 'error' ? C.red : latest?.level === 'warn' ? C.orange : latest?.level === 'success' ? C.green : C.blue
+  return (
+    <div style={{ marginBottom: 14, background: C.navy, color: '#FFF', borderRadius: C.radius, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.14)' }}>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: active ? '#34D399' : levelColor, boxShadow: active ? '0 0 0 4px rgba(52,211,153,0.16)' : 'none' }} />
+            {active ? 'AI work in progress' : latest?.level === 'error' ? 'Generation stopped' : 'Latest generation activity'}
+          </div>
+          <div style={{ marginTop: 3, fontSize: 10, color: 'rgba(255,255,255,0.62)', fontFamily: C.mono }}>
+            {active ? `Live pipeline · ${elapsed}${streamedChars ? ` · ${streamedChars.toLocaleString()} streamed characters` : ''}` : 'Activity captured from the generation pipeline'}
+          </div>
+        </div>
+        <span style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 4, background: active ? 'rgba(52,211,153,0.16)' : 'rgba(255,255,255,0.1)', color: active ? '#A7F3D0' : 'rgba(255,255,255,0.75)', fontSize: 9, fontFamily: C.mono, textTransform: 'uppercase' }}>
+          {active ? 'streaming' : 'complete'}
+        </span>
+      </div>
+      <div style={{ padding: '0 16px 8px' }}>
+        <ProgressBar value={progressFromEvents(events, active)} color={active ? '#34D399' : levelColor} />
+      </div>
+      <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {events.slice(-6).map((event, index, visible) => (
+          <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, opacity: index === visible.length - 1 ? 1 : 0.68 }}>
+            <span style={{ width: 17, height: 17, flexShrink: 0, borderRadius: 99, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: event.level === 'error' ? 'rgba(248,113,113,0.18)' : event.level === 'warn' ? 'rgba(251,191,36,0.18)' : event.level === 'success' ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)', color: event.level === 'error' ? '#FCA5A5' : event.level === 'warn' ? '#FCD34D' : event.level === 'success' ? '#6EE7B7' : '#93C5FD', fontSize: 9, fontWeight: 800 }}>
+              {event.level === 'error' ? '!' : event.level === 'success' ? '✓' : '•'}
+            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 11, lineHeight: 1.35, color: '#F8FAFC' }}>{event.message}</div>
+              <div style={{ marginTop: 2, fontSize: 9, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono }}>{event.stage} · {fmtTime(event.ts)}</div>
+            </div>
+          </div>
+        ))}
+        {active && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono, paddingLeft: 26 }}>Waiting for the next pipeline event…</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── Autopilot radar card (used inside the Create wizard) ──
+function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; onApply: (s: AISuggestion) => void }) {
+  const pm = PLAY_META[s.play] || PLAY_META.content_gap
+  const score = s.opportunityScore ?? s.demandScore
+  const tm = TREND_META[s.trend || 'flat'] || TREND_META.flat
+  return (
+    <button
+      type="button"
+      onClick={() => onApply(s)}
+      style={{
+        minWidth: 232, maxWidth: 260, flexShrink: 0, textAlign: 'left', padding: '10px 12px', borderRadius: C.radiusSm,
+        border: active ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+        background: active ? '#FEF9EC' : C.surface, cursor: 'pointer', fontFamily: 'inherit',
+        transition: 'all 0.15s', boxShadow: C.shadowCard,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg }}>
+          {pm.icon} {pm.label}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
+          <span style={{ fontSize: 12, color: tm.color, fontWeight: 700 }} title={tm.label}>{tm.icon}</span>
+        </span>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.3, marginBottom: 5 }}>
+        {s.title.length > 64 ? s.title.slice(0, 61) + '…' : s.title}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>#{s.position ?? '—'}</span>
+        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{fmtN(s.impressions)} imp</span>
+        <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono, background: C.surface3, color: C.textMuted }}>
+          {INTENT_LABELS[s.intent] || s.intentCategory || '📖 Informational'}
+        </span>
+      </div>
+      {(s.signals && s.signals.length ? s.signals.slice(0, 2) : [s.reason]).map((sig, si) => (
+        <p key={si} style={{ margin: 0, fontSize: 8.5, color: C.textDim, lineHeight: 1.35 }}>• {sig}</p>
+      ))}
+    </button>
+  )
+}
+
+// ── CREATE TAB ──
+// Numbered wizard: 1 Target → 2 Brief → 3 Interlinks → Generate.
+// Props carry all state up so the parent can run generation.
+function CreateWizard({
+  generating,
+  onGenerate,
+  contentType, setContentType,
+  region, setRegion,
+  tone, setTone,
+  aiProvider, setAiProvider,
+  title, setTitle,
+  topic, setTopic,
+  audience, setAudience,
+  keywords, setKeywords,
+  suggestions, suggestionsLoading, suggestionsError,
+  onRefreshSuggestions,
+  onApplySuggestion,
+  brief, onClearBrief,
+  briefInterlinks, onAutoInterlink, autoInterlinkBusy,
+  showRadar, setShowRadar,
+}: {
+  generating: boolean
   onGenerate: (data: any) => void
-  topic: string; keywords: string; onTopicChange: (v: string) => void; onKeywordsChange: (v: string) => void
-  suggestions?: AISuggestion[]; suggestionsLoading?: boolean; suggestionsError?: string | null
-  onRefreshSuggestions?: (region: string) => void; onApplySuggestion?: (s: AISuggestion) => void
+  contentType: ContentType; setContentType: (v: ContentType) => void
+  region: Region; setRegion: (v: Region) => void
+  tone: Tone; setTone: (v: Tone) => void
+  aiProvider: string; setAiProvider: (v: string) => void
+  title: string; setTitle: (v: string) => void
+  topic: string; setTopic: (v: string) => void
+  audience: string; setAudience: (v: string) => void
+  keywords: string; setKeywords: (v: string) => void
+  suggestions?: AISuggestion[]
+  suggestionsLoading?: boolean
+  suggestionsError?: string | null
+  onRefreshSuggestions?: (region: string) => void
+  onApplySuggestion?: (s: AISuggestion) => void
   brief?: AISuggestion | null
-  briefInterlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   onClearBrief?: () => void
+  briefInterlinks?: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
   onAutoInterlink?: () => void
   autoInterlinkBusy?: boolean
+  showRadar: boolean
+  setShowRadar: (v: boolean) => void
 }) {
-  const [contentType, setContentType] = React.useState<ContentType>('blog_post')
-  const [region, setRegion] = React.useState<Region>('US')
-  const [tone, setTone] = React.useState<Tone>('educational')
-  const [aiProvider, setAiProvider] = React.useState('auto')
-  const [title, setTitle] = React.useState('')
-  const [audience, setAudience] = React.useState('')
   const [filter, setFilter] = React.useState<'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh'>('all')
-
-  // Autopilot: applying a radar card auto-fills every field, not just topic/keywords.
-  // Every value remains editable — the radar only pre-fills.
-  React.useEffect(() => {
-    if (!brief) return
-    if (brief.contentType) setContentType(brief.contentType as ContentType)
-    if (brief.intent) setTone(TONE_FOR_INTENT[brief.intent] ?? 'educational')
-    if (brief.title) setTitle(brief.title)
-    if (brief.audience) setAudience(brief.audience)
-  }, [brief])
+  const canGenerate = Boolean(topic.trim() || title.trim())
 
   const visibleSuggestions = React.useMemo(() => {
     if (!suggestions) return suggestions
@@ -299,17 +599,12 @@ function QuickCreate({
       : true)
   }, [suggestions, filter])
 
-  const playOf = (s: AISuggestion) => s.play ?? (s.coverage?.matched ? 'refresh' : 'content_gap')
-  const scoreOf = (s: AISuggestion) => s.opportunityScore ?? s.demandScore
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const effectiveTitle = title.trim()
-    const effectiveTopic = topic.trim() || effectiveTitle
-    if (!effectiveTopic) return
+    if (!canGenerate) return
     onGenerate({
       content_type: contentType, region, tone,
-      title: effectiveTitle || effectiveTopic, topic: effectiveTopic,
+      title: title.trim() || topic.trim(), topic: topic.trim(),
       audience: audience.trim(),
       keywords: keywords.split(',').map(s => s.trim()).filter(Boolean),
       aiProvider,
@@ -318,420 +613,421 @@ function QuickCreate({
     })
   }
 
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <button onClick={onToggle} style={{
-        width: '100%', padding: '14px 18px', border: 'none', background: 'none',
-        cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        fontFamily: 'inherit',
+  const stepLabel = (n: number, label: string, done: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+      <span style={{
+        width: 18, height: 18, borderRadius: 999, flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: done ? C.green : C.navy, color: '#FFF',
+        fontSize: 9, fontWeight: 800, fontFamily: C.mono,
       }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text, fontFamily: C.serif, textAlign: 'left' }}>
-            ✨ Quick Create — Autopilot
-          </h3>
-          <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted, textAlign: 'left' }}>
-            Opportunity Radar → autofilled brief → AI draft → GitHub PR.
-          </p>
-        </div>
-        <span style={{ fontSize: 18, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-      </button>
+        {done ? '✓' : n}
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 800, color: C.text, fontFamily: C.serif }}>{label}</span>
+    </div>
+  )
 
-      {expanded && (
-        <>
-          {/* ── Opportunity Radar strip ── */}
-          <div style={{ padding: '0 16px 4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono }}>
-                🎯 Opportunity Radar
-              </span>
-              <button type="button" onClick={() => onRefreshSuggestions?.(region)} disabled={suggestionsLoading} style={{
-                padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: C.surface2, color: C.textDim, fontSize: 9, fontWeight: 600, fontFamily: 'inherit',
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="✏️" title="Create content"
+        sub="Four numbered steps. Every field is editable — the radar and engine only pre-fill."
+        right={
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setShowRadar(!showRadar)} style={showRadar ? { ...btnSolid(C.navy) } : btnGhost}>
+              🎯 {showRadar ? 'Hide autopilot' : 'Autopilot from radar'}
+            </button>
+            <button type="button" onClick={() => onRefreshSuggestions?.(region)} disabled={suggestionsLoading} style={btnGhost}>
+              {suggestionsLoading ? '⏳ Scanning…' : '↻ Rescan'}
+            </button>
+          </div>
+        }
+      />
+
+      {/* ── STEP 0 · Autopilot radar (optional) ── */}
+      {showRadar && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: '#FCFAF6' }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+            {RADAR_FILTERS.map((f) => (
+              <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
+                padding: '3px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
+                fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
               }}>
-                {suggestionsLoading ? '⏳ Scanning…' : '🔄 Rescan'}
+                {f.label}
               </button>
-            </div>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
-              {RADAR_FILTERS.map((f) => (
-                <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
-                  padding: '3px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9, fontWeight: 700,
-                  fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
-                  transition: 'all 0.15s',
-                }}>
-                  {f.label}
-                </button>
+            ))}
+          </div>
+          {suggestionsLoading ? (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {[1, 2, 3].map(i => (
+                <div key={i} style={{ minWidth: 220, height: 108, borderRadius: 8, background: C.surface3, opacity: 0.5, flexShrink: 0 }} />
               ))}
             </div>
-            {suggestionsLoading ? (
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-                {[1, 2, 3].map(i => (
-                  <div key={i} style={{ minWidth: 200, height: 108, borderRadius: 8, background: C.surface3, opacity: 0.5, flexShrink: 0 }} />
-                ))}
-              </div>
-            ) : (visibleSuggestions && visibleSuggestions.length > 0 ? (
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollBehavior: 'smooth' }}>
-                {visibleSuggestions.map((s) => {
-                  const pm = PLAY_META[playOf(s)] || PLAY_META.content_gap
-                  const score = scoreOf(s)
-                  const tm = TREND_META[s.trend || 'flat'] || TREND_META.flat
-                  const active = brief && brief.topic === s.topic
-                  return (
-                    <button
-                      key={s.topic}
-                      type="button"
-                      onClick={() => onApplySuggestion?.(s)}
-                      style={{
-                        minWidth: 216, maxWidth: 250, flexShrink: 0,
-                        textAlign: 'left', padding: '10px 12px', borderRadius: 8,
-                        border: active ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
-                        background: active ? '#FEF9EC' : C.surface,
-                        cursor: 'pointer', fontFamily: 'inherit',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = C.surface2; e.currentTarget.style.borderColor = C.gold }}
-                      onMouseLeave={e => { e.currentTarget.style.background = active ? '#FEF9EC' : C.surface; e.currentTarget.style.borderColor = active ? C.gold : C.border }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                        <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg }}>
-                          {pm.icon} {pm.label}
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
-                          <span style={{ fontSize: 12, color: tm.color, fontWeight: 700 }} title={tm.label}>{tm.icon}</span>
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.text, lineHeight: 1.3, marginBottom: 5 }}>
-                        {s.title.length > 64 ? s.title.slice(0, 61) + '…' : s.title}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginBottom: 5 }}>
-                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>#{s.position ?? '—'}</span>
-                        <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{fmtN(s.impressions)} imp</span>
-                        <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono, background: C.surface3, color: C.textMuted }}>
-                          {INTENT_LABELS[s.intent] || s.intentCategory || '📖 Informational'}
-                        </span>
-                      </div>
-                      {(s.signals && s.signals.length ? s.signals.slice(0, 2) : [s.reason]).map((sig, si) => (
-                        <p key={si} style={{ margin: 0, fontSize: 8.5, color: C.textDim, lineHeight: 1.35 }}>• {sig}</p>
-                      ))}
-                      <div style={{ marginTop: 5, fontSize: 8.5, color: C.gold, fontFamily: C.mono }}>
-                        {s.interlinks && s.interlinks.length ? `🔗 ${s.interlinks.length} link targets` : '🔗 no registry match'}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div style={{ padding: '10px 0', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
-                No opportunities for this filter — rescan or switch filter.
-              </div>
-            ))}
-            {suggestionsError && (
-              <div style={{ margin: '4px 0 8px', fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
-            )}
-          </div>
-
-          {/* ── Autopilot brief preview ── */}
-          {brief && (
-            <div style={{ margin: '4px 16px 12px', border: '1px solid #F0D9A8', background: '#FEF9EC', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: C.gold, textTransform: 'uppercase', fontFamily: C.mono }}>
-                  🧭 Autopilot brief — every field pre-filled & editable
-                </span>
-                <button type="button" onClick={onClearBrief} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 10, color: C.textDim, fontFamily: 'inherit' }}>
-                  ✕ Clear
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{brief.primaryKeyword || brief.topic}</span>
-                <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: (PLAY_META[brief.play] || {}).bg || C.surface3, color: (PLAY_META[brief.play] || {}).fg || C.textMuted }}>
-                  {(brief.play || 'content_gap').replace('_', ' ')} · {scoreOf(brief)}/100
-                </span>
-                <span style={{ fontSize: 9, color: C.textMuted, fontFamily: C.mono }}>
-                  {brief.intent} · {brief.contentType || 'blog_post'} · {brief.trend}
-                </span>
-              </div>
-              {brief.keywords && brief.keywords.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                  {brief.keywords.slice(0, 8).map(k => (
-                    <span key={k} style={{ padding: '1px 6px', borderRadius: 999, background: '#FFFFFF', border: '1px solid #F0D9A8', fontSize: 8.5, color: C.textMuted, fontFamily: C.mono }}>{k}</span>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 8.5, fontWeight: 700, color: C.gold, fontFamily: C.mono }}>🔗 AUTO-INTERLINK</span>
-                <button
-                  type="button"
-                  onClick={onAutoInterlink}
-                  disabled={autoInterlinkBusy}
-                  title="Generate a scored internal-link plan from the SEO Master Engine (journey neighbors, marketplace CTA, cross-country)"
-                  style={{
-                    padding: '3px 10px', borderRadius: 5, border: 'none', cursor: 'pointer',
-                    background: '#1E1B4B', color: '#fff', fontSize: 9, fontWeight: 700, fontFamily: 'inherit',
-                  }}
-                >
-                  {autoInterlinkBusy ? '⏳ Generating…' : '⚡ Generate from engine'}
-                </button>
-                <span style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono }}>
-                  {briefInterlinks && briefInterlinks.length > 0 ? `${briefInterlinks.length} links ready` : 'no links yet'}
-                </span>
-              </div>
-              {briefInterlinks && briefInterlinks.length > 0 && (
-                <div>
-                  <span style={{ fontSize: 8.5, fontWeight: 700, color: C.gold, fontFamily: C.mono }}>🔗 INTERNAL LINKING ({briefInterlinks.length})</span>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                    {briefInterlinks.slice(0, 4).map((l, li) => (
-                      <span key={li} style={{ padding: '2px 7px', borderRadius: 4, background: '#FFFFFF', border: '1px solid #F0D9A8', fontSize: 8.5, color: C.text, fontFamily: C.mono }}>
-                        {l.label} → {String(l.url || '').replace(/^https?:\/\//, '')}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+          ) : (visibleSuggestions && visibleSuggestions.length > 0 ? (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollBehavior: 'smooth' }}>
+              {visibleSuggestions.map((s) => (
+                <RadarCard key={s.topic} s={s} active={Boolean(brief && brief.topic === s.topic)} onApply={(x) => onApplySuggestion?.(x)} />
+              ))}
             </div>
+          ) : (
+            <div style={{ padding: '10px 0', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+              No opportunities for this filter — rescan or switch filter.
+            </div>
+          ))}
+          {suggestionsError && (
+            <div style={{ margin: '4px 0 0', fontSize: 10, color: C.orange, fontFamily: C.mono }}>⚠ {suggestionsError}</div>
           )}
+        </div>
+      )}
 
-          <form onSubmit={handleSubmit} style={{ padding: '0 18px 18px', borderTop: `1px solid ${C.border}` }}>
-            {/* Content type */}
-            <div style={{ marginTop: 14, marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', marginBottom: 6, fontFamily: C.mono }}>
-                Content Type
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
-                {CONTENT_TYPE_OPTIONS.map(opt => (
-                  <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
-                    textAlign: 'left', padding: '8px 10px', borderRadius: 6,
-                    border: contentType === opt.value ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
-                    background: contentType === opt.value ? C.surface2 : C.surface,
-                    cursor: 'pointer', fontSize: 11, color: C.text, fontFamily: 'inherit',
-                  }}>
-                    <span style={{ marginRight: 4 }}>{opt.icon}</span>
-                    <span style={{ fontWeight: 600 }}>{opt.label}</span>
-                    <span style={{ display: 'block', fontSize: 9, color: C.textDim, marginTop: 1 }}>{opt.ext} → {opt.repo}</span>
-                  </button>
+      <form onSubmit={handleSubmit} style={{ padding: '16px 18px 18px' }}>
+        {/* ── STEP 1 · Target ── */}
+        {stepLabel(1, 'Pick the target — where should this live?', Boolean(contentType))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6, marginBottom: 12 }}>
+          {CONTENT_TYPE_OPTIONS.map(opt => (
+            <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
+              textAlign: 'left', padding: '9px 11px', borderRadius: C.radiusXs,
+              border: contentType === opt.value ? `2px solid ${C.gold}` : `1px solid ${C.border}`,
+              background: contentType === opt.value ? C.surface2 : C.surface,
+              cursor: 'pointer', fontSize: 11, color: C.text, fontFamily: 'inherit',
+            }}>
+              <span style={{ marginRight: 4 }}>{opt.icon}</span>
+              <span style={{ fontWeight: 700 }}>{opt.label}</span>
+              <span style={{ display: 'block', fontSize: 9, color: C.textDim, marginTop: 2 }}>{opt.ext} → {opt.repo} · {opt.hint}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
+          <div>
+            <label style={labelStyle}>Region</label>
+            <select value={region} onChange={e => { setRegion(e.target.value as Region); onRefreshSuggestions?.(e.target.value) }} style={inputStyle}>
+              {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Tone</label>
+            <select value={tone} onChange={e => setTone(e.target.value as Tone)} style={inputStyle}>
+              {TONE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>AI model</label>
+            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
+              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* ── STEP 2 · Brief ── */}
+        {stepLabel(2, 'Shape the brief — what should the AI write?', Boolean(topic.trim() || title.trim()))}
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Title <span style={{ color: C.textDim, fontWeight: 400, textTransform: 'none' }}>(optional — autopilot suggests one)</span></label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. F-1 OPT Application: Complete 2026 Timeline" maxLength={120} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={labelStyle}>Topic <span style={{ color: C.red }}>*</span></label>
+          <textarea value={topic} onChange={e => setTopic(e.target.value)} rows={3} required={!title.trim()} style={{ ...inputStyle, resize: 'vertical' }}
+            placeholder="Describe what to write — visa types, forms, timelines, comparison angles..." />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <label style={labelStyle}>Audience</label>
+            <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="international students, H-1B holders..." style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Keywords (comma-separated)</label>
+            <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="F-1 visa, OPT timeline, I-765..." style={inputStyle} />
+          </div>
+        </div>
+
+        {/* Autopilot brief preview */}
+        {brief && (
+          <div style={{ marginBottom: 14, border: '1px solid #F0D9A8', background: '#FEF9EC', borderRadius: C.radiusSm, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.gold, textTransform: 'uppercase', fontFamily: C.mono }}>
+                🧭 Autopilot brief — every field pre-filled & editable
+              </span>
+              <button type="button" onClick={onClearBrief} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 10, color: C.textDim, fontFamily: 'inherit' }}>
+                ✕ Clear brief
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{brief.primaryKeyword || brief.topic}</span>
+              <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: (PLAY_META[brief.play] || {}).bg || C.surface3, color: (PLAY_META[brief.play] || {}).fg || C.textMuted }}>
+                {(brief.play || 'content_gap').replace('_', ' ')} · {brief.opportunityScore ?? brief.demandScore}/100
+              </span>
+              <span style={{ fontSize: 9, color: C.textMuted, fontFamily: C.mono }}>
+                {brief.intent} · {brief.contentType || 'blog_post'} · {brief.trend}
+              </span>
+            </div>
+            {brief.keywords && brief.keywords.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                {brief.keywords.slice(0, 8).map(k => (
+                  <span key={k} style={{ padding: '1px 6px', borderRadius: 999, background: '#FFFFFF', border: '1px solid #F0D9A8', fontSize: 8.5, color: C.textMuted, fontFamily: C.mono }}>{k}</span>
                 ))}
               </div>
-            </div>
-
-            {/* Region + Tone + AI Model */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <div>
-                <label style={labelStyle}>Region</label>
-                <select value={region} onChange={e => { setRegion(e.target.value as Region); onRefreshSuggestions?.(e.target.value) }} style={inputStyle}>
-                  {REGION_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Tone</label>
-                <select value={tone} onChange={e => setTone(e.target.value as Tone)} style={inputStyle}>
-                  {TONE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>AI Model</label>
-              <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputStyle}>
-                <option value="auto">Auto (Grok → OpenAI → rest)</option>
-                <option value="grok">Grok (xAI)</option>
-                <option value="openai">OpenAI (GPT-5.6 Luna)</option>
-                <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
-                <option value="cloudflare-ai">Cloudflare Workers AI</option>
-                <option value="groq">Groq (Llama)</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-              </select>
-            </div>
-
-            {/* Title */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>Title <span style={{ color: C.textDim, fontWeight: 400 }}>(optional — radar suggests one)</span></label>
-              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. F-1 OPT Application: Complete 2026 Timeline" maxLength={120} style={inputStyle} />
-            </div>
-
-            {/* Topic */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>Topic <span style={{ color: C.red }}>*</span></label>
-              <textarea value={topic} onChange={e => onTopicChange(e.target.value)} rows={3} required style={{ ...inputStyle, resize: 'vertical' }}
-                placeholder="Describe what to write — visa types, forms, timelines, comparison angles..." />
-            </div>
-
-            {/* Audience + Keywords */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <div>
-                <label style={labelStyle}>Audience</label>
-                <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="international students, H-1B holders..." style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Keywords (comma-separated)</label>
-                <input value={keywords} onChange={e => onKeywordsChange(e.target.value)} placeholder="F-1 visa, OPT timeline, I-765..." style={inputStyle} />
-              </div>
-            </div>
-
-            {brief && (
-              <p style={{ margin: '0 0 8px', fontSize: 9.5, color: C.gold, fontFamily: C.mono }}>
-                Autopilot brief applied — interlinks + opportunity signals will be sent to the generator. Review fields, then generate.
-              </p>
             )}
-
-            <button type="submit" disabled={generating || (!topic.trim() && !title.trim())} style={{
-              width: '100%', padding: '10px 0', borderRadius: 6, border: 'none',
-              cursor: generating ? 'not-allowed' : 'pointer',
-              background: generating ? C.textDim : C.navy, color: '#FFFFFF',
-              fontSize: 13, fontWeight: 600, fontFamily: 'inherit', opacity: generating ? 0.6 : 1,
-            }}>
-              {generating ? '⚡ Generating…' : '⚡ Generate & Open PR'}
-            </button>
-          </form>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ── Opportunity Radar (full scored list) ──────────────────────────────────
-
-function OpportunityRadar({ opportunities, meta, onApply }: {
-  opportunities: AISuggestion[]
-  meta?: Record<string, unknown> | null
-  onApply: (s: AISuggestion) => void
-}) {
-  const [expanded, setExpanded] = React.useState(false)
-  const list = (opportunities ?? []).slice(0, expanded ? 24 : 8)
-  const source = (meta?.source as string) || '—'
-  const coverage = (meta?.coverage as { total?: number; covered?: number; gaps?: number } | null) || null
-  const cannibal = (meta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || null
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.text, fontFamily: C.serif }}>🎯 Opportunity Radar</h4>
-          <p style={{ margin: '2px 0 0', fontSize: 9.5, color: C.textDim, fontFamily: C.mono }}>
-            {source}
-            {coverage ? ` · ${coverage.total ?? 0} known pages · ${coverage.gaps ?? 0} gaps` : ''}
-          </p>
-        </div>
-        <button type="button" onClick={() => setExpanded(!expanded)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 10, color: C.textMuted, fontFamily: 'inherit' }}>
-          {expanded ? '▲ Collapse' : '▼ Expand'}
-        </button>
-      </div>
-      <div style={{ borderTop: `1px solid ${C.border}` }}>
-        {list.map((o, i) => {
-          const pm = PLAY_META[o.play] || PLAY_META.content_gap
-          const score = o.opportunityScore ?? o.demandScore
-          return (
-            <div key={`${o.topic}-${i}`} style={{ padding: '9px 16px', borderBottom: i < list.length - 1 ? `1px solid ${C.border}` : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ minWidth: 34, fontSize: 12, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
-              <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg, whiteSpace: 'nowrap' }}>{pm.label}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.title}</div>
-                <div style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {o.signals && o.signals[0] ? o.signals[0] : o.reason}
-                </div>
-              </div>
-              <button type="button" onClick={() => onApply(o)} style={{
-                flexShrink: 0, padding: '4px 9px', borderRadius: 5, border: 'none', cursor: 'pointer',
-                background: C.navy, color: '#FFFFFF', fontSize: 9, fontWeight: 700, fontFamily: 'inherit',
-              }}>Draft</button>
-            </div>
-          )
-        })}
-        {(!list || list.length === 0) && (
-          <div style={{ padding: '14px 16px', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
-            No scored opportunities yet — rescan the radar above.
+            <p style={{ margin: 0, fontSize: 9.5, color: C.gold, fontFamily: C.mono }}>
+              Opportunity signals + interlinks will be sent to the generator. Review the fields above, then generate.
+            </p>
           </div>
         )}
-      </div>
-      {cannibal && cannibal.length > 0 && (
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, background: '#FEF2F2' }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: C.red, fontFamily: C.mono }}>⚠ CANNIBALIZATION WATCH ({cannibal.length})</span>
-          {cannibal.slice(0, 3).map((c, ci) => (
-            <div key={ci} style={{ fontSize: 8.5, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
-              “{c.term}” targeted by {c.pages.length} pages — consolidate, don't create another
-            </div>
-          ))}
+
+        {/* ── STEP 3 · Interlinks ── */}
+        {stepLabel(3, 'Wire the internal links — who links to whom, and why', Boolean(briefInterlinks && briefInterlinks.length > 0))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <button type="button" onClick={onAutoInterlink} disabled={autoInterlinkBusy || !topic.trim()}
+            title="Generate a scored internal-link plan from the SEO Master Engine (journey neighbors, marketplace CTA, cross-country)"
+            style={autoInterlinkBusy || !topic.trim() ? { ...btnSolid('#1E1B4B'), opacity: 0.55, cursor: 'not-allowed' } : { ...btnSolid('#1E1B4B') }}>
+            {autoInterlinkBusy ? '⏳ Generating…' : '⚡ Generate link plan'}
+          </button>
+          <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+            {briefInterlinks && briefInterlinks.length > 0
+              ? `${briefInterlinks.length} links ready — they will be injected into the draft`
+              : 'no links yet — generate from the engine or leave empty'}
+          </span>
         </div>
-      )}
+        {briefInterlinks && briefInterlinks.length > 0 && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+            {briefInterlinks.slice(0, 8).map((l, li) => (
+              <span key={li} title={String(l.url || '')} style={{ padding: '3px 8px', borderRadius: 4, background: C.blueSoft, border: `1px solid ${C.border}`, fontSize: 9, color: C.text, fontFamily: C.mono }}>
+                🔗 {l.label} → {String(l.url || '').replace(/^https?:\/\//, '').slice(0, 42)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── Primary CTA ── */}
+        <button type="submit" disabled={generating || !canGenerate} style={{
+          width: '100%', marginTop: 16, padding: '12px 0', borderRadius: C.radiusXs, border: 'none',
+          cursor: generating || !canGenerate ? 'not-allowed' : 'pointer',
+          background: generating ? C.textDim : C.navy, color: '#FFFFFF',
+          fontSize: 13, fontWeight: 700, fontFamily: 'inherit', opacity: generating || !canGenerate ? 0.6 : 1,
+          boxShadow: '0 4px 14px rgba(15,23,42,0.18)',
+        }}>
+          {generating ? '⚡ Generating… (watch the live pipeline below)' : '⚡ Generate & Open PR'}
+        </button>
+        {!canGenerate && (
+          <div style={{ marginTop: 6, fontSize: 9.5, color: C.textDim, textAlign: 'center', fontFamily: C.mono }}>
+            Add a topic or title to enable generation.
+          </div>
+        )}
+      </form>
     </div>
   )
 }
 
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: 10, fontWeight: 600, color: C.textMuted,
-  textTransform: 'uppercase', marginBottom: 5, fontFamily: C.mono,
+// ── QUEUE TAB ──
+const QUEUE_FILTERS: Array<{ key: 'all' | 'active' | 'pr_created' | 'merged' | 'failed'; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'In progress' },
+  { key: 'pr_created', label: 'PR ready' },
+  { key: 'merged', label: 'Merged' },
+  { key: 'failed', label: 'Failed' },
+]
+
+function QueueStats({ jobs }: { jobs: ContentJob[] }) {
+  const total = jobs.length
+  const merged = jobs.filter(j => j.status === 'merged').length
+  const inProgress = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length
+  const prReady = jobs.filter(j => j.status === 'pr_created').length
+  const failed = jobs.filter(j => j.status === 'failed').length
+  const cards = [
+    { label: 'Total jobs', value: total, color: C.cyan, icon: '📋' },
+    { label: 'In progress', value: inProgress, color: C.orange, icon: '⚙️' },
+    { label: 'PR ready', value: prReady, color: C.blue, icon: '🔀' },
+    { label: 'Merged', value: merged, color: C.green, icon: '✅' },
+    { label: 'Failed', value: failed, color: C.red, icon: '⚠️' },
+  ]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
+      {cards.map(c => (
+        <div key={c.label} style={{
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, boxShadow: C.shadowCard,
+          padding: '12px 14px', borderTop: `3px solid ${c.color}`, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{ fontSize: 20 }}>{c.icon}</span>
+          <div>
+            <div style={{ fontSize: 9, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: C.mono }}>{c.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: C.serif }}>{c.value}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', borderRadius: 6, border: `1px solid ${C.border}`,
-  background: C.surface, color: C.text, fontSize: 12, fontFamily: 'inherit',
-  boxSizing: 'border-box',
-}
+function QueueTable({ jobs, onSelect, loading, mergeIndex, gateByJob }: {
+  jobs: ContentJob[]
+  onSelect: (j: ContentJob) => void
+  loading: boolean
+  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
+  gateByJob?: Map<string, { score: number; passed: boolean }>
+}) {
+  const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
+  const [search, setSearch] = React.useState('')
+  const [showAll, setShowAll] = React.useState(false)
 
-// ── Interlinks Mini Panel ──
+  const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
+    const path = jobWebPath(j)
+    if (path) {
+      const hit = mergeIndex.byPath.get(path)
+      if (hit) return hit
+    }
+    const stemKey = canonicalMergeStem(j.primary_keyword ?? j.topic ?? '')
+    if (stemKey) {
+      const hit = mergeIndex.byStem.get(stemKey)
+      if (hit) return hit
+    }
+    return null
+  }
 
-function InterlinksMini({ topic, keywords }: { topic: string; keywords: string }) {
-  const [suggestions, setSuggestions] = React.useState<InterlinkSuggestion[]>([])
-  const [loading, setLoading] = React.useState(false)
-  const [fetched, setFetched] = React.useState(false)
-  const kwArr = keywords.split(',').map(s => s.trim()).filter(Boolean)
+  const applyQuery = (list: ContentJob[]) => {
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter(j =>
+        (j.title || '').toLowerCase().includes(q) ||
+        (j.topic || '').toLowerCase().includes(q) ||
+        (j.primary_keyword || '').toLowerCase().includes(q) ||
+        (j.region || '').toLowerCase().includes(q))
+    }
+    return list
+  }
 
-  const fetchLinks = React.useCallback(async () => {
-    if (!topic.trim() && kwArr.length === 0) return
-    setLoading(true)
-    setFetched(true)
-    try {
-      const res = await fetch('/api/content-studio/interlinks', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topic.trim(), keywords: kwArr, maxResults: 4 }),
-      })
-      const data = await res.json()
-      if (res.ok) setSuggestions(data.suggestions ?? [])
-    } catch {} finally { setLoading(false) }
-  }, [topic, keywords])
+  const countFor = (key: 'all' | 'active' | 'pr_created' | 'merged' | 'failed') => {
+    if (key === 'all') return jobs.length
+    let list = jobs
+    if (key === 'active') list = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status))
+    else if (key === 'pr_created') list = jobs.filter(j => j.status === 'pr_created')
+    else if (key === 'merged') list = jobs.filter(j => j.status === 'merged')
+    else if (key === 'failed') list = jobs.filter(j => j.status === 'failed')
+    return applyQuery(list).length
+  }
 
-  const siteIcon = (s: string) => s === 'marketplace' ? '🏪' : s === 'caseworks' ? '📚' : '🌐'
-  const siteColor = (s: string) => s === 'marketplace' ? C.green : s === 'caseworks' ? C.navy : C.orange
+  const filtered = React.useMemo(() => {
+    let list = jobs
+    if (filter === 'active') list = list.filter(j => !['merged', 'closed', 'failed'].includes(j.status))
+    else if (filter === 'pr_created') list = list.filter(j => j.status === 'pr_created')
+    else if (filter === 'merged') list = list.filter(j => j.status === 'merged')
+    else if (filter === 'failed') list = list.filter(j => j.status === 'failed')
+    list = applyQuery(list)
+    return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [jobs, filter, search])
 
-  if (!fetched && !topic.trim() && kwArr.length === 0) return null
+  const visible = filtered.slice(0, showAll ? 200 : 12)
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: suggestions.length > 0 ? `1px solid ${C.border}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.text, fontFamily: C.serif }}>🔗 Interlink Suggestions</h4>
-          <p style={{ margin: '1px 0 0', fontSize: 10, color: C.textDim }}>caseworks → regional → marketplace funnel</p>
-        </div>
-        <button onClick={fetchLinks} disabled={loading} style={{
-          padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer',
-          background: C.navy, color: '#FFF', fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
-        }}>
-          {loading ? 'Searching…' : fetched ? 'Refresh' : 'Find'}
-        </button>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="📋" title="Job queue"
+        sub="Every launch, PR and merge — filter, search, then click a row for full control."
+        right={
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 Search title, topic, keyword…"
+              style={{ ...inputStyle, width: 210, padding: '6px 10px' }}
+            />
+          </div>
+        }
+      />
+      <div style={{ padding: '10px 16px 0', display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        {QUEUE_FILTERS.map(f => (
+          <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{
+            padding: '4px 11px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 9.5, fontWeight: 700,
+            fontFamily: C.mono, background: filter === f.key ? C.navy : C.surface2, color: filter === f.key ? '#FFF' : C.textMuted,
+          }}>
+            {f.label} {countFor(f.key)}
+          </button>
+        ))}
       </div>
-      {suggestions.length > 0 && (
-        <div style={{ padding: '6px 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {suggestions.map((s, i) => (
-            <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 4,
-              background: C.surface2, textDecoration: 'none', color: C.text, fontSize: 11,
-              borderLeft: `2px solid ${siteColor(s.site)}`,
-            }}>
-              <span style={{ fontSize: 12 }}>{siteIcon(s.site)}</span>
-              <span style={{ flex: 1, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
-              <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{s.site}</span>
-            </a>
-          ))}
-        </div>
-      )}
-      {fetched && suggestions.length === 0 && (
-        <div style={{ padding: '12px 16px', fontSize: 11, color: C.textDim, textAlign: 'center' }}>
-          No matches — try broader keywords
+      <div style={{ overflowX: 'auto', marginTop: 6 }}>
+        {loading ? (
+          <div style={{ padding: 28, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading jobs…</div>
+        ) : visible.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, marginBottom: 4 }}>📭</div>
+            <div style={{ fontSize: 12, color: C.textMuted }}>
+              {jobs.length === 0 ? 'No jobs yet — head to the Create tab and launch your first piece.' : 'No jobs match this filter / search.'}
+            </div>
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Piece</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Type</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Region</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Status</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Gate</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>SEO</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>PR</th>
+                <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(j => {
+                const hit = mergeHitFor(j)
+                const g = gateByJob?.get(j.id)
+                return (
+                  <tr key={j.id} onClick={() => onSelect(j)} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#FAFAF7' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <td style={{ padding: '9px 12px', maxWidth: 240 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title || '(untitled)'}</div>
+                      <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.topic?.slice(0, 60)}</div>
+                    </td>
+                    <td style={{ padding: '9px 12px', color: C.textMuted, fontSize: 10, whiteSpace: 'nowrap' }}>{j.content_type?.replace('_', ' ')}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 10, whiteSpace: 'nowrap' }}>{j.region}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                        {statusBadge(j.status)}
+                        {hit && (
+                          <span
+                            title={hit.role === 'winner'
+                              ? `Cluster winner — ${hit.redirectsCreated} redirect${hit.redirectsCreated === 1 ? '' : 's'} point here${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
+                              : `Merged — page 301s into ${hit.winnerUrl}${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 999,
+                              fontSize: 9, fontWeight: 700, fontFamily: C.mono,
+                              background: hit.role === 'winner' ? '#D1FAE5' : '#FEF3C7',
+                              color: hit.role === 'winner' ? '#065F46' : '#92400E',
+                            }}
+                          >
+                            {hit.role === 'winner' ? '★ WINNER' : '⚡ MERGED'}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: '9px 12px' }}>{gateBadge(g?.score, g?.passed)}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 10, fontFamily: C.mono }}>{j.seo_score != null ? `${j.seo_score}%` : '—'}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      {j.pr_url
+                        ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>PR #{j.pr_number} ↗</a>
+                        : <span style={{ color: C.textDim }}>—</span>}
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 10, color: C.textMuted, whiteSpace: 'nowrap' }}>{formatDate(j.created_at)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {filtered.length > 12 && (
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}` }}>
+          <button type="button" onClick={() => setShowAll(!showAll)} style={btnGhost}>
+            {showAll ? '▲ Show fewer' : `▼ Show all ${filtered.length} matching`}
+          </button>
         </div>
       )}
     </div>
   )
 }
 
-// ── GSC Mini Stats Card ──
-
+// ── INSIGHTS TAB pieces ──
 function GscMini() {
   const [stats, setStats] = React.useState<GscMiniStats | null>(null)
   const [loading, setLoading] = React.useState(false)
@@ -771,16 +1067,18 @@ function GscMini() {
   React.useEffect(() => { fetchGsc() }, [])
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: stats ? `1px solid ${C.border}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h4 style={{ margin: 0, fontSize: 12, fontWeight: 700, color: C.text, fontFamily: C.serif }}>📊 GSC Overview (28d)</h4>
-        <button onClick={fetchGsc} disabled={loading} style={{
-          padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
-          background: C.surface3, color: C.textMuted, fontSize: 10, fontWeight: 600, fontFamily: 'inherit',
-        }}>{loading ? '…' : '↻'}</button>
-      </div>
-      {stats && (
-        <div style={{ padding: '8px 16px 12px' }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="📊" title="GSC overview (28d)"
+        sub="Live Search Console when credentials work, snapshot otherwise."
+        right={
+          <button type="button" onClick={fetchGsc} disabled={loading} style={{ ...btnGhost, padding: '4px 10px' }}>
+            {loading ? '…' : '↻'}
+          </button>
+        }
+      />
+      {stats ? (
+        <div style={{ padding: '10px 16px 14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10 }}>
             {[
               { label: 'Clicks', value: stats.clicks.toLocaleString(), color: C.green },
@@ -788,7 +1086,7 @@ function GscMini() {
               { label: 'CTR', value: `${stats.ctr.toFixed(1)}%`, color: C.purple },
               { label: 'Avg Pos', value: stats.position.toFixed(1), color: C.orange },
             ].map(m => (
-              <div key={m.label} style={{ background: C.surface2, borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+              <div key={m.label} style={{ background: C.surface2, borderRadius: C.radiusXs, padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{m.label}</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: m.color, fontFamily: C.serif, marginTop: 2 }}>{m.value}</div>
               </div>
@@ -800,341 +1098,141 @@ function GscMini() {
             </div>
           )}
         </div>
+      ) : (
+        <div style={{ padding: '14px 16px', fontSize: 10.5, color: C.textDim, fontFamily: C.mono }}>
+          {loading ? 'Loading…' : error || 'No data yet'}
+        </div>
       )}
-      {error && <div style={{ padding: '10px 16px', fontSize: 10, color: C.textDim }}>{error}</div>}
     </div>
   )
 }
 
-// ── Live Pipeline ──
-
-function LivePipeline({ jobs, onSelect }: { jobs: ContentJob[]; onSelect: (j: ContentJob) => void }) {
-  const active = jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).slice(0, 6)
-  if (active.length === 0) return (
-    <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: 12, color: C.textDim }}>
-      No active jobs — create one to see the pipeline
-    </div>
-  )
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {active.map(j => (
-        <div key={j.id} onClick={() => onSelect(j)} style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6,
-          cursor: 'pointer',
-        }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {j.title || '(untitled)'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-              <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>{j.content_type?.replace('_', ' ')}</span>
-              <span style={{ fontSize: 10, color: C.textDim }}>·</span>
-              <span style={{ fontSize: 10, color: C.textDim }}>{j.region}</span>
-              <span style={{ fontSize: 10, color: C.textDim }}>·</span>
-              <span style={{ fontSize: 10, color: C.textDim }}>{timeAgo(j.created_at)}</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {statusStepper(j.status)}
-            {j.pr_url && (
-              <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                style={{ color: C.blue, textDecoration: 'none', fontSize: 10, fontWeight: 600, fontFamily: C.mono, whiteSpace: 'nowrap' }}>
-                PR #{j.pr_number} ↗
-              </a>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const STAGE_PROGRESS: Record<string, number> = {
-  connect: 4, plan: 12, gsc: 20, generate: 35, provider: 45,
-  audit: 62, refine: 80, depth: 88, ship: 95, complete: 100,
-}
-
-function progressFromEvents(events: GenerationActivity[], active: boolean): number {
-  let p = active ? 4 : 0
-  for (const e of events) {
-    const key = String(e.stage || '').toLowerCase()
-    if (key in STAGE_PROGRESS) p = Math.max(p, STAGE_PROGRESS[key])
-    if (e.level === 'error') return 100
-  }
-  return Math.min(100, p)
-}
-
-function ProgressBar({ value, color }: { value: number; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 99, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
-        <div style={{ width: `${Math.max(4, Math.min(100, value))}%`, height: '100%', borderRadius: 99, background: color, transition: 'width 0.4s ease' }} />
-      </div>
-      <span style={{ fontSize: 10, fontFamily: C.mono, color: 'rgba(255,255,255,0.75)', minWidth: 34, textAlign: 'right' }}>{Math.round(value)}%</span>
-    </div>
-  )
-}
-
-function LiveGenerationPanel({
-  active,
-  events,
-  startedAt,
-  streamedChars,
-}: {
-  active: boolean
-  events: GenerationActivity[]
-  startedAt: number | null
-  streamedChars: number
+function OpportunityRadar({ opportunities, meta, onApply }: {
+  opportunities: AISuggestion[]
+  meta?: Record<string, unknown> | null
+  onApply: (s: AISuggestion) => void
 }) {
-  if (!active && events.length === 0) return null
-  const latest = events[events.length - 1]
-  const elapsed = startedAt ? fmtDur(Date.now() - startedAt) : ''
-  const levelColor = latest?.level === 'error' ? C.red : latest?.level === 'warn' ? C.orange : latest?.level === 'success' ? C.green : C.blue
+  const [expanded, setExpanded] = React.useState(false)
+  const list = (opportunities ?? []).slice(0, expanded ? 24 : 8)
+  const source = (meta?.source as string) || '—'
+  const coverage = (meta?.coverage as { total?: number; covered?: number; gaps?: number } | null) || null
+  const cannibal = (meta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || null
   return (
-    <div style={{ marginBottom: 16, background: C.navy, color: '#FFF', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.14)' }}>
-      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: active ? '#34D399' : levelColor, boxShadow: active ? '0 0 0 4px rgba(52,211,153,0.16)' : 'none' }} />
-            {active ? 'AI work in progress' : latest?.level === 'error' ? 'Generation stopped' : 'Latest generation activity'}
-          </div>
-          <div style={{ marginTop: 3, fontSize: 10, color: 'rgba(255,255,255,0.62)', fontFamily: C.mono }}>
-            {active ? `Live pipeline · ${elapsed}${streamedChars ? ` · ${streamedChars.toLocaleString()} streamed characters` : ''}` : 'Activity captured from the generation pipeline'}
-          </div>
-        </div>
-        <span style={{ flexShrink: 0, padding: '4px 8px', borderRadius: 4, background: active ? 'rgba(52,211,153,0.16)' : 'rgba(255,255,255,0.1)', color: active ? '#A7F3D0' : 'rgba(255,255,255,0.75)', fontSize: 9, fontFamily: C.mono, textTransform: 'uppercase' }}>
-          {active ? 'streaming' : 'complete'}
-        </span>
-      </div>
-      <div style={{ padding: '0 16px 8px' }}>
-        <ProgressBar value={progressFromEvents(events, active)} color={active ? '#34D399' : levelColor} />
-      </div>
-      <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-        {events.slice(-6).map((event, index, visible) => (
-          <div key={event.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, opacity: index === visible.length - 1 ? 1 : 0.68 }}>
-            <span style={{ width: 17, height: 17, flexShrink: 0, borderRadius: 99, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: event.level === 'error' ? 'rgba(248,113,113,0.18)' : event.level === 'warn' ? 'rgba(251,191,36,0.18)' : event.level === 'success' ? 'rgba(52,211,153,0.18)' : 'rgba(96,165,250,0.18)', color: event.level === 'error' ? '#FCA5A5' : event.level === 'warn' ? '#FCD34D' : event.level === 'success' ? '#6EE7B7' : '#93C5FD', fontSize: 9, fontWeight: 800 }}>
-              {event.level === 'error' ? '!' : event.level === 'success' ? '✓' : '•'}
-            </span>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, lineHeight: 1.35, color: '#F8FAFC' }}>{event.message}</div>
-              <div style={{ marginTop: 2, fontSize: 9, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono }}>{event.stage} · {fmtTime(event.ts)}</div>
-            </div>
-          </div>
-        ))}
-        {active && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: C.mono, paddingLeft: 26 }}>Waiting for the next pipeline event…</div>}
-      </div>
-    </div>
-  )
-}
-
-// ── Job History Table ──
-
-function JobHistory({ jobs, expanded, onToggle, onSelect, loading, mergeIndex, gateByJob }: {
-  jobs: ContentJob[]; expanded: boolean; onToggle: () => void; onSelect: (j: ContentJob) => void; loading: boolean
-  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
-  gateByJob?: Map<string, { score: number; passed: boolean }>
-}) {
-  // Does this job's page belong to a resolved (merged) cannibal cluster?
-  const mergeHitFor = (j: ContentJob): MergeUrlHit | null => {
-    const path = jobWebPath(j)
-    if (path) {
-      const hit = mergeIndex.byPath.get(path)
-      if (hit) return hit
-    }
-    const stemKey = canonicalMergeStem(j.primary_keyword ?? j.topic ?? '')
-    if (stemKey) {
-      const hit = mergeIndex.byStem.get(stemKey)
-      if (hit) return hit
-    }
-    return null
-  }
-  const mergedBadge = (hit: MergeUrlHit) => {
-    const isWinner = hit.role === 'winner'
-    return (
-      <span
-        title={
-          isWinner
-            ? `Cluster winner — ${hit.redirectsCreated} redirect${hit.redirectsCreated === 1 ? '' : 's'} point here${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
-            : `Merged — page 301s into ${hit.winnerUrl}${hit.prNumber ? ` (PR #${hit.prNumber})` : ''}`
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="🎯" title="Opportunity Radar"
+        sub={`${source}${coverage ? ` · ${coverage.total ?? 0} known pages · ${coverage.gaps ?? 0} gaps` : ''}`}
+        right={
+          <button type="button" onClick={() => setExpanded(!expanded)} style={btnGhost}>
+            {expanded ? '▲ Collapse' : '▼ Expand'}
+          </button>
         }
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          padding: '1px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-          background: isWinner ? '#D1FAE5' : '#FEF3C7',
-          color: isWinner ? '#065F46' : '#92400E',
-        }}
-      >
-        {isWinner ? '★ WINNER' : '⚡ MERGED'}
-      </span>
-    )
-  }
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <button onClick={onToggle} style={{
-        width: '100%', padding: '11px 16px', border: 'none', background: 'none',
-        cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        fontFamily: 'inherit', borderBottom: expanded ? `1px solid ${C.border}` : 'none',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: C.serif }}>📋 Job History</span>
-          <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>{loading ? '...' : jobs.length}</span>
-        </div>
-        <span style={{ fontSize: 14, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-      </button>
-      {expanded && (
-        loading ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading…</div>
-        ) : jobs.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>📝</div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>No jobs yet. Create your first piece above.</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead>
-                <tr style={{ background: C.surface2 }}>
-                  <th style={thStyle}>Title / Topic</th>
-                  <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Region</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>SEO</th>
-                  <th style={thStyle}>Gate</th>
-                  <th style={thStyle}>PR</th>
-                  <th style={thStyle}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobs.slice(0, expanded ? 50 : 10).map(j => (
-                  <tr key={j.id} onClick={() => onSelect(j)} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ ...tdStyle, maxWidth: 220 }}>
-                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title || '(untitled)'}</div>
-                      <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.topic?.slice(0, 60)}</div>
-                    </td>
-                    <td style={tdStyle}><span style={{ fontSize: 10, color: C.textMuted }}>{j.content_type?.replace('_', ' ')}</span></td>
-                    <td style={tdStyle}>{j.region}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-                        {statusBadge(j.status)}
-                        {mergeHitFor(j) && mergedBadge(mergeHitFor(j)!)}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{j.seo_score != null ? `${j.seo_score}%` : '—'}</td>
-                    <td style={tdStyle}>
-                      {(() => {
-                        const g = gateByJob?.get(j.id)
-                        if (!g) return <span style={{ fontSize: 10, color: C.textDim }}>—</span>
-                        return (
-                          <span
-                            title={`Compliance gate ${g.score}/100 — ${g.passed ? 'passed' : 'blocked (YMYL/AEO/GEO requirements)'}`}
-                            style={{
-                              padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 700, fontFamily: C.mono,
-                              background: g.passed ? '#ECFDF5' : '#FEF2F2', color: g.passed ? C.green : C.red,
-                              whiteSpace: 'nowrap', cursor: 'help',
-                            }}
-                          >
-                            {g.passed ? '✓ PASS' : '✕ BLOCK'} {g.score}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td style={tdStyle}>
-                      {j.pr_url ? <a href={j.pr_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: C.blue, textDecoration: 'none', fontWeight: 500 }}>PR #{j.pr_number} ↗</a> : '—'}
-                    </td>
-                    <td style={tdStyle}>{formatDate(j.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      />
+      {list.map((o, i) => {
+        const pm = PLAY_META[o.play] || PLAY_META.content_gap
+        const score = o.opportunityScore ?? o.demandScore
+        return (
+          <div key={`${o.topic}-${i}`} style={{ padding: '9px 16px', borderBottom: i < list.length - 1 ? `1px solid ${C.border2}` : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ minWidth: 34, fontSize: 12, fontWeight: 800, fontFamily: C.mono, color: score >= 70 ? C.green : score >= 45 ? C.orange : C.textDim }}>{score}</span>
+            <span style={{ padding: '1px 5px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono, background: pm.bg, color: pm.fg, whiteSpace: 'nowrap' }}>{pm.label}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.title}</div>
+              <div style={{ fontSize: 8.5, color: C.textDim, fontFamily: C.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {o.signals && o.signals[0] ? o.signals[0] : o.reason}
+              </div>
+            </div>
+            <button type="button" onClick={() => onApply(o)} style={btnSolid(C.navy)}>✏️ Brief</button>
           </div>
         )
+      })}
+      {(!list || list.length === 0) && (
+        <div style={{ padding: '16px', fontSize: 10, color: C.textDim, fontFamily: C.mono }}>
+          No scored opportunities yet — rescan from the Create tab.
+        </div>
+      )}
+      {cannibal && cannibal.length > 0 && (
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${C.border}`, background: '#FEF2F2' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: C.red, fontFamily: C.mono }}>⚠ CANNIBALIZATION WATCH ({cannibal.length})</span>
+          {cannibal.slice(0, 3).map((c, ci) => (
+            <div key={ci} style={{ fontSize: 8.5, color: C.textMuted, fontFamily: C.mono, marginTop: 2 }}>
+              “{c.term}” targeted by {c.pages.length} pages — consolidate, don't create another
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
-const thStyle: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 9, fontWeight: 600, color: C.textDim,
-  textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em',
-  textAlign: 'left', whiteSpace: 'nowrap',
+function InterlinksMini({ topic, keywords }: { topic: string; keywords: string }) {
+  const [suggestions, setSuggestions] = React.useState<InterlinkSuggestion[]>([])
+  const [loading, setLoading] = React.useState(false)
+  const [fetched, setFetched] = React.useState(false)
+  const kwArr = keywords.split(',').map(s => s.trim()).filter(Boolean)
+
+  const fetchLinks = React.useCallback(async () => {
+    if (!topic.trim() && kwArr.length === 0) return
+    setLoading(true)
+    setFetched(true)
+    try {
+      const res = await fetch('/api/content-studio/interlinks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic.trim(), keywords: kwArr, maxResults: 4 }),
+      })
+      const data = await res.json()
+      if (res.ok) setSuggestions(data.suggestions ?? [])
+    } catch {} finally { setLoading(false) }
+  }, [topic, keywords])
+
+  const siteIcon = (s: string) => s === 'marketplace' ? '🏪' : s === 'caseworks' ? '📚' : '🌐'
+  const siteColor = (s: string) => s === 'marketplace' ? C.green : s === 'caseworks' ? C.navy : C.orange
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="🔗" title="Interlink suggestions"
+        sub="caseworks → regional → marketplace funnel"
+        right={
+          <button type="button" onClick={fetchLinks} disabled={loading} style={btnSolid(C.navy)}>
+            {loading ? 'Searching…' : fetched ? 'Refresh' : 'Find'}
+          </button>
+        }
+      />
+      {suggestions.length > 0 && (
+        <div style={{ padding: '6px 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {suggestions.map((s, i) => (
+            <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 4,
+              background: C.surface2, textDecoration: 'none', color: C.text, fontSize: 11,
+              borderLeft: `2px solid ${siteColor(s.site)}`,
+            }}>
+              <span style={{ fontSize: 12 }}>{siteIcon(s.site)}</span>
+              <span style={{ flex: 1, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+              <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{s.site}</span>
+            </a>
+          ))}
+        </div>
+      )}
+      {fetched && suggestions.length === 0 && (
+        <div style={{ padding: '12px 16px', fontSize: 11, color: C.textDim, textAlign: 'center' }}>
+          No matches — try broader keywords
+        </div>
+      )}
+      {!fetched && (
+        <div style={{ padding: '12px 16px', fontSize: 10.5, color: C.textDim, fontFamily: C.mono }}>
+          Enter a topic in the Create tab, then hit “Find”.
+        </div>
+      )}
+    </div>
+  )
 }
 
-const tdStyle: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 11, color: C.text, verticalAlign: 'top',
-}
-
-// ── Cannibalization Merge History (shared with Command Center) ──
-// Renders the shared cannibal_merges trail served by
-// GET /api/seo-factory/cannibal-merges — decisions recorded by both this
-// Content Studio (source=portal) and the Command Center (source=command_center).
-
-interface CannibalMergeRecord {
-  clusterId: string
-  source: 'portal' | 'command_center'
-  stem: string
-  terms: string[]
-  winnerUrl: string
-  loserUrls: string[]
-  redirectsCreated: number
-  prUrl?: string
-  prNumber?: number
-  status: 'merged' | 'skipped'
-  message?: string
-  mergedAt: number
-}
-
-// ── Merge → job row badge ──
-// A Content Studio job row gets a badge when its page was part of a resolved
-// (merged) cannibalization cluster. Built from the same shared
-// GET /api/seo-factory/cannibal-merges trail the Merge History panel uses:
-//   • loser page  → "merged" badge (its URL was 301'd into the winner)
-//   • winner page → "winner" badge (canonical target of the cluster)
-// Matches job rows to merges by slug-derived web path first, then by
-// primary_keyword/topic stem, so jobs resolve even when GSC reported a
-// slightly different URL spelling.
-
-interface MergeUrlHit {
-  role: 'winner' | 'loser'
-  clusterId: string
-  stem: string
-  winnerUrl: string
-  redirectsCreated: number
-  prUrl?: string
-  prNumber?: number
-  mergedAt: number
-}
-
-function normMergePath(u: string): string {
-  try {
-    const p = new URL(u)
-    let path = p.pathname
-    if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1)
-    if (path.endsWith('/index.html')) path = path.slice(0, -'/index.html'.length)
-    return (path || '/').toLowerCase()
-  } catch {
-    return u.trim().toLowerCase()
-  }
-}
-
-function canonicalMergeStem(q: string): string {
-  return q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
-    .split(' ').slice(0, 4).join(' ')
-}
-
-function jobWebPath(j: ContentJob): string {
-  if (!j.slug) return ''
-  const slug = j.slug.replace(/^\/+|\/+$/g, '')
-  return slug ? `/${slug.toLowerCase()}` : ''
-}
-
+// ── Merge History (shared with Command Center) ──
 function MergeHistory() {
   const [merges, setMerges] = React.useState<CannibalMergeRecord[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [guidance, setGuidance] = React.useState<string | null>(null)
-  const [expanded, setExpanded] = React.useState(false)
 
   const fetchMerges = React.useCallback(async () => {
     setLoading(true)
@@ -1156,203 +1254,83 @@ function MergeHistory() {
     }
   }, [])
 
-  React.useEffect(() => {
-    fetchMerges()
-  }, [fetchMerges])
+  React.useEffect(() => { fetchMerges() }, [fetchMerges])
 
   const mergedCount = merges.filter(m => m.status === 'merged').length
-  const latest = merges[0]
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%', padding: '11px 16px', border: 'none', background: 'none',
-          cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          fontFamily: 'inherit', borderBottom: expanded ? `1px solid ${C.border}` : 'none',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: C.serif }}>🔀 Merge History</span>
-          <span style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono }}>{loading ? '…' : merges.length}</span>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
+      <CardHeader
+        icon="🔀" title="Merge history"
+        sub="Every consolidation decision, from the portal and the Command Center."
+        right={
+          <button type="button" onClick={fetchMerges} disabled={loading} style={btnGhost}>
+            {loading ? '…' : '↻'}
+          </button>
+        }
+      />
+      {loading ? (
+        <div style={{ padding: 18, textAlign: 'center', fontSize: 11, color: C.textDim }}>Loading…</div>
+      ) : error ? (
+        <div style={{ padding: '12px 16px' }}>
+          <div style={{ fontSize: 11, color: C.orange, fontFamily: C.mono }}>⚠ {error}</div>
+          {guidance && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, marginTop: 4 }}>{guidance}</div>}
         </div>
-        <span style={{ fontSize: 14, color: C.textDim, transition: 'transform 0.2s', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-      </button>
-
-      {!expanded && latest && (
-        <div style={{ padding: '8px 16px', fontSize: 10, color: C.textDim, fontFamily: C.mono, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {latest.status === 'merged' ? '✅' : '⏭'} {latest.terms && latest.terms.length ? latest.terms[0] : latest.stem}
-          </span>
-          <span style={{ flexShrink: 0, color: C.textDim }}>{timeAgo(new Date(latest.mergedAt).toISOString())}</span>
+      ) : merges.length === 0 ? (
+        <div style={{ padding: 22, textAlign: 'center' }}>
+          <div style={{ fontSize: 26, marginBottom: 4 }}>🔀</div>
+          <div style={{ fontSize: 11.5, color: C.textMuted }}>No merge decisions yet — resolved clusters will appear here.</div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: 8, padding: '6px 16px 8px', flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{merges.length} decisions</span>
+            <span style={{ fontSize: 9, color: C.green, fontFamily: C.mono }}>{mergedCount} merged</span>
+            <span style={{ fontSize: 9, color: C.orange, fontFamily: C.mono }}>{merges.length - mergedCount} skipped</span>
+            <span style={{ fontSize: 9, color: C.purple, fontFamily: C.mono }}>
+              {merges.filter(m => m.source === 'command_center').length} from Command Center
+            </span>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {merges.map(m => (
+              <div key={`${m.clusterId}-${m.source}`} style={{ padding: '9px 16px', borderBottom: `1px solid ${C.border2}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                  <span style={{
+                    padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono,
+                    background: m.status === 'merged' ? '#D1FAE5' : '#FEF3C7', color: m.status === 'merged' ? C.green : C.orange,
+                  }}>
+                    {m.status === 'merged' ? '✓ MERGED' : '⏭ SKIPPED'}
+                  </span>
+                  <span style={{
+                    padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
+                    background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF', color: m.source === 'command_center' ? C.blue : C.purple,
+                  }}>
+                    {m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}
+                  </span>
+                  <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgoMs(m.mergedAt)}</span>
+                  {m.prNumber ? (
+                    <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
+                      PR #{m.prNumber} ↗
+                    </a>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>
+                  {m.terms && m.terms.length ? m.terms.slice(0, 3).join(', ') : m.stem}
+                </div>
+                <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.loserUrls.length} loser{m.loserUrls.length === 1 ? '' : 's'} → {String(m.winnerUrl || '').replace(/^https?:\/\//, '')} · {m.redirectsCreated} redirect{m.redirectsCreated === 1 ? '' : 's'}
+                </div>
+                {m.message && <div style={{ fontSize: 9.5, color: C.textMuted, marginTop: 3 }}>{m.message}</div>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
-
-      {expanded &&
-        (loading ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: C.textDim }}>Loading…</div>
-        ) : error ? (
-          <div style={{ padding: '12px 16px' }}>
-            <div style={{ fontSize: 11, color: C.orange, fontFamily: C.mono }}>⚠ {error}</div>
-            {guidance && <div style={{ fontSize: 10, color: C.textDim, fontFamily: C.mono, marginTop: 4 }}>{guidance}</div>}
-            <button
-              onClick={fetchMerges}
-              style={{ marginTop: 8, padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: C.surface3, color: C.textMuted, fontSize: 10, fontWeight: 600, fontFamily: 'inherit' }}
-            >
-              ↻ Retry
-            </button>
-          </div>
-        ) : merges.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>🔀</div>
-            <div style={{ fontSize: 12, color: C.textMuted }}>No merge decisions yet — resolved clusters will appear here.</div>
-          </div>
-        ) : (
-          <div>
-            <div style={{ display: 'flex', gap: 8, padding: '6px 16px 8px', flexWrap: 'wrap', borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{merges.length} decisions</span>
-              <span style={{ fontSize: 9, color: C.green, fontFamily: C.mono }}>{mergedCount} merged</span>
-              <span style={{ fontSize: 9, color: C.orange, fontFamily: C.mono }}>{merges.length - mergedCount} skipped</span>
-              <span style={{ fontSize: 9, color: C.purple, fontFamily: C.mono }}>
-                {merges.filter(m => m.source === 'command_center').length} from Command Center
-              </span>
-            </div>
-            <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-              {merges.map(m => (
-                <div key={`${m.clusterId}-${m.source}`} style={{ padding: '9px 16px', borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: C.mono,
-                        background: m.status === 'merged' ? '#D1FAE5' : '#FEF3C7',
-                        color: m.status === 'merged' ? C.green : C.orange,
-                      }}
-                    >
-                      {m.status === 'merged' ? '✓ MERGED' : '⏭ SKIPPED'}
-                    </span>
-                    <span
-                      style={{
-                        padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 600, fontFamily: C.mono,
-                        background: m.source === 'command_center' ? '#DBEAFE' : '#F3E8FF',
-                        color: m.source === 'command_center' ? C.blue : C.purple,
-                      }}
-                    >
-                      {m.source === 'command_center' ? 'COMMAND CENTER' : 'PORTAL'}
-                    </span>
-                    <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono }}>{timeAgo(new Date(m.mergedAt).toISOString())}</span>
-                    {m.prNumber ? (
-                      <a href={m.prUrl || '#'} target="_blank" rel="noopener noreferrer" style={{ color: C.blue, textDecoration: 'none', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
-                        PR #{m.prNumber} ↗
-                      </a>
-                    ) : null}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>
-                    {m.terms && m.terms.length ? m.terms.slice(0, 3).join(', ') : m.stem}
-                  </div>
-                  <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m.loserUrls.length} loser{m.loserUrls.length === 1 ? '' : 's'} → {String(m.winnerUrl || '').replace(/^https?:\/\//, '')} · {m.redirectsCreated} redirect{m.redirectsCreated === 1 ? '' : 's'}
-                  </div>
-                  {m.message && <div style={{ fontSize: 9.5, color: C.textMuted, marginTop: 3 }}>{m.message}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
     </div>
   )
 }
 
 // ── Job Timeline ──
-//
-// Fetches the full job row (?id=) which includes event_log — the durable
-// per-job activity log seeded at creation (pipeline) and appended by the
-// deploy monitor. Derived stage timestamps (created_at / merged_at /
-// closed_at / deployed_at / pr timestamps) are merged in so the timeline
-// shows the full lifecycle even before monitor entries exist.
-
-type LogLevel = 'success' | 'info' | 'warn' | 'error'
-
-interface TimelineEntry {
-  ts: number
-  level: LogLevel
-  source: string
-  message: string
-  detail?: string
-  kind: 'log' | 'stage'
-}
-
-interface GenerationActivity {
-  id: string
-  ts: number
-  stage: string
-  message: string
-  level: 'info' | 'success' | 'warn' | 'error'
-}
-
-const LEVEL_COLOR: Record<LogLevel, string> = {
-  success: C.green, info: C.blue, warn: C.orange, error: C.red,
-}
-
-const LEVEL_ICON: Record<LogLevel, string> = {
-  success: '✓', info: 'ℹ', warn: '▲', error: '✕',
-}
-
-function fmtTime(ts: number): string {
-  try {
-    return new Date(ts).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    })
-  } catch { return '' }
-}
-
-function fmtDur(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const m = Math.floor(ms / 60000)
-  const s = Math.round((ms % 60000) / 1000)
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m ${s}s`
-}
-
-/** Consume the existing SEO Factory SSE contract and return its final result. */
-async function consumeSseResponse(
-  response: Response,
-  onEvent: (event: any) => void,
-): Promise<any> {
-  if (!response.ok) {
-    const failure = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(failure.error || `Generation stream HTTP ${response.status}`)
-  }
-  if (!response.body) throw new Error('Generation stream returned no readable body')
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let finalResult: any = null
-  const consume = (raw: string) => {
-    const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
-    if (!dataLine) return
-    const payload = dataLine.slice(5).trim()
-    if (!payload || payload === '[DONE]') return
-    const event = JSON.parse(payload)
-    onEvent(event)
-    if (event.type === 'final') finalResult = event.result
-    if (event.type === 'error') throw new Error(event.error || 'Generation pipeline failed')
-  }
-
-  while (true) {
-    const { value, done } = await reader.read()
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-    const chunks = buffer.split(/\r?\n\r?\n/)
-    buffer = chunks.pop() || ''
-    for (const chunk of chunks) consume(chunk)
-    if (done) break
-  }
-  if (buffer.trim()) consume(buffer)
-  if (!finalResult) throw new Error('Generation stream ended before a final result was received')
-  return finalResult
-}
-
 function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number }) {
   const [entries, setEntries] = React.useState<TimelineEntry[] | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -1367,7 +1345,6 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
         if (cancelled) return
         const job = (data as { job?: any }).job ?? {}
 
-        // Derived stage markers from the job row
         const derived: TimelineEntry[] = []
         const pushStage = (ts: unknown, source: string, message: string, detail?: string, level: LogLevel = 'success') => {
           const ms = typeof ts === 'number' ? ts : ts ? new Date(String(ts)).getTime() : NaN
@@ -1384,7 +1361,6 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
           pushStage(job.updated_at ?? Date.now(), 'pipeline', job.error_message || 'Job failed', undefined, 'error')
         }
 
-        // event_log entries from the pipeline + deploy monitor
         const logs: TimelineEntry[] = Array.isArray(job.event_log)
           ? (job.event_log as any[]).map((e) => ({
               ts: typeof e.ts === 'number' ? e.ts : new Date(String(e.ts)).getTime(),
@@ -1396,7 +1372,6 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
             })).filter((e) => Number.isFinite(e.ts))
           : []
 
-        // Merge, dedupe by (ts, message), sort ascending (oldest → newest)
         const merged = [...logs, ...derived]
         const seen = new Set<string>()
         const deduped = merged
@@ -1416,8 +1391,6 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
       }
     }
     load()
-    // Keep the detail timeline live while the pipeline is still running. The
-    // endpoint returns the durable event_log and current lifecycle status.
     let timer: ReturnType<typeof setTimeout> | null = null
     const poll = async () => {
       await load()
@@ -1440,7 +1413,6 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
     return <div style={{ fontSize: 11, color: C.textDim }}>No timeline events recorded yet.</div>
   }
 
-  // Durations between consecutive stages
   const withDur = entries.map((e, i) => {
     const prev = i > 0 ? entries[i - 1] : null
     const dur = prev && prev.ts <= e.ts ? e.ts - prev.ts : null
@@ -1454,15 +1426,12 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
         const color = LEVEL_COLOR[e.level] ?? C.textDim
         return (
           <div key={`${e.ts}-${i}`} style={{ position: 'relative', paddingBottom: isLast ? 2 : 12 }}>
-            {/* vertical connector */}
             {!isLast && <span style={{ position: 'absolute', left: -14, top: 16, bottom: -4, width: 2, background: C.border }} />}
-            {/* dot */}
             <span style={{
               position: 'absolute', left: -19, top: 2, width: 12, height: 12, borderRadius: 999,
               background: color, color: '#FFF', fontSize: 8, fontWeight: 800,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>{LEVEL_ICON[e.level] ?? ''}</span>
-            {/* content */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{e.message}</span>
@@ -1484,9 +1453,7 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
               </div>
               {e.detail && e.detail !== 'undefined' && (
                 <details style={{ marginTop: 4 }}>
-                  <summary style={{ fontSize: 9, color: C.textDim, cursor: 'pointer', fontFamily: C.mono }}>
-                    detail
-                  </summary>
+                  <summary style={{ fontSize: 9, color: C.textDim, cursor: 'pointer', fontFamily: C.mono }}>detail</summary>
                   <pre style={{
                     margin: '4px 0 0', maxHeight: 120, overflow: 'auto', background: C.surface3,
                     borderRadius: 4, padding: 8, fontSize: 9, fontFamily: C.mono, lineHeight: 1.5,
@@ -1502,18 +1469,15 @@ function JobTimeline({ jobId, createdMs }: { jobId: string; createdMs: number })
   )
 }
 
-// ── Job Detail Modal ──
-
+// ── JOB DETAIL MODAL ──
 function JobDetail({
-  job,
-  onClose,
-  onRefresh,
-  setActionNotice,
+  job, onClose, onRefresh, setActionNotice, gateFor,
 }: {
   job: ContentJob
   onClose: () => void
   onRefresh: () => Promise<void> | void
   setActionNotice: (msg: string) => void
+  gateFor?: { score: number; passed: boolean } | null
 }) {
   const [detail, setDetail] = React.useState<ContentJob>(job)
   const [editorContent, setEditorContent] = React.useState(job.content || '')
@@ -1526,7 +1490,6 @@ function JobDetail({
   const [actionStartedAt, setActionStartedAt] = React.useState<number | null>(null)
   const [actionChars, setActionChars] = React.useState(0)
   const [resumeAvailable, setResumeAvailable] = React.useState(false)
-  // AI model override for regeneration (empty/auto = use job default or cascade)
   const [aiProvider, setAiProvider] = React.useState<string>('auto')
   const actionAbortRef = React.useRef<AbortController | null>(null)
   const [audit, setAudit] = React.useState<unknown>(null)
@@ -1699,47 +1662,54 @@ function JobDetail({
   const aiProviderCard = resolvedModel
     ? `${detail.ai_provider || '—'} · ${resolvedModel}`
     : detail.ai_provider || '—'
+  const gateScore = gateFor?.score
+  const gatePassed = gateFor?.passed
+
+  const actionBtn = (label: string, opts: { bg?: string; fg?: string; border?: string; disabled?: boolean; onClick: () => void; title?: string }) => (
+    <button type="button" disabled={opts.disabled} onClick={opts.onClick} title={opts.title} style={{
+      padding: '8px 12px', borderRadius: C.radiusXs, cursor: opts.disabled ? 'not-allowed' : 'pointer',
+      fontSize: 11, fontWeight: 700, fontFamily: 'inherit', opacity: opts.disabled ? 0.5 : 1,
+      background: opts.bg || C.surface, color: opts.fg || C.text,
+      border: opts.border ? `1px solid ${opts.border}` : `1px solid ${C.border}`,
+    }}>
+      {label}
+    </button>
+  )
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, maxWidth: 820, width: '92vw', maxHeight: '90vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radius, border: `1px solid ${C.border}`, maxWidth: 840, width: '92vw', maxHeight: '92vh', overflow: 'auto', padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
           <div>
             <h3 style={{ margin: 0, fontFamily: C.serif, fontSize: 18, color: C.text }}>{detail.title || '(untitled)'}</h3>
-            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ marginTop: 7, display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
               {statusBadge(detail.status)} {statusStepper(detail.status)}
               <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>{detail.region} · {detail.content_type?.replace('_', ' ')}</span>
+              {gateScore != null && gateBadge(gateScore, gatePassed)}
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close job details" style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textDim }}>×</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, marginBottom: 14 }}>
           {[
-            { label: 'Word Count', value: detail.word_count ?? '—' },
-            { label: 'SEO Score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
-            { label: 'AI Provider', value: aiProviderCard },
-            { label: 'Target Repo', value: detail.target_repo ?? '—' },
+            { label: 'Word count', value: detail.word_count != null ? String(detail.word_count) : '—' },
+            { label: 'SEO score', value: detail.seo_score != null ? `${detail.seo_score}%` : '—' },
+            { label: 'AI provider', value: aiProviderCard },
+            { label: 'Target repo', value: detail.target_repo ?? '—' },
           ].map(metric => (
-            <div key={metric.label} style={{ background: C.surface2, borderRadius: 6, padding: '8px 10px' }}>
+            <div key={metric.label} style={{ background: C.surface2, borderRadius: C.radiusXs, padding: '8px 10px' }}>
               <div style={{ fontSize: 9, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono }}>{metric.label}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginTop: 2 }}>{metric.value}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginTop: 2, wordBreak: 'break-all' }}>{metric.value}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: C.text }}>
-            AI Model
-            <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
-              <option value="auto">Auto (Grok → OpenAI → rest)</option>
-              <option value="grok">Grok (xAI)</option>
-              <option value="openai">OpenAI (GPT-5.6 Luna)</option>
-              <option value="nvidia-deepseek">NVIDIA DeepSeek</option>
-              <option value="cloudflare-ai">Cloudflare Workers AI</option>
-              <option value="groq">Groq (Llama)</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="openrouter">OpenRouter</option>
+            AI model for regeneration
+            <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusXs, padding: '6px 8px', fontSize: 11, color: C.text, fontFamily: C.mono }}>
+              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           {aiProvider === 'auto' && detail.ai_provider && (
@@ -1759,18 +1729,20 @@ function JobDetail({
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job Timeline</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 10 }}>⏱ Job timeline</div>
           <JobTimeline jobId={detail.id} createdMs={new Date(detail.created_at).getTime()} />
         </div>
 
-        {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 6, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
+        {detail.error_message && <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusXs, padding: '10px 14px', fontSize: 11, color: C.red, marginBottom: 10, fontFamily: C.mono, whiteSpace: 'pre-wrap' }}>{detail.error_message}</div>}
 
-        {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+        {gateFailure && <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: C.radiusSm, padding: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#9A3412', marginBottom: 4 }}>Quality gate remediation</div>
           <div style={{ fontSize: 11, lineHeight: 1.5, color: '#7C2D12' }}>Edit the draft to remove the blocker, save it, re-audit it, then ship. Regenerate rewrites the full piece using the gate guidance.</div>
-          {canResume && <button type="button" disabled={busy || loading} onClick={() => void runRegenerateStream(true)} style={{ marginTop: 8, marginRight: 7, padding: '8px 12px', borderRadius: 6, border: `1px solid ${C.blue}`, background: '#EFF6FF', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↻ Continue saved draft</button>}
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
-          {actionEvents.length > 0 && <div style={{ marginTop: 10, background: '#1F2937', color: '#E5E7EB', borderRadius: 6, padding: 10, fontFamily: C.mono, fontSize: 10 }}>
+          <div style={{ display: 'flex', gap: 7, marginTop: 8, flexWrap: 'wrap' }}>
+            {canResume && <button type="button" disabled={busy || loading} onClick={() => void runRegenerateStream(true)} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: `1px solid ${C.blue}`, background: '#EFF6FF', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>↻ Continue saved draft</button>}
+            <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ padding: '8px 12px', borderRadius: C.radiusXs, border: 'none', background: C.red, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{activeAction === 'regenerate' ? 'AI working…' : 'Fix & regenerate'}</button>
+          </div>
+          {actionEvents.length > 0 && <div style={{ marginTop: 10, background: '#1F2937', color: '#E5E7EB', borderRadius: C.radiusXs, padding: 10, fontFamily: C.mono, fontSize: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: activeAction ? '#FCD34D' : '#86EFAC', fontWeight: 700 }}>
               <span>{activeAction ? '● LIVE AI ACTIVITY' : '✓ LAST AI ACTIVITY'}</span>
               {actionChars > 0 && <span>{actionChars.toLocaleString()} streamed chars</span>}
@@ -1791,64 +1763,82 @@ function JobDetail({
         {actionError && <div style={{ color: C.red, fontSize: 11, marginBottom: 10 }}>{actionError}</div>}
         {actionNotice && <div style={{ color: C.green, fontSize: 11, marginBottom: 10 }}>{actionNotice}</div>}
 
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: 12, marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div><div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Content editor</div><div style={{ fontSize: 10, color: C.textMuted }}>Edit inline, re-audit for quality gate compliance. Click issues to jump to them. Drafts auto-save every 2 seconds.</div></div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Content editor</div>
+              <div style={{ fontSize: 10, color: C.textMuted }}>Edit inline, re-audit for quality gate compliance. Click issues to jump to them. Drafts auto-save every 2 seconds.</div>
+            </div>
             {dirty && <span style={{ fontSize: 10, color: C.orange, fontFamily: C.mono }}>Unsaved changes</span>}
           </div>
-          {loading ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div> : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} />}
+          {loading
+            ? <div style={{ fontSize: 11, color: C.textDim, padding: 18 }}>Loading full job content...</div>
+            : <AdminInlineEditor content={editorContent} jobId={detail.id} onChange={(v: string) => setEditorContent(v)} disabled={busy || terminal} onScoreChange={(s) => setAudit(s != null ? { score: s } : null)} />}
         </div>
 
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-          <button type="button" disabled={busy || loading || !dirty || !editorContent.trim()} onClick={() => void runAction('save')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.gold}`, background: dirty ? '#FFFBEB' : C.surface2, color: C.text, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Save draft</button>
-          <button type="button" disabled={busy || loading || !editorContent.trim()} onClick={() => void runAction('reaudit')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.blue}`, background: C.surface, color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Re-audit</button>
-          <button type="button" disabled={busy || loading || !editorContent.trim() || terminal} onClick={() => void runAction('reship')} style={{ padding: '8px 11px', borderRadius: 6, border: 'none', background: C.cyan, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Ship PR only</button>
-          <button type="button" disabled={busy || loading || !editorContent.trim() || terminal} onClick={() => void runAction('approve')} style={{ padding: '8px 11px', borderRadius: 6, border: 'none', background: C.green, color: '#FFF', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Approve → main</button>
-          {detail.pr_number && !terminal && <button type="button" disabled={busy} onClick={() => void runAction('merge_pr')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.green}`, background: '#F0FDF4', color: C.green, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Merge open PR</button>}
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('monitor')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Monitor deploy</button>
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('duplicate')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.textMuted, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Duplicate</button>
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('regenerate')} style={{ padding: '8px 11px', borderRadius: 6, border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>Regenerate</button>
+        {/* ── Dedicated action groups ── */}
+        <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>✏️ Editing the draft</div>
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
+          {actionBtn('💾 Save draft', { border: C.gold, bg: dirty ? '#FFFBEB' : C.surface2, disabled: busy || loading || !dirty || !editorContent.trim(), onClick: () => void runAction('save'), title: 'Persist your edits to the job' })}
+          {actionBtn('🔍 Re-audit', { border: C.blue, fg: C.blue, disabled: busy || loading || !editorContent.trim(), onClick: () => void runAction('reaudit'), title: 'Re-run the quality audit on the current text' })}
+          {actionBtn('🔁 Regenerate', { border: C.red, fg: C.red, bg: '#FFF5F5', disabled: busy || loading, onClick: () => void runAction('regenerate'), title: 'Rewrite the full piece with AI (creates a replacement job)' })}
+        </div>
+        <div style={{ fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, letterSpacing: '0.06em', marginBottom: 6 }}>🚀 Delivering to the sites</div>
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 6 }}>
+          {actionBtn('📦 Ship PR only', { bg: C.cyan, fg: '#FFF', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('reship'), title: 'Open / update the pull request without merging' })}
+          {actionBtn('✅ Approve → main', { bg: C.green, fg: '#FFF', disabled: busy || loading || !editorContent.trim() || terminal, onClick: () => void runAction('approve'), title: 'Approve content and trigger deployment to main' })}
+          {detail.pr_number && !terminal && actionBtn(`🔀 Merge open PR #${detail.pr_number}`, { border: C.green, fg: C.green, bg: '#F0FDF4', disabled: busy, onClick: () => void runAction('merge_pr'), title: 'Merge the open pull request on GitHub' })}
+          {actionBtn('🩺 Monitor deploy', { disabled: busy || loading, onClick: () => void runAction('monitor'), title: 'Verify the deployed URL: purge, sitemap, IndexNow' })}
+          {actionBtn('⧉ Duplicate', { disabled: busy || loading, onClick: () => void runAction('duplicate'), title: 'Clone this job as the starting point for a new piece' })}
         </div>
 
-        {audit && <details style={{ marginTop: 14 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Raw audit JSON</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: 6, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
+        {audit && <details style={{ marginTop: 12 }}><summary style={{ cursor: 'pointer', fontSize: 10, fontWeight: 700, color: C.textMuted, fontFamily: C.mono }}>Raw audit JSON</summary><pre style={{ maxHeight: 180, overflow: 'auto', background: C.surface3, borderRadius: C.radiusXs, padding: 10, fontSize: 9, whiteSpace: 'pre-wrap', color: C.text }}>{JSON.stringify(audit, null, 2)}</pre></details>}
       </div>
     </div>
   )
 }
 
-// ── Main Component ──
-
+// ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
+  const [tab, setTab] = React.useState<StudioTab>('create')
   const [jobs, setJobs] = React.useState<ContentJob[]>([])
   const [loading, setLoading] = React.useState(true)
   const [generating, setGenerating] = React.useState(false)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [showFactory, setShowFactory] = React.useState(false)
-  const [createExpanded, setCreateExpanded] = React.useState(true)
-  const [historyExpanded, setHistoryExpanded] = React.useState(false)
+
+  // Composer state (lifted so generation + auto-interlink can use it)
+  const [contentType, setContentType] = React.useState<ContentType>('blog_post')
+  const [region, setRegion] = React.useState<Region>('US')
+  const [tone, setTone] = React.useState<Tone>('educational')
+  const [aiProvider, setAiProvider] = React.useState('auto')
+  const [title, setTitle] = React.useState('')
   const [topic, setTopic] = React.useState('')
+  const [audience, setAudience] = React.useState('')
   const [keywords, setKeywords] = React.useState('')
-  const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
-  const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
-  const [generationChars, setGenerationChars] = React.useState(0)
+  const [showRadar, setShowRadar] = React.useState(true)
+  const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
+  const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
+
+  // Radar + suggestions
   const [suggestions, setSuggestions] = React.useState<AISuggestion[]>([])
   const [suggestionsLoading, setSuggestionsLoading] = React.useState(false)
   const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null)
   const [radar, setRadar] = React.useState<AISuggestion[]>([])
   const [radarMeta, setRadarMeta] = React.useState<Record<string, unknown> | null>(null)
-  const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
-  const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
-  // Resolved (merged) cannibal clusters, indexed by page path + keyword stem,
-  // so job rows can show a "merged"/"winner" badge when their page was part
-  // of a resolved cluster. Refreshed alongside jobs.
+
+  // Generation stream events
+  const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
+  const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
+  const [generationChars, setGenerationChars] = React.useState(0)
+
+  // Merge index + engine status + gates
   const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
-  // SEO Master Engine — live status + compliance gate runs (v2 makeover)
   const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
   const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
   const [engineBusy, setEngineBusy] = React.useState(false)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
-
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async () => {
@@ -1865,8 +1855,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally { setLoading(false) }
   }, [])
 
-  // Best-effort index of merged clusters → job pages. Non-fatal: on any
-  // failure the badge simply stays hidden (Merge History panel shows errors).
+  // Best-effort index of merged clusters → job pages
   const fetchMergeIndex = React.useCallback(async () => {
     try {
       const res = await fetch('/api/seo-factory/cannibal-merges', { credentials: 'same-origin' })
@@ -1877,26 +1866,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       for (const m of (data.merges ?? [])) {
         if (m.status !== 'merged') continue
         const hit: MergeUrlHit = {
-          role: 'winner',
-          clusterId: m.clusterId,
-          stem: m.stem,
-          winnerUrl: m.winnerUrl,
-          redirectsCreated: m.redirectsCreated,
-          prUrl: m.prUrl,
-          prNumber: m.prNumber,
-          mergedAt: m.mergedAt,
+          role: 'winner', clusterId: m.clusterId, stem: m.stem, winnerUrl: m.winnerUrl,
+          redirectsCreated: m.redirectsCreated, prUrl: m.prUrl, prNumber: m.prNumber, mergedAt: m.mergedAt,
         }
-        // Winner page
         const winnerPath = normMergePath(m.winnerUrl)
         const prevWinner = byPath.get(winnerPath)
         if (!prevWinner || prevWinner.mergedAt < hit.mergedAt) byPath.set(winnerPath, hit)
-        // Loser pages → merged badge
         for (const loser of m.loserUrls ?? []) {
           const lp = normMergePath(loser)
           const prevLoser = byPath.get(lp)
           if (!prevLoser || prevLoser.mergedAt < hit.mergedAt) byPath.set(lp, { ...hit, role: 'loser' })
         }
-        // Keyword stems (fallback match for jobs whose slug URL differs)
         for (const stem of [m.stem, ...(m.terms ?? [])]) {
           const key = canonicalMergeStem(stem)
           if (!key) continue
@@ -1905,18 +1885,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         }
       }
       setMergeIndex({ byPath, byStem })
-    } catch {
-      // best-effort
-    }
+    } catch { /* best-effort */ }
   }, [])
 
-  const fetchSuggestions = React.useCallback(async (region: string) => {
+  const fetchSuggestions = React.useCallback(async (regionArg: string) => {
     setSuggestionsLoading(true)
     setSuggestionsError(null)
     try {
       const res = await fetch('/api/content-studio/gsc/suggestions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ region, limit: 6 }),
+        body: JSON.stringify({ region: regionArg, limit: 6 }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -1931,23 +1909,26 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally { setSuggestionsLoading(false) }
   }, [])
 
-  // Autopilot: one click applies the full brief — topic, keywords, title,
-  // audience, content type, tone, interlinks — everything stays editable.
+  // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
     setTopic(s.topic)
     setKeywords((s.keywords && s.keywords.length ? s.keywords : [s.primaryKeyword || s.topic]).join(', '))
+    if (s.title) setTitle(s.title)
+    if (s.audience) setAudience(s.audience)
+    if (s.contentType) setContentType(s.contentType as ContentType)
+    if (s.intent) setTone(TONE_FOR_INTENT[s.intent] ?? 'educational')
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
+    setTab('create')
+    setShowRadar(true)
   }, [])
 
-  // Load suggestions on mount
   React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
-
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
   React.useEffect(() => { fetchMergeIndex() }, [fetchMergeIndex])
 
-  // Engine surfaces — non-fatal: studio works even if engine tables aren't migrated yet.
+  // Engine surfaces — non-fatal
   const fetchEngineStatus = React.useCallback(async () => {
     try {
       const res = await fetch('/api/seo-engine/status', { credentials: 'same-origin' })
@@ -1975,13 +1956,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   React.useEffect(() => { fetchEngineStatus(); fetchGateRuns() }, [fetchEngineStatus, fetchGateRuns])
 
-  // Auto-interlink: generate a scored link plan from the engine for the current topic.
+  // Auto-interlink from the engine for the current topic
   const runAutoInterlink = React.useCallback(async () => {
     if (!topic.trim()) return
     setAutoInterlinkBusy(true)
     setError(null)
     try {
-      const region = (document.querySelector('[name="region"]') as HTMLSelectElement | null)?.value || 'US'
       const country = ['US', 'UK', 'CA', 'AU'].includes(region) ? region : 'US'
       const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'seo-page'
       const res = await fetch('/api/seo-engine/interlink', {
@@ -1997,8 +1977,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally {
       setAutoInterlinkBusy(false)
     }
-  }, [topic])
-
+  }, [topic, region])
 
   // Poll active jobs
   React.useEffect(() => {
@@ -2025,15 +2004,14 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         regional_page: 'regional_page', marketplace_gig: 'marketplace_gig',
       }
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
-      const region = formData.region || 'US'
+      const regionArg = formData.region || 'US'
 
-      // Enrich with SEO canon data from GSC before generating
       let seoEnrichment: any = {}
       record('seo', 'Fetching GSC keyword portfolio to enrich generation…')
       try {
         const gscRes = await fetch('/api/content-studio/gsc/suggestions', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ region, topic: formData.topic, limit: 4 }),
+          body: JSON.stringify({ region: regionArg, topic: formData.topic, limit: 4 }),
         })
         if (gscRes.ok) {
           const gscData = await gscRes.json()
@@ -2057,7 +2035,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         body: JSON.stringify({
           topic: formData.topic, title: formData.title || formData.topic,
           primaryKeyword: (formData.keywords && formData.keywords[0]) || formData.topic,
-          region, contentType: ct,
+          region: regionArg, contentType: ct,
           tone: formData.tone || 'educational', audience: formData.audience,
           keywords: formData.keywords, shipMode: 'pr', indexable: true,
           minAuditScore: 55, maxRefine: 2,
@@ -2115,9 +2093,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      setCreateExpanded(false)
-      setShowFactory(true)
+      setTab('queue')
       await fetchJobs()
+      await fetchGateRuns()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Generation failed'
       record('error', message, 'error')
@@ -2126,150 +2104,192 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     } finally { setGenerating(false) }
   }
 
+  const runEngineAction = async (kind: 'plan' | 'llm' | 'ingest') => {
+    setEngineBusy(true)
+    setError(null)
+    try {
+      if (kind === 'plan') {
+        await fetch('/api/seo-engine/plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10, draftBriefs: false }) })
+      } else if (kind === 'llm') {
+        await fetch('/api/seo-engine/llm-visibility', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 6 }) })
+      } else {
+        await fetch('/api/seo-engine/knowledge', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limitPerSource: 8, maxAiItems: 8 }) })
+      }
+      await fetchEngineStatus()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${kind} failed`)
+    } finally {
+      setEngineBusy(false)
+    }
+  }
+
+  const engine = (engineStatus || {}) as Record<string, any>
+  const engLife = (engine.lifecycle as { seededCells?: number } | undefined)?.seededCells
+  const engKnow = (engine.knowledge as { total?: number } | undefined)?.total
+  const engPlans = (engine.plans as { total?: number } | undefined)?.total
+  const engLinks = (engine.interlinks as { planned?: number } | undefined)?.planned
+  const engVoice = (engine.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
+  const engGate = (engine.gate as { passRate?: number } | undefined)?.passRate
+
+  const TABS: Array<{ key: StudioTab; icon: string; label: string; hint: string }> = [
+    { key: 'create', icon: '✏️', label: 'Create', hint: 'Launch new content' },
+    { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobs.length} jobs` },
+    { key: 'insights', icon: '📊', label: 'Insights', hint: 'Radar · GSC · merges' },
+  ]
+
   return (
-    <div style={{ padding: '16px 20px 24px', maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+    <div style={{ padding: '16px 20px 32px', maxWidth: 1440, margin: '0 auto' }}>
+      {/* ── Header ── */}
+      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontFamily: C.serif, fontSize: 26, fontWeight: 700, color: C.text }}>
             Content Studio
           </h1>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: C.textMuted }}>
-            AI-drafted SEO content → GitHub PRs → caseworks / consultancy / portal
+            One verifiable pipeline: radar → brief → AI draft → compliance gate → GitHub PR → live
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={() => { setShowFactory(!showFactory); if (!showFactory) setCreateExpanded(false) }} style={{
-            padding: '9px 18px', borderRadius: 6, border: `2px solid ${C.gold}`,
-            background: showFactory ? C.gold : 'transparent', color: showFactory ? '#FFF' : C.gold,
-            cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
-          }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => { setShowFactory(!showFactory); if (!showFactory) setTab('create') }} style={showFactory ? btnSolid(C.gold) : { ...btnGhost, border: `2px solid ${C.gold}`, color: C.gold, fontWeight: 700 }}>
             {showFactory ? '✕ Close Command Center' : '🏭 Command Center'}
           </button>
-          <button onClick={fetchJobs} disabled={loading} style={{
-            padding: '9px 14px', borderRadius: 6, border: `1px solid ${C.border}`,
-            background: C.surface, color: C.textMuted, cursor: 'pointer',
-            fontSize: 12, fontFamily: 'inherit',
-          }}>↻ Refresh</button>
+          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchGateRuns() }} disabled={loading} style={btnGhost}>
+            ↻ Refresh
+          </button>
         </div>
       </div>
 
-      {/* Live AI activity */}
+      {/* ── Live AI activity ── */}
       <LiveGenerationPanel active={generating} events={generationEvents} startedAt={generationStartedAt} streamedChars={generationChars} />
 
-      {/* Error banner */}
+      {/* ── Error banner ── */}
       {error && (
-        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 12, color: C.red, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusSm, padding: '10px 16px', fontSize: 12, color: C.red, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{error}</span>
-          <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, fontSize: 18 }}>×</button>
+          <button type="button" onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, fontSize: 18 }}>×</button>
         </div>
       )}
 
-      {/* Stats */}
-      {!loading && jobs.length > 0 && <SummaryCards jobs={jobs} />}
-
-      {/* Command Center (full-width, conditional) */}
+      {/* ── Command Center (full-width, conditional) ── */}
       {showFactory && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Command Center…</div>}>
             <AdminCommandCenter setActionNotice={setActionNotice} />
           </React.Suspense>
         </div>
       )}
 
-      {/* ── SEO Master Engine brain strip (v2) ── */}
+      {/* ── SEO Master Engine strip ── */}
       <div style={{
-        background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 10,
-        padding: '10px 14px', marginBottom: 16, display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', gap: 12, flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        background: '#FFFFFF', border: `1px solid ${C.border}`, borderRadius: C.radius,
+        padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', gap: 12, flexWrap: 'wrap', boxShadow: C.shadowCard,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: C.text, fontFamily: C.serif }}>🧠 SEO Master Engine</span>
           <span style={{ fontSize: 9, fontFamily: C.mono, color: '#9A7B3B', background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>v2</span>
           <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
-            🗺 {(engineStatus?.lifecycle as { seededCells?: number } | undefined)?.seededCells ?? '—'} cells · 🌐 {(engineStatus?.knowledge as { total?: number } | undefined)?.total ?? '—'} intel · 🧭 {(engineStatus?.plans as { total?: number } | undefined)?.total ?? '—'} plans · 🔗 {(engineStatus?.interlinks as { planned?: number } | undefined)?.planned ?? '—'} links · 🤖 {(engineStatus?.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice ?? '—'}% LLM voice · 🛡 {(engineStatus?.gate as { passRate?: number } | undefined)?.passRate ?? '—'}% gate pass
+            🗺 {engLife ?? '—'} cells · 🌐 {engKnow ?? '—'} intel · 🧭 {engPlans ?? '—'} plans · 🔗 {engLinks ?? '—'} links · 🤖 {engVoice ?? '—'}% LLM voice · 🛡 {engGate ?? '—'}% gate pass
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={async () => { setEngineBusy(true); try { await fetch('/api/seo-engine/plan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 10, draftBriefs: false }) }); await fetchEngineStatus() } finally { setEngineBusy(false) } }}
-            disabled={engineBusy}
-            title="Run the master planner — rank GSC demand into life-cycle missions"
-            style={{ padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer', background: C.text, color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'inherit' }}
-          >
+          <button type="button" onClick={() => void runEngineAction('ingest')} disabled={engineBusy} style={btnSolid(C.navy)} title="Scrape all intelligence sources now">
+            {engineBusy ? '⏳ …' : '🌐 Ingest knowledge'}
+          </button>
+          <button type="button" onClick={() => void runEngineAction('plan')} disabled={engineBusy} style={{ ...btnSolid(C.gold) }} title="Rank GSC demand into life-cycle missions">
             {engineBusy ? '⏳ …' : '🧭 Run planner'}
           </button>
-          <button
-            type="button"
-            onClick={async () => { setEngineBusy(true); try { await fetch('/api/seo-engine/llm-visibility', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ maxAudits: 6 }) }); await fetchEngineStatus() } finally { setEngineBusy(false) } }}
-            disabled={engineBusy}
-            title="Run an LLM share-of-voice audit (10 estate queries)"
-            style={{ padding: '5px 11px', borderRadius: 6, border: 'none', cursor: 'pointer', background: '#6D28D9', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'inherit' }}
-          >
+          <button type="button" onClick={() => void runEngineAction('llm')} disabled={engineBusy} style={{ ...btnSolid('#6D28D9') }} title="Run an LLM share-of-voice audit (10 estate queries)">
             {engineBusy ? '⏳ …' : '🤖 LLM audit'}
           </button>
         </div>
       </div>
 
-      {/* Main two-column grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 16, alignItems: 'start' }}>
-        {/* ── LEFT COLUMN ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <QuickCreate
-            expanded={createExpanded}
-            onToggle={() => setCreateExpanded(!createExpanded)}
-            generating={generating} onGenerate={handleGenerate}
-            topic={topic} keywords={keywords}
-            onTopicChange={setTopic} onKeywordsChange={setKeywords}
-            suggestions={suggestions} suggestionsLoading={suggestionsLoading}
-            suggestionsError={suggestionsError}
-            onRefreshSuggestions={fetchSuggestions}
-            onApplySuggestion={applyBrief}
-            brief={selectedBrief}
-            briefInterlinks={briefInterlinks}
-            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-            onAutoInterlink={runAutoInterlink}
-            autoInterlinkBusy={autoInterlinkBusy}
-          />
-          <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
-          <AdminSiteHealthPanel />
-          <AdminDeepInterlinkPanel  setActionNotice={setActionNotice} />
-          <InterlinksMini topic={topic} keywords={keywords} />
-          <GscMini />
-        </div>
+      {/* ── Tab navigation ── */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            style={{
+              padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit',
+              background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#FFF' : C.textMuted,
+              border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
+              boxShadow: tab === t.key ? '0 3px 10px rgba(15,23,42,0.18)' : 'none',
+            }}
+          >
+            {t.icon} {t.label}
+            <span style={{ marginLeft: 6, fontSize: 9, fontFamily: C.mono, opacity: 0.75 }}>{t.hint}</span>
+          </button>
+        ))}
+      </div>
 
-        {/* ── RIGHT COLUMN ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Live Pipeline */}
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text, fontFamily: C.serif }}>
-                🔄 Live Pipeline
-              </h3>
-              <p style={{ margin: '2px 0 0', fontSize: 11, color: C.textMuted }}>
-                Active jobs with status tracking — auto-refreshes for in-progress jobs
-              </p>
-            </div>
-            <LivePipeline jobs={jobs} onSelect={setSelectedJob} />
-          </div>
+      {/* ══════════ CREATE ══════════ */}
+      {tab === 'create' && (
+        <CreateWizard
+          generating={generating}
+          onGenerate={handleGenerate}
+          contentType={contentType} setContentType={setContentType}
+          region={region} setRegion={setRegion}
+          tone={tone} setTone={setTone}
+          aiProvider={aiProvider} setAiProvider={setAiProvider}
+          title={title} setTitle={setTitle}
+          topic={topic} setTopic={setTopic}
+          audience={audience} setAudience={setAudience}
+          keywords={keywords} setKeywords={setKeywords}
+          suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError}
+          onRefreshSuggestions={fetchSuggestions}
+          onApplySuggestion={applyBrief}
+          brief={selectedBrief}
+          onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+          briefInterlinks={briefInterlinks}
+          onAutoInterlink={runAutoInterlink}
+          autoInterlinkBusy={autoInterlinkBusy}
+          showRadar={showRadar} setShowRadar={setShowRadar}
+        />
+      )}
 
-          {/* Job History */}
-          <JobHistory
-            jobs={jobs} expanded={historyExpanded}
-            onToggle={() => setHistoryExpanded(!historyExpanded)}
-            onSelect={setSelectedJob} loading={loading}
+      {/* ══════════ QUEUE ══════════ */}
+      {tab === 'queue' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {!loading && jobs.length > 0 && <QueueStats jobs={jobs} />}
+          <QueueTable
+            jobs={jobs}
+            onSelect={setSelectedJob}
+            loading={loading}
             mergeIndex={mergeIndex}
             gateByJob={gateByJob}
           />
-
-          {/* Cannibalization Merge History — shared with the Command Center */}
-          <MergeHistory />
         </div>
-      </div>
+      )}
 
-      {/* Detail modal */}
-      {selectedJob && <JobDetail job={selectedJob} onClose={() => setSelectedJob(null)} onRefresh={fetchJobs} setActionNotice={setActionNotice} />}
+      {/* ══════════ INSIGHTS ══════════ */}
+      {tab === 'insights' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <GscMini />
+            <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <MergeHistory />
+            <InterlinksMini topic={topic} keywords={keywords} />
+            <AdminSiteHealthPanel />
+            <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Detail modal ── */}
+      {selectedJob && (
+        <JobDetail
+          job={selectedJob}
+          onClose={() => setSelectedJob(null)}
+          onRefresh={fetchJobs}
+          setActionNotice={setActionNotice}
+          gateFor={gateByJob.get(selectedJob.id) ?? null}
+        />
+      )}
     </div>
   )
 }
