@@ -89,8 +89,12 @@ function classifyText(msg: string | null | undefined): FailureKind {
 }
 
 async function appendLog(sb: SupabaseClient, jobId: string, ...parts: Array<{ [k: string]: unknown }>) {
-  const { data: row } = sb.from('content_jobs').select('event_log').eq('id', jobId).maybeSingle() as unknown as { data: { event_log?: unknown[] } | null }
-  const base = Array.isArray(row?.data?.event_log) ? row!.data!.event_log : []
+  const row = (await sb
+    .from('content_jobs')
+    .select('event_log')
+    .eq('id', jobId)
+    .maybeSingle()) as unknown as { event_log?: unknown[] } | null
+  const base = Array.isArray(row?.event_log) ? row.event_log : []
   const next = [
     ...base.slice(-200),
     ...parts.map((p) => ({
