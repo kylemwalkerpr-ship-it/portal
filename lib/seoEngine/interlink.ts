@@ -294,23 +294,27 @@ export async function loadPersistedCell(opts: {
   applied: number
   planned: number
   byReason: Record<string, number>
+  byStatus: Record<string, number>
   byStage: Array<{ stage: string; count: number }>
   topTargets: Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>
+  manualRows: Array<{ url: string; anchor: string; gate_reason: string | null; gate_actor: string | null; gate_updated_at: string | null }>
   lastUpdated: string | null
 }> {
   const empty = {
     stage: opts.stage, country: opts.country,
     total: 0, applied: 0, planned: 0,
     byReason: {} as Record<string, number>,
+    byStatus: {} as Record<string, number>,
     byStage: [] as Array<{ stage: string; count: number }>,
     topTargets: [] as Array<{ url: string; host: string; anchor: string; reason: string; score: number; status: string }>,
+    manualRows: [] as Array<{ url: string; anchor: string; gate_reason: string | null; gate_actor: string | null; gate_updated_at: string | null }>,
     lastUpdated: null as string | null,
   }
   try {
     const supabase = createSupabaseAdminClient()
     let q = supabase
       .from('seo_interlinks')
-      .select('id,source_slug,target_url,target_host,anchor_text,reason,score,status,created_at,updated_at,cluster_id')
+      .select('id,source_slug,target_url,target_host,anchor_text,reason,score,status,created_at,updated_at,cluster_id,gate_reason,gate_actor,gate_updated_at')
     if (opts.sourceSlug) {
       q = q.eq('source_slug', opts.sourceSlug)
     } else {
@@ -322,18 +326,22 @@ export async function loadPersistedCell(opts: {
     const rows = (data as Array<Record<string, unknown>>) || []
     if (!rows.length) return empty
     const byReason: Record<string, number> = {}
+    const byStatus: Record<string, number> = {}
     const byStageMap: Record<string, number> = {}
     let applied = 0
     let planned = 0
     let lastUpdated: string | null = null
     const topTargets: typeof empty.topTargets = []
+    const manualRows: typeof empty.manualRows = []
     for (const r of rows) {
       const reason = String(r.reason || 'ontology_neighbor')
+      const status = String(r.status || 'planned')
+      const srcSlug = String(r.source_slug || '')
       byReason[reason] = (byReason[reason] || 0) + 1
-      const slug = String(r.source_slug || '')
-      const m = slug.match(/^([a-z0-9-]+)-([a-z]+)-([a-z]{2})-(.+)$/)
+      byStatus[status] = (byStatus[status] || 0) + 1
+      const m = srcSlug.match(/^([a-z0-9-]+)-([a-z]+)-([a-z]{2})-(.+)$/)
       if (m) byStageMap[m[2]] = (byStageMap[m[2]] || 0) + 1
-      if (r.status === 'applied') applied += 1
+      if (status === 'applied') applied += 1
       else planned += 1
       const u = String(r.updated_at || r.created_at || '')
       if (u && (!lastUpdated || u > lastUpdated)) lastUpdated = u
@@ -343,14 +351,24 @@ export async function loadPersistedCell(opts: {
         anchor: String(r.anchor_text || ''),
         reason,
         score: Number(r.score) || 0,
-        status: String(r.status || 'planned'),
+        status,
       })
+      if (['manual', 'paused', 'awaiting_gate', 'rejected'].includes(status)) {
+        manualRows.push({
+          url: String(r.target_url || ''),
+          anchor: String(r.anchor_text || ''),
+          gate_reason: (r.gate_reason as string) || null,
+          gate_actor: (r.gate_actor as string) || null,
+          gate_updated_at: (r.gate_updated_at as string) || null,
+        })
+      }
     }
     return {
       stage: opts.stage, country: opts.country,
       total: rows.length, applied, planned,
-      byReason, byStage: Object.entries(byStageMap).map(([stage, count]) => ({ stage, count })),
+      byReason, byStatus, byStage: Object.entries(byStageMap).map(([stage, count]) => ({ stage, count })),
       topTargets: topTargets.slice(0, 6),
+      manualRows: manualRows.slice(0, 4),
       lastUpdated,
     }
   } catch {
