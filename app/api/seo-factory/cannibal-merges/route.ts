@@ -25,6 +25,23 @@ const MINIMAL_COLUMN_LIST = [
   'cluster_id','source','stem','terms','winner_url','loser_urls','redirects_created',
   'pr_url','pr_number','status','message','merged_at',
 ]
+interface CanonicalMergeRow {
+  cluster_id: string
+  source: 'portal' | 'command_center'
+  stem: string
+  terms: unknown
+  winner_url: string
+  loser_urls: unknown
+  redirects_created: number | null
+  pr_url: string | null
+  pr_number: number | null
+  status: string
+  message: string | null
+  merged_at: string
+  resolution_type?: string | null
+  follow_up_at?: string | null
+  differentiation_plan?: unknown
+}
 // 42703 = column does not exist; 42P01 = relation does not exist; PGRST116 = not found.
 const MISSING_COLUMN_RE = /column\s+([\w."]+)\s+does not exist/i
 
@@ -90,30 +107,27 @@ export async function GET() {
       degraded,
       missingColumns,
       guidance,
-      merges: (data ?? []).map((r) => {
-        const mergedAtMs = r.merged_at ? new Date(r.merged_at).getTime() : Date.now()
-        // Define a fallback for typeof-any data shape.
-        type Row = Record<string, unknown>
-        const row = r as Row
-        const rawResolution = row.resolution_type as string | undefined
-        const rawFollowUp = row.follow_up_at as string | undefined
-        const rawPlan = row.differentiation_plan as unknown
+      merges: ((data ?? []) as unknown as CanonicalMergeRow[]).map((row) => {
+        const mergedAtMs = row.merged_at ? new Date(row.merged_at).getTime() : Date.now()
+        const rawResolution = row.resolution_type ?? null
+        const rawFollowUp = row.follow_up_at ?? null
+        const rawPlan = row.differentiation_plan
         const followUpMs = rawFollowUp ? new Date(rawFollowUp).getTime() : undefined
         return {
-          clusterId: row.cluster_id as string,
+          clusterId: row.cluster_id,
           source: row.source,
-          stem: row.stem as string,
+          stem: row.stem,
           terms: Array.isArray(row.terms) ? (row.terms as unknown[]) : [],
-          winnerUrl: row.winner_url as string,
+          winnerUrl: row.winner_url,
           loserUrls: Array.isArray(row.loser_urls) ? (row.loser_urls as unknown[]) : [],
-          redirectsCreated: (row.redirects_created as number) ?? 0,
-          prUrl: (row.pr_url as string) ?? undefined,
-          prNumber: (row.pr_number as number) ?? undefined,
+          redirectsCreated: row.redirects_created ?? 0,
+          prUrl: row.pr_url ?? undefined,
+          prNumber: row.pr_number ?? undefined,
           status: row.status,
-          message: (row.message as string) ?? undefined,
+          message: row.message ?? undefined,
           resolutionType: rawResolution ?? ((row.status === 'merged') ? 'consolidate' : 'defer'),
           followUpAt: followUpMs,
-          differentiationPlan: Array.isArray(rawPlan) ? rawPlan : undefined,
+          differentiationPlan: Array.isArray(rawPlan) ? (rawPlan as unknown[]) : undefined,
           recheckDue: Boolean(followUpMs && followUpMs <= Date.now()),
           mergedAt: Number.isFinite(mergedAtMs) ? mergedAtMs : Date.now(),
         }
