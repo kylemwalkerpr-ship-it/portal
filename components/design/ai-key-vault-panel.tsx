@@ -63,7 +63,8 @@ interface Draft {
 function parseProviderOrder(value: string | null | undefined, fallback: string[]): string[] {
   let raw: unknown = value || ''
   if (typeof raw === 'string' && raw.trim()) {
-    try { raw = JSON.parse(raw) } catch { raw = raw.split(',') }
+    const orderString = raw
+    try { raw = JSON.parse(orderString) } catch { raw = orderString.split(',') }
   }
   const ids = Array.isArray(raw) ? raw.map((id) => String(id).trim()).filter(Boolean) : []
   return [...new Set([...ids, ...fallback])].filter((id) => fallback.includes(id))
