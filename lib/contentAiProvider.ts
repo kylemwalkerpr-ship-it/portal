@@ -356,16 +356,26 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
 async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
   const p = getNvidiaGlmProvider()
   if (!p) throw new Error('NVIDIA GLM not configured (NVIDIA_API_KEY / NVAPI_KEY)')
-  // GLM 5.2 supports max_tokens=16384 via NVIDIA NIM — same wide context as DeepSeek V4 Pro.
+  // NVIDIA's GLM integration is most reliable over SSE. Consume the streamed
+  // response here so non-stream refinement calls use the same proven transport
+  // as the operator-provided integration example instead of waiting for one
+  // large buffered response until the 120s deadline.
   const maxTokens = Math.min(
     opts.maxTokens ?? NVIDIA_GLM_MAX_TOKENS,
     NVIDIA_GLM_MAX_TOKENS,
   )
-  return openAiCompatibleComplete(p, {
-    ...opts,
-    maxTokens,
-    // Slightly lower than NVIDIA's sample default (1.0) — better factual accuracy on YMYL legal content.
-    temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
+  return withRetry('nvidia-glm', async () => {
+    const chunks: string[] = []
+    for await (const event of openAiCompatibleStream(p, {
+      ...opts,
+      maxTokens,
+      temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '0.7') || 0.7),
+    })) {
+      if (event.type === 'delta') chunks.push(event.text)
+    }
+    const text = chunks.join('').trim()
+    if (!text) throw new Error('nvidia-glm stream returned empty content')
+    return { text, provider: p.label, model: p.model }
   })
 }
 
@@ -1196,7 +1206,24 @@ export async function* generateContentTextStream(
 
   const candidates: Candidate[] = []
 
-  // NVIDIA DeepSeek first when configured (long-form / depth)
+  // NVIDIA GLM 5.2 is a first-class streaming provider. The previous
+  // stream path omitted it entirely, so a selected GLM job visibly started
+  // on DeepSeek/Cloudflare even though the complete path knew about GLM.
+  const glm = getNvidiaGlmProvider()
+  if (glm) {
+    candidates.push({
+      label: 'nvidia-glm',
+      stream: () =>
+        openAiCompatibleStream(glm, {
+          ...opts,
+          maxTokens: Math.min(opts.maxTokens ?? NVIDIA_GLM_MAX_TOKENS, NVIDIA_GLM_MAX_TOKENS),
+          temperature: opts.temperature ?? 0.7,
+        }),
+      complete: () => nvidiaGlmComplete(opts),
+    })
+  }
+
+  // NVIDIA DeepSeek remains available as a separate fallback/explicit pin.
   const nvidia = getNvidiaDeepseekProvider()
   if (nvidia) {
     candidates.push({
@@ -1263,6 +1290,12 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
+  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek') {
+    const idx = candidates.findIndex((c) => c.label === prefer)
+    if (idx > 0) {
+      const [pref] = candidates.splice(idx, 1)
+      candidates.unshift(pref)
+    }
   } else if (prefer === 'groq' || prefer === 'gemini' || prefer === 'openrouter' || prefer === 'openai' || prefer === 'custom') {
     const want = prefer
     const idx = candidates.findIndex((c) => c.label === want)
@@ -1299,8 +1332,9 @@ export async function* generateContentTextStream(
     // provider event before the cascade continues.
     if (explicit && c.label === prefer && !c.stream) {
       explicitProviderFailed = true
-      yield { type: 'provider', provider: c.label, model: 'not streamable — falling back to next provider' }
-      continue
+      const message = `Explicit AI provider "${prefer}" has no streaming transport`
+      yield { type: 'provider', provider: c.label, model: `FAILED: ${message}` }
+      throw new Error(message)
     }
     if (c.stream) {
       try {
@@ -1315,11 +1349,16 @@ export async function* generateContentTextStream(
         // selection was ignored. Continue the cascade for resilience.
         if (explicit && c.label === prefer) {
           explicitProviderFailed = true
+          const failure = `Explicit AI provider "${prefer}" failed: ${msg.slice(0, 300)}`
           yield {
             type: 'provider',
             provider: c.label,
-            model: `FAILED: ${msg.slice(0, 120)} — falling back to next provider`,
+            model: `FAILED: ${failure}`,
           }
+          // An explicit selection must never silently become Cloudflare. Auto
+          // mode still gets the resilient fallback cascade; a manual pin gets
+          // an actionable failure with the real provider/model preserved.
+          throw new Error(failure)
         }
         if (isSubrequestLimitError(e)) subrequestBudgetExhausted = true
         // Do not immediately call the same provider again through its
