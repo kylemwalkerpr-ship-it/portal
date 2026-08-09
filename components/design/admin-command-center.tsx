@@ -948,7 +948,7 @@ export default function AdminCommandCenter({
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
-        notify(data.guidance || data.error || `No pages found for “${term}”`, 'warn')
+        notify(data.guidance || data.error || `No pages found for “${term}”`, 'info')
         setCannibalExpanded((prev) => new Set(prev).add(term))
         return
       }
@@ -992,7 +992,7 @@ export default function AdminCommandCenter({
     const winner = cannibalWinner[term]
     const losers = [...(cannibalLosers[term] || [])]
     if (!winner || losers.length === 0) {
-      notify(`Pick a winner and at least one loser for “${term}”`, 'warn')
+      notify(`Pick a winner and at least one loser for “${term}”`, 'info')
       return
     }
     setBusy(true)
