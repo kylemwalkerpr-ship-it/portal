@@ -44,6 +44,7 @@ const C = {
   mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
   shadowCard: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04)',
   shadowHover: '0 4px 12px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)',
+  shadowLifted: '0 8px 28px rgba(15,23,42,0.10)',
   radius: 12, radiusSm: 8, radiusXs: 6,
 }
 
@@ -364,12 +365,21 @@ export default function AdminCommandCenter({
 
   // Pipeline / workspace
   const [jobs, setJobs] = React.useState<StudioJob[]>([])
+  const [jobsTotal, setJobsTotal] = React.useState(0)
   const [jobStatusFilter, setJobStatusFilter] = React.useState('all')
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null)
   const [selectedJob, setSelectedJob] = React.useState<StudioJob | null>(null)
   const [editorContent, setEditorContent] = React.useState('')
   const [prStatus, setPrStatus] = React.useState<PrStatus | null>(null)
   const [logs, setLogs] = React.useState<StudioLogEntry[]>([])
+
+  // Cannibal resolver state (explicit winner/loser picks per term)
+  const [cannibalPages, setCannibalPages] = React.useState<Record<string, Array<{ url: string; impressions: number; clicks: number; position: number }>>>({})
+  const [cannibalSource, setCannibalSource] = React.useState<Record<string, string>>({})
+  const [cannibalWinner, setCannibalWinner] = React.useState<Record<string, string>>({})
+  const [cannibalLosers, setCannibalLosers] = React.useState<Record<string, Set<string>>>({})
+  const [cannibalExpanded, setCannibalExpanded] = React.useState<Set<string>>(new Set())
+  const [cannibalBusyTerm, setCannibalBusyTerm] = React.useState<string | null>(null)
 
   // Systems
   const [health, setHealth] = React.useState<any>(null)
@@ -525,9 +535,15 @@ export default function AdminCommandCenter({
   // ── Jobs / workspace ─────────────────────────────────────────────────────
   const loadJobs = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/content-studio/jobs?limit=40', { credentials: 'same-origin' })
+      // limit=100 so the queue shows more than the old hard 40; the API now
+      // returns total + hasMore so the pill shows the real table size.
+      const res = await fetch('/api/content-studio/jobs?limit=100', { credentials: 'same-origin' })
       const data = await res.json()
-      if (res.ok) setJobs((data as { jobs?: StudioJob[] }).jobs ?? [])
+      if (res.ok) {
+        setJobs((data as { jobs?: StudioJob[] }).jobs ?? [])
+        const total = (data as { total?: number }).total
+        if (typeof total === 'number') setJobsTotal(total)
+      }
     } catch {
       /* silent background poll */
     }
@@ -871,7 +887,7 @@ export default function AdminCommandCenter({
     }
   }
 
-  // ── Cannibal merge ───────────────────────────────────────────────────────
+  // ── Cannibal merge (proper resolution: explicit winner + losers) ────────
   const runCannibalMerge = async (o: any) => {
     const pages = (o.pages || []) as Array<{ url?: string; impressions?: number }>
     const winner = [...pages].sort((a, b) => (b.impressions || 0) - (a.impressions || 0))[0]?.url || pages[0]?.url
@@ -903,6 +919,105 @@ export default function AdminCommandCenter({
         kind: 'merge', status: 'error', source: 'cannibal-merge',
         message: `Merge failed · ${e instanceof Error ? e.message : 'cannibal merge failed'}`,
         detail: { term: o.term },
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Proper cannibalization resolution (what Google expects): the operator
+  // explicitly picks ONE winner and ≥1 loser from the real competing pages
+  // (resolved from GSC query×page, with a content-inventory fallback), then
+  // we 301 the losers → winner + retire them at the source.
+  const fetchCannibalPages = async (term: string) => {
+    if (cannibalPages[term]?.length) {
+      setCannibalExpanded((prev) => {
+        const n = new Set(prev)
+        if (n.has(term)) n.delete(term)
+        else n.add(term)
+        return n
+      })
+      return
+    }
+    setCannibalBusyTerm(term)
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-pages', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        notify(data.guidance || data.error || `No pages found for “${term}”`, 'warn')
+        setCannibalExpanded((prev) => new Set(prev).add(term))
+        return
+      }
+      const pages = (data.pages || []) as Array<{ url: string; impressions: number; clicks: number; position: number }>
+      setCannibalPages((prev) => ({ ...prev, [term]: pages }))
+      setCannibalSource((prev) => ({ ...prev, [term]: String(data.source || 'unknown') }))
+      setCannibalWinner((prev) => ({ ...prev, [term]: String(data.suggestedWinner || pages[0]?.url || '') }))
+      const loserSet = new Set<string>()
+      for (const p of pages) {
+        if (p.url !== (data.suggestedWinner || pages[0]?.url)) loserSet.add(p.url)
+      }
+      setCannibalLosers((prev) => ({ ...prev, [term]: loserSet }))
+      setCannibalExpanded((prev) => new Set(prev).add(term))
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to resolve competing pages', 'error')
+    } finally {
+      setCannibalBusyTerm(null)
+    }
+  }
+
+  const pickCannibalWinner = (term: string, url: string) => {
+    setCannibalWinner((prev) => ({ ...prev, [term]: url }))
+    setCannibalLosers((prev) => {
+      const cur = new Set(prev[term] || [])
+      cur.delete(url)
+      return { ...prev, [term]: cur }
+    })
+  }
+
+  const toggleCannibalLoser = (term: string, url: string) => {
+    setCannibalLosers((prev) => {
+      const cur = new Set(prev[term] || [])
+      if (cur.has(url)) cur.delete(url)
+      else cur.add(url)
+      return { ...prev, [term]: cur }
+    })
+  }
+
+  const resolveCannibal = async (term: string) => {
+    const pages = cannibalPages[term] || []
+    const winner = cannibalWinner[term]
+    const losers = [...(cannibalLosers[term] || [])]
+    if (!winner || losers.length === 0) {
+      notify(`Pick a winner and at least one loser for “${term}”`, 'warn')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-merge', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term, winnerUrl: winner, loserUrls: losers, mode: 'merge' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'cannibal merge failed')
+      setResolvedTerms((prev) => new Set(prev).add(term))
+      notify(`Resolved “${term}” → ${winner.split('/').pop() || winner} (${(data.redirectsAdded || []).length} redirects)`, 'success')
+      recordMission({
+        kind: 'merge', status: 'success', source: 'cannibal-merge',
+        message: `Resolved “${term}” → ${winner.split('/').pop() || winner}`,
+        detail: { term, winner, losers: losers.length, redirects: (data.redirectsAdded || []).length },
+      })
+      loadRadar()
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Resolution failed', 'error')
+      recordMission({
+        kind: 'merge', status: 'error', source: 'cannibal-merge',
+        message: `Resolution failed · ${e instanceof Error ? e.message : 'cannibal merge failed'}`,
+        detail: { term },
       })
     } finally {
       setBusy(false)
@@ -973,10 +1088,12 @@ export default function AdminCommandCenter({
   }, [jobs])
 
   // ── Render ───────────────────────────────────────────────────────────────
+  // Pipeline hint uses the REAL table total (jobsTotal) instead of the fetched
+  // window — this is what fixes the "queue always says 40" confusion.
   const TABS: Array<{ key: CcTab; icon: string; label: string; hint: string }> = [
     { key: 'radar', icon: '🎯', label: 'Radar', hint: `${kpis.actionable} plays` },
     { key: 'launch', icon: '🚀', label: 'Launch', hint: brief ? 'brief ready' : 'composer' },
-    { key: 'pipeline', icon: '📋', label: 'Pipeline', hint: `${jobs.length} jobs` },
+    { key: 'pipeline', icon: '📋', label: 'Pipeline', hint: jobsTotal > 0 ? `${jobsTotal} jobs` : `${jobs.length} jobs` },
     { key: 'engine', icon: '🧭', label: 'Engine', hint: 'six brains' },
     { key: 'missions', icon: '📜', label: 'Missions', hint: 'audit trail' },
     { key: 'systems', icon: '⚙️', label: 'Systems', hint: 'health & keys' },
@@ -1273,27 +1390,99 @@ function RecheckDuePanel() {
         </div>
       )}
 
-      {/* Cannibal watch */}
+      {/* Cannibal watch — proper resolution: resolve pages, pick winner + losers */}
       {cannibals.length > 0 && (
         <div style={{ background: '#FEF2F2', border: `1px solid ${C.redBorder}`, borderRadius: C.radius, padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: C.red, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               ⚠ Cannibalization watch ({cannibals.length})
             </span>
-            <span style={{ fontSize: 10, color: C.textMuted }}>multiple pages compete for one query — consolidate into one winner</span>
+            <span style={{ fontSize: 10, color: C.textMuted }}>
+              resolve each cluster to ONE winner — every other page 301s into it and is retired at the source
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {cannibals.slice(0, 8).map((o, i) => (
-              <span key={i} style={{ padding: '5px 10px', borderRadius: C.radiusXs, background: '#fff', border: `1px solid ${C.redBorder}`, fontSize: 10, fontFamily: C.mono, color: C.text, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                “{o.term}”
-                <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700 }} onClick={() => runCannibalMerge(o)} disabled={busy}>
-                  Merge
-                </button>
-              </span>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {cannibals.slice(0, 8).map((o, i) => {
+              const term = String(o.term || '')
+              const expanded = cannibalExpanded.has(term)
+              const pages = cannibalPages[term] || []
+              const winner = cannibalWinner[term]
+              const losers = cannibalLosers[term] || new Set<string>()
+              const resolved = resolvedTerms.has(term)
+              return (
+                <div key={i} style={{ background: '#fff', border: `1px solid ${C.redBorder}`, borderRadius: C.radiusXs, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px' }}>
+                    <button type="button" onClick={() => void fetchCannibalPages(term)} disabled={cannibalBusyTerm === term}
+                      title="Resolve competing pages from GSC / content inventory"
+                      style={{ ...btnSmall, background: C.surface2, color: C.text, fontWeight: 700 }}>
+                      {cannibalBusyTerm === term ? '⏳' : expanded ? '▾' : '▸'}
+                    </button>
+                    <span style={{ fontSize: 11, fontFamily: C.mono, color: C.text, fontWeight: 700, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      “{term}”
+                    </span>
+                    {cannibalSource[term] && (
+                      <span style={{ fontSize: 9, fontFamily: C.mono, padding: '1px 7px', borderRadius: 999, background: cannibalSource[term] === 'gsc_live' ? C.greenSoft : C.goldSoft, color: cannibalSource[term] === 'gsc_live' ? C.green : C.orange }}>
+                        {cannibalSource[term] === 'gsc_live' ? 'GSC live' : 'inventory'}
+                      </span>
+                    )}
+                    {resolved && <span style={{ fontSize: 9, fontFamily: C.mono, padding: '1px 7px', borderRadius: 999, background: C.greenSoft, color: C.green, fontWeight: 800 }}>✓ RESOLVED</span>}
+                    <button type="button" style={{ ...btnSmall, background: C.redSoft, color: C.red, fontWeight: 700, whiteSpace: 'nowrap' }} onClick={() => void runCannibalMerge(o)} disabled={busy} title="Auto-resolve: winner = highest impressions">
+                      Auto merge
+                    </button>
+                  </div>
+                  {expanded && (
+                    <div style={{ borderTop: `1px solid ${C.redBorder}`, padding: '9px 12px', background: '#FFFCFC' }}>
+                      {cannibalBusyTerm === term && pages.length === 0 ? (
+                        <div style={{ fontSize: 10.5, fontFamily: C.mono, color: C.textMuted }}>Resolving competing pages…</div>
+                      ) : pages.length === 0 ? (
+                        <div style={{ fontSize: 10.5, fontFamily: C.mono, color: C.textMuted }}>
+                          No competing pages resolved for this term yet — click ▾ to retry, or use <strong>Auto merge</strong>.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {pages.map((p, pi) => {
+                            const isWinner = winner === p.url
+                            const isLoser = losers.has(p.url)
+                            return (
+                              <label key={pi} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, background: isWinner ? '#D1FAE5' : isLoser ? '#FEE2E2' : C.surface2, fontSize: 10, fontFamily: C.mono, cursor: 'pointer' }}>
+                                <input type="radio" name={`cannibal-winner-${term}`} checked={isWinner}
+                                  onChange={() => pickCannibalWinner(term, p.url)} />
+                                <input type="checkbox" checked={isLoser} disabled={isWinner}
+                                  onChange={() => toggleCannibalLoser(term, p.url)} />
+                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.text }} title={p.url}>
+                                  {p.url.replace(/^https?:\/\//, '').split('/').slice(0, 3).join('/')}
+                                </span>
+                                <span style={{ color: C.textDim, whiteSpace: 'nowrap' }}>
+                                  {p.impressions > 0 ? `${fmtN(p.impressions)} imp · #${p.position}` : 'no GSC data'}
+                                </span>
+                                <span style={{ fontSize: 9, fontWeight: 800, color: isWinner ? C.green : isLoser ? C.red : C.textDim, minWidth: 46, textAlign: 'right' }}>
+                                  {isWinner ? '★ WINNER' : isLoser ? '→ 301' : ''}
+                                </span>
+                              </label>
+                            )
+                          })}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: C.mono }}>
+                              {winner ? `${losers.size} loser(s) → ${winner.split('/').pop() || winner}` : 'pick a winner + ≥1 loser'}
+                            </span>
+                            <button type="button" disabled={busy || !winner || losers.size === 0}
+                              onClick={() => void resolveCannibal(term)}
+                              title="301 losers → winner, retire losers at the source, enrich winner with merged queries"
+                              style={{ marginLeft: 'auto', ...btnSmall, background: C.red, color: '#fff', fontWeight: 800, opacity: busy || !winner || losers.size === 0 ? 0.5 : 1 }}>
+                              {busy ? 'Resolving…' : 'Resolve & 301 → winner'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
+
 
       {/* Radar table */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
@@ -1572,7 +1761,7 @@ function RecheckDuePanel() {
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radius, overflow: 'hidden', boxShadow: C.shadowCard }}>
       <CardHeader
         icon="📋" title="Mission Pipeline"
-        sub="Live job queue — auto-refreshes while drafting."
+        sub={jobsTotal > 0 ? `Live job queue — ${filteredJobs.length} of ${jobsTotal} jobs shown (window is the most recent 100).` : 'Live job queue — auto-refreshes while drafting.'}
         right={
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {[['all', 'All'], ['drafting', 'Drafting'], ['pr_created', 'PRs'], ['merged', 'Merged'], ['failed', 'Failed']].map(([k, label]) => (
@@ -1812,92 +2001,104 @@ function RecheckDuePanel() {
       gap: 0, minHeight: 'calc(100vh - 120px)', margin: '0 -8px',
     }}>
       {/* ── Command surface ── */}
-      <div style={{ padding: '16px 20px 20px', width: '100%', maxWidth: 'none', overflow: 'auto', minWidth: 0 }}>
-        {/* Command bar */}
+        {/* ── Hero command band ── */}
         <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          gap: 16, flexWrap: 'wrap', marginBottom: 14,
+          background: 'linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%)',
+          color: '#FFFFFF', borderRadius: C.radius, padding: '18px 22px', marginBottom: 16,
+          boxShadow: C.shadowLifted, position: 'relative', overflow: 'hidden',
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 999, background: kpis.liveGsc ? C.green : C.gold, display: 'inline-block', boxShadow: `0 0 0 3px ${kpis.liveGsc ? 'rgba(6,95,70,0.15)' : 'rgba(154,123,59,0.2)'}` }} />
-              <h1 style={{ margin: 0, fontSize: 26, color: C.navy, fontWeight: 700, letterSpacing: '-0.02em' }}>
-                SEO Command Center
-              </h1>
-              <span style={{
-                padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 700,
-                fontFamily: C.mono, background: kpis.liveGsc ? C.greenSoft : C.goldSoft,
-                color: kpis.liveGsc ? C.green : C.orange, letterSpacing: '0.06em',
-              }}>
-                {kpis.liveGsc ? '● LIVE GSC' : '◐ SNAPSHOT'}
-              </span>
+          <div style={{ position: 'absolute', right: -40, top: -60, width: 220, height: 220, borderRadius: '50%', background: 'rgba(252,211,77,0.10)', zIndex: 0 }} />
+          <div style={{ position: 'absolute', left: -50, bottom: -80, width: 240, height: 240, borderRadius: '50%', background: 'rgba(96,165,250,0.08)', zIndex: 0 }} />
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 999, background: kpis.liveGsc ? '#34D399' : '#FCD34D', display: 'inline-block', boxShadow: kpis.liveGsc ? '0 0 0 3px rgba(52,211,153,0.25)' : '0 0 0 3px rgba(252,211,77,0.25)' }} />
+                <h1 style={{ margin: 0, fontSize: 26, color: '#FFFFFF', fontWeight: 700, letterSpacing: '-0.02em', fontFamily: C.serif }}>
+                  SEO Command Center
+                </h1>
+                <span style={{
+                  padding: '2px 9px', borderRadius: 999, fontSize: 9, fontWeight: 700,
+                  fontFamily: C.mono, background: kpis.liveGsc ? 'rgba(52,211,153,0.16)' : 'rgba(252,211,77,0.16)',
+                  color: kpis.liveGsc ? '#A7F3D0' : '#FCD34D', letterSpacing: '0.06em',
+                }}>
+                  {kpis.liveGsc ? '● LIVE GSC' : '◐ SNAPSHOT'}
+                </span>
+              </div>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.72)', fontSize: 13, maxWidth: 660 }}>
+                Six dedicated surfaces — one brain for radar, brief, pipeline, engine, audit and systems.
+                {radarLastRefreshed && <span style={{ fontFamily: C.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)' }}> · last sync {Math.round((Date.now() - radarLastRefreshed.getTime()) / 60_000)}m ago</span>}
+              </p>
             </div>
-            <p style={{ margin: 0, color: C.textMuted, fontSize: 13, maxWidth: 640 }}>
-              Six dedicated surfaces — one brain for radar, brief, pipeline, engine, audit and systems.
-              {radarLastRefreshed && <span style={{ fontFamily: C.mono, fontSize: 11, color: C.textDim }}> · last sync {Math.round((Date.now() - radarLastRefreshed.getTime()) / 60_000)}m ago</span>}
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textMuted }}>
-              Region
-              <select value={regionFilter} onChange={(e) => { setRegionFilter(e.target.value); setRadar(null); loadRadar() }} style={{ padding: '5px 8px', borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface }}>
-                <option value="">All</option>
-                {['US', 'UK', 'CA', 'AU', 'COMPARE'].map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.textMuted }}>
-              <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Dry-run
-            </label>
-            <button type="button" onClick={loadRadar} disabled={radarBusy} style={{ ...btnGhost, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {radarBusy ? <span style={{ width: 11, height: 11, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: C.navy, borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} /> : '⟳'}
-              {radarBusy ? 'Scanning…' : 'Rescan radar'}
-            </button>
-            <button type="button" onClick={() => setWorkspaceOpen((v) => !v)} style={workspaceOpen ? { ...btnSolid(C.navy) } : btnGhost}>
-              {workspaceOpen ? '✕ Hide workspace' : '◈ Workspace'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                Region
+                <select value={regionFilter} onChange={(e) => { setRegionFilter(e.target.value); setRadar(null); loadRadar() }} style={{ padding: '5px 9px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.10)', color: '#FFF', fontSize: 11 }}>
+                  <option value="" style={{ color: '#111' }}>All</option>
+                  {['US', 'UK', 'CA', 'AU', 'COMPARE'].map((r) => <option key={r} value={r} style={{ color: '#111' }}>{r}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Dry-run
+              </label>
+              <button type="button" onClick={loadRadar} disabled={radarBusy} style={{ padding: '7px 12px', borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.10)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {radarBusy ? <span style={{ width: 11, height: 11, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#FFF', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} /> : '⟳'}
+                {radarBusy ? 'Scanning…' : 'Rescan radar'}
+              </button>
+              <button type="button" onClick={() => setWorkspaceOpen((v) => !v)} style={workspaceOpen ? { padding: '7px 12px', borderRadius: 6, cursor: 'pointer', background: '#FCD34D', color: '#0F172A', border: 'none', fontSize: 11, fontWeight: 800 } : { padding: '7px 12px', borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.10)', color: '#FFF', border: '1px solid rgba(255,255,255,0.2)', fontSize: 11, fontWeight: 700 }}>
+                {workspaceOpen ? '✕ Hide workspace' : '◈ Workspace'}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* KPI strip */}
+        {/* ── KPI command cards — each navigates to the surface it reports ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
           {[
-            { label: 'Actionable plays', value: String(kpis.actionable), sub: 'in radar queue', color: C.cyan2, onClick: () => { setRadarFilter('all'); setTab('radar') } },
-            { label: 'Est. clicks / mo', value: `~${fmtN(kpis.gain)}`, sub: 'if plays ship', color: C.green, onClick: () => { setRadarFilter('all'); setTab('radar') } },
-            { label: 'Queries analyzed', value: fmtN(kpis.analyzed), sub: 'GSC signals', color: C.text, onClick: () => setTab('radar') },
-            { label: 'Avg authority', value: String(kpis.authority || '—'), sub: 'win probability', color: C.violet, onClick: () => setTab('radar') },
-            { label: 'In flight', value: String(kpis.inflight), sub: 'jobs drafting', color: C.orange, onClick: () => { setJobStatusFilter('drafting'); setTab('pipeline') } },
-            { label: 'PRs open', value: String(kpis.pr), sub: 'awaiting review', color: C.blue, onClick: () => { setJobStatusFilter('pr_created'); setTab('pipeline') } },
-            { label: 'Cannibal watch', value: String(kpis.cannibals), sub: 'consolidate', color: C.red, onClick: () => { setRadarFilter('cannibalization'); setTab('radar') } },
+            { label: 'Actionable plays', value: String(kpis.actionable), sub: 'radar queue', icon: '🎯', color: C.cyan2, to: () => { setRadarFilter('all'); setTab('radar') } },
+            { label: 'Est. clicks / mo', value: `~${fmtN(kpis.gain)}`, sub: 'if plays ship', icon: '📈', color: C.green, to: () => { setRadarFilter('all'); setTab('radar') } },
+            { label: 'Queries analyzed', value: fmtN(kpis.analyzed), sub: 'GSC signals', icon: '🔍', color: C.text, to: () => setTab('radar') },
+            { label: 'Avg authority', value: String(kpis.authority || '—'), sub: 'win probability', icon: '🏛', color: C.violet, to: () => setTab('radar') },
+            { label: 'In flight', value: String(kpis.inflight), sub: 'jobs drafting', icon: '⚙️', color: C.orange, to: () => { setJobStatusFilter('drafting'); setTab('pipeline') } },
+            { label: 'PRs open', value: String(kpis.pr), sub: 'awaiting review', icon: '🔀', color: C.blue, to: () => { setJobStatusFilter('pr_created'); setTab('pipeline') } },
+            { label: 'Cannibal watch', value: String(kpis.cannibals), sub: 'consolidate', icon: '⚠️', color: C.red, to: () => { setRadarFilter('cannibalization'); setTab('radar') } },
+            { label: 'Total jobs', value: String(jobsTotal > 0 ? jobsTotal : jobs.length), sub: 'in the pipeline', icon: '📋', color: C.cyan2, to: () => { setJobStatusFilter('all'); setTab('pipeline') } },
           ].map((k) => (
-            <button key={k.label} type="button" onClick={k.onClick} style={{
-              textAlign: 'left', padding: '10px 12px', borderRadius: C.radiusSm,
+            <button key={k.label} type="button" onClick={k.to} title={`Open ${k.label}`} style={{
+              textAlign: 'left', padding: '11px 13px', borderRadius: C.radiusSm,
               background: C.surface, border: `1px solid ${C.border}`, cursor: 'pointer',
               boxShadow: C.shadowCard, transition: 'transform 0.12s, box-shadow 0.12s', fontFamily: 'inherit',
-            }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = C.shadowHover; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }} onMouseEnter={(e) => { e.currentTarget.style.boxShadow = C.shadowHover; e.currentTarget.style.transform = 'translateY(-2px)' }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = C.shadowCard; e.currentTarget.style.transform = 'translateY(0)' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textDim, fontFamily: C.mono }}>{k.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: C.mono, lineHeight: 1.2, marginTop: 2 }}>{k.value}</div>
-              <div style={{ fontSize: 10, color: C.textDim, marginTop: 1 }}>{k.sub}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13 }}>{k.icon}</span>
+                <span style={{ fontSize: 9, color: C.textDim, fontFamily: C.mono, fontWeight: 800 }}>→</span>
+              </div>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textDim, fontFamily: C.mono, marginTop: 2 }}>{k.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: C.mono, lineHeight: 1.2 }}>{k.value}</div>
+              <div style={{ fontSize: 10, color: C.textDim }}>{k.sub}</div>
             </button>
           ))}
         </div>
 
-        {/* ── Tab navigation ── */}
+        {/* ── Surface navigation — each pill leads to its component ── */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
           {TABS.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
+              title={`Open ${t.label}`}
               style={{
                 padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit',
                 background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#FFF' : C.textMuted,
                 border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
                 boxShadow: tab === t.key ? '0 3px 10px rgba(15,23,42,0.18)' : 'none',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
               }}
             >
               {t.icon} {t.label}
-              <span style={{ marginLeft: 6, fontSize: 9, fontFamily: C.mono, opacity: 0.75 }}>{t.hint}</span>
+              <span style={{ marginLeft: 4, fontSize: 9, fontFamily: C.mono, opacity: 0.75 }}>{t.hint}</span>
             </button>
           ))}
         </div>
