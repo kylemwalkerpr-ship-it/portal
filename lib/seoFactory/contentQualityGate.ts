@@ -109,9 +109,24 @@ const AI_SLOP_WORDS = [
 export const DISCLAIMER_RE =
   /(not legal advice|does not constitute legal advice|not a substitute for (professional )?legal advice|for (educational|informational|information)( and (editorial|informational|educational))? purposes? only|educational( and editorial| and informational)? only|editorial only|consult (an? )?(qualified |licensed |professional |immigration |experienced |registered )?(attorney|lawyer|solicitor|migration agent|immigration professional|regulator)|seek (the )?advice of (an? )?(qualified |licensed |professional |immigration )?(attorney|lawyer|solicitor|migration agent|regulator))/i
 
-/** Outcome / guarantee language — YMYL / bar-ethics risk. */
-const OUTCOME_PROMISE_PATTERNS: Array<{ re: RegExp; label: string }> = [
-  { re: /\bguarante(?:e|ed|es|eing)\b/i, label: 'guarantee language' },
+/**
+ * Outcome / guarantee language — YMYL / bar-ethics risk.
+ *
+ * Only *immigration-outcome* promises are forbidden. A bare "guaranteed"
+ * (e.g. "FY27 rates are guaranteed for the academic year", "the deposit is
+ * guaranteed refundable") is factual, not a promise of approval, and must
+ * never block a ship. The generic guarantee rule therefore requires an
+ * outcome signal within the surrounding context (approval / visa / PR /
+ * acceptance / success / refusal / decision / result) — the words a bar-
+ * ethics violation would actually couple to.
+ */
+const OUTCOME_PROMISE_PATTERNS: Array<{ re: RegExp; label: string; needsOutcomeNearby?: boolean }> = [
+  {
+    // Coupled to an immigration outcome within ±60 chars of "guarantee*"
+    re: /\bguarante(?:e|ed|es|eing)\b/i,
+    label: 'guarantee language',
+    needsOutcomeNearby: true,
+  },
   { re: /\b100\s*%\s*(success|approval|acceptance|visa)\b/i, label: '100% success claim' },
   { re: /\bwe (will|can) (get|secure|ensure|guarantee) (you|your)\b/i, label: 'we will get you… promise' },
   { re: /\bensur(?:e|es|ing) (your )?(visa |application )?(approval|success|acceptance)\b/i, label: 'ensure approval' },
@@ -122,6 +137,42 @@ const OUTCOME_PROMISE_PATTERNS: Array<{ re: RegExp; label: string }> = [
   { re: /\bcertainly (qualify|approved|succeed)\b/i, label: 'certainty of outcome' },
   { re: /\bwe promise\b/i, label: 'we promise' },
 ]
+
+/**
+ * Words that couple "guarantee*" to an actual immigration/application
+ * outcome. Factual guarantees (rates, fees, refunds, availability) do not
+ * match, so housing-rate pages and university guides never false-positive.
+ */
+const OUTCOME_COUPLING = /\b(approval|approved|approve|visa|green\s*card|permanent\s*residen[ct]|pr\b|acceptance|accepted|success(?:ful)?|refusal|refused|denial|denied|decision|result(?:s)?|outcome|approval\s*rate|success\s*rate|sponsorship)\b/i
+
+/** A "guarantee" mention only counts when an outcome word sits in its window. */
+function guaranteeIsOutcomeCoupled(text: string, index: number): boolean {
+  // Fast path: an outcome word within a tight window around the guarantee.
+  const start = Math.max(0, index - 60)
+  const end = Math.min(text.length, index + 80)
+  const windowText = text.slice(start, end)
+  if (OUTCOME_COUPLING.test(windowText)) return true
+
+  // Fallback: the same sentence may carry the outcome >80 chars away (long
+  // clause before the promise). Sentence scope keeps factual guarantees safe:
+  // "FY27 rates are guaranteed for the academic year" has no outcome word
+  // anywhere in the sentence, while a real promise always names approval /
+  // visa / success / result somewhere in its own sentence.
+  const sentenceStart = Math.max(
+    text.lastIndexOf('.', index - 1),
+    text.lastIndexOf('!', index - 1),
+    text.lastIndexOf('?', index - 1),
+    text.lastIndexOf('\n', index - 1),
+  ) + 1
+  const sentenceEndCandidates = [
+    text.indexOf('.', index),
+    text.indexOf('!', index),
+    text.indexOf('?', index),
+    text.indexOf('\n', index),
+  ].filter((value) => value >= 0)
+  const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) : text.length
+  return OUTCOME_COUPLING.test(text.slice(sentenceStart, sentenceEnd))
+}
 
 function isNegatedOutcomeMention(text: string, index: number): boolean {
   const sentenceStart = Math.max(
@@ -214,16 +265,23 @@ export function evaluateContentQuality(opts: {
   const add = (f: QualityFinding) => findings.push(f)
 
   // ── 1. Outcome promises (always blocker) ─────────────────────────────────
-  for (const { re, label } of OUTCOME_PROMISE_PATTERNS) {
-    const m = body.match(re)
-    if (m && !isNegatedOutcomeMention(body, m.index ?? 0)) {
-      add({
-        code: 'outcome_promise',
-        severity: 'blocker',
-        message: `Outcome / guarantee language forbidden: ${label}`,
-        fix: 'Rewrite without promising visa approval, success rates, or guaranteed results. Educational only.',
-        evidence: m[0],
-      })
+  // Scan EVERY match, not just the first: a page can carry a factual
+  // "guaranteed rates" line AND a real "guaranteed approval" promise.
+  for (const { re, label, needsOutcomeNearby } of OUTCOME_PROMISE_PATTERNS) {
+    for (const m of body.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))) {
+      const at = m.index ?? 0
+      // A bare "guarantee" must be coupled to an immigration outcome to count.
+      // "Rates are guaranteed for the academic year" is a fact, not a promise.
+      if (needsOutcomeNearby && !guaranteeIsOutcomeCoupled(body, at)) continue
+      if (!isNegatedOutcomeMention(body, at)) {
+        add({
+          code: 'outcome_promise',
+          severity: 'blocker',
+          message: `Outcome / guarantee language forbidden: ${label}`,
+          fix: 'Rewrite without promising visa approval, success rates, or guaranteed results. Educational only.',
+          evidence: m[0],
+        })
+      }
     }
   }
 
@@ -612,6 +670,9 @@ export function qualityPromptBlock(): string {
     '    current official guidance, and a qualified professional can review your facts.',
     '    Before returning, silently scan every heading, paragraph, CTA, FAQ, and metadata',
     '    line for promises. Do not repeat a forbidden phrase even while making a claim.',
+    '    Note: a factual guarantee (\"FY27 rates are guaranteed for the academic year\",',
+    '    \"deposits are guaranteed refundable\") is allowed — the scanner only blocks',
+    '    guarantee language coupled to an immigration outcome such as approval or a visa.',
     '',
     'Q4. PRACTITIONER VOICE. Write like a calm immigration specialist briefing a',
     '    client. Second person ("you"). Concrete nouns (agency, form, document).',

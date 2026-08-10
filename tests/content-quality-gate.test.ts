@@ -106,6 +106,106 @@ describe('evaluateContentQuality', () => {
     expect(r.ok).toBe(true)
     expect(r.humanScore).toBeGreaterThanOrEqual(60)
   })
+
+  it('does NOT block factual non-outcome guarantees (housing rates / fee locks)', () => {
+    const factual = guide(
+      'The university publishes FY27 rates each spring. Rates are guaranteed for the academic year once posted. Security deposits are guaranteed refundable when no damage is found.',
+    )
+    const r = evaluateContentQuality({
+      content: factual,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
+  })
+
+  it('blocks guarantee language only when coupled to an immigration outcome', () => {
+    const promised = guide(
+      'Our service has a guaranteed approval rate for F-1 applications. We guarantee your visa approval within 30 days.',
+    )
+    const r = evaluateContentQuality({
+      content: promised,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(true)
+  })
+
+  it('catches a promise even when an earlier factual guarantee exists', () => {
+    const mixed = guide(
+      'Rates are guaranteed for the academic year. Separately, we guarantee your approval for F-1 applications.',
+    )
+    const r = evaluateContentQuality({
+      content: mixed,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(true)
+  })
+
+  it('catches a promise whose outcome word is far from the guarantee word', () => {
+    const longPromise = guide(
+      'With our decades of experience and careful case preparation, we guarantee that the decision on your application will be favorable to you.',
+    )
+    const r = evaluateContentQuality({
+      content: longPromise,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(true)
+  })
+
+  it('still allows negated outcome mentions inside disclaimers', () => {
+    const negated = guide(
+      'No attorney or service can guarantee an outcome, and this page does not guarantee visa approval.',
+    )
+    const r = evaluateContentQuality({
+      content: negated,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
+  })
+
+  it('still blocks explicit outcome-certainty phrases not tied to the word guarantee', () => {
+    const certain = guide(
+      'Choose us for a 100% approval success rate with no risk of refusal on your application.',
+    )
+    const r = evaluateContentQuality({
+      content: certain,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(true)
+  })
+})
+
+describe('auditContent surfaces ownership blockers with clear remediation', () => {
+  it('blocked_on_supply blocker explains the inventory requirement', () => {
+    const audit = auditContent({
+      content: guide('You compare the document list against the official checklist.'),
+      contentType: 'marketplace_gig',
+      primaryKeyword: 'hire immigration attorney f-1',
+      indexable: true,
+      ownershipBlockers: ['blocked_on_supply: Only ~1 service in category at audit; do not SEO empty shelf'],
+    })
+    const ob = audit.blockers.find((b) => b.code === 'ownership')
+    expect(ob).toBeDefined()
+    expect(ob!.fix).toMatch(/≥3 gigs|publishing gigs/i)
+  })
+
+  it('merge/301 blocker points to expanding the existing canonical', () => {
+    const audit = auditContent({
+      content: guide('You verify the official form numbers.'),
+      contentType: 'legal_guide',
+      primaryKeyword: 'cpt vs opt',
+      indexable: true,
+      ownershipBlockers: ['Registry says merge for "cpt vs opt" → expand existing canonical'],
+    })
+    const ob = audit.blockers.find((b) => b.code === 'ownership')
+    expect(ob).toBeDefined()
+    expect(ob!.fix).toMatch(/expand the existing strategy URL/i)
+  })
 })
 
 describe('auditContent integrates quality', () => {

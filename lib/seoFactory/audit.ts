@@ -96,7 +96,11 @@ export function auditContent(opts: {
       code: 'ownership',
       severity: 'blocker',
       message: b,
-      fix: 'Change keyword, content type, or expand the existing owner URL',
+      fix: /blocked_on_supply/i.test(b)
+        ? 'This keyword resolves to the marketplace (market), and the ownership registry blocks it until the category has real inventory (≥3 gigs). Clear it by: (1) publishing gigs in that category in the marketplace, or (2) changing the content type / keyword so ownership routes to a shippable host (legal/regional).'
+        : /301|merge/i.test(b)
+          ? 'Expand the existing strategy URL instead of creating a sibling page. Update the job target to that canonical, or pick a different keyword.'
+          : 'Change keyword, content type, or expand the existing owner URL',
     })
   }
 
