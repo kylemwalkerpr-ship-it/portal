@@ -666,8 +666,13 @@ export async function resolveOwner(opts: {
       warnings.push(`Registry action=${matched.action} for "${matched.primary_keyword}"`)
     }
     if (matched.action === '301' || matched.action === 'merge') {
-      blockers.push(
-        `Registry says ${matched.action} for "${matched.primary_keyword}" → expand existing ${matched.owner_url}, do not create sibling`,
+      // Auto-resolve to the existing canonical page: the file path already
+      // points to matched.owner_url via filePathFromOwnerUrl above. Convert
+      // this from a blocker to a warning so the pipeline ships to the right
+      // path instead of refusing to ship at all.
+      action = 'expand'
+      warnings.push(
+        `Registry says ${matched.action} for "${matched.primary_keyword}" — shipping expands existing page ${canonicalUrl} (${filePath}), no sibling created`,
       )
     }
     if (matched.action === 'blocked_on_supply' || matched.status === 'blocked_on_supply') {
