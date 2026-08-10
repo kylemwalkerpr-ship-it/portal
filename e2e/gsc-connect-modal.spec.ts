@@ -64,10 +64,13 @@ function hasClerkCredentials(): boolean {
 /**
  * Sign in as admin using Clerk's Sign-In Token API.
  *
- * Creates a one-time sign-in token via the Backend API, navigates the browser
- * to the token URL, and waits for Clerk to validate the token and create a
- * session — all without touching the multi-step login form, email OTP, or any
- * other factor that the production Clerk instance requires.
+ * Creates a one-time sign-in token via the Backend API, then navigates the
+ * browser to `/sign-in/student?__clerk_ticket=<token>&return_to=…` — the
+ * exact path convention this app's `<SignIn routing="path"
+ * path="/sign-in/student">` consumes (verified empirically: `__session` is
+ * set and the redirect lands on the return_to target). This bypasses the
+ * multi-step login form, email OTP, and any other factor the production
+ * Clerk instance requires.
  *
  * Returns a logged-in Page or null if sign-in failed.
  *
@@ -117,18 +120,20 @@ async function loginAsAdmin(browser: Browser): Promise<Page | null> {
       return null
     }
 
-    // 3. Navigate the browser to the token URL. Clerk validates the JWT,
-    //    creates a session, sets the session cookie, and redirects to the
-    //    dashboard.
-    await page.goto(`${BASE}/sign-in/token?token=${token}`, {
+    // 3. Navigate the browser to the ticket URL on the path Clerk's <SignIn>
+    //    component actually routes on. The token is consumed client-side: a
+    //    session is created, __session is set, and the user is redirected to
+    //    return_to (safeReturnTo allows /dashboard/admin/content).
+    const ticketUrl = `${BASE}/sign-in/student?__clerk_ticket=${encodeURIComponent(token)}&return_to=${encodeURIComponent('/dashboard/admin/content')}`
+    await page.goto(ticketUrl, {
       waitUntil: 'domcontentloaded',
     })
 
-    // 4. Wait for the redirect to finish — the user should land on a page
-    //    that is NOT /sign-in and NOT /sign-in/token.
+    // 4. Wait for the redirect to finish — the user should land on the
+    //    dashboard (pathname no longer /sign-in).
     await page.waitForURL(
       (url) => !url.pathname.includes('/sign-in'),
-      { timeout: 30000 },
+      { timeout: 45000 },
     )
 
     return page
@@ -140,13 +145,34 @@ async function loginAsAdmin(browser: Browser): Promise<Page | null> {
 }
 
 /**
+ * The studio's app/error.tsx boundary. The ticket login already lands on
+ * /dashboard/admin/content; re-navigating to the SAME url with a hard goto
+ * aborts the in-flight RSC payload and trips the boundary. Recover by
+ * clicking "Try again" (the boundary's retry button re-mounts the page).
+ */
+async function recoverFromErrorBoundary(page: Page): Promise<void> {
+  const snag = page.getByText(/We hit a snag/)
+  if ((await snag.count()) > 0) {
+    await page.getByRole('button', { name: /Try again/ }).first().click()
+    await snag.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+  }
+}
+
+/**
  * Drive the UI to the connect modal: open the studio, open the Command
  * Center, switch to the Systems tab, and click the Systems-card CTA.
  * When `reconnect` is true the card shows the broken-token Re-connect CTA
  * instead of the fresh Connect CTA.
  */
 async function navigateToConnectModal(page: Page, opts: { reconnect?: boolean } = {}): Promise<void> {
-  await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
+  // The sign-in token flow lands the user straight on /dashboard/admin/content
+  // (return_to). Only hard-navigate when we're somewhere else — a second goto
+  // to the same URL aborts the in-flight RSC stream and trips app/error.tsx.
+  const current = new URL(page.url())
+  if (current.pathname !== '/dashboard/admin/content') {
+    await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
+  }
+  await recoverFromErrorBoundary(page)
 
   const ccButton = page.getByRole('button', { name: /Command Center/ }).first()
   await ccButton.waitFor({ state: 'visible', timeout: 30000 })

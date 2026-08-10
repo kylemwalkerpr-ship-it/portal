@@ -726,8 +726,8 @@ function CreateWizard({
               <span style={{ fontSize: 9, fontWeight: 800, fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.textDim }}>Autopilot radar</span>
               {radarMeta?.source && (
                 (() => {
-                  const src = String(radarMeta.source)
-                  const snapAt = (radarMeta.snapshot as { generatedAt?: string } | null)?.generatedAt
+                  const src = String(radarMeta?.source ?? '')
+                  const snapAt = (radarMeta?.snapshot as { generatedAt?: string } | null)?.generatedAt
                   const snapLabel = snapAt && src === 'snapshot'
                     ? ` · ${new Date(snapAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
                     : ''
@@ -2602,7 +2602,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 <span style={{ color: '#92400E', flex: 1, minWidth: 200, lineHeight: 1.45 }}>
                   <strong>Suggestions are scored from the committed snapshot</strong>
                   {(() => {
-                    const raw = (radarMeta.snapshot as { generatedAt?: string } | null)?.generatedAt
+                    const raw = (radarMeta?.snapshot as { generatedAt?: string } | null)?.generatedAt
                     const d = raw ? new Date(raw) : null
                     return radarMeta?.source === 'snapshot' && d && !Number.isNaN(d.getTime())
                       ? ` (${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`
