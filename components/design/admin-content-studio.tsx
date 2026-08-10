@@ -4684,33 +4684,166 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
             />
           ) : (
-            <Step1Define
-              generating={generating}
-              onGenerate={handleGenerate}
-              contentType={contentType} setContentType={setContentType}
-              region={region} setRegion={setRegion}
-              tone={tone} setTone={setTone}
-              aiProvider={aiProvider} setAiProvider={setAiProvider}
-              title={title} setTitle={setTitle}
-              topic={topic} setTopic={setTopic}
-              audience={audience} setAudience={setAudience}
-              keywords={keywords} setKeywords={setKeywords}
-              suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
-              gscStatus={gscStatus}
-              onConnectGsc={() => setGscConnectOpen(true)}
-              onRefreshSuggestions={fetchSuggestions}
-              onApplySuggestion={applyBrief}
-              brief={selectedBrief}
-              onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-              briefInterlinks={briefInterlinks}
-              interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
-              onAutoInterlink={runAutoInterlink}
-              autoInterlinkBusy={autoInterlinkBusy}
-              showRadar={showRadar} setShowRadar={setShowRadar}
-              regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
-              regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
-              regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
-            />
+            <div data-testid="studio-research-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* ── Target definition form ── */}
+              <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}` }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
+                  TARGET DEFINITION
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Topic</span>
+                    <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. uk-spouse-visa-financial-requirement-2026" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Page Title</span>
+                    <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Complete Guide: UK Spouse Visa Financial Requirement 2026" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Audience</span>
+                    <input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="International couples applying for UK spouse visas" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Region · Type · Tone</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <select value={region} onChange={(e) => setRegion(e.target.value as Region)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
+                        {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
+                      </select>
+                      <select value={contentType} onChange={(e) => setContentType(e.target.value as ContentType)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
+                        {CONTENT_TYPE_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
+                      </select>
+                      <select value={tone} onChange={(e) => setTone(e.target.value as Tone)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
+                        {TONE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* ── Keyword Research Panel ── */}
+              <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}` }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
+                  KEYWORD RESEARCH
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                      <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Keywords (comma-separated)</span>
+                      <textarea value={keywords} onChange={(e) => setKeywords(e.target.value)} rows={3} placeholder="spouse visa financial requirement, UK family visa income threshold, Appendix FM minimum income..." style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12, resize: 'vertical' }} />
+                    </label>
+                    {(() => {
+                      const kwList = keywords.split(',').map((k) => k.trim()).filter(Boolean)
+                      const shortTail = kwList.filter((k) => k.split(/\s+/).length <= 3)
+                      const longTail = kwList.filter((k) => k.split(/\s+/).length > 3)
+                      const shortOk = shortTail.length >= 5
+                      const longOk = longTail.length >= 4
+                      return (
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <div style={{ flex: 1, padding: '8px 10px', background: shortOk ? '#ECFDF5' : '#FFF7ED', border: `1px solid ${shortOk ? '#A7F3D0' : '#FED7AA'}`, borderRadius: 0 }}>
+                            <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted, fontWeight: 700, textTransform: 'uppercase' }}>Short-tail</div>
+                            <div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 800, color: shortOk ? C.green : C.orange }}>{shortTail.length}<span style={{ fontSize: 10, fontWeight: 500, color: E.inkMuted }}> / 5 min</span></div>
+                          </div>
+                          <div style={{ flex: 1, padding: '8px 10px', background: longOk ? '#ECFDF5' : '#FFF7ED', border: `1px solid ${longOk ? '#A7F3D0' : '#FED7AA'}`, borderRadius: 0 }}>
+                            <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted, fontWeight: 700, textTransform: 'uppercase' }}>Long-tail</div>
+                            <div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 800, color: longOk ? C.green : C.orange }}>{longTail.length}<span style={{ fontSize: 10, fontWeight: 500, color: E.inkMuted }}> / 4 min</span></div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Keyword Density Targets</div>
+                    <div style={{ fontSize: 11, color: E.ink, lineHeight: 1.6 }}>
+                      <div>• Primary keyword: 2-3% density</div>
+                      <div>• Secondary keywords: 1-2% each</div>
+                      <div>• LSI / related terms: natural placement</div>
+                      <div style={{ marginTop: 4, padding: '6px 8px', background: E.ivory, border: `1px dashed ${E.hairline}`, fontSize: 10, color: E.inkMuted }}>
+                        Google best practice: write for humans first. Keywords should read naturally — never stuff.
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>AI Provider</span>
+                      <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ width: '100%', marginTop: 4, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
+                        {AI_PROVIDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Cannibalization Check ── */}
+              {(() => {
+                const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
+                return cannibalList.length > 0 ? (
+                  <div style={{ padding: 14, background: '#FFF5F5', border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: C.red, fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>
+                      ⚠️ CANNIBALIZATION ALERT — {cannibalList.length} term{cannibalList.length !== 1 ? 's' : ''}
+                    </div>
+                    {cannibalList.slice(0, 5).map((c, ci) => (
+                      <div key={ci} style={{ fontSize: 11, color: C.red, marginBottom: 4, fontFamily: C.mono }}>
+                        &ldquo;{c.term}&rdquo; — {c.pages.length} competing page{c.pages.length !== 1 ? 's' : ''}. Consolidate, don&apos;t create another.
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ padding: 14, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                    <div style={{ fontSize: 11, color: C.green, fontFamily: C.mono, fontWeight: 600 }}>
+                      ✓ No cannibalization detected for current topic
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* ── Interlink Preview + Apply Radar ── */}
+              {selectedBrief && (
+                <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.gold}` }}>
+                  <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+                    APPLIED BRIEF — {selectedBrief.title}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: '#DBEAFE', color: '#1E40AF' }}>
+                      {INTENT_LABELS[selectedBrief.intent] || selectedBrief.intentCategory}
+                    </span>
+                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: '#FEF3C7', color: '#92400E' }}>
+                      Score: {selectedBrief.opportunityScore ?? selectedBrief.demandScore}
+                    </span>
+                    {selectedBrief.keywords && selectedBrief.keywords.map((k, ki) => (
+                      <span key={ki} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: E.ivory, color: E.inkMuted }}>{k}</span>
+                    ))}
+                  </div>
+                  {briefInterlinks.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
+                        Interlinks ({briefInterlinks.length})
+                      </div>
+                      {briefInterlinks.slice(0, 5).map((il, i) => (
+                        <div key={i} style={{ fontSize: 10, fontFamily: C.mono, color: E.ink, padding: '3px 0' }}>
+                          {il.url ? <a href={il.url} target="_blank" rel="noreferrer" style={{ color: E.gold }}>{il.label || il.url}</a> : il.label} {il.site ? `· ${il.site}` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+                    style={{ marginTop: 8, padding: '5px 12px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: 'transparent', cursor: 'pointer', fontSize: 10, fontFamily: C.mono, color: E.inkMuted }}>
+                    Clear brief
+                  </button>
+                </div>
+              )}
+
+              {/* ── Interlink builder ── */}
+              <div style={{ padding: 14, background: E.paper, border: `1px solid ${E.hairline}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: C.mono, color: E.gold, fontWeight: 700, textTransform: 'uppercase' }}>Interlink Strategy</div>
+                    <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Wire internal links from caseworks → regional → marketplace funnel</div>
+                  </div>
+                  <button type="button" onClick={runAutoInterlink} disabled={autoInterlinkBusy || !topic.trim()}
+                    style={{ padding: '8px 16px', borderRadius: 0, border: `1px solid ${E.gold}`, background: autoInterlinkBusy ? E.ivory : 'transparent', color: E.gold, cursor: autoInterlinkBusy ? 'progress' : 'pointer', fontFamily: C.mono, fontSize: 11, fontWeight: 700 }}>
+                    {autoInterlinkBusy ? 'Finding links…' : 'Find interlinks'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           {/* Next-stage CTA: visible when on Research tab with a topic pinned */}
           {tab === 'research' && topic.trim() && (
@@ -5167,6 +5300,51 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onConnected={() => loadGscStatus()}
           onClose={() => setGscConnectOpen(false)}
         />
+      )}
+
+      {/* ── Sticky bottom navigation — appears when work plan items are selected ── */}
+      {tab === 'discover' && selectedWorkPlanIds.size > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+          padding: '14px 28px',
+          background: `linear-gradient(0deg, ${E.ivory} 0%, ${E.ivory}EE 100%)`,
+          borderTop: `2px solid ${E.gold}`,
+          boxShadow: '0 -4px 24px rgba(17,21,28,0.10)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: E.gold, color: E.ivory,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: C.mono, fontSize: 14, fontWeight: 800,
+            }}>{selectedWorkPlanIds.size}</span>
+            <div>
+              <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>
+                {selectedWorkPlanIds.size} opportunity{selectedWorkPlanIds.size !== 1 ? 'ies' : ''} selected
+              </div>
+              <div style={{ fontSize: 11, color: E.inkMuted, fontFamily: C.mono }}>
+                Ready to research — keywords, intent, cannibalization, and interlinks will be analyzed
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="button" onClick={() => setSelectedWorkPlanIds(new Set())}
+              style={{ padding: '10px 16px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: 'transparent', color: E.inkMuted, cursor: 'pointer', fontFamily: C.serif, fontSize: 13, fontWeight: 600 }}>
+              Clear selection
+            </button>
+            <button type="button"
+              onClick={() => handleSendToResearch(workPlanItems.filter((i) => selectedWorkPlanIds.has(i.id)))}
+              style={{
+                padding: '12px 24px', borderRadius: 0, border: 'none',
+                background: E.gold, color: E.ivory, cursor: 'pointer',
+                fontFamily: C.serif, fontSize: 15, fontWeight: 700,
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}>
+              Continue to Research →
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
