@@ -1102,6 +1102,21 @@ function PublishLedger({
     points: Array<{ date: string; clicks: number; impressions: number; position: number; ctr: number }>
   }>>({})
 
+  // Per-stamp model-vs-GSC divergence verdict (Flag-in-paper §4.3.4). Fetched
+  // in parallel with the trend snapshot so the badge has data the instant the
+  // first paint finishes.
+  const [divergence, setDivergence] = React.useState<Record<string, {
+    status: 'agree' | 'disagree' | 'missing' | 'unknown'
+    note: string
+    magnitude: number | null
+    forecastDirection: 'up' | 'down' | 'flat' | 'unknown'
+    topic: string | null
+    projection60: number | null
+    probabilityTop10: number | null
+  }>>({})
+  const [divergenceLoading, setDivergenceLoading] = React.useState(false)
+  const [divergenceError, setDivergenceError] = React.useState<string | null>(null)
+
   const canonicalUrls = React.useMemo(
     () => stamps.map((s) => s.canonical_url).filter((u): u is string => !!u),
     [stamps],
@@ -1146,6 +1161,54 @@ function PublishLedger({
   React.useEffect(() => {
     void loadTrends()
   }, [loadTrends])
+
+  // NEW: forecast vs actual verdict — fires after the trend snapshot so the
+  // divergence router has the observed positions + direction.
+  const loadDivergence = React.useCallback(async () => {
+    if (!canonicalUrls.length) {
+      setDivergence({}); setDivergenceError(null); return
+    }
+    setDivergenceLoading(true); setDivergenceError(null)
+    try {
+      const observations = canonicalUrls.map((url) => {
+        const t = trends[url]
+        return {
+          url,
+          position: t?.position ?? null,
+          direction: (t?.direction ?? 'unknown') as 'up' | 'down' | 'flat' | 'unknown',
+        }
+      })
+      const res = await fetch('/api/content-studio/forecast-divergence', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canonicalUrls, observations }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; entries?: any[]; error?: string
+      }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const next: typeof divergence = {}
+      for (const e of data.entries || []) {
+        next[e.url] = {
+          status: e.divergence?.status,
+          note: e.divergence?.note,
+          magnitude: e.divergence?.magnitude ?? null,
+          forecastDirection: e.forecastDirection,
+          topic: e.topic,
+          projection60: e.forecast?.projection60 ?? null,
+          probabilityTop10: e.forecast?.probabilityTop10 ?? null,
+        }
+      }
+      setDivergence(next)
+    } catch (err) {
+      setDivergenceError(err instanceof Error ? err.message : 'divergence fetch failed')
+    } finally {
+      setDivergenceLoading(false)
+    }
+  }, [canonicalUrls, trends])
+  React.useEffect(() => {
+    void loadDivergence()
+  }, [loadDivergence])
 
   const runVerify = React.useCallback(async (jobId: string, canonicalUrl: string) => {
     setVerify((prev) => ({ ...prev, [jobId]: { stage: 'verifying', startedAt: Date.now() } }))
@@ -1242,6 +1305,25 @@ function PublishLedger({
             const verifyState = verify[j.id] || { stage: 'idle' }
             const verifying = verifyState.stage === 'verifying'
             const trend = canonical ? trends[canonical] : undefined
+            const divergenceEntry = canonical ? divergence[canonical] : undefined
+            const divergenceStatus: 'agree' | 'disagree' | 'missing' | 'unknown' =
+              divergenceEntry?.status ?? 'unknown'
+            // Confidence chip colours — intentionally high-contrast so admins
+            // spot a divergence row in <1s even at 18 cards on the page.
+            const divergenceVisual: Record<string, { bg: string; fg: string; border: string; glyph: string; label: string }> = {
+              agree:    { bg: '#10B981', fg: '#052E16', border: '#10B981', glyph: '✓', label: 'Forecast matches GSC' },
+              disagree: { bg: '#DC2626', fg: '#FFFFFF', border: '#DC2626', glyph: '⚠', label: 'Forecast ↔ GSC DIVERGE' },
+              missing:  { bg: '#1F2937', fg: '#9CA3AF', border: '#374151', glyph: '·', label: 'No forecast yet' },
+              unknown:  { bg: '#1F2937', fg: '#9CA3AF', border: '#374151', glyph: '–', label: 'Awaiting GSC data' },
+            }
+            const dv = divergenceVisual[divergenceStatus]
+            const dvTooltip = divergenceEntry?.note
+              ? `${dv.label}\n\n${divergenceEntry.note}${divergenceEntry.magnitude != null ? `\n\nProjected move: ${Math.abs(divergenceEntry.magnitude).toFixed(1)} slots.` : ''}`
+              : (divergenceLoading
+                  ? 'Comparing forecast to live GSC…'
+                  : divergenceError
+                    ? `Forecast-vs-GSC lookup failed: ${divergenceError}`
+                    : dv.label)
             // Pre-compute the sparkline geometry so the SVG render remains
             // inline and trivial.
             let sparkPath: string | null = null
@@ -1277,10 +1359,33 @@ function PublishLedger({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{
-                    fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
-                    background: E.gold, color: E.ivory, padding: '2px 8px',
-                  }}>STAMP · {j.region}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
+                      background: E.gold, color: E.ivory, padding: '2px 8px',
+                    }}>STAMP · {j.region}</span>
+                    {canonical && (
+                      <span
+                        data-testid={`studio-divergence-chip-${j.id}`}
+                        title={dvTooltip}
+                        style={{
+                          fontFamily: C.mono, fontSize: 9, letterSpacing: '0.06em', fontWeight: 700,
+                          padding: '2px 7px', borderRadius: 0,
+                          background: dv.bg, color: dv.fg, border: `1px solid ${dv.border}`,
+                          cursor: 'help', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {dv.glyph} {divergenceStatus === 'agree' && (divergenceEntry?.magnitude != null
+                          ? `FORECAST ✓ GSC (${Math.abs(divergenceEntry.magnitude).toFixed(1)} slots)`
+                          : 'FORECAST ✓ GSC')}
+                        {divergenceStatus === 'disagree' && (divergenceEntry?.magnitude != null
+                          ? `DIVERGE (${Math.abs(divergenceEntry.magnitude).toFixed(1)} off)`
+                          : 'DIVERGE')}
+                        {divergenceStatus === 'missing' && 'NO FORECAST'}
+                        {divergenceStatus === 'unknown' && (divergenceLoading ? 'CHECKING…' : 'AWAITING GSC')}
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => canonical && runVerify(j.id, canonical)}
