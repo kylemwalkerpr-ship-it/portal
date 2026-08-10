@@ -4519,6 +4519,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const gscStatusRef = React.useRef<Record<string, unknown> | null>(null)
   const [gscConnectOpen, setGscConnectOpen] = React.useState(false)
 
+  // Model calibration status — fetched once on mount + polled every 5 min
+  const [modelCalibration, setModelCalibration] = React.useState<{
+    lastCalibratedAt: string | null
+    modelVersion: string
+    eventsCount: number
+    accuracy: number | null
+    accuracyTrend: 'improving' | 'stable' | 'declining' | null
+    recentRuns: number
+  } | null>(null)
+
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
@@ -4809,6 +4819,20 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const id = setInterval(loadGscStatus, 30_000)
     return () => clearInterval(id)
   }, [loadGscStatus])
+
+  const loadModelCalibration = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/model-calibration', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (res.ok && data.ok) setModelCalibration(data)
+    } catch { /* silent */ }
+  }, [])
+
+  React.useEffect(() => {
+    loadModelCalibration()
+    const id = setInterval(loadModelCalibration, 5 * 60_000) // every 5 min
+    return () => clearInterval(id)
+  }, [loadModelCalibration])
 
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
@@ -6078,7 +6102,111 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               <AiKeyVaultPanel onChanged={() => { fetchSuggestions(region) }} />
             </section>
 
-            {/* ── Row 2: GSC + Site Health side by side ── */}
+            {/* ── Row 2: Model Calibration (full width) ── */}
+            <section style={{
+              padding: 18, background: E.paper, border: '1px solid ' + E.hairline,
+            }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>🧠</span>RANKING MODEL CALIBRATION
+              </div>
+              {!modelCalibration ? (
+                <div style={{ fontFamily: C.serif, fontSize: 13, color: E.inkMuted, fontStyle: 'italic' }}>
+                  Loading calibration status…
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+                  {/* Accuracy gauge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 52, height: 52, borderRadius: '50%',
+                      border: '3px solid ' + (modelCalibration.accuracy != null
+                        ? modelCalibration.accuracy >= 80 ? E.mossGreen
+                        : modelCalibration.accuracy >= 50 ? '#C47F17'
+                        : C.red
+                        : E.hairline),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: modelCalibration.accuracy != null
+                        ? (modelCalibration.accuracy >= 80 ? E.mossSoft
+                          : modelCalibration.accuracy >= 50 ? '#FFF7ED'
+                          : '#FEF2F2')
+                        : E.parchment,
+                    }}>
+                      <span style={{
+                        fontFamily: C.serif, fontSize: 16, fontWeight: 700,
+                        color: modelCalibration.accuracy != null
+                          ? modelCalibration.accuracy >= 80 ? E.mossGreen
+                          : modelCalibration.accuracy >= 50 ? '#C47F17'
+                          : C.red
+                          : E.inkDim,
+                      }}>
+                        {modelCalibration.accuracy != null ? `${modelCalibration.accuracy}%` : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: C.serif, fontSize: 14, fontWeight: 600, color: E.ink }}>
+                        Forecast Accuracy
+                      </div>
+                      <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
+                        {modelCalibration.accuracyTrend === 'improving' ? '↗ Improving' : modelCalibration.accuracyTrend === 'declining' ? '↘ Declining' : modelCalibration.accuracyTrend === 'stable' ? '→ Stable' : 'No trend data'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Calibration details */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 70 }}>Version</span>
+                      <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: E.ink }}>
+                        {modelCalibration.modelVersion}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 70 }}>Last calibrated</span>
+                      <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: E.ink }}>
+                        {modelCalibration.lastCalibratedAt
+                          ? new Date(modelCalibration.lastCalibratedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : 'Never'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 70 }}>Events</span>
+                      <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: E.ink }}>
+                        {modelCalibration.eventsCount} reward events
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 70 }}>Recent runs</span>
+                      <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, color: E.ink }}>
+                        {modelCalibration.recentRuns} forecasts (30d)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status badge */}
+                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <span style={{
+                      padding: '4px 10px', borderRadius: 0, fontSize: 9,
+                      fontFamily: C.mono, fontWeight: 700, letterSpacing: '0.08em',
+                      background: modelCalibration.lastCalibratedAt
+                        ? (modelCalibration.accuracy != null && modelCalibration.accuracy >= 70 ? E.mossSoft : '#FFF7ED')
+                        : '#FEF2F2',
+                      color: modelCalibration.lastCalibratedAt
+                        ? (modelCalibration.accuracy != null && modelCalibration.accuracy >= 70 ? E.mossGreen : '#C47F17')
+                        : C.red,
+                    }}>
+                      {modelCalibration.lastCalibratedAt
+                        ? (modelCalibration.accuracy != null && modelCalibration.accuracy >= 70 ? '✓ HEALTHY' : '⚠ NEEDS DATA')
+                        : '✕ NOT CALIBRATED'}
+                    </span>
+                    <span style={{ fontSize: 8, color: E.inkDim, fontFamily: C.mono }}>
+                      auto-calibrates weekly via reward loop
+                    </span>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* ── Row 3: GSC + Site Health side by side ── */}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14,
             }}>
