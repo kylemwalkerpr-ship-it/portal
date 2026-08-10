@@ -12,7 +12,7 @@ import {
 describe('studioPipeline · discover → track order', () => {
   it('starts with Discover and ends with Track', () => {
     expect(DISSERTATION_STAGES).toEqual([
-      'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure',
+      'discover', 'research', 'draft', 'review', 'approve', 'track', 'configure',
     ])
     expect(DISSERTATION_STAGES[0]).toBe('discover')
     expect(DISSERTATION_STAGES.at(-1)).toBe('configure')
@@ -22,7 +22,7 @@ describe('studioPipeline · discover → track order', () => {
     expect(LEGACY_STAGE_ALIASES).toMatchObject({
       identify: 'discover', insights: 'discover', survey: 'discover', operations: 'discover',
       define: 'research', investigate: 'research',
-      create: 'plan', brief: 'plan', question: 'research',
+      create: 'research', brief: 'research', plan: 'research', question: 'research',
       write: 'draft', pipeline: 'draft', queue: 'draft',
       defend: 'review',
       publish: 'track',
@@ -49,16 +49,17 @@ describe('studioPipeline · discover → track order', () => {
 
   it('provides monotonic stage indexes for readiness guards', () => {
     expect(stageIndex('discover')).toBe(0)
-    expect(stageIndex('track')).toBe(6)
-    expect(stageIndex('configure')).toBe(7)
-    expect(stageIndex('plan')).toBeLessThan(stageIndex('draft'))
-    expect(isStageAtOrBefore('research', 'plan')).toBe(true)
+    expect(stageIndex('draft')).toBe(2)
+    expect(stageIndex('track')).toBe(5)
+    expect(stageIndex('configure')).toBe(6)
+    expect(stageIndex('research')).toBeLessThan(stageIndex('draft'))
+    expect(isStageAtOrBefore('research', 'draft')).toBe(true)
     expect(isStageAtOrBefore('track', 'approve')).toBe(false)
   })
 
   it('falls back to the nearest available prerequisite, not an unrelated tab', () => {
-    expect(nearestAvailableStage('track', { discover: true, research: true, plan: true, draft: true, review: true, approve: false, track: false })).toBe('review')
-    expect(nearestAvailableStage('track', { discover: true, research: true, plan: false, draft: false, review: false, approve: false, track: false })).toBe('research')
+    expect(nearestAvailableStage('track', { discover: true, research: true, draft: true, review: true, approve: false, track: false })).toBe('review')
+    expect(nearestAvailableStage('track', { discover: true, research: true, draft: false, review: false, approve: false, track: false })).toBe('research')
     expect(nearestAvailableStage('discover', { discover: true })).toBe('discover')
   })
 

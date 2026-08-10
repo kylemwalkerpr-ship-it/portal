@@ -5,18 +5,17 @@
  * Each stage maps to a real SEO workflow:
  *
  * I   Discover   — scan all signals, find gaps & opportunities (GSC, radar, insights)
- * II  Research   — keywords, search intent, topical authority, competitor landscape
- * III Plan       — brief, target audience, structure, interlinks
- * IV  Draft      — AI generation, pipeline jobs, live stream
- * V   Review     — quality gate, compliance audit, re-audit, fix blockers
- * VI  Approve    — PR, merge to main, deploy monitor
- * VII Track      — publication ledger, canonical verification, GSC position tracking
- * VIII Configure — AI models, API keys, GSC connection, system settings
+ * II  Research   — keyword research + planning: intent, audience, interlinks, brief template
+ * III Draft      — AI generation against the strict brief template, pipeline jobs, live stream
+ * IV  Review     — quality gate, compliance audit, re-audit, fix blockers
+ * V   Approve    — PR, merge to main, deploy monitor
+ * VI  Track      — publication ledger, canonical verification, GSC position tracking
+ * VII Configure  — AI models, API keys, GSC connection, system settings
  */
-export type StudioStage = 'discover' | 'research' | 'plan' | 'draft' | 'review' | 'approve' | 'track' | 'configure'
+export type StudioStage = 'discover' | 'research' | 'draft' | 'review' | 'approve' | 'track' | 'configure'
 
 export const DISSERTATION_STAGES: readonly StudioStage[] = [
-  'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure',
+  'discover', 'research', 'draft', 'review', 'approve', 'track', 'configure',
 ] as const
 
 /**
@@ -33,7 +32,7 @@ export const LEGACY_STAGE_ALIASES: Readonly<Record<string, StudioStage>> = {
   // v0 legacy tokens
   insights: 'discover', identify: 'discover', survey: 'discover', operations: 'discover',
   define: 'research', investigate: 'research',
-  create: 'plan', brief: 'plan', question: 'research',
+  create: 'research', brief: 'research', plan: 'research', question: 'research',
   write: 'draft', pipeline: 'draft', queue: 'draft',
   // v1 academic labels → new canonical keys
   defend: 'review',

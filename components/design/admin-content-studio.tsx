@@ -687,13 +687,13 @@ function ChapterIntro({
   prev?: string
   onJump?: (k: StudioTab) => void
 }) {
-  const order: StudioTab[] = ['discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure']
+  const order: StudioTab[] = ['discover', 'research', 'draft', 'review', 'approve', 'track', 'configure']
   const numerals: Record<StudioTab, string> = {
-    discover: 'I', research: 'II', plan: 'III', draft: 'IV',
-    review: 'V', approve: 'VI', track: 'VII', configure: 'VIII',
+    discover: 'I', research: 'II', draft: 'III',
+    review: 'IV', approve: 'V', track: 'VI', configure: 'VII',
   }
   const titles: Record<StudioTab, string> = {
-    discover: 'Discover', research: 'Research', plan: 'Plan',
+    discover: 'Discover', research: 'Research & Plan',
     draft: 'Draft', review: 'Review', approve: 'Approve', track: 'Track',
     configure: 'Configure',
   }
@@ -836,7 +836,7 @@ function DefendPanel({
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
               <div>
                 <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-                  STAGE V · REVIEW
+                  STAGE IV · REVIEW
                 </div>
                 <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
                   {selectedJob.title}
@@ -979,7 +979,7 @@ function ApprovePanel({
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE VI · APPROVE</div>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE V · APPROVE</div>
         <h3 style={{ margin: '4px 0 12px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Push to main · {prOpen.length} open PR{prOpen.length === 1 ? '' : 's'}</h3>
         {prOpen.length === 0 && (
           <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
@@ -1284,7 +1284,7 @@ function PublishLedger({
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
         <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-          STAGE VII · TRACK
+          STAGE VI · TRACK
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
@@ -3695,9 +3695,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
-    research: { available: true, reason: 'Research keywords and intent — define your topic here.' },
-    plan: { available: hasTopic, reason: 'Pin a topic or opportunity before building the plan.' },
-    draft: { available: hasBriefReady, reason: 'Complete the research and plan before drafting.' },
+    research: { available: true, reason: 'Research keywords and build the brief — always accessible.' },
+    draft: { available: hasBriefReady, reason: 'Complete the research brief before drafting.' },
     review: { available: hasDraft || hasReviewableJob, reason: 'A generated job must exist before review.' },
     approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
     track: { available: hasPublication, reason: 'A merged or canonical result must exist before the publication ledger.' },
@@ -4383,18 +4382,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const engVoice = (engine.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
   const engGate = (engine.gate as { passRate?: number } | undefined)?.passRate
 
-  // PhD-style 8-chapter taxonomy. Each tab routes to a distinct stage of the
-  // research process; back-compat aliases map legacy tab tokens to the
-  // chapter they used to live under (see  above).
+  // 7-stage pipeline taxonomy. Each tab routes to a distinct stage.
+  // Back-compat aliases map legacy tab tokens to the stage they belong to.
   const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
-    { key: 'discover', numeral: 'I',   label: 'Discover', sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
-    { key: 'research', numeral: 'II',  label: 'Research', sub: 'Keywords & Intent',      hint: 'Intent · difficulty · topical authority' },
-    { key: 'plan',     numeral: 'III', label: 'Plan',     sub: 'Brief & Strategy',        hint: 'Target · audience · format · interlinks' },
-    { key: 'draft',    numeral: 'IV',  label: 'Draft',    sub: 'Generate & Pipeline',     hint: `${jobTotal || jobs.length} jobs · live` },
-    { key: 'review',   numeral: 'V',   label: 'Review',   sub: 'Quality & Compliance',    hint: 'Re-audit · blockers · gate' },
-    { key: 'approve',  numeral: 'VI',  label: 'Approve',  sub: 'PR & Deploy',             hint: 'Merge · deploy · monitor' },
-    { key: 'track',     numeral: 'VII',  label: 'Track',     sub: 'Publication Ledger',      hint: 'Canonical · GSC · forecast vs actual' },
-    { key: 'configure', numeral: 'VIII', label: 'Configure', sub: 'System Settings',          hint: 'AI models · API keys · GSC · health' },
+    { key: 'discover',  numeral: 'I',   label: 'Discover',  sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
+    { key: 'research',  numeral: 'II',  label: 'Research',  sub: 'Keywords & Brief',       hint: 'Intent · keywords · interlinks · template' },
+    { key: 'draft',     numeral: 'III', label: 'Draft',     sub: 'Generate & Pipeline',    hint: `${jobTotal || jobs.length} jobs · live` },
+    { key: 'review',    numeral: 'IV',  label: 'Review',    sub: 'Quality & Compliance',   hint: 'Re-audit · blockers · gate' },
+    { key: 'approve',   numeral: 'V',   label: 'Approve',   sub: 'PR & Deploy',            hint: 'Merge · deploy · monitor' },
+    { key: 'track',     numeral: 'VI',  label: 'Track',     sub: 'Publication Ledger',     hint: 'Canonical · GSC · forecast vs actual' },
+    { key: 'configure', numeral: 'VII', label: 'Configure', sub: 'System Settings',         hint: 'AI models · API keys · GSC · health' },
   ]
 
   return (
@@ -4557,7 +4554,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           jobs clock, and queue stats. Downstream of Discover → Research → Plan. */}
       {tab === 'draft' && (
         <ChapterIntro
-          numeral="IV"
+          numeral="III"
           title="Draft"
           subtitle="Generate against the plan: AI-powered content creation with live streaming, pipeline jobs, and parallel quality audits — all in one reproducible pipeline."
           chapterKey="draft"
@@ -4566,7 +4563,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             { chip: 'Queue',       text: 'Every active job with bulk rerun / resume / abandon / clear; per-job clock + ETA.' },
             { chip: 'Audit',       text: 'First-pass audit runs in parallel and writes the first-pass score into the gate badge.' },
           ]}
-          prev="III · Plan"
+          prev="II · Research"
           next="V · Review"
           onJump={selectTab}
         />
@@ -4576,7 +4573,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE IV · GENERATE</div>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE III · GENERATE</div>
                 <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Generate against the plan</h3>
                 <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
                   Generation is deliberately downstream of Discover, Research, and Plan. The live stream above and the queue below are the only execution surfaces in this stage.
@@ -4584,7 +4581,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </div>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                 <button type="button" onClick={() => selectTab('research')} style={actionGhostStyle()}>← Research</button>
-                <button type="button" onClick={() => selectTab('plan')} style={actionBtnStyle(E.gold)}>Review plan →</button>
+                <button type="button" onClick={() => selectTab('research')} style={actionBtnStyle(E.gold)}>Review brief →</button>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
@@ -4605,25 +4602,23 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {/* ══════════ II / III · QUESTION + METHOD ══════════ */}
       {/* Dissertation Chapters II–III — freeze the research question, then
           translate it into a reproducible strategy. */}
-      {(tab === 'research' || tab === 'plan') && (
+      {tab === 'research' && (
         <ChapterIntro
-          numeral={tab === 'plan' ? 'III' : 'II'}
-          title={tab === 'plan' ? 'Plan' : 'Research'}
-          subtitle={tab === 'plan'
-            ? 'Translate the research into a concrete plan: intent, audience, keywords, format, destination, and interlink strategy.'
-            : 'Research what matters. Analyze keyword intent, topical authority, competitor landscape, and the primary question the content must answer before building the plan.'}
-          chapterKey={tab === 'plan' ? 'plan' : 'research'}
+          numeral="II"
+          title="Research & Plan"
+          subtitle="Keywords are the core. Research intent, validate against cannibalization, wire interlinks, and produce a strict brief template — every parameter frozen before the first token is generated."
+          chapterKey="research"
           scope={[
-            { chip: 'Target',     text: 'Region (US / CA / AU / UK / COMPARE · legal-only) and content type.' },
-            { chip: 'Voice',      text: 'Tone, format style, AI provider; ensures the generator matches the brief voice.' },
-            { chip: 'Topic',      text: 'Slug anchor + page title + topic sentence + audience sentence.' },
+            { chip: 'Keywords',   text: 'Live keyword counts (short-tail ≥5 + long-tail ≥4), density targets, and search intent mapped from GSC signals.' },
+            { chip: 'Template',   text: 'A strict instruction set with guard rails: no guesswork, no hallucinations — every section prescribed.' },
+            { chip: 'Interlinks', text: 'Wired from the interlink registry: caseworks → regional → marketplace funnel.' },
           ]}
-          prev={tab === 'plan' ? 'II · Research' : 'I · Discover'}
-          next={tab === 'plan' ? 'IV · Draft' : 'III · Plan'}
+          prev="I · Discover"
+          next="III · Draft"
           onJump={selectTab}
         />
       )}
-      {(tab === 'research' || tab === 'plan') && (
+      {tab === 'research' && (
         <div id={`studio-panel-${tab}`} role="tabpanel" aria-labelledby={`studio-tab-${tab}`} style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
@@ -4655,7 +4650,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </button>
             </div>
           )}
-          {tab === 'plan' ? (
+          {true ? (
             <Step2Investigate
               generating={generating}
               onGenerate={handleGenerate}
@@ -4850,10 +4845,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Topic pinned: <span style={{ color: E.gold }}>{topic}</span></div>
-                <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Your research question is defined. Advance to build the plan.</div>
+                <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Your brief is ready. Advance to build the plan.</div>
               </div>
-              <button type="button" onClick={() => selectTab('plan')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
-                Next: Plan →
+              <button type="button" onClick={() => selectTab('research')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
+                Generate Draft →
               </button>
             </div>
           )}
@@ -5126,7 +5121,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'review' && (
         <>
           <ChapterIntro
-          numeral="V"
+          numeral="IV"
           title="Review"
           subtitle="Every claim must hold against the quality gate. Edit, re-audit, and regenerate until content, format, ownership, and compliance checks are green."
           chapterKey="review"
@@ -5135,8 +5130,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               { chip: 'Re-audit',     text: 'One click audits against the live content quality gate.' },
               { chip: 'Blockers',     text: 'Each blocker is listed with the exact line that triggered it and the remediation guidance.' },
             ]}
-            prev="IV · Draft"
-            next="VI · Approve"
+            prev="III · Draft"
+            next="V · Approve"
             onJump={selectTab}
           />
           <DefendPanel
@@ -5188,7 +5183,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'approve' && (
         <>
           <ChapterIntro
-          numeral="VI"
+          numeral="V"
           title="Approve"
           subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, and record the merge outcome before publication verification."
           chapterKey="approve"
@@ -5197,8 +5192,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
               { chip: 'Rollback',      text: 'A single click reverts the change and removes it from the citation ledger.' },
             ]}
-            prev="V · Review"
-            next="VII · Track"
+            prev="IV · Review"
+            next="VI · Track"
             onJump={selectTab}
           />
           <ApprovePanel
@@ -5219,7 +5214,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'track' && (
         <>
           <ChapterIntro
-          numeral="VII"
+          numeral="VI"
           title="Track"
           subtitle="The content is live. Verify the canonical URL, record the live result, and preserve the citation and GSC evidence for reward calibration."
           chapterKey="track"
@@ -5228,7 +5223,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               { chip: 'Verified URL',  text: 'Each URL is re-checked live: 200 OK + canonical tag intact.' },
               { chip: 'Citation index', text: 'Blog → regional canonicals → cross-repo hyperlinks: a navigable citation graph.' },
             ]}
-            prev="VI · Approve"
+            prev="V · Approve"
             onJump={selectTab}
           />
           <PublishLedger
@@ -5253,7 +5248,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               { chip: 'GSC', text: 'Connect Google Search Console via OAuth or service-account key.' },
               { chip: 'Health', text: 'Site health checks, deep interlink registry, and system diagnostics.' },
             ]}
-            prev="VII · Track"
+            prev="VI · Track"
             onJump={selectTab}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
