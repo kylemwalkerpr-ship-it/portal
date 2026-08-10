@@ -857,9 +857,22 @@ function DefendPanel({
           {blockers.length === 0 ? (
             <div style={{
               padding: 18, background: '#e9f7ee', border: '1px solid #0f7a3a', borderRadius: 0,
-              fontFamily: C.serif, color: '#0a4d24', fontSize: 14,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             }}>
-              ✓ All quality blockers cleared. The draft is ready to advance to VII · Approve.
+              <div style={{ fontFamily: C.serif, color: '#0a4d24', fontSize: 14 }}>
+                ✓ All quality blockers cleared. Ready to advance to VI · Approve.
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenJob(selectedJob)}
+                style={{
+                  padding: '8px 18px', background: 'transparent', color: '#0f7a3a',
+                  border: '1px solid #0f7a3a', borderRadius: 0, cursor: 'pointer',
+                  fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                }}
+              >
+                Review in editor →
+              </button>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -898,7 +911,7 @@ function DefendPanel({
 // Surfaces the PR/monitor surface for the selected job. Each merged job
 // renders a status badge, deploy indicator, and a one-click rollback.
 function ApprovePanel({
-  selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge,
+  selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge, onMerged,
 }: {
   selectedJob: ContentJob | null
   jobs: ContentJob[]
@@ -906,6 +919,7 @@ function ApprovePanel({
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
   onApproveAndMerge?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
+  onMerged?: () => void
 }) {
   const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
   const approvable = jobs.filter((j) => j.status === 'drafting' || j.status === 'pending')
@@ -942,15 +956,17 @@ function ApprovePanel({
 
     try {
       const result = await onApproveAndMerge(j)
+      const ok = result.ok
       setApproveProgress((prev) => ({
         ...prev,
         [j.id]: {
-          stage: result.ok ? 'ok' : 'failed',
-          message: result.message || (result.ok ? 'PR merged · deploy live' : 'Push failed'),
+          stage: ok ? 'ok' : 'failed',
+          message: result.message || (ok ? 'PR merged · deploy live' : 'Push failed'),
           startedAt: prev[j.id]?.startedAt || started,
           finishedAt: Date.now(),
         },
       }))
+      if (ok) onMerged?.()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Push failed'
       setApproveProgress((prev) => ({
@@ -959,7 +975,7 @@ function ApprovePanel({
       }))
       setActionNotice?.(message)
     }
-  }, [onApproveAndMerge, setActionNotice])
+  }, [onApproveAndMerge, setActionNotice, onMerged])
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
@@ -4191,7 +4207,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         streamedChars={generationChars}
         completedJob={generationReviewJob}
         mergeBusy={generationMergeBusy}
-        onOpenReview={generationReviewJob ? () => setSelectedJob(generationReviewJob) : undefined}
+        onOpenReview={generationReviewJob ? () => { setSelectedJob(generationReviewJob); selectTab('review') } : undefined}
         onPushToMerge={() => void pushGenerationToMerge()}
       />
 
@@ -4440,6 +4456,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
               regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
             />
+          )}
+          {/* Next-stage CTA: visible when on Research tab with a topic pinned */}
+          {tab === 'research' && topic.trim() && (
+            <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Topic pinned: <span style={{ color: E.gold }}>{topic}</span></div>
+                <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Your research question is defined. Advance to build the plan.</div>
+              </div>
+              <button type="button" onClick={() => selectTab('plan')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
+                Next: Plan →
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -4707,6 +4735,21 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
           />
+          {selectedJob && (() => {
+            const gate = gateByJob.get(selectedJob.id)
+            const ok = gate?.passed === true || (gate?.score != null && gate.score >= 90)
+            return ok ? (
+              <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Gate cleared — ready for approval</div>
+                  <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>All quality and compliance checks passed. Push to main and deploy.</div>
+                </div>
+                <button type="button" onClick={() => selectTab('approve')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
+                  Next: Approve →
+                </button>
+              </div>
+            ) : null
+          })()}
         </>
       )}
 
@@ -4737,6 +4780,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
             onApproveAndMerge={runApproveAndMerge}
+            onMerged={() => { void fetchJobs(); selectTab('track') }}
           />
         </>
       )}
