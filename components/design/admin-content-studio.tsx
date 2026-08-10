@@ -4547,6 +4547,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     lastSiteScan: string | null
     totalShipped: number
   } | null>(null)
+  const [siteAuditBusy, setSiteAuditBusy] = React.useState(false)
 
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
@@ -6274,9 +6275,21 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                       value: systemHealth.lastSiteScan
                         ? new Date(systemHealth.lastSiteScan).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                         : 'Never',
-                      sub: systemHealth.lastSiteScan ? 'last audit run' : 'run site health audit',
+                      sub: siteAuditBusy ? '⏳ auditing…' : systemHealth.lastSiteScan ? 'last audit run' : 'run site health audit',
                       icon: '🩺',
                       color: systemHealth.lastSiteScan ? E.mossGreen : E.inkDim,
+                      action: !siteAuditBusy ? (async () => {
+                        setSiteAuditBusy(true)
+                        try {
+                          await fetch('/api/content-studio/site-health', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ action: 'audit', scope: 'all' }),
+                          })
+                          await loadSystemHealth()
+                        } catch { /* silent */ }
+                        finally { setSiteAuditBusy(false) }
+                      }) : undefined,
                     },
                     {
                       label: 'Interlinks',
@@ -6314,6 +6327,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                         <div style={{ fontFamily: C.mono, fontSize: 8, color: E.inkDim }}>
                           {metric.sub}
                         </div>
+                        {(metric as any).action && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); (metric as any).action() }}
+                            style={{
+                              marginTop: 4, padding: '3px 8px', borderRadius: 0,
+                              border: '1px solid ' + E.gold,
+                              background: 'transparent', color: E.gold,
+                              fontFamily: C.mono, fontSize: 7, fontWeight: 700,
+                              letterSpacing: '0.1em', cursor: 'pointer',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {siteAuditBusy ? '⏳ Running…' : 'Run audit →'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
