@@ -9,7 +9,7 @@ import {
   minWordsForType,
   targetWordsForType,
 } from './contentDepth'
-import { evaluateContentQuality } from './contentQualityGate'
+import { evaluateContentQuality, DISCLAIMER_RE } from './contentQualityGate'
 
 export interface AuditFinding {
   code: string
@@ -246,8 +246,10 @@ export function auditContent(opts: {
     passes.push({ code: 'robots_index', severity: 'pass', message: 'Indexable intent (no noindex)' })
   }
 
-  // Disclaimer / not legal advice (quality gate also blocks when missing on indexable)
-  const hasDisclaimer = /not legal advice|editorial|consult (an? )?(attorney|lawyer|solicitor)/i.test(body)
+  // Disclaimer / not legal advice — MUST match the quality gate's DISCLAIMER_RE
+  // exactly. A looser local regex here lets the audit read 100/100 while the
+  // ship gate still refuses (the reported "100% audit but blocked" failure).
+  const hasDisclaimer = DISCLAIMER_RE.test(body)
   add(hasDisclaimer, {
     code: 'disclaimer',
     severity: wantIndexable ? 'blocker' : 'warning',

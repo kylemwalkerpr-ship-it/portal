@@ -15,6 +15,7 @@ import { renderTargetFile } from './renderTarget'
 import { assertShipAllowed } from './shipGate'
 import { assertContentDepth } from './contentDepth'
 import { assertQualityGate } from './contentQualityGate'
+import { applyDeterministicRepairs } from './editorialScaffold'
 import {
   createBranchFrom,
   getBranchHeadSha,
@@ -173,7 +174,28 @@ export async function shipContent(opts: {
 
   // Auto index: this article passed every gate — strip any stale noindex
   // directive so the shipped page is indexable by default.
-  const shipContent_ = opts.plan.indexable ? stripNoIndex(opts.content) : opts.content
+  let shipContent_ = opts.plan.indexable ? stripNoIndex(opts.content) : opts.content
+
+  // Deterministic compliance repair BEFORE the master gate stack. A missing
+  // disclaimer or broken reader TOC must never block a ship that a mechanical
+  // fix can resolve — the studio's "Fix & regenerate" and manual ship both
+  // converge on the same repaired content instead of failing forever.
+  {
+    const repaired = applyDeterministicRepairs({
+      content: shipContent_,
+      title: opts.title,
+      primaryKeyword: opts.primaryKeyword,
+      region: opts.region,
+      indexable: opts.plan.indexable,
+      contentType: opts.contentType,
+    })
+    if (repaired.applied.length) {
+      shipContent_ = repaired.content
+      console.info(
+        `[ship] deterministic repair applied before gates: ${repaired.applied.join(', ')}`,
+      )
+    }
+  }
 
   const { filePath, fileContent } = renderTargetFile({
     plan: opts.plan,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateContentText } from '@/lib/contentAiProvider'
 import { evaluateContentQuality, type QualityFinding } from '@/lib/seoFactory/contentQualityGate'
 import { buildTargetedSweepPrompt } from '@/lib/seoFactory/contentQualityGate'
+import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 
 export type InlineAnnotation = {
   id: string; line: number; col: number; endLine: number; endCol: number
@@ -13,6 +14,7 @@ export type ReauditResponse = {
   ok: boolean; score: number; summary: string
   annotations: InlineAnnotation[]; blockers: number; warnings: number
   fixedContent?: string
+  appliedRepairs?: string[]
 }
 
 function indexToLineCol(content: string, index: number) {
@@ -122,17 +124,35 @@ export async function POST(request: NextRequest) {
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
-    const result = evaluateContentQuality({ content, contentType, primaryKeyword, indexable })
+    // Deterministic compliance repair first: a missing disclaimer or broken
+    // reader TOC is a mechanical fix — apply it now so the audit reflects the
+    // content that can actually ship, and return the repaired draft so the
+    // editor shows the cleared state (no more "100/100 but blocked").
+    // indexable/contentType pass through so the YMYL disclaimer is not forced
+    // onto marketplace gigs or non-indexable content.
+    const repaired = applyDeterministicRepairs({
+      content,
+      primaryKeyword: primaryKeyword || 'guide',
+      indexable,
+      contentType,
+    })
+    const effective = repaired.content
+    const result = evaluateContentQuality({ content: effective, contentType, primaryKeyword, indexable })
     const annotations: InlineAnnotation[] = []
-    for (const b of result.blockers) annotations.push(...findingToAnnotations(content, b))
+    for (const b of result.blockers) annotations.push(...findingToAnnotations(effective, b))
     for (const w of result.warnings) annotations.push(
-      ...findingToAnnotations(content, { ...w, severity: 'warning' as const }),
+      ...findingToAnnotations(effective, { ...w, severity: 'warning' as const }),
     )
-    return NextResponse.json({
+    const response: ReauditResponse = {
       ok: result.ok, score: result.humanScore, summary: result.summary,
       annotations: annotations.slice(0, 60), blockers: result.blockers.length,
       warnings: result.warnings.length,
-    } as ReauditResponse)
+    }
+    if (repaired.applied.length && effective !== content) {
+      response.fixedContent = effective
+      response.appliedRepairs = repaired.applied
+    }
+    return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Re-audit failed'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -149,6 +169,7 @@ export async function PATCH(request: NextRequest) {
       annotation?: InlineAnnotation
       contentType?: string
       primaryKeyword?: string
+      indexable?: boolean
     }
     const { action, content, annotations, annotation, contentType, primaryKeyword } = body
     if (!content || !action) {
@@ -218,6 +239,16 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       )
     }
 
+    // Deterministic repair after AI fix — the model may still omit the
+    // disclaimer; we never ship a draft that a mechanical fix can clear.
+    const repaired = applyDeterministicRepairs({
+      content: fixedContent,
+      primaryKeyword: primaryKeyword || 'guide',
+      indexable: body.indexable,
+      contentType,
+    })
+    fixedContent = repaired.content
+
     // Re-evaluate the fixed content
     const reResult = evaluateContentQuality({
       content: fixedContent, contentType, primaryKeyword,
@@ -228,7 +259,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       ...findingToAnnotations(fixedContent, { ...w, severity: 'warning' as const }),
     )
 
-    return NextResponse.json({
+    const response: ReauditResponse = {
       ok: reResult.ok,
       score: reResult.humanScore,
       summary: reResult.summary,
@@ -236,7 +267,9 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       blockers: reResult.blockers.length,
       warnings: reResult.warnings.length,
       fixedContent,
-    } as ReauditResponse)
+    }
+    if (repaired.applied.length) response.appliedRepairs = repaired.applied
+    return NextResponse.json(response)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'AI fix failed'
     const timedOut = /timed out/i.test(message)

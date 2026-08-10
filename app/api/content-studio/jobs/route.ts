@@ -5,6 +5,7 @@ import { runSeoFactoryPipeline } from '@/lib/seoFactory/pipeline'
 import { shipContent, mergePullRequest, parseRepoSlug, type ShipMode } from '@/lib/seoFactory/ship'
 import { resolveOwner } from '@/lib/seoFactory/ownership'
 import { auditContent } from '@/lib/seoFactory/audit'
+import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { monitorContentJob } from '@/lib/seoFactory/deployMonitor'
 import { buildJobSummary } from '@/lib/seoFactory/jobSummary'
 
@@ -507,11 +508,20 @@ export async function PATCH(request: NextRequest) {
 
     if (action === 'reaudit') {
       // Prefer live editor content when provided so re-audit matches the pane
-      const content =
+      let content =
         body.content != null ? String(body.content) : job.content != null ? String(job.content) : ''
       if (!content.trim()) {
         return NextResponse.json({ error: 'Job has no content to audit' }, { status: 400 })
       }
+      // Deterministic compliance repair — a missing disclaimer / broken TOC
+      // clears on this run instead of blocking the ship gate forever.
+      const repaired = applyDeterministicRepairs({
+        content,
+        title: job.title || job.topic,
+        primaryKeyword: job.primary_keyword || job.topic,
+        region: job.region || 'US',
+      })
+      content = repaired.content
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
@@ -542,8 +552,10 @@ export async function PATCH(request: NextRequest) {
         content_path: plan.filePath,
         target_repo: plan.repo,
       }
-      // Persist editor draft when re-auditing unsaved content
-      if (body.content != null) patch.content = content
+      // Persist editor draft when re-auditing unsaved content, and ALWAYS
+      // persist deterministic repairs so stored content matches the audit (a
+      // repaired disclaimer/TOC must not live only in the response).
+      if (body.content != null || repaired.applied.length > 0) patch.content = content
       const { data: updated, error: upErr } = await supabase
         .from('content_jobs')
         .update(patch)
@@ -551,7 +563,7 @@ export async function PATCH(request: NextRequest) {
         .select()
         .single()
       if (upErr) throw upErr
-      return NextResponse.json({ ok: true, job: updated, audit, plan })
+      return NextResponse.json({ ok: true, job: updated, audit, plan, appliedRepairs: repaired.applied })
     }
 
     if (action === 'update_meta') {
@@ -647,15 +659,26 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'save') {
-      const content = body.content != null ? String(body.content) : job.content
-      if (content == null || !String(content).trim()) {
+      const rawContent = body.content != null ? String(body.content) : job.content
+      if (rawContent == null || !String(rawContent).trim()) {
         return NextResponse.json({ error: 'content required' }, { status: 400 })
       }
-      const title = body.title != null ? String(body.title).trim() : job.title
-      const words = String(content).trim().split(/\s+/).filter(Boolean).length
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
+      // Deterministic compliance repair on save so the stored draft matches
+      // what the ship gate requires — the blocker clears on the next run.
+      const repaired = applyDeterministicRepairs({
+        content: String(rawContent),
+        title: job.title || job.topic,
+        primaryKeyword,
+        region: job.region || 'US',
+        indexable: job.indexable !== false,
+        contentType,
+      })
+      const content = repaired.content
+      const title = body.title != null ? String(body.title).trim() : job.title
+      const words = String(content).trim().split(/\s+/).filter(Boolean).length
       let audit: any = job.audit_json
       try {
         audit = auditContent({
@@ -690,7 +713,7 @@ export async function PATCH(request: NextRequest) {
         .select()
         .single()
       if (upErr) throw upErr
-      return NextResponse.json({ ok: true, job: updated, audit })
+      return NextResponse.json({ ok: true, job: updated, audit, appliedRepairs: repaired.applied })
     }
 
     if (action === 'refresh_pr') {
@@ -1073,10 +1096,21 @@ export async function PATCH(request: NextRequest) {
       if (!content?.trim()) {
         return NextResponse.json({ error: 'Job has no content to ship' }, { status: 400 })
       }
-      const humanApproved = action === 'approve' || body.humanApproved === true
       const contentType =
         job.content_type === 'article' ? 'legal_guide' : job.content_type || 'legal_guide'
       const primaryKeyword = job.primary_keyword || job.topic
+      // Deterministic compliance repair before ship — never let a missing
+      // disclaimer or broken TOC block a human-approved delivery.
+      const shipRepair = applyDeterministicRepairs({
+        content: String(content),
+        title: job.title || job.topic,
+        primaryKeyword,
+        region: job.region || 'US',
+        indexable: job.indexable !== false,
+        contentType,
+      })
+      content = shipRepair.content
+      const humanApproved = action === 'approve' || body.humanApproved === true
       const plan = await resolveOwner({
         primaryKeyword,
         contentType,

@@ -11,7 +11,7 @@ import {
   targetWordsForType,
   maxWordsForType as depthMaxWords,
 } from './contentDepth'
-import { qualityPromptBlock } from './contentQualityGate'
+import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualityGate'
 
 export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
@@ -43,6 +43,8 @@ export function buildFactorySystemPrompt(opts: {
     '',
     qualityPromptBlock(),
     '',
+    formattingRequirementsBlock(),
+    '',
     'OWNERSHIP (must follow):',
     `- Host: ${plan.host} → repo ${plan.repo}`,
     `- Canonical: ${plan.canonicalUrl}`,
@@ -65,7 +67,16 @@ export function buildFactorySystemPrompt(opts: {
     '   - H1 (matches title; primary keyword once, natural)',
     '   - ## In 60 seconds (3–5 bullets) — answer-engine TL;DR (direct answers, not teaser)',
     '   - Opening paragraph: answer the query in ≤40 words before expanding',
+    '   - For guides with 4+ H2 sections: ## Table of contents immediately after the opening,',
+    '     as `- [Section](#section-slug)` links where the slug EXACTLY matches each H2',
+    '     (lowercase, spaces/punctuation → hyphens). Never emit anchors that differ from',
+    '     the headings.',
     '   - ≥4 H2 sections with concrete procedures, documents, risks, eligibility',
+    '   - ### only nested under ##, never skip heading levels, never use ####+',
+    '   - Wrap long optional reading (fee tables, big checklists, deep FAQ answers) in',
+    '     <details><summary>…</summary>…</details> — never inside code fences',
+    '   - Plain English (~8th-grade): define legal/technical terms on first use,',
+    '     prefer sentences under 20 words, active voice, address the reader as "you"',
     '   - Prefer one comparison or checklist table where it helps skimmers',
     '   - ## FAQ (4–6 Q&A) — each answer 40–80 words, self-contained for LLM citation',
     '   - ## Sources (bullet list of official URLs only)',

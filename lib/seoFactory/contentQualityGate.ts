@@ -494,12 +494,17 @@ export function evaluateContentQuality(opts: {
         fix: 'Add procedure, documents, risks/timelines, FAQ sections.',
       })
     }
-    if (!/^##\s+.*faq/im.test(body) && !/^###\s+.+\?/m.test(body)) {
+    if (
+      !/^##\s+.*faq/im.test(body) &&
+      !/^###\s+.+\?/m.test(body) &&
+      // Collapsible FAQ: <details><summary>Question?</summary>…
+      !/<summary>\s*[^<]*\?\s*<\/summary>/i.test(body)
+    ) {
       add({
         code: 'missing_faq',
         severity: 'blocker',
         message: 'Missing FAQ section',
-        fix: 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers).',
+        fix: 'Add ## FAQ with 4–6 Q&A pairs (self-contained answers, plain or collapsible <details>).',
       })
     }
     if (!/\.gov|\.edu|uscis\.gov|canada\.ca|homeaffairs\.gov|gov\.uk/i.test(body)) {
@@ -622,6 +627,32 @@ export function qualityPromptBlock(): string {
     '',
     'Q7. NO EMDASHES. Use periods or commas, never em dashes or en dashes.',
     '',
+    '━━━ FORMAT (reader legibility — required structure) ━━━',
+    '',
+    'Q8. TABLE OF CONTENTS. For guides with 4+ H2 sections, open with exactly:',
+    '    ## Table of contents',
+    '    - [First section](#first-section)',
+    '    - [Second section](#second-section)',
+    '    The anchor must be the heading\'s slug: lowercase, spaces and punctuation',
+    '    become hyphens ("Eligibility requirements" → #eligibility-requirements).',
+    '    The slug MUST equal the heading you write below it, or the scanner will',
+    '    flag a broken reader path.',
+    '',
+    'Q9. HEADING HIERARCHY. Exactly one H1 (the page title). Use ## for major',
+    '    sections, ### only nested under a ##, never skip levels (no H1→H3), and',
+    '    never use #### or deeper. Every ## and ### needs a plain text id that',
+    '    matches its TOC slug.',
+    '',
+    'Q10. COLLAPSIBLE SECTIONS. For long optional reading (full fee tables,',
+    '    lengthy checklists, deep FAQ answers) use HTML <details> blocks so the',
+    '    page stays scannable:',
+    '    <details>',
+    '    <summary>Full fee breakdown</summary>',
+    '    - Item one',
+    '    - Item two',
+    '    </details>',
+    '    The renderer passes these through — never wrap them in code fences.',
+    '',
     VOICE_PLAYBOOK,
     '',
     EDITORIAL_FORMATTING_CONTRACT,
@@ -641,6 +672,13 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
       lines.push('- BLOCKER [outcome_promise]: Remove affirmative promises about approval, success, timelines, or results. Do not repeat the flagged wording or discuss this instruction in the article.')
     } else if (b.code === 'sentence_start_repetition') {
       lines.push(`- BLOCKER [sentence_start_repetition]: Your sentence openings are repetitive. The pattern "${b.evidence || '?'}…" repeats too often. TARGETED FIX: scan the article for sentences starting with this prefix and rewrite every other one with a different opening word. Vary between nouns (agency names), time references, conditions, and direct instructions. Do NOT regenerate the full article — only fix the repetitive openings.`)
+    } else if (b.code === 'missing_disclaimer') {
+      lines.push(
+        '- BLOCKER [missing_disclaimer]: The page has NO disclaimer and YMYL rules forbid shipping without one. Add this exact block near the end (before or inside Sources):\n' +
+          '  ```\n  **Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ' +
+          'Immigration rules change; verify every requirement against official government sources and consult a ' +
+          'licensed attorney, solicitor, or registered migration agent for your situation.\n  ```',
+      )
     } else {
       lines.push(`- BLOCKER [${b.code}]: ${b.message}${b.fix ? ` → ${b.fix}` : ''}`)
     }
@@ -649,6 +687,39 @@ export function qualityToRefineNotes(result: QualityGateResult): string {
     lines.push(`- WARNING [${w.code}]: ${w.message}${w.fix ? ` → ${w.fix}` : ''}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * Formatting requirements shared by every remediation path — the exact same
+ * contract the model sees at generation, so fixes and first passes agree.
+ */
+export function formattingRequirementsBlock(): string {
+  return [
+    '## FORMATTING REQUIREMENTS (all jobs, all models)',
+    '',
+    '- TABLE OF CONTENTS: for guides with 4+ H2 sections, emit exactly:',
+    '    ## Table of contents',
+    '    - [Section one](#section-one)',
+    '    - [Section two](#section-two)',
+    '  Anchor = heading slug: lowercase, spaces/punctuation → hyphens. The slug',
+    '  MUST match the heading you write. Never emit raw markdown link text in a',
+    '  way that cannot resolve.',
+    '',
+    '- HEADINGS: one H1 only; ## for major sections; ### nested under ## only;',
+    '  never skip heading levels; no #### or deeper.',
+    '',
+    '- COLLAPSIBLE SECTIONS: use <details><summary>…</summary>…</details> for',
+    '  long optional reading (fee tables, big checklists, deep FAQ answers).',
+    '  Do not fence them in code blocks.',
+    '',
+    '- LANGUAGE LEVEL: plain English for a general reader (~8th-grade level).',
+    '  Define legal/technical terms on first use, prefer short sentences, keep',
+    '  the active voice, and write directly to the reader ("you").',
+    '',
+    '- SCANNABILITY: 1–3 sentence paragraphs, bullets for sets, numbered steps',
+    '  for sequences, one comparison/checklist table only where it earns its',
+    '  space, FAQ answers self-contained for answer engines.',
+  ].join('\n')
 }
 
 /**

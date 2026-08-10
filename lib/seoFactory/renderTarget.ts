@@ -5,6 +5,7 @@
  */
 
 import type { OwnerPlan } from './ownership'
+import { slugifyHeading } from './editorialScaffold'
 
 function escapeTs(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
@@ -23,6 +24,41 @@ function stripFrontMatter(content: string): { fm: Record<string, string>; body: 
     fm[k] = v
   }
   return { fm, body: m[2] }
+}
+
+/** Convert inline markdown (links, bold, italic, code) into build-safe JSX. */
+function renderInline(text: string): string {
+  const tokenPattern =
+    /(\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*)/g
+  let out = ''
+  let lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = tokenPattern.exec(text))) {
+    out += escapeJsxText(text.slice(lastIndex, m.index))
+    if (m[2] && m[3]) {
+      // [label](href) — keep TOC anchors + internal links as plain <a>,
+      // external links open in a new tab.
+      const href = m[3]
+      const external = /^https?:\/\//i.test(href)
+      const label = renderInline(m[2])
+      out += external
+        ? `<a href="${escapeJsxAttr(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        : `<a href="${escapeJsxAttr(href)}">${label}</a>`
+    } else if (m[4]) {
+      out += `<strong>${renderInline(m[4])}</strong>`
+    } else if (m[5]) {
+      out += `<code>${escapeJsxText(m[5])}</code>`
+    } else if (m[6]) {
+      out += `<em>${renderInline(m[6])}</em>`
+    }
+    lastIndex = tokenPattern.lastIndex
+  }
+  out += escapeJsxText(text.slice(lastIndex))
+  return out
+}
+
+function escapeJsxAttr(s: string): string {
+  return escapeJsxText(s).replace(/"/g, '&quot;')
 }
 
 /** Convert markdown body to simple JSX fragment strings for ArticleLayout children. */
@@ -45,10 +81,13 @@ function markdownToJsx(body: string): string {
   let inList = false
   let para: string[] = []
   let inFence = false
+  // <details>/<summary> collapsible passthrough state
+  let inDetails = false
+  let inSummary = false
 
   const flushPara = () => {
     if (!para.length) return
-    out.push(`      <p>${escapeJsxText(para.join(' '))}</p>`)
+    out.push(`      <p>${renderInline(para.join(' '))}</p>`)
     para = []
   }
   const closeList = () => {
@@ -76,8 +115,39 @@ function markdownToJsx(body: string): string {
       continue
     }
 
+    // Collapsible sections (<details> / <summary>) — pass through as JSX so
+    // long optional reading stays tucked away. Emitted verbatim because they
+    // are valid JSX intrinsic elements.
+    if (/^<details\b/i.test(trimmed)) {
+      flushPara()
+      closeList()
+      inDetails = true
+      out.push(`      ${trimmed}`)
+      continue
+    }
+    if (inDetails && /^<\/details>$/i.test(trimmed)) {
+      flushPara()
+      closeList()
+      inDetails = false
+      inSummary = false
+      out.push(`      ${trimmed}`)
+      continue
+    }
+    if (inDetails && /^<summary\b/i.test(trimmed)) {
+      flushPara()
+      closeList()
+      inSummary = true
+      out.push(`      ${trimmed}`)
+      continue
+    }
+    if (inSummary && /^<\/summary>$/i.test(trimmed)) {
+      inSummary = false
+      out.push(`      ${trimmed}`)
+      continue
+    }
+
     // Skip raw HTML blocks and markdown H1 (page already has title/H1 from layout)
-    if (trimmed.startsWith('<') || trimmed.startsWith('#' + ' ')) {
+    if ((trimmed.startsWith('<') && !inDetails) || trimmed.startsWith('#' + ' ')) {
       flushPara()
       closeList()
       continue
@@ -88,18 +158,25 @@ function markdownToJsx(body: string): string {
       closeList()
       // Skip duplicate "In 60 seconds" — Tldr already covers it
       if (/^in 60 seconds$/i.test(line.slice(3).trim())) continue
-      const id = line
-        .slice(3)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-      out.push(`      <h2 id="${id || 'section'}">${escapeJsxText(line.slice(3))}</h2>`)
+      const text = line.slice(3)
+      const id = slugifyHeading(text)
+      out.push(`      <h2 id="${id || 'section'}">${renderInline(text)}</h2>`)
       continue
     }
     if (line.startsWith('### ')) {
       flushPara()
       closeList()
-      out.push(`      <h3>${escapeJsxText(line.slice(4))}</h3>`)
+      out.push(`      <h3 id="${slugifyHeading(line.slice(4)) || 'section'}">${renderInline(line.slice(4))}</h3>`)
+      continue
+    }
+    // h4–h6: previously fell through into <p> as literal markdown — render them
+    const h4 = line.match(/^(#{4,6})\s+(.+)$/)
+    if (h4) {
+      flushPara()
+      closeList()
+      const level = Math.min(6, h4[1].length)
+      const Tag = `h${level}`
+      out.push(`      <${Tag} id="${slugifyHeading(h4[2]) || 'section'}">${renderInline(h4[2])}</${Tag}>`)
       continue
     }
     if (line.startsWith('- ') || line.startsWith('* ')) {
@@ -108,7 +185,7 @@ function markdownToJsx(body: string): string {
         out.push('      <ul>')
         inList = true
       }
-      out.push(`        <li>${escapeJsxText(line.slice(2))}</li>`)
+      out.push(`        <li>${renderInline(line.slice(2))}</li>`)
       continue
     }
     // Ordered lists → plain list items
@@ -118,7 +195,7 @@ function markdownToJsx(body: string): string {
         out.push('      <ul>')
         inList = true
       }
-      out.push(`        <li>${escapeJsxText(line.replace(/^\d+\.\s+/, ''))}</li>`)
+      out.push(`        <li>${renderInline(line.replace(/^\d+\.\s+/, ''))}</li>`)
       continue
     }
     para.push(trimmed)

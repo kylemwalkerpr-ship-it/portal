@@ -7,6 +7,7 @@
  */
 
 import { DISCLAIMER_RE } from './contentQualityGate'
+import { countBodyWords } from './contentDepth'
 
 const REGION_SOURCES: Record<string, Array<{ title: string; url: string }>> = {
   US: [
@@ -67,6 +68,169 @@ function titleLine(title: string, primaryKeyword: string): string {
   if (t.length >= 12 && t.length <= 70) return t
   if (t.length > 70) return t.slice(0, 67).replace(/\s+\S*$/, '') + '…'
   return `${t} — practical guide`.slice(0, 70)
+}
+
+/** Shared heading slug — MUST match renderTarget.markdownToJsx + StickyTOC. */
+export function slugifyHeading(text: string): string {
+  return text
+    // Strip inline markdown markers and link syntax so the slug reflects what
+    // a reader sees, not the raw syntax (same preprocessing as the renderer).
+    .replace(/[*_`]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+/** Strip inline markdown markers so a heading title is safe inside [text](#slug). */
+function plainTitle(title: string): string {
+  return title
+    .replace(/\*\*|__|`/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .trim()
+}
+
+/** Utility H2s that never belong in a reader TOC. Sources stays included —
+ * the reported reader path listed Sources, and jumping to citations is useful. */
+const TOC_EXCLUDE =
+  /^(table of contents|in 60 seconds|tldr|key takeaways|quick answer|disclaimer|related guides|next steps)$/i
+
+/**
+ * Build a linked `## Table of contents` block from the body's H2 headings.
+ * Slugs are produced by slugifyHeading — identical to the renderer — so every
+ * anchor resolves. Returns '' when there are too few sections for a TOC.
+ */
+export function buildTableOfContents(body: string): string {
+  const entries: Array<{ slug: string; title: string }> = []
+  const seen = new Set<string>()
+  for (const line of body.split('\n')) {
+    const m = line.match(/^##\s+(.+?)\s*$/)
+    if (!m) continue
+    const title = plainTitle(m[1])
+    if (!title || TOC_EXCLUDE.test(title)) continue
+    const slug = slugifyHeading(title)
+    if (!slug || seen.has(slug)) continue
+    seen.add(slug)
+    entries.push({ slug, title })
+  }
+  if (entries.length < 3) return ''
+  return [
+    '## Table of contents',
+    '',
+    ...entries.map((e) => `- [${e.title}](#${e.slug})`),
+    '',
+  ].join('\n')
+}
+
+/**
+ * Deterministically rebuild (or insert) the reader TOC so anchors always match
+ * the heading ids the renderer generates — regardless of what the AI wrote.
+ * Operates on body-only markdown (no front matter).
+ */
+export function normalizeReaderStructure(body: string): string {
+  const toc = buildTableOfContents(body)
+  const tocHeading = /^##\s+Table of contents\s*$/im
+
+  if (!toc) {
+    // Page too short for a TOC — drop a stale one if present.
+    if (tocHeading.test(body)) {
+      return body.replace(/^##\s*Table of contents\s*\n(?:- .*\n)*/im, '').replace(/\n{3,}/g, '\n\n')
+    }
+    return body
+  }
+
+  // Rebuild an existing TOC in place: consume the heading, any following
+  // list-like lines (any bullet syntax), then one trailing blank line.
+  if (tocHeading.test(body)) {
+    const lines = body.split('\n')
+    const out: string[] = []
+    let replaced = false
+    let skippedBlank = false
+    for (const line of lines) {
+      if (!replaced && tocHeading.test(line)) {
+        out.push(toc.trimEnd())
+        replaced = true
+        continue
+      }
+      if (replaced) {
+        // Drop old TOC list items (any bullet marker, not just "- ")
+        if (/^\s*[-*+1-9]\s*\[.*\]\(#/.test(line)) continue
+        // Drop exactly one blank line that separated the old list from prose
+        if (!line.trim() && !skippedBlank) {
+          skippedBlank = true
+          continue
+        }
+        if (!line.trim() && skippedBlank) {
+          out.push(line)
+          continue
+        }
+        if (line.trim()) skippedBlank = true
+      }
+      out.push(line)
+    }
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'
+  }
+
+  // Long-form without a TOC — insert before the first H2 so the reader sees a
+  // reading path under the H1 intro (covers the gate's missing_reader_path).
+  if (countBodyWords(body) < 1100) return body
+  const lines = body.split('\n')
+  const idx = lines.findIndex((l) => /^##\s+/.test(l))
+  if (idx === -1) return body
+  lines.splice(idx, 0, toc.trimEnd(), '')
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n'
+}
+
+/**
+ * Deterministic compliance repair for drafts that fail mechanical blockers
+ * (disclaimer, reader TOC, dash hygiene). Never rewrites prose. Used by the
+ * ship gate and the studio remediation loop so a miss clears on the NEXT run
+ * instead of blocking forever. Returns what was applied so UIs can surface it.
+ */
+export function applyDeterministicRepairs(opts: {
+  content: string
+  title?: string
+  primaryKeyword?: string
+  region?: string
+  /** Defaults to true. When false (or for marketplace gigs) the YMYL
+   *  disclaimer is not forced — matching evaluateContentQuality. */
+  indexable?: boolean
+  contentType?: string
+}): { content: string; applied: string[] } {
+  const applied: string[] = []
+  const { fm, body } = stripFm(opts.content || '')
+  let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
+
+  const requireDisclaimer =
+    opts.indexable !== false &&
+    String(opts.contentType || 'legal_guide').toLowerCase() !== 'marketplace_gig'
+
+  if (requireDisclaimer && !DISCLAIMER_RE.test(b)) {
+    b = `${b.trimEnd()}\n\n---\n\n**Disclaimer:** This page is educational and editorial only. It is **not legal advice**. ` +
+      'Immigration rules change; verify every requirement against official government sources and consult a ' +
+      'licensed attorney, solicitor, or registered migration agent for your situation.\n'
+    applied.push('disclaimer')
+  }
+
+  const withToc = normalizeReaderStructure(b)
+  if (withToc !== b) {
+    b = withToc
+    applied.push('table_of_contents')
+  }
+
+  const dashCount = (b.match(/[—–]/g) || []).length
+  if (dashCount > 0) {
+    b = b
+      .replace(/(\d)\s*[—–]\s*(\d)/g, '$1-$2')
+      .replace(/\s+[—–]\s+/g, ', ')
+      .replace(/[—–]/g, ', ')
+    applied.push('dashes')
+  }
+
+  const out = fm
+    ? `---\n${fm}\n---\n\n${b.trim()}\n`
+    : `${b.trim()}\n`
+  return { content: out, applied }
 }
 
 /**
@@ -188,6 +352,11 @@ let { fm, body: rawBody } = stripFm(opts.content || '')
       `$1## In 60 seconds\n\n- This guide covers **${kw}** in practical steps.\n- Confirm every rule on official government sites before you apply.\n- Use the document list and FAQ below as a checklist — not a substitute for advice.\n\n`,
     )
   }
+
+  // Deterministic reader structure: rebuild / insert the linked TOC so anchors
+  // always match the heading ids the renderer generates (AI-emitted TOCs often
+  // ship broken slugs or raw markdown text).
+  body = normalizeReaderStructure(body)
 
   const desc = metaDescriptionFrom(title, body, opts.primaryKeyword)
   const fmLines = [

@@ -140,15 +140,25 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
       })
       const data = await res.json().catch(() => ({})) as any
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      // Deterministic repairs (disclaimer / TOC / dashes) come back as
+      // fixedContent — apply them so the editor matches the audited draft and
+      // the blocker is visibly cleared, not stuck at "100/100 but blocked".
+      if (data.fixedContent && data.fixedContent !== content) {
+        onChange(data.fixedContent)
+        setDirty(true)
+      }
       setAuditResult(data)
       setAnnotations(data.annotations || [])
       setShowAnnotations(true)
       onScoreChange?.(data.score)
-      setNotice(`Score ${data.score}/100 - ${data.blockers} blocker(s), ${data.warnings} warning(s) - ${data.ok ? 'PASSED' : 'BLOCKED'}`)
+      const repairs = Array.isArray(data.appliedRepairs) && data.appliedRepairs.length
+        ? ` · auto-fixed: ${data.appliedRepairs.join(', ')}`
+        : ''
+      setNotice(`Score ${data.score}/100 - ${data.blockers} blocker(s), ${data.warnings} warning(s) - ${data.ok ? 'PASSED' : 'BLOCKED'}${repairs}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Re-audit failed')
     } finally { setBusy(false) }
-  }, [content, onScoreChange])
+  }, [content, onChange, onScoreChange])
 
   // Fix ALL annotations via AI (clicking again while running cancels the request)
   const handleFixAll = useCallback(async () => {
