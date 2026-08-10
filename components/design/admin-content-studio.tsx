@@ -4529,6 +4529,17 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     recentRuns: number
   } | null>(null)
 
+  // System health summary — aggregated metrics for Configure tab
+  const [systemHealth, setSystemHealth] = React.useState<{
+    apiKeysConfigured: number
+    gscConnected: boolean
+    gscMode: string | null
+    interlinkTotal: number
+    interlinkActive: number
+    lastSiteScan: string | null
+    totalShipped: number
+  } | null>(null)
+
   // Generation stream events
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
@@ -4833,6 +4844,20 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     const id = setInterval(loadModelCalibration, 5 * 60_000) // every 5 min
     return () => clearInterval(id)
   }, [loadModelCalibration])
+
+  const loadSystemHealth = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/content-studio/system-health', { credentials: 'same-origin' })
+      const data = await res.json()
+      if (res.ok && data.ok) setSystemHealth(data)
+    } catch { /* silent */ }
+  }, [])
+
+  React.useEffect(() => {
+    loadSystemHealth()
+    const id = setInterval(loadSystemHealth, 5 * 60_000)
+    return () => clearInterval(id)
+  }, [loadSystemHealth])
 
   // Autopilot: one click applies the full brief — everything stays editable.
   const applyBrief = React.useCallback((s: AISuggestion) => {
@@ -6206,7 +6231,89 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               )}
             </section>
 
-            {/* ── Row 3: GSC + Site Health side by side ── */}
+            {/* ── Row 3: System Health Summary ── */}
+            <section style={{
+              padding: 18, background: E.paper, border: '1px solid ' + E.hairline,
+            }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>📋</span>SYSTEM HEALTH SUMMARY
+              </div>
+              {!systemHealth ? (
+                <div style={{ fontFamily: C.serif, fontSize: 13, color: E.inkMuted, fontStyle: 'italic' }}>
+                  Loading system metrics…
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12,
+                }}>
+                  {[
+                    {
+                      label: 'API Keys',
+                      value: String(systemHealth.apiKeysConfigured),
+                      sub: 'providers configured',
+                      icon: '🔑',
+                      color: systemHealth.apiKeysConfigured >= 2 ? E.mossGreen : systemHealth.apiKeysConfigured >= 1 ? '#C47F17' : C.red,
+                    },
+                    {
+                      label: 'GSC Connection',
+                      value: systemHealth.gscConnected ? 'Connected' : 'Offline',
+                      sub: systemHealth.gscMode ? String(systemHealth.gscMode).replace('_', ' ').toUpperCase() : 'no token',
+                      icon: systemHealth.gscConnected ? '🔗' : '🔌',
+                      color: systemHealth.gscConnected ? E.mossGreen : C.red,
+                    },
+                    {
+                      label: 'Site Scanned',
+                      value: systemHealth.lastSiteScan
+                        ? new Date(systemHealth.lastSiteScan).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                        : 'Never',
+                      sub: systemHealth.lastSiteScan ? 'last audit run' : 'run site health audit',
+                      icon: '🩺',
+                      color: systemHealth.lastSiteScan ? E.mossGreen : E.inkDim,
+                    },
+                    {
+                      label: 'Interlinks',
+                      value: String(systemHealth.interlinkTotal),
+                      sub: `${systemHealth.interlinkActive} active · registry size`,
+                      icon: '🕸️',
+                      color: systemHealth.interlinkTotal > 0 ? E.mossGreen : E.inkDim,
+                    },
+                    {
+                      label: 'Shipped',
+                      value: String(systemHealth.totalShipped),
+                      sub: 'merged content jobs',
+                      icon: '📦',
+                      color: systemHealth.totalShipped > 0 ? E.mossGreen : E.inkDim,
+                    },
+                  ].map((metric, i) => (
+                    <div key={i} style={{
+                      padding: '12px 14px',
+                      border: '1px solid ' + E.hairline,
+                      borderRadius: 0,
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{metric.icon}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {metric.label}
+                        </div>
+                        <div style={{
+                          fontFamily: C.serif, fontSize: 18, fontWeight: 700,
+                          color: metric.color,
+                          lineHeight: 1.2,
+                        }}>
+                          {metric.value}
+                        </div>
+                        <div style={{ fontFamily: C.mono, fontSize: 8, color: E.inkDim }}>
+                          {metric.sub}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ── Row 4: GSC + Site Health side by side ── */}
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14,
             }}>
@@ -6268,7 +6375,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </section>
             </div>
 
-            {/* ── Row 3: Deep Interlinks (full width) ── */}
+            {/* ── Row 5: Deep Interlinks (full width) ── */}
             <section style={{
               padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
             }}>
