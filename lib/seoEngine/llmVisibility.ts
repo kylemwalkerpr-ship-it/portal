@@ -89,6 +89,7 @@ export async function auditQuery(query: string, engineLabel = 'deepseek', model:
   }
   try {
     const ai = await generateContentText({
+      aiProvider: 'openai',
       system:
         `You are an answer engine doing a research round. Answer the user's question directly, then list the authoritative sources you used as URLs. ` +
         `Be honest: only list sources you actually relied on. Return the answer text first, then a line "Sources:" followed by one URL per line.`,

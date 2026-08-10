@@ -459,6 +459,7 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     if (draft) {
       try {
         const ai = await generateContentText({
+          aiProvider: 'openai',
           system: [
             editorialBriefPromptBlock(),
             `You are the chief SEO strategist for an immigration marketplace. Ground every claim in the supplied data — never invent numbers, fees or processing times. Flag required YMYL elements (statutes, disclaimers, author credentials).`,

@@ -412,11 +412,11 @@ Return ONLY JSON. No commentary.`
 
   try {
     const res = await generateContentText({
+      aiProvider: 'openai',
       system: 'You are a senior outreach copywriter who writes short, honest, copy-edit-ready outreach emails. Output strict JSON: { "subject", "body" }. Return ONLY JSON, no commentary.',
       prompt,
       maxTokens: 600,
       temperature: 0.35,
-      aiProvider: 'auto',
     })
     const parsed = JSON.parse(res.text || '{}')
     if (parsed && typeof parsed.body === 'string' && parsed.body.length > 80) {

@@ -254,7 +254,7 @@ export async function ingestKnowledge(opts: KnowledgeIngestOptions = {}): Promis
         if (aiSummarize && aiBudget > 0) {
           aiBudget -= 1
           try {
-            const ai = await generateContentText({ system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`, prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`, maxTokens: 400, temperature: 0.2 })
+            const ai = await generateContentText({ aiProvider: 'openai', system: `You are the SEO knowledge analyst for an immigration marketplace. Summarize this item in 2 crisp sentences and tag affected stages: ${stagePromptBanks()}. Reply as JSON {"summary":"...","stages":[],"countries":[]}. Be factual — never invent numbers.`, prompt: `SOURCE: ${source.label}\nTITLE: ${tagged.title}\nBODY: ${(tagged.description || '').slice(0, 1200)}`, maxTokens: 400, temperature: 0.2 })
             const parsed = JSON.parse((ai.text || '{}').trim().replace(/^```json?/, '').replace(/```$/, '')) as { summary?: string; stages?: string[]; countries?: string[] }
             aiSummary = parsed.summary || tagged.title
             const stages = (parsed.stages || []).filter((s) => getStage(s)).slice(0, 3)
