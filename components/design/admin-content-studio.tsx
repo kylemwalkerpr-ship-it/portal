@@ -1246,6 +1246,24 @@ function PublishLedger({
     [stamps],
   )
 
+  // Live metrics summary — aggregates trend data into KPI cards
+  const metricsSummary = React.useMemo(() => {
+    const entries = Object.values(trends).filter(t => t.found !== false)
+    const positions = entries.map(t => t.position).filter((p): p is number => p != null)
+    const totalClicks = entries.reduce((sum, t) => sum + (typeof t.clicks === 'number' ? t.clicks : 0), 0)
+    const totalImpr = entries.reduce((sum, t) => sum + (typeof t.impressions === 'number' ? t.impressions : 0), 0)
+    const avgPos = positions.length ? positions.reduce((s, p) => s + p, 0) / positions.length : null
+    const avgCtr = totalImpr > 0 ? (totalClicks / totalImpr) * 100 : null
+    return {
+      totalMerged: stamps.length,
+      entriesWithData: entries.length,
+      avgPosition: avgPos,
+      totalClicks,
+      totalImpressions: totalImpr,
+      avgCtr,
+    }
+  }, [trends, stamps.length])
+
   const loadTrends = React.useCallback(async () => {
     if (!canonicalUrls.length) {
       setTrends({}); setTrendsError(null); return
@@ -1409,15 +1427,71 @@ function PublishLedger({
           Every merged draft earns a stamp below. Click <b>VERIFY</b> on each stamp to re-check HTTP 200 + canonical tag, and watch the live GSC position trend drawn next to the score.
         </p>
       </div>
+      {/* Metrics summary bar — live aggregation from GSC trend data */}
+      {stamps.length > 0 && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: 10, marginBottom: 4,
+        }}>
+          {[
+            { label: 'Total Merged', value: String(metricsSummary.totalMerged), sub: `${metricsSummary.entriesWithData} with GSC data`, icon: '📦' },
+            { label: 'Avg Position', value: metricsSummary.avgPosition != null ? metricsSummary.avgPosition.toFixed(1) : '—', sub: 'GSC 28-day avg', icon: '🎯' },
+            { label: 'Total Clicks', value: fmtN(metricsSummary.totalClicks), sub: `${fmtN(metricsSummary.totalImpressions)} impressions`, icon: '👆' },
+            { label: 'Avg CTR', value: metricsSummary.avgCtr != null ? `${metricsSummary.avgCtr.toFixed(1)}%` : '—', sub: 'click-through rate', icon: '📊' },
+          ].map((kpi, i) => (
+            <div key={i} style={{
+              padding: '10px 14px', background: E.paper,
+              border: `1px solid ${E.hairline}`, borderRadius: 0,
+              display: 'flex', flexDirection: 'column', gap: 2,
+              transition: 'all 0.2s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 14 }}>{kpi.icon}</span>
+                <span style={{ fontSize: 9, fontFamily: E.mono, letterSpacing: '0.14em', color: E.gold, textTransform: 'uppercase', fontWeight: 700 }}>
+                  {kpi.label}
+                </span>
+              </div>
+              <div style={{ fontFamily: C.serif, fontSize: 26, fontWeight: 700, color: E.ink, lineHeight: 1.1 }}>
+                {trendsLoading && !metricsSummary.entriesWithData ? (
+                  <span style={{ fontSize: 12, color: E.inkDim, fontFamily: E.mono }}>⏳ loading</span>
+                ) : kpi.value}
+              </div>
+              <div style={{ fontSize: 9, color: E.inkDim, fontFamily: E.mono }}>
+                {kpi.sub}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {stamps.length === 0 ? (
         <div style={{
-          padding: '40px 32px', background: E.paper,
+          padding: '48px 32px', background: E.paper,
           border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center',
         }}>
-          <div style={{ fontFamily: C.serif, fontSize: 18, color: E.ink, marginBottom: 6 }}>No stamps yet</div>
-          <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
-            The first merged draft from VII · Approve will become the first stamp of the citation ledger.
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📜</div>
+          <div style={{ fontFamily: C.serif, fontSize: 20, color: E.ink, marginBottom: 8 }}>Citation Ledger Awaits Its First Entry</div>
+          <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: '0 0 16px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
+            Once a draft passes the quality gate and is merged to main via <b>V · Approve</b>, it earns a permanent stamp here. Each stamp tracks the live canonical URL, GSC position trend, and model-forecast divergence over time.
           </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <span style={{
+              padding: '6px 12px', background: E.goldSoft, color: E.goldDeep,
+              fontFamily: E.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+              borderRadius: 0,
+            }}>I · Discover → gaps & opportunities</span>
+            <span style={{ fontSize: 12, color: E.inkDim, fontFamily: C.serif, alignSelf: 'center' }}>→</span>
+            <span style={{
+              padding: '6px 12px', background: E.goldSoft, color: E.goldDeep,
+              fontFamily: E.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+              borderRadius: 0,
+            }}>V · Approve → merge to main</span>
+            <span style={{ fontSize: 12, color: E.inkDim, fontFamily: C.serif, alignSelf: 'center' }}>→</span>
+            <span style={{
+              padding: '6px 12px', background: E.gold, color: E.ivory,
+              fontFamily: E.mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+              borderRadius: 0,
+            }}>VI · Track → stamp appears here</span>
+          </div>
         </div>
       ) : (
         <div style={{
