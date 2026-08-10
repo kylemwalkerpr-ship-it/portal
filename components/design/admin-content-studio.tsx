@@ -3456,8 +3456,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
-    research: { available: hasTopic, reason: 'Pin a topic or opportunity before researching keywords & intent.' },
-    plan: { available: hasBriefReady, reason: 'Complete keyword research before building the plan.' },
+    research: { available: true, reason: 'Research keywords and intent — define your topic here.' },
+    plan: { available: hasTopic, reason: 'Pin a topic or opportunity before building the plan.' },
     draft: { available: hasBriefReady, reason: 'Complete the research and plan before drafting.' },
     review: { available: hasDraft || hasReviewableJob, reason: 'A generated job must exist before review.' },
     approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
