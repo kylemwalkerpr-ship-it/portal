@@ -1,32 +1,38 @@
 'use client'
 /**
- * CONTENT STUDIO — Editorial rebuild.
+ * CONTENT STUDIO — Research-ideology pipeline.
  *
- * One workspace, one linear narrative: SEO Master Engine ingestion →
- * plan & scout → brief & launch → review → approve → ship → ship ledger.
- * Each step is a magazine-spread card with serif headers, a status pill,
- * and the previous studio features rebrushed in the same palette.
+ * Mirrors the research process without academic jargon:
+ * discover gaps → research keywords & intent → plan the brief →
+ * draft & generate → review quality → approve & merge → track live impact.
  *
- *   I.   Ingest       — SEO Master Engine brain, life-cycle cells, LLM voice.
- *   II.  Plan & Scout — Opportunity Radar + GSC mini.
- *   III. Brief        — Numbered Create wizard: Target → Brief → Interlinks → Generate.
- *   IV.  Queue        — Every job in one searchable table with gate badges & stepper.
- *   V.   Review       — Inline editor, re-audit, determinate ship blocker fixes.
- *   VI.  Approve → Ship — PR → main → Cloudflare deploy → monitor.
- *   VII. Ship Ledger  — Verified stamp grid of every merged PR + live URL history.
+ *   I.   Discover — GSC signals, radar, insights, LLM visibility, gaps & opportunities.
+ *   II.  Research — Keyword research, search intent, topical authority, competitor landscape.
+ *   III. Plan     — Brief, target audience, content type, interlinks strategy.
+ *   IV.  Draft    — AI generation, pipeline jobs, live streaming, queue management.
+ *   V.   Review   — Quality gate, compliance audit, re-audit, fix blockers.
+ *   VI.  Approve  — PR, merge to main, deploy monitor.
+ *   VII. Track    — Publication ledger, canonical verification, GSC position tracking.
  *
- * The Operations tab remains available for the former command-center
- * surfaces (Radar, Launch, Engine, Missions, Systems) without duplicating
- * any of the spread content above.
+ * Marketplace content is intentionally out of scope: this studio only ships
+ * blog/article/regional content to the approved editorial repositories.
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
+import { DISSERTATION_STAGES, isStudioStage, nearestAvailableStage, resolveStudioStage, transferCompetingWinner, type StudioStage } from '@/lib/seoFactory/studioPipeline'
+import {
+  extractMetricValues,
+  directionForMetric,
+  arrowForMetric,
+  formatMetricValue,
+  formatCtr,
+  type Metric,
+} from '@/lib/seoFactory/publishLedgerMetric'
 import { RankingModelBlock } from './admin-ranking-model-block'
 import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
-const AdminCommandCenter = React.lazy(() => import('./admin-command-center'))
 import AdminInlineEditor from './admin-inline-editor'
 
 // ── Color tokens (legacy + new editorial palette) ──
@@ -86,6 +92,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   custom: 'gpt-5.6-luna',
   grok: 'grok-3',
   deepseek: 'deepseek-chat',
+  'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
   'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
   'nvidia-deepseek': 'deepseek-ai/deepseek-v4-pro',
@@ -102,19 +109,10 @@ type ContentType = 'blog_post' | 'article' | 'regional_page'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
-type StudioTab = 'identify' | 'survey' | 'define' | 'investigate' | 'write' | 'defend' | 'approve' | 'publish'
+type StudioTab = StudioStage
 
 function isStudioTab(value: string | null): value is StudioTab {
-  return (
-    value === 'identify' ||
-    value === 'survey' ||
-    value === 'define' ||
-    value === 'investigate' ||
-    value === 'write' ||
-    value === 'defend' ||
-    value === 'approve' ||
-    value === 'publish'
-  )
+  return isStudioStage(value)
 }
 
 interface ContentJob {
@@ -246,6 +244,7 @@ const AI_PROVIDER_OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (Grok → OpenAI → rest)' },
   { value: 'grok', label: 'Grok (xAI)' },
   { value: 'openai', label: 'OpenAI (GPT-5.6 Luna)' },
+  { value: 'nvidia-nemotron', label: 'NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b)' },
   { value: 'nvidia-glm', label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 · preferred)' },
   { value: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten (preferred)' },
   { value: 'nvidia-deepseek', label: 'NVIDIA DeepSeek' },
@@ -667,11 +666,11 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
   )
 }
 
-// ── PHD-STYLE CHAPTER INTRO ──
-// Editorial spread that opens each chapter card. Mirrors a dissertation’s
-// section header: roman numeral, serif title, scope chips, and a "next
-// chapter" affordance to drive linearity. Also renders a horizontal
-// "compass rail" of all 8 chapters so the admin never loses place.
+// ── STAGE INTRO ──
+// Editorial spread that opens each stage card. Mirrors a research
+// workflow header: roman numeral, serif title, scope chips, and a "next
+// stage" affordance to drive linearity. Also renders the seven-stage
+// compass rail so the admin never loses place.
 function ChapterIntro({
   numeral, title, subtitle,
   chapterKey, scope, next,
@@ -687,14 +686,14 @@ function ChapterIntro({
   prev?: string
   onJump?: (k: StudioTab) => void
 }) {
-  const order: StudioTab[] = ['identify', 'survey', 'define', 'investigate', 'write', 'defend', 'approve', 'publish']
+  const order: StudioTab[] = ['discover', 'research', 'plan', 'draft', 'review', 'approve', 'track']
   const numerals: Record<StudioTab, string> = {
-    identify: 'I', survey: 'II', define: 'III', investigate: 'IV',
-    write: 'V', defend: 'VI', approve: 'VII', publish: 'VIII',
+    discover: 'I', research: 'II', plan: 'III', draft: 'IV',
+    review: 'V', approve: 'VI', track: 'VII',
   }
   const titles: Record<StudioTab, string> = {
-    identify: 'Identify', survey: 'Survey', define: 'Define', investigate: 'Investigate',
-    write: 'Write', defend: 'Defend', approve: 'Approve', publish: 'Publish & Cite',
+    discover: 'Discover', research: 'Research', plan: 'Plan',
+    draft: 'Draft', review: 'Review', approve: 'Approve', track: 'Track',
   }
   return (
     <div
@@ -764,7 +763,7 @@ function ChapterIntro({
           </div>
         ))}
       </div>
-      {/* Compass rail — shows all 8 chapters with current one bold. */}
+      {/* Compass rail — shows all seven chapters with current one bold. */}
       <div style={{
         marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${E.hairline}`,
         display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'center',
@@ -825,7 +824,7 @@ function DefendPanel({
         }}>
           <div style={{ fontFamily: C.serif, fontSize: 22, color: E.ink, marginBottom: 8 }}>No draft selected</div>
           <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
-            Open a job from chapter V · Write to defend it here. The defense surfaces each gate blocker with the exact remediation guidance.
+            Open a job from chapter IV · Draft to defend it here. The defense surfaces each gate blocker with the exact remediation guidance.
           </p>
         </div>
       )}
@@ -835,7 +834,7 @@ function DefendPanel({
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
               <div>
                 <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-                  CHAPTER VI · DEFEND
+                  STAGE V · REVIEW
                 </div>
                 <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
                   {selectedJob.title}
@@ -962,7 +961,7 @@ function ApprovePanel({
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
-        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>CHAPTER VII · APPROVE</div>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE VI · APPROVE</div>
         <h3 style={{ margin: '4px 0 12px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Push to main · {prOpen.length} open PR{prOpen.length === 1 ? '' : 's'}</h3>
         {prOpen.length === 0 && (
           <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
@@ -1117,6 +1116,12 @@ function PublishLedger({
   const [divergenceLoading, setDivergenceLoading] = React.useState(false)
   const [divergenceError, setDivergenceError] = React.useState<string | null>(null)
 
+  // Per-stamp sparkline metric switcher (pos / impr / clk). Default 'position'
+  // so the existing stamp graphics stay identical when the admin hasn't
+  // touched the toggle. The Metric type is imported from
+  // lib/seoFactory/publishLedgerMetric (single source of truth).
+  const [metricChoice, setMetricChoice] = React.useState<Record<string, Metric>>({})
+
   const canonicalUrls = React.useMemo(
     () => stamps.map((s) => s.canonical_url).filter((u): u is string => !!u),
     [stamps],
@@ -1261,7 +1266,7 @@ function PublishLedger({
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
         <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
-          CHAPTER VIII · PUBLISH &amp; CITE
+          STAGE VII · TRACK
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
           <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
@@ -1324,29 +1329,66 @@ function PublishLedger({
                   : divergenceError
                     ? `Forecast-vs-GSC lookup failed: ${divergenceError}`
                     : dv.label)
+            // Active metric for this stamp (defaults to 'position' so first
+            // paint matches the previous shape exactly).
+            const activeMetric: Metric = canonical
+              ? (metricChoice[canonical] || 'position')
+              : 'position'
+            // Pure helper: pull this metric's values out of the trend and
+            // compute a coarse direction. Lives in
+            // lib/seoFactory/publishLedgerMetric (unit-tested).
+            const metricValues = extractMetricValues(trend?.points, activeMetric)
+            const metricLatest = metricValues.length ? metricValues[metricValues.length - 1] : null
+            const metricFirst = metricValues.length ? metricValues[0] : null
+            // Position's headline and delta come from the endpoint's
+            // aggregate query (authoritative); selected impressions/clicks
+            // use the daily series that is actually being plotted.
+            const metricDisplayValue = activeMetric === 'position'
+              ? (trend?.position ?? null)
+              : metricLatest
+            const metricDelta = activeMetric === 'position'
+              ? (trend?.deltaPosition ?? null)
+              : (metricLatest != null && metricFirst != null ? metricLatest - metricFirst : null)
+            const metricDirection = activeMetric === 'position'
+              ? (trend?.direction ?? 'unknown')
+              : directionForMetric(metricValues, activeMetric)
             // Pre-compute the sparkline geometry so the SVG render remains
             // inline and trivial.
             let sparkPath: string | null = null
             let sparkPts: number = 0
-            if (trend && trend.points.length >= 2) {
-              sparkPts = trend.points.length
+            if (trend && metricValues.length >= 2) {
+              sparkPts = metricValues.length
               const w = 120, h = 28
-              const positions = trend.points.map((p) => p.position || 0)
-              const max = Math.max(...positions, 1)
-              const min = Math.min(...positions, max)
+              const max = Math.max(...metricValues, 1)
+              const min = Math.min(...metricValues, max)
               const range = max - min || 1
               const stepX = sparkPts > 1 ? w / (sparkPts - 1) : w
-              sparkPath = positions.map((pos, i) => {
+              sparkPath = metricValues.map((v, i) => {
                 const x = (i * stepX).toFixed(2)
-                const y = (h - ((pos - min) / range) * h).toFixed(2)
+                const y = (h - ((v - min) / range) * h).toFixed(2)
                 return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
               }).join(' ')
             }
+            // Per-metric colour so the admin's eye matches whatever is plotted.
+            // Position: green = improving (lower number); impressions / clicks:
+            // green = values rising. Either way the colour rule is "good moves
+            // are green" — consistent with the rest of the studio.
             const trendColor =
-              trend?.direction === 'up' ? '#0f7a3a'
-              : trend?.direction === 'down' ? '#a32525'
-              : trend?.direction === 'flat' ? '#6b7280'
+              metricDirection === 'up' ? '#0f7a3a'
+              : metricDirection === 'down' ? '#a32525'
+              : metricDirection === 'flat' ? '#6b7280'
               : '#9ca3af'
+            const metricGlyph: Record<Metric, string> = { position: '📈', impressions: '👁', clicks: '🖱' }
+            const metricLabel: Record<Metric, string> = { position: 'pos', impressions: 'imp', clicks: 'clk' }
+            const metricText = (m: Metric) => formatMetricValue(m, metricDisplayValue)
+            const arrowGlyph = (m: Metric) => {
+              const dir = arrowForMetric(m, metricDelta, metricFirst)
+              return dir === 'up' ? '↑' : dir === 'down' ? '↓' : ''
+            }
+            const setMetric = (m: Metric) => {
+              if (!canonical) return
+              setMetricChoice((prev) => ({ ...prev, [canonical]: m }))
+            }
             return (
               <article
                 key={j.id}
@@ -1450,21 +1492,82 @@ function PublishLedger({
                   paddingTop: 6, borderTop: `1px solid ${E.hairline}`,
                 }}>
                   {trend && trend.found ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <svg width={sparkPts > 1 ? 120 : 0} height={28} viewBox="0 0 120 28"
-                        xmlns="http://www.w3.org/2000/svg" aria-label="position trend">
-                        {sparkPath && <path d={sparkPath} fill="none" stroke={trendColor} strokeWidth={1.5} />}
-                      </svg>
-                      <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.ink }}>
-                        pos {trend.position?.toFixed(1) ?? '—'}
-                        {trend.deltaPosition != null && (
-                          <span style={{ marginLeft: 4, color: trendColor }}>
-                            {trend.deltaPosition <= 0 ? '↑' : '↓'} {Math.abs(trend.deltaPosition).toFixed(1)}
-                          </span>
-                        )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {/* Metric icon switcher — pos / imp / clk */}
+                        <div role="tablist" aria-label="sparkline metric"
+                          style={{ display: 'inline-flex', gap: 0, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+                          {(['position', 'impressions', 'clicks'] as Metric[]).map((m) => {
+                            const active = activeMetric === m
+                            return (
+                              <button key={m} type="button" role="tab"
+                                id={`studio-metric-tab-${m}-${j.id}`}
+                                aria-selected={active}
+                                aria-controls={`studio-metric-panel-${j.id}`}
+                                tabIndex={active ? 0 : -1}
+                                aria-label={`Show ${m === 'position' ? 'position' : m === 'impressions' ? 'impressions' : 'clicks'} trend`}
+                                data-testid={`studio-metric-${m}-${j.id}`}
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                                  event.preventDefault()
+                                  const metrics: Metric[] = ['position', 'impressions', 'clicks']
+                                  const current = metrics.indexOf(m)
+                                  const next = event.key === 'ArrowRight'
+                                    ? metrics[(current + 1) % metrics.length]
+                                    : metrics[(current + metrics.length - 1) % metrics.length]
+                                  setMetric(next)
+                                  // Keep roving-tab focus aligned with the
+                                  // selected tab after keyboard navigation.
+                                  requestAnimationFrame(() => {
+                                    document.getElementById(`studio-metric-tab-${next}-${j.id}`)?.focus()
+                                  })
+                                }}
+                                onClick={() => setMetric(m)}
+                                title={
+                                  m === 'position' ? 'Sparkline: average position (lower = better)'
+                                  : m === 'impressions' ? 'Sparkline: daily search impressions (higher = better)'
+                                  : 'Sparkline: daily clicks (higher = better)'
+                                }
+                                style={{
+                                  fontFamily: C.mono, fontSize: 9, letterSpacing: '0.04em', fontWeight: 700,
+                                  padding: '3px 8px', border: 'none', borderRadius: 0,
+                                  background: active ? E.ink : 'transparent',
+                                  color: active ? E.ivory : E.inkDim,
+                                  cursor: 'pointer', transition: 'opacity 0.15s',
+                                  opacity: active ? 1 : 0.85,
+                                }}
+                              >
+                                {metricGlyph[m]} {metricLabel[m]}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div id={`studio-metric-panel-${j.id}`} role="tabpanel"
+                          aria-labelledby={`studio-metric-tab-${activeMetric}-${j.id}`}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <svg width={sparkPts > 1 ? 120 : 0} height={28} viewBox="0 0 120 28"
+                            xmlns="http://www.w3.org/2000/svg" aria-label={`${activeMetric} trend`}>
+                            {sparkPath && <path d={sparkPath} fill="none" stroke={trendColor} strokeWidth={1.5} />}
+                          </svg>
+                          <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.ink }}>
+                            {metricLabel[activeMetric]} {metricText(activeMetric)}
+                          {metricDelta != null && Math.abs(metricDelta) >= (activeMetric === 'position' ? 0.05 : 1) && (
+                            <span style={{ marginLeft: 4, color: trendColor }}>
+                              {arrowGlyph(activeMetric)} {fmtN(Math.abs(metricDelta))}
+                            </span>
+                          )}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkDim }}>
-                        {fmtN(trend.impressions)} imp
+                      {/* Selected series uses the latest daily point; the
+                          footer below uses the aggregate GSC snapshot. */}
+                      {/* Always show the complete GSC snapshot beneath the
+                          selected series: position, impressions, clicks, CTR. */}
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontFamily: C.mono, fontSize: 9.5, color: E.inkDim, paddingLeft: 4 }}>
+                        <span style={{ color: activeMetric === 'position' ? trendColor : E.inkDim }}>pos {trend.position?.toFixed(1) ?? '—'}</span>
+                        <span style={{ color: activeMetric === 'impressions' ? trendColor : E.inkDim }}>{fmtN(trend.impressions)} imp</span>
+                        <span style={{ color: activeMetric === 'clicks' ? trendColor : E.inkDim }}>{fmtN(trend.clicks)} clk</span>
+                        <span>{formatCtr(trend.ctr)} CTR</span>
                       </div>
                     </div>
                   ) : (
@@ -1871,7 +1974,7 @@ function CreateWizard({
   )
 }
 
-// ── III · DEFINE PANEL ──
+// ── II · RESEARCH QUESTION PANEL ──
 // Renders Step 1 (Target) + Step 2 input fields of CreateWizard.
 // All state is owned by the parent AdminContentStudio; this is a chrome
 // shim that hides the autopilot-preview + interlinks + generate CTA so
@@ -1891,13 +1994,12 @@ function Step1Define(props: Omit<React.ComponentProps<typeof CreateWizard>, 'ste
   )
 }
 
-// ── IV · INVESTIGATE PANEL ──
+// ── III · METHOD & BRIEF PANEL ──
 // Renders Step 2's autopilot brief preview + Step 3 interlinks + the
 // Generate & ship CTA. Step 1 (Target) is hidden so the destination already
 // chosen in III · Define persists through investigation.
 function Step2Investigate(props: Omit<React.ComponentProps<typeof CreateWizard>, 'stepScope'>) {
-  return (
-    <div data-testid="studio-investigate-panel" data-step-scope="investigate">
+  return (      <div data-testid="studio-method-panel" data-step-scope="investigate">
       <style>{`
         [data-step-scope="investigate"] [data-step="1"] {
           display: none !important;
@@ -3007,576 +3109,269 @@ function JobDetail({
 // ════════════════════════════════════════════════════════════════════════════════
 // ── EDITORIAL SPREAD (linear narrative: engine → ledger) ──
 // ════════════════════════════════════════════════════════════════════════════════
-interface EditorialSpreadProps {
-  engineStatus: any
-  engineBusy: boolean
-  onEngineAction: (kind: 'ingest' | 'plan' | 'llm') => void
-  radar: AISuggestion[]
-  radarMeta: Record<string, unknown> | null
-  suggestions?: AISuggestion[]
-  suggestionsLoading?: boolean
-  suggestionsError?: string | null
-  gscStatus: Record<string, unknown> | null
-  onConnectGsc: () => void
-  onRefreshSuggestions: (region: string) => void
-  onApplySuggestion: (s: AISuggestion) => void
-  brief: AISuggestion | null
-  onClearBrief: () => void
-  jobs: ContentJob[]
-  jobTotal: number
-  jobSummary: QueueSummary | null
-  loading: boolean
-  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
-  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
-  onSelectJob: (job: ContentJob) => void
-  mergeHistory: CannibalMergeRecord[]
-  onRefreshJobs: () => void
-  setActionNotice: (msg: string) => void
-  onOpenWorkspaceJobs: () => void
-  onEngage: () => void
-}
-
-const SPREAD_STEPS: Array<{
-  roman: string
-  label: string
-  kicker: string
-  caption: string
-}> = [
-  { roman: 'I', label: 'Ingest',       kicker: 'The SEO Master Engine',           caption: 'Knowledge, plan, and LLM voice are loaded into one canvas.' },
-  { roman: 'II', label: 'Plan & Scout', kicker: 'The Opportunity Radar',           caption: 'Live queries become ranked plays; gaps and quick wins surface.' },
-  { roman: 'III', label: 'Brief',       kicker: 'The Composer',                    caption: 'A topic, a stage, a target host. The wizard renders the brief.' },
-  { roman: 'IV', label: 'Queue',       kicker: 'Drafts in Motion',                caption: 'Every job shown with status, gate, and lineage window.' },
-  { roman: 'V',  label: 'Review → Approve → Ship', kicker: 'Re-audit → PR → main',     caption: 'Inline editor, deterministic repair, then approve to deploy.' },
-  { roman: 'VI', label: 'Live URL Ledger', kicker: 'Verified Stamps',                caption: 'Merged PRs become live estate pages with verified URLs.' },
-]
-
-function serifDisplay(value: string | number | null | undefined, fallback = '—'): string {
-  if (value == null || value === '') return fallback
-  return String(value)
-}
-
-function SpreadStep({
-  roman, label, kicker, caption, status, active, body, accent,
-}: {
-  roman: string
-  label: string
-  kicker: string
-  caption: string
-  status: 'idle' | 'live' | 'ingested' | 'drafting' | 'merged' | 'pr' | 'review'
-  active: boolean
-  body: React.ReactNode
-  accent: string
-}) {
-  const statusMeta: Record<typeof status, { label: string; bg: string; fg: string; dot: string }> = {
-    idle:        { label: 'ready',     bg: E.parchment, fg: E.inkMuted,   dot: E.inkDim },
-    live:        { label: 'live',      bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
-    ingested:    { label: 'ingested',  bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
-    drafting:    { label: 'drafting',  bg: '#3F2F0A',   fg: '#FCD34D',    dot: '#FBBF24' },
-    merged:      { label: 'live',      bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
-    pr:          { label: 'pr open',   bg: '#0F1E3F',   fg: '#BFDBFE',    dot: '#60A5FA' },
-    review:      { label: 'review',    bg: '#3F2F0A',   fg: '#FCD34D',    dot: '#FBBF24' },
+// ── RESEARCH DOSSIER LIVE OPERATIONS ────────────────────────────────────────
+// These compact cards preserve the former Command Center's live evidence
+// surfaces without bringing its competing navigation/state machine back into
+// the dissertation flow. Every number is fetched from its owning API and is
+// explicitly marked with the last successful read; failures remain visible.
+function ResearchLiveOperations() {
+  type Snapshot = {
+    fetchedAt: number
+    status: { llmVisibility?: { total?: number; cited?: number; shareOfVoice?: number }; rankingModel?: { computed?: number } } | null
+    visibility: { total?: number; cited?: number; shareOfVoice?: number; byStage?: Record<string, number> } | null
+    backlink: { summary?: { target_total?: number; target_won?: number; inbound_avg?: number; outbound_avg?: number }; targets?: Array<{ id?: string; domain?: string; title?: string | null; target_url?: string | null; authority_score?: number; status?: string }> } | null
+    merges: Array<{ clusterId?: string; stem?: string; winnerUrl?: string; recheckDue?: boolean; followUpAt?: number; status?: string }>
+    degraded?: boolean
+    guidance?: string | null
+    errors: Partial<Record<'status' | 'visibility' | 'backlink' | 'merges', string>>
   }
-  const m = statusMeta[status]
-  return (
-    <article
-      style={{
-        position: 'relative',
-        background: E.paper,
-        borderRadius: 8,
-        border: active ? `2px solid ${accent}` : `1px solid ${E.hairline}`,
-        boxShadow: active ? E.paperShadow : 'none',
-        padding: '20px 22px 18px',
-        minHeight: 170,
-        overflow: 'hidden',
-      }}
-    >
-      {/* corner hairlines */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: 16, borderTop: `2px solid ${accent}` }} />
-      <div style={{ position: 'absolute', top: 0, left: 0, height: 16, borderLeft: `2px solid ${accent}` }} />
-      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 16, borderBottom: `2px solid ${accent}` }} />
-      <div style={{ position: 'absolute', bottom: 0, right: 0, height: 16, borderRight: `2px solid ${accent}` }} />
+  const [snapshot, setSnapshot] = React.useState<Snapshot | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [competingPages, setCompetingPages] = React.useState<Array<{ url: string; impressions: number; clicks: number; position: number }> | null>(null)
+  const [competingTerm, setCompetingTerm] = React.useState<string | null>(null)
+  const [competingWinner, setCompetingWinner] = React.useState<string | null>(null)
+  const [competingLosers, setCompetingLosers] = React.useState<Set<string>>(new Set())
+  const [competingBusy, setCompetingBusy] = React.useState(false)
+  const [competingResolveBusy, setCompetingResolveBusy] = React.useState(false)
+  const [outreachTarget, setOutreachTarget] = React.useState<{ id: string; label: string } | null>(null)
+  const [outreachDraft, setOutreachDraft] = React.useState<{ subject: string; body: string; model?: string | null } | null>(null)
+  const [outreachBusy, setOutreachBusy] = React.useState(false)
+  const [outreachSaveBusy, setOutreachSaveBusy] = React.useState(false)
+  const loadRef = React.useRef<() => Promise<void>>(() => Promise.resolve())
 
-      {/* header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-        <div>
-          <div style={{ ...TYPE.caption, color: accent, fontWeight: 700 }}>Step {roman}</div>
-          <h2 style={{ ...TYPE.headline, margin: '4px 0 0' }}>{label}</h2>
-          <div style={{ ...TYPE.byline, marginTop: 2 }}>{kicker}</div>
-        </div>
-        <span title={m.label} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '4px 10px', borderRadius: 999,
-          background: m.bg, color: m.fg, fontFamily: E.mono, fontSize: 10, fontWeight: 700,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-        }}>
-          <span style={{ width: 7, height: 7, borderRadius: 99, background: m.dot }} />
-          {m.label}
-        </span>
-      </div>
-
-      {/* pull-quote / caption */}
-      <p style={{ ...TYPE.body, color: E.inkSoft, fontStyle: 'italic', margin: '0 0 14px', maxWidth: 360 }}>{caption}</p>
-
-      {/* body */}
-      {body}
-    </article>
-  )
-}
-
-function StudioEditorialSpread(props: EditorialSpreadProps) {
-  const {
-    engineStatus, engineBusy, onEngineAction,
-    radar, radarMeta, suggestions, suggestionsLoading, suggestionsError,
-    gscStatus, onConnectGsc, onRefreshSuggestions, onApplySuggestion,
-    brief, onClearBrief,
-    jobs, jobTotal, jobSummary, loading, mergeIndex, gateByJob, onSelectJob,
-    mergeHistory, onRefreshJobs, setActionNotice,
-    onOpenWorkspaceJobs, onEngage,
-  } = props
-
-  const eng = (engineStatus || {}) as Record<string, any>
-  const engLife = (eng.lifecycle as { seededCells?: number } | undefined)?.seededCells
-  const engKnow = (eng.knowledge as { total?: number } | undefined)?.total
-  const engPlans = (eng.plans as { total?: number } | undefined)?.total
-  const engLinks = (eng.interlinks as { planned?: number } | undefined)?.planned
-  const engVoice = (eng.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
-  const engGate  = (eng.gate as { passRate?: number } | undefined)?.passRate
-
-  const mergedJobs = jobs.filter((j) => j.status === 'merged' && (j.pr_url || j.canonical_url))
-  const prJobs    = jobs.filter((j) => j.status === 'pr_created')
-  const draftingJobs = jobs.filter((j) => j.status === 'drafting')
-  const queuedJobs = jobs.filter((j) => j.status === 'pending')
-  const failedJobs = jobs.filter((j) => j.status === 'failed')
-
-  const stepActiveIndex = (() => {
-    if (draftingJobs.length || queuedJobs.length || mergedJobs.length) return -1
-    if (radar.length) return 1
-    return 0
-  })()
-
-  const liveTone = gscStatus?.connected && gscStatus?.live ? 'live' : 'idle'
-
-  // ── Inline generators for each step body ──
-  const stepI = (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
-        {[
-          { l: 'Life-cycle cells', v: engLife ?? '—' },
-          { l: 'Knowledge items',  v: engKnow ?? '—' },
-          { l: 'Plans queued',      v: engPlans ?? '—' },
-          { l: 'Interlinks planned', v: engLinks ?? '—' },
-        ].map((m, i) => (
-          <div key={i} style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
-            <div style={{ ...TYPE.caption, color: E.inkMuted }}>{m.l}</div>
-            <div style={{ ...TYPE.metric, fontSize: 14, color: E.inkBlack, marginTop: 2 }}>{m.v}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => onEngineAction('ingest')} disabled={engineBusy}
-          style={{ ...navBtn(E.inkBlack, true), padding: '6px 12px' }}>
-          {engineBusy ? '⏳ …' : '🌐 Ingest knowledge'}
-        </button>
-        <button type="button" onClick={() => onEngineAction('plan')} disabled={engineBusy}
-          style={{ ...navBtn(E.gold, false), padding: '6px 12px' }}>
-          {engineBusy ? '⏳ …' : '🧭 Run planner'}
-        </button>
-        <button type="button" onClick={() => onEngineAction('llm')} disabled={engineBusy}
-          style={{ ...navBtn(E.mossGreen, false), padding: '6px 12px' }}>
-          {engineBusy ? '⏳ …' : '🤖 LLM audit'}
-        </button>
-        <span style={{ ...TYPE.caption, color: E.inkMuted }}>
-          LLM voice {typeof engVoice === 'number' ? `${(engVoice * 100).toFixed(0)}%` : '—'} · gate pass {typeof engGate === 'number' ? `${(engGate * 100).toFixed(0)}%` : '—'}
-        </span>
-      </div>
-    </>
-  )
-
-  const gscChip = (() => {
-    if (!gscStatus) return null
-    const mode = gscStatus?.mode === 'oauth' ? 'OAUTH' : gscStatus?.mode === 'service_account' ? 'SERVICE_ACCOUNT' : null
-    if (gscStatus.connected && gscStatus.live) {
-      return (
-        <span style={{ ...TYPE.caption, padding: '3px 9px', borderRadius: 999, background: '#D8E5D5', color: E.mossGreen }}>
-          ● LIVE GSC{mode ? ` · ${mode}` : ''}
-        </span>
-      )
+  const inspectCompetingPages = React.useCallback(async (term: string) => {
+    setCompetingTerm(term)
+    setCompetingBusy(true)
+    try {
+      const response = await fetch('/api/seo-factory/cannibal-pages', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ term }),
+      })
+      const body = await response.json().catch(() => ({})) as { pages?: Array<{ url: string; impressions: number; clicks: number; position: number }>; suggestedWinner?: string | null; error?: string }
+      if (!response.ok && !Array.isArray(body.pages)) throw new Error(body.error || `Competing-page lookup failed (${response.status})`)
+      const pages = Array.isArray(body.pages) ? body.pages : []
+      const winner = body.suggestedWinner || pages[0]?.url || null
+      setCompetingPages(pages)
+      setCompetingWinner(winner)
+      setCompetingLosers(new Set(pages.map((page) => page.url).filter((url) => url !== winner)))
+    } catch (cause) {
+      setCompetingPages([])
+      setError(cause instanceof Error ? cause.message : 'Competing-page lookup failed')
+    } finally {
+      setCompetingBusy(false)
     }
-    return (
-      <span style={{ ...TYPE.caption, padding: '3px 9px', borderRadius: 999, background: E.goldSoft, color: E.goldDeep }}>
-        ◐ SNAPSHOT
-      </span>
-    )
-  })()
+  }, [])
 
-  const stepII = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        {gscChip}
-        {gscStatus && !(gscStatus.connected && gscStatus.live) && (
-          <button type="button" onClick={onConnectGsc} style={{ ...navBtn(E.gold, false), padding: '4px 10px', fontSize: 9 }}>
-            {gscStatus.connected ? 'Re-connect GSC →' : 'Connect GSC →'}
+  const resolveCompetingPages = React.useCallback(async () => {
+    if (!competingTerm || !competingWinner || competingLosers.size === 0) return
+    setCompetingResolveBusy(true)
+    try {
+      const response = await fetch('/api/seo-factory/cannibal-merge', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ term: competingTerm, winnerUrl: competingWinner, loserUrls: [...competingLosers], mode: 'merge' }),
+      })
+      const body = await response.json().catch(() => ({})) as { error?: string }
+      if (!response.ok) throw new Error(body.error || `Resolution failed (${response.status})`)
+      setCompetingTerm(null)
+      setCompetingPages(null)
+      setCompetingWinner(null)
+      setCompetingLosers(new Set())
+      setError(null)
+      await loadRef.current()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Competing-page resolution failed')
+    } finally {
+      setCompetingResolveBusy(false)
+    }
+  }, [competingLosers, competingTerm, competingWinner])
+
+  const openOutreachDraft = React.useCallback(async (target: { id?: string; domain?: string; title?: string | null }) => {
+    if (!target.id) return
+    setOutreachTarget({ id: target.id, label: target.title || target.domain || target.id })
+    setOutreachDraft(null)
+    setOutreachBusy(true)
+    try {
+      const response = await fetch('/api/seo-engine/backlink/outreach', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'draft', target_id: target.id, brief: { topic: target.title || target.domain || 'SEO authority opportunity' } }),
+      })
+      const body = await response.json().catch(() => ({})) as { subject?: string; body?: string; model?: string | null; error?: string }
+      if (!response.ok) throw new Error(body.error || `Outreach draft failed (${response.status})`)
+      setOutreachDraft({ subject: String(body.subject || ''), body: String(body.body || ''), model: body.model })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Outreach draft failed')
+    } finally {
+      setOutreachBusy(false)
+    }
+  }, [])
+
+  const saveOutreachDraft = React.useCallback(async (status: 'drafted' | 'sent') => {
+    if (!outreachTarget || !outreachDraft) return
+    setOutreachSaveBusy(true)
+    try {
+      const response = await fetch('/api/seo-engine/backlink/outreach', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'record', target_id: outreachTarget.id, subject: outreachDraft.subject, message_body: outreachDraft.body, status, operator_id: 'admin@portal' }),
+      })
+      const body = await response.json().catch(() => ({})) as { error?: string }
+      if (!response.ok) throw new Error(body.error || `Outreach save failed (${response.status})`)
+      setOutreachTarget(null)
+      setOutreachDraft(null)
+      await loadRef.current()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Outreach save failed')
+    } finally {
+      setOutreachSaveBusy(false)
+    }
+  }, [outreachDraft, outreachTarget])
+
+  const load = React.useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    const requests = [
+      ['status', '/api/seo-engine/status'],
+      ['visibility', '/api/seo-engine/llm-visibility'],
+      ['backlink', '/api/seo-engine/backlink?report=full'],
+      ['merges', '/api/seo-factory/cannibal-merges'],
+    ] as const
+    const read = async (key: typeof requests[number][0], path: string) => {
+      try {
+        const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store' })
+        const body = await response.json().catch(() => ({})) as Record<string, any>
+        if (!response.ok) throw new Error(String(body.error || `Live evidence request failed (${response.status})`))
+        return { key, body, error: null as string | null }
+      } catch (cause) {
+        return { key, body: null, error: cause instanceof Error ? cause.message : 'Live evidence request failed' }
+      }
+    }
+    const results = await Promise.all(requests.map(([key, path]) => read(key, path)))
+    const errors = Object.fromEntries(results.filter((result) => result.error).map((result) => [result.key, result.error!])) as Snapshot['errors']
+    const status = results.find((result) => result.key === 'status')?.body || null
+    const visibility = results.find((result) => result.key === 'visibility')?.body || null
+    const backlink = results.find((result) => result.key === 'backlink')?.body || null
+    const merges = results.find((result) => result.key === 'merges')?.body || null
+    setSnapshot({
+      fetchedAt: Date.now(),
+      status,
+      visibility,
+      backlink,
+      merges: Array.isArray(merges?.merges) ? merges.merges : [],
+      degraded: Boolean(merges?.degraded),
+      guidance: merges?.guidance || null,
+      errors,
+    })
+    setError(Object.values(errors)[0] || null)
+    setBusy(false)
+  }, [])
+
+  React.useEffect(() => {
+    loadRef.current = load
+    void load()
+    const timer = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(timer)
+  }, [load])
+
+  const due = snapshot?.merges.filter((merge) => merge.recheckDue) || []
+  const visibility = snapshot?.visibility || snapshot?.status?.llmVisibility
+  const cited = visibility?.cited
+  const total = visibility?.total
+  const share = visibility?.shareOfVoice
+  const summary = snapshot?.backlink?.summary
+  const metric = (value: number | undefined, suffix = '') => value == null ? '—' : `${fmtN(value)}${suffix}`
+  const serviceError = (key: keyof Snapshot['errors']) => snapshot?.errors[key]
+
+  return (
+    <section data-testid="research-live-operations" aria-label="Live research operations" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontFamily: C.mono, fontSize: 9, letterSpacing: '0.16em', color: E.gold, textTransform: 'uppercase', fontWeight: 700 }}>Live evidence services</div>
+          <div style={{ marginTop: 2, fontFamily: C.serif, fontSize: 15, color: E.ink }}>Research operations retained from the former Command Center</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: C.mono, fontSize: 9, color: error ? C.red : E.inkMuted }}>
+            {error ? `⚠ ${error}` : snapshot ? `Read ${timeAgoMs(snapshot.fetchedAt)}` : 'Reading live services…'}
+          </span>
+          <button type="button" onClick={() => void load()} disabled={busy} style={busy ? actionDisabledStyle(E.gold) : actionGhostStyle()}>
+            {busy ? '⟳ Reading…' : '↻ Refresh evidence'}
           </button>
-        )}
-        <span style={{ ...TYPE.caption, color: E.inkMuted }}>
-          {radar.length ? `${radar.length} opportunities scored` : 'Waiting for a score…'}
-        </span>
-      </div>
-      {suggestionsLoading ? (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
-          {[1, 2, 3].map((i) => <div key={i} style={{ minWidth: 200, height: 96, background: E.parchment, borderRadius: 6, opacity: 0.55 }} />)}
         </div>
-      ) : (radar.length > 0 ? (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-          {radar.slice(0, 6).map((s) => {
-            const pm = PLAY_META[s.play] || PLAY_META.content_gap
-            const score = s.opportunityScore ?? s.demandScore
-            const tm = TREND_META[s.trend || 'flat'] || TREND_META.flat
-            return (
-              <button key={s.topic} type="button" onClick={() => onApplySuggestion(s)}
-                title="Apply this play to the Brief composer"
-                style={{
-                  minWidth: 220, maxWidth: 260, flexShrink: 0, textAlign: 'left',
-                  padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
-                  background: brief?.topic === s.topic ? E.goldSoft : E.cream,
-                  border: `1px solid ${brief?.topic === s.topic ? E.gold : E.hairline}`,
-                  fontFamily: 'inherit',
-                }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: E.mono, background: pm.bg, color: pm.fg }}>
-                    {pm.icon} {pm.label}
-                  </span>
-                  <span style={{ fontSize: 11, fontWeight: 800, fontFamily: E.mono, color: score >= 70 ? E.mossGreen : E.ink }}>{score}</span>
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: E.ink, lineHeight: 1.3 }}>
-                  {s.title.length > 58 ? `${s.title.slice(0, 55)}…` : s.title}
-                </div>
-                <div style={{ fontSize: 9, color: E.inkMuted, fontFamily: E.mono, marginTop: 2 }}>
-                  #{s.position ?? '—'} · {fmtN(s.impressions)} imp · {tm.icon} {tm.label}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      ) : (
-        <p style={{ ...TYPE.body, color: E.inkMuted, margin: 0 }}>
-          No scored opportunities yet. Connect GSC for live demand data, then re-scan from Operations.
-        </p>
-      ))}
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${E.hairline}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ ...TYPE.caption, color: E.inkMuted }}>Cross-domain mergers · {fmtN(mergeHistory?.length ?? 0)} on record</span>
       </div>
-    </>
-  )
-
-  const stepIII = (
-    <>
-      <p style={{ ...TYPE.body, color: E.inkSoft, margin: '0 0 10px' }}>
-        Open the Create wizard, accept an autopilot brief, and decide on a target host. Generate → draft stream → Garden gate → PR.
-      </p>
-      {brief && (
-        <div style={{ background: E.goldSoft, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}`, marginBottom: 12 }}>
-          <div style={{ ...TYPE.caption, color: E.goldDeep }}>Autopilot brief — pre-filled & editable</div>
-          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 600, color: E.inkBlack }}>{brief.primaryKeyword || brief.topic}</div>
-          <div style={{ marginTop: 2, fontSize: 10, color: E.inkSoft, fontFamily: E.mono }}>
-            {(brief.play || 'content_gap').replace('_', ' ')} · {brief.opportunityScore ?? brief.demandScore}/100 · {brief.intent} · {brief.trend}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+        <div data-testid="research-visibility-card" style={{ padding: 12, background: E.paper, border: `1px solid ${E.hairline}` }}>
+          <CardHeader icon="◎" title="LLM / AEO visibility" sub="Fan-out citation evidence" />
+          <div style={{ padding: '10px 12px 2px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+            <strong style={{ fontFamily: C.mono, fontSize: 22, color: E.ink }}>{share == null ? '—' : `${Math.round(Number(share) || 0)}%`}</strong>
+            <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{metric(cited)} cited / {metric(total)} audited</span>
           </div>
+          <div style={{ padding: '5px 12px 10px', fontFamily: C.mono, fontSize: 9, color: serviceError('visibility') ? C.red : E.inkMuted }}>{serviceError('visibility') || (snapshot ? 'Source: seo_llm_visibility' : 'No live audit read yet')}</div>
+        </div>
+        <div data-testid="research-backlink-card" style={{ padding: 12, background: E.paper, border: `1px solid ${E.hairline}` }}>
+          <CardHeader icon="↗" title="Knowledge / backlinks" sub="External authority opportunities" />
+          <div style={{ padding: '10px 12px 2px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+            <strong style={{ fontFamily: C.mono, fontSize: 22, color: E.ink }}>{metric(summary?.target_total)}</strong>
+            <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{metric(summary?.target_won)} won</span>
+          </div>
+          <div style={{ padding: '5px 12px 10px', fontFamily: C.mono, fontSize: 9, color: serviceError('backlink') ? C.red : E.inkMuted }}>{serviceError('backlink') || (snapshot ? 'Source: seo_backlink_dashboard' : 'No live opportunity read yet')}</div>
+          {snapshot?.backlink?.targets?.slice(0, 2).map((target, index) => (
+            <div key={`${target.domain || 'target'}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px' }}>
+              <a href={target.target_url || '#'} target="_blank" rel="noreferrer" style={{ minWidth: 0, flex: 1, color: E.goldDeep, fontFamily: C.mono, fontSize: 9, textDecoration: 'none' }}>
+                ↗ {target.domain || target.title || 'authority target'} · {target.authority_score ?? '—'} authority
+              </a>
+              {target.id && <button type="button" onClick={() => void openOutreachDraft(target)} disabled={outreachBusy} style={{ padding: '3px 6px', border: `1px solid ${E.gold}`, background: E.cream, color: E.goldDeep, fontFamily: C.mono, fontSize: 8, cursor: outreachBusy ? 'wait' : 'pointer' }}>{outreachBusy ? '…' : 'Draft outreach'}</button>}
+            </div>
+          ))}
+        </div>
+        <div data-testid="research-recheck-card" style={{ padding: 12, background: E.paper, border: `1px solid ${due.length ? '#FECACA' : E.hairline}` }}>
+          <CardHeader icon="◷" title="Recheck / competing pages" sub="Cannibalization follow-up queue" />
+          <div style={{ padding: '10px 12px 2px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+            <strong style={{ fontFamily: C.mono, fontSize: 22, color: due.length ? C.red : E.ink }}>{snapshot ? due.length : '—'}</strong>
+            <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>{snapshot ? `${snapshot.merges.length} decisions` : 'Loading decisions'}</span>
+          </div>
+          <div style={{ padding: '5px 12px 10px', fontFamily: C.mono, fontSize: 9, color: due.length ? C.red : serviceError('merges') ? C.red : E.inkMuted }}>
+            {serviceError('merges') || (due.length ? 'Due clusters:' : snapshot ? 'No rechecks currently due' : 'No live merge read yet')}
+          </div>
+          {due.slice(0, 3).map((merge, index) => {
+            const term = merge.stem || merge.clusterId || `cluster-${index + 1}`
+            return <button key={`${term}-${index}`} type="button" onClick={() => void inspectCompetingPages(term)} style={{ margin: '0 12px 5px', padding: '4px 7px', border: `1px solid ${C.red}55`, background: '#FFF7F7', color: C.red, fontFamily: C.mono, fontSize: 9, cursor: 'pointer' }}>{competingBusy && competingTerm === term ? '⟳ Inspecting…' : `Inspect ${term} →`}</button>
+          })}
+          {competingTerm && competingPages && (
+            <div style={{ margin: '2px 12px 10px', padding: 7, background: E.cream, border: `1px dashed ${E.hairline}`, fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>
+              <strong style={{ color: E.ink }}>Competing pages · {competingTerm}</strong>
+              {competingPages.length ? competingPages.map((page) => {
+                const position = Number(page.position)
+                const isWinner = competingWinner === page.url
+                const isLoser = competingLosers.has(page.url)
+                return <label key={page.url} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: E.goldDeep, cursor: 'pointer' }}>
+                  <input type="radio" name={`research-winner-${competingTerm}`} checked={isWinner} onChange={() => { const selection = transferCompetingWinner(competingWinner, page.url, competingLosers); setCompetingWinner(selection.winner); setCompetingLosers(selection.losers) }} />
+                  <input type="checkbox" checked={isLoser} disabled={isWinner} onChange={() => setCompetingLosers((current) => { const next = new Set(current); if (next.has(page.url)) next.delete(page.url); else next.add(page.url); return next })} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{Number.isFinite(position) ? position.toFixed(1) : '—'} · {page.url}</span>
+                </label>
+              }) : <div style={{ marginTop: 4 }}>No competing pages returned.</div>}
+              {competingPages.length > 1 && <button type="button" onClick={() => void resolveCompetingPages()} disabled={competingResolveBusy || !competingWinner || competingLosers.size === 0} style={{ marginTop: 7, padding: '5px 7px', border: 'none', background: competingResolveBusy ? C.textDim : C.red, color: '#FFF', fontFamily: C.mono, fontSize: 8, cursor: competingResolveBusy ? 'wait' : 'pointer', opacity: !competingWinner || competingLosers.size === 0 ? 0.5 : 1 }}>{competingResolveBusy ? 'Resolving…' : 'Resolve & 301 losers → winner'}</button>}
+            </div>
+          )}
+        </div>
+      </div>
+      {outreachTarget && (
+        <div role="dialog" aria-label="Draft backlink outreach" style={{ padding: 12, background: E.paper, border: `1px solid ${E.gold}`, boxShadow: E.paperShadow }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}><strong style={{ fontFamily: C.serif, color: E.ink }}>Outreach · {outreachTarget.label}</strong><button type="button" onClick={() => { setOutreachTarget(null); setOutreachDraft(null) }} style={actionGhostStyle()}>Close</button></div>
+          {outreachBusy && <div style={{ marginTop: 8, fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>Generating a reviewable outreach draft…</div>}
+          {outreachDraft && <><label style={{ display: 'block', marginTop: 8, fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>Subject<input value={outreachDraft.subject} onChange={(event) => setOutreachDraft((current) => current ? { ...current, subject: event.target.value } : current)} style={{ ...inputStyle, marginTop: 3 }} /></label><label style={{ display: 'block', marginTop: 8, fontFamily: C.mono, fontSize: 9, color: E.inkMuted }}>Message<textarea value={outreachDraft.body} onChange={(event) => setOutreachDraft((current) => current ? { ...current, body: event.target.value } : current)} rows={5} style={{ ...inputStyle, marginTop: 3, resize: 'vertical' }} /></label><div style={{ display: 'flex', gap: 7, marginTop: 8 }}><button type="button" disabled={outreachSaveBusy} onClick={() => void saveOutreachDraft('drafted')} style={actionGhostStyle()}>Save draft</button><button type="button" disabled={outreachSaveBusy} onClick={() => void saveOutreachDraft('sent')} style={actionBtnStyle(E.gold)}>{outreachSaveBusy ? 'Saving…' : 'Mark as sent'}</button></div></>}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={onEngage} style={{ ...navBtn(E.inkBlack, true), padding: '8px 14px' }}>
-          ✏️ Open the Composer
-        </button>
-        <button type="button" onClick={() => onClearBrief()} style={{ ...navBtn(E.gold, false), padding: '8px 14px' }} disabled={!brief}>
-          Clear brief
-        </button>
-      </div>
-    </>
-  )
-
-  const stepIV = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 14 }}>
-        <div style={{ ...TYPE.kicker, color: E.inkBlack, fontFamily: E.serif }}>
-          {jobTotal || jobs.length}
-          <span style={{ ...TYPE.caption, color: E.inkMuted, marginLeft: 6 }}>jobs on record</span>
-        </div>
-        <span style={{ ...TYPE.caption, color: E.mossGreen }}>{mergedJobs.length} merged</span>
-        <span style={{ ...TYPE.caption, color: '#60A5FA' }}>{prJobs.length} pr open</span>
-        <span style={{ ...TYPE.caption, color: '#FBBF24' }}>{draftingJobs.length} drafting</span>
-        {failedJobs.length > 0 && (
-          <span style={{ ...TYPE.caption, color: E.ember }}>{failedJobs.length} failed</span>
-        )}
-      </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 220, overflow: 'auto' }}>
-        {jobs.slice(0, 8).map((j) => {
-          const gate = gateByJob.get(j.id) ?? null
-          const merge = mergeIndex.byPath.get(j.slug || '') ?? mergeIndex.byStem.get(j.slug || '') ?? null
-          return (
-            <li key={j.id}>
-              <button type="button"
-                onClick={() => onSelectJob(j)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0',
-                  background: 'transparent', border: 'none', borderBottom: `1px solid ${E.hairlineSoft}`,
-                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                }}
-              >
-                {statusBadge(j.status)}
-                <span style={{ flex: 1, fontSize: 12, color: E.inkBlack, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: E.serif, fontStyle: 'italic' }}>
-                  {j.title || j.topic}
-                </span>
-                {gate?.score != null && (
-                  <span style={{ ...TYPE.caption, color: gate.passed ? E.mossGreen : E.ember }}>
-                    {gate.passed ? '✓' : '✕'} {gate.score}
-                  </span>
-                )}
-                {j.pr_number && (
-                  <span style={{ ...TYPE.caption, color: '#60A5FA' }}>PR #{j.pr_number}</span>
-                )}
-                {merge && (
-                  <span style={{ ...TYPE.caption, color: E.mossGreen }}>cluster</span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={onOpenWorkspaceJobs} style={{ ...navBtn(E.inkBlack, true), padding: '6px 12px' }}>
-          Open full queue →
-        </button>
-        <button type="button" onClick={onRefreshJobs} disabled={loading} style={{ ...navBtn(E.gold, false), padding: '6px 12px' }}>
-          ↻ Refresh
-        </button>
-      </div>
-    </>
-  )
-
-  const stepV = (
-    <>
-      <p style={{ ...TYPE.body, color: E.inkSoft, margin: '0 0 10px' }}>
-        Open a job’s detail to see its inline editor, deterministic compliance repairs, and the Approve → main action.
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
-        <div style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
-          <div style={{ ...TYPE.caption, color: E.inkMuted }}>In review queue</div>
-          <div style={{ ...TYPE.kicker, color: E.inkBlack }}>{prJobs.length}</div>
-        </div>
-        <div style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
-          <div style={{ ...TYPE.caption, color: E.inkMuted }}>Ready to merge</div>
-          <div style={{ ...TYPE.kicker, color: E.inkBlack }}>{mergedJobs.length}</div>
-        </div>
-      </div>
-      <button type="button" onClick={onEngage} style={{ ...navBtn(E.inkBlack, true), padding: '8px 14px' }}>
-        Open Create / Review →
-      </button>
-    </>
-  )
-
-  const stepVI = (
-    <ShipLedger
-      mergedJobs={mergedJobs}
-      onRefresh={onRefreshJobs}
-      setActionNotice={setActionNotice}
-    />
-  )
-
-  // Status triages
-  const stepStatus: ('idle' | 'live' | 'ingested' | 'drafting' | 'merged' | 'pr' | 'review')[] = [
-    'ingested',
-    radar.length ? 'live' : 'idle',
-    brief ? 'drafting' : 'idle',
-    mergedJobs.length ? 'merged' : (prJobs.length ? 'pr' : (draftingJobs.length ? 'drafting' : 'idle')),
-    prJobs.length ? 'review' : 'idle',
-    mergedJobs.length ? 'merged' : 'idle',
-  ]
-
-  return (
-    <section style={{
-      background: E.ivory,
-      borderRadius: 16,
-      padding: '28px 32px 24px',
-      border: `1px solid ${E.hairline}`,
-      boxShadow: E.ivoryShadow,
-    }}>
-      {/* ── Masthead ── */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ maxWidth: 720 }}>
-          <div style={{ ...TYPE.caption, color: E.gold }}>The Content Studio · Volume IV</div>
-          <h1 style={{ ...TYPE.display, margin: '4px 0 6px' }}>From ingest to live URL — wholly accounted for.</h1>
-          <p style={{ ...TYPE.byline, color: E.inkSoft, margin: 0, maxWidth: 540 }}>
-            One verifiable pipeline: SEO Master Engine intake → radar → compiler → gate → GitHub PR → estate deploy. Every page leaves a trail.
-          </p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <div style={{ ...TYPE.caption, color: E.inkMuted }}>{liveTone === 'live' ? 'Live Scan' : 'Snapshot Mode'}</div>
-          <div style={{ fontSize: 11, color: E.inkSoft, fontFamily: E.mono }}>
-            Issue {new Date().getFullYear()} · No. {String(jobTotal).padStart(3, '0')} of {jobTotal}
-          </div>
-        </div>
-      </header>
-
-      {/* ── Section labels (editorial column rules) ── */}
-      <div style={{ height: 1, background: E.gold, marginBottom: 16, opacity: 0.4 }} />
-
-      {/* ── Six-step spread: two rows of three columns ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 22 }}>
-        {SPREAD_STEPS.slice(0, 3).map((s, i) => (
-          <SpreadStep key={s.roman} {...s} status={stepStatus[i]} accent={accentFor(i)} active={stepActiveIndex === i}
-            body={i === 0 ? stepI : i === 1 ? stepII : stepIII} />
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 22, marginTop: 22 }}>
-        {SPREAD_STEPS.slice(3).map((s, idx) => (
-          <SpreadStep key={s.roman} {...s} status={stepStatus[idx + 3]} accent={accentFor(idx + 3)} active={stepActiveIndex === (idx + 3)}
-            body={idx === 0 ? stepIV : idx === 1 ? stepV : stepVI} />
-        ))}
-      </div>
-
-      {/* ── Footer column rule ── */}
-      <div style={{ height: 1, background: E.gold, marginTop: 28, opacity: 0.4 }} />
-      <div style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 10, textAlign: 'center', letterSpacing: '0.25em' }}>
-        Fin — end of this issue — every ship leaves a stamp — every stamp is verifiable —
-      </div>
+      {snapshot?.degraded && snapshot.guidance && <div style={{ padding: '8px 10px', borderLeft: `3px solid ${C.orange}`, background: '#FFFBEB', color: '#92400E', fontFamily: C.mono, fontSize: 9 }}>{snapshot.guidance}</div>}
     </section>
-  )
-}
-
-function accentFor(idx: number): string {
-  const palette = [E.inkBlack, E.goldDeep, E.gold, '#60A5FA', E.mossGreen, E.mossGreen]
-  return palette[idx % palette.length]
-}
-
-const navBtn = (color: string, dark: boolean): React.CSSProperties => ({
-  padding: '8px 14px',
-  borderRadius: 999,
-  background: dark ? color : E.paper,
-  color: dark ? '#FFFFFF' : color,
-  border: dark ? 'none' : `1px solid ${color}`,
-  cursor: 'pointer',
-  fontSize: 11,
-  fontWeight: 700,
-  fontFamily: E.mono,
-  letterSpacing: '0.06em',
-  textTransform: 'uppercase',
-})
-
-// ── Ship Ledger (verified stamps of merged PRs) ──
-function ShipLedger({
-  mergedJobs, onRefresh, setActionNotice,
-}: {
-  mergedJobs: ContentJob[]
-  onRefresh: () => void
-  setActionNotice: (msg: string) => void
-}) {
-  const sorted = [...mergedJobs].sort((a, b) => {
-    const aT = a.merged_at ? new Date(a.merged_at).getTime() : 0
-    const bT = b.merged_at ? new Date(b.merged_at).getTime() : 0
-    return bT - aT
-  })
-  const stamps = sorted.slice(0, 12)
-  return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ ...TYPE.metric, color: E.inkBlack }}>{sorted.length} merged PR{sorted.length === 1 ? '' : 's'}</div>
-        <button type="button" onClick={onRefresh} style={{ ...navBtn(E.gold, false), padding: '4px 10px', fontSize: 10 }}>↻ Refresh</button>
-      </div>
-      {stamps.length === 0 ? (
-        <p style={{ ...TYPE.body, color: E.inkMuted, margin: 0 }}>
-          No merged PRs yet. Approve a draft → PR → main → a stamp appears here with the live URL it produced.
-        </p>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-          {stamps.map((j, idx) => {
-            const liveUrl = j.canonical_url || j.branch_name || j.content_path || ''
-            return (
-              <article key={j.id} style={{
-                background: E.cream, border: `1px dashed ${E.gold}`, borderRadius: 4,
-                padding: '10px 12px', position: 'relative',
-              }}>
-                {/* Stamp corners */}
-                <div style={{ position: 'absolute', top: -2, left: -2, width: 18, borderTop: `3px solid ${E.gold}` }} />
-                <div style={{ position: 'absolute', top: -2, left: -2, height: 18, borderLeft: `3px solid ${E.gold}` }} />
-                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 18, borderBottom: `3px solid ${E.gold}` }} />
-                <div style={{ position: 'absolute', bottom: -2, right: -2, height: 18, borderRight: `3px solid ${E.gold}` }} />
-
-                <div style={{ ...TYPE.caption, color: E.goldDeep, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Stamp No. {String(idx + 1).padStart(2, '0')}</span>
-                  <span>{j.merged_at ? formatDate(j.merged_at) : '—'}</span>
-                </div>
-                <h3 style={{ ...TYPE.headline, fontSize: 14, margin: '4px 0 2px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {j.title || j.topic}
-                </h3>
-                {liveUrl && (
-                  <a href={liveUrl} target="_blank" rel="noreferrer"
-                    onClick={() => setActionNotice(`Stamp verified · ${j.title || liveUrl}`)}
-                    style={{ fontSize: 11, color: E.inkBlack, textDecoration: 'none', wordBreak: 'break-all' }}>
-                    ↗ {liveUrl.replace(/^https?:\/\//, '').slice(0, 60)}
-                  </a>
-                )}
-                <div style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 6, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                  <span>PR #{j.pr_number || '—'}</span>
-                  {j.target_repo && <span>→ {j.target_repo}</span>}
-                  {j.ai_provider && <span>{j.ai_provider}</span>}
-                </div>
-              </article>
-            )
-          })}
-        </div>
-      )}
-      {sorted.length > stamps.length && (
-        <p style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 8 }}>
-          Showing the {stamps.length} most-recent merged PRs · {sorted.length} on record
-        </p>
-      )}
-    </>
   )
 }
 
 // ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
   const [tab, setTab] = React.useState<StudioTab>(() => {
-    if (typeof window === 'undefined') return 'identify'
+    if (typeof window === 'undefined') return 'discover'
     const requested = new URLSearchParams(window.location.search).get('tab')
-    // Back-compat: legacy 5-tab tokens resolve to the chapter they lived under.
-    // PhD-style pipeline (I → VIII) absorbs the old command-center tab names.
-    const alias: Record<string, StudioTab> = {
-      pipeline: 'write',     // legacy live/job running surface → V · Write
-      create: 'define',      // legacy wizard → III · Define (step 1)
-      queue: 'write',        // legacy queue + queue stats → V · Write
-      insights: 'identify',  // legacy radar/GSC/merges → I · Identify
-      operations: 'survey',  // legacy kitchen sink → II · Survey
-    }
-    if (requested && alias[requested]) return alias[requested]
-    return isStudioTab(requested) ? requested : 'identify'
+    return resolveStudioStage(requested)
   })
-  const selectTab = React.useCallback((next: StudioTab) => {
-    setTab(next)
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href)
-      url.searchParams.set('tab', next)
-      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
-    }
-  }, [])
-  React.useEffect(() => {
-    const onPopState = () => {
-      const requested = new URLSearchParams(window.location.search).get('tab')
-      const alias: Record<string, StudioTab> = {
-        pipeline: 'write', create: 'define', queue: 'write', insights: 'identify', operations: 'survey',
-      }
-      const next = (requested && alias[requested])
-        ? alias[requested]
-        : (isStudioTab(requested) ? requested : 'identify')
-      setTab(next)
-      const url = new URL(window.location.href)
-      url.searchParams.set('tab', next)
-      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
-    }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
   const [jobs, setJobs] = React.useState<ContentJob[]>([])
   const [jobTotal, setJobTotal] = React.useState(0)
   const [jobSummary, setJobSummary] = React.useState<QueueSummary | null>(null)
@@ -3647,6 +3442,97 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // honest to display instead of a silent void.
   const [lastRefreshAt, setLastRefreshAt] = React.useState<number | null>(null)
   const [queueBulkConfirmArmed, setQueueBulkConfirmArmed] = React.useState<string | null>(null)
+
+  // ── Dissertation progression contract ──
+  // A chapter is not merely a view: it has an evidence prerequisite. The
+  // resolver below is shared by tab clicks and browser back/forward so a URL
+  // cannot silently bypass the study's research → method → defense chain.
+  const hasTopic = Boolean(topic.trim() || title.trim() || selectedBrief)
+  const hasBriefReady = Boolean(topic.trim() && title.trim())
+  const hasDraft = jobs.length > 0 || jobTotal > 0
+  const hasReviewableJob = jobs.some((j) => ['drafting', 'publishing', 'pr_created', 'merged'].includes(j.status))
+  const hasApproval = jobs.some((j) => Boolean(j.pr_url || j.pr_number) && j.status !== 'closed')
+  const hasPublication = jobs.some((j) => j.status === 'merged' || Boolean(j.canonical_url))
+
+  const stageAvailability = React.useMemo<Record<StudioTab, { available: boolean; reason: string }>>(() => ({
+    discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
+    research: { available: hasTopic, reason: 'Pin a topic or opportunity before researching keywords & intent.' },
+    plan: { available: hasBriefReady, reason: 'Complete keyword research before building the plan.' },
+    draft: { available: hasBriefReady, reason: 'Complete the research and plan before drafting.' },
+    review: { available: hasDraft || hasReviewableJob, reason: 'A generated job must exist before review.' },
+    approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
+    track: { available: hasPublication, reason: 'A merged or canonical result must exist before the publication ledger.' },
+  }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
+
+  const pendingDeepLinkRef = React.useRef<StudioTab | null>(null)
+
+  const safeStage = React.useCallback((requested: StudioTab): StudioTab => (
+    nearestAvailableStage(requested, Object.fromEntries(
+      DISSERTATION_STAGES.map((stage) => [stage, stageAvailability[stage].available]),
+    ) as Partial<Record<StudioTab, boolean>>)
+  ), [stageAvailability])
+
+  const selectTab = React.useCallback((requested: StudioTab) => {
+    // An explicit operator click supersedes any deferred URL deep link.
+    pendingDeepLinkRef.current = null
+    const next = safeStage(requested)
+    setTab(next)
+    if (next !== requested) {
+      setActionNotice(`Stage ${requested} is not ready. ${stageAvailability[requested].reason} Opening ${next}.`)
+    }
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', next)
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [safeStage, setActionNotice, stageAvailability])
+
+  React.useEffect(() => {
+    const requested = resolveStudioStage(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('tab'))
+    // Preserve a deep link while the initial queue is hydrating. Until then,
+    // availability is intentionally conservative because jobs/PRs are unknown.
+    if (loading) {
+      pendingDeepLinkRef.current = requested
+    } else {
+      if (!stageAvailability[requested].available) pendingDeepLinkRef.current = requested
+      const next = safeStage(requested)
+      if (next !== requested) {
+        setTab(next)
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href)
+          url.searchParams.set('tab', next)
+          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+        }
+      }
+    }
+    const onPopState = () => {
+      const resolved = resolveStudioStage(new URLSearchParams(window.location.search).get('tab'))
+      pendingDeepLinkRef.current = loading || !stageAvailability[resolved].available ? resolved : null
+      const safe = safeStage(resolved)
+      setTab(safe)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', safe)
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [loading, safeStage, stageAvailability])
+
+  // Jobs hydrate asynchronously. Restore a requested terminal deep link once
+  // the first queue load has completed, but still fall back safely if its
+  // prerequisite genuinely does not exist.
+  React.useEffect(() => {
+    if (loading || !pendingDeepLinkRef.current) return
+    const requested = pendingDeepLinkRef.current
+    pendingDeepLinkRef.current = null
+    const next = safeStage(requested)
+    setTab(next)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', next)
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [loading, safeStage])
 
   // Fetch jobs
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
@@ -3787,7 +3673,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
-    selectTab('define')
+    selectTab('research')
     setShowRadar(true)
   }, [])
 
@@ -3861,7 +3747,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // id; the route runs the existing pipeline.approve (audit + deterministic
   // repair + shipContent) and finishes with monitorContentJob. After the
   // promise resolves we re-fetch jobs so VII · Approve surfaces the merged
-  // status and VIII · Publish & Cite gets a fresh stamp.
+  // status and VII · Track gets a fresh stamp.
   const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
     try {
       const response = await fetch('/api/content-studio/jobs', {
@@ -4174,7 +4060,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      selectTab('write')
+      selectTab('draft')
       const refreshedJobs = await fetchJobs()
       if (generatedJobId) {
         let reviewJob = refreshedJobs.find((candidate) => candidate.id === generatedJobId) || null
@@ -4227,14 +4113,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // research process; back-compat aliases map legacy tab tokens to the
   // chapter they used to live under (see  above).
   const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
-    { key: 'identify',    numeral: 'I',    label: 'Identify',    sub: 'Identify the Problem',     hint: 'Radar · cannibalization · GSC' },
-    { key: 'survey',      numeral: 'II',   label: 'Survey',      sub: 'Survey the Literature',   hint: 'Engine · voice · systems' },
-    { key: 'define',      numeral: 'III',  label: 'Define',      sub: 'Define the Topic',        hint: 'Region · tone · keywords' },
-    { key: 'investigate', numeral: 'IV',   label: 'Investigate', sub: 'Investigate / Brief',     hint: 'Brief · scout · autopilot' },
-    { key: 'write',       numeral: 'V',    label: 'Write',       sub: 'Conduct & Write',         hint: `${jobTotal || jobs.length} jobs · live` },
-    { key: 'defend',      numeral: 'VI',   label: 'Defend',      sub: 'Defend the Draft',        hint: 'Re-audit · blockers' },
-    { key: 'approve',     numeral: 'VII',  label: 'Approve',     sub: 'Approve & Submit',        hint: 'PR · deploy' },
-    { key: 'publish',     numeral: 'VIII', label: 'Publish',     sub: 'Publish & Cite',          hint: 'Ledger · citations' },
+    { key: 'discover', numeral: 'I',   label: 'Discover', sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
+    { key: 'research', numeral: 'II',  label: 'Research', sub: 'Keywords & Intent',      hint: 'Intent · difficulty · topical authority' },
+    { key: 'plan',     numeral: 'III', label: 'Plan',     sub: 'Brief & Strategy',        hint: 'Target · audience · format · interlinks' },
+    { key: 'draft',    numeral: 'IV',  label: 'Draft',    sub: 'Generate & Pipeline',     hint: `${jobTotal || jobs.length} jobs · live` },
+    { key: 'review',   numeral: 'V',   label: 'Review',   sub: 'Quality & Compliance',    hint: 'Re-audit · blockers · gate' },
+    { key: 'approve',  numeral: 'VI',  label: 'Approve',  sub: 'PR & Deploy',             hint: 'Merge · deploy · monitor' },
+    { key: 'track',    numeral: 'VII', label: 'Track',    sub: 'Publication Ledger',      hint: 'Canonical · GSC · forecast vs actual' },
   ]
 
   return (
@@ -4348,6 +4233,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       }}>
         {TABS.map((t) => {
           const active = tab === t.key
+          const available = stageAvailability[t.key].available
           return (
             <button
               key={t.key}
@@ -4355,14 +4241,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               role="tab"
               aria-selected={active}
               aria-controls={`studio-panel-${t.key}`}
+              aria-disabled={!available}
               type="button"
               onClick={() => selectTab(t.key)}
-              title={`Chapter ${t.numeral} · ${t.label}`}
+              title={available ? `Chapter ${t.numeral} · ${t.label}` : stageAvailability[t.key].reason}
               style={{
-                padding: '12px 18px 12px 16px', borderRight: `1px solid ${E.hairline}`, cursor: 'pointer',
+                padding: '12px 18px 12px 16px', borderRight: `1px solid ${E.hairline}`, cursor: available ? 'pointer' : 'not-allowed',
                 fontFamily: E.serif, fontSize: 15, fontWeight: 600,
                 background: active ? E.paper : 'transparent',
                 color: active ? E.inkBlack : E.inkMuted,
+                opacity: available ? 1 : 0.48,
                 border: 'none',
                 borderBottom: active ? `3px solid ${E.gold}` : '3px solid transparent',
                 transition: 'all 0.18s',
@@ -4389,82 +4277,79 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         })}
       </div>
 
-      {/* ══════════ V · WRITE ══════════ */}
-      {/* PhD Chapter V — Conduct the experiment: the live generation stream,
-          editor surface, jobs clock, and queue stats. The former 'pipeline'
-          and 'queue' tabs both routed here for unified write-side UX. */}
-      {(tab === 'write' || (tab as string) === 'pipeline' || (tab as string) === 'queue' || ((tab as string) === 'pipeline' || (tab as string) === 'queue')) && (
+      {/* ══════════ IV · DRAFT ══════════ */}
+      {/* Stage IV — generate content: the live stream, editor surface,
+          jobs clock, and queue stats. Downstream of Discover → Research → Plan. */}
+      {tab === 'draft' && (
         <ChapterIntro
-          numeral="V"
-          title="Conduct & Write"
-          subtitle="The studio now treats every draft as a live experiment, not a queued wish. Run your generation, watch the stream, audit on the fly, and shepherd the draft to a green gate."
-          chapterKey="write"
+          numeral="IV"
+          title="Draft"
+          subtitle="Generate against the plan: AI-powered content creation with live streaming, pipeline jobs, and parallel quality audits — all in one reproducible pipeline."
+          chapterKey="draft"
           scope={[
             { chip: 'Live stream', text: 'SSE-fed, line-by-line generation paired with the SEO-enrichment pass.' },
             { chip: 'Queue',       text: 'Every active job with bulk rerun / resume / abandon / clear; per-job clock + ETA.' },
             { chip: 'Audit',       text: 'First-pass audit runs in parallel and writes the first-pass score into the gate badge.' },
           ]}
-          prev="IV · Investigate"
-          next="VI · Defend"
+          prev="III · Plan"
+          next="V · Review"
           onJump={selectTab}
         />
       )}
-      {(tab === 'write' || (tab as string) === 'pipeline') && (
-        <div id="studio-panel-write" role="tabpanel" aria-labelledby="studio-tab-write" style={{ marginBottom: 14 }}>
-          <StudioEditorialSpread
-            engineStatus={engineStatus}
-            engineBusy={engineBusy}
-            onEngineAction={runEngineAction}
-            radar={radar}
-            radarMeta={radarMeta}
-            suggestions={suggestions}
-            suggestionsLoading={suggestionsLoading}
-            suggestionsError={suggestionsError}
-            gscStatus={gscStatus}
-            onConnectGsc={() => setGscConnectOpen(true)}
-            onRefreshSuggestions={fetchSuggestions}
-            onApplySuggestion={applyBrief}
-            brief={selectedBrief}
-            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-            jobs={jobs}
-            jobTotal={jobTotal}
-            jobSummary={jobSummary}
-            loading={loading}
-            mergeIndex={mergeIndex}
-            gateByJob={gateByJob}
-            onSelectJob={(job) => { setQueueFocusJobId(null); setSelectedJob(job); selectTab('write') }}
-            mergeHistory={merges}
-            onRefreshJobs={() => void fetchJobs()}
-            setActionNotice={setActionNotice}
-            onOpenWorkspaceJobs={() => selectTab('write')}
-            onEngage={() => selectTab('define')}
-          />
+      {tab === 'draft' && (
+        <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE IV · GENERATE</div>
+                <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Generate against the plan</h3>
+                <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
+                  Generation is deliberately downstream of Discover, Research, and Plan. The live stream above and the queue below are the only execution surfaces in this stage.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => selectTab('research')} style={actionGhostStyle()}>← Research</button>
+                <button type="button" onClick={() => selectTab('plan')} style={actionBtnStyle(E.gold)}>Review plan →</button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+              {[
+                ['Method locked', Boolean(topic.trim() && title.trim())],
+                ['Jobs tracked', jobs.length > 0 || jobTotal > 0],
+                ['Live events', generationEvents.length > 0],
+              ].map(([label, ready]) => (
+                <span key={String(label)} style={{ padding: '5px 9px', background: ready ? E.mossSoft : E.parchment, color: ready ? '#24552A' : E.inkMuted, fontFamily: C.mono, fontSize: 10, fontWeight: 700 }}>
+                  {ready ? '✓' : '○'} {label}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ══════════ III · DEFINE ══════════ */}
-      {/* PhD Chapter III — Define the Topic: target, region, voice, content
-          type, topic, audience, anchor fields, scouting host, master brief
-          anchors. The wizard's step 1 lives here; step 2 lives in
-          IV · Investigate and is reachable through the wizard itself. */}
-      {(tab === 'define' || tab === 'investigate' || (tab as string) === 'create') && (
+      {/* ══════════ II / III · QUESTION + METHOD ══════════ */}
+      {/* Dissertation Chapters II–III — freeze the research question, then
+          translate it into a reproducible strategy. */}
+      {(tab === 'research' || tab === 'plan') && (
         <ChapterIntro
-          numeral="III"
-          title="Define the Topic"
-          subtitle="Before investigating or writing, sharpen the question. Pick the jurisdiction, the legal voice, and the audience — then name the topic with enough specificity that downstream gates know what to reward."
-          chapterKey={tab === 'investigate' ? 'investigate' : 'define'}
+          numeral={tab === 'plan' ? 'III' : 'II'}
+          title={tab === 'plan' ? 'Plan' : 'Research'}
+          subtitle={tab === 'plan'
+            ? 'Translate the research into a concrete plan: intent, audience, keywords, format, destination, and interlink strategy.'
+            : 'Research what matters. Analyze keyword intent, topical authority, competitor landscape, and the primary question the content must answer before building the plan.'}
+          chapterKey={tab === 'plan' ? 'plan' : 'research'}
           scope={[
             { chip: 'Target',     text: 'Region (US / CA / AU / UK / COMPARE · legal-only) and content type.' },
             { chip: 'Voice',      text: 'Tone, format style, AI provider; ensures the generator matches the brief voice.' },
             { chip: 'Topic',      text: 'Slug anchor + page title + topic sentence + audience sentence.' },
           ]}
-          prev="II · Survey"
-          next="IV · Investigate"
+          prev={tab === 'plan' ? 'II · Research' : 'I · Discover'}
+          next={tab === 'plan' ? 'IV · Draft' : 'III · Plan'}
           onJump={selectTab}
         />
       )}
-      {(tab === 'define' || tab === 'investigate' || (tab as string) === 'create') && (
-        <div id="studio-panel-define" role="tabpanel" aria-labelledby="studio-tab-define" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {(tab === 'research' || tab === 'plan') && (
+        <div id={`studio-panel-${tab}`} role="tabpanel" aria-labelledby={`studio-tab-${tab}`} style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
@@ -4495,7 +4380,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </button>
             </div>
           )}
-          {(tab as string) === 'investigate' ? (
+          {tab === 'plan' ? (
             <Step2Investigate
               generating={generating}
               onGenerate={handleGenerate}
@@ -4555,8 +4440,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {(tab === 'write' || (tab as string) === 'queue') && (
-        <div id="studio-panel-write-queue" role="tabpanel" aria-labelledby="studio-tab-write" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {tab === 'draft' && (
+        <div id="studio-panel-draft-queue" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
 
           {/* ── Queue command bar — bulk actions & visible status counts ── */}
@@ -4753,89 +4638,63 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* ══════════ II · SURVEY ══════════ */}
-      {/* PhD Chapter II — Survey of the Literature: SEO Master Engine, LLM voice
-          ontology, ranking model, systems cardshelf. The former "Operations"
-          dashboard is folded in here as the kitchen sink of strategic context. */}
-      {tab === 'survey' && (
-        <div
-          id="studio-panel-survey"
-          role="tabpanel"
-          aria-labelledby="studio-tab-survey"
-          style={{ marginBottom: 14 }}
-        >
-          <ChapterIntro
-            numeral="II"
-            title="Survey of the Literature"
-            subtitle="Ingest what the engines know — knowledge, voice, ontology, ranking model, and the system that hosts it all."
-            chapterKey="survey"
-            scope={[
-              { chip: 'Knowledge', text: 'Pulls site taxonomy, LLM voice pack, ontology, and strategy packs from the SEO Master Engine.' },
-              { chip: 'Engine',     text: 'Ranking Model block: family scores, recommended actions, and 30/60/90 vs-actual deltas.' },
-              { chip: 'Systems',    text: 'GSC connect, Cloudflare route health, environment fingerprint, dry-run mode.' },
-            ]}
-            next="III · Define the Topic"
-          />
-          <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Systems…</div>}>
-            <AdminCommandCenter setActionNotice={setActionNotice} />
-          </React.Suspense>
-        </div>
-      )}
-
-      {/* ══════════ I · IDENTIFY ══════════ */}
-      {/* PhD Chapter I — Identify the Problem: where the portfolio hurts
-          today and where the next investment of a draft will earn the most
-          reward. Live GSC, cannibalization radar, cluster taxonomy. */}
-      {(tab === 'identify' || (tab as string) === 'insights') && (
-        <ChapterIntro
-          numeral="I"
-          title="Identify the Problem"
-          subtitle="Every dissertation starts with a question. Here the question is: where will the next draft compound the most ranking — and where will one more draft cannibalize an existing canonical?"
-          chapterKey="identify"
-          scope={[
-            { chip: 'Live GSC',            text: 'Pulls impressions, clicks, CTR and position from the connected Search Console.' },
-            { chip: 'Cannibalization',     text: 'Flagged when two URLs compete for the same primary keyword.' },
-            { chip: 'Cluster radar',       text: 'Surfaces keyword clusters ranked by 30/60/90 reward forecast.' },
-          ]}
-          next="II · Survey"
-          onJump={selectTab}
-        />
-      )}
-      {(tab === 'identify' || (tab as string) === 'insights') && (
-        <div id="studio-panel-identify" role="tabpanel" aria-labelledby="studio-tab-identify" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <GscMini />
-            <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <MergeHistory />
-            <InterlinksMini topic={topic} keywords={keywords} />
-            <AdminSiteHealthPanel />
-            <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
-          </div>
-        </div>
-      )}
-
-      {/* ══════════ VI · DEFEND ══════════ */}
-      {/* PhD Chapter VI — Defend the draft: re-audit, blocker resolution,
-          inline editor. Each gate must clear before the draft can advance
-          to Approve. The selected job carries the inline editor + re-audit
-          surface; from here we wire the gate state, blocker remediation,
-          and the action CTA that opens the modal. */}
-      {tab === 'defend' && (
+      {/* ══════════ I · DISCOVER ══════════ */}
+      {/* Stage I — scan all signals. GSC, radar, insights, LLM/AEO visibility,
+          engine knowledge, systems health, and ownership constraints all enter
+          before any research question is formed. */}
+      {tab === 'discover' && (
         <>
           <ChapterIntro
-            numeral="VI"
-            title="Defend the Draft"
-            subtitle="Every claim must hold against the quality gate. Voice, format, ownership, and compliance blockers are listed below — re-audit, edit, and regenerate until the gate is green before the defense is heard."
-            chapterKey="defend"
+            numeral="I"
+            title="Discover"
+            subtitle="No research starts until the signals are assembled. Read the live search landscape, engine knowledge, topical gaps, ownership constraints, and visibility signals before committing to a direction."
+            chapterKey="discover"
+            scope={[
+              { chip: 'Signals', text: 'Live GSC, committed snapshots, engine knowledge, LLM/AEO visibility, and site-health signals.' },
+              { chip: 'Opportunity', text: 'Radar and reward forecasts expose gaps, rising demand, weak families, and cannibalization risk.' },
+              { chip: 'Constraints', text: 'Ownership registry, destination repo, format rules, and canonical supply are known before research begins.' },
+            ]}
+            next="II · Research"
+            onJump={selectTab}
+          />
+          <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <GscMini />
+                <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <MergeHistory />
+                <InterlinksMini topic={topic} keywords={keywords} />
+                <AdminSiteHealthPanel />
+                <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
+                <ResearchLiveOperations />
+              </div>
+            </div>
+            <div style={{ padding: '12px 14px', background: E.cream, border: `1px dashed ${E.hairline}`, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
+              The evidence room is complete here: engine status and ingestion controls are in the masthead; GSC, radar, ownership, interlinks, and site health remain attached to this dossier. No second command-center navigation is required.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════ V · DEFENSE ══════════ */}
+      {/* Stage V — review quality. Re-audit, blocker resolution, and inline
+          editing. Each gate must clear before advancing to Approval. */}
+      {tab === 'review' && (
+        <>
+          <ChapterIntro
+          numeral="V"
+          title="Review"
+          subtitle="Every claim must hold against the quality gate. Edit, re-audit, and regenerate until content, format, ownership, and compliance checks are green."
+          chapterKey="review"
             scope={[
               { chip: 'Inline edit',  text: 'Edit the draft directly; the gate re-runs on save.' },
               { chip: 'Re-audit',     text: 'One click audits against the live content quality gate.' },
               { chip: 'Blockers',     text: 'Each blocker is listed with the exact line that triggered it and the remediation guidance.' },
             ]}
-            prev="V · Write"
-            next="VII · Approve"
+            prev="IV · Draft"
+            next="VI · Approve"
             onJump={selectTab}
           />
           <DefendPanel
@@ -4849,24 +4708,24 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </>
       )}
 
-      {/* ══════════ VII · APPROVE ══════════ */}
-      {/* PhD Chapter VII — Approve & Submit: open the PR to main, monitor
-          the Cloudflare build, and ensure the deploy lands before the
-          ledger receives the citation. */}
+      {/* ══════════ VI · APPROVE ══════════ */}
+      {/* Stage VI — approve and merge the reviewed draft,
+          monitor the Cloudflare build, and ensure the deploy lands before
+          the publication record receives the citation. */}
       {tab === 'approve' && (
         <>
           <ChapterIntro
-            numeral="VII"
-            title="Approve & Submit"
-            subtitle="Once the gate is green, the draft earns the right to enter the publishing queue. Here you push to main, watch the auto-PR resolve, and shepherd the deploy to a live URL."
-            chapterKey="approve"
+          numeral="VI"
+          title="Approve"
+          subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, and record the merge outcome before publication verification."
+          chapterKey="approve"
             scope={[
               { chip: 'Push to main',  text: 'Opens the PR to the deployment repo; auto-resolves once the build is green.' },
               { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
               { chip: 'Rollback',      text: 'A single click reverts the change and removes it from the citation ledger.' },
             ]}
-            prev="VI · Defend"
-            next="VIII · Publish & Cite"
+            prev="V · Review"
+            next="VII · Track"
             onJump={selectTab}
           />
           <ApprovePanel
@@ -4880,23 +4739,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </>
       )}
 
-      {/* ══════════ VIII · PUBLISH & CITE ══════════ */}
-      {/* PhD Chapter VIII — Publish & Cite: the canonical Ship Ledger of
-          every merge, the verified URL history, and the citation index that
-          downstream ranking models replay for reward calibration. */}
-      {tab === 'publish' && (
+      {/* ══════════ VII · TRACK ══════════ */}
+      {/* Stage VII — the publication ledger of every merge, verified URL,
+          live GSC trend, and citation evidence used for reward calibration. */}
+      {tab === 'track' && (
         <>
           <ChapterIntro
-            numeral="VIII"
-            title="Publish & Cite"
-            subtitle="The dissertation is complete. The Ship Ledger records every merge and verified URL — the immutable evidence base that the ranking model replays for reward calibration."
-            chapterKey="publish"
+          numeral="VII"
+          title="Track"
+          subtitle="The content is live. Verify the canonical URL, record the live result, and preserve the citation and GSC evidence for reward calibration."
+          chapterKey="track"
             scope={[
               { chip: 'Merge ledger',  text: 'Every approved draft with merge SHA, deploy time, and live URL.' },
               { chip: 'Verified URL',  text: 'Each URL is re-checked live: 200 OK + canonical tag intact.' },
               { chip: 'Citation index', text: 'Blog → regional canonicals → cross-repo hyperlinks: a navigable citation graph.' },
             ]}
-            prev="VII · Approve"
+            prev="VI · Approve"
             onJump={selectTab}
           />
           <PublishLedger
@@ -4915,7 +4773,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onClose={() => setSelectedJob(null)}
           onRefresh={async () => { await fetchJobs() }}
           setActionNotice={setActionNotice}
-          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); selectTab('write') }}
+          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); selectTab('draft') }}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
         />
       )}
