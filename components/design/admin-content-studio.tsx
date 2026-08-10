@@ -897,17 +897,68 @@ function DefendPanel({
 // Surfaces the PR/monitor surface for the selected job. Each merged job
 // renders a status badge, deploy indicator, and a one-click rollback.
 function ApprovePanel({
-  selectedJob, jobs, merges, onOpenJob, setActionNotice,
+  selectedJob, jobs, merges, onOpenJob, setActionNotice, onApproveAndMerge,
 }: {
   selectedJob: ContentJob | null
   jobs: ContentJob[]
   merges: any[]
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
+  onApproveAndMerge?: (j: ContentJob) => Promise<{ ok: boolean; message?: string }>
 }) {
   const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
   const approvable = jobs.filter((j) => j.status === 'drafting' || j.status === 'pending')
   const recentMerges = (merges || []).slice(0, 8)
+
+  // Per-job approve progress: 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed'
+  // bulk_approve resolves only when the full sequence is done, so we project
+  // coarse stage milestones to keep the admin informed during CI.
+  type ApproveProgress = 'idle' | 'opening' | 'merging' | 'monitoring' | 'ok' | 'failed'
+  const [approveProgress, setApproveProgress] = React.useState<Record<string, {
+    stage: ApproveProgress
+    message: string
+    startedAt: number
+    finishedAt?: number
+  }>>({})
+  const runApproveRow = React.useCallback(async (j: ContentJob) => {
+    if (!onApproveAndMerge) return
+    const started = Date.now()
+    setApproveProgress((prev) => ({
+      ...prev,
+      [j.id]: { stage: 'opening', message: 'Opening PR...', startedAt: started },
+    }))
+    // Coarse stage projection so the operator sees progress during long
+    // CI runs even when the API hasn't returned yet.
+    const projectStage = (stage: ApproveProgress, message: string, after: number) =>
+      setTimeout(() => {
+        setApproveProgress((prev) =>
+          prev[j.id] && prev[j.id].stage !== 'ok' && prev[j.id].stage !== 'failed'
+            ? { ...prev, [j.id]: { ...prev[j.id], stage, message } }
+            : prev)
+      }, after)
+    projectStage('merging', 'Merging to main...', 5500)
+    projectStage('monitoring', 'Watching deploy...', 14000)
+
+    try {
+      const result = await onApproveAndMerge(j)
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: {
+          stage: result.ok ? 'ok' : 'failed',
+          message: result.message || (result.ok ? 'PR merged · deploy live' : 'Push failed'),
+          startedAt: prev[j.id]?.startedAt || started,
+          finishedAt: Date.now(),
+        },
+      }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Push failed'
+      setApproveProgress((prev) => ({
+        ...prev,
+        [j.id]: { stage: 'failed', message, startedAt: started, finishedAt: Date.now() },
+      }))
+      setActionNotice?.(message)
+    }
+  }, [onApproveAndMerge, setActionNotice])
   return (
     <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
@@ -919,24 +970,68 @@ function ApprovePanel({
           </p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {prOpen.map((j) => (
-            <button key={j.id} onClick={() => onOpenJob(j)} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: 12, background: E.ivory, border: `1px solid ${E.hairline}`, borderRadius: 0, cursor: 'pointer',
-              textAlign: 'left',
-            }}>
-              <div>
-                <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>{j.title}</div>
-                <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkMuted }}>
-                  {j.region} · {(j.content_type || '').toUpperCase()} · {j.pr_url ? `PR #${j.pr_number}` : 'PR queued'}
-                </div>
+          {prOpen.map((j) => {
+            const progress = approveProgress[j.id]
+            const isWorking = progress && progress.stage !== 'ok' && progress.stage !== 'failed'
+            const stageColor =
+              progress?.stage === 'ok' ? '#0f7a3a'
+              : progress?.stage === 'failed' ? '#a32525'
+              : isWorking ? '#b87a00'
+              : 'transparent'
+            const stageLabel =
+              progress?.stage === 'ok' ? '✓ MERGED · LIVE'
+              : progress?.stage === 'failed' ? '✕ FAILED'
+              : progress?.stage === 'monitoring' ? '⏳ MONITORING DEPLOY'
+              : progress?.stage === 'merging' ? '⏳ MERGING'
+              : progress?.stage === 'opening' ? '⏳ OPENING PR'
+              : isWorking ? '⏳ WORKING...'
+              : (onApproveAndMerge ? '🚀 PUSH PR → MERGE' : 'READY TO MERGE')
+            return (
+              <div key={j.id} data-testid={`studio-approve-row-${j.id}`} data-stage={progress?.stage || 'idle'} style={{
+                display: 'flex', flexDirection: 'column', gap: 4,
+                padding: 12, background: E.ivory,
+                border: `1px solid ${E.hairline}`, borderRadius: 0,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => onApproveAndMerge ? runApproveRow(j) : onOpenJob(j)}
+                  disabled={Boolean(isWorking)}
+                  data-testid={`studio-approve-cta-${j.id}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    cursor: isWorking ? 'progress' : 'pointer',
+                    background: 'transparent', border: 'none', padding: 0,
+                    width: '100%', textAlign: 'left',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>{j.title}</div>
+                    <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkMuted }}>
+                      {j.region} · {(j.content_type || '').toUpperCase()} · {j.pr_url ? `PR #${j.pr_number}` : 'PR queued'}
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '4px 10px', fontFamily: C.mono, fontSize: 11, fontWeight: 700,
+                    background: stageColor, color: stageColor === 'transparent' ? E.inkMuted : E.ivory,
+                    transition: 'background 0.2s',
+                  }}>{stageLabel}</div>
+                </button>
+                {progress && (
+                  <div style={{
+                    fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted,
+                    paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
+                  }}>
+                    {progress.message}
+                    {progress.finishedAt && (
+                      <span style={{ marginLeft: 6, color: E.inkDim }}>
+                        · {Math.max(0, Math.round((progress.finishedAt - progress.startedAt) / 1000))}s elapsed
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
-              <div style={{
-                padding: '4px 10px', fontFamily: C.mono, fontSize: 11, fontWeight: 700,
-                background: '#0f7a3a', color: E.ivory,
-              }}>READY TO MERGE</div>
-            </button>
-          ))}
+            )
+          })}
         </div>
       </div>
       {recentMerges.length > 0 && (
@@ -3414,6 +3509,45 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     }
   }, [generationReviewJob, generationMergeBusy, fetchJobs, fetchGateRuns, setActionNotice])
 
+  // ── VII · Approve & Ship single-job flow (pipeline.approve + runShip) ──
+  // Posts to /api/content-studio/jobs with action='bulk_approve' on a single
+  // id; the route runs the existing pipeline.approve (audit + deterministic
+  // repair + shipContent) and finishes with monitorContentJob. After the
+  // promise resolves we re-fetch jobs so VII · Approve surfaces the merged
+  // status and VIII · Publish & Cite gets a fresh stamp.
+  const runApproveAndMerge = React.useCallback(async (j: ContentJob): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const response = await fetch('/api/content-studio/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'bulk_approve', ids: [j.id], dryRun: false }),
+      })
+      const data = await response.json().catch(() => ({})) as {
+        ok?: boolean; processed?: number; succeeded?: number; failed?: number
+        results?: Array<{ id: string; ok: boolean; detail?: any; error?: string }>
+        error?: string; message?: string
+      }
+      if (!response.ok) throw new Error(data.error || data.message || `Approve failed (HTTP ${response.status})`)
+      const first = Array.isArray(data.results) ? data.results[0] : undefined
+      const ok = first?.ok === true && data.failed === 0
+      const detailMessage = first?.detail && typeof first.detail === 'object' && 'message' in (first.detail as any)
+        ? String((first.detail as { message?: string }).message)
+        : undefined
+      const message = detailMessage || (
+        ok
+          ? `PR #${j.pr_number ?? '?'} merged · deploy live`
+          : `Push failed${first?.error ? `: ${first.error}` : ''}`
+      )
+      setActionNotice?.(message)
+      void fetchJobs().catch(() => { /* best-effort refresh */ })
+      return { ok, message }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Approve failed'
+      setActionNotice?.(message)
+      return { ok: false, message }
+    }
+  }, [fetchJobs, setActionNotice])
+
   // ── Bulk queue actions: rerun, resume, clear queue, re-audit, refresh PR, abandon ──
   // The bulk_* POST handler accepts up to 25 ids per request; we chunk large
   // selections and surface a progress bar so the admin sees the work moving.
@@ -4394,6 +4528,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             merges={merges}
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
+            onApproveAndMerge={runApproveAndMerge}
           />
         </>
       )}
