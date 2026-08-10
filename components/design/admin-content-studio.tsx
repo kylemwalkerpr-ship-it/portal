@@ -96,7 +96,7 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',
   'nvidia-glm': 'z-ai/glm-5.2',
   'baseten-deepseek': 'deepseek-ai/DeepSeek-V4-Flash-0731',
-  'nvidia-deepseek': 'deepseek-ai/deepseek-v4-pro',
+  'nvidia-deepseek': 'deepseek-ai/deepseek-v4-flash-0731',
   'cloudflare-ai': '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   groq: 'llama-3.3-70b-versatile',
   gemini: 'gemini-2.5-flash',

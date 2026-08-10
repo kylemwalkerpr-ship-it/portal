@@ -33,6 +33,17 @@ export interface AiProviderDef {
 
 export const AI_PROVIDERS: AiProviderDef[] = [
   {
+    id: 'nvidia-nemotron',
+    label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
+    keyEnv: 'NVIDIA_API_KEY',
+    baseUrlEnv: 'NVIDIA_BASE_URL',
+    modelEnv: 'NVIDIA_NEMOTRON_MODEL',
+    fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
+    defaultModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+    role: 'primary',
+    hint: 'Reasoning-enabled NVIDIA Integrate model; uses the shared NVIDIA API key',
+  },
+  {
     id: 'nvidia-glm',
     label: 'NVIDIA GLM 5.2 · z-ai/glm-5.2',
     keyEnv: 'NVIDIA_API_KEY',
@@ -45,12 +56,12 @@ export const AI_PROVIDERS: AiProviderDef[] = [
   },
   {
     id: 'nvidia-deepseek',
-    label: 'DeepSeek V4 Pro · NVIDIA',
+    label: 'DeepSeek V4 Flash · NVIDIA',
     keyEnv: 'NVIDIA_API_KEY',
     baseUrlEnv: 'NVIDIA_BASE_URL',
     modelEnv: 'NVIDIA_DEEPSEEK_MODEL',
     fixedBaseUrl: 'https://integrate.api.nvidia.com/v1',
-    defaultModel: 'deepseek-ai/deepseek-v4-pro',
+    defaultModel: 'deepseek-ai/deepseek-v4-flash-0731',
     role: 'primary',
     hint: 'NVIDIA fallback — long-form depth',
   },
@@ -151,7 +162,7 @@ export const providerDef = (id: string): AiProviderDef | undefined =>
 /** Safe default cascade; Settings can override it without a redeploy. */
 export const DEFAULT_PROVIDER_ORDER = [
   'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai',
-  'groq', 'gemini', 'openrouter', 'custom', 'deepseek',
+  'groq', 'gemini', 'openrouter', 'custom', 'deepseek', 'nvidia-nemotron',
 ] as const
 
 export interface VaultKeyRow {

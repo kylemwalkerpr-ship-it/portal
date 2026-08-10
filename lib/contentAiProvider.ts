@@ -2,7 +2,7 @@
  * Content-generation AI provider for Content Studio / SEO Factory.
  *
  * DEFAULT CHAIN (hard order):
- *   1. DeepSeek via NVIDIA Integrate (deepseek-ai/deepseek-v4-pro, 16k tokens)
+ *   1. NVIDIA Nemotron / GLM / DeepSeek via NVIDIA Integrate
  *   2. Cloudflare Workers AI (first fallback)
  *   3. Groq → Gemini → OpenRouter → custom → xAI → OpenAI → DeepSeek.com
  *   4. getChatProvider() bridge
@@ -22,7 +22,7 @@ const CF_AI_MODEL =
 
 /** Default output budget — long-form guides need ~2k words (~3–4k tokens). */
 const DEFAULT_MAX_TOKENS = 8192
-/** NVIDIA DeepSeek V4 Pro supports large completions — use for depth floors. */
+/** NVIDIA DeepSeek V4 Flash via NVIDIA NIM — replaced EOL V4 Pro on 2026-08-07. */
 const NVIDIA_DEEPSEEK_MAX_TOKENS = 16384
 const DEFAULT_TEMPERATURE = 0.65
 // Keep the cascade bounded while allowing one additional configured provider
@@ -34,12 +34,8 @@ function maxProviderCandidates(): number {
   )
 }
 
-const NVIDIA_INTEGRATE_BASE =
-  process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1'
-const NVIDIA_DEEPSEEK_MODEL =
-  process.env.NVIDIA_DEEPSEEK_MODEL?.trim() ||
-  process.env.NVIDIA_MODEL?.trim() ||
-  'deepseek-ai/deepseek-v4-pro'
+const NVIDIA_INTEGRATE_BASE_DEFAULT = 'https://integrate.api.nvidia.com/v1'
+const NVIDIA_DEEPSEEK_MODEL_DEFAULT = 'deepseek-ai/deepseek-v4-flash-0731'
 
 /**
  * NVIDIA GLM 5.2 (z-ai/glm-5.2) — verified live against integrate.api.nvidia.com/v1
@@ -47,17 +43,21 @@ const NVIDIA_DEEPSEEK_MODEL =
  * DeepSeek, but with stronger multi-language / instruction-following in YMYL
  * contexts. Zhipu AI's GLM 5.2 family running on NVIDIA's NIM catalog.
  *
- * PROMOTED: GLM is now the preferred NVIDIA lead over DeepSeek V4 Pro on this
+ * PROMOTED: GLM is now the preferred NVIDIA lead over DeepSeek on this
  * estate because (1) compliance-grade output on legal content and (2)
  * instruction-following are measurably stronger for our SEO briefs.
+ *
+ * NOTE: DeepSeek V4 Pro reached EOL 2026-08-07. Default is now
+ * deepseek-v4-flash-0731 via NVIDIA and Baseten.
  */
-const NVIDIA_GLM_MODEL =
-  process.env.NVIDIA_GLM_MODEL?.trim() ||
-  'z-ai/glm-5.2'
+const NVIDIA_GLM_MODEL_DEFAULT = 'z-ai/glm-5.2'
 const NVIDIA_GLM_MAX_TOKENS = 16384
+/** NVIDIA Nemotron 3 Ultra — reasoning budget from the supplied NIM example. */
+const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
+const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-const BASETEN_MAX_TOKENS = DEFAULT_MAX_TOKENS
+const BASETEN_MAX_TOKENS = 16384
 
 export interface ContentAiResult {
   text: string
@@ -304,7 +304,7 @@ async function openAiCompatibleComplete(
   })
 }
 
-/** NVIDIA Integrate API key for DeepSeek V4 Pro (long-form primary). */
+/** NVIDIA Integrate API key for DeepSeek (long-form primary). */
 export function resolveNvidiaApiKey(): string {
   return (
     env('NVIDIA_API_KEY') ||
@@ -323,15 +323,39 @@ export function isNvidiaDeepseekConfigured(): boolean {
   return Boolean(resolveNvidiaApiKey())
 }
 
+export function isNvidiaNemotronConfigured(): boolean {
+  return Boolean(resolveNvidiaApiKey())
+}
+
+/** NVIDIA-hosted Nemotron 3 Ultra — reasoning-enabled OpenAI-compatible NIM. */
+export function getNvidiaNemotronProvider(): OpenAiCompat | null {
+  const apiKey = resolveNvidiaApiKey()
+  if (!apiKey) return null
+  return {
+    label: 'nvidia-nemotron',
+    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
+    apiKey,
+    model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
+    topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
+    maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
+    // The supplied NVIDIA example enables thinking and reserves a reasoning
+    // budget. The SSE parser emits delta.content only, never hidden reasoning.
+    extraBody: {
+      chat_template_kwargs: { enable_thinking: true },
+      reasoning_budget: 16384,
+    },
+  }
+}
+
 /** NVIDIA-hosted GLM 5.2 (z-ai/glm-5.2) — 16k max tokens, OpenAI-compatible. */
 export function getNvidiaGlmProvider(): OpenAiCompat | null {
   const apiKey = resolveNvidiaApiKey()
   if (!apiKey) return null
   return {
     label: 'nvidia-glm',
-    baseURL: NVIDIA_INTEGRATE_BASE,
+    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
     apiKey,
-    model: NVIDIA_GLM_MODEL,
+    model: env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
     // Disable thinking mode so output is final prose (factory expects markdown page).
@@ -342,15 +366,15 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
   }
 }
 
-/** NVIDIA-hosted DeepSeek V4 Pro — 16k max tokens, OpenAI-compatible. */
+/** NVIDIA-hosted DeepSeek V4 Flash — 16k max tokens, OpenAI-compatible. */
 export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
   const apiKey = resolveNvidiaApiKey()
   if (!apiKey) return null
   return {
     label: 'nvidia-deepseek',
-    baseURL: NVIDIA_INTEGRATE_BASE,
+    baseURL: env('NVIDIA_BASE_URL') || NVIDIA_INTEGRATE_BASE_DEFAULT,
     apiKey,
-    model: NVIDIA_DEEPSEEK_MODEL,
+    model: env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
     // Disable thinking mode so output is final prose (factory expects markdown page)
@@ -412,6 +436,25 @@ async function nvidiaGlmComplete(opts: ContentAiOptions): Promise<ContentAiResul
     }
     const text = chunks.join('').trim()
     if (!text) throw new Error('nvidia-glm stream returned empty content')
+    return { text, provider: p.label, model: p.model }
+  })
+}
+
+async function nvidiaNemotronComplete(opts: ContentAiOptions): Promise<ContentAiResult> {
+  const p = getNvidiaNemotronProvider()
+  if (!p) throw new Error('NVIDIA Nemotron not configured (NVIDIA_API_KEY / NVAPI_KEY)')
+  const maxTokens = Math.min(opts.maxTokens ?? NVIDIA_NEMOTRON_MAX_TOKENS, NVIDIA_NEMOTRON_MAX_TOKENS)
+  return withRetry('nvidia-nemotron', async () => {
+    const chunks: string[] = []
+    for await (const event of openAiCompatibleStream(p, {
+      ...opts,
+      maxTokens,
+      temperature: opts.temperature ?? (Number(env('NVIDIA_TEMPERATURE') || '1') || 1),
+    })) {
+      if (event.type === 'delta') chunks.push(event.text)
+    }
+    const text = chunks.join('').trim()
+    if (!text) throw new Error('nvidia-nemotron stream returned empty content')
     return { text, provider: p.label, model: p.model }
   })
 }
@@ -892,6 +935,12 @@ export function listConfiguredContentProviders(): Array<{
 }> {
   return [
     {
+      id: 'nvidia-nemotron',
+      label: 'NVIDIA Nemotron 3 Ultra · nvidia/nemotron-3-ultra-550b-a55b',
+      configured: isNvidiaNemotronConfigured(),
+      role: 'primary',
+    },
+    {
       id: 'nvidia-glm',
       label: 'NVIDIA GLM 5.2 (z-ai/glm-5.2 — preferred lead)',
       configured: isNvidiaGlmConfigured(),
@@ -905,7 +954,7 @@ export function listConfiguredContentProviders(): Array<{
     },
     {
       id: 'nvidia-deepseek',
-      label: 'DeepSeek V4 Pro via NVIDIA (default primary)',
+      label: 'DeepSeek V4 Flash via NVIDIA (primary)',
       configured: isNvidiaDeepseekConfigured(),
       role: 'primary',
     },
@@ -928,7 +977,7 @@ export function listConfiguredContentProviders(): Array<{
 /**
  * Resolve preferred provider label.
  *
- * HARD DEFAULT: DeepSeek V4 Pro via NVIDIA (`nvidia-deepseek`).
+ * HARD DEFAULT: DeepSeek V4 Flash via NVIDIA (`nvidia-deepseek`).
  * Cloudflare is always the first fallback in orderedCompleters — never the
  * default lead unless CONTENT_AI_PROVIDER is explicitly cloudflare|workers-ai.
  *
@@ -953,6 +1002,13 @@ function preferProvider(): string {
     explicit === 'nvidia-glm-5.2'
   ) {
     return 'nvidia-glm'
+  }
+  if (
+    explicit === 'nemotron' ||
+    explicit === 'nemotron-3-ultra' ||
+    explicit === 'nvidia-nemotron'
+  ) {
+    return 'nvidia-nemotron'
   }
   // Aliases → NVIDIA DeepSeek primary
   if (
@@ -979,12 +1035,13 @@ function preferProvider(): string {
     'xai',
     'grok',
     'nvidia-glm', // NVIDIA GLM 5.2 (z-ai/glm-5.2) — preferred NVIDIA lead
+    'nvidia-nemotron', // NVIDIA Nemotron 3 Ultra reasoning model
     'baseten', 'baseten-deepseek',
     'nvidia-deepseek', // already aliased upstream, allowed as explicit pin
   ])
   if (!allowedPins.has(explicit)) {
     console.warn(
-      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-deepseek (DeepSeek V4 Pro)`,
+      `[contentAi] Unknown CONTENT_AI_PROVIDER="${explicit}" — using nvidia-deepseek (DeepSeek V4 Flash)`,
     )
     return 'nvidia-deepseek'
   }
@@ -996,6 +1053,7 @@ function isNvidiaPrefer(prefer: string): boolean {
     prefer === 'nvidia' ||
     prefer === 'nvidia-deepseek' ||
     prefer === 'nvidia-glm' ||
+    prefer === 'nvidia-nemotron' ||
     prefer === 'glm' ||
     prefer === 'z-ai' ||
     prefer === 'deepseek' ||
@@ -1021,11 +1079,15 @@ function configuredProviderOrder(): string[] {
   if (!Array.isArray(values)) return []
   const aliases: Record<string, string> = {
     glm: 'nvidia-glm', 'glm-5.2': 'nvidia-glm', 'z-ai': 'nvidia-glm',
+    nemotron: 'nvidia-nemotron', 'nemotron-3-ultra': 'nvidia-nemotron',
     baseten: 'baseten-deepseek', 'baseten-deepseek': 'baseten-deepseek',
     nvidia: 'nvidia-deepseek', nim: 'nvidia-deepseek',
     cloudflare: 'cloudflare-ai', 'workers-ai': 'cloudflare-ai', xai: 'grok',
   }
-  return [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
+  const known = new Set(['nvidia-nemotron', 'nvidia-glm', 'baseten-deepseek', 'nvidia-deepseek', 'grok', 'openai', 'cloudflare-ai', 'groq', 'gemini', 'openrouter', 'custom', 'deepseek'])
+  const configured = [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean).map((value) => aliases[value] || value))]
+  // New providers remain selectable even when an older saved order predates them.
+  return [...configured, ...[...known].filter((id) => !configured.includes(id))]
 }
 
 function sortByAdminOrder<T extends { label: string }>(items: T[]): T[] {
@@ -1054,6 +1116,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   const pushOpenAi = () => {
     const p = listOpenAiFallbackProviders().find((x) => x.label === 'openai')
     if (p) items.push({ label: 'openai', run: () => openAiCompatibleComplete(p, opts) })
+  }
+  const pushNemotron = () => {
+    if (isNvidiaNemotronConfigured()) {
+      items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
+    }
   }
   const pushGlm = () => {
     if (isNvidiaGlmConfigured()) {
@@ -1122,6 +1189,11 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     pushGlm()
     pushNvidia()
     pushCf()
+  } else if (prefer === 'nvidia-nemotron') {
+    if (isNvidiaNemotronConfigured()) items.push({ label: 'nvidia-nemotron', run: () => nvidiaNemotronComplete(opts) })
+    pushGlm()
+    pushNvidia()
+    pushCf()
   } else if (prefer === 'nvidia-glm') {
     pushGlm()
     pushNvidia()
@@ -1137,7 +1209,8 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
     if (p) items.push({ label: p.label, run: () => openAiCompatibleComplete(p, opts) })
     pushCf()
   } else {
-    // DEFAULT: GLM 5.2 → Baseten DeepSeek Flash → Grok → OpenAI → Cloudflare
+    // DEFAULT: preserve the established cascade; Nemotron is append-only unless
+    // explicitly selected or promoted by the saved admin provider order.
     pushGlm()
     pushBaseten()
     pushGrok()
@@ -1147,8 +1220,9 @@ function orderedCompleters(opts: ContentAiOptions, prefer: string): Array<{ labe
   }
 
   // Fill remaining cascade (deduped below).
-  // GLM and Baseten are included so an explicit pin still gets the preferred
+  // Nemotron, GLM, and Baseten are included so an explicit pin still gets the preferred
   // long-form providers before we drop out to the broader fallback set.
+  pushNemotron()
   pushGlm()
   pushBaseten()
   pushGrok()
@@ -1364,6 +1438,22 @@ export async function* generateContentTextStream(
     })
   }
 
+  // NVIDIA Nemotron is appended after the established NVIDIA providers so
+  // auto-streaming remains backward-compatible; explicit pins and saved admin
+  // order are promoted below.
+  const nemotron = getNvidiaNemotronProvider()
+  if (nemotron) {
+    candidates.push({
+      label: 'nvidia-nemotron',
+      stream: () => openAiCompatibleStream(nemotron, {
+        ...opts,
+        maxTokens: Math.min(opts.maxTokens ?? NVIDIA_NEMOTRON_MAX_TOKENS, NVIDIA_NEMOTRON_MAX_TOKENS),
+        temperature: opts.temperature ?? 1,
+      }),
+      complete: () => nvidiaNemotronComplete(opts),
+    })
+  }
+
   // Streaming-capable OpenAI-compat providers
   if (isCloudflareAiConfigured()) {
     candidates.push({
@@ -1426,7 +1516,7 @@ export async function* generateContentTextStream(
       const [pref] = candidates.splice(idx, 1)
       candidates.unshift(pref)
     }
-  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek') {
+  } else if (prefer === 'nvidia-glm' || prefer === 'nvidia-deepseek' || prefer === 'nvidia-nemotron') {
     const idx = candidates.findIndex((c) => c.label === prefer)
     if (idx > 0) {
       const [pref] = candidates.splice(idx, 1)
