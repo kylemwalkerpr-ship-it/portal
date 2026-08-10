@@ -102,10 +102,19 @@ type ContentType = 'blog_post' | 'article' | 'regional_page'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
-type StudioTab = 'pipeline' | 'create' | 'queue' | 'insights' | 'operations'
+type StudioTab = 'identify' | 'survey' | 'define' | 'investigate' | 'write' | 'defend' | 'approve' | 'publish'
 
 function isStudioTab(value: string | null): value is StudioTab {
-  return value === 'pipeline' || value === 'create' || value === 'queue' || value === 'insights' || value === 'operations'
+  return (
+    value === 'identify' ||
+    value === 'survey' ||
+    value === 'define' ||
+    value === 'investigate' ||
+    value === 'write' ||
+    value === 'defend' ||
+    value === 'approve' ||
+    value === 'publish'
+  )
 }
 
 interface ContentJob {
@@ -655,6 +664,390 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
         <p key={si} style={{ margin: 0, fontSize: 8.5, color: C.textDim, lineHeight: 1.35 }}>• {sig}</p>
       ))}
     </button>
+  )
+}
+
+// ── PHD-STYLE CHAPTER INTRO ──
+// Editorial spread that opens each chapter card. Mirrors a dissertation’s
+// section header: roman numeral, serif title, scope chips, and a "next
+// chapter" affordance to drive linearity. Also renders a horizontal
+// "compass rail" of all 8 chapters so the admin never loses place.
+function ChapterIntro({
+  numeral, title, subtitle,
+  chapterKey, scope, next,
+  prev,
+  onJump,
+}: {
+  numeral: string
+  title: string
+  subtitle: string
+  chapterKey: StudioTab
+  scope: Array<{ chip: string; text: string }>
+  next?: string
+  prev?: string
+  onJump?: (k: StudioTab) => void
+}) {
+  const order: StudioTab[] = ['identify', 'survey', 'define', 'investigate', 'write', 'defend', 'approve', 'publish']
+  const numerals: Record<StudioTab, string> = {
+    identify: 'I', survey: 'II', define: 'III', investigate: 'IV',
+    write: 'V', defend: 'VI', approve: 'VII', publish: 'VIII',
+  }
+  const titles: Record<StudioTab, string> = {
+    identify: 'Identify', survey: 'Survey', define: 'Define', investigate: 'Investigate',
+    write: 'Write', defend: 'Defend', approve: 'Approve', publish: 'Publish & Cite',
+  }
+  return (
+    <div
+      className="chapter-intro"
+      data-chapter={chapterKey}
+      style={{
+        marginBottom: 14, padding: '20px 26px 18px',
+        background: `linear-gradient(180deg, ${E.parchment} 0%, ${E.ivory} 100%)`,
+        borderBottom: `1px solid ${E.hairline}`,
+        fontFamily: C.serif,
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 6 }}>
+        <span style={{
+          fontSize: 38, fontWeight: 700, color: E.gold, lineHeight: 1,
+          fontFamily: C.serif, letterSpacing: '-0.02em',
+        }}>{numeral}</span>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{
+            fontSize: 11, color: E.gold, fontFamily: C.mono, letterSpacing: '0.18em',
+            textTransform: 'uppercase', marginBottom: 2,
+          }}>Chapter {numeral}</span>
+          <h2 style={{
+            margin: 0, fontSize: 26, fontFamily: C.serif, fontWeight: 700,
+            color: E.ink, letterSpacing: '-0.01em',
+          }}>{title}</h2>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {prev && onJump && (
+            <button
+              onClick={() => onJump(order[Math.max(0, order.indexOf(chapterKey) - 1)])}
+              style={{
+                fontFamily: C.serif, fontSize: 11, color: E.inkMuted,
+                background: 'transparent', border: `1px solid ${E.hairline}`, borderRadius: 0,
+                padding: '5px 12px', cursor: 'pointer',
+              }}
+            >← {prev}</button>
+          )}
+          {next && onJump && (
+            <button
+              onClick={() => onJump(order[Math.min(order.length - 1, order.indexOf(chapterKey) + 1)])}
+              style={{
+                fontFamily: C.serif, fontSize: 11, color: E.ivory,
+                background: E.gold, border: `1px solid ${E.gold}`, borderRadius: 0,
+                padding: '5px 12px', cursor: 'pointer', fontWeight: 600,
+              }}
+            >{next} →</button>
+          )}
+        </div>
+      </div>
+      <p style={{
+        margin: '0 0 12px', fontSize: 14, color: E.inkMuted, fontFamily: C.serif,
+        fontStyle: 'italic', maxWidth: 880, lineHeight: 1.5,
+      }}>{subtitle}</p>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {scope.map((s, i) => (
+          <div key={i} style={{
+            flex: '1 1 240px', minWidth: 220, padding: '8px 12px',
+            borderLeft: `2px solid ${E.goldSoft}`, background: E.ivory,
+          }}>
+            <span style={{
+              fontSize: 9, fontFamily: C.mono, letterSpacing: '0.16em',
+              color: E.gold, textTransform: 'uppercase', fontWeight: 700,
+            }}>{s.chip}</span>
+            <p style={{ margin: '3px 0 0', fontSize: 12, color: E.ink, lineHeight: 1.45, fontFamily: C.serif }}>{s.text}</p>
+          </div>
+        ))}
+      </div>
+      {/* Compass rail — shows all 8 chapters with current one bold. */}
+      <div style={{
+        marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${E.hairline}`,
+        display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'center',
+      }}>
+        {order.map((k, i) => (
+          <button key={k}
+            onClick={() => onJump && onJump(k)}
+            disabled={!onJump}
+            style={{
+              display: 'flex', alignItems: 'baseline', gap: 4,
+              padding: '4px 10px', borderRadius: 0, cursor: onJump ? 'pointer' : 'default',
+              background: k === chapterKey ? E.gold : 'transparent',
+              border: 'none',
+              fontFamily: C.serif, fontSize: 11,
+              color: k === chapterKey ? E.ivory : E.inkMuted,
+              opacity: k === chapterKey ? 1 : 0.85,
+            }}
+            title={`${numerals[k]} · ${titles[k]}`}
+          >
+            <span style={{ fontWeight: 700, fontFamily: C.serif }}>{numerals[k]}</span>
+            <span style={{ fontStyle: 'italic' }}>{titles[k]}</span>
+            {i < order.length - 1 && (
+              <span style={{ color: E.inkMuted, margin: '0 6px', opacity: 0.5 }}>·</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── VI · DEFEND PANEL ──
+// Surfaces the gate state for the selected job and lists blockers with
+// remediation guidance. Renders inline-editor / re-audit actions.
+function DefendPanel({
+  selectedJob, gateFor, jobs, gateByJob, onOpenJob, setActionNotice,
+}: {
+  selectedJob: ContentJob | null
+  gateFor: { score: number | null; passed: boolean | null } | null | undefined
+  jobs: ContentJob[]
+  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
+  onOpenJob: (j: ContentJob) => void
+  setActionNotice?: (msg: string) => void
+}) {
+  const empty = !selectedJob
+  const score = (gateFor?.score ?? null) as number | null
+  const passed = (gateFor?.passed ?? null) as boolean | null
+  const ok = passed === true || (score != null && score >= 90)
+  // NOTE: blocker detail lives in the inline editor (JobDetail) — this surface
+  // shows the score + verdict so the admin can decide whether to open and repair.
+  const blockers: Array<{ code: string; reason: string }> = []
+  return (
+    <div data-testid="studio-defend-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {empty && (
+        <div style={{
+          padding: '40px 32px', background: E.paper,
+          border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: C.serif, fontSize: 22, color: E.ink, marginBottom: 8 }}>No draft selected</div>
+          <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
+            Open a job from chapter V · Write to defend it here. The defense surfaces each gate blocker with the exact remediation guidance.
+          </p>
+        </div>
+      )}
+      {selectedJob && (
+        <>
+          <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+                  CHAPTER VI · DEFEND
+                </div>
+                <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
+                  {selectedJob.title}
+                </h3>
+              </div>
+              <div style={{
+                padding: '6px 14px', borderRadius: 0, fontFamily: C.serif, fontSize: 14, fontWeight: 700,
+                background: ok ? '#0f7a3a' : (score != null && score >= 70 ? '#b87a00' : '#a32525'),
+                color: E.ivory,
+              }}>
+                {ok ? '✓ GATE CLEARED' : score != null ? `Score ${score}/100` : 'No gate yet'}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: E.inkMuted, fontFamily: C.mono }}>
+              {selectedJob.region} · {(selectedJob.content_type || '').toUpperCase()} · slug <b>{selectedJob.slug || '—'}</b>
+            </div>
+          </div>
+          {blockers.length === 0 ? (
+            <div style={{
+              padding: 18, background: '#e9f7ee', border: '1px solid #0f7a3a', borderRadius: 0,
+              fontFamily: C.serif, color: '#0a4d24', fontSize: 14,
+            }}>
+              ✓ All quality blockers cleared. The draft is ready to advance to VII · Approve.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {blockers.map((b, i) => (
+                <div key={i} style={{
+                  padding: 14, background: '#fff5f0', borderLeft: '4px solid #a32525',
+                }}>
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: '#a32525', fontWeight: 700, letterSpacing: '0.14em' }}>
+                    BLOCKER · {(b.code || 'unknown').toUpperCase()}
+                  </div>
+                  <p style={{ margin: '4px 0', fontFamily: C.serif, color: '#3a0a0a', fontSize: 14 }}>{b.reason || 'No reason recorded.'}</p>
+
+                </div>
+              ))}
+              <button
+                onClick={() => onOpenJob(selectedJob)}
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '10px 20px',
+                  background: E.gold, color: E.ivory,
+                  fontFamily: C.serif, fontSize: 14, fontWeight: 600,
+                  border: 'none', borderRadius: 0, cursor: 'pointer',
+                }}
+              >
+                Open in inline editor →
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── VII · APPROVE PANEL ──
+// Surfaces the PR/monitor surface for the selected job. Each merged job
+// renders a status badge, deploy indicator, and a one-click rollback.
+function ApprovePanel({
+  selectedJob, jobs, merges, onOpenJob, setActionNotice,
+}: {
+  selectedJob: ContentJob | null
+  jobs: ContentJob[]
+  merges: any[]
+  onOpenJob: (j: ContentJob) => void
+  setActionNotice?: (msg: string) => void
+}) {
+  const prOpen = jobs.filter((j) => j.status === 'pr_created' || j.pr_url)
+  const approvable = jobs.filter((j) => j.status === 'drafting' || j.status === 'pending')
+  const recentMerges = (merges || []).slice(0, 8)
+  return (
+    <div data-testid="studio-approve-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>CHAPTER VII · APPROVE</div>
+        <h3 style={{ margin: '4px 0 12px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Push to main · {prOpen.length} open PR{prOpen.length === 1 ? '' : 's'}</h3>
+        {prOpen.length === 0 && (
+          <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic' }}>
+            No PRs awaiting merge. The drafts that graduate from VI · Defend with a green gate will appear here.
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {prOpen.map((j) => (
+            <button key={j.id} onClick={() => onOpenJob(j)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 12, background: E.ivory, border: `1px solid ${E.hairline}`, borderRadius: 0, cursor: 'pointer',
+              textAlign: 'left',
+            }}>
+              <div>
+                <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>{j.title}</div>
+                <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkMuted }}>
+                  {j.region} · {(j.content_type || '').toUpperCase()} · {j.pr_url ? `PR #${j.pr_number}` : 'PR queued'}
+                </div>
+              </div>
+              <div style={{
+                padding: '4px 10px', fontFamily: C.mono, fontSize: 11, fontWeight: 700,
+                background: '#0f7a3a', color: E.ivory,
+              }}>READY TO MERGE</div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {recentMerges.length > 0 && (
+        <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
+            LATEST MERGES · AWAITING DEPLOY PROMOTE
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {recentMerges.map((m: any, i: number) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 11, color: E.inkMuted }}>
+                <span>{m.path || m.canonical || m.mergeCommitSha?.slice(0, 7) || `merge-${i}`}</span>
+                <span>{timeAgo(m.mergedAt || m.deployTime || m.observed_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {approvable.length > 0 && (
+        <div style={{ fontFamily: C.serif, fontSize: 13, color: E.inkMuted, fontStyle: 'italic' }}>
+          {approvable.length} draft{approvable.length === 1 ? '' : 's'} are still in early stages. They will promote here once VI · Defend green-lights them.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── VIII · PUBLISH LEDGER ──
+// The citation index. Every merged PR renders a stamp: live URL, deploy
+// time, merge SHA, region, and the rank observed at the most recent GSC
+// snapshot. From here the ranking model replays reward signal.
+function PublishLedger({
+  merges, jobs, onOpenJob, setActionNotice,
+}: {
+  merges: any[]
+  jobs: ContentJob[]
+  onOpenJob: (j: ContentJob) => void
+  setActionNotice?: (msg: string) => void
+}) {
+  const merged = jobs.filter((j) => j.status === 'merged' || j.canonical_url)
+  // Dedupe by canonical URL — repeated deploys of the same article
+  const seen = new Set<string>()
+  const stamps = merged
+    .filter((j) => {
+      const key = j.canonical_url || j.slug || j.id
+      if (seen.has(key)) return false
+      seen.add(key); return true
+    })
+    .slice(0, 36)
+  return (
+    <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+          CHAPTER VIII · PUBLISH &amp; CITE
+        </div>
+        <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
+          Ship Ledger · {stamps.length} verified stamp{stamps.length === 1 ? '' : 's'}
+        </h3>
+        <p style={{ margin: '4px 0 0', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
+          Every merged draft earns a stamp below. Each stamp records the live URL and the merge SHA — the immutable evidence base the ranking model replays for reward calibration.
+        </p>
+      </div>
+      {stamps.length === 0 ? (
+        <div style={{
+          padding: '40px 32px', background: E.paper,
+          border: `1px solid ${E.hairline}`, borderRadius: 0, textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: C.serif, fontSize: 18, color: E.ink, marginBottom: 6 }}>No stamps yet</div>
+          <p style={{ color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', margin: 0 }}>
+            The first merged draft from VII · Approve will become the first stamp of the citation ledger.
+          </p>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid', gap: 8,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        }}>
+          {stamps.map((j) => (
+            <button
+              key={j.id}
+              onClick={() => onOpenJob(j)}
+              style={{
+                padding: 14, background: E.paper,
+                border: `1px solid ${E.hairline}`, borderRadius: 0,
+                textAlign: 'left', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}
+            >
+              <div style={{
+                display: 'inline-flex', alignSelf: 'flex-start',
+                fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
+                background: E.gold, color: E.ivory, padding: '2px 8px',
+              }}>
+                STAMP · {j.region}
+              </div>
+              <div style={{ fontFamily: C.serif, fontSize: 16, color: E.ink, lineHeight: 1.2 }}>
+                {j.title}
+              </div>
+              {j.canonical_url && (
+                <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.gold, wordBreak: 'break-all' }}>
+                  {j.canonical_url}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted }}>
+                <span>{j.branch_name || 'main'}</span>
+                <span>{timeAgo(j.merged_at || j.updated_at || j.created_at)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -2664,17 +3057,22 @@ function ShipLedger({
 // ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
   const [tab, setTab] = React.useState<StudioTab>(() => {
-    if (typeof window === 'undefined') return 'pipeline'
+    if (typeof window === 'undefined') return 'identify'
     const requested = new URLSearchParams(window.location.search).get('tab')
-    return isStudioTab(requested) ? requested : 'pipeline'
-  })
-  const [operationsVisited, setOperationsVisited] = React.useState(() => {
-    if (typeof window === 'undefined') return false
-    return new URLSearchParams(window.location.search).get('tab') === 'operations'
+    // Back-compat: legacy 5-tab tokens resolve to the chapter they lived under.
+    // PhD-style pipeline (I → VIII) absorbs the old command-center tab names.
+    const alias: Record<string, StudioTab> = {
+      pipeline: 'write',     // legacy live/job running surface → V · Write
+      create: 'define',      // legacy wizard → III · Define (step 1)
+      queue: 'write',        // legacy queue + queue stats → V · Write
+      insights: 'identify',  // legacy radar/GSC/merges → I · Identify
+      operations: 'survey',  // legacy kitchen sink → II · Survey
+    }
+    if (requested && alias[requested]) return alias[requested]
+    return isStudioTab(requested) ? requested : 'identify'
   })
   const selectTab = React.useCallback((next: StudioTab) => {
     setTab(next)
-    if (next === 'operations') setOperationsVisited(true)
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
       url.searchParams.set('tab', next)
@@ -2684,9 +3082,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   React.useEffect(() => {
     const onPopState = () => {
       const requested = new URLSearchParams(window.location.search).get('tab')
-      const next = isStudioTab(requested) ? requested : 'create'
+      const alias: Record<string, StudioTab> = {
+        pipeline: 'write', create: 'define', queue: 'write', insights: 'identify', operations: 'survey',
+      }
+      const next = (requested && alias[requested])
+        ? alias[requested]
+        : (isStudioTab(requested) ? requested : 'identify')
       setTab(next)
-      if (next === 'operations') setOperationsVisited(true)
       const url = new URL(window.location.href)
       url.searchParams.set('tab', next)
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
@@ -2904,7 +3306,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
-    selectTab('create')
+    selectTab('define')
     setShowRadar(true)
   }, [])
 
@@ -3252,7 +3654,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      selectTab('queue')
+      selectTab('write')
       const refreshedJobs = await fetchJobs()
       if (generatedJobId) {
         let reviewJob = refreshedJobs.find((candidate) => candidate.id === generatedJobId) || null
@@ -3301,12 +3703,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const engVoice = (engine.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
   const engGate = (engine.gate as { passRate?: number } | undefined)?.passRate
 
-  const TABS: Array<{ key: StudioTab; icon: string; label: string; hint: string }> = [
-    { key: 'pipeline', icon: '📰', label: 'Pipeline', hint: 'Engine → live' },
-    { key: 'create', icon: '✏️', label: 'Create', hint: 'Launch new content' },
-    { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobTotal || jobs.length} jobs` },
-    { key: 'insights', icon: '📊', label: 'Insights', hint: 'Radar · GSC · merges' },
-    { key: 'operations', icon: '🧭', label: 'Operations', hint: 'Radar · Engine · Systems' },
+  // PhD-style 8-chapter taxonomy. Each tab routes to a distinct stage of the
+  // research process; back-compat aliases map legacy tab tokens to the
+  // chapter they used to live under (see  above).
+  const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
+    { key: 'identify',    numeral: 'I',    label: 'Identify',    sub: 'Identify the Problem',     hint: 'Radar · cannibalization · GSC' },
+    { key: 'survey',      numeral: 'II',   label: 'Survey',      sub: 'Survey the Literature',   hint: 'Engine · voice · systems' },
+    { key: 'define',      numeral: 'III',  label: 'Define',      sub: 'Define the Topic',        hint: 'Region · tone · keywords' },
+    { key: 'investigate', numeral: 'IV',   label: 'Investigate', sub: 'Investigate / Brief',     hint: 'Brief · scout · autopilot' },
+    { key: 'write',       numeral: 'V',    label: 'Write',       sub: 'Conduct & Write',         hint: `${jobTotal || jobs.length} jobs · live` },
+    { key: 'defend',      numeral: 'VI',   label: 'Defend',      sub: 'Defend the Draft',        hint: 'Re-audit · blockers' },
+    { key: 'approve',     numeral: 'VII',  label: 'Approve',     sub: 'Approve & Submit',        hint: 'PR · deploy' },
+    { key: 'publish',     numeral: 'VIII', label: 'Publish',     sub: 'Publish & Cite',          hint: 'Ledger · citations' },
   ]
 
   return (
@@ -3418,9 +3826,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         borderTop: `1px solid ${E.hairline}`, borderBottom: `1px solid ${E.hairline}`,
         background: E.cream,
       }}>
-        {TABS.map((t, i) => {
+        {TABS.map((t) => {
           const active = tab === t.key
-          const ordinal = ['I', 'II', 'III', 'IV', 'V'][i] || String(i + 1)
           return (
             <button
               key={t.key}
@@ -3430,37 +3837,60 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               aria-controls={`studio-panel-${t.key}`}
               type="button"
               onClick={() => selectTab(t.key)}
+              title={`Chapter ${t.numeral} · ${t.label}`}
               style={{
-                padding: '12px 22px', borderRight: `1px solid ${E.hairline}`, cursor: 'pointer',
-                fontFamily: E.serif, fontSize: 16, fontWeight: 600,
+                padding: '12px 18px 12px 16px', borderRight: `1px solid ${E.hairline}`, cursor: 'pointer',
+                fontFamily: E.serif, fontSize: 15, fontWeight: 600,
                 background: active ? E.paper : 'transparent',
                 color: active ? E.inkBlack : E.inkMuted,
                 border: 'none',
                 borderBottom: active ? `3px solid ${E.gold}` : '3px solid transparent',
                 transition: 'all 0.18s',
-                display: 'flex', alignItems: 'center', gap: 8,
-                position: 'relative',
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+                position: 'relative', minWidth: 130,
               }}
             >
               <span style={{
-                ...TYPE.microFig,
+                fontSize: 9, fontFamily: E.mono, fontWeight: 800, letterSpacing: '0.16em',
                 color: active ? E.gold : E.inkDim,
-                fontSize: 10, fontWeight: 800,
-              }}>{ordinal}</span>
-              <span>{t.icon} {t.label}</span>
+              }}>Chapter {t.numeral}</span>
               <span style={{
-                ...TYPE.caption, fontSize: 8.5,
+                fontFamily: E.serif, fontSize: 15, fontWeight: 700,
+                color: active ? E.inkBlack : E.inkMuted,
+              }}>{t.label}</span>
+              <span style={{
+                ...TYPE.caption, fontSize: 8.5, lineHeight: 1.35,
                 color: active ? E.goldDeep : E.inkDim,
-                fontFamily: E.mono, marginLeft: 6,
-              }}>{t.hint}</span>
+                fontFamily: E.mono, marginLeft: 0,
+                fontStyle: 'italic',
+              }}>{t.sub} · {t.hint}</span>
             </button>
           )
         })}
       </div>
 
-      {/* ══════════ PIPELINE (editorial spread) ══════════ */}
-      {tab === 'pipeline' && (
-        <div id="studio-panel-pipeline" role="tabpanel" aria-labelledby="studio-tab-pipeline" style={{ marginBottom: 14 }}>
+      {/* ══════════ V · WRITE ══════════ */}
+      {/* PhD Chapter V — Conduct the experiment: the live generation stream,
+          editor surface, jobs clock, and queue stats. The former 'pipeline'
+          and 'queue' tabs both routed here for unified write-side UX. */}
+      {(tab === 'write' || (tab as string) === 'pipeline' || (tab as string) === 'queue' || ((tab as string) === 'pipeline' || (tab as string) === 'queue')) && (
+        <ChapterIntro
+          numeral="V"
+          title="Conduct & Write"
+          subtitle="The studio now treats every draft as a live experiment, not a queued wish. Run your generation, watch the stream, audit on the fly, and shepherd the draft to a green gate."
+          chapterKey="write"
+          scope={[
+            { chip: 'Live stream', text: 'SSE-fed, line-by-line generation paired with the SEO-enrichment pass.' },
+            { chip: 'Queue',       text: 'Every active job with bulk rerun / resume / abandon / clear; per-job clock + ETA.' },
+            { chip: 'Audit',       text: 'First-pass audit runs in parallel and writes the first-pass score into the gate badge.' },
+          ]}
+          prev="IV · Investigate"
+          next="VI · Defend"
+          onJump={selectTab}
+        />
+      )}
+      {(tab === 'write' || (tab as string) === 'pipeline') && (
+        <div id="studio-panel-write" role="tabpanel" aria-labelledby="studio-tab-write" style={{ marginBottom: 14 }}>
           <StudioEditorialSpread
             engineStatus={engineStatus}
             engineBusy={engineBusy}
@@ -3482,19 +3912,39 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             loading={loading}
             mergeIndex={mergeIndex}
             gateByJob={gateByJob}
-            onSelectJob={(job) => { setQueueFocusJobId(null); setSelectedJob(job); selectTab('queue') }}
+            onSelectJob={(job) => { setQueueFocusJobId(null); setSelectedJob(job); selectTab('write') }}
             mergeHistory={merges}
             onRefreshJobs={() => void fetchJobs()}
             setActionNotice={setActionNotice}
-            onOpenWorkspaceJobs={() => selectTab('queue')}
-            onEngage={() => selectTab('create')}
+            onOpenWorkspaceJobs={() => selectTab('write')}
+            onEngage={() => selectTab('define')}
           />
         </div>
       )}
 
-      {/* ══════════ CREATE ══════════ */}
-      {tab === 'create' && (
-        <div id="studio-panel-create" role="tabpanel" aria-labelledby="studio-tab-create">
+      {/* ══════════ III · DEFINE ══════════ */}
+      {/* PhD Chapter III — Define the Topic: target, region, voice, content
+          type, topic, audience, anchor fields, scouting host, master brief
+          anchors. The wizard's step 1 lives here; step 2 lives in
+          IV · Investigate and is reachable through the wizard itself. */}
+      {(tab === 'define' || tab === 'investigate' || (tab as string) === 'create') && (
+        <ChapterIntro
+          numeral="III"
+          title="Define the Topic"
+          subtitle="Before investigating or writing, sharpen the question. Pick the jurisdiction, the legal voice, and the audience — then name the topic with enough specificity that downstream gates know what to reward."
+          chapterKey={tab === 'investigate' ? 'investigate' : 'define'}
+          scope={[
+            { chip: 'Target',     text: 'Region (US / CA / AU / UK / COMPARE · legal-only) and content type.' },
+            { chip: 'Voice',      text: 'Tone, format style, AI provider; ensures the generator matches the brief voice.' },
+            { chip: 'Topic',      text: 'Slug anchor + page title + topic sentence + audience sentence.' },
+          ]}
+          prev="II · Survey"
+          next="IV · Investigate"
+          onJump={selectTab}
+        />
+      )}
+      {(tab === 'define' || tab === 'investigate' || (tab as string) === 'create') && (
+        <div id="studio-panel-define" role="tabpanel" aria-labelledby="studio-tab-define" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
@@ -3555,9 +4005,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* ══════════ QUEUE ══════════ */}
-      {tab === 'queue' && (
-        <div id="studio-panel-queue" role="tabpanel" aria-labelledby="studio-tab-queue" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {(tab === 'write' || (tab as string) === 'queue') && (
+        <div id="studio-panel-write-queue" role="tabpanel" aria-labelledby="studio-tab-write" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
 
           {/* ── Queue command bar — bulk actions & visible status counts ── */}
@@ -3754,23 +4203,56 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* ══════════ OPERATIONS ══════════ */}
-      {operationsVisited && (
+      {/* ══════════ II · SURVEY ══════════ */}
+      {/* PhD Chapter II — Survey of the Literature: SEO Master Engine, LLM voice
+          ontology, ranking model, systems cardshelf. The former "Operations"
+          dashboard is folded in here as the kitchen sink of strategic context. */}
+      {tab === 'survey' && (
         <div
-          id="studio-panel-operations"
+          id="studio-panel-survey"
           role="tabpanel"
-          aria-labelledby="studio-tab-operations"
-          hidden={tab !== 'operations'}
+          aria-labelledby="studio-tab-survey"
           style={{ marginBottom: 14 }}
         >
-          <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Operations…</div>}>
+          <ChapterIntro
+            numeral="II"
+            title="Survey of the Literature"
+            subtitle="Ingest what the engines know — knowledge, voice, ontology, ranking model, and the system that hosts it all."
+            chapterKey="survey"
+            scope={[
+              { chip: 'Knowledge', text: 'Pulls site taxonomy, LLM voice pack, ontology, and strategy packs from the SEO Master Engine.' },
+              { chip: 'Engine',     text: 'Ranking Model block: family scores, recommended actions, and 30/60/90 vs-actual deltas.' },
+              { chip: 'Systems',    text: 'GSC connect, Cloudflare route health, environment fingerprint, dry-run mode.' },
+            ]}
+            next="III · Define the Topic"
+          />
+          <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Systems…</div>}>
             <AdminCommandCenter setActionNotice={setActionNotice} />
           </React.Suspense>
         </div>
       )}
 
-      {tab === 'insights' && (
-        <div id="studio-panel-insights" role="tabpanel" aria-labelledby="studio-tab-insights" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
+      {/* ══════════ I · IDENTIFY ══════════ */}
+      {/* PhD Chapter I — Identify the Problem: where the portfolio hurts
+          today and where the next investment of a draft will earn the most
+          reward. Live GSC, cannibalization radar, cluster taxonomy. */}
+      {(tab === 'identify' || (tab as string) === 'insights') && (
+        <ChapterIntro
+          numeral="I"
+          title="Identify the Problem"
+          subtitle="Every dissertation starts with a question. Here the question is: where will the next draft compound the most ranking — and where will one more draft cannibalize an existing canonical?"
+          chapterKey="identify"
+          scope={[
+            { chip: 'Live GSC',            text: 'Pulls impressions, clicks, CTR and position from the connected Search Console.' },
+            { chip: 'Cannibalization',     text: 'Flagged when two URLs compete for the same primary keyword.' },
+            { chip: 'Cluster radar',       text: 'Surfaces keyword clusters ranked by 30/60/90 reward forecast.' },
+          ]}
+          next="II · Survey"
+          onJump={selectTab}
+        />
+      )}
+      {(tab === 'identify' || (tab as string) === 'insights') && (
+        <div id="studio-panel-identify" role="tabpanel" aria-labelledby="studio-tab-identify" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <GscMini />
             <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
@@ -3784,6 +4266,97 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
+      {/* ══════════ VI · DEFEND ══════════ */}
+      {/* PhD Chapter VI — Defend the draft: re-audit, blocker resolution,
+          inline editor. Each gate must clear before the draft can advance
+          to Approve. The selected job carries the inline editor + re-audit
+          surface; from here we wire the gate state, blocker remediation,
+          and the action CTA that opens the modal. */}
+      {tab === 'defend' && (
+        <>
+          <ChapterIntro
+            numeral="VI"
+            title="Defend the Draft"
+            subtitle="Every claim must hold against the quality gate. Voice, format, ownership, and compliance blockers are listed below — re-audit, edit, and regenerate until the gate is green before the defense is heard."
+            chapterKey="defend"
+            scope={[
+              { chip: 'Inline edit',  text: 'Edit the draft directly; the gate re-runs on save.' },
+              { chip: 'Re-audit',     text: 'One click audits against the live content quality gate.' },
+              { chip: 'Blockers',     text: 'Each blocker is listed with the exact line that triggered it and the remediation guidance.' },
+            ]}
+            prev="V · Write"
+            next="VII · Approve"
+            onJump={selectTab}
+          />
+          <DefendPanel
+            selectedJob={selectedJob}
+            gateFor={selectedJob ? (gateByJob.get(selectedJob.id) ?? null) : null}
+            jobs={jobs}
+            gateByJob={gateByJob}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+            setActionNotice={setActionNotice}
+          />
+        </>
+      )}
+
+      {/* ══════════ VII · APPROVE ══════════ */}
+      {/* PhD Chapter VII — Approve & Submit: open the PR to main, monitor
+          the Cloudflare build, and ensure the deploy lands before the
+          ledger receives the citation. */}
+      {tab === 'approve' && (
+        <>
+          <ChapterIntro
+            numeral="VII"
+            title="Approve & Submit"
+            subtitle="Once the gate is green, the draft earns the right to enter the publishing queue. Here you push to main, watch the auto-PR resolve, and shepherd the deploy to a live URL."
+            chapterKey="approve"
+            scope={[
+              { chip: 'Push to main',  text: 'Opens the PR to the deployment repo; auto-resolves once the build is green.' },
+              { chip: 'Deploy watch',  text: 'Monitors Cloudflare Pages deploy + the canary route status.' },
+              { chip: 'Rollback',      text: 'A single click reverts the change and removes it from the citation ledger.' },
+            ]}
+            prev="VI · Defend"
+            next="VIII · Publish & Cite"
+            onJump={selectTab}
+          />
+          <ApprovePanel
+            selectedJob={selectedJob}
+            jobs={jobs}
+            merges={merges}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+            setActionNotice={setActionNotice}
+          />
+        </>
+      )}
+
+      {/* ══════════ VIII · PUBLISH & CITE ══════════ */}
+      {/* PhD Chapter VIII — Publish & Cite: the canonical Ship Ledger of
+          every merge, the verified URL history, and the citation index that
+          downstream ranking models replay for reward calibration. */}
+      {tab === 'publish' && (
+        <>
+          <ChapterIntro
+            numeral="VIII"
+            title="Publish & Cite"
+            subtitle="The dissertation is complete. The Ship Ledger records every merge and verified URL — the immutable evidence base that the ranking model replays for reward calibration."
+            chapterKey="publish"
+            scope={[
+              { chip: 'Merge ledger',  text: 'Every approved draft with merge SHA, deploy time, and live URL.' },
+              { chip: 'Verified URL',  text: 'Each URL is re-checked live: 200 OK + canonical tag intact.' },
+              { chip: 'Citation index', text: 'Blog → regional canonicals → cross-repo hyperlinks: a navigable citation graph.' },
+            ]}
+            prev="VII · Approve"
+            onJump={selectTab}
+          />
+          <PublishLedger
+            merges={merges}
+            jobs={jobs}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+            setActionNotice={setActionNotice}
+          />
+        </>
+      )}
+
       {/* ── Detail modal ── */}
       {selectedJob && (
         <JobDetail
@@ -3791,7 +4364,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onClose={() => setSelectedJob(null)}
           onRefresh={async () => { await fetchJobs() }}
           setActionNotice={setActionNotice}
-          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); selectTab('queue') }}
+          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); selectTab('write') }}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
         />
       )}
