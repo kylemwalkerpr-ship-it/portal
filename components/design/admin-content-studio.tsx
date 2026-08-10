@@ -2137,6 +2137,48 @@ function BriefAssemblyPanel({
 
   // Keyword placement plan: which keyword → which H2 section
   const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
+  const [suggestingKeywords, setSuggestingKeywords] = React.useState(false)
+
+  // AI-powered keyword suggestion — analyzes topic + GSC + competition
+  const handleAiSuggest = async () => {
+    if (!topic.trim()) {
+      setActionNotice?.('Enter a topic first before asking for AI keyword suggestions')
+      return
+    }
+    setSuggestingKeywords(true)
+    try {
+      const gscData = (gscStatus && typeof gscStatus === 'object') ? gscStatus as Record<string, unknown> : {}
+      const res = await fetch('/api/content-studio/suggest-keywords', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic, region, contentType, primaryKeyword: title || topic,
+          audience,
+          gscImpressions: gscData.impressions || 0,
+          gscPosition: gscData.position || 0,
+          gscClicks: gscData.clicks || 0,
+          competitorTerms: brief?.keywords?.slice(0, 8) || [],
+        }),
+      })
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>
+      if (!res.ok) throw new Error(String(data.error || 'Unknown error'))
+      if (Array.isArray(data.shortTail) && Array.isArray(data.longTail)) {
+        const all = [...(data.shortTail as string[]).slice(0, 5), ...(data.longTail as string[]).slice(0, 4)]
+        setKeywords(all.join(', '))
+        setActionNotice?.(`AI suggested ${all.length} keywords${data.reasoning ? ': ' + String(data.reasoning).slice(0, 100) + '…' : ''}`)
+        if (Array.isArray(data.suggestedH2s) && data.suggestedH2s.length > 0) {
+          setH2s(data.suggestedH2s as string[])
+        }
+        if (!title.trim() && typeof data.suggestedH1 === 'string' && data.suggestedH1.trim()) {
+          setTitle(data.suggestedH1)
+        }
+      }
+    } catch (err) {
+      setActionNotice?.(`AI keyword suggestion failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setSuggestingKeywords(false)
+    }
+  }
 
   const addSource = () => { if (newSource.trim()) { setSources(p => [...p, newSource.trim()]); setNewSource('') } }
   const removeSource = (i: number) => setSources(p => p.filter((_, idx) => idx !== i))
@@ -2291,7 +2333,27 @@ function BriefAssemblyPanel({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Keywords textarea */}
         <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
-          <label style={labelBase}>Keywords (comma-separated)</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={labelBase}>Keywords (comma-separated)</label>
+            <button
+              type="button"
+              onClick={handleAiSuggest}
+              disabled={suggestingKeywords || !topic.trim() || generating}
+              style={{
+                padding: '4px 12px', borderRadius: 6, border: `1px solid ${E.gold}`,
+                background: suggestingKeywords ? E.goldSoft : 'transparent',
+                color: suggestingKeywords ? E.goldDeep : E.gold,
+                cursor: suggestingKeywords || !topic.trim() ? 'not-allowed' : 'pointer',
+                fontSize: 10, fontWeight: 700, fontFamily: E.mono,
+                opacity: suggestingKeywords ? 0.8 : 1,
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease',
+              }}
+              title={!topic.trim() ? 'Enter a topic first' : 'AI analyzes your topic + GSC + content type to suggest optimal short & long-tail keywords'}
+            >
+              {suggestingKeywords ? '⏳ AI analyzing…' : '🤖 AI Suggest Keywords'}
+            </button>
+          </div>
           <textarea
             value={keywords} onChange={e => setKeywords(e.target.value)}
             rows={4} placeholder="e.g. uk spouse visa, financial requirement, partner visa 2026, minimum income threshold, appendix fm..."
