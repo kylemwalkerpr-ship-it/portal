@@ -34,10 +34,46 @@ export interface LiveVerifyResult {
   auditScore: number | null
   humanScore: number | null
   hasNoIndex: boolean | null
+  canonicalHref: string | null
+  hasCanonical: boolean | null
   purgeStatus: string | null
   sitemapStatus: string | null
   indexNowStatus: string | null
   error?: string | null
+}
+
+/**
+ * Extract the canonical <link rel="canonical" href="..."> from raw HTML.
+ * Returns the href exactly as declared (no normalization) so the caller can
+ * decide whether it matches the requested canonicalUrl.
+ */
+export function extractCanonicalHref(html: string): string | null {
+  if (!html) return null
+  // Both attribute orders are valid HTML; capture href in either order.
+  const m = html.match(/<link\b[^>]*rel=["']canonical["'][^>]*?>/i)
+  if (!m) return null
+  const tag = m[0]
+  const href = tag.match(/href=["']([^"']+)["']/i)
+  return href && href[1] ? href[1] : null
+}
+
+/**
+ * Compare a target canonical URL to a candidate canonical href, ignoring
+ * trivial differences (case, trailing slash, protocol casing) so we don't
+ * trip on Cloudflare's normalizations.
+ */
+export function canonicalHrefMatches(target: string, candidate: string | null): boolean {
+  if (!candidate) return false
+  const norm = (u: string) => {
+    try {
+      const p = new URL(u)
+      const path = p.pathname.replace(/\/+$/, '') || '/'
+      return (p.host.toLowerCase() + path).toLowerCase()
+    } catch {
+      return u.replace(/\/+$/, '').toLowerCase()
+    }
+  }
+  return norm(target) === norm(candidate)
 }
 function dbc() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -99,12 +135,17 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     } catch (ex: any){ fetchError = String(ex?.message||ex).slice(0,400); if (a===2) break }
   }
   if (!bodyText) {
-    const result: LiveVerifyResult = { ok:false, liveUrl:url, httpStatus, verifiedAt, wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error: fetchError || `fetch failed: ${httpStatus}` }
+    const result: LiveVerifyResult = { ok:false, liveUrl:url, httpStatus, verifiedAt, wordCount:null, auditScore:null, humanScore:null, hasNoIndex:null, canonicalHref:null, hasCanonical:null, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error: fetchError || `fetch failed: ${httpStatus}` }
     if (input.jobId) await appendLog(input.jobId, { level:'warn', source:'liveVerify', message:`Live verify: ${result.error} on ${url} (HTTP ${httpStatus})`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes }, null,2) })
     return result
   }
   const wc = countBodyWords(bodyText)
   const hasNoIndex = /<meta[^>]*robots[^>]*noindex/i.test(bodyText)
+  // Canonical tag check — assert the <link rel="canonical" href="…"> matches
+  // the canonicalUrl we asked about. CDNs occasionally rewrite to the
+  // www/non-www form or strip trailing slashes, so normalize both sides.
+  const canonicalHref = extractCanonicalHref(bodyText)
+  const hasCanonical = canonicalHrefMatches(url, canonicalHref)
   let auditScore: number | null = null
   let humanScore: number | null = null
   let auditError: string | null = null
@@ -134,11 +175,33 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
     })
     humanScore = q.humanScore
   } catch(ex:any){ auditError = String(ex?.message||ex).slice(0,400) }
-  const ok = httpStatus===200 && !hasNoIndex && (auditScore??0)>=30 && wc>=200
+  const ok = httpStatus===200 && !hasNoIndex && hasCanonical===true && (auditScore??0)>=30 && wc>=200
   if (input.jobId) {
-    try { const db=dbc(); await (db as any).from('content_jobs').update({ live_verified_at: verifiedAt, live_status: ok?'verified':hasNoIndex?'noindex':(httpStatus!==200?'fetch_failed':'needs_review'), live_http_status: httpStatus, live_word_count: wc, live_audit_score: auditScore, live_human_score: humanScore, live_has_noindex: hasNoIndex }).eq('id', input.jobId) } catch {}
-    await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus}`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex }, null,2) })
+    try {
+      const liveStatus = ok
+        ? 'verified'
+        : hasNoIndex
+          ? 'noindex'
+          : (canonicalHref && !hasCanonical)
+            ? 'canonical_mismatch'
+            : (httpStatus !== 200)
+              ? 'fetch_failed'
+              : 'needs_review'
+      const db = dbc()
+      await (db as any).from('content_jobs').update({
+        live_verified_at: verifiedAt,
+        live_status: liveStatus,
+        live_http_status: httpStatus,
+        live_word_count: wc,
+        live_audit_score: auditScore,
+        live_human_score: humanScore,
+        live_has_noindex: hasNoIndex,
+        live_canonical_href: canonicalHref,
+        live_has_canonical: hasCanonical,
+      }).eq('id', input.jobId)
+    } catch {}
+    await appendLog(input.jobId, { level: ok?'success':'warn', source:'liveVerify', message: ok?`Live verified: ${url} — ${wc}w · score ${auditScore}/100 · human ${humanScore} · HTTP ${httpStatus} · canonical=${hasCanonical}`:`Live needs review: ${url} — ${auditError||`HTTP ${httpStatus} · ${wc}w · noindex=${hasNoIndex} · canonical=${hasCanonical} · score ${auditScore}`}`, detail: JSON.stringify({ purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, httpStatus, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical }, null,2) })
   }
-  return { ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore, hasNoIndex, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error:auditError }
+  return { ok, liveUrl:url, httpStatus, verifiedAt, wordCount:wc, auditScore, humanScore, hasNoIndex, canonicalHref, hasCanonical, purgeStatus, sitemapStatus, indexNowStatus:indexNowRes, error:auditError }
 }
 export function verifyLiveInBackground(input: LiveVerifyInput) { verifyLiveUrl(input).catch(e=>console.warn('[liveVerify] background failed',e)) }

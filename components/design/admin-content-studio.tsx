@@ -1070,8 +1070,15 @@ function PublishLedger({
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
 }) {
+  // NEW: per-stamp verify state + batched position-trend lookup.
+  type VerifyState =
+    | { stage: 'idle' }
+    | { stage: 'verifying'; startedAt: number }
+    | { stage: 'ok'; message: string; httpStatus: number | null; verifiedAt: string }
+    | { stage: 'broken'; message: string; httpStatus: number | null; verifiedAt: string }
+
   const merged = jobs.filter((j) => j.status === 'merged' || j.canonical_url)
-  // Dedupe by canonical URL — repeated deploys of the same article
+  // Dedupe by canonical URL — repeated deploys of the same article.
   const seen = new Set<string>()
   const stamps = merged
     .filter((j) => {
@@ -1079,18 +1086,140 @@ function PublishLedger({
       if (seen.has(key)) return false
       seen.add(key); return true
     })
-    .slice(0, 36)
+    .slice(0, 18)
+
+  const [verify, setVerify] = React.useState<Record<string, VerifyState>>({})
+  const [trendsLoading, setTrendsLoading] = React.useState(false)
+  const [trendsError, setTrendsError] = React.useState<string | null>(null)
+  const [trends, setTrends] = React.useState<Record<string, {
+    position: number | null
+    impressions: number | null
+    clicks: number | null
+    ctr: number | null
+    deltaPosition: number | null
+    direction: 'up' | 'down' | 'flat' | 'unknown'
+    found: boolean
+    points: Array<{ date: string; clicks: number; impressions: number; position: number; ctr: number }>
+  }>>({})
+
+  const canonicalUrls = React.useMemo(
+    () => stamps.map((s) => s.canonical_url).filter((u): u is string => !!u),
+    [stamps],
+  )
+
+  const loadTrends = React.useCallback(async () => {
+    if (!canonicalUrls.length) {
+      setTrends({}); setTrendsError(null); return
+    }
+    setTrendsLoading(true); setTrendsError(null)
+    try {
+      const res = await fetch('/api/content-studio/position-trend', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canonicalUrls, days: 28 }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; source?: string; trends?: any[]; error?: string
+      }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const next: typeof trends = {}
+      for (const t of data.trends || []) {
+        next[t.url] = {
+          position: t.position,
+          impressions: t.impressions,
+          clicks: t.clicks,
+          ctr: t.ctr,
+          deltaPosition: t.deltaPosition,
+          direction: t.direction,
+          found: t.found,
+          points: Array.isArray(t.points) ? t.points : [],
+        }
+      }
+      setTrends(next)
+    } catch (err) {
+      setTrendsError(err instanceof Error ? err.message : 'trend fetch failed')
+    } finally {
+      setTrendsLoading(false)
+    }
+  }, [canonicalUrls])
+
+  React.useEffect(() => {
+    void loadTrends()
+  }, [loadTrends])
+
+  const runVerify = React.useCallback(async (jobId: string, canonicalUrl: string) => {
+    setVerify((prev) => ({ ...prev, [jobId]: { stage: 'verifying', startedAt: Date.now() } }))
+    try {
+      const res = await fetch('/api/content-studio/verify-published', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canonicalUrl, jobId }),
+      })
+      const data = await res.json().catch(() => ({})) as {
+        ok?: boolean; stamp?: { status: string; message: string }
+        result?: { httpStatus?: number | null; verifiedAt?: string }
+        error?: string
+      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const status = data.stamp?.status
+      const ok = data.ok && (status === 'verified' || data.result?.httpStatus === 200)
+      if (ok) {
+        setVerify((prev) => ({
+          ...prev,
+          [jobId]: {
+            stage: 'ok',
+            message: data.stamp?.message || `HTTP ${data.result?.httpStatus || 200}`,
+            httpStatus: data.result?.httpStatus ?? null,
+            verifiedAt: data.result?.verifiedAt || new Date().toISOString(),
+          },
+        }))
+      } else {
+        setVerify((prev) => ({
+          ...prev,
+          [jobId]: {
+            stage: 'broken',
+            message: data.stamp?.message || data.error || 'Verification failed',
+            httpStatus: data.result?.httpStatus ?? null,
+            verifiedAt: data.result?.verifiedAt || new Date().toISOString(),
+          },
+        }))
+      }
+      setActionNotice?.(data.stamp?.message || 'Verified')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Verify failed'
+      setVerify((prev) => ({
+        ...prev,
+        [jobId]: { stage: 'broken', message, httpStatus: null, verifiedAt: new Date().toISOString() },
+      }))
+      setActionNotice?.(message)
+    }
+  }, [setActionNotice])
   return (
     <div data-testid="studio-publish-ledger" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0 }}>
         <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
           CHAPTER VIII · PUBLISH &amp; CITE
         </div>
-        <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
-          Ship Ledger · {stamps.length} verified stamp{stamps.length === 1 ? '' : 's'}
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+          <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>
+            Ship Ledger · {stamps.length} verified stamp{stamps.length === 1 ? '' : 's'}
+          </h3>
+          <button
+            type="button"
+            onClick={() => void loadTrends()}
+            disabled={trendsLoading}
+            data-testid="studio-publish-refresh"
+            style={{
+              fontFamily: C.mono, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+              padding: '5px 12px', border: `1px solid ${E.gold}`, background: 'transparent',
+              color: E.gold, cursor: trendsLoading ? 'progress' : 'pointer',
+            }}
+          >
+            {trendsLoading ? '⏳ REFRESHING…' : '↻ REFRESH TRENDS'}
+          </button>
+        </div>
         <p style={{ margin: '4px 0 0', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-          Every merged draft earns a stamp below. Each stamp records the live URL and the merge SHA — the immutable evidence base the ranking model replays for reward calibration.
+          Every merged draft earns a stamp below. Click <b>VERIFY</b> on each stamp to re-check HTTP 200 + canonical tag, and watch the live GSC position trend drawn next to the score.
         </p>
       </div>
       {stamps.length === 0 ? (
@@ -1108,38 +1237,151 @@ function PublishLedger({
           display: 'grid', gap: 8,
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
         }}>
-          {stamps.map((j) => (
-            <button
-              key={j.id}
-              onClick={() => onOpenJob(j)}
-              style={{
-                padding: 14, background: E.paper,
-                border: `1px solid ${E.hairline}`, borderRadius: 0,
-                textAlign: 'left', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', gap: 6,
-              }}
-            >
-              <div style={{
-                display: 'inline-flex', alignSelf: 'flex-start',
-                fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
-                background: E.gold, color: E.ivory, padding: '2px 8px',
-              }}>
-                STAMP · {j.region}
-              </div>
-              <div style={{ fontFamily: C.serif, fontSize: 16, color: E.ink, lineHeight: 1.2 }}>
-                {j.title}
-              </div>
-              {j.canonical_url && (
-                <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.gold, wordBreak: 'break-all' }}>
-                  {j.canonical_url}
+          {stamps.map((j) => {
+            const canonical = j.canonical_url || null
+            const verifyState = verify[j.id] || { stage: 'idle' }
+            const verifying = verifyState.stage === 'verifying'
+            const trend = canonical ? trends[canonical] : undefined
+            // Pre-compute the sparkline geometry so the SVG render remains
+            // inline and trivial.
+            let sparkPath: string | null = null
+            let sparkPts: number = 0
+            if (trend && trend.points.length >= 2) {
+              sparkPts = trend.points.length
+              const w = 120, h = 28
+              const positions = trend.points.map((p) => p.position || 0)
+              const max = Math.max(...positions, 1)
+              const min = Math.min(...positions, max)
+              const range = max - min || 1
+              const stepX = sparkPts > 1 ? w / (sparkPts - 1) : w
+              sparkPath = positions.map((pos, i) => {
+                const x = (i * stepX).toFixed(2)
+                const y = (h - ((pos - min) / range) * h).toFixed(2)
+                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
+              }).join(' ')
+            }
+            const trendColor =
+              trend?.direction === 'up' ? '#0f7a3a'
+              : trend?.direction === 'down' ? '#a32525'
+              : trend?.direction === 'flat' ? '#6b7280'
+              : '#9ca3af'
+            return (
+              <article
+                key={j.id}
+                data-testid={`studio-verify-stamp-${j.id}`}
+                data-stage={verifyState.stage}
+                style={{
+                  padding: 14, background: E.paper,
+                  border: `1px solid ${E.hairline}`, borderRadius: 0,
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{
+                    fontFamily: C.mono, fontSize: 9, letterSpacing: '0.14em', fontWeight: 700,
+                    background: E.gold, color: E.ivory, padding: '2px 8px',
+                  }}>STAMP · {j.region}</span>
+                  <button
+                    type="button"
+                    onClick={() => canonical && runVerify(j.id, canonical)}
+                    disabled={verifying || !canonical}
+                    data-testid={`studio-verify-cta-${j.id}`}
+                    title={canonical ? 'Re-verify HTTP 200 + canonical tag' : 'Stamp is missing a canonical URL'}
+                    style={{
+                      fontFamily: C.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
+                      padding: '4px 10px', borderRadius: 0,
+                      border: `1px solid ${trendColor}`,
+                      background: verifying ? trendColor : 'transparent',
+                      color: verifying ? E.ivory : trendColor,
+                      cursor: verifying ? 'progress' : 'pointer',
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    {verifyState.stage === 'verifying' && '⏳ VERIFYING…'}
+                    {verifyState.stage === 'ok' && '✓ RE-VERIFY'}
+                    {verifyState.stage === 'broken' && '✕ BROKEN · RE-VERIFY'}
+                    {verifyState.stage === 'idle' && '✓ VERIFY'}
+                  </button>
                 </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted }}>
-                <span>{j.branch_name || 'main'}</span>
-                <span>{timeAgo(j.merged_at || j.updated_at || j.created_at)}</span>
-              </div>
-            </button>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => onOpenJob(j)}
+                  style={{
+                    background: 'transparent', border: 'none', padding: 0, margin: 0,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontFamily: C.serif, fontSize: 16, color: E.ink, lineHeight: 1.2 }}>
+                    {j.title}
+                  </div>
+                </button>
+                {canonical && (
+                  <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.gold, wordBreak: 'break-all' }}>
+                    {canonical}
+                  </div>
+                )}
+                {verifyState.stage !== 'idle' && (verifyState.stage === 'ok' || verifyState.stage === 'broken') && (
+                  <div style={{
+                    fontFamily: C.mono, fontSize: 10.5,
+                    color: verifyState.stage === 'broken' ? '#a32525' : '#0f7a3a',
+                    paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
+                  }}>
+                    {verifyState.message}
+                    <span style={{ marginLeft: 6, color: E.inkDim }}>
+                      · checked {timeAgo(verifyState.verifiedAt)}
+                    </span>
+                  </div>
+                )}
+                {verifyState.stage === 'verifying' && (
+                  <div style={{
+                    fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted,
+                    paddingTop: 4, borderTop: `1px dashed ${E.hairline}`,
+                  }}>
+                    Re-checking HTTP 200 + canonical tag…
+                  </div>
+                )}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  paddingTop: 6, borderTop: `1px solid ${E.hairline}`,
+                }}>
+                  {trend && trend.found ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <svg width={sparkPts > 1 ? 120 : 0} height={28} viewBox="0 0 120 28"
+                        xmlns="http://www.w3.org/2000/svg" aria-label="position trend">
+                        {sparkPath && <path d={sparkPath} fill="none" stroke={trendColor} strokeWidth={1.5} />}
+                      </svg>
+                      <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.ink }}>
+                        pos {trend.position?.toFixed(1) ?? '—'}
+                        {trend.deltaPosition != null && (
+                          <span style={{ marginLeft: 4, color: trendColor }}>
+                            {trend.deltaPosition <= 0 ? '↑' : '↓'} {Math.abs(trend.deltaPosition).toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontFamily: C.mono, fontSize: 10, color: E.inkDim }}>
+                        {fmtN(trend.impressions)} imp
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontFamily: C.mono, fontSize: 10.5, color: E.inkMuted, fontStyle: 'italic' }}>
+                      {trendsLoading
+                        ? '⌛ Loading GSC trend…'
+                        : trendsError
+                          ? `GSC trend unavailable: ${trendsError}`
+                          : canonical
+                            ? 'Not in GSC top pages yet'
+                            : 'Canonical not registered'}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontFamily: C.mono, fontSize: 10, color: E.inkMuted }}>
+                    <span>{j.branch_name || 'main'}</span>
+                    <span>·</span>
+                    <span>{timeAgo(j.merged_at || j.updated_at || j.created_at)}</span>
+                  </div>
+                </div>
+              </article>
+            )
+          })}
         </div>
       )}
     </div>

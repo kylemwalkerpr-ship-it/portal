@@ -172,7 +172,7 @@ export async function liveVerifyPages(urls: string[]): Promise<LiveVerifyResult[
   )
   for (const r of settled) {
     if (r.status === 'fulfilled') results.push(r.value)
-    else results.push({ ok: false, liveUrl: '', httpStatus: null, verifiedAt: new Date().toISOString(), wordCount: null, auditScore: null, humanScore: null, hasNoIndex: null, purgeStatus: null, sitemapStatus: null, indexNowStatus: null, error: String((r as any).reason ?? 'unknown').slice(0, 200) })
+    else results.push({ ok: false, liveUrl: '', httpStatus: null, verifiedAt: new Date().toISOString(), wordCount: null, auditScore: null, humanScore: null, hasNoIndex: null, canonicalHref: null, hasCanonical: null, purgeStatus: null, sitemapStatus: null, indexNowStatus: null, error: String((r as any).reason ?? 'unknown').slice(0, 200) })
   }
   return results
 }
