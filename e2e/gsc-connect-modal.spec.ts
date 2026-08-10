@@ -19,8 +19,14 @@
  *      opens the modal in reconnect mode, re-runs Google consent (faked
  *      popup), and asserts the modal waits for the live-heal before showing
  *      CONNECTED and firing the radar refresh.
+ *   5. Mode-chip surfacing — connects via the Service account tab from the
+ *      studio composer banner, then asserts the SERVICE_ACCOUNT mode chip
+ *      surfaces in BOTH the composer banner ("GSC token is failing") and the
+ *      command-center Systems card (CONNECTED + TOKEN FAILURE) — the exact
+ *      mode label that tells teams which GSC path is live without opening the
+ *      modal.
  *
- * All four assert the single refresh path end-to-end:
+ * All five assert the single refresh path end-to-end:
  * `modal.onConnected → loadGscStatus → (connected false→true | live
  * false→true) transition → loadHealth + loadRadar` (observable as a fresh
  * POST to `/api/seo-factory/war-room`).
@@ -46,35 +52,82 @@ const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3002'
 
 /** Check if Clerk test credentials are available. */
 function hasClerkCredentials(): boolean {
-  return !!(process.env.CLERK_TEST_EMAIL && process.env.CLERK_TEST_PASSWORD)
+  return !!(process.env.CLERK_TEST_EMAIL && process.env.CLERK_TEST_PASSWORD && process.env.CLERK_SECRET_KEY)
 }
 
 /**
- * Attempt Clerk browser sign-in as an admin via the admin sign-in page.
- * Returns a logged-in Page (or null if sign-in failed).
+ * Sign in as admin using Clerk's Sign-In Token API.
+ *
+ * Creates a one-time sign-in token via the Backend API, navigates the browser
+ * to the token URL, and waits for Clerk to validate the token and create a
+ * session — all without touching the multi-step login form, email OTP, or any
+ * other factor that the production Clerk instance requires.
+ *
+ * Returns a logged-in Page or null if sign-in failed.
+ *
+ * @see https://clerk.com/docs/reference/backend-api/tag/Sign-In-Tokens
  */
 async function loginAsAdmin(browser: Browser): Promise<Page | null> {
   const page = await browser.newPage()
+  const clerkHeaders = {
+    Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+    'Content-Type': 'application/json',
+  }
   try {
-    await page.goto(`${BASE}/sign-in/admin?return_to=/dashboard/admin/content`, {
-      waitUntil: 'networkidle',
-    })
-
-    const emailInput = page.locator('input[type="email"], input[name="identifier"]')
-    await emailInput.waitFor({ state: 'visible', timeout: 15000 })
-    await emailInput.fill(process.env.CLERK_TEST_EMAIL!)
-    await page.locator('button[type="submit"]').first().click()
-    await page.waitForTimeout(2000)
-
-    const passwordInput = page.locator('input[type="password"]')
-    if (await passwordInput.isVisible()) {
-      await passwordInput.fill(process.env.CLERK_TEST_PASSWORD!)
-      await page.locator('button[type="submit"]').first().click()
+    // 1. Resolve the Clerk user id from the test email.
+    const userRes = await fetch(
+      `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(process.env.CLERK_TEST_EMAIL!)}`,
+      { headers: clerkHeaders },
+    )
+    if (!userRes.ok) {
+      console.error(`[loginAsAdmin] user lookup returned ${userRes.status}`)
+      await page.close()
+      return null
+    }
+    const users = (await userRes.json()) as Array<{ id?: string }>
+    const userId = users?.[0]?.id
+    if (!userId) {
+      console.error('[loginAsAdmin] no Clerk user found for test email')
+      await page.close()
+      return null
     }
 
-    await page.waitForURL(/\/dashboard/, { timeout: 20000 })
+    // 2. Create a one-time sign-in token via the Clerk Backend API.
+    const tokenRes = await fetch('https://api.clerk.com/v1/sign_in_tokens', {
+      method: 'POST',
+      headers: clerkHeaders,
+      body: JSON.stringify({ user_id: userId, expires_in_seconds: 300 }),
+    })
+    if (!tokenRes.ok) {
+      const body = await tokenRes.text()
+      console.error(`[loginAsAdmin] sign-in token API returned ${tokenRes.status}: ${body.slice(0, 200)}`)
+      await page.close()
+      return null
+    }
+    const { token } = await tokenRes.json()
+    if (!token) {
+      console.error('[loginAsAdmin] sign-in token API returned no token')
+      await page.close()
+      return null
+    }
+
+    // 3. Navigate the browser to the token URL. Clerk validates the JWT,
+    //    creates a session, sets the session cookie, and redirects to the
+    //    dashboard.
+    await page.goto(`${BASE}/sign-in/token?token=${token}`, {
+      waitUntil: 'domcontentloaded',
+    })
+
+    // 4. Wait for the redirect to finish — the user should land on a page
+    //    that is NOT /sign-in and NOT /sign-in/token.
+    await page.waitForURL(
+      (url) => !url.pathname.includes('/sign-in'),
+      { timeout: 30000 },
+    )
+
     return page
-  } catch {
+  } catch (err) {
+    console.error(`[loginAsAdmin] error: ${err}`)
     await page.close()
     return null
   }
@@ -450,5 +503,123 @@ test.describe('GSC connect modal (admin)', () => {
     // And the live-heal fired the radar refresh even though `connected` was
     // already true — a fresh war-room POST after the re-authorization.
     await expect.poll(() => warRoom.hits(), { timeout: 10000 }).toBeGreaterThan(hitsBefore)
+  })
+
+  test('Mode chip surfaces the connect path in the Systems card and composer banner (SERVICE_ACCOUNT)', async ({ browser }) => {
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+
+    const page = await loginAsAdmin(browser)
+    test.skip(!page, 'Skipping: could not sign in')
+    if (!page) return
+
+    // ── Mocks ──────────────────────────────────────────────────────────────
+    // Method-aware status endpoint. The SA POST registers a connection that is
+    // connected but cannot mint a token yet (live:false) — the exact state the
+    // composer-banner mode chip exists to label ("GSC token is failing" +
+    // SERVICE_ACCOUNT) while the Systems card shows the chip whenever
+    // connected. The GET serves the same state to every poller (studio 30s,
+    // command-center 15s + mount).
+    let connected = false
+    await page.route('**/api/content-studio/gsc/connect', async (route) => {
+      const request = route.request()
+      if (request.method() === 'POST') {
+        const body = (request.postDataJSON?.() ?? {}) as Record<string, unknown>
+        const ok =
+          typeof body.siteUrl === 'string' &&
+          typeof body.serviceAccountKey === 'string' &&
+          body.serviceAccountKey.includes('private_key')
+        if (ok) connected = true
+        await route.fulfill({
+          status: ok ? 200 : 400,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            ok
+              ? {
+                  connected: true, live: false, mode: 'service_account',
+                  siteUrl: body.siteUrl,
+                  email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+                  connectedAt: new Date().toISOString(),
+                  missing: [], error: 'invalid_grant',
+                }
+              : { error: 'No service account key available' },
+          ),
+        })
+        return
+      }
+      // GET — every poller reads the current connection state.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          connected
+            ? {
+                connected: true, live: false, mode: 'service_account',
+                email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+                siteUrl: 'sc-domain:yousafeconsultancy.com',
+                connectedAt: new Date().toISOString(),
+                missing: [], error: 'invalid_grant',
+              }
+            : {
+                connected: false, live: false, mode: null, email: null, siteUrl: null,
+                connectedAt: null, missing: ['site_url'], error: null,
+              },
+        ),
+      })
+    })
+
+    // The exact-mode chip — the text that distinguishes OAUTH from
+    // SERVICE_ACCOUNT on both surfaces.
+    const modeChip = page.getByText('SERVICE_ACCOUNT', { exact: true })
+
+    // ── Before connecting: no mode chip anywhere ───────────────────────────
+    await expect(modeChip).toHaveCount(0)
+
+    // ── Connect through the STUDIO's composer banner modal ─────────────────
+    // Scoped to the banner (background #FFFBEB is unique to it on the Create
+    // tab) so we never hit the radar panel's twin "Connect GSC →" CTA. The
+    // studio modal's onConnected → loadGscStatus refreshes the banner's own
+    // gscStatus immediately — no 30s studio poll wait.
+    const bannerCta = page.locator('div[style*="FFFBEB"]').getByRole('button', { name: 'Connect GSC →' })
+    await bannerCta.waitFor({ state: 'visible', timeout: 30000 })
+    await bannerCta.click()
+
+    // Service account tab → paste key + URL → connect.
+    await page.getByRole('button', { name: 'Service account', exact: true }).click()
+    const dialog = page.getByRole('dialog').last()
+    const SA_KEY = JSON.stringify({
+      type: 'service_account',
+      project_id: 'yousafe-gsc-reader',
+      private_key: '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n',
+      client_email: 'gsc-reader@yousafe-gsc-reader.iam.gserviceaccount.com',
+    })
+    await dialog.locator('textarea').fill(SA_KEY)
+    await dialog.locator('input').fill('sc-domain:yousafeconsultancy.com')
+    await page.getByRole('button', { name: /Connect service account/ }).click()
+
+    // CONNECTED · SERVICE_ACCOUNT phase (auto-closes ~2.2s later, poll fast).
+    await expect
+      .poll(() => page.getByText(/CONNECTED · SERVICE_ACCOUNT/).isVisible(), { timeout: 8000, intervals: [250] })
+      .toBe(true)
+
+    // ── Composer banner surfaces the mode chip ─────────────────────────────
+    // connected-but-not-live → banner swaps to the broken-token copy and
+    // labels the path with the SERVICE_ACCOUNT chip.
+    await expect(page.getByText(/GSC token is failing/)).toBeVisible({ timeout: 10000 })
+    await expect(modeChip).toHaveCount(1)
+    await expect(page.getByRole('button', { name: 'Re-connect GSC →' })).toBeVisible()
+
+    // ── Systems card surfaces the same chip ────────────────────────────────
+    // Open the Command Center → Systems. Its mount poll reads the same
+    // connected state → CONNECTED + SERVICE_ACCOUNT chip + TOKEN FAILURE.
+    await page.getByRole('button', { name: /Command Center/ }).first().click()
+    const systemsTab = page.locator('button[title="Open Systems"]')
+    await systemsTab.waitFor({ state: 'visible', timeout: 30000 })
+    await systemsTab.click()
+
+    await expect(page.getByText('CONNECTED', { exact: true })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/TOKEN FAILURE/)).toBeVisible()
+    // Both surfaces now label the same path — banner + Systems card.
+    await expect(modeChip).toHaveCount(2)
+    await expect(page.getByRole('button', { name: /Re-connect \(re-authorize\)/ })).toBeVisible()
   })
 })

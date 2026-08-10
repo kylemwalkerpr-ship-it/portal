@@ -20,6 +20,10 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
+  // Auth-gated admin suites (gsc-connect-modal) sign into the live portal and
+  // load the heavy command-center studio — Clerk redirect + radar + jobs pull
+  // routinely exceed the 30s default. 120s gives each scenario a real budget.
+  timeout: 120_000,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3002',
     trace: 'on-first-retry',
