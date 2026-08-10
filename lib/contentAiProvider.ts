@@ -204,17 +204,23 @@ export function resolveCloudflareAiAuth(): { accountId: string; token: string } 
  * Set CONTENT_AI_RETRY=1 only on a plan with sufficient subrequest headroom.
  */
 async function withRetry<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  // Retry by default; set CONTENT_AI_RETRY=0 to disable
-  const maxAttempts = process.env.CONTENT_AI_RETRY === '0' ? 1 : 2
+  // Retry by default with exponential backoff; set CONTENT_AI_RETRY=0 to disable.
+  // NVIDIA 550B-class models (Nemotron) routinely hit transient 503 capacity
+  // limits — 3 retries with growing backoff gives the worker time to drain.
+  const retryEnv = Number(process.env.CONTENT_AI_RETRY)
+  const maxAttempts = isNaN(retryEnv) ? 4 : Math.max(1, retryEnv)
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout/i.test(msg)
+      const retryable = /\b(503|429|524)\b|UNAVAILABLE|overload|high.demand|rate.?limit|gateway.timeout|ResourceExhausted/i.test(msg)
       if (!retryable || attempt >= maxAttempts || /Too many subrequest/i.test(msg) || isNoRetryProviderError(msg)) { console.warn(`[contentAi] ${name} non-retryable: ${msg.slice(0,120)}`); throw e }
-      console.warn(`[contentAi] ${name} transient (${msg.slice(0, 120)}); retry 1500ms`)
-      await new Promise((r) => setTimeout(r, 1500))
+      // Exponential backoff: 1.5s → 3s → 6s (with ±20% jitter)
+      const baseMs = 1500 * 2 ** (attempt - 1)
+      const jitter = baseMs * (0.8 + Math.random() * 0.4)
+      console.warn(`[contentAi] ${name} transient attempt ${attempt}/${maxAttempts} (${msg.slice(0, 100)}); retry ${Math.round(jitter)}ms`)
+      await new Promise((r) => setTimeout(r, jitter))
     }
   }
   throw new Error(`${name} failed without a response`)
@@ -1279,7 +1285,7 @@ function isSubrequestLimitError(err: unknown): boolean {
  */
 const COMPLETE_TIMEOUT_MS = Math.max(
   15_000,
-  Number.parseInt(process.env.CONTENT_AI_COMPLETE_TIMEOUT_MS || '120000', 10) || 120_000,
+  Number.parseInt(process.env.CONTENT_AI_COMPLETE_TIMEOUT_MS || '180000', 10) || 180_000,
 )
 
 function withUniversalQualityContract(opts: ContentAiOptions): ContentAiOptions {
