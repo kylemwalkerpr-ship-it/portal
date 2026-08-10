@@ -260,6 +260,13 @@ export function evaluateContentQuality(opts: {
   primaryKeyword?: string
   /** Indexable long-form gets stricter structure. */
   indexable?: boolean
+  /** Required short keywords (≤3 words). The brief supplies at least 5. */
+  requiredShortKeywords?: string[]
+  /** Required long-tail keywords (≥4 words). The brief supplies at least 4. */
+  requiredLongTailKeywords?: string[]
+  /** Min counts — defaults match the planner (5 short / 4 long-tail). */
+  minShortKeywords?: number
+  minLongTailKeywords?: number
 }): QualityGateResult {
   const contentType = (opts.contentType || 'legal_guide').toLowerCase()
   const indexable = opts.indexable !== false
@@ -598,6 +605,96 @@ export function evaluateContentQuality(opts: {
     })
   }
 
+  // ── 7. Keyword coverage: brief-supplied short + long-tail arrays ─────────
+  // Backwards-compat: only enforce the keyword floor AND per-keyword presence
+  // when the caller supplied the arrays. The legacy pipeline never produced
+  // these arrays, so missing input must not silently block pre-existing drafts
+  // (the partitioner now backfills ≥5/≥4 from a bare primary, see planner.ts).
+  if (indexable && contentType !== 'marketplace_gig') {
+    const hasShort = Array.isArray(opts.requiredShortKeywords)
+    const hasLong = Array.isArray(opts.requiredLongTailKeywords)
+    if (!hasShort && !hasLong) {
+      // Skip the keyword coverage gate entirely — legacy pipeline / reaudit
+      // calls without the arrays continue to behave as before.
+    } else {
+      const minShort = Math.max(0, opts.minShortKeywords ?? 5)
+      const minLongTail = Math.max(0, opts.minLongTailKeywords ?? 4)
+      const shortArr = (opts.requiredShortKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
+      const longArr = (opts.requiredLongTailKeywords || []).map((s) => String(s || '').trim()).filter(Boolean)
+
+      if (shortArr.length && shortArr.length < minShort) {
+        add({
+          code: 'insufficient_short_keywords',
+          severity: 'blocker',
+          message: `Brief shipped only ${shortArr.length} short keyword(s); need at least ${minShort} (≤3 words each). The keyword partitioner must backfill before the draft can pass.`,
+          fix: 'Re-run the planner / brief builder to synthesize the missing short keywords (modifiers around the primary term: "guide", "requirements", "application", "eligibility", "documents", "timeline", "rules"…).',
+        })
+      }
+      if (longArr.length && longArr.length < minLongTail) {
+        add({
+          code: 'insufficient_long_tail_keywords',
+          severity: 'blocker',
+          message: `Brief shipped only ${longArr.length} long-tail keyword(s); need at least ${minLongTail} (≥4 words each).`,
+          fix: 'Re-run the planner / brief builder to synthesize the missing long-tail queries (prefixes: "how to", "what is"; suffixes: "for international students", "step by step", "in 2026", "checklist and timeline").',
+        })
+      }
+
+      const blank = (s: string) => !s.replace(/[^a-z0-9]/gi, '').trim()
+      const missingShort = shortArr.filter((t) => blank(t) || body.toLowerCase().indexOf(t.toLowerCase()) === -1)
+      const missingLongTail = longArr.filter((t) => blank(t) || body.toLowerCase().indexOf(t.toLowerCase()) === -1)
+    if (missingShort.length) {
+      add({
+        code: 'missing_short_keyword',
+        severity: 'blocker',
+        message: `Required short keyword(s) absent: ${missingShort.slice(0, 6).map((t) => `"${t}"`).join(', ')}`,
+        fix: 'Use each short keyword at least once in context, naturally — title, first H2, In 60 seconds, or as a checklist item.',
+        evidence: missingShort.slice(0, 8).join(' | '),
+      })
+    }
+    if (missingLongTail.length) {
+      add({
+        code: 'missing_long_tail_keyword',
+        severity: 'blocker',
+        message: `Required long-tail keyword(s) absent: ${missingLongTail.slice(0, 6).map((t) => `"${t}"`).join(', ')}`,
+        fix: 'Use each long-tail keyword at least once, naturally — in FAQ, a heading, an answer block, or a step description. Do not force-fit; if no clean slot exists, mark it for review.',
+        evidence: missingLongTail.slice(0, 8).join(' | '),
+      })
+    }
+
+    // Per-keyword density caps: ≤4 hits per short keyword, ≤2 hits per long-tail keyword.
+    const overShort: Array<{ term: string; hits: number }> = []
+    for (const t of shortArr) {
+      if (blank(t)) continue
+      const hits = countOccurrences(body, t.toLowerCase())
+      if (hits > 4) overShort.push({ term: t, hits })
+    }
+    const overLong: Array<{ term: string; hits: number }> = []
+    for (const t of longArr) {
+      if (blank(t)) continue
+      const hits = countOccurrences(body, t.toLowerCase())
+      if (hits > 2) overLong.push({ term: t, hits })
+    }
+    if (overShort.length) {
+      add({
+        code: 'short_keyword_density_violation',
+        severity: 'blocker',
+        message: `Short keyword(s) over the 4-hit cap: ${overShort.slice(0, 6).map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
+        fix: 'Reduce exact repeats; prefer the natural term once or twice and use semantic variants where possible.',
+        evidence: overShort.slice(0, 8).map((o) => `${o.term}=${o.hits}`).join(', '),
+      })
+    }
+    if (overLong.length) {
+      add({
+        code: 'long_tail_density_violation',
+        severity: 'blocker',
+        message: `Long-tail keyword(s) over the 2-hit cap: ${overLong.slice(0, 6).map((o) => `"${o.term}" (×${o.hits})`).join(', ')}`,
+        fix: 'Long-tail phrases read like spam when repeated. Use the full phrase at most twice, in different contexts.',
+        evidence: overLong.slice(0, 8).map((o) => `${o.term}=${o.hits}`).join(', '),
+      })
+    }
+    }
+  }
+
   humanScore = Math.max(0, Math.min(100, humanScore))
 
   // If humanScore collapses, escalate to blocker
@@ -630,6 +727,10 @@ export function assertQualityGate(opts: {
   contentType?: string
   primaryKeyword?: string
   indexable?: boolean
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
+  minShortKeywords?: number
+  minLongTailKeywords?: number
 }): QualityGateResult {
   const r = evaluateContentQuality(opts)
   if (!r.ok) {

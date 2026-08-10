@@ -64,6 +64,8 @@ export function auditContent(opts: {
   primaryKeyword?: string
   indexable?: boolean
   ownershipBlockers?: string[]
+  requiredShortKeywords?: string[]
+  requiredLongTailKeywords?: string[]
 }): SeoFactoryAudit {
   const content = opts.content || ''
   const fm = extractFrontMatter(content)
@@ -267,6 +269,8 @@ export function auditContent(opts: {
     contentType: opts.contentType,
     primaryKeyword: opts.primaryKeyword || fm.primaryKeyword,
     indexable: wantIndexable,
+    requiredShortKeywords: opts.requiredShortKeywords,
+    requiredLongTailKeywords: opts.requiredLongTailKeywords,
   })
   for (const b of quality.blockers) {
     // Avoid duplicate codes already covered above (tldr/faq/citations)

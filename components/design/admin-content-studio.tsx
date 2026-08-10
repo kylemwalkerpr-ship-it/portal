@@ -388,6 +388,29 @@ const btnGhost: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
 }
 
+// ── Editorial toolbar button styles ─────────────────────────────────────────────
+const actionBtnStyle = (color: string): React.CSSProperties => ({
+  padding: '6px 11px', borderRadius: 0,
+  border: `1px solid ${color}`,
+  background: 'transparent', color,
+  fontFamily: E.mono, fontSize: 10.5, fontWeight: 700,
+  cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.06em',
+  display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+  transition: 'all 0.15s ease',
+})
+const actionDisabledStyle = (color: string): React.CSSProperties => ({
+  ...actionBtnStyle(color),
+  opacity: 0.6, cursor: 'progress', background: `${color}1A`,
+})
+const actionGhostStyle = (): React.CSSProperties => ({
+  padding: '6px 10px', borderRadius: 0,
+  border: `1px solid ${E.hairline}`,
+  background: 'transparent', color: E.inkSoft,
+  fontFamily: E.mono, fontSize: 10.5, fontWeight: 700,
+  cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.06em',
+  display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+})
+
 // ── Cannibalization merge records (shared with Command Center) ──
 interface CannibalMergeRecord {
   clusterId: string
@@ -1065,7 +1088,7 @@ function QueueStats({ jobs, total: totalOverride, summary }: {
   )
 }
 
-function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore }: {
+function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateByJob, focusJobId, onLoadMore, selectedIds, onToggleSelect, onToggleSelectAll, onBulkAction, bulkBusy, bulkAction }: {
   jobs: ContentJob[]
   total?: number
   summary?: QueueSummary | null
@@ -1075,6 +1098,12 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
   gateByJob?: Map<string, { score: number; passed: boolean }>
   focusJobId?: string | null
   onLoadMore?: () => void
+  selectedIds?: Set<string>
+  onToggleSelect?: (jobId: string) => void
+  onToggleSelectAll?: (ids: string[]) => void
+  onBulkAction?: (kind: string) => void
+  bulkBusy?: boolean
+  bulkAction?: string | null
 }) {
   const [filter, setFilter] = React.useState<'all' | 'active' | 'pr_created' | 'merged' | 'failed'>('all')
   const [search, setSearch] = React.useState('')
@@ -1183,6 +1212,15 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                <th style={{ padding: '9px 8px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'center', whiteSpace: 'nowrap', width: 32 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible jobs"
+                    checked={visible.length > 0 && visible.every((j) => selectedIds?.has(j.id))}
+                    onChange={() => onToggleSelectAll?.(visible.map((j) => j.id))}
+                    disabled={!visible.length || bulkBusy}
+                  />
+                </th>
                 <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Piece</th>
                 <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Type</th>
                 <th style={{ padding: '9px 12px', fontSize: 9, fontWeight: 600, color: C.textDim, textTransform: 'uppercase', fontFamily: C.mono, textAlign: 'left', whiteSpace: 'nowrap' }}>Region</th>
@@ -1197,10 +1235,26 @@ function QueueTable({ jobs, total, summary, onSelect, loading, mergeIndex, gateB
               {visible.map(j => {
                 const hit = mergeHitFor(j)
                 const g = gateByJob?.get(j.id)
+                const checked = Boolean(selectedIds?.has(j.id))
                 return (
-                  <tr key={j.id} onClick={() => onSelect(j)} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s', background: j.id === focusJobId ? '#EFF6FF' : 'transparent' }}
+                  <tr key={j.id} onClick={(e) => {
+                    // Don't open the detail modal if the checkbox was clicked.
+                    const target = e.target as HTMLElement
+                    if (target?.tagName === 'INPUT' || target?.dataset?.checkbox === 'true') return
+                    onSelect(j)
+                  }} style={{ cursor: 'pointer', borderBottom: `1px solid ${C.border2}`, transition: 'background 0.12s', background: j.id === focusJobId ? '#EFF6FF' : 'transparent' }}
                     onMouseEnter={e => { e.currentTarget.style.background = '#FAFAF7' }}
                     onMouseLeave={e => { e.currentTarget.style.background = j.id === focusJobId ? '#EFF6FF' : 'transparent' }}>
+                    <td style={{ padding: '9px 8px', textAlign: 'center', width: 32 }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        data-checkbox="true"
+                        aria-label={`Select job ${j.title || j.id}`}
+                        checked={checked}
+                        disabled={bulkBusy}
+                        onChange={() => onToggleSelect?.(j.id)}
+                      />
+                    </td>
                     <td style={{ padding: '9px 12px', maxWidth: 240 }}>
                       <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title || '(untitled)'}</div>
                       <div style={{ fontSize: 9.5, color: C.textDim, fontFamily: C.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.topic?.slice(0, 60)}</div>
@@ -2699,6 +2753,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
 
+  // Bulk queue-selection — surfaces real actions against many jobs at once
+  // (rerun, resume, clear queue, re-audit, refresh PR, abandon).
+  const [selectedJobIds, setSelectedJobIds] = React.useState<Set<string>>(new Set())
+  const [queueBulkBusy, setQueueBulkBusy] = React.useState(false)
+  const [queueBulkAction, setQueueBulkAction] = React.useState<string | null>(null)
+  const [queueBulkProgress, setQueueBulkProgress] = React.useState<{ done: number; total: number; failed: number } | null>(null)
+  const [queueStatusFilter, setQueueStatusFilter] = React.useState<ContentJob['status'] | 'all' | 'failed' | 'stuck'>('all')
+  // Keep the queue's last refresh timestamped so the refresh button has something
+  // honest to display instead of a silent void.
+  const [lastRefreshAt, setLastRefreshAt] = React.useState<number | null>(null)
+  const [queueBulkConfirmArmed, setQueueBulkConfirmArmed] = React.useState<string | null>(null)
+
   // Fetch jobs
   const fetchJobs = React.useCallback(async (): Promise<ContentJob[]> => {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return []
@@ -2906,6 +2972,116 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       setGenerationMergeBusy(false)
     }
   }, [generationReviewJob, generationMergeBusy, fetchJobs, fetchGateRuns, setActionNotice])
+
+  // ── Bulk queue actions: rerun, resume, clear queue, re-audit, refresh PR, abandon ──
+  // The bulk_* POST handler accepts up to 25 ids per request; we chunk large
+  // selections and surface a progress bar so the admin sees the work moving.
+  const runBulkQueueAction = React.useCallback(async (kind: 'bulk_reaudit' | 'bulk_abandon' | 'bulk_approve' | 'bulk_monitor' | 'rerun_resume' | 'refresh_pr' | 'clear_drafts' | 'clear_stuck' | 'clear_failed') => {
+    if (queueBulkBusy) return
+    let ids: string[] = []
+    if (kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed') {
+      // Status-filtered ops ignore the checkbox selection and act on the
+      // currently visible list, so an admin can wipe an entire queue bucket
+      // without selecting 30+ rows manually.
+      const statusFilter = kind === 'clear_drafts' ? 'pending'
+        : kind === 'clear_stuck' ? 'drafting'
+        : 'failed'
+      ids = jobs
+        .filter((j) => j.status === statusFilter || (kind === 'clear_stuck' && j.status === 'pending'))
+        .map((j) => j.id)
+    } else {
+      ids = Array.from(selectedJobIds)
+    }
+    if (!ids.length && !['clear_stuck', 'clear_failed', 'clear_drafts'].includes(kind)) {
+      setActionNotice('Select at least one job first.')
+      return
+    }
+    // Destructive ops require a second click (toggle arming).
+    if ((kind === 'clear_drafts' || kind === 'clear_stuck' || kind === 'clear_failed' || kind === 'bulk_abandon') && queueBulkConfirmArmed !== kind) {
+      setQueueBulkConfirmArmed(kind)
+      setActionNotice(`Click again to confirm ${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')} on ${ids.length || jobs.filter((j) => (kind === 'clear_failed' ? j.status === 'failed' : kind === 'clear_stuck' ? (j.status === 'drafting' || j.status === 'pending') : j.status === 'pending')).length} job(s).`)
+      return
+    }
+    setQueueBulkConfirmArmed(null)
+    setQueueBulkBusy(true)
+    setQueueBulkAction(kind)
+    setQueueBulkProgress({ done: 0, total: ids.length, failed: 0 })
+    try {
+      let successCount = 0
+      let failCount = 0
+      const chunks: string[][] = []
+      for (let i = 0; i < ids.length; i += 25) chunks.push(ids.slice(i, i + 25))
+      for (const chunk of chunks) {
+        if (kind === 'rerun_resume' || kind === 'refresh_pr') {
+          // Per-job PATCH; rerun_resume uses the regenerate action and refresh_pr
+          // pulls the latest PR metadata from GitHub.
+          const action: 'regenerate' | 'refresh_pr' = kind === 'rerun_resume' ? 'regenerate' : 'refresh_pr'
+          const results = await Promise.allSettled(chunk.map(async (id) => {
+            const res = await fetch('/api/content-studio/jobs', {
+              method: 'PATCH',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, action }),
+            })
+            const data = await res.json().catch(() => ({})) as { error?: string }
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+            return id
+          }))
+          successCount += results.filter((r) => r.status === 'fulfilled').length
+          failCount += results.filter((r) => r.status === 'rejected').length
+        } else {
+          const res = await fetch('/api/content-studio/jobs', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: kind, ids: chunk }),
+          })
+          const data = await res.json().catch(() => ({})) as { ok?: boolean; processed?: number; error?: string; message?: string }
+          if (res.ok && data.ok) {
+            successCount += Number(data.processed || chunk.length)
+          } else {
+            failCount += chunk.length
+            console.warn('[queue] bulk action failed', kind, data.error || res.status)
+          }
+        }
+        setQueueBulkProgress((p) => p ? { done: Math.min(p.total, p.done + chunk.length), total: p.total, failed: p.failed + failCount - (p.failed || 0) } : p)
+      }
+      setActionNotice(
+        failCount
+          ? `${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')}: ${successCount} ok, ${failCount} failed`
+          : `${kind.replace('bulk_', '').replace('clear_', 'clear ').replace('_', ' ')}: ${successCount} job(s) processed`,
+      )
+      setSelectedJobIds(new Set())
+      await fetchJobs()
+      await fetchGateRuns()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${kind} failed`)
+    } finally {
+      setQueueBulkBusy(false)
+      setQueueBulkAction(null)
+      setTimeout(() => setQueueBulkProgress(null), 1500)
+    }
+  }, [queueBulkBusy, queueBulkConfirmArmed, selectedJobIds, jobs, fetchJobs, fetchGateRuns, setActionNotice, setError])
+
+  const queueSelectionCounts = React.useMemo(() => {
+    const counts = { pending: 0, drafting: 0, failed: 0, stuck: 0, total: 0 }
+    for (const j of jobs) {
+      counts.total++
+      if (j.status === 'pending') counts.pending++
+      if (j.status === 'drafting') counts.drafting++
+      if (j.status === 'failed') counts.failed++
+      if (j.status === 'drafting' || (j.status === 'pending' && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000)) counts.stuck++
+    }
+    return counts
+  }, [jobs])
+
+  const visibleQueueJobs = React.useMemo(() => {
+    if (queueStatusFilter === 'all') return jobs
+    if (queueStatusFilter === 'stuck') {
+      return jobs.filter((j) => j.status === 'drafting' || (j.status === 'pending' && Date.now() - new Date(j.updated_at).getTime() > 30 * 60_000))
+    }
+    return jobs.filter((j) => j.status === queueStatusFilter)
+  }, [jobs, queueStatusFilter])
 
   // Auto-interlink from the engine for the current topic
   const runAutoInterlink = React.useCallback(async () => {
@@ -3156,15 +3332,37 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', minWidth: 200 }}>
           <span style={{ ...TYPE.microFig, color: E.goldDeep }}>VOL · I · NO · {String(Math.max(1, jobs.length + merges.length)).padStart(3, '0')}</span>
           <span style={{ ...TYPE.microFig, color: E.inkDim }}>{engGate ? `${Math.round(engGate * 100)}% GATE PASS` : 'ENGINE · IDLE'}</span>
-          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchMergeHistory(); void fetchGateRuns() }} disabled={loading} style={{
+          <button type="button" onClick={async () => {
+            if (loading) return
+            setError(null)
+            try {
+              await Promise.allSettled([
+                fetchJobs(),
+                fetchMergeIndex(),
+                fetchMergeHistory(),
+                fetchGateRuns(),
+              ])
+              setLastRefreshAt(Date.now())
+              setActionNotice(`Studio data refreshed · ${jobs.length} jobs, ${merges.length} merged PRs`)
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : 'Refresh failed'
+              setError(msg)
+              setActionNotice(`Refresh failed — ${msg}`)
+            }
+          }} disabled={loading} style={{
             marginTop: 6, padding: '8px 18px', borderRadius: 0,
             background: E.inkBlack, color: E.ivory,
-            border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 800,
+            border: 'none', cursor: loading ? 'progress' : 'pointer', fontSize: 11, fontWeight: 800,
             fontFamily: E.mono, letterSpacing: '0.08em', textTransform: 'uppercase',
             opacity: loading ? 0.5 : 1,
           }}>
             {loading ? '⏳ Loading…' : '↻ Refresh desk'}
           </button>
+          {lastRefreshAt && !loading && (
+            <span style={{ ...TYPE.microFig, color: E.inkDim, fontSize: 9, marginTop: 4 }}>
+              last refreshed {new Date(lastRefreshAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
         </div>
       </div>
 
@@ -3361,17 +3559,198 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'queue' && (
         <div id="studio-panel-queue" role="tabpanel" aria-labelledby="studio-tab-queue" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
-          <QueueTable
-            jobs={jobs}
-            total={jobTotal}
+
+          {/* ── Queue command bar — bulk actions & visible status counts ── */}
+          {!loading && (jobs.length > 0 || jobTotal > 0) && (
+            <div role="toolbar" aria-label="Job queue actions" style={{
+              padding: '10px 14px',
+              background: E.paper,
+              border: `1px solid ${E.hairline}`,
+              borderRadius: 0,
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              boxShadow: E.paperShadow,
+            }}>
+              <span style={{ ...TYPE.microFig, color: E.gold, fontSize: 10, fontWeight: 800, marginRight: 4 }}>QUEUE CONTROL</span>
+              <span style={{ fontSize: 11, color: E.inkSoft, fontFamily: E.mono }}>
+                {queueSelectionCounts.total} jobs · {selectedJobIds.size} selected
+              </span>
+              {queueBulkProgress && (
+                <span style={{ fontSize: 10.5, color: E.goldDeep, fontFamily: E.mono, marginLeft: 8 }}>
+                  {queueBulkProgress.done}/{queueBulkProgress.total} processed · {queueBulkProgress.failed} failed
+                </span>
+              )}
+              <div style={{ flex: 1 }} />
+              <button
+                type="button"
+                onClick={() => setSelectedJobIds(visibleQueueJobs.length === selectedJobIds.size && visibleQueueJobs.every((j) => selectedJobIds.has(j.id)) ? new Set() : new Set(visibleQueueJobs.map((j) => j.id)))}
+                disabled={queueBulkBusy || visibleQueueJobs.length === 0}
+                style={{
+                  padding: '6px 10px', border: `1px solid ${E.hairline}`, background: 'transparent',
+                  color: E.inkSoft, fontFamily: E.mono, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                  textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}
+              >
+                {visibleQueueJobs.length > 0 && visibleQueueJobs.every((j) => selectedJobIds.has(j.id)) ? '✕ Clear selection' : '☐ Select all'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('rerun_resume') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'rerun_resume' ? actionDisabledStyle(E.goldDeep) : actionBtnStyle(E.gold)}
+                title="Rerun selected jobs (regenerate action — AI rewrite, replacement job)"
+              >
+                {queueBulkAction === 'rerun_resume' ? '⏳ Rerunning…' : `🔁 Rerun (${selectedJobIds.size || 0})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('refresh_pr') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'refresh_pr' ? actionDisabledStyle('#0F766E') : actionBtnStyle('#0F766E')}
+                title="Refresh PR status from GitHub (pulls latest commit/CI state for each selected job)"
+              >
+                {queueBulkAction === 'refresh_pr' ? '⏳ Refreshing PRs…' : `↻ Refresh PR (${selectedJobIds.size || 0})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('bulk_reaudit') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'bulk_reaudit' ? actionDisabledStyle(E.inkSoft) : actionBtnStyle(E.inkSoft)}
+                title="Re-audit selected jobs against the current rules"
+              >
+                {queueBulkAction === 'bulk_reaudit' ? '⏳ Re-auditing…' : `🔍 Re-audit (${selectedJobIds.size || 0})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('bulk_approve') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'bulk_approve' ? actionDisabledStyle(E.mossGreen) : actionBtnStyle(E.mossGreen)}
+                title="Approve selected jobs (push PRs to main)"
+              >
+                {queueBulkAction === 'bulk_approve' ? '⏳ Approving…' : `✅ Approve (${selectedJobIds.size || 0})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('bulk_abandon') }}
+                disabled={queueBulkBusy || !selectedJobIds.size}
+                style={queueBulkAction === 'bulk_abandon' ? actionDisabledStyle(E.ember) : actionBtnStyle(E.ember)}
+                title={queueBulkConfirmArmed === 'bulk_abandon' ? 'Click again to confirm abandon' : 'Abandon selected jobs (mark as closed)'}
+              >
+                {queueBulkAction === 'bulk_abandon'
+                  ? '⏳ Abandoning…'
+                  : queueBulkConfirmArmed === 'bulk_abandon'
+                    ? '⚠ Confirm abandon'
+                    : `🗑 Abandon (${selectedJobIds.size || 0})`}
+              </button>
+              <span style={{ width: 1, height: 22, background: E.hairline, margin: '0 4px' }} />
+              {/* Status-filter clear buttons (act on the visible bucket, not selection) */}
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('clear_drafts') }}
+                disabled={queueBulkBusy}
+                style={queueBulkConfirmArmed === 'clear_drafts' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
+                title={queueBulkConfirmArmed === 'clear_drafts' ? `Click again to confirm clearing all ${queueSelectionCounts.pending} queued drafts` : `Clear all ${queueSelectionCounts.pending} pending drafts`}
+              >
+                {queueBulkConfirmArmed === 'clear_drafts'
+                  ? `⚠ Confirm clear queue (${queueSelectionCounts.pending})`
+                  : `🧹 Clear queue (${queueSelectionCounts.pending})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('clear_stuck') }}
+                disabled={queueBulkBusy}
+                style={queueBulkConfirmArmed === 'clear_stuck' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
+                title={queueBulkConfirmArmed === 'clear_stuck' ? `Click again to confirm abandoning ${queueSelectionCounts.stuck} stuck jobs` : `Abandon ${queueSelectionCounts.stuck} stuck jobs (>30min in drafting/pending)`}
+              >
+                {queueBulkConfirmArmed === 'clear_stuck'
+                  ? `⚠ Confirm resume cleanup (${queueSelectionCounts.stuck})`
+                  : `🚧 Resume stuck (${queueSelectionCounts.stuck})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void runBulkQueueAction('clear_failed') }}
+                disabled={queueBulkBusy}
+                style={queueBulkConfirmArmed === 'clear_failed' ? actionDisabledStyle(E.ember) : actionGhostStyle()}
+                title={queueBulkConfirmArmed === 'clear_failed' ? `Click again to confirm abandoning ${queueSelectionCounts.failed} failed jobs` : `Abandon ${queueSelectionCounts.failed} failed jobs`}
+              >
+                {queueBulkConfirmArmed === 'clear_failed'
+                  ? `⚠ Confirm clear failed (${queueSelectionCounts.failed})`
+                  : `❌ Clear failed (${queueSelectionCounts.failed})`}
+              </button>
+            </div>
+          )}
+
+          {/* ── Status filter row ── */}
+          {!loading && (jobs.length > 0 || jobTotal > 0) && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '0 4px', alignItems: 'center' }}>
+              <span style={{ ...TYPE.microFig, color: E.inkDim, fontSize: 10, fontWeight: 800 }}>FILTER</span>
+              {(['all', 'pending', 'drafting', 'pr_created', 'merged', 'failed', 'stuck'] as const).map((s) => {
+                const active = queueStatusFilter === s
+                const count = s === 'all' ? queueSelectionCounts.total
+                  : s === 'pending' ? queueSelectionCounts.pending
+                  : s === 'drafting' ? queueSelectionCounts.drafting
+                  : s === 'failed' ? queueSelectionCounts.failed
+                  : s === 'stuck' ? queueSelectionCounts.stuck
+                  : jobs.filter((j) => j.status === s).length
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setQueueStatusFilter(s)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 0,
+                      border: active ? `2px solid ${E.gold}` : `1px solid ${E.hairline}`,
+                      background: active ? E.goldSoft : 'transparent',
+                      color: active ? E.goldDeep : E.inkSoft,
+                      fontFamily: E.mono, fontSize: 9.5, fontWeight: 700,
+                      cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.06em',
+                    }}
+                  >
+                    {s.replace('_', ' ')} · {count}
+                  </button>
+                )
+              })}
+              <span style={{ marginLeft: 'auto' }}>
+                <button
+                  type="button"
+                  onClick={() => { setQueueStatusFilter('all'); setSelectedJobIds(new Set()) }}
+                  style={{
+                    border: 'none', background: 'transparent', padding: '3px 8px',
+                    color: E.inkDim, fontFamily: E.mono, fontSize: 9.5, fontWeight: 700,
+                    cursor: 'pointer', textTransform: 'uppercase',
+                  }}
+                >
+                  ↺ Reset
+                </button>
+              </span>
+            </div>
+          )}
+
+          {(jobs.length > 0 || jobTotal > 0) && <QueueTable
+            jobs={visibleQueueJobs}
+            total={visibleQueueJobs.length}
             summary={jobSummary}
             onSelect={(job) => { setQueueFocusJobId(null); setSelectedJob(job) }}
+            selectedIds={selectedJobIds}
+            onToggleSelect={(jobId) => {
+              setSelectedJobIds((prev) => {
+                const next = new Set(prev)
+                if (next.has(jobId)) next.delete(jobId); else next.add(jobId)
+                return next
+              })
+            }}
+            onToggleSelectAll={(ids) => setSelectedJobIds(ids.length === selectedJobIds.size ? new Set() : new Set(ids))}
             focusJobId={queueFocusJobId}
             loading={loading}
             mergeIndex={mergeIndex}
             gateByJob={gateByJob}
             onLoadMore={loadMoreJobs}
-          />
+            onBulkAction={(kind) => { void runBulkQueueAction(kind as Parameters<typeof runBulkQueueAction>[0]) }}
+            bulkBusy={queueBulkBusy}
+            bulkAction={queueBulkAction}
+          />}
         </div>
       )}
 

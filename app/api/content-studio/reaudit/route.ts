@@ -119,8 +119,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
       content: string; contentType?: string; primaryKeyword?: string; indexable?: boolean
+      requiredShortKeywords?: string[]; requiredLongTailKeywords?: string[]
     }
-    const { content, contentType, primaryKeyword, indexable } = body
+    const { content, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'content string required' }, { status: 400 })
     }
@@ -137,7 +138,14 @@ export async function POST(request: NextRequest) {
       contentType,
     })
     const effective = repaired.content
-    const result = evaluateContentQuality({ content: effective, contentType, primaryKeyword, indexable })
+    const result = evaluateContentQuality({
+      content: effective,
+      contentType,
+      primaryKeyword,
+      indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+    })
     const annotations: InlineAnnotation[] = []
     for (const b of result.blockers) annotations.push(...findingToAnnotations(effective, b))
     for (const w of result.warnings) annotations.push(
@@ -170,8 +178,10 @@ export async function PATCH(request: NextRequest) {
       contentType?: string
       primaryKeyword?: string
       indexable?: boolean
+      requiredShortKeywords?: string[]
+      requiredLongTailKeywords?: string[]
     }
-    const { action, content, annotations, annotation, contentType, primaryKeyword } = body
+    const { action, content, annotations, annotation, contentType, primaryKeyword, indexable, requiredShortKeywords, requiredLongTailKeywords } = body
     if (!content || !action) {
       return NextResponse.json({ error: 'content and action required' }, { status: 400 })
     }
@@ -251,7 +261,12 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
 
     // Re-evaluate the fixed content
     const reResult = evaluateContentQuality({
-      content: fixedContent, contentType, primaryKeyword,
+      content: fixedContent,
+      contentType,
+      primaryKeyword,
+      indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     const reAnnotations: InlineAnnotation[] = []
     for (const b of reResult.blockers) reAnnotations.push(...findingToAnnotations(fixedContent, b))

@@ -119,6 +119,10 @@ export function buildFactorySystemPrompt(opts: {
   maxWords?: number
   /** Compact pack from SEO strategies directory */
   strategyBlock?: string
+  /** Brief-supplied short keywords (≤3 words). The article must use each, max 4 hits. */
+  requiredShortKeywords?: string[]
+  /** Brief-supplied long-tail keywords (≥4 words). The article must use each, max 2 hits. */
+  requiredLongTailKeywords?: string[]
 }): string {
   const { plan, contentType, minWords, strategyBlock } = opts
   const target = targetWordsForType(contentType)
@@ -190,6 +194,24 @@ export function buildFactorySystemPrompt(opts: {
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',
     '12) If you are under the word minimum, keep expanding with real procedures/documents/FAQs until you clear it — short drafts are discarded.',
+    '13) KEYWORD COVERAGE — the brief supplies ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words).',
+    '    - Use every short keyword at least once (cap ≤4 hits per keyword in the body).',
+    '    - Use every long-tail keyword at least once (cap ≤2 hits per keyword in the body).',
+    '    - Place at least one short keyword in the title slug, first H2, and the In 60 seconds block.',
+    '    - Place at least one long-tail keyword in a natural FAQ question, a procedural heading, or step description.',
+    '    - Missing any keyword = HARD BLOCK (the quality gate refuses ship). Stuffing = HARD BLOCK. Aim for natural distribution.',
+    ...(opts.requiredShortKeywords
+      ? [
+          '    SHORT KEYWORDS TO USE:',
+          ...opts.requiredShortKeywords.map((k) => `- "${k}"`),
+        ]
+      : []),
+    ...(opts.requiredLongTailKeywords
+      ? [
+          '    LONG-TAIL KEYWORDS TO USE:',
+          ...opts.requiredLongTailKeywords.map((k) => `- "${k}"`),
+        ]
+      : []),
   ]
     .filter(Boolean)
     .join('\n')

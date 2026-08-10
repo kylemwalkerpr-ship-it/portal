@@ -27,6 +27,7 @@ import { buildSeoCanon, type SeoCanon } from './seoCanon'
 import { ensureEditorialScaffold } from './editorialScaffold'
 import { buildGenerationEnrichment } from '@/lib/seoFactory/crossDomainEnrich'
 import { stripNoIndex } from './siteHealthFixes'
+import { partitionKeywords } from '@/lib/seoEngine/planner'
 
 /**
  * Token budget: cap generation to stay within max word count.
@@ -187,6 +188,15 @@ function resolveShipMode(
 export async function runSeoFactoryPipeline(input: PipelineInput): Promise<PipelineResult> {
   const topic = (input.topic || '').trim()
   const primaryKeyword = (input.primaryKeyword || topic).trim()
+  // Partition the user-supplied keywords + primary keyword into short / long-tail so the
+  // brief and the gate can enforce ≥5 short and ≥4 long-tail on every draft.
+  const userKeywords = Array.isArray(input.keywords) ? input.keywords : []
+  const briefPartition = partitionKeywords(
+    userKeywords,
+    primaryKeyword,
+  )
+  const requiredShortKeywords = briefPartition.short
+  const requiredLongTailKeywords = briefPartition.longTail
   const title = (input.title || topic || primaryKeyword).trim()
   const region = (input.region || 'US').toUpperCase()
   let contentType = input.contentType || 'legal_guide'
@@ -280,6 +290,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     minWords,
     maxWords,
     strategyBlock,
+    requiredShortKeywords,
+    requiredLongTailKeywords,
   })
 
   let content = input.resumeContent || ''
@@ -391,6 +403,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     refineNotes = [
       auditToRefineNotes({
@@ -603,6 +617,8 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       contentType,
       primaryKeyword,
       indexable: plan.indexable,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
     refineNotes = [
       auditToRefineNotes({ ...audit, minWords, targetWords }),
@@ -753,17 +769,19 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   if (shipMode !== 'none') {
     try {
       // shipContent enforces shipGate (host · path · format) before any Git write
-      shipResult = await shipContent({
-        mode: shipMode,
-        plan,
-        content,
-        title: title || primaryKeyword,
-        region,
-        contentType,
-        primaryKeyword,
-        audit,
-        dryRun: Boolean(input.dryRun),
-      })
+    shipResult = await shipContent({
+      mode: shipMode,
+      plan,
+      content,
+      title: title || primaryKeyword,
+      region,
+      contentType,
+      primaryKeyword,
+      audit,
+      dryRun: Boolean(input.dryRun),
+      requiredShortKeywords,
+      requiredLongTailKeywords,
+    })
     } catch (e) {
       shipError = e instanceof Error ? e.message : 'Ship failed'
     }
@@ -830,6 +848,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
         primaryKeywords: gscBrief.primaryKeywords.slice(0, 8),
         opportunityAction: input.opportunityAction,
       },
+      required_short_keywords: requiredShortKeywords,
+      required_long_tail_keywords: requiredLongTailKeywords,
+      keyword_partition_source: 'word_count_v1',
       deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
       deployed_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,
       merged_at: shipResult?.status === 'deployed' || shipResult?.status === 'merged' ? new Date().toISOString() : null,

@@ -159,6 +159,10 @@ export async function shipContent(opts: {
   jobId?: string
   /** Admin explicitly approved in Content Studio — prefer main deploy */
   humanApproved?: boolean
+  /** Required short keywords (≤3 words each). The master gate fails ship if any are missing. */
+  requiredShortKeywords?: string[]
+  /** Required long-tail keywords (≥4 words each). The master gate fails ship if any are missing. */
+  requiredLongTailKeywords?: string[]
 }): Promise<ShipResult> {
   // Hard gate: strategy host → repo must match HOST_REPO table
   assertPlanRepoConsistency(opts.plan)
@@ -218,12 +222,14 @@ export async function shipContent(opts: {
     contentType: opts.contentType,
     indexable: opts.plan.indexable,
   })
-  // 2) Voice, tonality, AI-slop, outcome promises, human cadence
+  // 2) Voice, tonality, AI-slop, outcome promises, human cadence, keyword coverage
   assertQualityGate({
     content: shipContent_,
     contentType: opts.contentType,
     primaryKeyword: opts.primaryKeyword,
     indexable: opts.plan.indexable,
+    requiredShortKeywords: opts.requiredShortKeywords,
+    requiredLongTailKeywords: opts.requiredLongTailKeywords,
   })
   // 3) Host · path · format + build-safe payload (CTAPanel, balanced JSX, FM)
   assertShipAllowed({
@@ -273,7 +279,7 @@ export async function shipContent(opts: {
       })
     }
 
-    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo }) } catch {} }
+    if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: put.commitSha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
     return {
       mode: 'autodeploy',
       owner,
@@ -387,7 +393,7 @@ export async function shipContent(opts: {
         if (opts.plan.canonicalUrl) {
           submitUrlsToIndexNow([opts.plan.canonicalUrl]).catch(() => {})
         }
-        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo }) } catch {} }
+        if (opts.plan.canonicalUrl) { try { verifyLiveInBackground({ canonicalUrl: opts.plan.canonicalUrl, title: opts.title, primaryKeyword: opts.primaryKeyword, contentType: opts.contentType, jobId: (opts as any).jobId || null, commitSha: merged.sha, host: opts.plan.host, repo, requiredShortKeywords: opts.requiredShortKeywords, requiredLongTailKeywords: opts.requiredLongTailKeywords }) } catch {} }
         return {
           mode: 'merge',
           owner,

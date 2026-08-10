@@ -16,6 +16,11 @@ export const EDITORIAL_FORMATTING_CONTRACT = [
   '8. Link with meaning: use contextual internal links with descriptive anchor text and explain why the destination helps. Never use “click here” or inject unrelated links.',
   '9. Use calm, precise, inclusive language. No clickbait, keyword stuffing, fake urgency, invented statistics, unsupported testimonials, outcome guarantees, or manipulative “keep reading” teasers.',
   '10. Keep variation topic-led: blogs may be lighter and more narrative; procedural guides may use steps and checklists; comparisons may use a table. Apply the principles without forcing identical headings.',
+  '11. KEYWORD COVERAGE (mandatory on every draft). The brief supplies two arrays:',
+  '    - shortKeywords — ≥5 distinct head terms, each ≤3 words long. Each short keyword must appear at least once in the body, in context of the topic, and at most 4 times total (no stuffing).',
+  '    - longTailKeywords — ≥4 distinct long-tail terms, each ≥4 words long. Each long-tail keyword must appear at least once, naturally, and at most 2 times total.',
+  '    Treat each keyword from BOTH arrays as a check the scanner will enforce before ship: missing any one is a HARD blocker named missing_keyword; exceeding the cap is a HARD blocker named keyword_density_violation. The scanner also fails a draft that ships with fewer than 5 short or 4 long-tail entries.',
+  '    Distribute keywords across the article: place at least one short keyword in the title slug, the first H2, and the In 60 seconds block. Place at least one long-tail keyword in the FAQ. Do not front-load every keyword in the first paragraphs.',
   '',
   '## HARD FORMAT SPEC (every long-form page)',
   '',
@@ -59,6 +64,7 @@ export function editorialBriefPromptBlock(): string {
     '- EVIDENCE / SOURCES: official authorities, facts to verify, and freshness risks.',
     '- ENGAGEMENT DEVICES: only the useful checklist, steps, table, example, callout, FAQ, and internal-link opportunities for this query.',
     '- COMPLIANCE NOTES: YMYL boundaries, disclaimer, uncertainty, and claims to avoid.',
+    '- KEYWORD COVERAGE: the planner supplied ≥5 shortKeywords (≤3 words) and ≥4 longTailKeywords (≥4 words). The brief MUST echo them so the writer can decide where each term fits. Note any keyword that has no clean context — the writer should mark it as optional rather than force-fit.',
     'Use short labeled bullets rather than a wall of prose. Do not invent search data, fees, timelines, sources, or credentials.',
   ].join('\n')
 }

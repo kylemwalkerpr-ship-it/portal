@@ -20,6 +20,10 @@ export interface LiveVerifyInput {
   commitSha?: string | null
   host?: string | null
   repo?: string | null
+  /** Brief-supplied short keywords (≤3 words). Optional — quality gate will skip coverage check when absent. */
+  requiredShortKeywords?: string[]
+  /** Brief-supplied long-tail keywords (≥4 words). */
+  requiredLongTailKeywords?: string[]
 }
 export interface LiveVerifyResult {
   ok: boolean
@@ -105,9 +109,29 @@ export async function verifyLiveUrl(input: LiveVerifyInput): Promise<LiveVerifyR
   let humanScore: number | null = null
   let auditError: string | null = null
   try {
+    if (!input.requiredShortKeywords && !input.requiredLongTailKeywords && input.jobId) {
+      try {
+        const { data: jobRow } = await dbc()
+          .from('content_jobs')
+          .select('required_short_keywords,required_long_tail_keywords')
+          .eq('id', input.jobId)
+          .maybeSingle()
+        if (jobRow) {
+          input.requiredShortKeywords = Array.isArray(jobRow.required_short_keywords) ? jobRow.required_short_keywords : []
+          input.requiredLongTailKeywords = Array.isArray(jobRow.required_long_tail_keywords) ? jobRow.required_long_tail_keywords : []
+        }
+      } catch { /* best-effort */ }
+    }
     const audit = auditContent({ content: bodyText, contentType: input.contentType||'legal_guide', primaryKeyword: input.primaryKeyword||input.title||url, indexable:true, ownershipBlockers: [] })
     auditScore = audit.score
-    const q = evaluateContentQuality({ content: bodyText, contentType: input.contentType||'legal_guide', primaryKeyword: input.primaryKeyword||input.title||url, indexable:true })
+    const q = evaluateContentQuality({
+      content: bodyText,
+      contentType: input.contentType || 'legal_guide',
+      primaryKeyword: input.primaryKeyword || input.title || url,
+      indexable: true,
+      requiredShortKeywords: input.requiredShortKeywords,
+      requiredLongTailKeywords: input.requiredLongTailKeywords,
+    })
     humanScore = q.humanScore
   } catch(ex:any){ auditError = String(ex?.message||ex).slice(0,400) }
   const ok = httpStatus===200 && !hasNoIndex && (auditScore??0)>=30 && wc>=200

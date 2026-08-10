@@ -25,6 +25,7 @@ import { meetsDepthFloor, meetsShipQuality } from './audit'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { stripNoIndex } from './siteHealthFixes'
+import { partitionKeywords } from '@/lib/seoEngine/planner'
 
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
@@ -58,6 +59,13 @@ export async function* runSeoFactoryPipelineStream(
   try {
     const topic = (input.topic || '').trim()
     const primaryKeyword = (input.primaryKeyword || topic).trim()
+    // Partition the user-supplied keywords + primary keyword into ≥5 short / ≥4 long-tail.
+    const briefPartition = partitionKeywords(
+      Array.isArray(input.keywords) ? input.keywords : [],
+      primaryKeyword,
+    )
+    const requiredShortKeywords = briefPartition.short
+    const requiredLongTailKeywords = briefPartition.longTail
     const title = (input.title || topic || primaryKeyword).trim()
     const region = (input.region || 'US').toUpperCase()
     let contentType = input.contentType || 'legal_guide'
@@ -178,6 +186,8 @@ export async function* runSeoFactoryPipelineStream(
       minWords,
       maxWords,
       strategyBlock,
+      requiredShortKeywords,
+      requiredLongTailKeywords,
     })
 
     let content = input.resumeContent?.trim() || ''
@@ -324,6 +334,8 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
       refineNotes = [
         auditToRefineNotes({ ...audit, minWords, targetWords }),
@@ -547,6 +559,8 @@ export async function* runSeoFactoryPipelineStream(
         contentType,
         primaryKeyword,
         indexable: plan.indexable,
+        requiredShortKeywords,
+        requiredLongTailKeywords,
       })
       refineNotes = [
         auditToRefineNotes({ ...audit, minWords, targetWords }),
@@ -716,6 +730,8 @@ export async function* runSeoFactoryPipelineStream(
           primaryKeyword,
           audit,
           dryRun: Boolean(input.dryRun),
+          requiredShortKeywords,
+          requiredLongTailKeywords,
         })
       } catch (e) {
         shipError = e instanceof Error ? e.message : 'Ship failed'
@@ -811,6 +827,9 @@ export async function* runSeoFactoryPipelineStream(
               }
             : null,
         },
+        required_short_keywords: requiredShortKeywords,
+        required_long_tail_keywords: requiredLongTailKeywords,
+        keyword_partition_source: 'word_count_v1',
         deploy_sha: shipResult?.mergeCommitSha || shipResult?.commitSha || null,
         deployed_at:
           shipResult?.status === 'deployed' || shipResult?.status === 'merged'

@@ -89,6 +89,106 @@ export interface ClusterPlan {
   interlinks: string[]
   rationale: string
   brief: string
+  /** Head terms (≤3 words) sliced from `relatedTerms` plus synthesized modifiers around the primary. Required minimum: 5. */
+  shortKeywords: string[]
+  /** Question / long-form terms (≥4 words) sliced from `relatedTerms` plus synthesized prefixes. Required minimum: 4. */
+  longTailKeywords: string[]
+  /** Provenance of the partitioner — useful for audits when we evolve the rules. */
+  keywordPartitionSource: 'word_count_v1'
+}
+
+/** Minimum keyword counts the studio's content quality gate enforces on every draft. */
+export const KEYWORD_REQUIREMENTS = {
+  SHORT_MIN: 5,
+  LONG_TAIL_MIN: 4,
+  SHORT_MAX_PER_KEYWORD: 4,
+  LONG_TAIL_MAX_PER_KEYWORD: 2,
+} as const
+
+/**
+ * Partition a freeform list of seed queries into short (≤3 words) and long-tail (≥4 words).
+ * Deterministic: same input → same output. Returns up to `SHORT_MIN + 7` short + `LONG_TAIL_MIN + 6`
+ * long-tail terms. Counts hyphenated atoms (e.g. "f-1", "co-op") as ONE word so a
+ * head term like "f-1 visa" still classifies as short (2 words) and not long-tail.
+ */
+export function partitionKeywords(terms: string[], primaryTerm?: string): { short: string[]; longTail: string[] } {
+  const norm = String
+  const seen = new Set<string>()
+  const out: string[] = []
+  const pushUniq = (raw: string) => {
+    const t = norm(raw || '').toLowerCase().trim().replace(/\s+/g, ' ')
+    if (!t) return
+    if (t.length < 3 || t.length > 80) return
+    // Dedup on the display-cased variant too so variants like "F-1 visa" and
+    // "f 1 visa" are treated as different keys (the user typed one form,
+    // the synthesis needs the other).
+    const key = t.replace(/\s+/g, ' ').trim()
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    out.push(t)
+  }
+  const wordCount = (s: string): number => {
+    // Treat hyphenated form codes / multi-char atoms (e.g. "f-1", "co-op", "i-765")
+    // as ONE word so they don't blow the long-tail count out of proportion.
+    const tokens = s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]+/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+    return tokens.reduce((n, token) => {
+      const atoms = token.split('-').filter(Boolean)
+      return n + Math.max(1, atoms.length === token.length ? 1 : 1)
+    }, 0) || tokens.length
+  }
+
+  const pt = norm(primaryTerm || '').toLowerCase().trim()
+  const ptWords = pt.split(/\s+/).filter(Boolean)
+
+  // Track short and long-tail arrays as we synthesize, so the second-stage
+  // gate can use the count of the *target* array, not the global count of
+  // mixed terms.
+  const short: string[] = []
+  const longTail: string[] = []
+  // classifyAndAdd will both push a unique term AND place it in the correct
+  // bucket if the term passes the dedupe gate.
+  const classifyAndAdd = (candidate: string) => {
+    const beforeLen = out.length
+    pushUniq(candidate)
+    if (out.length === beforeLen) return
+    const last = out[out.length - 1]
+    const wc = wordCount(last)
+    if (wc <= 3) {
+      if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 7) short.push(last)
+    } else if (wc >= 4) {
+      if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 6) longTail.push(last)
+    }
+  }
+
+  // Collect input terms + primary first.
+  for (const t of terms || []) classifyAndAdd(t)
+  if (ptWords.length >= 2) classifyAndAdd(pt)
+
+  // First synthesize SHORT (≤3 words) head terms so the floor is met.
+  const ST_PREFIXES = ['guide', 'requirements', 'application', 'eligibility', 'documents', 'timeline', 'rules', 'process']
+  if (short.length < KEYWORD_REQUIREMENTS.SHORT_MIN + 2 && ptWords.length >= 1) {
+    for (const prefix of ST_PREFIXES) {
+      const candidate = `${prefix} ${pt}`
+      if (wordCount(candidate) <= 3) classifyAndAdd(candidate)
+    }
+    const stripped = pt.replace(/-/g, ' ')
+    if (wordCount(stripped) <= 3) classifyAndAdd(`${stripped} guide`)
+    if (wordCount(`${stripped} 2026`) <= 3) classifyAndAdd(`${stripped} 2026`)
+  }
+
+  // Then synthesize LONG-TAIL (≥4) query phrases.
+  const LT_PREFIXES = ['how to apply for', 'what is the', 'is it possible to', 'do you need a', 'requirements for a']
+  const LT_SUFFIXES = ['for international students', 'step by step', 'in 2026 explained', 'checklist and timeline', 'requirements explained by an expert']
+  if (longTail.length < KEYWORD_REQUIREMENTS.LONG_TAIL_MIN + 2 && ptWords.length >= 1) {
+    for (const prefix of LT_PREFIXES) classifyAndAdd(`${prefix} ${pt}`)
+    for (const suffix of LT_SUFFIXES) classifyAndAdd(`${pt} ${suffix}`)
+  }
+
+  return { short, longTail }
 }
 
 function slugify(s: string): string {
@@ -309,8 +409,11 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
     // Related terms: other signals in the same cell
     const related = signals
       .filter((s) => s.term !== primaryTerm && bestCellForTerm(s.term).stage === stage && bestCellForTerm(s.term).country === country)
-      .slice(0, 4)
+      .slice(0, 8)
       .map((s) => s.term)
+
+    // Partition into short + long-tail so the brief can demand a ≥5 / ≥4 minimum.
+    const partitioned = partitionKeywords(related, primaryTerm)
 
     // Interlink plan from ontology neighbors
     const interlinks: string[] = []
@@ -410,6 +513,9 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
       interlinks,
       rationale,
       brief,
+      shortKeywords: partitioned.short,
+      longTailKeywords: partitioned.longTail,
+      keywordPartitionSource: 'word_count_v1',
     })
   }
 
@@ -424,6 +530,10 @@ export async function runPlanner(req: PlanRequest = {}): Promise<ClusterPlan[]> 
         cluster_id: p.clusterId,
         primary_term: p.primaryTerm,
         related_terms: p.relatedTerms,
+        short_keywords: p.shortKeywords,
+        long_tail_keywords: p.longTailKeywords,
+        keyword_partition_generated_at: new Date().toISOString(),
+        keyword_partition_source: p.keywordPartitionSource,
         stage: p.stage,
         country: p.country,
         intent: p.intent,
