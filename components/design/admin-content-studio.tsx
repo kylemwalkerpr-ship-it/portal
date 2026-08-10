@@ -2610,9 +2610,9 @@ function ShipLedger({
 // ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
   const [tab, setTab] = React.useState<StudioTab>(() => {
-    if (typeof window === 'undefined') return 'create'
+    if (typeof window === 'undefined') return 'pipeline'
     const requested = new URLSearchParams(window.location.search).get('tab')
-    return isStudioTab(requested) ? requested : 'create'
+    return isStudioTab(requested) ? requested : 'pipeline'
   })
   const [operationsVisited, setOperationsVisited] = React.useState(() => {
     if (typeof window === 'undefined') return false
@@ -3134,20 +3134,36 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   ]
 
   return (
-    <div style={{ padding: '16px 20px 32px', maxWidth: 1440, margin: '0 auto' }}>
-      {/* ── Header ── */}
-      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+    <div style={{ padding: '24px 28px 40px', maxWidth: 1480, margin: '0 auto', background: E.ivory, minHeight: 'calc(100vh - 80px)' }}>
+      {/* ── Masthead — editorial spread-style studio cover ── */}
+      <div style={{
+        marginBottom: 18, padding: '20px 24px', borderRadius: 0,
+        background: `linear-gradient(135deg, ${E.ivory} 0%, ${E.parchment} 100%)`,
+        borderBottom: `2px solid ${E.gold}`,
+        display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'center',
+      }}>
         <div>
-          <h1 style={{ margin: 0, fontFamily: C.serif, fontSize: 26, fontWeight: 700, color: C.text }}>
-            Content Studio
+          <div style={{ ...TYPE.caption, color: E.gold, marginBottom: 6, fontWeight: 800 }}>
+            THE CONTENT STUDIO · {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}
+          </div>
+          <h1 style={{ ...TYPE.display, margin: 0, color: E.inkBlack }}>
+            One Pipeline, End‑to‑End.
           </h1>
-          <p style={{ margin: '2px 0 0', fontSize: 12, color: C.textMuted }}>
-            One verifiable pipeline: radar → brief → AI draft → compliance gate → GitHub PR → live
+          <p style={{ ...TYPE.byline, margin: '6px 0 0', color: E.inkSoft, fontStyle: 'italic' }}>
+            From SEO Master Engine ingestion to a live, verifiable URL — every step tracked, every PR stamped.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchMergeHistory(); void fetchGateRuns() }} disabled={loading} style={btnGhost}>
-            ↻ Refresh
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', minWidth: 200 }}>
+          <span style={{ ...TYPE.microFig, color: E.goldDeep }}>VOL · I · NO · {String(Math.max(1, jobs.length + merges.length)).padStart(3, '0')}</span>
+          <span style={{ ...TYPE.microFig, color: E.inkDim }}>{engGate ? `${Math.round(engGate * 100)}% GATE PASS` : 'ENGINE · IDLE'}</span>
+          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchMergeHistory(); void fetchGateRuns() }} disabled={loading} style={{
+            marginTop: 6, padding: '8px 18px', borderRadius: 0,
+            background: E.inkBlack, color: E.ivory,
+            border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 800,
+            fontFamily: E.mono, letterSpacing: '0.08em', textTransform: 'uppercase',
+            opacity: loading ? 0.5 : 1,
+          }}>
+            {loading ? '⏳ Loading…' : '↻ Refresh desk'}
           </button>
         </div>
       </div>
@@ -3198,28 +3214,50 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       </div>
 
-      {/* ── Tab navigation ── */}
-      <div role="tablist" aria-label="Content Studio workspaces" style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            id={`studio-tab-${t.key}`}
-            role="tab"
-            aria-selected={tab === t.key}
-            aria-controls={`studio-panel-${t.key}`}
-            type="button"
-            onClick={() => selectTab(t.key)}
-            style={{
-              padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit',
-              background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#FFF' : C.textMuted,
-              border: `1px solid ${tab === t.key ? C.navy : C.border}`, transition: 'all 0.15s',
-              boxShadow: tab === t.key ? '0 3px 10px rgba(15,23,42,0.18)' : 'none',
-            }}
-          >
-            {t.icon} {t.label}
-            <span style={{ marginLeft: 6, fontSize: 9, fontFamily: C.mono, opacity: 0.75 }}>{t.hint}</span>
-          </button>
-        ))}
+      {/* ── Section nav — editorial spread ribbons ── */}
+      <div role="tablist" aria-label="Content Studio workspaces" style={{
+        display: 'flex', gap: 0, marginBottom: 16, flexWrap: 'wrap',
+        borderTop: `1px solid ${E.hairline}`, borderBottom: `1px solid ${E.hairline}`,
+        background: E.cream,
+      }}>
+        {TABS.map((t, i) => {
+          const active = tab === t.key
+          const ordinal = ['I', 'II', 'III', 'IV', 'V'][i] || String(i + 1)
+          return (
+            <button
+              key={t.key}
+              id={`studio-tab-${t.key}`}
+              role="tab"
+              aria-selected={active}
+              aria-controls={`studio-panel-${t.key}`}
+              type="button"
+              onClick={() => selectTab(t.key)}
+              style={{
+                padding: '12px 22px', borderRight: `1px solid ${E.hairline}`, cursor: 'pointer',
+                fontFamily: E.serif, fontSize: 16, fontWeight: 600,
+                background: active ? E.paper : 'transparent',
+                color: active ? E.inkBlack : E.inkMuted,
+                border: 'none',
+                borderBottom: active ? `3px solid ${E.gold}` : '3px solid transparent',
+                transition: 'all 0.18s',
+                display: 'flex', alignItems: 'center', gap: 8,
+                position: 'relative',
+              }}
+            >
+              <span style={{
+                ...TYPE.microFig,
+                color: active ? E.gold : E.inkDim,
+                fontSize: 10, fontWeight: 800,
+              }}>{ordinal}</span>
+              <span>{t.icon} {t.label}</span>
+              <span style={{
+                ...TYPE.caption, fontSize: 8.5,
+                color: active ? E.goldDeep : E.inkDim,
+                fontFamily: E.mono, marginLeft: 6,
+              }}>{t.hint}</span>
+            </button>
+          )
+        })}
       </div>
 
       {/* ══════════ PIPELINE (editorial spread) ══════════ */}
