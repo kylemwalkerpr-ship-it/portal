@@ -332,9 +332,9 @@ jobs:
           fi
           run_smoke() {
             if [ -n "$EXPECTED" ]; then
-              EXPECTED_BUILD_ID="$EXPECTED" pnpm smoke:prod
+              EXPECTED_BUILD_ID="$EXPECTED" node scripts/smoke-prod.mjs
             else
-              pnpm smoke:prod
+              node scripts/smoke-prod.mjs
             fi
           }
           for attempt in 1 2 3 4 5 6; do
