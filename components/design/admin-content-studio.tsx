@@ -57,7 +57,9 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
 }
 
 // ── Types ──
-type ContentType = 'blog_post' | 'article' | 'regional_page' | 'marketplace_gig'
+// marketplace_gig intentionally excluded — studio never creates marketplace content.
+// Marketplace pages are fed exclusively by service providers from their dashboard.
+type ContentType = 'blog_post' | 'article' | 'regional_page'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
@@ -111,7 +113,7 @@ interface AISuggestion {
   trend: 'rising' | 'flat' | 'declining'
   play: 'content_gap' | 'quick_win' | 'refresh' | 'defend' | 'cannibalization'
   intent: 'informational' | 'commercial' | 'transactional' | 'local' | 'navigational'
-  contentType?: 'blog_post' | 'article' | 'regional_page' | 'marketplace_gig'
+  contentType?: 'blog_post' | 'article' | 'regional_page'
   intentCategory: string
   profitability: 'high' | 'medium' | 'low'
   reason: string
@@ -144,7 +146,7 @@ const CONTENT_TYPE_OPTIONS: { value: ContentType; label: string; ext: string; re
   { value: 'blog_post', label: 'Blog Post', ext: '.md', repo: 'caseworks', icon: '📝', hint: 'Short-form thought leadership' },
   { value: 'article', label: 'Long-Form Article', ext: '.mdx', repo: 'caseworks', icon: '📄', hint: 'Deep legal guides & explainers' },
   { value: 'regional_page', label: 'Regional Page', ext: '.mdx', repo: 'yousafe-consultancy', icon: '🌐', hint: 'Country / city landing pages' },
-  { value: 'marketplace_gig', label: 'Marketplace Gig', ext: '.mdx', repo: 'portal', icon: '🏪', hint: 'Service listing on the marketplace' },
+  // marketplace_gig removed — studio ships to caseworks + yousafe-consultancy only
 ]
 
 const LIFE_CYCLE_STAGES: { value: string; label: string; hint: string }[] = [
@@ -2338,7 +2340,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     try {
       const contentTypeMap: Record<string, string> = {
         blog_post: 'blog_summary', article: 'legal_guide',
-        regional_page: 'regional_page', marketplace_gig: 'marketplace_gig',
+        regional_page: 'regional_page',
       }
       const ct = contentTypeMap[formData.content_type] || formData.content_type || 'legal_guide'
       const regionArg = formData.region || 'US'

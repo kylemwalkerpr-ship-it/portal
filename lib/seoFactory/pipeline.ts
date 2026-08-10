@@ -230,7 +230,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
   contentType = plan.contentType || contentType
   if (plan.intentClass === 'geo_modifier') contentType = 'regional_from'
   else if (plan.intentClass === 'university_modifier') contentType = 'regional_university'
-  else if (plan.intentClass === 'transactional') contentType = 'marketplace_gig'
+  // Transactional intent is downgraded by standingRulesHost to a blog_summary on
+  // legal or the best-fit regional host — the studio never creates marketplace gigs.
+  else if (plan.intentClass === 'transactional') contentType = 'blog_summary'
   else if (plan.intentClass === 'news_summary') contentType = 'blog_summary'
   else if (plan.host === 'legal' && (contentType === 'regional_page' || !input.contentType)) {
     contentType = 'legal_guide'

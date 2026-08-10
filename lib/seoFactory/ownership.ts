@@ -396,12 +396,28 @@ export function standingRulesHost(opts: {
   const region = opts.region.toUpperCase()
   let contentType = opts.contentType
 
-  // Transactional / marketplace
+  // Transactional / marketplace — the studio NEVER ships marketplace content.
+  // Marketplace pages are fed exclusively by service providers from their
+  // dashboard. The studio routes transactional intent to a blog summary on
+  // legal (YMYL-supervised) or the best-fit regional host so the funnel
+  // naturally leads readers to the marketplace without creating gig pages.
   if (
     contentType === 'marketplace_gig' ||
     /hire|marketplace|gig|attorney near me|consultant fee/i.test(kw)
   ) {
-    return { host: 'market', contentType: 'marketplace_gig', reason: 'transactional → market' }
+    // Route transactional intent to a blog on the most relevant host.
+    // The article will include CTA links to the marketplace — it does not
+    // create marketplace catalogue entries.
+    if (/uk|british|student route|ukvi/i.test(kw) || region === 'UK') {
+      return { host: 'uk', contentType: 'blog_summary', reason: 'transactional (marketplace-blcoked) → uk blog' }
+    }
+    if (/canada|study permit|pgwp|ircc/i.test(kw) || region === 'CA') {
+      return { host: 'ca', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → ca blog' }
+    }
+    if (/australia|485|subclass/i.test(kw) || region === 'AU') {
+      return { host: 'au', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → au blog' }
+    }
+    return { host: 'legal', contentType: 'blog_summary', reason: 'transactional (marketplace-blocked) → legal blog' }
   }
 
   // Geo from-country

@@ -1066,7 +1066,7 @@ export default function AdminCommandCenter({
     try {
       const contentTypeMap: Record<string, string> = {
         blog_post: 'blog_summary', article: 'legal_guide',
-        regional_page: 'regional_page', marketplace_gig: 'marketplace_gig',
+        regional_page: 'regional_page',
       }
       const res = await fetch('/api/seo-factory/generate-stream', {
         method: 'POST', credentials: 'same-origin',
@@ -2285,7 +2285,6 @@ function RecheckDuePanel() {
                 <option value="blog_post">Blog Post</option>
                 <option value="article">Long-Form Article</option>
                 <option value="regional_page">Regional Page</option>
-                <option value="marketplace_gig">Marketplace Gig</option>
               </select>
             </div>
             <div>
