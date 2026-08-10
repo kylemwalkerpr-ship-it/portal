@@ -2016,6 +2016,363 @@ function Step1Define(props: Omit<React.ComponentProps<typeof CreateWizard>, 'ste
 // Renders Step 2's autopilot brief preview + Step 3 interlinks + the
 // Generate & ship CTA. Step 1 (Target) is hidden so the destination already
 // chosen in III · Define persists through investigation.
+
+// ── II · BRIEF ASSEMBLY PANEL ──
+// The planning stage surface — every element of the AI's instructions
+// is visible and editable here before a single token is generated.
+function BriefAssemblyPanel({
+  generating, onGenerate,
+  contentType, setContentType,
+  region, setRegion,
+  tone, setTone,
+  aiProvider, setAiProvider,
+  title, setTitle,
+  topic, setTopic,
+  audience, setAudience,
+  keywords, setKeywords,
+  suggestions, gscStatus,
+  brief, onClearBrief, briefInterlinks,
+  autoInterlinkBusy, onAutoInterlink,
+  interlinkStage, setInterlinkStage,
+  selectedBrief,
+  setActionNotice,
+}: {
+  generating: boolean
+  onGenerate: (fd: Record<string, any>) => void
+  contentType: ContentType; setContentType: (v: ContentType) => void
+  region: Region; setRegion: (v: Region) => void
+  tone: Tone; setTone: (v: Tone) => void
+  aiProvider: string; setAiProvider: (v: string) => void
+  title: string; setTitle: (v: string) => void
+  topic: string; setTopic: (v: string) => void
+  audience: string; setAudience: (v: string) => void
+  keywords: string; setKeywords: (v: string) => void
+  suggestions: any[]; gscStatus: any
+  brief: AISuggestion | null; onClearBrief: () => void
+  briefInterlinks: Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>
+  autoInterlinkBusy: boolean; onAutoInterlink: () => void
+  interlinkStage: string; setInterlinkStage: (v: string) => void
+  selectedBrief?: AISuggestion | null
+  setActionNotice?: (msg: string) => void
+}) {
+  const kwList = React.useMemo(() => keywords.split(',').map(k => k.trim()).filter(Boolean), [keywords])
+  const shortKw = React.useMemo(() => kwList.filter(k => k.split(/\s+/).length <= 3), [kwList])
+  const longKw = React.useMemo(() => kwList.filter(k => k.split(/\s+/).length >= 4), [kwList])
+  const shortOk = shortKw.length >= 5
+  const longOk = longKw.length >= 4
+
+  // H2 outline — editable
+  const [h2s, setH2s] = React.useState<string[]>(() => {
+    if (selectedBrief?.keywords?.length) {
+      const stems = selectedBrief.keywords.filter(k => k.length > 4).slice(0, 5)
+        .map(k => k.charAt(0).toUpperCase() + k.slice(1).toLowerCase())
+      return stems.length >= 3 ? stems : ['Eligibility Requirements', 'Application Process', 'Required Documents', 'Timeline & Fees', 'Common Questions']
+    }
+    return ['Overview', 'Eligibility Requirements', 'Application Process', 'Required Documents', 'Timeline & Processing', 'Frequently Asked Questions']
+  })
+  const [sources, setSources] = React.useState<string[]>(() => selectedBrief?.signals?.filter((s: string) => s.startsWith('http') || s.includes('.gov') || s.includes('.edu'))?.slice(0, 4) ?? [])
+  const [minWords, setMinWords] = React.useState<number>(() => contentType === 'blog_post' ? 900 : contentType === 'regional_page' ? 1400 : 1800)
+  const [maxWords, setMaxWords] = React.useState<number>(() => contentType === 'blog_post' ? 1600 : contentType === 'regional_page' ? 2200 : 2800)
+  const [targetSlug, setTargetSlug] = React.useState('')
+  const [showPromptPreview, setShowPromptPreview] = React.useState(false)
+  const [newSource, setNewSource] = React.useState('')
+  const [newH2, setNewH2] = React.useState('')
+
+  // Keyword placement plan: which keyword → which H2 section
+  const [kwH2Map, setKwH2Map] = React.useState<Record<string, string>>({})
+
+  const addSource = () => { if (newSource.trim()) { setSources(p => [...p, newSource.trim()]); setNewSource('') } }
+  const removeSource = (i: number) => setSources(p => p.filter((_, idx) => idx !== i))
+  const addH2 = () => { if (newH2.trim()) { setH2s(p => [...p, newH2.trim()]); setNewH2('') } }
+  const removeH2 = (i: number) => setH2s(p => p.filter((_, idx) => idx !== i))
+  const moveH2 = (i: number, dir: number) => {
+    setH2s(p => { const n = [...p]; const t = i + dir; if (t < 0 || t >= n.length) return p; [n[i], n[t]] = [n[t], n[i]]; return n })
+  }
+
+  // Build the system prompt preview text
+  const promptPreview = React.useMemo(() => {
+    const lines: string[] = []
+    lines.push(`## BRIEF: ${title || topic || '(untitled)'}`)
+    lines.push('')
+    lines.push('### PAGE IDENTITY')
+    lines.push(`- Title: ${title || '(from topic)'}`)
+    lines.push(`- Slug: ${targetSlug || '(auto-generated)'}`)
+    lines.push(`- Region: ${region}`)
+    lines.push(`- Content Type: ${contentType}`)
+    lines.push(`- Tone: ${tone}`)
+    if (audience) lines.push(`- Audience: ${audience}`)
+    lines.push('')
+    lines.push('### H2 OUTLINE')
+    h2s.forEach((h, i) => {
+      const placedKw = Object.entries(kwH2Map).filter(([_, sec]) => sec === h).map(([k]) => k)
+      lines.push(`${i + 1}. ## ${h}${placedKw.length ? ` [keywords: ${placedKw.join(', ')}]` : ''}`)
+    })
+    lines.push('')
+    lines.push('### KEYWORD COVERAGE')
+    lines.push(`- Short-tail (≤3 words): ${shortKw.length}/5 required — ${shortKw.join(', ') || '(none)'}`)
+    lines.push(`- Long-tail (≥4 words): ${longKw.length}/4 required — ${longKw.join(', ') || '(none)'}`)
+    lines.push('')
+    lines.push('### SOURCES TO CITE')
+    if (sources.length) sources.forEach(s => lines.push(`- ${s}`))
+    else lines.push('- (no sources specified — AI will find authoritative references)')
+    lines.push('')
+    lines.push(`### WORD COUNT: ${minWords}–${maxWords} words`)
+    lines.push('')
+    lines.push('### AI PROVIDER')
+    lines.push(`- Selected: ${aiProvider || 'auto (cascade)'}`)
+    return lines.join('\n')
+  }, [title, topic, targetSlug, region, contentType, tone, audience, h2s, kwH2Map, shortKw, longKw, sources, minWords, maxWords, aiProvider])
+
+  const handleSubmitBrief = () => {
+    onGenerate({
+      contentType, region, tone, aiProvider: aiProvider || undefined,
+      title: title || topic, topic, audience,
+      keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      interlinks: briefInterlinks,
+      h2Outline: h2s,
+      sources,
+      minWords, maxWords,
+      targetSlug: targetSlug || undefined,
+      kwH2Map: Object.keys(kwH2Map).length ? kwH2Map : undefined,
+    })
+  }
+
+  const fieldSection: React.CSSProperties = { marginBottom: 18 }
+  const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }
+  const inputBase: React.CSSProperties = { width: '100%', padding: '8px 10px', border: `1px solid ${E.hairline}`, borderRadius: 0, background: E.ivory, color: E.ink, fontSize: 12, fontFamily: C.serif, boxSizing: 'border-box' }
+  const labelBase: React.CSSProperties = { display: 'block', marginBottom: 4, fontSize: 9, fontFamily: C.mono, letterSpacing: '0.14em', color: E.inkMuted, textTransform: 'uppercase', fontWeight: 700 }
+  const chip = (ok: boolean): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 0, fontSize: 9, fontFamily: C.mono, fontWeight: 700, background: ok ? E.mossSoft : '#fff0f0', color: ok ? E.mossGreen : '#a32525' })
+
+  return (
+    <div data-testid="studio-brief-assembly" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Header */}
+      <div style={{ padding: '14px 18px', background: E.paper, border: `1px solid ${E.hairline}` }}>
+        <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE II · PLAN</div>
+        <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Brief Assembly</h3>
+        <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 12 }}>
+          Every field below becomes part of the AI\'s strict template. Nothing is guessed — tweak before you generate.
+        </p>
+      </div>
+
+      {/* ── IDENTITY ROW: content type, region, tone, AI provider ── */}
+      <div style={fieldSection}>
+        <div style={fieldGrid}>
+          <div>
+            <label style={labelBase}>Content Type</label>
+            <select value={contentType} onChange={e => setContentType(e.target.value as ContentType)} style={inputBase}>
+              {CONTENT_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.icon} {o.label} — {o.hint}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelBase}>Region</label>
+            <select value={region} onChange={e => setRegion(e.target.value as Region)} style={inputBase}>
+              {REGION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.flag} {o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelBase}>Tone</label>
+            <select value={tone} onChange={e => setTone(e.target.value as Tone)} style={inputBase}>
+              {TONE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelBase}>AI Provider</label>
+            <select value={aiProvider} onChange={e => setAiProvider(e.target.value)} style={inputBase}>
+              {AI_PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── HEADLINE: H1 title, slug, audience ── */}
+      <div style={fieldSection}>
+        <div style={fieldGrid}>
+          <div>
+            <label style={labelBase}>Page Title (H1)</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Complete Guide to the UK Spouse Visa 2026" style={inputBase} />
+          </div>
+          <div>
+            <label style={labelBase}>Target Slug</label>
+            <input value={targetSlug} onChange={e => setTargetSlug(e.target.value)} placeholder="e.g. uk/spouse-visa-guide-2026" style={inputBase} />
+          </div>
+          <div>
+            <label style={labelBase}>Topic / Query</label>
+            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="What users search for" style={inputBase} />
+          </div>
+          <div>
+            <label style={labelBase}>Target Audience</label>
+            <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="e.g. international students, spouses" style={inputBase} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── H2 OUTLINE — editable list ── */}
+      <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+        <label style={{ ...labelBase, marginBottom: 8 }}>H2 Section Outline ({h2s.length} sections)</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+          {h2s.map((h, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontFamily: C.mono, fontSize: 10, color: E.inkMuted, minWidth: 20 }}>{i + 1}.</span>
+              <input
+                value={h} onChange={e => setH2s(p => p.map((v, idx) => idx === i ? e.target.value : v))}
+                style={{ ...inputBase, flex: 1, background: E.ivory, fontSize: 13 }}
+                placeholder={`Section ${i + 1}`}
+              />
+              <button onClick={() => moveH2(i, -1)} disabled={i === 0} style={{ ...btnGhost, padding: '3px 6px', fontSize: 10, opacity: i === 0 ? 0.3 : 1 }} title="Move up">↑</button>
+              <button onClick={() => moveH2(i, 1)} disabled={i === h2s.length - 1} style={{ ...btnGhost, padding: '3px 6px', fontSize: 10, opacity: i === h2s.length - 1 ? 0.3 : 1 }} title="Move down">↓</button>
+              <button onClick={() => removeH2(i)} style={{ ...btnGhost, padding: '3px 7px', fontSize: 10, color: '#a32525', borderColor: '#a32525' }} title="Remove">×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={newH2} onChange={e => setNewH2(e.target.value)} placeholder="Add section…" style={{ ...inputBase, flex: 1, maxWidth: 320 }} onKeyDown={e => e.key === 'Enter' && addH2()} />
+          <button onClick={addH2} style={{ ...btnGhost, padding: '6px 12px' }}>+ Add H2</button>
+        </div>
+      </div>
+
+      {/* ── KEYWORDS + DISTRIBUTION ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {/* Keywords textarea */}
+        <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+          <label style={labelBase}>Keywords (comma-separated)</label>
+          <textarea
+            value={keywords} onChange={e => setKeywords(e.target.value)}
+            rows={4} placeholder="e.g. uk spouse visa, financial requirement, partner visa 2026, minimum income threshold, appendix fm..."
+            style={{ ...inputBase, resize: 'vertical', fontFamily: C.mono, fontSize: 11 }}
+          />
+          <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <span style={chip(shortOk)}>{shortOk ? '✓' : '!'} {shortKw.length}/5 short-tail</span>
+            <span style={chip(longOk)}>{longOk ? '✓' : '!'} {longKw.length}/4 long-tail</span>
+          </div>
+        </div>
+        {/* Keyword → section mapping */}
+        <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+          <label style={labelBase}>Keyword Placement (assign to H2)</label>
+          <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {kwList.slice(0, 14).map(kw => (
+              <div key={kw} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontFamily: C.mono, fontSize: 10, color: E.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kw}</span>
+                <select
+                  value={kwH2Map[kw] || ''}
+                  onChange={e => setKwH2Map(p => e.target.value ? { ...p, [kw]: e.target.value } : { ...p, [kw]: undefined as any, ...Object.keys(p).filter(k => k !== kw).length ? {} : {} as any })}
+                  style={{ ...inputBase, width: 140, fontSize: 10, padding: '4px 6px' }}
+                >
+                  <option value="">Auto</option>
+                  {h2s.map(h => <option key={h} value={h}>{h.length > 20 ? h.slice(0, 17) + '…' : h}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── SOURCES ── */}
+      <div style={{ ...fieldSection, background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+        <label style={labelBase}>Sources to Cite ({sources.length} specified)</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+          {sources.map((s, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontFamily: C.mono, fontSize: 11, color: E.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {s}</span>
+              <button onClick={() => removeSource(i)} style={{ ...btnGhost, padding: '2px 7px', fontSize: 10, color: '#a32525', borderColor: '#a32525' }}>×</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={newSource} onChange={e => setNewSource(e.target.value)} placeholder="https://..." style={{ ...inputBase, flex: 1, maxWidth: 460 }} onKeyDown={e => e.key === 'Enter' && addSource()} />
+          <button onClick={addSource} style={{ ...btnGhost, padding: '6px 12px' }}>+ Add</button>
+        </div>
+      </div>
+
+      {/* ── WORD COUNT ── */}
+      <div style={fieldSection}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <div>
+            <label style={labelBase}>Min Words</label>
+            <input type="number" value={minWords} onChange={e => setMinWords(Number(e.target.value) || 800)} style={{ ...inputBase, width: 100 }} min={400} max={5000} />
+          </div>
+          <div>
+            <label style={labelBase}>Max Words</label>
+            <input type="number" value={maxWords} onChange={e => setMaxWords(Number(e.target.value) || 2000)} style={{ ...inputBase, width: 100 }} min={600} max={8000} />
+          </div>
+          <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, marginLeft: 8 }}>
+            Blog: 900–1600 &nbsp;|&nbsp; Article: 1800–2800 &nbsp;|&nbsp; Regional: 1400–2200
+          </span>
+        </div>
+      </div>
+
+      {/* ── INTERLINKS ── */}
+      {briefInterlinks && briefInterlinks.length > 0 && (
+        <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label style={{ ...labelBase, marginBottom: 0 }}>Interlink Targets ({briefInterlinks.length} links)</label>
+            <button onClick={onAutoInterlink} disabled={autoInterlinkBusy} style={{ ...btnGhost, padding: '4px 10px', fontSize: 10 }}>
+              {autoInterlinkBusy ? '⏳ Finding…' : 'Find interlinks'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {briefInterlinks.slice(0, 10).map((l, i) => (
+              <span key={i} style={{ padding: '3px 8px', background: E.ivory, border: `1px solid ${E.hairline}`, fontSize: 10, fontFamily: C.mono, color: E.ink }}>
+                {l.site ? `${l.site} → ` : ''}{l.label || l.url}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── SYSTEM PROMPT PREVIEW (collapsible) ── */}
+      <div style={{ background: '#0F172A', border: `1px solid ${E.hairline}` }}>
+        <button
+          type="button"
+          onClick={() => setShowPromptPreview(p => !p)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer',
+            color: '#F8FAFC', fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <span>{showPromptPreview ? '▾' : '▸'} AI System Prompt Preview</span>
+          <span style={{ fontSize: 9, fontFamily: C.mono, color: 'rgba(255,255,255,0.45)' }}>
+            This exact text goes to the model
+          </span>
+        </button>
+        {showPromptPreview && (
+          <pre style={{
+            margin: 0, padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.1)',
+            overflowX: 'auto', fontFamily: C.mono, fontSize: 10, lineHeight: 1.5,
+            color: '#CBD5E1', background: 'rgba(0,0,0,0.3)', maxHeight: 360, overflowY: 'auto',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {promptPreview}
+          </pre>
+        )}
+      </div>
+
+      {/* ── GENERATE DRAFT BUTTON ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0' }}>
+        <div style={{ fontFamily: C.serif, fontSize: 12, color: E.inkMuted, fontStyle: 'italic' }}>
+          {!title.trim() && !topic.trim() ? 'Enter a title or topic to begin.' :
+           !shortOk || !longOk ? `Add ${!shortOk ? 5 - shortKw.length : 0} more short-tail and ${!longOk ? 4 - longKw.length : 0} more long-tail keywords.` :
+           'Ready. Click Generate Draft to send this exact brief to the AI.'}
+        </div>
+        <button
+          type="button"
+          onClick={handleSubmitBrief}
+          disabled={generating || !(title.trim() || topic.trim()) || !shortOk || !longOk}
+          style={{
+            padding: '14px 32px', background: (title.trim() || topic.trim()) && shortOk && longOk ? E.gold : E.inkDim,
+            color: E.ivory, fontSize: 15, fontWeight: 700, fontFamily: C.serif,
+            border: 'none', borderRadius: 0, cursor: generating || !(title.trim() || topic.trim()) || !shortOk || !longOk ? 'not-allowed' : 'pointer',
+            opacity: generating || !(title.trim() || topic.trim()) || !shortOk || !longOk ? 0.6 : 1,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          {generating ? '⏳ Generating…' : 'Generate Draft →'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function Step2Investigate(props: Omit<React.ComponentProps<typeof CreateWizard>, 'stepScope'>) {
   return (      <div data-testid="studio-method-panel" data-step-scope="investigate">
       <style>{`
@@ -4650,8 +5007,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </button>
             </div>
           )}
-          {true ? (
-            <Step2Investigate
+            <BriefAssemblyPanel
               generating={generating}
               onGenerate={handleGenerate}
               contentType={contentType} setContentType={setContentType}
@@ -4662,184 +5018,18 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               topic={topic} setTopic={setTopic}
               audience={audience} setAudience={setAudience}
               keywords={keywords} setKeywords={setKeywords}
-              suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
+              suggestions={suggestions}
               gscStatus={gscStatus}
-              onConnectGsc={() => setGscConnectOpen(true)}
-              onRefreshSuggestions={fetchSuggestions}
-              onApplySuggestion={applyBrief}
               brief={selectedBrief}
               onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
               briefInterlinks={briefInterlinks}
               interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
               onAutoInterlink={runAutoInterlink}
               autoInterlinkBusy={autoInterlinkBusy}
-              showRadar={showRadar} setShowRadar={setShowRadar}
-              regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
-              regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
-              regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
+              selectedBrief={selectedBrief}
+              setActionNotice={setActionNotice}
             />
-          ) : (
-            <div data-testid="studio-research-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* ── Target definition form ── */}
-              <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}` }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
-                  TARGET DEFINITION
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Topic</span>
-                    <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. uk-spouse-visa-financial-requirement-2026" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Page Title</span>
-                    <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Complete Guide: UK Spouse Visa Financial Requirement 2026" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Audience</span>
-                    <input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="International couples applying for UK spouse visas" style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Region · Type · Tone</span>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <select value={region} onChange={(e) => setRegion(e.target.value as Region)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
-                        {REGION_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.flag} {r.label}</option>)}
-                      </select>
-                      <select value={contentType} onChange={(e) => setContentType(e.target.value as ContentType)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
-                        {CONTENT_TYPE_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.icon} {c.label}</option>)}
-                      </select>
-                      <select value={tone} onChange={(e) => setTone(e.target.value as Tone)} style={{ flex: 1, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
-                        {TONE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      </select>
-                    </div>
-                  </label>
-                </div>
-              </div>
 
-              {/* ── Keyword Research Panel ── */}
-              <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}` }}>
-                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
-                  KEYWORD RESEARCH
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-                      <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Keywords (comma-separated)</span>
-                      <textarea value={keywords} onChange={(e) => setKeywords(e.target.value)} rows={3} placeholder="spouse visa financial requirement, UK family visa income threshold, Appendix FM minimum income..." style={{ padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12, resize: 'vertical' }} />
-                    </label>
-                    {(() => {
-                      const kwList = keywords.split(',').map((k) => k.trim()).filter(Boolean)
-                      const shortTail = kwList.filter((k) => k.split(/\s+/).length <= 3)
-                      const longTail = kwList.filter((k) => k.split(/\s+/).length > 3)
-                      const shortOk = shortTail.length >= 5
-                      const longOk = longTail.length >= 4
-                      return (
-                        <div style={{ display: 'flex', gap: 10 }}>
-                          <div style={{ flex: 1, padding: '8px 10px', background: shortOk ? '#ECFDF5' : '#FFF7ED', border: `1px solid ${shortOk ? '#A7F3D0' : '#FED7AA'}`, borderRadius: 0 }}>
-                            <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted, fontWeight: 700, textTransform: 'uppercase' }}>Short-tail</div>
-                            <div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 800, color: shortOk ? C.green : C.orange }}>{shortTail.length}<span style={{ fontSize: 10, fontWeight: 500, color: E.inkMuted }}> / 5 min</span></div>
-                          </div>
-                          <div style={{ flex: 1, padding: '8px 10px', background: longOk ? '#ECFDF5' : '#FFF7ED', border: `1px solid ${longOk ? '#A7F3D0' : '#FED7AA'}`, borderRadius: 0 }}>
-                            <div style={{ fontFamily: C.mono, fontSize: 9, color: E.inkMuted, fontWeight: 700, textTransform: 'uppercase' }}>Long-tail</div>
-                            <div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 800, color: longOk ? C.green : C.orange }}>{longTail.length}<span style={{ fontSize: 10, fontWeight: 500, color: E.inkMuted }}> / 4 min</span></div>
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>Keyword Density Targets</div>
-                    <div style={{ fontSize: 11, color: E.ink, lineHeight: 1.6 }}>
-                      <div>• Primary keyword: 2-3% density</div>
-                      <div>• Secondary keywords: 1-2% each</div>
-                      <div>• LSI / related terms: natural placement</div>
-                      <div style={{ marginTop: 4, padding: '6px 8px', background: E.ivory, border: `1px dashed ${E.hairline}`, fontSize: 10, color: E.inkMuted }}>
-                        Google best practice: write for humans first. Keywords should read naturally — never stuff.
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 4 }}>
-                      <span style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase' }}>AI Provider</span>
-                      <select value={aiProvider} onChange={(e) => setAiProvider(e.target.value)} style={{ width: '100%', marginTop: 4, padding: '8px 11px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: E.ivory, fontFamily: C.mono, fontSize: 12 }}>
-                        {AI_PROVIDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Cannibalization Check ── */}
-              {(() => {
-                const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
-                return cannibalList.length > 0 ? (
-                  <div style={{ padding: 14, background: '#FFF5F5', border: '1px solid #FECACA' }}>
-                    <div style={{ fontSize: 10, fontFamily: C.mono, color: C.red, fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>
-                      ⚠️ CANNIBALIZATION ALERT — {cannibalList.length} term{cannibalList.length !== 1 ? 's' : ''}
-                    </div>
-                    {cannibalList.slice(0, 5).map((c, ci) => (
-                      <div key={ci} style={{ fontSize: 11, color: C.red, marginBottom: 4, fontFamily: C.mono }}>
-                        &ldquo;{c.term}&rdquo; — {c.pages.length} competing page{c.pages.length !== 1 ? 's' : ''}. Consolidate, don&apos;t create another.
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ padding: 14, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                    <div style={{ fontSize: 11, color: C.green, fontFamily: C.mono, fontWeight: 600 }}>
-                      ✓ No cannibalization detected for current topic
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* ── Interlink Preview + Apply Radar ── */}
-              {selectedBrief && (
-                <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.gold}` }}>
-                  <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>
-                    APPLIED BRIEF — {selectedBrief.title}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: '#DBEAFE', color: '#1E40AF' }}>
-                      {INTENT_LABELS[selectedBrief.intent] || selectedBrief.intentCategory}
-                    </span>
-                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: '#FEF3C7', color: '#92400E' }}>
-                      Score: {selectedBrief.opportunityScore ?? selectedBrief.demandScore}
-                    </span>
-                    {selectedBrief.keywords && selectedBrief.keywords.map((k, ki) => (
-                      <span key={ki} style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontFamily: C.mono, background: E.ivory, color: E.inkMuted }}>{k}</span>
-                    ))}
-                  </div>
-                  {briefInterlinks.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 10, fontFamily: C.mono, color: E.inkMuted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
-                        Interlinks ({briefInterlinks.length})
-                      </div>
-                      {briefInterlinks.slice(0, 5).map((il, i) => (
-                        <div key={i} style={{ fontSize: 10, fontFamily: C.mono, color: E.ink, padding: '3px 0' }}>
-                          {il.url ? <a href={il.url} target="_blank" rel="noreferrer" style={{ color: E.gold }}>{il.label || il.url}</a> : il.label} {il.site ? `· ${il.site}` : ''}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button type="button" onClick={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-                    style={{ marginTop: 8, padding: '5px 12px', borderRadius: 0, border: `1px solid ${E.hairline}`, background: 'transparent', cursor: 'pointer', fontSize: 10, fontFamily: C.mono, color: E.inkMuted }}>
-                    Clear brief
-                  </button>
-                </div>
-              )}
-
-              {/* ── Interlink builder ── */}
-              <div style={{ padding: 14, background: E.paper, border: `1px solid ${E.hairline}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <div>
-                    <div style={{ fontSize: 10, fontFamily: C.mono, color: E.gold, fontWeight: 700, textTransform: 'uppercase' }}>Interlink Strategy</div>
-                    <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Wire internal links from caseworks → regional → marketplace funnel</div>
-                  </div>
-                  <button type="button" onClick={runAutoInterlink} disabled={autoInterlinkBusy || !topic.trim()}
-                    style={{ padding: '8px 16px', borderRadius: 0, border: `1px solid ${E.gold}`, background: autoInterlinkBusy ? E.ivory : 'transparent', color: E.gold, cursor: autoInterlinkBusy ? 'progress' : 'pointer', fontFamily: C.mono, fontSize: 11, fontWeight: 700 }}>
-                    {autoInterlinkBusy ? 'Finding links…' : 'Find interlinks'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
           {/* Next-stage CTA: visible when on Research tab with a topic pinned */}
           {tab === 'research' && topic.trim() && (
             <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
