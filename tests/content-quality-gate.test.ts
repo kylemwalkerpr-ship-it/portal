@@ -167,6 +167,18 @@ describe('evaluateContentQuality', () => {
     expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
   })
 
+  it('does not false-positive when guarantee and visa word are in separate sentences', () => {
+    const separateSentences = guide(
+      'This guide guarantees you will understand the process better. Your actual visa result depends on the consular officer alone.',
+    )
+    const r = evaluateContentQuality({
+      content: separateSentences,
+      contentType: 'legal_guide',
+      primaryKeyword: 'student visa documents',
+    })
+    expect(r.blockers.some((b) => b.code === 'outcome_promise')).toBe(false)
+  })
+
   it('still blocks explicit outcome-certainty phrases not tied to the word guarantee', () => {
     const certain = guide(
       'Choose us for a 100% approval success rate with no risk of refusal on your application.',

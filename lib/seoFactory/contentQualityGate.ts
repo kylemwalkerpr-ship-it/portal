@@ -147,17 +147,7 @@ const OUTCOME_COUPLING = /\b(approval|approved|approve|visa|green\s*card|permane
 
 /** A "guarantee" mention only counts when an outcome word sits in its window. */
 function guaranteeIsOutcomeCoupled(text: string, index: number): boolean {
-  // Fast path: an outcome word within a tight window around the guarantee.
-  const start = Math.max(0, index - 60)
-  const end = Math.min(text.length, index + 80)
-  const windowText = text.slice(start, end)
-  if (OUTCOME_COUPLING.test(windowText)) return true
-
-  // Fallback: the same sentence may carry the outcome >80 chars away (long
-  // clause before the promise). Sentence scope keeps factual guarantees safe:
-  // "FY27 rates are guaranteed for the academic year" has no outcome word
-  // anywhere in the sentence, while a real promise always names approval /
-  // visa / success / result somewhere in its own sentence.
+  // Locate the sentence boundaries around the guarantee mention.
   const sentenceStart = Math.max(
     text.lastIndexOf('.', index - 1),
     text.lastIndexOf('!', index - 1),
@@ -171,6 +161,21 @@ function guaranteeIsOutcomeCoupled(text: string, index: number): boolean {
     text.indexOf('\n', index),
   ].filter((value) => value >= 0)
   const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) : text.length
+
+  // Fast path: an outcome word within a tight window around the guarantee,
+  // but bounded to the current sentence so cross-sentence spill-over never
+  // false-positives (e.g. "guarantees you will understand" in sentence 1
+  // and a nearby "visa result" in sentence 2 in a short paragraph).
+  const windowStart = Math.max(sentenceStart, index - 60)
+  const windowEnd = Math.min(sentenceEnd, index + 80)
+  const windowText = text.slice(windowStart, windowEnd)
+  if (OUTCOME_COUPLING.test(windowText)) return true
+
+  // Fallback: the full sentence may carry the outcome beyond the tight
+  // window (long clause before the promise). Sentence scope keeps factual
+  // guarantees safe: "FY27 rates are guaranteed for the academic year" has
+  // no outcome word anywhere in its sentence, while a real promise always
+  // names approval / visa / success / result somewhere in its own sentence.
   return OUTCOME_COUPLING.test(text.slice(sentenceStart, sentenceEnd))
 }
 
