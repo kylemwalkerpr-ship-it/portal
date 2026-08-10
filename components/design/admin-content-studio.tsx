@@ -4073,13 +4073,15 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
       const data = finalResult
       const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || '')
+      const shipBlocked = Boolean(data.shipError)
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
         : data.shipError
           ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      selectTab('draft')
+      // Auto-route: blocked ships land in Review for remediation; clean ships stay in Draft
+      selectTab(shipBlocked ? 'review' : 'draft')
       const refreshedJobs = await fetchJobs()
       if (generatedJobId) {
         let reviewJob = refreshedJobs.find((candidate) => candidate.id === generatedJobId) || null
@@ -4735,6 +4737,22 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
           />
+          {/* AI-enabled inline editor — fix blockers interactively */}
+          {selectedJob?.content && (
+            <div style={{ marginTop: 14, padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
+                INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
+              </div>
+              <AdminInlineEditor
+                content={selectedJob.content}
+                jobId={selectedJob.id}
+                onChange={(v: string) => {
+                  setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
+                }}
+                onScoreChange={(_s) => { void fetchGateRuns() }}
+              />
+            </div>
+          )}
           {selectedJob && (() => {
             const gate = gateByJob.get(selectedJob.id)
             const ok = gate?.passed === true || (gate?.score != null && gate.score >= 90)
