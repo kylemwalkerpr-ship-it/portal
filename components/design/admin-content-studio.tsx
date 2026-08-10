@@ -3132,6 +3132,226 @@ function JobDetail({
 // surfaces without bringing its competing navigation/state machine back into
 // the dissertation flow. Every number is fetched from its owning API and is
 // explicitly marked with the last successful read; failures remain visible.
+// ── UNIFIED WORK PLAN TABLE ──
+// Aggregates all signal sources (radar, cannibal, merges, backlinks, visibility)
+// into one sortable, filterable table. Multi-select sends items to Research.
+type WorkPlanCategory = 'gap' | 'refresh' | 'expansion' | 'cannibal' | 'merge' | 'backlink' | 'visibility'
+interface WorkPlanItem {
+  id: string
+  category: WorkPlanCategory
+  title: string
+  topic: string
+  source: string
+  priority: number
+  signals: string[]
+  keywords?: string[]
+  audience?: string
+  play?: string
+  suggestion?: AISuggestion
+  mergeRecord?: CannibalMergeRecord
+}
+
+const CATEGORY_META: Record<WorkPlanCategory, { label: string; bg: string; fg: string; icon: string }> = {
+  gap: { label: 'GAP', bg: '#DBEAFE', fg: '#1E40AF', icon: '🧩' },
+  refresh: { label: 'REFRESH', bg: '#FEF3C7', fg: '#92400E', icon: '🔄' },
+  expansion: { label: 'EXPAND', bg: '#D1FAE5', fg: '#065F46', icon: '📈' },
+  cannibal: { label: 'CANNIBAL', bg: '#FEE2E2', fg: '#991B1B', icon: '⚠️' },
+  merge: { label: 'MERGE', bg: '#F3E8FF', fg: '#6B21A8', icon: '🔀' },
+  backlink: { label: 'BACKLINK', bg: '#FFF7ED', fg: '#9A3412', icon: '🔗' },
+  visibility: { label: 'AEO GAP', bg: '#ECFDF5', fg: '#065F46', icon: '◎' },
+}
+
+function buildWorkPlan(
+  radar: AISuggestion[],
+  radarMeta: Record<string, unknown> | null,
+  merges: CannibalMergeRecord[],
+): WorkPlanItem[] {
+  const items: WorkPlanItem[] = []
+  // Radar opportunities → gaps, quick wins, refreshes
+  for (const s of radar) {
+    const cat: WorkPlanCategory = s.play === 'refresh' || s.play === 'defend' ? 'refresh'
+      : s.play === 'cannibalization' ? 'cannibal'
+      : 'gap'
+    items.push({
+      id: `radar-${s.topic}`,
+      category: cat,
+      title: s.title,
+      topic: s.topic,
+      source: 'Radar',
+      priority: s.opportunityScore ?? s.demandScore ?? 0,
+      signals: s.signals ?? [s.reason],
+      keywords: s.keywords,
+      audience: s.audience,
+      play: s.play,
+      suggestion: s,
+    })
+  }
+  // Cannibalization from radar meta
+  const cannibalList = (radarMeta?.cannibalization as Array<{ term: string; pages: string[] }> | null) || []
+  for (const c of cannibalList) {
+    items.push({
+      id: `cannibal-${c.term}`,
+      category: 'cannibal',
+      title: `Consolidate: ${c.term}`,
+      topic: c.term,
+      source: 'Cannibal Watch',
+      priority: 70,
+      signals: [`${c.pages.length} competing pages target this term`],
+    })
+  }
+  // Merge history
+  for (const m of merges) {
+    items.push({
+      id: `merge-${m.clusterId}`,
+      category: 'merge',
+      title: `Merged cluster: ${m.stem}`,
+      topic: m.stem,
+      source: 'Merge History',
+      priority: m.status === 'merged' ? 90 : 50,
+      signals: [`${m.terms.length} terms · ${m.redirectsCreated} redirects · ${m.status}`],
+      mergeRecord: m,
+    })
+  }
+  return items.sort((a, b) => b.priority - a.priority)
+}
+
+function WorkPlanTable({
+  items, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onSendToResearch,
+}: {
+  items: WorkPlanItem[]
+  selectedIds: Set<string>
+  onToggleSelect: (id: string) => void
+  onSelectAll: () => void
+  onClearSelection: () => void
+  onSendToResearch: (items: WorkPlanItem[]) => void
+}) {
+  const [filterCat, setFilterCat] = React.useState<WorkPlanCategory | 'all'>('all')
+  const filtered = filterCat === 'all' ? items : items.filter((i) => i.category === filterCat)
+  const allSelected = filtered.length > 0 && filtered.every((i) => selectedIds.has(i.id))
+  const selectedItems = items.filter((i) => selectedIds.has(i.id))
+
+  const CATS: Array<{ key: WorkPlanCategory | 'all'; label: string }> = [
+    { key: 'all', label: 'All' },
+    { key: 'gap', label: '🧩 Gaps' },
+    { key: 'refresh', label: '🔄 Refresh' },
+    { key: 'expansion', label: '📈 Expand' },
+    { key: 'cannibal', label: '⚠️ Cannibal' },
+    { key: 'merge', label: '🔀 Merges' },
+    { key: 'backlink', label: '🔗 Backlinks' },
+    { key: 'visibility', label: '◎ AEO Gaps' },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {CATS.map((c) => (
+          <button key={c.key} type="button" onClick={() => setFilterCat(c.key)}
+            style={{
+              padding: '5px 10px', borderRadius: 999, border: filterCat === c.key ? `1px solid ${E.gold}` : `1px solid ${E.hairline}`,
+              background: filterCat === c.key ? E.goldSoft : 'transparent',
+              color: filterCat === c.key ? E.gold : E.inkMuted,
+              fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: C.mono,
+            }}
+          >{c.label}</button>
+        ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono }}>
+            {selectedItems.length} selected · {items.length} total
+          </span>
+          {selectedItems.length > 0 && (
+            <>
+              <button type="button" onClick={onClearSelection} style={actionGhostStyle()}>Clear</button>
+              <button type="button" onClick={() => onSendToResearch(selectedItems)}
+                style={{ ...actionBtnStyle(E.gold), background: E.gold, color: E.ivory }}>
+                Send to Research →
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div style={{ background: E.paper, border: `1px solid ${E.hairline}`, borderRadius: 0, overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '32px 80px 50px 1fr 100px', gap: 0,
+          padding: '8px 12px', borderBottom: `1px solid ${E.hairline}`, background: E.parchment,
+          fontSize: 9, fontFamily: C.mono, fontWeight: 700, color: E.inkMuted,
+          textTransform: 'uppercase', letterSpacing: '0.08em',
+        }}>
+          <div>
+            <input type="checkbox" checked={allSelected} onChange={allSelected ? onClearSelection : onSelectAll}
+              style={{ cursor: 'pointer', accentColor: E.gold }} />
+          </div>
+          <div>Category</div>
+          <div>Score</div>
+          <div>Opportunity</div>
+          <div>Action</div>
+        </div>
+        {filtered.length === 0 ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
+            No work plan items yet. Run the planner from the masthead to ingest knowledge and discover opportunities.
+          </div>
+        ) : (
+          filtered.map((item, i) => {
+            const cm = CATEGORY_META[item.category]
+            const checked = selectedIds.has(item.id)
+            return (
+              <div key={item.id} style={{
+                display: 'grid', gridTemplateColumns: '32px 80px 50px 1fr 100px', gap: 0,
+                padding: '9px 12px', borderBottom: i < filtered.length - 1 ? `1px solid ${E.hairlineSoft}` : 'none',
+                background: checked ? '#FFFDF5' : 'transparent',
+                alignItems: 'center',
+                transition: 'background 0.1s',
+              }}>
+                <div>
+                  <input type="checkbox" checked={checked} onChange={() => onToggleSelect(item.id)}
+                    style={{ cursor: 'pointer', accentColor: E.gold }} />
+                </div>
+                <div>
+                  <span style={{
+                    display: 'inline-block', padding: '2px 6px', borderRadius: 3,
+                    fontSize: 8, fontWeight: 700, fontFamily: C.mono,
+                    background: cm.bg, color: cm.fg, whiteSpace: 'nowrap',
+                  }}>{cm.icon} {cm.label}</span>
+                </div>
+                <div style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 800, color: item.priority >= 70 ? C.green : item.priority >= 40 ? C.orange : C.textDim }}>
+                  {item.priority}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: E.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.title}
+                  </div>
+                  <div style={{ fontSize: 8.5, color: E.inkDim, fontFamily: C.mono, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.source} · {item.signals[0] || ''}
+                  </div>
+                </div>
+                <div>
+                  {item.suggestion ? (
+                    <button type="button" onClick={() => {
+                      // Single-item quick apply
+                      if (item.suggestion) {
+                        // applyBrief is called from parent — we use onSendToResearch for single
+                        onSendToResearch([item])
+                      }
+                    }}
+                      style={{ padding: '4px 10px', borderRadius: 0, border: `1px solid ${E.gold}`, background: 'transparent', color: E.gold, cursor: 'pointer', fontSize: 9, fontWeight: 700, fontFamily: C.mono }}>
+                      Brief →
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>—</span>
+                  )}
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ResearchLiveOperations() {
   type Snapshot = {
     fetchedAt: number
@@ -3448,6 +3668,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [engineBusy, setEngineBusy] = React.useState(false)
   const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
+  // Work Plan — multi-select table for Discover stage
 
   // Bulk queue-selection — surfaces real actions against many jobs at once
   // (rerun, resume, clear queue, re-audit, refresh PR, abandon).
@@ -3505,6 +3726,38 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     }
   }, [safeStage, setActionNotice, stageAvailability])
+
+  const [selectedWorkPlanIds, setSelectedWorkPlanIds] = React.useState<Set<string>>(new Set())
+
+  const workPlanItems = React.useMemo(
+    () => buildWorkPlan(radar, radarMeta, merges),
+    [radar, radarMeta, merges],
+  )
+
+  const handleSendToResearch = React.useCallback((selected: WorkPlanItem[]) => {
+    if (selected.length === 0) return
+    const first = selected[0]
+    // Populate research fields from the first selected item
+    setTopic(first.topic)
+    if (first.suggestion) {
+      setTitle(first.suggestion.title)
+      if (first.suggestion.keywords) setKeywords(first.suggestion.keywords.join(', '))
+      if (first.suggestion.audience) setAudience(first.suggestion.audience)
+      if (first.suggestion.contentType) setContentType(first.suggestion.contentType as ContentType)
+      setSelectedBrief(first.suggestion)
+      setBriefInterlinks(first.suggestion.interlinks ?? [])
+    }
+    // If multiple selected, note them in the keywords so Plan stage can queue them
+    if (selected.length > 1) {
+      const topics = selected.map((s) => s.topic).join(', ')
+      setKeywords((prev) => prev ? `${prev}, ${topics}` : topics)
+      setActionNotice(`${selected.length} items sent to Research — batch queued`)
+    } else {
+      setActionNotice(`"${first.title.slice(0, 40)}${first.title.length > 40 ? '…' : ''}" sent to Research`)
+    }
+    setSelectedWorkPlanIds(new Set())
+    selectTab('research')
+  }, [selectTab, setActionNotice])
 
   React.useEffect(() => {
     const requested = resolveStudioStage(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('tab'))
@@ -4692,6 +4945,30 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onJump={selectTab}
           />
           <div id="studio-panel-discover" role="tabpanel" aria-labelledby="studio-tab-discover" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* ── UNIFIED WORK PLAN — all signal sources aggregated ── */}
+            <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>WORK PLAN — ALL SIGNALS AGGREGATED</div>
+                  <h3 style={{ margin: '4px 0 0', fontFamily: C.serif, fontSize: 20, color: E.ink }}>Select opportunities to research</h3>
+                  <p style={{ margin: '2px 0 0', color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 12 }}>
+                    Radar gaps · cannibalization alerts · merge candidates · backlink targets · AEO visibility gaps — every signal, one table.
+                  </p>
+                </div>
+              </div>
+              <WorkPlanTable
+                items={workPlanItems}
+                selectedIds={selectedWorkPlanIds}
+                onToggleSelect={(id) => setSelectedWorkPlanIds((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(id)) next.delete(id); else next.add(id)
+                  return next
+                })}
+                onSelectAll={() => setSelectedWorkPlanIds(new Set(workPlanItems.map((i) => i.id)))}
+                onClearSelection={() => setSelectedWorkPlanIds(new Set())}
+                onSendToResearch={handleSendToResearch}
+              />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <GscMini />
