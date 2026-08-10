@@ -1264,6 +1264,19 @@ function PublishLedger({
     }
   }, [trends, stamps.length])
 
+  // Model accuracy KPI — aggregates divergence statuses across all tracked URLs.
+  // agree = forecast direction matched observed GSC direction.
+  const divergenceSummary = React.useMemo(() => {
+    const entries = Object.values(divergence)
+    const total = entries.filter(d => d.status === 'agree' || d.status === 'disagree').length
+    const agreeCount = entries.filter(d => d.status === 'agree').length
+    const disagreeCount = entries.filter(d => d.status === 'disagree').length
+    const accuracy = total > 0 ? Math.round((agreeCount / total) * 100) : null
+    const missing = entries.filter(d => d.status === 'missing').length
+    const unknown = entries.filter(d => d.status === 'unknown').length
+    return { agreeCount, disagreeCount, total, accuracy, missing, unknown }
+  }, [divergence])
+
   const loadTrends = React.useCallback(async () => {
     if (!canonicalUrls.length) {
       setTrends({}); setTrendsError(null); return
@@ -1438,6 +1451,15 @@ function PublishLedger({
             { label: 'Avg Position', value: metricsSummary.avgPosition != null ? metricsSummary.avgPosition.toFixed(1) : '—', sub: 'GSC 28-day avg', icon: '🎯' },
             { label: 'Total Clicks', value: fmtN(metricsSummary.totalClicks), sub: `${fmtN(metricsSummary.totalImpressions)} impressions`, icon: '👆' },
             { label: 'Avg CTR', value: metricsSummary.avgCtr != null ? `${metricsSummary.avgCtr.toFixed(1)}%` : '—', sub: 'click-through rate', icon: '📊' },
+            {
+              label: 'Model Accuracy',
+              value: divergenceSummary.accuracy != null ? `${divergenceSummary.accuracy}%` : '—',
+              sub: divergenceSummary.total > 0
+                ? `${divergenceSummary.agreeCount} agree · ${divergenceSummary.disagreeCount} disagree`
+                : divergenceSummary.missing > 0 ? `${divergenceSummary.missing} missing forecast data` : 'forecast vs GSC direction',
+              icon: '🤖',
+              accuracy: divergenceSummary.accuracy,
+            },
           ].map((kpi, i) => (
             <div key={i} style={{
               padding: '10px 14px', background: E.paper,
@@ -1451,8 +1473,16 @@ function PublishLedger({
                   {kpi.label}
                 </span>
               </div>
-              <div style={{ fontFamily: C.serif, fontSize: 26, fontWeight: 700, color: E.ink, lineHeight: 1.1 }}>
-                {trendsLoading && !metricsSummary.entriesWithData ? (
+              <div style={{
+                fontFamily: C.serif, fontSize: 26, fontWeight: 700,
+                color: (kpi as any).accuracy != null
+                  ? (kpi as any).accuracy >= 80 ? E.mossGreen
+                  : (kpi as any).accuracy >= 50 ? '#C47F17'
+                  : C.red
+                  : E.ink,
+                lineHeight: 1.1,
+              }}>
+                {(trendsLoading || divergenceLoading) && !metricsSummary.entriesWithData ? (
                   <span style={{ fontSize: 12, color: E.inkDim, fontFamily: E.mono }}>⏳ loading</span>
                 ) : kpi.value}
               </div>
