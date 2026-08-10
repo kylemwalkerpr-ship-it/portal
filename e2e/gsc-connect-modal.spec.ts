@@ -603,15 +603,30 @@ test.describe('GSC connect modal (admin)', () => {
     // SERVICE_ACCOUNT on both surfaces.
     const modeChip = page.getByText('SERVICE_ACCOUNT', { exact: true })
 
+    // ── Race guard: the studio's initial loadGscStatus can fire BEFORE this
+    // route mock is registered (login lands on the dashboard and the studio
+    // mounts immediately), so the studio would cache the REAL production
+    // state (connected · live · OAUTH) and the banner would never show the
+    // "Connect GSC →" CTA. Reload with the mock already in place so the
+    // studio deterministically reads the mocked disconnected state.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await recoverFromErrorBoundary(page)
+
     // ── Before connecting: no mode chip anywhere ───────────────────────────
     await expect(modeChip).toHaveCount(0)
 
     // ── Connect through the STUDIO's composer banner modal ─────────────────
-    // Scoped to the banner (background #FFFBEB is unique to it on the Create
-    // tab) so we never hit the radar panel's twin "Connect GSC →" CTA. The
-    // studio modal's onConnected → loadGscStatus refreshes the banner's own
-    // gscStatus immediately — no 30s studio poll wait.
-    const bannerCta = page.locator('div[style*="FFFBEB"]').getByRole('button', { name: 'Connect GSC →' })
+    // Scoped to the banner by its copy (the deployed build inlines styles as
+    // computed rgb() values, so `style*="#FFFBEB"` matches nothing — the
+    // snapshot copy text is unique to this banner and never matches the
+    // radar panel's twin "Connect GSC →" CTA). The studio modal's
+    // onConnected → loadGscStatus refreshes the banner's own gscStatus
+    // immediately — no 30s studio poll wait.
+    const bannerCta = page
+      .locator('div')
+      .filter({ hasText: 'Suggestions are scored from the committed snapshot' })
+      .getByRole('button', { name: 'Connect GSC →' })
+      .first()
     await bannerCta.waitFor({ state: 'visible', timeout: 30000 })
     await bannerCta.click()
 
@@ -649,7 +664,7 @@ test.describe('GSC connect modal (admin)', () => {
     await systemsTab.click()
 
     await expect(page.getByText('CONNECTED', { exact: true })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText(/TOKEN FAILURE/)).toBeVisible()
+    await expect(page.getByText(/TOKEN FAILURE/).first()).toBeVisible()
     // Both surfaces now label the same path — banner + Systems card.
     await expect(modeChip).toHaveCount(2)
     await expect(page.getByRole('button', { name: /Re-connect \(re-authorize\)/ })).toBeVisible()
