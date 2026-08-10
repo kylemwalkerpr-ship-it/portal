@@ -263,7 +263,9 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
 
   const orderedRows = React.useMemo(() => {
     const byId = new Map((rows || []).map((row) => [row.id, row]))
-    return providerOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
+    const knownIds = (rows || []).map((row) => row.id)
+    const completeOrder = [...providerOrder, ...knownIds.filter((id) => !providerOrder.includes(id))]
+    return completeOrder.map((id) => byId.get(id)).filter(Boolean) as VaultStatusRow[]
   }, [rows, providerOrder])
 
   return (

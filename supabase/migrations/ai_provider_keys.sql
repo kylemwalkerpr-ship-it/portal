@@ -5,7 +5,7 @@
 -- Idempotent: safe to re-run.
 
 CREATE TABLE IF NOT EXISTS public.ai_provider_keys (
-  provider TEXT PRIMARY KEY,              -- openai | groq | gemini | openrouter | custom | grok | nvidia-glm | nvidia-deepseek | cloudflare-ai | deepseek
+  provider TEXT PRIMARY KEY,              -- openai | groq | gemini | openrouter | custom | grok | nvidia-nemotron | nvidia-glm | nvidia-deepseek | cloudflare-ai | deepseek
   api_key TEXT,                           -- the actual credential (admin-only read via service role)
   base_url TEXT,                          -- override endpoint (custom providers)
   model TEXT,                             -- model override (e.g. gpt-5.6-luna)

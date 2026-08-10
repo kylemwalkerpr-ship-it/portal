@@ -10,10 +10,11 @@ import { action } from "./_generated/server";
 
 // ---------- AI provider helpers ----------
 
-type Provider = "openai" | "anthropic" | "nvidia";
+type Provider = "openai" | "anthropic" | "nvidia" | "nvidia-nemotron";
 
 function pickProvider(): Provider {
   const raw = (process.env.AI_PROVIDER ?? "openai").toLowerCase();
+  if (raw === "nvidia-nemotron" || raw === "nemotron" || raw === "nemotron-3-ultra") return "nvidia-nemotron";
   if (raw === "nvidia" || raw === "deepseek") return "nvidia";
   return raw === "anthropic" ? "anthropic" : "openai";
 }
@@ -28,7 +29,7 @@ function buildProvider(provider: Provider) {
       label: "openai",
     };
   }
-  if (provider === "nvidia") {
+  if (provider === "nvidia" || provider === "nvidia-nemotron") {
     const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) throw new Error("NVIDIA_API_KEY is not set");
     const openai = createOpenAI({
@@ -37,9 +38,12 @@ function buildProvider(provider: Provider) {
         process.env.NVIDIA_BASE_URL ??
         "https://integrate.api.nvidia.com/v1",
     });
+    const model = provider === "nvidia-nemotron"
+      ? (process.env.NVIDIA_NEMOTRON_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b")
+      : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro");
     return {
-      model: openai(process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro"),
-      label: "nvidia-deepseek",
+      model: openai(model),
+      label: provider === "nvidia-nemotron" ? "nvidia-nemotron" : "nvidia-deepseek",
     };
   }
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -54,6 +58,7 @@ function buildProvider(provider: Provider) {
 }
 
 async function generateWithNvidia(args: {
+  provider: "nvidia" | "nvidia-nemotron";
   system: string;
   prompt: string;
   maxOutputTokens?: number;
@@ -62,7 +67,9 @@ async function generateWithNvidia(args: {
   const apiKey = process.env.NVIDIA_API_KEY;
   const baseUrl =
     process.env.NVIDIA_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
-  const model = process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro";
+  const model = provider === "nvidia-nemotron"
+    ? (process.env.NVIDIA_NEMOTRON_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b")
+    : (process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-pro");
   if (!apiKey) throw new Error("NVIDIA_API_KEY is not set");
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -81,9 +88,9 @@ async function generateWithNvidia(args: {
       top_p: 0.95,
       max_tokens: args.maxOutputTokens ?? 4000,
       stream: false,
-      extra_body: {
-        chat_template_kwargs: { thinking: false },
-      },
+      ...(args.provider === "nvidia-nemotron"
+        ? { chat_template_kwargs: { enable_thinking: true }, reasoning_budget: 16384 }
+        : { chat_template_kwargs: { thinking: false } }),
     }),
   });
 
@@ -502,12 +509,13 @@ export const generateAndPublish = action({
     });
 
     const generate = async (sys: string, prompt: string): Promise<string> => {
-      if (provider === "nvidia") {
+      if (provider === "nvidia" || provider === "nvidia-nemotron") {
         return await generateWithNvidia({
+          provider,
           system: sys,
           prompt,
-          maxOutputTokens: 4000,
-          temperature: 0.7,
+          maxOutputTokens: provider === "nvidia-nemotron" ? 16384 : 4000,
+          temperature: provider === "nvidia-nemotron" ? 1 : 0.7,
         });
       }
       const aiRes = await generateText({
