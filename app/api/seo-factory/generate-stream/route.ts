@@ -172,6 +172,13 @@ export async function POST(request: Request) {
         : null,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
       resumeContent: undefined as string | undefined,
+      // Brief Assembly Panel fields — the full template from Stage II
+      h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
+      sources: Array.isArray(body.sources) ? body.sources.map(String) : undefined,
+      minWords: body.minWords != null ? Number(body.minWords) : undefined,
+      maxWords: body.maxWords != null ? Number(body.maxWords) : undefined,
+      targetSlug: body.targetSlug ? String(body.targetSlug) : undefined,
+      kwH2Map: body.kwH2Map && typeof body.kwH2Map === 'object' ? Object.fromEntries(Object.entries(body.kwH2Map).map(([k, v]) => [String(k), String(v)])) : undefined,
       userId,
     }
     const supersedesJobId = String(body.supersedesJobId || '').trim()

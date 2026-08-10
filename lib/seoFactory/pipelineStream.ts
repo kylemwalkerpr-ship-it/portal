@@ -125,9 +125,9 @@ export async function* runSeoFactoryPipelineStream(
       contentType = 'regional_page'
     }
     assertPlanRepoConsistency(plan)
-    const minWords = minWordsForType(contentType)
+    const minWords = input.minWords ?? minWordsForType(contentType)
     const targetWords = targetWordsForType(contentType)
-    const maxWords = maxWordsForType(contentType)
+    const maxWords = input.maxWords ?? maxWordsForType(contentType)
 
     yield {
       type: 'progress',
@@ -188,6 +188,10 @@ export async function* runSeoFactoryPipelineStream(
       strategyBlock,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      h2Outline: input.h2Outline as string[] | undefined,
+      sources: input.sources as string[] | undefined,
+      targetSlug: input.targetSlug as string | undefined,
+      kwH2Map: input.kwH2Map as Record<string, string> | undefined,
     })
 
     let content = input.resumeContent?.trim() || ''

@@ -4846,6 +4846,13 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           interlinks: briefInterlinks,
           opportunity: selectedBrief,
           aiProvider: formData.aiProvider || undefined,
+          // Brief Assembly Panel fields — the full template
+          h2Outline: formData.h2Outline || undefined,
+          sources: formData.sources || undefined,
+          minWords: formData.minWords || undefined,
+          maxWords: formData.maxWords || undefined,
+          targetSlug: formData.targetSlug || undefined,
+          kwH2Map: formData.kwH2Map || undefined,
         }),
       })
       if (!res.ok) {

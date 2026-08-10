@@ -142,6 +142,18 @@ export interface PipelineInput {
     existingJobId?: string | null
     reason?: string
   } | null
+  /** Brief Assembly Panel: admin-defined H2 section outline */
+  h2Outline?: string[]
+  /** Brief Assembly Panel: sources the AI must cite */
+  sources?: string[]
+  /** Brief Assembly Panel: admin-specified min word count */
+  minWords?: number
+  /** Brief Assembly Panel: admin-specified max word count */
+  maxWords?: number
+  /** Brief Assembly Panel: target slug for the generated page */
+  targetSlug?: string
+  /** Brief Assembly Panel: keyword → H2 section placement map */
+  kwH2Map?: Record<string, string>
 }
 
 export interface PipelineResult {
@@ -257,9 +269,9 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     contentType = 'regional_page'
   }
   assertPlanRepoConsistency(plan)
-  const minWords = minWordsForType(contentType)
+  const minWords = input.minWords ?? minWordsForType(contentType)
   const targetWords = targetWordsForType(contentType)
-  const maxWords = maxWordsForType(contentType)
+  const maxWords = input.maxWords ?? maxWordsForType(contentType)
 
   const gscBrief = await buildGscContentBrief({
     topic,
@@ -292,6 +304,10 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
     strategyBlock,
     requiredShortKeywords,
     requiredLongTailKeywords,
+    h2Outline: input.h2Outline as string[] | undefined,
+    sources: input.sources as string[] | undefined,
+    targetSlug: input.targetSlug as string | undefined,
+    kwH2Map: input.kwH2Map as Record<string, string> | undefined,
   })
 
   let content = input.resumeContent || ''

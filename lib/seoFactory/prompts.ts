@@ -123,8 +123,16 @@ export function buildFactorySystemPrompt(opts: {
   requiredShortKeywords?: string[]
   /** Brief-supplied long-tail keywords (≥4 words). The article must use each, max 2 hits. */
   requiredLongTailKeywords?: string[]
+  /** Admin-defined H2 section outline from the Brief Assembly Panel */
+  h2Outline?: string[]
+  /** Sources to cite — the AI must reference these authoritative URLs */
+  sources?: string[]
+  /** Admin-specified target slug */
+  targetSlug?: string
+  /** Keyword → H2 section placement map from the Brief Assembly Panel */
+  kwH2Map?: Record<string, string>
 }): string {
-  const { plan, contentType, minWords, strategyBlock } = opts
+  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map } = opts
   const target = targetWordsForType(contentType)
   const maxWords = opts.maxWords ?? depthMaxWords(contentType)
   return [
@@ -160,6 +168,27 @@ export function buildFactorySystemPrompt(opts: {
     '',
     strategyBlock || '',
     '',
+    // ══════ BRIEF ASSEMBLY TEMPLATE — admin-defined structure ══════
+    ...(h2Outline && h2Outline.length ? [
+      'BRIEF TEMPLATE — H2 OUTLINE (mandatory structure):',
+      ...h2Outline.map((h, i) => {
+        const placedKw = kwH2Map ? Object.entries(kwH2Map).filter(([, sec]) => sec === h).map(([k]) => k) : []
+        return `${i + 1}. ## ${h}${placedKw.length ? ` [must include keyword(s): ${placedKw.join(', ')}]` : ''}`
+      }),
+      'You MUST follow this exact H2 structure. Do not add, remove, or reorder sections.',
+      'If the brief supplies a keyword→section map, place each keyword naturally in its assigned H2.',
+      '',
+    ] : []),
+    ...(sources && sources.length ? [
+      'SOURCES TO CITE:',
+      ...sources.map((s, i) => `${i + 1}. ${s}`),
+      'Cite these sources where they support a claim. Do not fabricate additional URLs.',
+      '',
+    ] : []),
+    ...(targetSlug ? [
+      `TARGET SLUG: ${targetSlug}`,
+      '',
+    ] : []),
     'OUTPUT FORMAT (strict):',
     '1) YAML front matter between --- fences with fields:',
     '   title, description (140-160 chars), primaryKeyword, robots, date (YYYY-MM-DD), region, content_type, ownerHost',
