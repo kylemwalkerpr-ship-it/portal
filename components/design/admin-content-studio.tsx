@@ -802,6 +802,7 @@ function ChapterIntro({
 // remediation guidance. Renders inline-editor / re-audit actions.
 function DefendPanel({
   selectedJob, gateFor, jobs, gateByJob, onOpenJob, setActionNotice,
+  reviewAuditResult, onApprove,
 }: {
   selectedJob: ContentJob | null
   gateFor: { score: number | null; passed: boolean | null } | null | undefined
@@ -809,14 +810,19 @@ function DefendPanel({
   gateByJob: Map<string, { score: number | null; passed: boolean | null }>
   onOpenJob: (j: ContentJob) => void
   setActionNotice?: (msg: string) => void
+  reviewAuditResult?: {
+    score: number; ok: boolean; blockers: number; warnings: number
+    summary: string; annotations?: Array<{ code: string; severity: string; message: string; fix: string }>
+  } | null
+  onApprove?: () => void
 }) {
   const empty = !selectedJob
   const score = (gateFor?.score ?? null) as number | null
   const passed = (gateFor?.passed ?? null) as boolean | null
   const ok = passed === true || (score != null && score >= 90)
-  // NOTE: blocker detail lives in the inline editor (JobDetail) — this surface
-  // shows the score + verdict so the admin can decide whether to open and repair.
-  const blockers: Array<{ code: string; reason: string }> = []
+  const blockers = (reviewAuditResult?.annotations || [])
+    .filter(a => a.severity === 'blocker')
+    .map(a => ({ code: a.code, reason: a.message }))
   return (
     <div data-testid="studio-defend-panel" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {empty && (
@@ -860,19 +866,34 @@ function DefendPanel({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
             }}>
               <div style={{ fontFamily: C.serif, color: '#0a4d24', fontSize: 14 }}>
-                ✓ All quality blockers cleared. Ready to advance to VI · Approve.
+                ✓ All quality blockers cleared. Ready to advance to V · Approve.
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenJob(selectedJob)}
-                style={{
-                  padding: '8px 18px', background: 'transparent', color: '#0f7a3a',
-                  border: '1px solid #0f7a3a', borderRadius: 0, cursor: 'pointer',
-                  fontFamily: C.serif, fontSize: 13, fontWeight: 600,
-                }}
-              >
-                Review in editor →
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenJob(selectedJob)}
+                  style={{
+                    padding: '8px 18px', background: 'transparent', color: '#0f7a3a',
+                    border: '1px solid #0f7a3a', borderRadius: 0, cursor: 'pointer',
+                    fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  Review in editor →
+                </button>
+                {onApprove && (
+                  <button
+                    type="button"
+                    onClick={onApprove}
+                    style={{
+                      padding: '8px 18px', background: E.gold, color: E.ivory,
+                      border: 'none', borderRadius: 0, cursor: 'pointer',
+                      fontFamily: C.serif, fontSize: 13, fontWeight: 700,
+                    }}
+                  >
+                    Next: Approve →
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -4230,6 +4251,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [merges, setMerges] = React.useState<CannibalMergeRecord[]>([])
   const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
   const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
+  // Full re-audit result for the Review stage — includes blockers, warnings, annotations.
+  // Populated by auto-gate-run when entering Review and by AdminInlineEditor re-audits.
+  const [reviewAuditResult, setReviewAuditResult] = React.useState<{
+    score: number; ok: boolean; blockers: number; warnings: number
+    summary: string; annotations?: Array<{ code: string; severity: string; message: string; fix: string }>
+  } | null>(null)
+
+  // Ref to avoid stale closure in onScoreChange callbacks — always points to latest content.
+  const latestJobContentRef = React.useRef(selectedJob?.content)
+  latestJobContentRef.current = selectedJob?.content
   const [engineBusy, setEngineBusy] = React.useState(false)
   const [queueFocusJobId, setQueueFocusJobId] = React.useState<string | null>(null)
   const [autoInterlinkBusy, setAutoInterlinkBusy] = React.useState(false)
@@ -4544,6 +4575,34 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   }, [])
 
   React.useEffect(() => { fetchEngineStatus(); fetchGateRuns() }, [fetchEngineStatus, fetchGateRuns])
+
+  // Auto-run quality gate when admin enters the Review stage with a selected draft.
+  // This ensures DefendPanel always shows fresh blocker data.
+  // NOTE: NOT dependent on selectedJob?.content to avoid re-audit on every keystroke
+  // in the inline editor. The onScoreChange callback handles live re-audit updates.
+  React.useEffect(() => {
+    if (tab !== 'review' || !selectedJob?.content) return
+    const runGate = async () => {
+      try {
+        const res = await fetch('/api/content-studio/reaudit', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: selectedJob.content }),
+        })
+        const data = await res.json().catch(() => ({})) as any
+        if (!res.ok) return
+        setReviewAuditResult({
+          score: data.score ?? 0,
+          ok: Boolean(data.ok),
+          blockers: data.blockers ?? 0,
+          warnings: data.warnings ?? 0,
+          summary: data.summary ?? '',
+          annotations: data.annotations ?? [],
+        })
+      } catch { /* best-effort */ }
+    }
+    runGate()
+  }, [tab, selectedJob?.id])
 
   // Keep the completed generation attached to the visible activity panel so the
   // operator can merge immediately, without having to find the job in the queue.
@@ -5543,6 +5602,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             gateByJob={gateByJob}
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
+            reviewAuditResult={reviewAuditResult}
+            onApprove={() => selectTab('approve')}
           />
           {/* AI-enabled inline editor — fix blockers interactively */}
           {selectedJob?.content && (
@@ -5556,25 +5617,35 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 onChange={(v: string) => {
                   setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
                 }}
-                onScoreChange={(_s) => { void fetchGateRuns() }}
+                onScoreChange={async (_s) => {
+                  void fetchGateRuns()
+                  // Re-fetch detailed gate result so DefendPanel sees updated blockers
+                  const latestContent = latestJobContentRef.current
+                  if (latestContent) {
+                    try {
+                      const res = await fetch('/api/content-studio/reaudit', {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ content: latestContent }),
+                      })
+                      const data = await res.json().catch(() => ({})) as any
+                      if (res.ok) {
+                        setReviewAuditResult({
+                          score: data.score ?? 0,
+                          ok: Boolean(data.ok),
+                          blockers: data.blockers ?? 0,
+                          warnings: data.warnings ?? 0,
+                          summary: data.summary ?? '',
+                          annotations: data.annotations ?? [],
+                        })
+                      }
+                    } catch { /* best-effort */ }
+                  }
+                }}
               />
             </div>
           )}
-          {selectedJob && (() => {
-            const gate = gateByJob.get(selectedJob.id)
-            const ok = gate?.passed === true || (gate?.score != null && gate.score >= 90)
-            return ok ? (
-              <div style={{ marginTop: 14, padding: '14px 18px', background: E.parchment, border: `1px solid ${E.gold}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Gate cleared — ready for approval</div>
-                  <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>All quality and compliance checks passed. Push to main and deploy.</div>
-                </div>
-                <button type="button" onClick={() => selectTab('approve')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
-                  Next: Approve →
-                </button>
-              </div>
-            ) : null
-          })()}
+
         </>
       )}
 
