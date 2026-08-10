@@ -1,27 +1,23 @@
 'use client'
 /**
- * CONTENT STUDIO — v3 rebuild
+ * CONTENT STUDIO — Editorial rebuild.
  *
- * One workspace, three dedicated surfaces. No guessing, no buried controls.
+ * One workspace, one linear narrative: SEO Master Engine ingestion →
+ * plan & scout → brief & launch → review → approve → ship → ship ledger.
+ * Each step is a magazine-spread card with serif headers, a status pill,
+ * and the previous studio features rebrushed in the same palette.
  *
- *   ✏️  Create   — numbered wizard: Target → Brief → Interlinks → Generate.
- *                  Autopilot cards pre-fill every field (always editable),
- *                  the engine link plan is one click, and there is exactly
- *                  one primary CTA: “Generate & Open PR”.
- *   📋  Queue    — every job in one searchable, filterable table with
- *                  status, compliance gate, SEO score and merge badges.
- *   📊  Insights — GSC overview, scored Opportunity Radar, merge history,
- *                  interlink suggestions, site health, deep interlinks.
- *   🧭  Operations — the former command-center surfaces (Radar, Launch,
- *                  Pipeline, Engine, Missions, Systems) inside this workspace.
+ *   I.   Ingest       — SEO Master Engine brain, life-cycle cells, LLM voice.
+ *   II.  Plan & Scout — Opportunity Radar + GSC mini.
+ *   III. Brief        — Numbered Create wizard: Target → Brief → Interlinks → Generate.
+ *   IV.  Queue        — Every job in one searchable table with gate badges & stepper.
+ *   V.   Review       — Inline editor, re-audit, determinate ship blocker fixes.
+ *   VI.  Approve → Ship — PR → main → Cloudflare deploy → monitor.
+ *   VII. Ship Ledger  — Verified stamp grid of every merged PR + live URL history.
  *
- * Content Studio is the single admin entry point. Operations is a first-class
- * tab rather than a separate overlay, so generation, monitoring, and delivery
- * share one navigation shell and one source of truth.
-
- * The SEO Master Engine strip on top keeps the six brain surfaces one
- * command away (ingest / plan / LLM audit) and every job's detail modal
- * enforces the compliance gate with dedicated action groups.
+ * The Operations tab remains available for the former command-center
+ * surfaces (Radar, Launch, Engine, Missions, Systems) without duplicating
+ * any of the spread content above.
  */
 import React from 'react'
 import type { LeanRanking } from '@/lib/seoEngine/rankingModel'
@@ -33,19 +29,56 @@ import AdminSiteHealthPanel from './admin-site-health-panel'
 const AdminCommandCenter = React.lazy(() => import('./admin-command-center'))
 import AdminInlineEditor from './admin-inline-editor'
 
-// ── Color tokens (match admin-templates.tsx) ──
+// ── Color tokens (legacy + new editorial palette) ──
 const C = {
-  bg: '#F7F8FA', surface: '#FFFFFF', surface2: '#F4F2EE', surface3: '#EBEDF0',
+  bg: '#FBF6EC', surface: '#FFFFFF', surface2: '#F4EFE3', surface3: '#EFE7D6',
   border: 'rgba(0,0,0,0.08)', border2: 'rgba(0,0,0,0.05)',
   cyan: '#3C3B6E', red: '#DC2626', green: '#166534', greenSoft: '#ECFDF5',
   orange: '#D97706', purple: '#7C3AED', text: '#1F2937', textMuted: '#6B7280',
-  textDim: '#9CA3AF', gold: '#9A7B3B', goldSoft: '#FEF3C7', navy: '#0F172A',
+  textDim: '#9CA3AF', gold: '#A07E3A', goldSoft: '#F2E6C2', navy: '#0F172A',
   blue: '#2563EB', blueSoft: '#EFF6FF',
-  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Garamond', Georgia, 'Times New Roman', serif)",
+  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Cormorant', 'Garamond', Georgia, 'Times New Roman', serif)",
   mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
   shadowCard: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04)',
   radius: 12, radiusSm: 8, radiusXs: 6,
 }
+
+/** Editorial palette & typography for the studio spread. Ivory + gold on ink. */
+const E = {
+  ivory:        '#FBF6EC',  // page background
+  parchment:    '#F5EDDD',  // spread pages
+  cream:        '#FFFBF1',  // rule-heavy regions
+  paper:        '#FFFFFF',  // primary card surface
+  inkBlack:     '#11151C',  // primary body ink
+  ink:          '#1F2937',
+  inkSoft:      '#3F4654',
+  inkMuted:     '#6B7280',
+  inkDim:       '#9CA3AF',
+  gold:         '#A07E3A',  // primary accent
+  goldSoft:     '#F2E6C2',  // callout bg
+  goldDeep:     '#7C5F23',  // hover / pressed
+  ember:        '#C2410C',  // warning ink
+  mossGreen:    '#3F6F3F',  // success ink
+  mossSoft:     '#D8E5D5',
+  hairline:     'rgba(17,21,28,0.10)',
+  hairlineSoft: 'rgba(17,21,28,0.05)',
+  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Cormorant', 'Garamond', Georgia, 'Times New Roman', serif)",
+  mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
+  ivoryShadow:  '0 1px 0 rgba(17,21,28,0.04), 0 12px 30px rgba(17,21,28,0.07)',
+  paperShadow:  '0 1px 2px rgba(17,21,28,0.06), 0 4px 14px rgba(17,21,28,0.04)',
+  inset:        'inset 0 0 0 1px rgba(160,126,58,0.12)',
+} as const
+
+const TYPE = {
+  display:   { fontFamily: E.serif, fontSize: 36,  lineHeight: 1.05, fontWeight: 700, color: E.inkBlack, letterSpacing: '-0.01em' },
+  kicker:    { fontFamily: E.serif, fontSize: 28,  lineHeight: 1.1,  fontWeight: 700, color: E.inkBlack, letterSpacing: '-0.01em' },
+  headline:  { fontFamily: E.serif, fontSize: 22,  lineHeight: 1.15, fontWeight: 600, color: E.inkBlack },
+  byline:    { fontFamily: E.serif, fontSize: 16,  lineHeight: 1.3,  fontWeight: 500, fontStyle: 'italic' as const, color: E.inkSoft },
+  body:      { fontFamily: E.serif, fontSize: 14,  lineHeight: 1.55, color: E.ink },
+  caption:   { fontFamily: E.mono,  fontSize: 10,  lineHeight: 1.4,  color: E.inkMuted, letterSpacing: '0.08em', textTransform: 'uppercase' as const },
+  microFig:  { fontFamily: E.mono,  fontSize: 9,   letterSpacing: '0.10em', textTransform: 'uppercase' as const, color: E.inkDim },
+  metric:    { fontFamily: E.mono,  fontSize: 11, color: E.ink, fontWeight: 600 },
+} as const
 
 // ── Provider → default model (mirrors contentAiProvider defaults) ──
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
@@ -69,10 +102,10 @@ type ContentType = 'blog_post' | 'article' | 'regional_page'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
-type StudioTab = 'create' | 'queue' | 'insights' | 'operations'
+type StudioTab = 'pipeline' | 'create' | 'queue' | 'insights' | 'operations'
 
 function isStudioTab(value: string | null): value is StudioTab {
-  return value === 'create' || value === 'queue' || value === 'insights' || value === 'operations'
+  return value === 'pipeline' || value === 'create' || value === 'queue' || value === 'insights' || value === 'operations'
 }
 
 interface ContentJob {
@@ -84,6 +117,8 @@ interface ContentJob {
   lineage?: Record<string, unknown> | null
   slug: string | null; content: string | null; branch_name: string | null
   content_path: string | null; pr_url: string | null; pr_number: number | null
+  canonical_url?: string | null
+  owner_host?: string | null
   merged_at: string | null; closed_at: string | null; error_message: string | null
   ai_provider: string | null; ai_model?: string | null; word_count: number | null; seo_score: number | null
   audit_json?: { model?: string; score?: number; grade?: string; attempts?: number } | null
@@ -698,7 +733,7 @@ function CreateWizard({
     })
   }
 
-  const stepLabel = (n: number, label: string, done: boolean) => (
+  const wizardStep = (n: number, label: string, done: boolean) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
       <span style={{
         width: 18, height: 18, borderRadius: 999, flexShrink: 0,
@@ -818,8 +853,7 @@ function CreateWizard({
       )}
 
       <form onSubmit={handleSubmit} style={{ padding: '16px 18px 18px' }}>
-        {/* ── STEP 1 · Target ── */}
-        {stepLabel(1, 'Pick the target — where should this live?', Boolean(contentType))}
+        {/* ── STEP 1 · Target ── */}{wizardStep(1,'Pick the target — where should this live?', Boolean(contentType))}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 6, marginBottom: 12 }}>
           {CONTENT_TYPE_OPTIONS.map(opt => (
             <button key={opt.value} type="button" onClick={() => setContentType(opt.value)} style={{
@@ -856,8 +890,7 @@ function CreateWizard({
           </div>
         </div>
 
-        {/* ── STEP 2 · Brief ── */}
-        {stepLabel(2, 'Shape the brief — what should the AI write?', Boolean(topic.trim() || title.trim()))}
+        {/* ── STEP 2 · Brief ── */}{wizardStep(2,'Shape the brief — what should the AI write?', Boolean(topic.trim() || title.trim()))}
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Title <span style={{ color: C.textDim, fontWeight: 400, textTransform: 'none' }}>(optional — autopilot suggests one)</span></label>
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. F-1 OPT Application: Complete 2026 Timeline" maxLength={120} style={inputStyle} />
@@ -917,8 +950,7 @@ function CreateWizard({
           </div>
         )}
 
-        {/* ── STEP 3 · Interlinks ── */}
-        {stepLabel(3, 'Wire the internal links — who links to whom, and why', Boolean(briefInterlinks && briefInterlinks.length > 0))}
+        {/* ── STEP 3 · Interlinks ── */}{wizardStep(3,'Wire the internal links — who links to whom, and why', Boolean(briefInterlinks && briefInterlinks.length > 0))}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px) 1fr', gap: 10, alignItems: 'end', marginBottom: 10 }}>
           <div>
             <label style={labelStyle}>Life-cycle stage for this link plan</label>
@@ -2044,6 +2076,537 @@ function JobDetail({
   )
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// ── EDITORIAL SPREAD (linear narrative: engine → ledger) ──
+// ════════════════════════════════════════════════════════════════════════════════
+interface EditorialSpreadProps {
+  engineStatus: any
+  engineBusy: boolean
+  onEngineAction: (kind: 'ingest' | 'plan' | 'llm') => void
+  radar: AISuggestion[]
+  radarMeta: Record<string, unknown> | null
+  suggestions?: AISuggestion[]
+  suggestionsLoading?: boolean
+  suggestionsError?: string | null
+  gscStatus: Record<string, unknown> | null
+  onConnectGsc: () => void
+  onRefreshSuggestions: (region: string) => void
+  onApplySuggestion: (s: AISuggestion) => void
+  brief: AISuggestion | null
+  onClearBrief: () => void
+  jobs: ContentJob[]
+  jobTotal: number
+  jobSummary: QueueSummary | null
+  loading: boolean
+  mergeIndex: { byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }
+  gateByJob: Map<string, { score: number | null; passed: boolean | null }>
+  onSelectJob: (job: ContentJob) => void
+  mergeHistory: CannibalMergeRecord[]
+  onRefreshJobs: () => void
+  setActionNotice: (msg: string) => void
+  onOpenWorkspaceJobs: () => void
+  onEngage: () => void
+}
+
+const SPREAD_STEPS: Array<{
+  roman: string
+  label: string
+  kicker: string
+  caption: string
+}> = [
+  { roman: 'I', label: 'Ingest',       kicker: 'The SEO Master Engine',           caption: 'Knowledge, plan, and LLM voice are loaded into one canvas.' },
+  { roman: 'II', label: 'Plan & Scout', kicker: 'The Opportunity Radar',           caption: 'Live queries become ranked plays; gaps and quick wins surface.' },
+  { roman: 'III', label: 'Brief',       kicker: 'The Composer',                    caption: 'A topic, a stage, a target host. The wizard renders the brief.' },
+  { roman: 'IV', label: 'Queue',       kicker: 'Drafts in Motion',                caption: 'Every job shown with status, gate, and lineage window.' },
+  { roman: 'V',  label: 'Review → Approve → Ship', kicker: 'Re-audit → PR → main',     caption: 'Inline editor, deterministic repair, then approve to deploy.' },
+  { roman: 'VI', label: 'Live URL Ledger', kicker: 'Verified Stamps',                caption: 'Merged PRs become live estate pages with verified URLs.' },
+]
+
+function serifDisplay(value: string | number | null | undefined, fallback = '—'): string {
+  if (value == null || value === '') return fallback
+  return String(value)
+}
+
+function SpreadStep({
+  roman, label, kicker, caption, status, active, body, accent,
+}: {
+  roman: string
+  label: string
+  kicker: string
+  caption: string
+  status: 'idle' | 'live' | 'ingested' | 'drafting' | 'merged' | 'pr' | 'review'
+  active: boolean
+  body: React.ReactNode
+  accent: string
+}) {
+  const statusMeta: Record<typeof status, { label: string; bg: string; fg: string; dot: string }> = {
+    idle:        { label: 'ready',     bg: E.parchment, fg: E.inkMuted,   dot: E.inkDim },
+    live:        { label: 'live',      bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
+    ingested:    { label: 'ingested',  bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
+    drafting:    { label: 'drafting',  bg: '#3F2F0A',   fg: '#FCD34D',    dot: '#FBBF24' },
+    merged:      { label: 'live',      bg: '#1B3A2B',   fg: '#A7F3D0',    dot: '#34D399' },
+    pr:          { label: 'pr open',   bg: '#0F1E3F',   fg: '#BFDBFE',    dot: '#60A5FA' },
+    review:      { label: 'review',    bg: '#3F2F0A',   fg: '#FCD34D',    dot: '#FBBF24' },
+  }
+  const m = statusMeta[status]
+  return (
+    <article
+      style={{
+        position: 'relative',
+        background: E.paper,
+        borderRadius: 8,
+        border: active ? `2px solid ${accent}` : `1px solid ${E.hairline}`,
+        boxShadow: active ? E.paperShadow : 'none',
+        padding: '20px 22px 18px',
+        minHeight: 170,
+        overflow: 'hidden',
+      }}
+    >
+      {/* corner hairlines */}
+      <div style={{ position: 'absolute', top: 0, left: 0, width: 16, borderTop: `2px solid ${accent}` }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, height: 16, borderLeft: `2px solid ${accent}` }} />
+      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 16, borderBottom: `2px solid ${accent}` }} />
+      <div style={{ position: 'absolute', bottom: 0, right: 0, height: 16, borderRight: `2px solid ${accent}` }} />
+
+      {/* header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <div style={{ ...TYPE.caption, color: accent, fontWeight: 700 }}>Step {roman}</div>
+          <h2 style={{ ...TYPE.headline, margin: '4px 0 0' }}>{label}</h2>
+          <div style={{ ...TYPE.byline, marginTop: 2 }}>{kicker}</div>
+        </div>
+        <span title={m.label} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', borderRadius: 999,
+          background: m.bg, color: m.fg, fontFamily: E.mono, fontSize: 10, fontWeight: 700,
+          letterSpacing: '0.1em', textTransform: 'uppercase',
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: 99, background: m.dot }} />
+          {m.label}
+        </span>
+      </div>
+
+      {/* pull-quote / caption */}
+      <p style={{ ...TYPE.body, color: E.inkSoft, fontStyle: 'italic', margin: '0 0 14px', maxWidth: 360 }}>{caption}</p>
+
+      {/* body */}
+      {body}
+    </article>
+  )
+}
+
+function StudioEditorialSpread(props: EditorialSpreadProps) {
+  const {
+    engineStatus, engineBusy, onEngineAction,
+    radar, radarMeta, suggestions, suggestionsLoading, suggestionsError,
+    gscStatus, onConnectGsc, onRefreshSuggestions, onApplySuggestion,
+    brief, onClearBrief,
+    jobs, jobTotal, jobSummary, loading, mergeIndex, gateByJob, onSelectJob,
+    mergeHistory, onRefreshJobs, setActionNotice,
+    onOpenWorkspaceJobs, onEngage,
+  } = props
+
+  const eng = (engineStatus || {}) as Record<string, any>
+  const engLife = (eng.lifecycle as { seededCells?: number } | undefined)?.seededCells
+  const engKnow = (eng.knowledge as { total?: number } | undefined)?.total
+  const engPlans = (eng.plans as { total?: number } | undefined)?.total
+  const engLinks = (eng.interlinks as { planned?: number } | undefined)?.planned
+  const engVoice = (eng.llmVisibility as { shareOfVoice?: number } | undefined)?.shareOfVoice
+  const engGate  = (eng.gate as { passRate?: number } | undefined)?.passRate
+
+  const mergedJobs = jobs.filter((j) => j.status === 'merged' && (j.pr_url || j.canonical_url))
+  const prJobs    = jobs.filter((j) => j.status === 'pr_created')
+  const draftingJobs = jobs.filter((j) => j.status === 'drafting')
+  const queuedJobs = jobs.filter((j) => j.status === 'pending')
+  const failedJobs = jobs.filter((j) => j.status === 'failed')
+
+  const stepActiveIndex = (() => {
+    if (draftingJobs.length || queuedJobs.length || mergedJobs.length) return -1
+    if (radar.length) return 1
+    return 0
+  })()
+
+  const liveTone = gscStatus?.connected && gscStatus?.live ? 'live' : 'idle'
+
+  // ── Inline generators for each step body ──
+  const stepI = (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {[
+          { l: 'Life-cycle cells', v: engLife ?? '—' },
+          { l: 'Knowledge items',  v: engKnow ?? '—' },
+          { l: 'Plans queued',      v: engPlans ?? '—' },
+          { l: 'Interlinks planned', v: engLinks ?? '—' },
+        ].map((m, i) => (
+          <div key={i} style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
+            <div style={{ ...TYPE.caption, color: E.inkMuted }}>{m.l}</div>
+            <div style={{ ...TYPE.metric, fontSize: 14, color: E.inkBlack, marginTop: 2 }}>{m.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => onEngineAction('ingest')} disabled={engineBusy}
+          style={{ ...navBtn(E.inkBlack, true), padding: '6px 12px' }}>
+          {engineBusy ? '⏳ …' : '🌐 Ingest knowledge'}
+        </button>
+        <button type="button" onClick={() => onEngineAction('plan')} disabled={engineBusy}
+          style={{ ...navBtn(E.gold, false), padding: '6px 12px' }}>
+          {engineBusy ? '⏳ …' : '🧭 Run planner'}
+        </button>
+        <button type="button" onClick={() => onEngineAction('llm')} disabled={engineBusy}
+          style={{ ...navBtn(E.mossGreen, false), padding: '6px 12px' }}>
+          {engineBusy ? '⏳ …' : '🤖 LLM audit'}
+        </button>
+        <span style={{ ...TYPE.caption, color: E.inkMuted }}>
+          LLM voice {typeof engVoice === 'number' ? `${(engVoice * 100).toFixed(0)}%` : '—'} · gate pass {typeof engGate === 'number' ? `${(engGate * 100).toFixed(0)}%` : '—'}
+        </span>
+      </div>
+    </>
+  )
+
+  const gscChip = (() => {
+    if (!gscStatus) return null
+    const mode = gscStatus?.mode === 'oauth' ? 'OAUTH' : gscStatus?.mode === 'service_account' ? 'SERVICE_ACCOUNT' : null
+    if (gscStatus.connected && gscStatus.live) {
+      return (
+        <span style={{ ...TYPE.caption, padding: '3px 9px', borderRadius: 999, background: '#D8E5D5', color: E.mossGreen }}>
+          ● LIVE GSC{mode ? ` · ${mode}` : ''}
+        </span>
+      )
+    }
+    return (
+      <span style={{ ...TYPE.caption, padding: '3px 9px', borderRadius: 999, background: E.goldSoft, color: E.goldDeep }}>
+        ◐ SNAPSHOT
+      </span>
+    )
+  })()
+
+  const stepII = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        {gscChip}
+        {gscStatus && !(gscStatus.connected && gscStatus.live) && (
+          <button type="button" onClick={onConnectGsc} style={{ ...navBtn(E.gold, false), padding: '4px 10px', fontSize: 9 }}>
+            {gscStatus.connected ? 'Re-connect GSC →' : 'Connect GSC →'}
+          </button>
+        )}
+        <span style={{ ...TYPE.caption, color: E.inkMuted }}>
+          {radar.length ? `${radar.length} opportunities scored` : 'Waiting for a score…'}
+        </span>
+      </div>
+      {suggestionsLoading ? (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+          {[1, 2, 3].map((i) => <div key={i} style={{ minWidth: 200, height: 96, background: E.parchment, borderRadius: 6, opacity: 0.55 }} />)}
+        </div>
+      ) : (radar.length > 0 ? (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          {radar.slice(0, 6).map((s) => {
+            const pm = PLAY_META[s.play] || PLAY_META.content_gap
+            const score = s.opportunityScore ?? s.demandScore
+            const tm = TREND_META[s.trend || 'flat'] || TREND_META.flat
+            return (
+              <button key={s.topic} type="button" onClick={() => onApplySuggestion(s)}
+                title="Apply this play to the Brief composer"
+                style={{
+                  minWidth: 220, maxWidth: 260, flexShrink: 0, textAlign: 'left',
+                  padding: '10px 12px', borderRadius: 6, cursor: 'pointer',
+                  background: brief?.topic === s.topic ? E.goldSoft : E.cream,
+                  border: `1px solid ${brief?.topic === s.topic ? E.gold : E.hairline}`,
+                  fontFamily: 'inherit',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, fontFamily: E.mono, background: pm.bg, color: pm.fg }}>
+                    {pm.icon} {pm.label}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 800, fontFamily: E.mono, color: score >= 70 ? E.mossGreen : E.ink }}>{score}</span>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: E.ink, lineHeight: 1.3 }}>
+                  {s.title.length > 58 ? `${s.title.slice(0, 55)}…` : s.title}
+                </div>
+                <div style={{ fontSize: 9, color: E.inkMuted, fontFamily: E.mono, marginTop: 2 }}>
+                  #{s.position ?? '—'} · {fmtN(s.impressions)} imp · {tm.icon} {tm.label}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <p style={{ ...TYPE.body, color: E.inkMuted, margin: 0 }}>
+          No scored opportunities yet. Connect GSC for live demand data, then re-scan from Operations.
+        </p>
+      ))}
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${E.hairline}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ ...TYPE.caption, color: E.inkMuted }}>Cross-domain mergers · {fmtN(mergeHistory?.length ?? 0)} on record</span>
+      </div>
+    </>
+  )
+
+  const stepIII = (
+    <>
+      <p style={{ ...TYPE.body, color: E.inkSoft, margin: '0 0 10px' }}>
+        Open the Create wizard, accept an autopilot brief, and decide on a target host. Generate → draft stream → Garden gate → PR.
+      </p>
+      {brief && (
+        <div style={{ background: E.goldSoft, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}`, marginBottom: 12 }}>
+          <div style={{ ...TYPE.caption, color: E.goldDeep }}>Autopilot brief — pre-filled & editable</div>
+          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 600, color: E.inkBlack }}>{brief.primaryKeyword || brief.topic}</div>
+          <div style={{ marginTop: 2, fontSize: 10, color: E.inkSoft, fontFamily: E.mono }}>
+            {(brief.play || 'content_gap').replace('_', ' ')} · {brief.opportunityScore ?? brief.demandScore}/100 · {brief.intent} · {brief.trend}
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={onEngage} style={{ ...navBtn(E.inkBlack, true), padding: '8px 14px' }}>
+          ✏️ Open the Composer
+        </button>
+        <button type="button" onClick={() => onClearBrief()} style={{ ...navBtn(E.gold, false), padding: '8px 14px' }} disabled={!brief}>
+          Clear brief
+        </button>
+      </div>
+    </>
+  )
+
+  const stepIV = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 14 }}>
+        <div style={{ ...TYPE.kicker, color: E.inkBlack, fontFamily: E.serif }}>
+          {jobTotal || jobs.length}
+          <span style={{ ...TYPE.caption, color: E.inkMuted, marginLeft: 6 }}>jobs on record</span>
+        </div>
+        <span style={{ ...TYPE.caption, color: E.mossGreen }}>{mergedJobs.length} merged</span>
+        <span style={{ ...TYPE.caption, color: '#60A5FA' }}>{prJobs.length} pr open</span>
+        <span style={{ ...TYPE.caption, color: '#FBBF24' }}>{draftingJobs.length} drafting</span>
+        {failedJobs.length > 0 && (
+          <span style={{ ...TYPE.caption, color: E.ember }}>{failedJobs.length} failed</span>
+        )}
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 220, overflow: 'auto' }}>
+        {jobs.slice(0, 8).map((j) => {
+          const gate = gateByJob.get(j.id) ?? null
+          const merge = mergeIndex.byPath.get(j.slug || '') ?? mergeIndex.byStem.get(j.slug || '') ?? null
+          return (
+            <li key={j.id}>
+              <button type="button"
+                onClick={() => onSelectJob(j)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0',
+                  background: 'transparent', border: 'none', borderBottom: `1px solid ${E.hairlineSoft}`,
+                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}
+              >
+                {statusBadge(j.status)}
+                <span style={{ flex: 1, fontSize: 12, color: E.inkBlack, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: E.serif, fontStyle: 'italic' }}>
+                  {j.title || j.topic}
+                </span>
+                {gate?.score != null && (
+                  <span style={{ ...TYPE.caption, color: gate.passed ? E.mossGreen : E.ember }}>
+                    {gate.passed ? '✓' : '✕'} {gate.score}
+                  </span>
+                )}
+                {j.pr_number && (
+                  <span style={{ ...TYPE.caption, color: '#60A5FA' }}>PR #{j.pr_number}</span>
+                )}
+                {merge && (
+                  <span style={{ ...TYPE.caption, color: E.mossGreen }}>cluster</span>
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={onOpenWorkspaceJobs} style={{ ...navBtn(E.inkBlack, true), padding: '6px 12px' }}>
+          Open full queue →
+        </button>
+        <button type="button" onClick={onRefreshJobs} disabled={loading} style={{ ...navBtn(E.gold, false), padding: '6px 12px' }}>
+          ↻ Refresh
+        </button>
+      </div>
+    </>
+  )
+
+  const stepV = (
+    <>
+      <p style={{ ...TYPE.body, color: E.inkSoft, margin: '0 0 10px' }}>
+        Open a job’s detail to see its inline editor, deterministic compliance repairs, and the Approve → main action.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <div style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
+          <div style={{ ...TYPE.caption, color: E.inkMuted }}>In review queue</div>
+          <div style={{ ...TYPE.kicker, color: E.inkBlack }}>{prJobs.length}</div>
+        </div>
+        <div style={{ background: E.parchment, padding: '10px 12px', borderRadius: 6, border: `1px solid ${E.hairline}` }}>
+          <div style={{ ...TYPE.caption, color: E.inkMuted }}>Ready to merge</div>
+          <div style={{ ...TYPE.kicker, color: E.inkBlack }}>{mergedJobs.length}</div>
+        </div>
+      </div>
+      <button type="button" onClick={onEngage} style={{ ...navBtn(E.inkBlack, true), padding: '8px 14px' }}>
+        Open Create / Review →
+      </button>
+    </>
+  )
+
+  const stepVI = (
+    <ShipLedger
+      mergedJobs={mergedJobs}
+      onRefresh={onRefreshJobs}
+      setActionNotice={setActionNotice}
+    />
+  )
+
+  // Status triages
+  const stepStatus: ('idle' | 'live' | 'ingested' | 'drafting' | 'merged' | 'pr' | 'review')[] = [
+    'ingested',
+    radar.length ? 'live' : 'idle',
+    brief ? 'drafting' : 'idle',
+    mergedJobs.length ? 'merged' : (prJobs.length ? 'pr' : (draftingJobs.length ? 'drafting' : 'idle')),
+    prJobs.length ? 'review' : 'idle',
+    mergedJobs.length ? 'merged' : 'idle',
+  ]
+
+  return (
+    <section style={{
+      background: E.ivory,
+      borderRadius: 16,
+      padding: '28px 32px 24px',
+      border: `1px solid ${E.hairline}`,
+      boxShadow: E.ivoryShadow,
+    }}>
+      {/* ── Masthead ── */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ maxWidth: 720 }}>
+          <div style={{ ...TYPE.caption, color: E.gold }}>The Content Studio · Volume IV</div>
+          <h1 style={{ ...TYPE.display, margin: '4px 0 6px' }}>From ingest to live URL — wholly accounted for.</h1>
+          <p style={{ ...TYPE.byline, color: E.inkSoft, margin: 0, maxWidth: 540 }}>
+            One verifiable pipeline: SEO Master Engine intake → radar → compiler → gate → GitHub PR → estate deploy. Every page leaves a trail.
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <div style={{ ...TYPE.caption, color: E.inkMuted }}>{liveTone === 'live' ? 'Live Scan' : 'Snapshot Mode'}</div>
+          <div style={{ fontSize: 11, color: E.inkSoft, fontFamily: E.mono }}>
+            Issue {new Date().getFullYear()} · No. {String(jobTotal).padStart(3, '0')} of {jobTotal}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Section labels (editorial column rules) ── */}
+      <div style={{ height: 1, background: E.gold, marginBottom: 16, opacity: 0.4 }} />
+
+      {/* ── Six-step spread: two rows of three columns ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 22 }}>
+        {SPREAD_STEPS.slice(0, 3).map((s, i) => (
+          <SpreadStep key={s.roman} {...s} status={stepStatus[i]} accent={accentFor(i)} active={stepActiveIndex === i}
+            body={i === 0 ? stepI : i === 1 ? stepII : stepIII} />
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 22, marginTop: 22 }}>
+        {SPREAD_STEPS.slice(3).map((s, idx) => (
+          <SpreadStep key={s.roman} {...s} status={stepStatus[idx + 3]} accent={accentFor(idx + 3)} active={stepActiveIndex === (idx + 3)}
+            body={idx === 0 ? stepIV : idx === 1 ? stepV : stepVI} />
+        ))}
+      </div>
+
+      {/* ── Footer column rule ── */}
+      <div style={{ height: 1, background: E.gold, marginTop: 28, opacity: 0.4 }} />
+      <div style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 10, textAlign: 'center', letterSpacing: '0.25em' }}>
+        Fin — end of this issue — every ship leaves a stamp — every stamp is verifiable —
+      </div>
+    </section>
+  )
+}
+
+function accentFor(idx: number): string {
+  const palette = [E.inkBlack, E.goldDeep, E.gold, '#60A5FA', E.mossGreen, E.mossGreen]
+  return palette[idx % palette.length]
+}
+
+const navBtn = (color: string, dark: boolean): React.CSSProperties => ({
+  padding: '8px 14px',
+  borderRadius: 999,
+  background: dark ? color : E.paper,
+  color: dark ? '#FFFFFF' : color,
+  border: dark ? 'none' : `1px solid ${color}`,
+  cursor: 'pointer',
+  fontSize: 11,
+  fontWeight: 700,
+  fontFamily: E.mono,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+})
+
+// ── Ship Ledger (verified stamps of merged PRs) ──
+function ShipLedger({
+  mergedJobs, onRefresh, setActionNotice,
+}: {
+  mergedJobs: ContentJob[]
+  onRefresh: () => void
+  setActionNotice: (msg: string) => void
+}) {
+  const sorted = [...mergedJobs].sort((a, b) => {
+    const aT = a.merged_at ? new Date(a.merged_at).getTime() : 0
+    const bT = b.merged_at ? new Date(b.merged_at).getTime() : 0
+    return bT - aT
+  })
+  const stamps = sorted.slice(0, 12)
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ ...TYPE.metric, color: E.inkBlack }}>{sorted.length} merged PR{sorted.length === 1 ? '' : 's'}</div>
+        <button type="button" onClick={onRefresh} style={{ ...navBtn(E.gold, false), padding: '4px 10px', fontSize: 10 }}>↻ Refresh</button>
+      </div>
+      {stamps.length === 0 ? (
+        <p style={{ ...TYPE.body, color: E.inkMuted, margin: 0 }}>
+          No merged PRs yet. Approve a draft → PR → main → a stamp appears here with the live URL it produced.
+        </p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+          {stamps.map((j, idx) => {
+            const liveUrl = j.canonical_url || j.branch_name || j.content_path || ''
+            return (
+              <article key={j.id} style={{
+                background: E.cream, border: `1px dashed ${E.gold}`, borderRadius: 4,
+                padding: '10px 12px', position: 'relative',
+              }}>
+                {/* Stamp corners */}
+                <div style={{ position: 'absolute', top: -2, left: -2, width: 18, borderTop: `3px solid ${E.gold}` }} />
+                <div style={{ position: 'absolute', top: -2, left: -2, height: 18, borderLeft: `3px solid ${E.gold}` }} />
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 18, borderBottom: `3px solid ${E.gold}` }} />
+                <div style={{ position: 'absolute', bottom: -2, right: -2, height: 18, borderRight: `3px solid ${E.gold}` }} />
+
+                <div style={{ ...TYPE.caption, color: E.goldDeep, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Stamp No. {String(idx + 1).padStart(2, '0')}</span>
+                  <span>{j.merged_at ? formatDate(j.merged_at) : '—'}</span>
+                </div>
+                <h3 style={{ ...TYPE.headline, fontSize: 14, margin: '4px 0 2px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {j.title || j.topic}
+                </h3>
+                {liveUrl && (
+                  <a href={liveUrl} target="_blank" rel="noreferrer"
+                    onClick={() => setActionNotice(`Stamp verified · ${j.title || liveUrl}`)}
+                    style={{ fontSize: 11, color: E.inkBlack, textDecoration: 'none', wordBreak: 'break-all' }}>
+                    ↗ {liveUrl.replace(/^https?:\/\//, '').slice(0, 60)}
+                  </a>
+                )}
+                <div style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 6, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <span>PR #{j.pr_number || '—'}</span>
+                  {j.target_repo && <span>→ {j.target_repo}</span>}
+                  {j.ai_provider && <span>{j.ai_provider}</span>}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+      {sorted.length > stamps.length && (
+        <p style={{ ...TYPE.caption, color: E.inkMuted, marginTop: 8 }}>
+          Showing the {stamps.length} most-recent merged PRs · {sorted.length} on record
+        </p>
+      )}
+    </>
+  )
+}
+
 // ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
   const [tab, setTab] = React.useState<StudioTab>(() => {
@@ -2127,8 +2690,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
 
-  // Merge index + engine status + gates
+  // Merge index + merge history (Ship Ledger) + engine status + gates
   const [mergeIndex, setMergeIndex] = React.useState<{ byPath: Map<string, MergeUrlHit>; byStem: Map<string, MergeUrlHit> }>({ byPath: new Map(), byStem: new Map() })
+  const [merges, setMerges] = React.useState<CannibalMergeRecord[]>([])
   const [engineStatus, setEngineStatus] = React.useState<Record<string, unknown> | null>(null)
   const [gateByJob, setGateByJob] = React.useState<Map<string, { score: number; passed: boolean }>>(new Map())
   const [engineBusy, setEngineBusy] = React.useState(false)
@@ -2185,6 +2749,20 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         }
       }
       setMergeIndex({ byPath, byStem })
+    } catch { /* best-effort */ }
+  }, [])
+
+  // Ship Ledger: full merged-PR history (cannibal merges) for the stamp grid at the foot of Pipeline
+  const fetchMergeHistory = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/seo-factory/cannibal-merges', { credentials: 'same-origin' })
+      if (!res.ok) return
+      const data = (await res.json().catch(() => ({}))) as { error?: string; merges?: CannibalMergeRecord[] }
+      setMerges((data?.merges ?? []).slice().sort((a, b) => {
+        const aAt = typeof a?.mergedAt === 'number' ? a.mergedAt : 0
+        const bAt = typeof b?.mergedAt === 'number' ? b.mergedAt : 0
+        return bAt - aAt
+      }))
     } catch { /* best-effort */ }
   }, [])
 
@@ -2266,7 +2844,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
   React.useEffect(() => { fetchSuggestions('US') }, [fetchSuggestions])
   React.useEffect(() => { fetchJobs() }, [fetchJobs])
-  React.useEffect(() => { fetchMergeIndex() }, [fetchMergeIndex])
+  React.useEffect(() => { fetchMergeIndex(); void fetchMergeHistory() }, [fetchMergeIndex, fetchMergeHistory])
 
   // Engine surfaces — non-fatal
   const fetchEngineStatus = React.useCallback(async () => {
@@ -2548,6 +3126,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const engGate = (engine.gate as { passRate?: number } | undefined)?.passRate
 
   const TABS: Array<{ key: StudioTab; icon: string; label: string; hint: string }> = [
+    { key: 'pipeline', icon: '📰', label: 'Pipeline', hint: 'Engine → live' },
     { key: 'create', icon: '✏️', label: 'Create', hint: 'Launch new content' },
     { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobTotal || jobs.length} jobs` },
     { key: 'insights', icon: '📊', label: 'Insights', hint: 'Radar · GSC · merges' },
@@ -2567,7 +3146,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchGateRuns() }} disabled={loading} style={btnGhost}>
+          <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchMergeHistory(); void fetchGateRuns() }} disabled={loading} style={btnGhost}>
             ↻ Refresh
           </button>
         </div>
@@ -2642,6 +3221,40 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           </button>
         ))}
       </div>
+
+      {/* ══════════ PIPELINE (editorial spread) ══════════ */}
+      {tab === 'pipeline' && (
+        <div id="studio-panel-pipeline" role="tabpanel" aria-labelledby="studio-tab-pipeline" style={{ marginBottom: 14 }}>
+          <StudioEditorialSpread
+            engineStatus={engineStatus}
+            engineBusy={engineBusy}
+            onEngineAction={runEngineAction}
+            radar={radar}
+            radarMeta={radarMeta}
+            suggestions={suggestions}
+            suggestionsLoading={suggestionsLoading}
+            suggestionsError={suggestionsError}
+            gscStatus={gscStatus}
+            onConnectGsc={() => setGscConnectOpen(true)}
+            onRefreshSuggestions={fetchSuggestions}
+            onApplySuggestion={applyBrief}
+            brief={selectedBrief}
+            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+            jobs={jobs}
+            jobTotal={jobTotal}
+            jobSummary={jobSummary}
+            loading={loading}
+            mergeIndex={mergeIndex}
+            gateByJob={gateByJob}
+            onSelectJob={(job) => { setQueueFocusJobId(null); setSelectedJob(job); selectTab('queue') }}
+            mergeHistory={merges}
+            onRefreshJobs={() => void fetchJobs()}
+            setActionNotice={setActionNotice}
+            onOpenWorkspaceJobs={() => selectTab('queue')}
+            onEngage={() => selectTab('create')}
+          />
+        </div>
+      )}
 
       {/* ══════════ CREATE ══════════ */}
       {tab === 'create' && (
