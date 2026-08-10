@@ -37,8 +37,14 @@
  *
  *     CLERK_TEST_EMAIL=admin@example.com
  *     CLERK_TEST_PASSWORD=your-password
+ *     CLERK_SECRET_KEY=sk_live_...            (Backend API — for sign-in tokens)
  *
- * Without these the test is marked `test.skip` (same convention as
+ * All three are required: `loginAsAdmin` resolves the test user and creates a
+ * one-time sign-in token via the Backend API (bypassing the multi-step form
+ * and email OTP). `scripts/provision-e2e-admin.mjs` provisions this admin and
+ * wires all three into the gitignored `.env.test`.
+ *
+ * Without them the test is marked `test.skip` (same convention as
  * consultant-settings.spec.ts). Run: npx playwright test --project=chromium
  *
  * @see https://clerk.com/docs/testing/playwright
@@ -170,7 +176,7 @@ function countWarRoomRefreshes(page: Page): { hits: () => number } {
 
 test.describe('GSC connect modal (admin)', () => {
   test('OAuth: CONNECTED phase fires the radar refresh', async ({ browser }) => {
-    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
     test.skip(!page, 'Skipping: could not sign in')
@@ -237,7 +243,7 @@ test.describe('GSC connect modal (admin)', () => {
   })
 
   test('Service account: pasted key + URL connect fires the radar refresh', async ({ browser }) => {
-    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
     test.skip(!page, 'Skipping: could not sign in')
@@ -330,7 +336,7 @@ test.describe('GSC connect modal (admin)', () => {
   })
 
   test('Service account reconnect: swapping a broken key fires the live-heal radar refresh', async ({ browser }) => {
-    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
     test.skip(!page, 'Skipping: could not sign in')
@@ -429,7 +435,7 @@ test.describe('GSC connect modal (admin)', () => {
   })
 
   test('OAuth reconnect: re-running Google consent heals the token and fires the live-heal radar refresh', async ({ browser }) => {
-    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
     test.skip(!page, 'Skipping: could not sign in')
@@ -506,7 +512,7 @@ test.describe('GSC connect modal (admin)', () => {
   })
 
   test('Mode chip surfaces the connect path in the Systems card and composer banner (SERVICE_ACCOUNT)', async ({ browser }) => {
-    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL and CLERK_TEST_PASSWORD (admin role)')
+    test.skip(!hasClerkCredentials(), 'Skipping: set CLERK_TEST_EMAIL + CLERK_TEST_PASSWORD + CLERK_SECRET_KEY (admin role)')
 
     const page = await loginAsAdmin(browser)
     test.skip(!page, 'Skipping: could not sign in')
