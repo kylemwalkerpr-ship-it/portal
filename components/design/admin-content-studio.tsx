@@ -12,7 +12,13 @@
  *                  status, compliance gate, SEO score and merge badges.
  *   📊  Insights — GSC overview, scored Opportunity Radar, merge history,
  *                  interlink suggestions, site health, deep interlinks.
+ *   🧭  Operations — the former command-center surfaces (Radar, Launch,
+ *                  Pipeline, Engine, Missions, Systems) inside this workspace.
  *
+ * Content Studio is the single admin entry point. Operations is a first-class
+ * tab rather than a separate overlay, so generation, monitoring, and delivery
+ * share one navigation shell and one source of truth.
+
  * The SEO Master Engine strip on top keeps the six brain surfaces one
  * command away (ingest / plan / LLM audit) and every job's detail modal
  * enforces the compliance gate with dedicated action groups.
@@ -63,7 +69,11 @@ type ContentType = 'blog_post' | 'article' | 'regional_page'
 type Tone = 'professional' | 'educational' | 'persuasive' | 'authoritative' | 'casual'
 type Region = 'US' | 'CA' | 'AU' | 'UK' | 'COMPARE'
 type JobStatus = 'pending' | 'drafting' | 'publishing' | 'pr_created' | 'merged' | 'closed' | 'failed'
-type StudioTab = 'create' | 'queue' | 'insights'
+type StudioTab = 'create' | 'queue' | 'insights' | 'operations'
+
+function isStudioTab(value: string | null): value is StudioTab {
+  return value === 'create' || value === 'queue' || value === 'insights' || value === 'operations'
+}
 
 interface ContentJob {
   id: string; title: string; topic: string; content_type: ContentType
@@ -2036,7 +2046,37 @@ function JobDetail({
 
 // ── MAIN COMPONENT ──
 export default function AdminContentStudio({ services: _services, refreshAdminData: _refreshAdminData, setActionNotice }: ContentStudioProps) {
-  const [tab, setTab] = React.useState<StudioTab>('create')
+  const [tab, setTab] = React.useState<StudioTab>(() => {
+    if (typeof window === 'undefined') return 'create'
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    return isStudioTab(requested) ? requested : 'create'
+  })
+  const [operationsVisited, setOperationsVisited] = React.useState(() => {
+    if (typeof window === 'undefined') return false
+    return new URLSearchParams(window.location.search).get('tab') === 'operations'
+  })
+  const selectTab = React.useCallback((next: StudioTab) => {
+    setTab(next)
+    if (next === 'operations') setOperationsVisited(true)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', next)
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [])
+  React.useEffect(() => {
+    const onPopState = () => {
+      const requested = new URLSearchParams(window.location.search).get('tab')
+      const next = isStudioTab(requested) ? requested : 'create'
+      setTab(next)
+      if (next === 'operations') setOperationsVisited(true)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', next)
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
   const [jobs, setJobs] = React.useState<ContentJob[]>([])
   const [jobTotal, setJobTotal] = React.useState(0)
   const [jobSummary, setJobSummary] = React.useState<QueueSummary | null>(null)
@@ -2044,7 +2084,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generating, setGenerating] = React.useState(false)
   const [selectedJob, setSelectedJob] = React.useState<ContentJob | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [showFactory, setShowFactory] = React.useState(false)
 
   // Composer state (lifted so generation + auto-interlink can use it)
   const [contentType, setContentType] = React.useState<ContentType>('blog_post')
@@ -2221,7 +2260,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setSelectedBrief(s)
     setBriefInterlinks(s.interlinks ?? [])
     setSuggestions(prev => [s, ...prev.filter(x => x.topic !== s.topic)])
-    setTab('create')
+    selectTab('create')
     setShowRadar(true)
   }, [])
 
@@ -2459,7 +2498,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           ? `Generated (audit ${data.audit?.score ?? '—'}) but ship paused: ${data.shipError}`
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
-      setTab('queue')
+      selectTab('queue')
       const refreshedJobs = await fetchJobs()
       if (generatedJobId) {
         let reviewJob = refreshedJobs.find((candidate) => candidate.id === generatedJobId) || null
@@ -2512,6 +2551,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     { key: 'create', icon: '✏️', label: 'Create', hint: 'Launch new content' },
     { key: 'queue', icon: '📋', label: 'Queue', hint: `${jobTotal || jobs.length} jobs` },
     { key: 'insights', icon: '📊', label: 'Insights', hint: 'Radar · GSC · merges' },
+    { key: 'operations', icon: '🧭', label: 'Operations', hint: 'Radar · Engine · Systems' },
   ]
 
   return (
@@ -2527,9 +2567,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => { setShowFactory(!showFactory); if (!showFactory) setTab('create') }} style={showFactory ? btnSolid(C.gold) : { ...btnGhost, border: `2px solid ${C.gold}`, color: C.gold, fontWeight: 700 }}>
-            {showFactory ? '✕ Close Command Center' : '🏭 Command Center'}
-          </button>
           <button type="button" onClick={() => { void fetchJobs(); void fetchMergeIndex(); void fetchGateRuns() }} disabled={loading} style={btnGhost}>
             ↻ Refresh
           </button>
@@ -2553,15 +2590,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         <div style={{ background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: C.radiusSm, padding: '10px 16px', fontSize: 12, color: C.red, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, fontSize: 18 }}>×</button>
-        </div>
-      )}
-
-      {/* ── Command Center (full-width, conditional) ── */}
-      {showFactory && (
-        <div style={{ marginBottom: 14 }}>
-          <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Command Center…</div>}>
-            <AdminCommandCenter setActionNotice={setActionNotice} />
-          </React.Suspense>
         </div>
       )}
 
@@ -2592,12 +2620,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       </div>
 
       {/* ── Tab navigation ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+      <div role="tablist" aria-label="Content Studio workspaces" style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button
             key={t.key}
+            id={`studio-tab-${t.key}`}
+            role="tab"
+            aria-selected={tab === t.key}
+            aria-controls={`studio-panel-${t.key}`}
             type="button"
-            onClick={() => setTab(t.key)}
+            onClick={() => selectTab(t.key)}
             style={{
               padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit',
               background: tab === t.key ? C.navy : C.surface, color: tab === t.key ? '#FFF' : C.textMuted,
@@ -2613,7 +2645,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
 
       {/* ══════════ CREATE ══════════ */}
       {tab === 'create' && (
-        <>
+        <div id="studio-panel-create" role="tabpanel" aria-labelledby="studio-tab-create">
           {/* GSC live probe banner — snapshot-vs-live is obvious before generating */}
           {gscStatus && !(gscStatus.connected && gscStatus.live) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '9px 14px', borderRadius: C.radiusSm, border: '1px solid #FDE68A', background: '#FFFBEB', fontSize: 11.5, flexWrap: 'wrap' }}>
@@ -2671,12 +2703,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
             regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
           />
-        </>
+        </div>
       )}
 
       {/* ══════════ QUEUE ══════════ */}
       {tab === 'queue' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div id="studio-panel-queue" role="tabpanel" aria-labelledby="studio-tab-queue" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {!loading && (jobs.length > 0 || jobTotal > 0) && <QueueStats jobs={jobs} total={jobTotal} summary={jobSummary} />}
           <QueueTable
             jobs={jobs}
@@ -2692,9 +2724,23 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* ══════════ INSIGHTS ══════════ */}
+      {/* ══════════ OPERATIONS ══════════ */}
+      {operationsVisited && (
+        <div
+          id="studio-panel-operations"
+          role="tabpanel"
+          aria-labelledby="studio-tab-operations"
+          hidden={tab !== 'operations'}
+          style={{ marginBottom: 14 }}
+        >
+          <React.Suspense fallback={<div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: C.textDim }}>Loading Operations…</div>}>
+            <AdminCommandCenter setActionNotice={setActionNotice} />
+          </React.Suspense>
+        </div>
+      )}
+
       {tab === 'insights' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
+        <div id="studio-panel-insights" role="tabpanel" aria-labelledby="studio-tab-insights" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 14, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <GscMini />
             <OpportunityRadar opportunities={radar} meta={radarMeta} onApply={applyBrief} />
@@ -2715,7 +2761,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           onClose={() => setSelectedJob(null)}
           onRefresh={async () => { await fetchJobs() }}
           setActionNotice={setActionNotice}
-          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); setTab('queue') }}
+          onReplacementJob={(jobId) => { setQueueFocusJobId(jobId); setSelectedJob(null); selectTab('queue') }}
           gateFor={gateByJob.get(selectedJob.id) ?? null}
         />
       )}

@@ -3228,8 +3228,8 @@ function RecheckDuePanel() {
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                 <span style={{ width: 9, height: 9, borderRadius: 999, background: kpis.liveGsc ? '#34D399' : '#FCD34D', display: 'inline-block', boxShadow: kpis.liveGsc ? '0 0 0 3px rgba(52,211,153,0.25)' : '0 0 0 3px rgba(252,211,77,0.25)' }} />
-                <h1 style={{ margin: 0, fontSize: 26, color: '#FFFFFF', fontWeight: 700, letterSpacing: '-0.02em', fontFamily: C.serif }}>
-                  SEO Command Center
+                <h1 style={{ margin: 0, fontSize: 26, color: '#FFFFFF', fontWeight: 700, letterSpacing: '-0.02em', fontFamily: C.serif }}>                   Content Studio Operations
+
                 </h1>
                 <span style={{
                   padding: '2px 9px', borderRadius: 999, fontSize: 9, fontWeight: 700,

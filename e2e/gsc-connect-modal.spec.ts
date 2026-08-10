@@ -1,7 +1,7 @@
 /**
  * gsc-connect-modal.spec.ts
  *
- * E2E for the GSC connect modal (Command Center → Systems → Connect Search
+ * E2E for the GSC connect modal (Content Studio → Operations → Systems → Connect Search
  * Console). Three connect paths are exercised:
  *
  *   1. OAuth — mocks `window.open` (Google forbids embedding the consent
@@ -32,7 +32,7 @@
  * POST to `/api/seo-factory/war-room`).
  *
  * ── Auth setup ──────────────────────────────────────────────────────────────
- * The Command Center lives at /dashboard/admin/content and requires a Clerk
+ * Content Studio Operations lives at /dashboard/admin/content and requires a Clerk
  * session with the **admin** role. Set before running:
  *
  *     CLERK_TEST_EMAIL=admin@example.com
@@ -159,8 +159,8 @@ async function recoverFromErrorBoundary(page: Page): Promise<void> {
 }
 
 /**
- * Drive the UI to the connect modal: open the studio, open the Command
- * Center, switch to the Systems tab, and click the Systems-card CTA.
+ * Drive the UI to the connect modal: open the studio, open the Operations
+ * tab, switch to the Systems tab, and click the Systems-card CTA.
  * When `reconnect` is true the card shows the broken-token Re-connect CTA
  * instead of the fresh Connect CTA.
  */
@@ -174,9 +174,9 @@ async function navigateToConnectModal(page: Page, opts: { reconnect?: boolean } 
   }
   await recoverFromErrorBoundary(page)
 
-  const ccButton = page.getByRole('button', { name: /Command Center/ }).first()
-  await ccButton.waitFor({ state: 'visible', timeout: 30000 })
-  await ccButton.click()
+  const operationsTab = page.getByRole('tab', { name: /Operations/ })
+  await operationsTab.waitFor({ state: 'visible', timeout: 30000 })
+  await operationsTab.click()
 
   const systemsTab = page.locator('button[title="Open Systems"]')
   await systemsTab.waitFor({ state: 'visible', timeout: 30000 })
@@ -656,9 +656,9 @@ test.describe('GSC connect modal (admin)', () => {
     await expect(page.getByRole('button', { name: 'Re-connect GSC →' })).toBeVisible()
 
     // ── Systems card surfaces the same chip ────────────────────────────────
-    // Open the Command Center → Systems. Its mount poll reads the same
+    // Open the Operations → Systems. Its mounted panel reads the same
     // connected state → CONNECTED + SERVICE_ACCOUNT chip + TOKEN FAILURE.
-    await page.getByRole('button', { name: /Command Center/ }).first().click()
+    await page.getByRole('tab', { name: /Operations/ }).click()
     const systemsTab = page.locator('button[title="Open Systems"]')
     await systemsTab.waitFor({ state: 'visible', timeout: 30000 })
     await systemsTab.click()

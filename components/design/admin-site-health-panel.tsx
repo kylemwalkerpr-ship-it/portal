@@ -239,7 +239,7 @@ export default function AdminSiteHealthPanel() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div>
-          <h3 style={{ margin: '4px 0 2px', fontFamily: C.serif, fontSize: 22, color: C.text }}>Site Health · Command Center</h3>
+          <h3 style={{ margin: '4px 0 2px', fontFamily: C.serif, fontSize: 22, color: C.text }}>Site Health · Content Studio Operations</h3>
           <p style={{ margin: 0, fontSize: 12, color: C.textDim }}>
             Orphan repair · indexing · sitemap sync · live verification
           </p>
