@@ -7,11 +7,110 @@
 import type { OwnerPlan } from './ownership'
 import {
   depthPromptClause,
+  depthSpecForType,
   minWordsForType as depthMinWords,
   targetWordsForType,
   maxWordsForType as depthMaxWords,
 } from './contentDepth'
 import { qualityPromptBlock, formattingRequirementsBlock } from './contentQualityGate'
+
+/**
+ * Destination format contract — deterministic instructions per host+repo+contentType.
+ * The AI model receives these exact rules so content is formatted for the file
+ * it will actually become (caseworks .tsx, consultancy .md, apex blog .md).
+ */
+export function destinationFormatBlock(plan: OwnerPlan, contentType: string): string {
+  const repo = plan.repo
+  const host = plan.host
+  const spec = depthSpecForType(contentType)
+  const isBlog = contentType === 'blog_summary' || contentType === 'blog_post'
+  const isRegional = contentType === 'regional_page' || contentType === 'regional_from' || contentType === 'regional_university'
+  const isLegal = contentType === 'legal_guide' || contentType === 'article'
+  const fileExt = repo === 'caseworks' ? '.tsx' : '.md'
+
+  const lines: string[] = [
+    '## DESTINATION FORMAT CONTRACT — the file this becomes',
+    '',
+    `- Destination repo: ${repo} (${repo === 'caseworks' ? 'Next.js app router' : repo === 'yousafe-consultancy' ? 'Astro/Nuxt content site' : 'portal marketplace'})`,
+    `- Output file: ${plan.filePath} (${fileExt})`,
+    `- Live URL after deploy: ${plan.canonicalUrl}`,
+    `- Host subdomain: ${host} → write for the audience that lands on ${plan.canonicalUrl}`,
+    `- Content tier: ${spec.tier} · min ${spec.minWords} words · target ~${spec.targetWords} · max ${spec.maxWords}`,
+    '',
+  ]
+
+  if (repo === 'caseworks' && isLegal) {
+    // Caseworks legal guides — JSX page.tsx with ArticleLayout + CTAPanel
+    lines.push(
+      'CASEBOOKS / LEGAL GUIDE FORMAT (.tsx JSX page):',
+      '- Output is a Next.js page.tsx — NOT markdown. The renderer converts your markdown to JSX.',
+      '- Wrap body prose in <p> tags. Lists become <ul><li>. H2 → <h2>. H3 → <h3>.',
+      '- Every page MUST end with a <CTAPanel> component:',
+      '  <CTAPanel headline="…" body="…" cta="Get a free review" href="/intake?…" />',
+      '- The CTA routes to the intake form, not to another article.',
+      '- Metadata is a TypeScript export: export const metadata = { title, description, alternates: { canonical } }',
+      '- Imports required: ArticleLayout, CTAPanel, Link from next/link.',
+      '- Country in metadata is one of us|uk|ca|au.',
+      '- Word count target: 2,200–2,800 body words (YMYL-adjacent, Google Helpful Content depth).',
+      '- Practitioner tone: calm, second-person, no clickbait, cite official sources with URLs.',
+      '',
+    )
+  } else if (repo === 'yousafe-consultancy' && isBlog) {
+    // Apex blog or regional blog — .md with YAML front matter, images, specific blog layout
+    lines.push(
+      'LANDING-PAGE / BLOG FORMAT (.md with YAML front matter):',
+      '- Output is a plain .md file with YAML front matter between --- fences.',
+      '- Front matter fields REQUIRED: title, description (140–160 chars), canonical (full URL), date (YYYY-MM-DD), author, image (hero image path), category, tags[]',
+      '- The blog lives at https://yousafeconsultancy.com/blog/{slug} — the slug is derived from the file name.',
+      `- Blog tier: ${spec.minWords}–${spec.maxWords} words. Blogs are scannable, narrative, and helpful — shorter than legal guides.`,
+      '- Images: reference as ![Alt text](/images/blog/slug-description.jpg). The build pipeline supplies actual images.',
+      '- Use ## for sections, ### for sub-sections only under a ##.',
+      '- Opening paragraph must hook the reader with a concrete problem or question.',
+      '- Include a ## Key takeaways section (3–5 bullets) after the intro.',
+      '- Blog posts may include a ## About the author snippet at the bottom.',
+      '- Internal links naturally connect to related blog posts and deeper guides on legal.yousafeconsultancy.com.',
+      '- Marketplace CTA: where relevant, link readers to market.yousafeconsultancy.com for services — do not promise outcomes.',
+      '- Tone: conversational yet authoritative, plain English (~8th grade), no jargon without definition.',
+      '',
+    )
+  } else if (repo === 'yousafe-consultancy' && isRegional) {
+    // Regional pages — .md with YAML, geo-specific structure
+    lines.push(
+      'REGIONAL / GEO PAGE FORMAT (.md with YAML front matter):',
+      '- Output is a plain .md file with YAML front matter between --- fences.',
+      '- Front matter fields REQUIRED: title, description (140–160 chars), canonical (full URL), region, content_type, ownerHost, date (YYYY-MM-DD).',
+      `- Regional tier: ${spec.minWords}–${spec.maxWords} words. Regional pages are definitive but scannable.`,
+      '- Structure: H1 → ## In 60 seconds → opening answer → ## sections with procedures → ## FAQ → ## Sources → disclaimer.',
+      '- Geo-specific: include country/city-specific details (agencies, forms, timelines, local context).',
+      '- If this is a university page: include campus-specific housing, costs, international office contacts.',
+      '- If this is a from-country page: include consulate locations, document requirements specific to that origin.',
+      '- Links: connect to regional sister pages (other universities, other from-country pages), legal guides, and the marketplace.',
+      '- Tone: informative, practical, second-person ("you"), no hype, no outcome promises.',
+      '',
+    )
+  } else if (repo === 'portal') {
+    // Marketplace pages — NOT created by the studio, but format contract for completeness
+    lines.push(
+      'MARKETPLACE FORMAT (.mdx catalogue file):',
+      '- These are created by service providers from their dashboard — the studio does NOT generate them.',
+      '- If you see this format contract, the pipeline routing is MISCONFIGURED — a marketplace keyword was routed to the studio.',
+      '- STOP and route to the correct host (legal, usa, uk, ca, au, or apex).',
+      '',
+    )
+  } else {
+    // Default — markdown page (catch-all)
+    lines.push(
+      'DEFAULT MARKDOWN FORMAT (.md with YAML front matter):',
+      '- Output is a plain .md file with YAML front matter between --- fences.',
+      '- Front matter fields REQUIRED: title, description (140–160 chars), canonical (full URL), date (YYYY-MM-DD), region, content_type.',
+      `- Word count: ${spec.minWords}–${spec.maxWords} words of body prose.`,
+      '- Standard structure: H1 → TL;DR → sections → FAQ → Sources → disclaimer.',
+      '',
+    )
+  }
+
+  return lines.join('\n')
+}
 
 export function buildFactorySystemPrompt(opts: {
   plan: OwnerPlan
@@ -52,6 +151,8 @@ export function buildFactorySystemPrompt(opts: {
     `- Routing: ${plan.routingSource}${plan.matched ? ` · registry "${plan.matched.primary_keyword}"` : ''}`,
     `- Intent: ${plan.intentClass} · action: ${plan.action}`,
     'Do not write content that belongs on another estate host.',
+    '',
+    destinationFormatBlock(plan, contentType),
     '',
     strategyBlock || '',
     '',

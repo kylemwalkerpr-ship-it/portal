@@ -6,6 +6,47 @@
 import { createClient } from '@supabase/supabase-js'
 import { getGscAccess } from '@/lib/gscAuth'
 import { loadGscSnapshot, loadOwnershipRegistry } from '@/lib/seoDataLoaders'
+import { CATEGORIES } from '@/lib/categories'
+
+/**
+ * Marketplace category demand signal — when the marketplace has active
+ * service-provider supply in an area, the engine should prioritize creating
+ * educational content (blogs, guides, regional pages) that funnels readers
+ * toward those services. The studio NEVER creates marketplace gigs — it uses
+ * marketplace demand only as a weight to decide WHICH topics to flesh out.
+ *
+ * Returns a bonus 0–25 added to the authority score for keywords that match
+ * marketplace category/subcategory names or keywords.
+ */
+function marketplaceDemandBoost(term: string): number {
+  const t = term.toLowerCase()
+  let best = 0
+  for (const cat of CATEGORIES) {
+    // Category name match → strong signal
+    if (cat.name && t.includes(cat.name.toLowerCase())) {
+      best = Math.max(best, 20)
+    }
+    // Subcategory name match
+    for (const sub of cat.subcategories || []) {
+      if (sub.name && t.includes(sub.name.toLowerCase())) {
+        best = Math.max(best, 18)
+      }
+      // Subcategory keyword match → direct demand signal
+      for (const kw of sub.keywords || []) {
+        if (kw && t.includes(kw.toLowerCase())) {
+          best = Math.max(best, 15)
+        }
+      }
+    }
+    // Category description keyword match (looser signal)
+    if (cat.description) {
+      const descWords = cat.description.toLowerCase().split(/\s+/).filter(w => w.length > 4)
+      const matchCount = descWords.filter(w => t.includes(w)).length
+      if (matchCount >= 2) best = Math.max(best, 10)
+    }
+  }
+  return Math.min(25, best)
+}
 import { resolveOwner, type OwnerPlan } from './ownership'
 import {
   authorityPromptHints,
@@ -31,6 +72,8 @@ export interface KeywordSignal {
   /** AEO/SEO/GEO authority composite 0–100 */
   authorityScore: number
   authority: AuthorityBreakdown
+  /** Marketplace category demand bonus 0–25 — signal that service providers exist */
+  marketplaceDemand?: number
   lane: PlanLane
   laneReason: string
   region: string
@@ -445,11 +488,17 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       registryAction: plan.action,
     })
 
+    // Marketplace demand signal: when the marketplace already has service
+    // providers for this topic, the engine should prioritize educational
+    // content that funnels readers toward those services.
+    const mktDemand = marketplaceDemandBoost(q.term)
+
     // Priority: actionable lanes first, then AEO/SEO/GEO authority, then raw demand
     const lanePri =
       lane === 'refresh' ? 100 : lane === 'expand' ? 85 : lane === 'build_new' ? 70 : lane === 'monitor' ? 20 : 5
-    // Prefer high-authority expand/refresh over low-authority net-new
-    const authorityBoost = authority.total
+    // Prefer high-authority expand/refresh over low-authority net-new.
+    // Marketplace demand adds up to 2,500 bonus points (25 × 100).
+    const authorityBoost = authority.total + mktDemand
     const priority = lanePri * 100000 + authorityBoost * 1000 + Math.min(dScore, 999)
 
     board.push({
@@ -459,10 +508,11 @@ export async function buildKeywordPlan(opts: PlanOptions = {}): Promise<KeywordP
       ctr: q.ctr,
       position: q.position,
       demandScore: dScore,
-      authorityScore: authority.total,
+      authorityScore: authority.total + mktDemand,
       authority,
+      marketplaceDemand: mktDemand,
       lane,
-      laneReason: `${reason} · ${authority.rationale}`,
+      laneReason: `${reason} · ${authority.rationale}${mktDemand > 0 ? ` · marketplace demand +${mktDemand}` : ''}`,
       region,
       suggestedContentType:
         plan.intentClass === 'geo_modifier'
