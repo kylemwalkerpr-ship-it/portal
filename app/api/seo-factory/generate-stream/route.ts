@@ -216,8 +216,8 @@ export async function POST(request: Request) {
               const now = Date.now()
             const shouldCheckpoint =
                 ev.type === 'attempt' ||
-                draft.length >= lastCheckpointChars + 25000 ||
-                now - lastCheckpointAt >= 60000
+                draft.length >= lastCheckpointChars + 8000 ||
+                now - lastCheckpointAt >= 20000
               if (shouldCheckpoint && draft.length >= lastCheckpointChars) {
                 lastCheckpointDraft = draft
                 lastCheckpointChars = draft.length

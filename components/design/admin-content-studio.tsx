@@ -1732,7 +1732,9 @@ function JobDetail({
     }])
     const controller = new AbortController()
     actionAbortRef.current = controller
-    const timeout = setTimeout(() => controller.abort(), 240_000)
+    // Cloudflare maxDuration is 300s; abort 10s before so we get a clean
+    // error instead of a 503 HTML page that breaks the JSON parser.
+    const timeout = setTimeout(() => controller.abort(), 290_000)
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
       setActionEvents(prev => [...prev, { id: `${Date.now()}-${prev.length}`, ts: Date.now(), stage, message, level }].slice(-60))
     }
@@ -1755,7 +1757,7 @@ function JobDetail({
           shipMode: detail.ship_mode || 'pr',
           indexable: detail.indexable !== false,
           minAuditScore: 55,
-          maxRefine: 2,
+          maxRefine: 3,
           supersedesJobId: detail.id,
           regenerationMode: resume ? 'resume' : 'refresh',
           regenerationReason: resume ? 'Continue saved checkpoint after interrupted generation' : 'Refresh from current quality gate and evidence signals',
@@ -1788,13 +1790,37 @@ function JobDetail({
       const timedOut = error instanceof DOMException && error.name === 'AbortError'
       const rawMessage = error instanceof Error ? error.message : 'Regeneration failed'
       const resumable = timedOut || streamedChars > 0
+
+      // Surface the real error: the user needs to know WHAT stopped the stream,
+      // not just that it stopped. A Cloudflare CPU timeout needs a different
+      // action than an AI provider error.
+      const cause = timedOut
+        ? 'Request timed out after 5 minutes (Cloudflare Worker CPU budget or AI response time).'
+        : rawMessage.includes('Generation stream ended')
+          ? 'The pipeline completed without a final result — the checkpointed draft may be complete.'
+          : rawMessage
+
       const message = resumable
-        ? 'The stream stopped, but the latest partial draft was checkpointed. Continue from the saved draft instead of starting over.'
-        : rawMessage
+        ? `${cause} The latest partial draft was checkpointed — continue from the saved draft instead of starting over.`
+        : cause
+
       record('error', message, 'error')
       setResumeAvailable(resumable)
       setActionError(message)
       setActionNotice(resumable ? 'Partial draft saved. Continue when ready.' : 'Regeneration did not complete.')
+
+      // Auto-resume: on timeout with streamed content, don't make the
+      // operator click a button — the checkpoint is reliable, just continue.
+      if (timedOut && streamedChars > 0) {
+        record('info', 'Auto-resuming from the saved checkpoint…', 'info')
+        clearTimeout(timeout)
+        actionAbortRef.current = null
+        setActiveAction(null)
+        setBusy(false)
+        await runRegenerateStream(true)
+        return
+      }
+
       if (resumable) await onRefresh()
     } finally {
       clearTimeout(timeout)
