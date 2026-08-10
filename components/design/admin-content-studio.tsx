@@ -765,33 +765,69 @@ function ChapterIntro({
           </div>
         ))}
       </div>
-      {/* Compass rail — shows all seven chapters with current one bold. */}
+      {/* Pipeline bubble pills — horizontal stage navigation with arrows */}
       <div style={{
-        marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${E.hairline}`,
-        display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'center',
+        marginTop: 16, paddingTop: 14,
+        borderTop: `1px dashed ${E.hairline}`,
+        display: 'flex', gap: 0, flexWrap: 'nowrap', alignItems: 'center',
+        overflowX: 'auto', justifyContent: 'center',
       }}>
-        {order.map((k, i) => (
-          <button key={k}
-            onClick={() => onJump && onJump(k)}
-            disabled={!onJump}
-            style={{
-              display: 'flex', alignItems: 'baseline', gap: 4,
-              padding: '4px 10px', borderRadius: 0, cursor: onJump ? 'pointer' : 'default',
-              background: k === chapterKey ? E.gold : 'transparent',
-              border: 'none',
-              fontFamily: C.serif, fontSize: 11,
-              color: k === chapterKey ? E.ivory : E.inkMuted,
-              opacity: k === chapterKey ? 1 : 0.85,
-            }}
-            title={`${numerals[k]} · ${titles[k]}`}
-          >
-            <span style={{ fontWeight: 700, fontFamily: C.serif }}>{numerals[k]}</span>
-            <span style={{ fontStyle: 'italic' }}>{titles[k]}</span>
-            {i < order.length - 1 && (
-              <span style={{ color: E.inkMuted, margin: '0 6px', opacity: 0.5 }}>·</span>
-            )}
-          </button>
-        ))}
+        {order.map((k, i) => {
+          const active = k === chapterKey
+          const currentIdx = order.indexOf(chapterKey)
+          const isPast = currentIdx > i
+          return (
+            <React.Fragment key={k}>
+              {i > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', padding: '0 4px',
+                  opacity: isPast ? 0.35 : 0.15,
+                  transition: 'opacity 0.3s ease',
+                }}>
+                  <svg width="16" height="12" viewBox="0 0 16 12" style={{ display: 'block' }}>
+                    <path d="M9 1l4 5-4 5" stroke={active ? E.gold : E.inkDim} strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M13 6H2" stroke={active ? E.gold : E.inkDim} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+                  </svg>
+                </span>
+              )}
+              <button key={k}
+                onClick={() => onJump && onJump(k)}
+                disabled={!onJump}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  padding: '6px 12px', borderRadius: 0,
+                  cursor: onJump ? 'pointer' : 'default',
+                  background: 'transparent',
+                  border: 'none',
+                  opacity: active ? 1 : 0.7,
+                  transition: 'all 0.25s ease',
+                  minWidth: 60,
+                }}
+                title={`${numerals[k]} · ${titles[k]}`}
+              >
+                <span style={{
+                  width: 30, height: 30, borderRadius: '50%',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? E.gold : (isPast ? E.goldSoft : 'transparent'),
+                  border: active ? `1.5px solid ${E.gold}` : (isPast ? `1.5px solid ${E.gold}44` : `1px solid ${E.hairline}`),
+                  fontFamily: C.serif, fontSize: 14, fontWeight: 700,
+                  color: active ? E.ivory : (isPast ? E.goldDeep : E.inkMuted),
+                  boxShadow: active ? `0 2px 8px ${E.gold}33` : 'none',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}>
+                  {numerals[k]}
+                </span>
+                <span style={{
+                  fontFamily: C.serif, fontSize: 9, fontWeight: active ? 700 : 500,
+                  color: active ? E.ink : E.inkMuted,
+                  transition: 'color 0.25s ease',
+                }}>
+                  {titles[k]}
+                </span>
+              </button>
+            </React.Fragment>
+          )
+        })}
       </div>
     </div>
   )
@@ -5125,58 +5161,88 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       </div>
 
-      {/* ── Section nav — editorial spread ribbons ── */}
-      <div role="tablist" aria-label="Content Studio workspaces" style={{
-        display: 'flex', gap: 0, marginBottom: 16, flexWrap: 'wrap',
-        borderTop: `1px solid ${E.hairline}`, borderBottom: `1px solid ${E.hairline}`,
-        background: E.cream,
+      {/* ── Pipeline stage pills — horizontal bubble navigation with arrows ── */}
+      <nav aria-label="Content Studio pipeline" style={{
+        display: 'flex', alignItems: 'center', gap: 0, marginBottom: 18,
+        padding: '18px 10px', overflowX: 'auto',
+        background: `linear-gradient(180deg, rgba(251,246,236,0.4) 0%, ${E.ivory} 100%)`,
+        borderBottom: `1px solid ${E.hairline}`,
+        justifyContent: 'center',
       }}>
-        {TABS.map((t) => {
+        {TABS.map((t, i) => {
           const active = tab === t.key
           const available = stageAvailability[t.key].available
+          const currentIdx = TABS.findIndex(x => x.key === tab)
+          const isPast = currentIdx > i
           return (
-            <button
-              key={t.key}
-              id={`studio-tab-${t.key}`}
-              role="tab"
-              aria-selected={active}
-              aria-controls={`studio-panel-${t.key}`}
-              aria-disabled={!available}
-              type="button"
-              onClick={() => selectTab(t.key)}
-              title={available ? `Chapter ${t.numeral} · ${t.label}` : stageAvailability[t.key].reason}
-              style={{
-                padding: '12px 18px 12px 16px', borderRight: `1px solid ${E.hairline}`, cursor: available ? 'pointer' : 'not-allowed',
-                fontFamily: E.serif, fontSize: 15, fontWeight: 600,
-                background: active ? E.paper : 'transparent',
-                color: active ? E.inkBlack : E.inkMuted,
-                opacity: available ? 1 : 0.48,
-                border: 'none',
-                borderBottom: active ? `3px solid ${E.gold}` : '3px solid transparent',
-                transition: 'all 0.18s',
-                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
-                position: 'relative', minWidth: 130,
-              }}
-            >
-              <span style={{
-                fontSize: 9, fontFamily: E.mono, fontWeight: 800, letterSpacing: '0.16em',
-                color: active ? E.gold : E.inkDim,
-              }}>Chapter {t.numeral}</span>
-              <span style={{
-                fontFamily: E.serif, fontSize: 15, fontWeight: 700,
-                color: active ? E.inkBlack : E.inkMuted,
-              }}>{t.label}</span>
-              <span style={{
-                ...TYPE.caption, fontSize: 8.5, lineHeight: 1.35,
-                color: active ? E.goldDeep : E.inkDim,
-                fontFamily: E.mono, marginLeft: 0,
-                fontStyle: 'italic',
-              }}>{t.sub} · {t.hint}</span>
-            </button>
+            <React.Fragment key={t.key}>
+              {i > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', padding: '0 4px',
+                  opacity: isPast ? 0.4 : 0.18,
+                  transition: 'opacity 0.3s ease',
+                }}>
+                  <svg width="20" height="14" viewBox="0 0 20 14" style={{ display: 'block' }}>
+                    <path d="M12 1l6 6-6 6" stroke={E.inkDim} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M18 7H2" stroke={E.inkDim} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                  </svg>
+                </div>
+              )}
+              <button
+                key={t.key}
+                id={`studio-tab-${t.key}`}
+                role="tab"
+                aria-selected={active}
+                aria-controls={`studio-panel-${t.key}`}
+                aria-disabled={!available}
+                type="button"
+                onClick={() => selectTab(t.key)}
+                disabled={!available}
+                title={available ? `Stage ${t.numeral} · ${t.label}: ${t.hint}` : stageAvailability[t.key].reason}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                  padding: '10px 14px', borderRadius: 0,
+                  cursor: available ? 'pointer' : 'not-allowed',
+                  background: 'transparent', border: 'none',
+                  opacity: available ? 1 : 0.4,
+                  transition: 'all 0.25s ease',
+                  minWidth: 88, maxWidth: 124,
+                }}>
+                <span style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? E.gold : (isPast ? E.goldSoft : E.ivory),
+                  border: active ? `2px solid ${E.gold}` : (isPast ? `1.5px solid ${E.gold}55` : `1.5px solid ${E.hairline}`),
+                  fontFamily: E.serif, fontSize: 18, fontWeight: 700,
+                  color: active ? E.ivory : (isPast ? E.goldDeep : E.inkMuted),
+                  boxShadow: active ? `0 2px 10px ${E.gold}33` : 'none',
+                  transform: active ? 'scale(1.08)' : 'scale(1)',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}>{t.numeral}</span>
+                <span style={{
+                  fontFamily: E.serif, fontSize: 11, fontWeight: 600,
+                  color: active ? E.inkBlack : E.inkMuted,
+                  textAlign: 'center', lineHeight: 1.2,
+                  transition: 'color 0.25s ease',
+                }}>{t.label}</span>
+                <span style={{
+                  fontFamily: E.mono, fontSize: 7.5, fontWeight: 600,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  color: active ? E.goldDeep : E.inkDim,
+                  textAlign: 'center', lineHeight: 1.2,
+                  maxWidth: 110,
+                }}>{t.sub}</span>
+                {active && (
+                  <span style={{
+                    width: 4, height: 4, borderRadius: '50%',
+                    background: E.gold, marginTop: -2,
+                  }} />
+                )}
+              </button>
+            </React.Fragment>
           )
         })}
-      </div>
-
+      </nav>
       {/* ══════════ IV · DRAFT ══════════ */}
       {/* Stage IV — generate content: the live stream, editor surface,
           jobs clock, and queue stats. Downstream of Discover → Research → Plan. */}
