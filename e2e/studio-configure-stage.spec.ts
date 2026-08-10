@@ -284,9 +284,9 @@ test.describe('Stage VII · Configure — System Configurator', () => {
     expect(saColor).toBeTruthy()
   })
 
-  // ── Scenario 5: System health metrics display real values ────────────────
+  // ── Scenario 5: All 5 rows render + system health metrics correct ─────────
 
-  test('displays system health metrics with correct values', async () => {
+  test('all five Configure rows render with correct system health values', async () => {
     await page.route('**/api/content-studio/system-health', async (route) => {
       await route.fulfill({
         status: 200,
@@ -300,6 +300,22 @@ test.describe('Stage VII · Configure — System Configurator', () => {
           interlinkActive: 18,
           lastSiteScan: '2026-08-08T12:00:00Z',
           totalShipped: 12,
+        }),
+      })
+    })
+
+    await page.route('**/api/content-studio/model-calibration', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          lastCalibratedAt: '2026-07-28T10:00:00Z',
+          modelVersion: 'v2.1.0',
+          eventsCount: 142,
+          accuracy: 78,
+          accuracyTrend: 'improving',
+          recentRuns: 23,
         }),
       })
     })
@@ -323,22 +339,61 @@ test.describe('Stage VII · Configure — System Configurator', () => {
     await configurePill.waitFor({ state: 'visible', timeout: 15000 })
     await configurePill.click()
 
-    // Wait for the system health card to load.
-    await expect(page.getByText('SYSTEM HEALTH SUMMARY')).toBeVisible({ timeout: 8000 })
+    // ── Assert all 5 row section headers ──
+    const rows = [
+      'AI PROVIDER KEYS',
+      'RANKING MODEL CALIBRATION',
+      'SYSTEM HEALTH SUMMARY',
+      'SEARCH CONSOLE',
+      'DEEP INTERLINKS',
+    ]
+    for (const row of rows) {
+      await expect(
+        page.locator('span').filter({ hasText: row }).first()
+      ).toBeVisible({ timeout: 5000 })
+    }
 
-    // Assert the API keys count.
-    await expect(page.getByText('4', { exact: true }).first()).toBeVisible({ timeout: 5000 })
+    // ── Assert all 5 system health metric labels ──
+    const metrics = ['API Keys', 'GSC Connection', 'Site Scanned', 'Interlinks', 'Shipped']
+    for (const m of metrics) {
+      await expect(page.getByText(m, { exact: true }).first()).toBeVisible({ timeout: 5000 })
+    }
 
-    // Assert the interlink count.
-    await expect(page.getByText('23', { exact: true }).first()).toBeVisible({ timeout: 5000 })
+    // ── Assert metric values ──
+    await expect(page.getByText('4', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Connected')).toBeVisible()
+    await expect(page.getByText('Aug 8')).toBeVisible()
+    await expect(page.getByText('23', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('12', { exact: true }).first()).toBeVisible()
 
-    // Assert the shipped count.
-    await expect(page.getByText('12', { exact: true }).first()).toBeVisible({ timeout: 5000 })
-
-    // Assert sublabels render.
+    // ── Assert sublabels ──
     await expect(page.getByText('providers configured')).toBeVisible()
+    await expect(page.getByText('last audit run')).toBeVisible()
     await expect(page.getByText('18 active · registry size')).toBeVisible()
     await expect(page.getByText('merged content jobs')).toBeVisible()
+
+    // ── Assert the Run Audit button renders ──
+    await expect(
+      page.getByRole('button', { name: /Run audit/ })
+    ).toBeVisible({ timeout: 5000 })
+
+    // ── Click Run Audit and assert health refreshes ──
+    await page.route('**/api/content-studio/site-health', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, action: 'audit', totalPages: 47 }),
+      })
+    })
+
+    // Click the Run Audit button.
+    const runAuditBtn = page.getByRole('button', { name: /Run audit/ })
+    await runAuditBtn.click()
+
+    // The button should transition to the running state.
+    await expect(
+      page.getByRole('button', { name: /Running/ })
+    ).toBeVisible({ timeout: 5000 })
   })
 
   // ── Scenario 6: Model calibration card renders with accuracy gauge ───────
