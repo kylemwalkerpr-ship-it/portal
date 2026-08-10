@@ -2695,7 +2695,14 @@ function DraftWorkspace({
   const wordCount = completedJob?.word_count || (draftContent ? draftContent.split(/\s+/).filter(Boolean).length : 0)
 
   return (
-    <div data-testid="studio-draft-workspace" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <>
+      <style>{`
+        @keyframes studioCursorBlink {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 0.15; }
+        }
+      `}</style>
+      <div data-testid="studio-draft-workspace" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* ── Streaming status bar (minimal, not the old heavy panel) ── */}
       {(generating || hasCompleted) && (
         <div style={{
@@ -2842,7 +2849,7 @@ function DraftWorkspace({
                 display: 'inline-block', width: 8, height: 14,
                 background: E.gold,
                 verticalAlign: 'text-bottom', marginLeft: 1,
-                opacity: 0.8,
+                animation: 'studioCursorBlink 1s ease-in-out infinite',
               }} />
             </div>
           </div>
@@ -2879,6 +2886,7 @@ function DraftWorkspace({
         )}
       </div>
     </div>
+    </>
   )
 }
 
