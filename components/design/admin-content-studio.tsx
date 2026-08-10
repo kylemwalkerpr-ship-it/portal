@@ -5984,42 +5984,104 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </>
       )}
 
-      {/* ══════════ VIII · CONFIGURE ══════════ */}
+      {/* ══════════ VII · CONFIGURE ══════════ */}
       {tab === 'configure' && (
         <>
           <ChapterIntro
-            numeral="VIII"
+            numeral="VII"
             title="Configure"
-            subtitle="System settings: AI models, API keys, GSC connection, site health, and deep interlinks. Always accessible regardless of pipeline stage."
+            subtitle="System configurator: manage AI provider keys, connect Google Search Console, audit site health, and maintain the deep interlink registry — all from one place."
             chapterKey="configure"
             scope={[
-              { chip: 'AI models', text: 'Select providers, set API keys, configure model order and defaults.' },
-              { chip: 'GSC', text: 'Connect Google Search Console via OAuth or service-account key.' },
-              { chip: 'Health', text: 'Site health checks, deep interlink registry, and system diagnostics.' },
+              { chip: '🔑 AI keys', text: 'Manage API keys for every content provider (OpenAI, Nemotron, Grok, DeepSeek, GLM, Gemini, and more).' },
+              { chip: '🔗 GSC', text: 'Connect Search Console via OAuth or service-account JSON. Live status with green / amber / red indicator.' },
+              { chip: '🩺 Health', text: 'Site-wide audit, broken link detection, deep interlink registry, and system diagnostics.' },
             ]}
             prev="VI · Track"
             onJump={selectTab}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <AiKeyVaultPanel onChanged={() => { fetchSuggestions(region) }} />
-            <div style={{ padding: 14, background: E.paper, border: `1px solid ${E.hairline}` }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10 }}>GSC CONNECTION</div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>
-                    {gscStatus?.connected ? (gscStatus?.live ? 'Connected · Live' : 'Connected · Snapshot') : 'Not connected'}
-                  </div>
-                  <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>
-                    {gscStatus?.mode ? `Mode: ${String(gscStatus.mode).toUpperCase()}` : 'No GSC token configured'}
+            {/* ── Row 1: AI Key Vault (full width) ── */}
+            <section style={{
+              padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+            }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>🔑</span>AI PROVIDER KEYS
+              </div>
+              <AiKeyVaultPanel onChanged={() => { fetchSuggestions(region) }} />
+            </section>
+
+            {/* ── Row 2: GSC + Site Health side by side ── */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14,
+            }}>
+              {/* GSC Connection */}
+              <section style={{
+                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+              }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>🔗</span>SEARCH CONSOLE
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                    background: gscStatus?.connected ? (gscStatus?.live ? '#16A34A' : '#D97706') : '#DC2626',
+                    boxShadow: gscStatus?.connected ? `0 0 0 3px ${gscStatus?.live ? 'rgba(22,163,74,0.16)' : 'rgba(217,119,6,0.16)'}` : '0 0 0 3px rgba(220,38,38,0.16)',
+                  }} />
+                  <div>
+                    <div style={{ fontFamily: C.serif, fontSize: 16, fontWeight: 600, color: E.ink }}>
+                      {gscStatus?.connected ? (gscStatus?.live ? 'Connected · Live data' : 'Connected · Snapshot only') : 'Not connected'}
+                    </div>
+                    <div style={{ fontSize: 10, color: E.inkMuted, fontFamily: C.mono, marginTop: 2 }}>
+                      {gscStatus?.mode ? (
+                        <span style={{
+                          padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+                          background: String(gscStatus.mode) === 'oauth' ? '#DBEAFE' : '#FEF3C7',
+                          color: String(gscStatus.mode) === 'oauth' ? '#1E40AF' : '#92400E',
+                        }}>
+                          {String(gscStatus.mode).toUpperCase()}
+                        </span>
+                      ) : 'No GSC token configured'}
+                    </div>
                   </div>
                 </div>
-                <button type="button" onClick={() => setGscConnectOpen(true)} style={{ padding: '8px 14px', borderRadius: 0, border: `1px solid ${E.gold}`, background: 'transparent', color: E.gold, cursor: 'pointer', fontFamily: C.serif, fontSize: 13, fontWeight: 600 }}>
-                  {gscStatus?.connected ? 'Reconnect GSC' : 'Connect GSC'}
+                <button
+                  type="button"
+                  onClick={() => setGscConnectOpen(true)}
+                  style={{
+                    width: '100%', padding: '8px 0', borderRadius: 0,
+                    border: `1px solid ${E.gold}`, background: 'transparent',
+                    color: E.gold, cursor: 'pointer',
+                    fontFamily: C.serif, fontSize: 13, fontWeight: 600,
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => { (e.target as HTMLButtonElement).style.background = E.gold; (e.target as HTMLButtonElement).style.color = E.ivory }}
+                  onMouseLeave={(e) => { (e.target as HTMLButtonElement).style.background = 'transparent'; (e.target as HTMLButtonElement).style.color = E.gold }}
+                >
+                  {gscStatus?.connected ? '↻ Reconnect GSC' : '→ Connect GSC'}
                 </button>
-              </div>
+              </section>
+
+              {/* Site Health */}
+              <section style={{
+                padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+              }}>
+                <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14 }}>🩺</span>SITE HEALTH
+                </div>
+                <AdminSiteHealthPanel />
+              </section>
             </div>
-            <AdminSiteHealthPanel />
-            <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
+
+            {/* ── Row 3: Deep Interlinks (full width) ── */}
+            <section style={{
+              padding: 18, background: E.paper, border: `1px solid ${E.hairline}`,
+            }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>🕸️</span>DEEP INTERLINKS
+              </div>
+              <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
+            </section>
           </div>
         </>
       )}
