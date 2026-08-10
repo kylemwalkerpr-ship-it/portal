@@ -2662,10 +2662,10 @@ function DraftWorkspace({
   selectTab: (k: StudioTab) => void
   error: string | null
   setError: (e: string | null) => void
-}) {
-  const [draftContent, setDraftContent] = React.useState('')
+}) {   const [draftContent, setDraftContent] = React.useState('')
   const [draftTitle, setDraftTitle] = React.useState('')
   const lastEventRef = React.useRef<string>('')
+  const livePreviewRef = React.useRef<HTMLDivElement | null>(null)
 
   // Track streaming: accumulate deltas into draftContent
   React.useEffect(() => {
@@ -2685,6 +2685,12 @@ function DraftWorkspace({
       setDraftTitle(completedJob.title || 'Untitled')
     }
   }, [completedJob])
+
+  // Auto-scroll the live preview to the newest streamed words
+  React.useEffect(() => {
+    const el = livePreviewRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [generationText])
 
   const elapsed = generationStartedAt ? fmtDur(Date.now() - generationStartedAt) : ''
   const hasContent = draftContent.length > 0
@@ -2794,38 +2800,19 @@ function DraftWorkspace({
             {draftTitle || '(untitled)'}
           </span>
           <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, color: E.inkDim }}>
-            {wordCount} words · {draftContent.length.toLocaleString()} chars
+            {generating
+              ? `${(generationText.split(/\s+/).filter(Boolean).length).toLocaleString()} words · ${generationText.length.toLocaleString()} chars`
+              : `${wordCount} words · ${draftContent.length.toLocaleString()} chars`}
           </span>
         </div>
 
         {/* Editor body */}
-        {generating && !hasContent ? (
-          /* Empty state while streaming hasn't yielded content yet */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 }}>
-            <div style={{ fontFamily: C.serif, fontSize: 18, color: E.inkMuted, fontStyle: 'italic' }}>
-              The AI is composing your draft…
-            </div>
-            <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkDim }}>
-              {latestEvent?.message || 'Initializing pipeline…'}
-            </div>
-            {/* Minimal activity log */}
-            <div style={{ maxWidth: 500, width: '100%', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
-              {generationEvents.slice(-10).map((e) => (
-                <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 72 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ fontFamily: C.mono, fontSize: 10, color: e.level === 'error' ? '#DC2626' : e.level === 'warn' ? '#D97706' : e.level === 'success' ? '#166534' : '#2563EB', flex: 1 }}>
-                    {e.message}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : generating && generationText.length > 0 ? (
+        {generating && generationText.length > 0 ? (
           /* Live preview — streamed content visible in real-time during generation */
-          <div style={{
+          <div ref={livePreviewRef} style={{
             marginTop: 14, padding: '16px 18px', background: E.paper,
             border: '1px solid ' + E.hairline, borderRadius: 0,
-            maxHeight: 360, overflowY: 'auto',
+            maxHeight: 480, overflowY: 'auto',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10,
@@ -2851,6 +2838,27 @@ function DraftWorkspace({
                 verticalAlign: 'text-bottom', marginLeft: 1,
                 animation: 'studioCursorBlink 1s ease-in-out infinite',
               }} />
+            </div>
+          </div>
+        ) : generating && !hasContent ? (
+          /* Empty state while streaming hasn't yielded content yet */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 }}>
+            <div style={{ fontFamily: C.serif, fontSize: 18, color: E.inkMuted, fontStyle: 'italic' }}>
+              The AI is composing your draft…
+            </div>
+            <div style={{ fontFamily: C.mono, fontSize: 11, color: E.inkDim }}>
+              {latestEvent?.message || 'Initializing pipeline…'}
+            </div>
+            {/* Minimal activity log */}
+            <div style={{ maxWidth: 500, width: '100%', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+              {generationEvents.slice(-10).map((e) => (
+                <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ fontFamily: C.mono, fontSize: 9, color: E.inkDim, minWidth: 72 }}>{fmtTime(e.ts)}</span>
+                  <span style={{ fontFamily: C.mono, fontSize: 10, color: e.level === 'error' ? '#DC2626' : e.level === 'warn' ? '#D97706' : e.level === 'success' ? '#166534' : '#2563EB', flex: 1 }}>
+                    {e.message}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         ) : hasContent ? (
