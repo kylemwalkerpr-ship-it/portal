@@ -1074,6 +1074,7 @@ function CreateWizard({
   regenerationPlays, setRegenerationPlays,
   regenerationMinScore, setRegenerationMinScore,
   regenerationMaxDifficulty, setRegenerationMaxDifficulty,
+  stepScope,
 }: {
   generating: boolean
   onGenerate: (data: any) => void
@@ -1107,6 +1108,7 @@ function CreateWizard({
   setRegenerationMinScore: (v: number) => void
   regenerationMaxDifficulty: number
   setRegenerationMaxDifficulty: (v: number) => void
+  stepScope?: 'define' | 'investigate' | 'all'
 }) {
   const [filter, setFilter] = React.useState<'all' | 'quick_win' | 'content_gap' | 'rising' | 'refresh'>('all')
   const canGenerate = Boolean(topic.trim() || title.trim())
@@ -1408,7 +1410,7 @@ function CreateWizard({
         )}
 
         {/* ── Primary CTA ── */}
-        <button type="submit" disabled={generating || !canGenerate} style={{
+        <div data-step="generate-cta"><button type="submit" disabled={generating || !canGenerate} style={{
           width: '100%', marginTop: 16, padding: '12px 0', borderRadius: C.radiusXs, border: 'none',
           cursor: generating || !canGenerate ? 'not-allowed' : 'pointer',
           background: generating ? C.textDim : C.navy, color: '#FFFFFF',
@@ -1416,13 +1418,50 @@ function CreateWizard({
           boxShadow: '0 4px 14px rgba(15,23,42,0.18)',
         }}>
           {generating ? '⚡ Generating… (watch the live pipeline below)' : '⚡ Generate & Open PR'}
-        </button>
+        </button></div>
         {!canGenerate && (
           <div style={{ marginTop: 6, fontSize: 9.5, color: C.textDim, textAlign: 'center', fontFamily: C.mono }}>
             Add a topic or title to enable generation.
           </div>
         )}
       </form>
+    </div>
+  )
+}
+
+// ── III · DEFINE PANEL ──
+// Renders Step 1 (Target) + Step 2 input fields of CreateWizard.
+// All state is owned by the parent AdminContentStudio; this is a chrome
+// shim that hides the autopilot-preview + interlinks + generate CTA so
+// Step III reads as "name the question".
+function Step1Define(props: Omit<React.ComponentProps<typeof CreateWizard>, 'stepScope'>) {
+  return (
+    <div data-testid="studio-define-panel" data-step-scope="define">
+      <style>{`
+        [data-step-scope="define"] [data-step="autopilot-preview"],
+        [data-step-scope="define"] [data-step="3"],
+        [data-step-scope="define"] [data-step="generate-cta"] {
+          display: none !important;
+        }
+      `}</style>
+      <CreateWizard {...props} stepScope={'define' as const} />
+    </div>
+  )
+}
+
+// ── IV · INVESTIGATE PANEL ──
+// Renders Step 2's autopilot brief preview + Step 3 interlinks + the
+// Generate & ship CTA. Step 1 (Target) is hidden so the destination already
+// chosen in III · Define persists through investigation.
+function Step2Investigate(props: Omit<React.ComponentProps<typeof CreateWizard>, 'stepScope'>) {
+  return (
+    <div data-testid="studio-investigate-panel" data-step-scope="investigate">
+      <style>{`
+        [data-step-scope="investigate"] [data-step="1"] {
+          display: none !important;
+        }
+      `}</style>
+      <CreateWizard {...props} stepScope={'investigate' as const} />
     </div>
   )
 }
@@ -3975,33 +4014,63 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               </button>
             </div>
           )}
-          <CreateWizard
-            generating={generating}
-            onGenerate={handleGenerate}
-            contentType={contentType} setContentType={setContentType}
-            region={region} setRegion={setRegion}
-            tone={tone} setTone={setTone}
-            aiProvider={aiProvider} setAiProvider={setAiProvider}
-            title={title} setTitle={setTitle}
-            topic={topic} setTopic={setTopic}
-            audience={audience} setAudience={setAudience}
-            keywords={keywords} setKeywords={setKeywords}
-            suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
-            gscStatus={gscStatus}
-            onConnectGsc={() => setGscConnectOpen(true)}
-            onRefreshSuggestions={fetchSuggestions}
-            onApplySuggestion={applyBrief}
-            brief={selectedBrief}
-            onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
-            briefInterlinks={briefInterlinks}
-            interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
-            onAutoInterlink={runAutoInterlink}
-            autoInterlinkBusy={autoInterlinkBusy}
-            showRadar={showRadar} setShowRadar={setShowRadar}
-            regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
-            regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
-            regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
-          />
+          {(tab as string) === 'investigate' ? (
+            <Step2Investigate
+              generating={generating}
+              onGenerate={handleGenerate}
+              contentType={contentType} setContentType={setContentType}
+              region={region} setRegion={setRegion}
+              tone={tone} setTone={setTone}
+              aiProvider={aiProvider} setAiProvider={setAiProvider}
+              title={title} setTitle={setTitle}
+              topic={topic} setTopic={setTopic}
+              audience={audience} setAudience={setAudience}
+              keywords={keywords} setKeywords={setKeywords}
+              suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
+              gscStatus={gscStatus}
+              onConnectGsc={() => setGscConnectOpen(true)}
+              onRefreshSuggestions={fetchSuggestions}
+              onApplySuggestion={applyBrief}
+              brief={selectedBrief}
+              onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+              briefInterlinks={briefInterlinks}
+              interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
+              onAutoInterlink={runAutoInterlink}
+              autoInterlinkBusy={autoInterlinkBusy}
+              showRadar={showRadar} setShowRadar={setShowRadar}
+              regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
+              regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
+              regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
+            />
+          ) : (
+            <Step1Define
+              generating={generating}
+              onGenerate={handleGenerate}
+              contentType={contentType} setContentType={setContentType}
+              region={region} setRegion={setRegion}
+              tone={tone} setTone={setTone}
+              aiProvider={aiProvider} setAiProvider={setAiProvider}
+              title={title} setTitle={setTitle}
+              topic={topic} setTopic={setTopic}
+              audience={audience} setAudience={setAudience}
+              keywords={keywords} setKeywords={setKeywords}
+              suggestions={suggestions} suggestionsLoading={suggestionsLoading} suggestionsError={suggestionsError} radarMeta={radarMeta}
+              gscStatus={gscStatus}
+              onConnectGsc={() => setGscConnectOpen(true)}
+              onRefreshSuggestions={fetchSuggestions}
+              onApplySuggestion={applyBrief}
+              brief={selectedBrief}
+              onClearBrief={() => { setSelectedBrief(null); setBriefInterlinks([]) }}
+              briefInterlinks={briefInterlinks}
+              interlinkStage={interlinkStage} setInterlinkStage={setInterlinkStage}
+              onAutoInterlink={runAutoInterlink}
+              autoInterlinkBusy={autoInterlinkBusy}
+              showRadar={showRadar} setShowRadar={setShowRadar}
+              regenerationPlays={regenerationPlays} setRegenerationPlays={setRegenerationPlays}
+              regenerationMinScore={regenerationMinScore} setRegenerationMinScore={setRegenerationMinScore}
+              regenerationMaxDifficulty={regenerationMaxDifficulty} setRegenerationMaxDifficulty={setRegenerationMaxDifficulty}
+            />
+          )}
         </div>
       )}
 
