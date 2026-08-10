@@ -2646,7 +2646,7 @@ function BriefAssemblyPanel({
 // The admin sees every token as it arrives and can edit in real time.
 // Replaces the old dark LiveGenerationPanel with a proper document editor.
 function DraftWorkspace({
-  generating, generationEvents, generationStartedAt, generationChars,
+  generating, generationEvents, generationStartedAt, generationChars, generationText,
   completedJob, selectedJob, setSelectedJob,
   onContinueToReview, selectTab, error, setError,
 }: {
@@ -2654,6 +2654,7 @@ function DraftWorkspace({
   generationEvents: GenerationActivity[]
   generationStartedAt: number | null
   generationChars: number
+  generationText: string
   completedJob: ContentJob | null
   selectedJob: ContentJob | null
   setSelectedJob: (j: ContentJob | null) => void
@@ -2810,6 +2811,39 @@ function DraftWorkspace({
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : generating && generationText.length > 0 ? (
+          /* Live preview — streamed content visible in real-time during generation */
+          <div style={{
+            marginTop: 14, padding: '16px 18px', background: E.paper,
+            border: '1px solid ' + E.hairline, borderRadius: 0,
+            maxHeight: 360, overflowY: 'auto',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10,
+              borderBottom: '1px solid ' + E.hairline, paddingBottom: 8,
+            }}>
+              <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>
+                ✍️ AI WRITING LIVE
+              </span>
+              <span style={{ fontSize: 9, color: E.inkDim, fontFamily: C.mono }}>
+                {generationText.length.toLocaleString()} chars · ~{Math.round(generationText.split(/\s+/).filter(Boolean).length)} words
+              </span>
+            </div>
+            <div style={{
+              fontFamily: C.serif, fontSize: 13, lineHeight: 1.7, color: E.ink,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {generationText.length > 2000
+                ? generationText.slice(-2000)
+                : generationText}
+              <span style={{
+                display: 'inline-block', width: 8, height: 14,
+                background: E.gold,
+                verticalAlign: 'text-bottom', marginLeft: 1,
+                opacity: 0.8,
+              }} />
             </div>
           </div>
         ) : hasContent ? (
@@ -4489,6 +4523,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [generationEvents, setGenerationEvents] = React.useState<GenerationActivity[]>([])
   const [generationStartedAt, setGenerationStartedAt] = React.useState<number | null>(null)
   const [generationChars, setGenerationChars] = React.useState(0)
+  const [generationText, setGenerationText] = React.useState('')
   const [generationReviewJob, setGenerationReviewJob] = React.useState<ContentJob | null>(null)
   const [generationMergeBusy, setGenerationMergeBusy] = React.useState(false)
 
@@ -5100,6 +5135,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     setError(null)
     setGenerationStartedAt(Date.now())
     setGenerationChars(0)
+    setGenerationText('')
     setGenerationEvents([{ id: `start-${Date.now()}`, ts: Date.now(), stage: 'connect', message: 'Connecting to the SEO generation pipeline…', level: 'info' }])
 
     const record = (stage: string, message: string, level: GenerationActivity['level'] = 'info') => {
@@ -5181,8 +5217,10 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
         else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
         else if (event.type === 'delta') {
-          streamChars += String(event.text || '').length
+          const chunk = String(event.text || '')
+          streamChars += chunk.length
           setGenerationChars(streamChars)
+          setGenerationText((prev) => prev + chunk)
         } else if (event.type === 'ship') record('ship', event.ship?.prUrl ? `Pull request opened · audit passed` : event.shipError ? `Ship paused: ${event.shipError}` : 'Draft audited; preparing delivery', event.shipError ? 'warn' : 'info')
         else if (event.type === 'final') {
           finalResult = event.result
@@ -5329,12 +5367,41 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       </div>
 
+      {/* ── Realtime queue status strip ── */}
+      {!loading && (jobs.length > 0 || jobTotal > 0) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '10px 16px', marginBottom: 12,
+          background: E.paper, border: '1px solid ' + E.hairline,
+          fontFamily: C.mono, fontSize: 10,
+        }}>
+          <span style={{ fontWeight: 700, color: E.ink, letterSpacing: '0.06em' }}>QUEUE</span>
+          {[
+            { label: 'In Progress', count: jobs.filter(j => !['merged', 'closed', 'failed'].includes(j.status)).length, color: '#D97706', icon: '⚙️' },
+            { label: 'PR Ready', count: jobs.filter(j => j.status === 'pr_created').length, color: '#2563EB', icon: '🔀' },
+            { label: 'Merged', count: jobs.filter(j => j.status === 'merged').length, color: '#166534', icon: '✅' },
+            { label: 'Failed', count: jobs.filter(j => j.status === 'failed').length, color: '#DC2626', icon: '⚠️' },
+          ].map((s, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: E.inkMuted }}>
+              {i > 0 && <span style={{ color: E.hairline, marginRight: 2 }}>|</span>}
+              <span>{s.icon}</span>
+              <span style={{ fontWeight: 700, color: s.color }}>{s.count}</span>
+              <span>{s.label}</span>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', color: E.inkDim }}>
+            {jobTotal || jobs.length} total · {generating ? '🔴 1 generating' : 'idle'}
+          </span>
+        </div>
+      )}
+
       {/* ── Draft workspace — inline editor with live streaming ── */}
       <DraftWorkspace
         generating={generating}
         generationEvents={generationEvents}
         generationStartedAt={generationStartedAt}
         generationChars={generationChars}
+        generationText={generationText}
         completedJob={generationReviewJob}
         selectedJob={selectedJob}
         setSelectedJob={setSelectedJob}
