@@ -4,18 +4,19 @@
  * Mirrors the ideology of a research dissertation without academic jargon.
  * Each stage maps to a real SEO workflow:
  *
- * I   Discover — scan all signals, find gaps & opportunities (GSC, radar, insights)
- * II  Research — keywords, search intent, topical authority, competitor landscape
- * III Plan     — brief, target audience, structure, interlinks
- * IV  Draft    — AI generation, pipeline jobs, live stream
- * V   Review   — quality gate, compliance audit, re-audit, fix blockers
- * VI  Approve  — PR, merge to main, deploy monitor
- * VII Track    — publication ledger, canonical verification, GSC position tracking
+ * I   Discover   — scan all signals, find gaps & opportunities (GSC, radar, insights)
+ * II  Research   — keywords, search intent, topical authority, competitor landscape
+ * III Plan       — brief, target audience, structure, interlinks
+ * IV  Draft      — AI generation, pipeline jobs, live stream
+ * V   Review     — quality gate, compliance audit, re-audit, fix blockers
+ * VI  Approve    — PR, merge to main, deploy monitor
+ * VII Track      — publication ledger, canonical verification, GSC position tracking
+ * VIII Configure — AI models, API keys, GSC connection, system settings
  */
-export type StudioStage = 'discover' | 'research' | 'plan' | 'draft' | 'review' | 'approve' | 'track'
+export type StudioStage = 'discover' | 'research' | 'plan' | 'draft' | 'review' | 'approve' | 'track' | 'configure'
 
 export const DISSERTATION_STAGES: readonly StudioStage[] = [
-  'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track',
+  'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure',
 ] as const
 
 /**

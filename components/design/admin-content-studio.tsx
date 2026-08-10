@@ -33,6 +33,7 @@ import { subscribeToTable } from '@/lib/supabaseRealtime'
 import GscConnectModal from './admin-gsc-connect-modal'
 import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
+import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
 
 // ── Color tokens (legacy + new editorial palette) ──
@@ -686,14 +687,15 @@ function ChapterIntro({
   prev?: string
   onJump?: (k: StudioTab) => void
 }) {
-  const order: StudioTab[] = ['discover', 'research', 'plan', 'draft', 'review', 'approve', 'track']
+  const order: StudioTab[] = ['discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure']
   const numerals: Record<StudioTab, string> = {
     discover: 'I', research: 'II', plan: 'III', draft: 'IV',
-    review: 'V', approve: 'VI', track: 'VII',
+    review: 'V', approve: 'VI', track: 'VII', configure: 'VIII',
   }
   const titles: Record<StudioTab, string> = {
     discover: 'Discover', research: 'Research', plan: 'Plan',
     draft: 'Draft', review: 'Review', approve: 'Approve', track: 'Track',
+    configure: 'Configure',
   }
   return (
     <div
@@ -3462,6 +3464,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     review: { available: hasDraft || hasReviewableJob, reason: 'A generated job must exist before review.' },
     approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
     track: { available: hasPublication, reason: 'A merged or canonical result must exist before the publication ledger.' },
+    configure: { available: true, reason: 'System configuration is always accessible.' },
   }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
 
   const pendingDeepLinkRef = React.useRef<StudioTab | null>(null)
@@ -4119,7 +4122,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     { key: 'draft',    numeral: 'IV',  label: 'Draft',    sub: 'Generate & Pipeline',     hint: `${jobTotal || jobs.length} jobs · live` },
     { key: 'review',   numeral: 'V',   label: 'Review',   sub: 'Quality & Compliance',    hint: 'Re-audit · blockers · gate' },
     { key: 'approve',  numeral: 'VI',  label: 'Approve',  sub: 'PR & Deploy',             hint: 'Merge · deploy · monitor' },
-    { key: 'track',    numeral: 'VII', label: 'Track',    sub: 'Publication Ledger',      hint: 'Canonical · GSC · forecast vs actual' },
+    { key: 'track',     numeral: 'VII',  label: 'Track',     sub: 'Publication Ledger',      hint: 'Canonical · GSC · forecast vs actual' },
+    { key: 'configure', numeral: 'VIII', label: 'Configure', sub: 'System Settings',          hint: 'AI models · API keys · GSC · health' },
   ]
 
   return (
@@ -4666,8 +4670,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <MergeHistory />
                 <InterlinksMini topic={topic} keywords={keywords} />
-                <AdminSiteHealthPanel />
-                <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
                 <ResearchLiveOperations />
               </div>
             </div>
@@ -4763,6 +4765,46 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
           />
+        </>
+      )}
+
+      {/* ══════════ VIII · CONFIGURE ══════════ */}
+      {tab === 'configure' && (
+        <>
+          <ChapterIntro
+            numeral="VIII"
+            title="Configure"
+            subtitle="System settings: AI models, API keys, GSC connection, site health, and deep interlinks. Always accessible regardless of pipeline stage."
+            chapterKey="configure"
+            scope={[
+              { chip: 'AI models', text: 'Select providers, set API keys, configure model order and defaults.' },
+              { chip: 'GSC', text: 'Connect Google Search Console via OAuth or service-account key.' },
+              { chip: 'Health', text: 'Site health checks, deep interlink registry, and system diagnostics.' },
+            ]}
+            prev="VII · Track"
+            onJump={selectTab}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <AiKeyVaultPanel onChanged={() => { fetchSuggestions(region) }} />
+            <div style={{ padding: 14, background: E.paper, border: `1px solid ${E.hairline}` }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 10 }}>GSC CONNECTION</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink }}>
+                    {gscStatus?.connected ? (gscStatus?.live ? 'Connected · Live' : 'Connected · Snapshot') : 'Not connected'}
+                  </div>
+                  <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>
+                    {gscStatus?.mode ? `Mode: ${String(gscStatus.mode).toUpperCase()}` : 'No GSC token configured'}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setGscConnectOpen(true)} style={{ padding: '8px 14px', borderRadius: 0, border: `1px solid ${E.gold}`, background: 'transparent', color: E.gold, cursor: 'pointer', fontFamily: C.serif, fontSize: 13, fontWeight: 600 }}>
+                  {gscStatus?.connected ? 'Reconnect GSC' : 'Connect GSC'}
+                </button>
+              </div>
+            </div>
+            <AdminSiteHealthPanel />
+            <AdminDeepInterlinkPanel setActionNotice={setActionNotice} />
+          </div>
         </>
       )}
 

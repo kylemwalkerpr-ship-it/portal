@@ -12,10 +12,10 @@ import {
 describe('studioPipeline · discover → track order', () => {
   it('starts with Discover and ends with Track', () => {
     expect(DISSERTATION_STAGES).toEqual([
-      'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track',
+      'discover', 'research', 'plan', 'draft', 'review', 'approve', 'track', 'configure',
     ])
     expect(DISSERTATION_STAGES[0]).toBe('discover')
-    expect(DISSERTATION_STAGES.at(-1)).toBe('track')
+    expect(DISSERTATION_STAGES.at(-1)).toBe('configure')
   })
 
   it('keeps every legacy entry point attached to the correct stage', () => {
@@ -41,6 +41,7 @@ describe('studioPipeline · discover → track order', () => {
   it('recognizes only canonical stages as studio stages', () => {
     expect(isStudioStage('discover')).toBe(true)
     expect(isStudioStage('track')).toBe(true)
+    expect(isStudioStage('configure')).toBe(true)
     expect(isStudioStage('research')).toBe(true)
     expect(isStudioStage('insights')).toBe(false)
     expect(isStudioStage(null)).toBe(false)
@@ -49,6 +50,7 @@ describe('studioPipeline · discover → track order', () => {
   it('provides monotonic stage indexes for readiness guards', () => {
     expect(stageIndex('discover')).toBe(0)
     expect(stageIndex('track')).toBe(6)
+    expect(stageIndex('configure')).toBe(7)
     expect(stageIndex('plan')).toBeLessThan(stageIndex('draft'))
     expect(isStageAtOrBefore('research', 'plan')).toBe(true)
     expect(isStageAtOrBefore('track', 'approve')).toBe(false)
