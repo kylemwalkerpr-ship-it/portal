@@ -999,17 +999,47 @@ function ApprovePanel({
       ...prev,
       [j.id]: { stage: 'opening', message: 'Opening PR...', startedAt: started },
     }))
-    // Coarse stage projection so the operator sees progress during long
-    // CI runs even when the API hasn't returned yet.
-    const projectStage = (stage: ApproveProgress, message: string, after: number) =>
-      setTimeout(() => {
-        setApproveProgress((prev) =>
-          prev[j.id] && prev[j.id].stage !== 'ok' && prev[j.id].stage !== 'failed'
-            ? { ...prev, [j.id]: { ...prev[j.id], stage, message } }
-            : prev)
-      }, after)
-    projectStage('merging', 'Merging to main...', 5500)
-    projectStage('monitoring', 'Watching deploy...', 14000)
+    // Poll the live monitor endpoint for real deploy status instead of
+    // projecting coarse fake timeouts.
+    let monitorTimer: ReturnType<typeof setInterval> | null = null
+    const startMonitoring = () => {
+      monitorTimer = setInterval(async () => {
+        try {
+          const mr = await fetch(`/api/seo-factory/monitor?jobId=${encodeURIComponent(j.id)}`, {
+            credentials: 'same-origin',
+          })
+          const md = await mr.json().catch(() => ({})) as Record<string, unknown>
+          if (!mr.ok || !md.ok) {
+            setApproveProgress((prev) => prev[j.id]
+              ? { ...prev, [j.id]: { ...prev[j.id], stage: 'monitoring', message: String(md.checkState || 'Checking deploy…') } }
+              : prev)
+            return
+          }
+          const state = String(md.checkState || '')
+          if (state === 'success' || state === 'deployed' || state === 'live') {
+            if (monitorTimer) clearInterval(monitorTimer)
+            setApproveProgress((prev) => prev[j.id]
+              ? { ...prev, [j.id]: { stage: 'ok', message: md.deployUrl ? `✓ Deployed → ${md.deployUrl}` : (md.prUrl ? `✓ PR #${md.prNumber || '?'} merged · deploy live` : '✓ Merged · deploy live'), startedAt: prev[j.id].startedAt, finishedAt: Date.now() } }
+              : prev)
+            onMerged?.()
+          } else if (state === 'failure' || state === 'error') {
+            if (monitorTimer) clearInterval(monitorTimer)
+            setApproveProgress((prev) => prev[j.id]
+              ? { ...prev, [j.id]: { stage: 'failed', message: String(md.action || 'Deploy failed'), startedAt: prev[j.id].startedAt, finishedAt: Date.now() } }
+              : prev)
+          } else {
+            setApproveProgress((prev) => prev[j.id]
+              ? { ...prev, [j.id]: { ...prev[j.id], stage: 'monitoring', message: String(state || 'Building…') } }
+              : prev)
+          }
+        } catch {
+          // keep polling
+        }
+      }, 6000)
+    }
+
+    // After the approve call returns, start real monitoring
+    startMonitoring()
 
     try {
       const result = await onApproveAndMerge(j)
@@ -1100,6 +1130,20 @@ function ApprovePanel({
                       <span style={{ marginLeft: 6, color: E.inkDim }}>
                         · {Math.max(0, Math.round((progress.finishedAt - progress.startedAt) / 1000))}s elapsed
                       </span>
+                    )}
+                    {j.pr_url && (
+                      <div style={{ marginTop: 4, marginBottom: 2 }}>
+                        <a href={j.pr_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: E.gold, fontFamily: E.mono, textDecoration: "underline", fontWeight: 600 }}>
+                          View PR #{j.pr_number || "?"} ↗
+                        </a>
+                      </div>
+                    )}
+                    {j.canonical_url && (progress.stage === "ok" || progress.stage === "monitoring") && (
+                      <div style={{ marginTop: 2 }}>
+                        <a href={j.canonical_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#166534", fontFamily: E.mono, textDecoration: "underline", fontWeight: 600 }}>
+                          {String(j.canonical_url).replace('https://', '').replace('http://', '')} ↗
+                        </a>
+                      </div>
                     )}
                   </div>
                 )}
