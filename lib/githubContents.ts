@@ -402,7 +402,7 @@ export async function openPullRequest(opts: {
   head: string
   base: string
   body: string
-}): Promise<{ html_url: string; number: number }> {
+}): Promise<{ html_url: string; number: number; created_at?: string }> {
   const pr = await githubFetch(`/repos/${opts.owner}/${opts.repo}/pulls`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -414,5 +414,5 @@ export async function openPullRequest(opts: {
       draft: false,
     }),
   })
-  return { html_url: pr.html_url as string, number: pr.number as number }
+  return { html_url: pr.html_url as string, number: pr.number as number, created_at: pr.created_at as string | undefined }
 }

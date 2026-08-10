@@ -50,6 +50,22 @@ export interface DeepInterlinkReport {
   scannedPages: number
   enrichedPages: number
   totalSuggestedLinks: number
+  /** Confidence-tier breakdown so the UI can show the user the mix of link qualities. */
+  linkConfidence: { high: number; medium: number; low: number }
+  /** Count of suggestions whose host differs from the source page (true cross-domain links). */
+  crossDomainLinks: number
+  /** Sample of top suggestions across the estate so the admin can verify ranking quality without scrolling. */
+  topLinks: Array<{
+    sourceUrl: string
+    sourceTitle: string
+    sourceRepo: RepoId
+    url: string
+    host: string
+    title: string
+    anchorText: string
+    score: number
+    bestH2: string | null
+  }>
   pages: EnrichedPage[]
   generatedAt: string
 }
@@ -61,6 +77,26 @@ export interface DeepInterlinkRepair {
   linksAdded: number
   prNumber: number
   prUrl: string
+  createdAt: string
+}
+
+export interface DeepInterlinkShippedRepair {
+  repo: RepoId
+  prNumber: number
+  prUrl: string
+  title: string
+  createdAt: string
+  shipped: boolean
+}
+
+export interface DeepInterlinkArchive {
+  scope: InterlinkScope
+  generatedAt: string
+  scannedPages: number
+  enrichedPages: number
+  totalSuggestedLinks: number
+  crossDomainLinks: number
+  shippedRepairs: DeepInterlinkShippedRepair[]
 }
 
 // ── Keyword extraction ────────────────────────────────────────────────────
@@ -378,7 +414,16 @@ export async function auditDeepInterlink(
   }
 
   if (!allPageData.length) {
-    return { scannedPages: 0, enrichedPages: 0, totalSuggestedLinks: 0, pages: [], generatedAt: new Date().toISOString() }
+    return {
+      scannedPages: 0,
+      enrichedPages: 0,
+      totalSuggestedLinks: 0,
+      linkConfidence: { high: 0, medium: 0, low: 0 },
+      crossDomainLinks: 0,
+      topLinks: [],
+      pages: [],
+      generatedAt: new Date().toISOString(),
+    }
   }
 
   // Score all pairs
@@ -417,14 +462,97 @@ export async function auditDeepInterlink(
     })
   }
 
+  // Roll-up: confidence tiers, cross-domain count, and a global top-N sample
+  // so the admin can verify the rankings at a glance.
+  let high = 0
+  let medium = 0
+  let low = 0
+  let crossDomain = 0
+  const flat: DeepInterlinkReport['topLinks'] = []
+  for (const page of result) {
+    for (const link of page.suggestedLinks) {
+      if (link.score >= 0.25) high++
+      else if (link.score >= 0.15) medium++
+      else low++
+      if (link.host !== page.host) crossDomain++
+      flat.push({
+        sourceUrl: page.url,
+        sourceTitle: page.title,
+        sourceRepo: page.repo,
+        url: link.url,
+        host: link.host,
+        title: link.title,
+        anchorText: link.anchorText,
+        score: link.score,
+        bestH2: link.bestH2,
+      })
+    }
+  }
+  flat.sort((a, b) => b.score - a.score)
+  const top = flat.slice(0, 12)
+
   const totalLinks = result.reduce((sum, p) => sum + p.suggestedLinks.length, 0)
   return {
     scannedPages: allPageData.length,
     enrichedPages: result.filter((p) => p.suggestedLinks.length > 0).length,
     totalSuggestedLinks: totalLinks,
+    linkConfidence: { high, medium, low },
+    crossDomainLinks: crossDomain,
+    topLinks: top,
     pages: result,
     generatedAt: new Date().toISOString(),
   }
+}
+
+const SHIPPED_TITLE_PREFIX = '[Content Studio] Deep interlink enrichment'
+
+// ── Outbound: list already-shipped enrichment PRs per repo ───────────────
+// Without an archive table, the most reliable signal is GitHub's issue endpoint
+// (PRs are surfaced there with their merged_at flag). We match on the title
+// prefix the engine sets on every PR it opens — not on a label — so first paint
+// always works even when labels have not yet propagated, and we explicitly mark
+// closed-but-unmerged PRs so the admin does not mistake them for shipped fixes.
+export async function listShippedEnrichmentPrs(
+  scope: InterlinkScope = 'all',
+): Promise<DeepInterlinkShippedRepair[]> {
+  const repos: RepoId[] = scope === 'all'
+    ? ['caseworks', 'yousafe-consultancy', 'portal']
+    : [scope as RepoId]
+  const shipped: DeepInterlinkShippedRepair[] = []
+
+  for (const repo of repos) {
+    try {
+      // `state=all` keeps shipped + closed-without-merge visible. `merged`
+      // comes back via `pull_request.merged_at` on each issue entry.
+      const res = await githubFetch(
+        `/repos/kylemwalkerpr-ship-it/${repo}/issues?state=all&per_page=30`,
+      )
+      const list = Array.isArray(res) ? res : []
+      for (const pr of list as Array<{
+        number?: number; html_url?: string; title?: string; created_at?: string
+        state?: string; pull_request?: { merged_at?: string | null }
+      }>) {
+        if (!pr.number || !pr.html_url) continue
+        const title = pr.title || ''
+        if (!title.startsWith(SHIPPED_TITLE_PREFIX)) continue
+        const mergedAt = pr.pull_request?.merged_at
+        const state = pr.state || 'unknown'
+        const shippedState = mergedAt ? 'merged' : state === 'closed' ? 'closed-not-merged' : 'open'
+        shipped.push({
+          repo,
+          prNumber: pr.number,
+          prUrl: pr.html_url,
+          title: `${title}${state === 'closed' && mergedAt ? '' : state === 'closed' ? ' (closed not merged)' : ' (open)'}`,
+          createdAt: mergedAt || pr.created_at || new Date().toISOString(),
+          shipped: shippedState === 'merged',
+        })
+      }
+    } catch {
+      // Non-fatal: shipped list is informational only.
+    }
+  }
+  shipped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  return shipped
 }
 
 export async function repairDeepInterlink(
@@ -494,7 +622,15 @@ export async function repairDeepInterlink(
       ].join('\\n'),
     })
 
-    repairs.push({ repo: repo as RepoId, branch, filesModified, linksAdded, prNumber: pr.number, prUrl: pr.html_url })
+    repairs.push({
+      repo: repo as RepoId,
+      branch,
+      filesModified,
+      linksAdded,
+      prNumber: pr.number,
+      prUrl: pr.html_url,
+      createdAt: pr.created_at || new Date().toISOString(),
+    })
   }
 
   return { report, repairs, dryRun: false }
