@@ -344,11 +344,12 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
     model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
-    // The supplied NVIDIA example enables thinking and reserves a reasoning
-    // budget. The SSE parser emits delta.content only, never hidden reasoning.
+    // Disable thinking mode for content generation — we want final prose, not
+    // reasoning chains. When enable_thinking is true, the SSE stream emits
+    // delta.reasoning_content (not delta.content), which our OpenAI-compatible
+    // SSE parser cannot consume, resulting in empty content.
     extraBody: {
-      chat_template_kwargs: { enable_thinking: true },
-      reasoning_budget: 16384,
+      chat_template_kwargs: { enable_thinking: false },
     },
   }
 }
