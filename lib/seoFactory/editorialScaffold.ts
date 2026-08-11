@@ -358,6 +358,27 @@ export function applyDeterministicRepairs(opts: {
     applied.push('concrete_example')
   }
 
+  // ── Strip hallucinated internal estate links ───────────────────
+  // The editorial contract tells models "do NOT create internal links"
+  // when the allowlist is empty. Models still hallucinate relative paths
+  // like [text](/us/fake-page) that return 404. Strip every estate-looking
+  // relative markdown link before the audit runs, then inject only the
+  // verified gov sources from REGION_SOURCES below.
+  const stripBefore = b
+  // Relative estate links: [label](/us/..., /uk/..., /ca/..., /au/..., etc.)
+  b = b.replace(
+    /\[([^\]]*)\]\(\/(?:us|uk|ca|au|compare|blog|legal|regional|universities|faq|resources|services|contact|about|terms|privacy)\/[^)]*\)/gi,
+    (_, label) => String(label),
+  )
+  // Absolute yousafeconsultancy.com links: [label](https://yousafeconsultancy.com/..., https://legal.yousafeconsultancy.com/...)
+  b = b.replace(
+    /\[([^\]]*)\]\(https?:\/\/(?:legal\.)?yousafeconsultancy\.com\/[^)]*\)/gi,
+    (_, label) => String(label),
+  )
+  if (b !== stripBefore) {
+    applied.push('hallucinated_links_stripped')
+  }
+
   // ── Internal link injection from verified estate URLs ───────────────
   // When the model created zero internal links, inject 2-3 verified
   // cross-references from the regional source list so the audit clears.

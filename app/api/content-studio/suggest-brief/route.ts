@@ -152,7 +152,10 @@ export async function POST(req: NextRequest) {
       temperature: 0.3,
     })
 
-    const parsed = JSON.parse(ai.text || '{}')
+    // Strip markdown code fences (```json ... ```) that some models wrap JSON in
+    let rawText = (ai.text || '').trim()
+    rawText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+    const parsed = JSON.parse(rawText || '{}')
 
     if (!parsed.suggestedH1 && !parsed.h2Outline) {
       return NextResponse.json({

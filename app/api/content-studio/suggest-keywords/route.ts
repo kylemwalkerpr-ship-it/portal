@@ -80,7 +80,10 @@ export async function POST(req: NextRequest) {
       temperature: 0.4,
     })
 
-    const parsed = JSON.parse(ai.text || '{}')
+    // Strip markdown code fences (```json ... ```) that some models wrap JSON in
+    let rawText = (ai.text || '').trim()
+    rawText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
+    const parsed = JSON.parse(rawText || '{}')
     if (!Array.isArray(parsed.shortTail) || !Array.isArray(parsed.longTail)) {
       return NextResponse.json({
         error: 'AI returned invalid format',
