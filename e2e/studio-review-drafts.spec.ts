@@ -150,28 +150,50 @@ function makeDraftedJob() {
   }
 }
 
-/** Re-audit response — warnings are fixable, blockers are clear. */
-function makeReauditResponse() {
+/** A document-level audit-warning annotation for a missing Article schema.
+ *  Audit-only warnings (schema/meta/internal-links) now ship as annotations
+ *  too, so this is the shape the reaudit route produces for them. */
+function makeSchemaArticleAnnotation() {
+  return {
+    id: 'schema_article-0-0',
+    line: 1, col: 1, endLine: 1, endCol: 1, length: 0,
+    severity: 'warning' as const,
+    code: 'schema_article',
+    message: 'Missing Article JSON-LD',
+    fix: 'Add Article schema in application/ld+json',
+    highlightedText: '',
+  }
+}
+
+/** Re-audit response — warnings are fixable, blockers are clear. When
+ *  `withSchemaAnnotation` is set, the response also carries the audit-only
+ *  schema_article annotation (the shape the real route now emits) so the
+ *  issues panel has a per-warning AI Fix button to assert on. */
+function makeReauditResponse(withSchemaAnnotation = false) {
+  const warnings: Array<{ code: string; severity: string; message: string; fix?: string }> = [
+    { code: 'word_count_target', severity: 'warning', message: 'Word count below target — aim for 2200+ words' },
+    { code: 'alt_text_missing', severity: 'warning', message: 'Add descriptive alt text to images' },
+  ]
+  if (withSchemaAnnotation) {
+    warnings.push({ code: 'schema_article', severity: 'warning', message: 'Missing Article JSON-LD', fix: 'Add Article schema in application/ld+json' })
+  }
   return {
     ok: true,
     score: 92,
     blockers: 0,
-    warnings: 2,
-    summary: '92/100 - 0 blocker(s), 2 warning(s) - PASSED',
+    warnings: warnings.length,
+    summary: `92/100 - 0 blocker(s), ${warnings.length} warning(s) - PASSED`,
     shipReady: true,
     depthGate: { ok: true, message: 'Depth floor met' },
-    annotations: [],
-    warningsData: [
-      { code: 'word_count_target', severity: 'warning', message: 'Word count below target — aim for 2200+ words' },
-      { code: 'alt_text_missing', severity: 'warning', message: 'Add descriptive alt text to images' },
-    ],
+    annotations: withSchemaAnnotation ? [makeSchemaArticleAnnotation()] : [],
+    warningsData: warnings,
     appliedRepairs: [],
   }
 }
 
 // ── Route mocks ─────────────────────────────────────────────────────────────
 
-async function installRouteMocks(page: Page): Promise<void> {
+async function installRouteMocks(page: Page, opts: { withSchemaAnnotation?: boolean } = {}): Promise<void> {
   const drafted = makeDraftedJob()
 
   // Queue list + detail + actions. The studio calls /api/content-studio/jobs
@@ -212,7 +234,7 @@ async function installRouteMocks(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(makeReauditResponse()),
+      body: JSON.stringify(makeReauditResponse(opts.withSchemaAnnotation)),
     })
   })
 
@@ -307,5 +329,57 @@ test.describe('Studio Review stage — drafts list + warnings block', () => {
     const fixAllBtn = page.getByRole('button', { name: /Fix all warnings \(2\)/ })
     await expect(fixAllBtn).toBeVisible({ timeout: 5000 })
     await expect(fixAllBtn).toBeEnabled({ timeout: 5000 })
+  })
+
+  test('audit warning (schema_article) renders a per-warning AI Fix button in the issues panel', async () => {
+    test.skip(!hasClerkCredentials(), 'Clerk credentials not configured')
+
+    // Mock a reaudit that ALSO returns the audit-only schema_article warning
+    // as an inline annotation (the shape the route now emits).
+    await installRouteMocks(page, { withSchemaAnnotation: true })
+    await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
+
+    // ── 1 · Open the editor ──
+    const reviewPill = page.locator('#studio-tab-review')
+    await reviewPill.waitFor({ state: 'visible', timeout: 30000 })
+    await reviewPill.click()
+
+    const draftRow = page.getByTestId(`studio-review-draft-${DRAFT_ID}`)
+    await expect(draftRow).toBeVisible({ timeout: 8000 })
+    await draftRow.getByRole('button', { name: /Open in editor/ }).click()
+
+    // ── 2 · Re-audit so annotations (incl. the audit warning) populate ──
+    const reauditBtn = page.locator('button:visible', { hasText: /^Re-audit$/ }).first()
+    await expect(reauditBtn).toBeVisible({ timeout: 10000 })
+    await expect(reauditBtn).toBeEnabled({ timeout: 5000 })
+    await reauditBtn.dispatchEvent('click')
+
+    // ── 3 · Issues panel: schema_article is listed with an AI Fix button ──
+    // The annotation sidebar renders after re-audit (showAnnotations=true).
+    // Exactly one annotation exists in the mock, so the header proves it
+    // reached the panel (not just the warnings block, which also lists it).
+    const issuesHeader = page.getByText(/^Issues \(1\)$/).first()
+    await expect(issuesHeader).toBeVisible({ timeout: 10000 })
+
+    // The audit-warning annotation card itself. Prefer the stable testid
+    // (ships with the next deploy); fall back to a structural match against
+    // the current deployed build. Scoping to the card (NOT a page-wide div
+    // filter) is what proves the AI Fix button belongs to the schema warning
+    // and not to some ancestor container that also matches.
+    const schemaCard = page
+      .getByTestId('studio-annotation-card-schema_article')
+      .or(page.locator('div').filter({ hasText: /schema_article/ }).filter({ has: page.getByRole('button', { name: /^AI Fix$/ }) }).first())
+    await expect(schemaCard).toBeVisible({ timeout: 10000 })
+
+    // Code + message render inside the card.
+    await expect(schemaCard.getByText('schema_article').first()).toBeVisible({ timeout: 5000 })
+    await expect(schemaCard.getByText('Missing Article JSON-LD').first()).toBeVisible({ timeout: 5000 })
+
+    // Per-warning AI Fix button renders for the audit warning — the whole
+    // point of this scenario (audit warnings are fixable individually, not
+    // only via the Fix-all sweep).
+    const aiFixBtn = schemaCard.getByRole('button', { name: /^AI Fix$/ })
+    await expect(aiFixBtn).toBeVisible({ timeout: 5000 })
+    await expect(aiFixBtn).toBeEnabled({ timeout: 5000 })
   })
 })

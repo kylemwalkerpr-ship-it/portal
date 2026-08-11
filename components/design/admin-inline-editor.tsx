@@ -574,7 +574,7 @@ export default function AdminInlineEditor({ content, jobId, onChange, disabled, 
               Issues ({annotations.length})
             </div>
             {annotations.map((a) => (
-              <div key={a.id} style={{
+              <div key={a.id} data-testid={`studio-annotation-card-${a.code}`} style={{
                 padding: '10px 14px', borderBottom: `1px solid ${C.border}`,
                 background: activeAnnotationId === a.id ? '#F0F7FF' : 'transparent',
                 transition: 'background 0.15s',
