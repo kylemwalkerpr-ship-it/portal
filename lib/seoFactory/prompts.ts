@@ -180,7 +180,11 @@ export function buildFactorySystemPrompt(opts: {
       'You MUST follow this exact H2 structure. Do not add, remove, or reorder sections.',
       'If the brief supplies a keyword→section map, place each keyword naturally in its assigned H2.',
       '',
-    ] : []),
+    ] : [
+      'HEADING REQUIREMENT (no brief template provided — you MUST create at least 4 H2 sections):',
+      'Cover these topics as H2 sections (##): overview, eligibility/requirements, application process, required documents, timeline/costs, FAQ (4-6 Q&A), worked example, risks/warnings.',
+      '',
+    ]),
     ...(sources && sources.length ? [
       'SOURCES TO CITE:',
       ...sources.map((s, i) => `${i + 1}. ${s}`),
@@ -193,7 +197,7 @@ export function buildFactorySystemPrompt(opts: {
       'NEVER create an internal link to any URL outside this list.',
       '',
     ] : [
-      'INTERNAL LINKS: only link to pages that already exist on legal.yousafeconsultancy.com. Never invent URLs and never use example.com or any placeholder domain.',
+      'INTERNAL LINKS: the verified allowlist is EMPTY — do NOT create ANY internal links to legal.yousafeconsultancy.com or any yousafe domain. Disable internal linking entirely for this draft. Only link externally to .gov / .edu sources if they appear in the SOURCES list above, using their EXACT URLs. Creating an invented or guessed internal URL is a hard error.',
       '',
     ]),
     ...(targetSlug ? [
