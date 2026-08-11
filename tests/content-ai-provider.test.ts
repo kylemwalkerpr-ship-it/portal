@@ -30,7 +30,7 @@ describe('content AI · NVIDIA Nemotron', () => {
     expect(provider.model).toBe('nvidia/nemotron-3-ultra-550b-a55b')
     expect(provider.maxTokensCap).toBe(16384)
     expect(provider.extraBody).toEqual({
-      chat_template_kwargs: { enable_thinking: false },
+      chat_template_kwargs: { enable_thinking: true },
     })
     expect(listConfiguredContentProviders()).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'nvidia-nemotron', configured: true }),

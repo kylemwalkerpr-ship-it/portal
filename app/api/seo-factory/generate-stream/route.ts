@@ -142,6 +142,10 @@ export async function POST(request: Request) {
       dryRun: Boolean(body.dryRun),
       minAuditScore: body.minAuditScore != null ? Number(body.minAuditScore) : 65,
       maxRefine: body.maxRefine != null ? Number(body.maxRefine) : 8,
+      // Segmented writing — long docs write in N sequential bounded parts
+      // (thinking stays ON; each part fits the token budget). Auto 2 for
+      // long-form when omitted; admin can force via writeSegments.
+      writeSegments: body.writeSegments != null ? Number(body.writeSegments) : undefined,
       opportunityAction: body.opportunityAction,
       // Radar play/intent/signals — feeds the streaming pipeline's autopilot
       // transparency block (was previously dropped at this route).

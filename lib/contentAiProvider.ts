@@ -300,11 +300,10 @@ async function openAiCompatibleComplete(
     }
     const choice = json.choices?.[0]
     const msg = choice?.message
-    let text = extractMessageText(msg?.content)
-    // Some thinking models put draft in reasoning; prefer content, fallback reasoning if empty
-    if (!text && msg?.reasoning_content) {
-      text = String(msg.reasoning_content).trim()
-    }
+    // Consume ONLY final prose. Reasoning models return the chain in
+    // reasoning_content and the answer in content — reasoning must never
+    // become the article. If content is absent the model failed to answer.
+    const text = extractMessageText(msg?.content)
     if (!text) throw new Error(`${p.label} returned empty content`)
     // Never silently accept a cut-off completion — cascade to the next provider instead.
     if (choice?.finish_reason === 'length') {
@@ -348,12 +347,12 @@ export function getNvidiaNemotronProvider(): OpenAiCompat | null {
     model: env('NVIDIA_NEMOTRON_MODEL') || NVIDIA_NEMOTRON_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_NEMOTRON_MAX_TOKENS,
-    // Disable thinking mode for content generation — we want final prose, not
-    // reasoning chains. When enable_thinking is true, the SSE stream emits
-    // delta.reasoning_content (not delta.content), which our OpenAI-compatible
-    // SSE parser cannot consume, resulting in empty content.
+    // Thinking mode ON — reasoning improves factual/structured output. The SSE
+    // parser consumes ONLY delta.content, so reasoning chains never leak into
+    // the article (see parseOpenAiSse). Segmented writing keeps each run small
+    // enough that thinking + content fit the token budget.
     extraBody: {
-      chat_template_kwargs: { enable_thinking: false },
+      chat_template_kwargs: { enable_thinking: true },
     },
   }
 }
@@ -369,10 +368,11 @@ export function getNvidiaGlmProvider(): OpenAiCompat | null {
     model: env('NVIDIA_GLM_MODEL') || NVIDIA_GLM_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_GLM_MAX_TOKENS,
-    // Disable thinking mode so output is final prose (factory expects markdown page).
-    // GLM 5.2 uses enable_thinking (z-ai-style) rather than `thinking` (DeepSeek-style).
+    // Thinking mode ON — reasoning improves quality. GLM 5.2 uses enable_thinking
+    // (z-ai-style) rather than `thinking` (DeepSeek-style). The parser skips
+    // reasoning_content deltas, so only final prose lands in the article.
     extraBody: {
-      chat_template_kwargs: { enable_thinking: false },
+      chat_template_kwargs: { enable_thinking: true },
     },
   }
 }
@@ -388,9 +388,11 @@ export function getNvidiaDeepseekProvider(): OpenAiCompat | null {
     model: env('NVIDIA_DEEPSEEK_MODEL') || env('NVIDIA_MODEL') || NVIDIA_DEEPSEEK_MODEL_DEFAULT,
     topP: Number(env('NVIDIA_TOP_P') || '0.95') || 0.95,
     maxTokensCap: NVIDIA_DEEPSEEK_MAX_TOKENS,
-    // Disable thinking mode so output is final prose (factory expects markdown page)
+    // Thinking mode ON — reasoning improves factual/structured output. The SSE
+    // parser skips reasoning_content deltas, so only final prose lands in the
+    // article. Segmented writing keeps each run within the token budget.
     extraBody: {
-      chat_template_kwargs: { thinking: false },
+      chat_template_kwargs: { thinking: true },
     },
   }
 }
@@ -413,12 +415,12 @@ export function getBasetenProvider(): OpenAiCompat | null {
     apiKey,
     model: env('BASETEN_MODEL') || BASETEN_MODEL,
     maxTokensCap: BASETEN_MAX_TOKENS,
-    // Disable thinking for content generation — same reason as Nemotron: with
-    // enable_thinking the SSE stream emits delta.reasoning_content (not
-    // delta.content), which our parser cannot consume → empty/truncated output
-    // and finish_reason:'length' cascades.
+    // Thinking mode ON — reasoning improves quality. The SSE parser consumes
+    // ONLY delta.content, so reasoning chains never leak into the article.
+    // Segmented writing keeps each run small enough that thinking + content fit
+    // the token budget, so finish_reason:'length' truncation is avoided.
     extraBody: {
-      chat_template_kwargs: { enable_thinking: false },
+      chat_template_kwargs: { enable_thinking: true },
     },
   }
 }
@@ -583,6 +585,18 @@ async function chatProviderBridge(opts: ContentAiOptions): Promise<ContentAiResu
  * Parse OpenAI-compatible SSE body and yield text deltas.
  * Handles `data: {...}` lines and `[DONE]`.
  */
+/** Lightweight peek at an SSE chunk's finish_reason without full validation. */
+function parseChoiceFinishReason(payload: string): { finish_reason?: string | null } | null {
+  try {
+    const parsed = JSON.parse(payload) as {
+      choices?: Array<{ finish_reason?: string | null }>
+    }
+    return parsed.choices?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
 async function* parseOpenAiSse(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
@@ -601,6 +615,16 @@ async function* parseOpenAiSse(
         if (!line.startsWith('data:')) continue
         const payload = line.slice(5).trim()
         if (!payload || payload === '[DONE]') continue
+        // A mid-stream finish_reason:'length' means the model hit its token
+        // cap before finishing — never treat that as a complete draft. Throw
+        // so the provider cascade tries the next provider instead of shipping
+        // truncated prose (or a chain-of-thought stub). This must live OUTSIDE
+        // the per-chunk catch below (which skips malformed SSE) so the error
+        // actually propagates to the cascade.
+        const choiceRaw = parseChoiceFinishReason(payload)
+        if (choiceRaw?.finish_reason === 'length') {
+          throw new Error('output was truncated (token limit) — trying next provider')
+        }
         try {
           const json = JSON.parse(payload) as {
             choices?: Array<{
@@ -610,13 +634,20 @@ async function* parseOpenAiSse(
             }>
             response?: string
           }
+          // Consume ONLY final prose. With thinking enabled the stream first
+          // emits reasoning_content deltas (the chain of thought) and then
+          // content deltas (the answer). Reasoning must NEVER be streamed into
+          // the article — it is not final prose. If a stream ends with zero
+          // content deltas, openAiCompatibleStream throws 'empty content' and
+          // the provider cascade moves on, which is the correct signal that
+          // the model burned its budget on thinking.
+          const choice = json.choices?.[0]
           const delta =
-            json.choices?.[0]?.delta?.content ||
-            json.choices?.[0]?.message?.content ||
-            json.choices?.[0]?.text ||
+            choice?.delta?.content ||
+            choice?.message?.content ||
+            choice?.text ||
             (typeof json.response === 'string' ? json.response : '')
           if (delta) yield delta
-          else if (json.choices?.[0]?.delta?.reasoning_content) yield json.choices[0].delta.reasoning_content
         } catch {
           /* skip malformed SSE chunks */
         }

@@ -631,3 +631,194 @@ export function extractH2Titles(markdown: string): string[] {
   }
   return out
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEGMENTED WRITING — thinking mode stays ON, so long documents are written in
+// sequential bounded parts. Each part is a fresh provider run targeting a slice
+// of the outline, so thinking + content always fit the token budget and we never
+// hit finish_reason:'length'. Part 1 writes front matter + H1 + opening + its
+// sections; later parts continue WITHOUT repeating front matter or already
+// written sections.
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface WriteSegment {
+  /** 1-based part number */
+  index: number
+  total: number
+  /** H2 sections this part must cover (empty for generic continuation) */
+  sections: string[]
+  /** Minimum body words for this part — sum of floors ≈ full-document minWords */
+  wordFloor: number
+  /** Section titles already written by earlier parts (empty for part 1) */
+  priorSections: string[]
+}
+
+/**
+ * Split a document brief into contiguous segments. Prefers the admin H2
+ * outline; falls back to a generic two-half split (body then FAQ/back-matter).
+ */
+export function planWriteSegments(opts: {
+  h2Outline?: string[]
+  minWords: number
+  segmentCount?: number
+}): WriteSegment[] {
+  const count = Math.max(1, Math.min(4, Math.floor(opts.segmentCount ?? 2)))
+  const outline = (opts.h2Outline || []).map((h) => h.trim()).filter(Boolean)
+  const floor = Math.max(200, opts.minWords)
+  // Never split an outline into more parts than it has sections — a one-section
+  // brief stays a single part.
+  const effective = outline.length ? Math.min(count, Math.max(1, outline.length)) : count
+  if (effective <= 1) {
+    return [
+      {
+        index: 1,
+        total: 1,
+        sections: outline,
+        wordFloor: floor,
+        priorSections: [],
+      },
+    ]
+  }
+  // If no outline, give part 1 the body halves and part 2 the back matter.
+  if (!outline.length) {
+    const half = Math.ceil(floor / 2)
+    const segments: WriteSegment[] = []
+    for (let i = 1; i <= effective; i++) {
+      const isLast = i === effective
+      segments.push({
+        index: i,
+        total: effective,
+        sections: [],
+        wordFloor: isLast ? floor - half * (effective - 1) : half,
+        priorSections: segments.map((s) => s.sections).flat(),
+      })
+    }
+    return segments
+  }
+  // Split the outline into effective contiguous chunks, as balanced as possible.
+  const per = Math.ceil(outline.length / effective)
+  const chunks: string[][] = []
+  for (let i = 0; i < effective; i++) {
+    chunks.push(outline.slice(i * per, (i + 1) * per))
+  }
+  const weights = chunks.map((c) => Math.max(1, c.length))
+  const totalWeight = weights.reduce((a, b) => a + b, 0)
+  const segments: WriteSegment[] = []
+  chunks.forEach((sections, i) => {
+    const isLast = i === effective - 1
+    const share = weights[i] / totalWeight
+    const wordFloor = isLast
+      ? Math.max(100, floor - Math.floor(segments.reduce((a, s) => a + s.wordFloor, 0)))
+      : Math.max(180, Math.floor(floor * share))
+    segments.push({
+      index: i + 1,
+      total: effective,
+      sections,
+      wordFloor,
+      priorSections: segments.map((s) => s.sections).flat(),
+    })
+  })
+  return segments
+}
+
+/**
+ * Per-part generation contract: write ONLY this part's sections, at this part's
+ * word floor, and never repeat front matter / already-written sections.
+ */
+export function buildSegmentWritePrompt(opts: {
+  title: string
+  topic: string
+  primaryKeyword: string
+  region: string
+  contentType: string
+  tone: string
+  segment: WriteSegment
+  minWords: number
+  targetWords: number
+  gscBlock: string
+  writeHint?: string
+  opportunityAction?: string
+}): string {
+  const { segment } = opts
+  const isFirst = segment.index === 1
+  const isLast = segment.index === segment.total
+  const sectionBlock =
+    segment.sections.length > 0
+      ? `
+SECTIONS TO WRITE IN THIS PART (exactly these, in this order):
+${segment.sections.map((h, i) => `${i + 1}. ## ${h}`).join('\n')}
+`
+      : `
+SECTIONS TO WRITE IN THIS PART:
+${isFirst
+  ? '- H1 + opening answer + ## In 60 seconds, then the main body: eligibility, documents, step-by-step process, timeline, risks, costs (concrete and detailed).'
+  : '- The remaining body depth: any sections not yet written, then ## FAQ (4-6 Q&A, self-contained), ## Sources (official https URLs only), JSON-LD, and the educational disclaimer.'}
+`
+  const priorBlock =
+    segment.priorSections.length > 0
+      ? `
+ALREADY WRITTEN IN EARLIER PARTS — DO NOT REPEAT ANY OF THESE SECTIONS OR THE H1/TITLE:
+${segment.priorSections.map((h) => `- ${h}`).join('\n')}
+`
+      : ''
+  return [
+    `## SEGMENTED WRITE — PART ${segment.index} OF ${segment.total} (${isFirst ? 'first part' : isLast ? 'final part' : 'continuation'})`,
+    `Topic: ${opts.topic}`,
+    `Primary keyword (already in the brief): ${opts.primaryKeyword}`,
+    `Region: ${opts.region} · Content type: ${opts.contentType} · Tone: ${opts.tone}`,
+    '',
+    `This is PART ${segment.index} of ${segment.total} of one complete article. Each part is generated in a separate run. Your ONLY job: write this part's sections with substance. Do not write sections assigned to other parts — they will be written by their own run.`,
+    '',
+    `WORD FLOOR FOR THIS PART: at least ${segment.wordFloor} body words of real prose (YAML front matter, JSON-LD, and code fences do NOT count). The full article floor is ${opts.minWords} words across all parts — under-writing this part starves the whole article and the audit will reject it. Write until you are comfortably above this part's floor.`,
+    sectionBlock,
+    priorBlock,
+    isFirst
+      ? 'RULES FOR PART 1:'
+      : isLast
+        ? 'RULES FOR THE FINAL PART:'
+        : 'RULES FOR CONTINUATION PARTS:',
+    isFirst
+      ? '1) Emit YAML front matter between --- fences (title, description, primaryKeyword, robots, date, region, content_type, ownerHost) + H1 + opening answer + ## In 60 seconds (3-5 direct bullets) + the sections listed above. Do NOT include the final ## Sources / JSON-LD / disclaimer — the final part writes those.'
+      : '1) Do NOT emit YAML front matter, do NOT repeat the H1/title/intro, and do NOT wrap in code fences. Start directly with the first section heading of THIS part.'
+    ,
+    '2) Practitioner voice: second person, plain English (~8th grade), define legal terms on first use, sentences under ~20 words.',
+    '3) ZERO outcome promises — no guarantees of visas, approvals, success rates, or results. Educational only.',
+    '4) Use the brief keywords naturally (short + long-tail). Never stuff.',
+    '5) Cite official sources with full https URLs (USCIS, IRCC, UKVI/GOV.UK, Home Affairs, SEVP) where they support a claim — inline where helpful.',
+    isLast
+      ? '6) This part closes the article: finish with ## FAQ (4-6 Q&A, each answer 40-80 words, self-contained for LLM citation), ## Sources (bullet list of official URLs only), Article + FAQPage JSON-LD in <script type="application/ld+json"> blocks, and a short educational disclaimer.'
+      : '6) Stop cleanly at the end of this part\'s sections. Do not write the FAQ/Sources/JSON-LD — a later part owns them.'
+    ,
+    '7) Raw markdown only, no code fences around the whole output, no AI clichés, no filler.',
+    '',
+    opts.gscBlock,
+    opts.writeHint ? `War-room / authority brief:\n${opts.writeHint}` : '',
+    opts.opportunityAction ? `Tactic note: ${opts.opportunityAction}` : '',
+    '',
+    `Write PART ${segment.index} now. Before you finish, mentally count this part's body words — if under ${segment.wordFloor}, keep writing concrete procedures, documents, and risks.`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+/**
+ * Join sequentially generated parts into one document. Part 1 keeps its front
+ * matter; later parts must not repeat YAML/H1/opening — strip any that slip in.
+ */
+export function mergeSegmentParts(parts: string[]): string {
+  const cleaned = (parts || [])
+    .map((raw) => String(raw || '').trim())
+    .filter(Boolean)
+    .map((part, i) => {
+      if (i === 0) return part
+      // Strip YAML front matter if a continuation part accidentally re-emitted it
+      let p = part.replace(/^---[\s\S]*?---\r?\n/, '')
+      // Strip a leading H1 if the model re-announced the title (tolerant of the
+      // blank line the front-matter strip can leave behind)
+      p = p.replace(/^\s*#\s+[^\n]+\n+/, '')
+      // Strip a repeated 'In 60 seconds' opener only if it immediately follows the H1 strip
+      return p.trim()
+    })
+    .filter(Boolean)
+  return cleaned.join('\n\n')
+}

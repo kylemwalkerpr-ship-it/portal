@@ -150,6 +150,12 @@ export interface PipelineInput {
   minWords?: number
   /** Brief Assembly Panel: admin-specified max word count */
   maxWords?: number
+  /**
+   * Segmented writing — write long documents in N sequential bounded parts so
+   * thinking mode + content fit the token budget. Default 2 for long-form
+   * (minWords ≥1600), 1 otherwise. Max 4.
+   */
+  writeSegments?: number
   /** Brief Assembly Panel: target slug for the generated page */
   targetSlug?: string
   /** Brief Assembly Panel: keyword → H2 section placement map */
