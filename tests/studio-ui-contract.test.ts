@@ -1,0 +1,334 @@
+/**
+ * Content Studio UI contract tests — the CI-enforced version of the manual
+ * scripts/render-studio-ui-preview.tsx probe.
+ *
+ * Renders the extracted studio components to static markup (node env, no
+ * browser) and asserts the exact E2E contract the Playwright suite depends
+ * on, so the monolith extraction can never drift silently:
+ *
+ *   · StudioStageNav   — id=studio-tab-*, role=tab, aria-selected/controls/
+ *                        disabled, disabled+title, gold active bubble, numerals
+ *   · ChapterIntro     — chapter-intro class, data-chapter, h2, scope chips,
+ *                        jump buttons, mini-pill numerals
+ *   · QueueStats/Table — metric cards, table headers, status/gate badges,
+ *                        PR links, select-all aria
+ *   · ReviewDraftsPanel— studio-review-drafts + studio-review-draft-{id} testids
+ *   · DefendPanel      — studio-defend-panel, empty state, gate badge, blockers
+ */
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { StudioStageNav } from '@/components/design/studio-stage-nav'
+import { ChapterIntro } from '@/components/design/studio-chapter-intro'
+import { QueueStats, QueueTable } from '@/components/design/studio-queue'
+import { DefendPanel, ReviewDraftsPanel } from '@/components/design/studio-review-panels'
+import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-shared'
+
+/* ── fixtures ─────────────────────────────────────────────────────────── */
+
+const NAV_TABS = [
+  { key: 'discover', numeral: 'I', label: 'Discover', sub: 'Signal Intelligence', hint: 'GSC · radar · gaps · opportunities' },
+  { key: 'research', numeral: 'II', label: 'Research', sub: 'Keywords & Brief', hint: 'Intent · keywords · interlinks · template' },
+  { key: 'draft', numeral: 'III', label: 'Draft', sub: 'Generate & Pipeline', hint: '2 jobs · live' },
+  { key: 'review', numeral: 'IV', label: 'Review', sub: 'Quality & Compliance', hint: 'Re-audit · blockers · gate' },
+  { key: 'approve', numeral: 'V', label: 'Approve', sub: 'PR & Deploy', hint: 'Merge · deploy · monitor' },
+  { key: 'track', numeral: 'VI', label: 'Track', sub: 'Publication Ledger', hint: 'Canonical · GSC · forecast vs actual' },
+  { key: 'configure', numeral: 'VII', label: 'Configure', sub: 'System Settings', hint: 'AI models · API keys · GSC · health' },
+] as const
+
+const NAV_AVAILABILITY: Record<string, { available: boolean; reason: string }> = {
+  discover: { available: true, reason: '' },
+  research: { available: true, reason: '' },
+  draft: { available: true, reason: '' },
+  review: { available: false, reason: 'No drafted job yet' },
+  approve: { available: true, reason: '' },
+  track: { available: true, reason: '' },
+  configure: { available: true, reason: '' },
+}
+
+function job(partial: Partial<ContentJob> & Pick<ContentJob, 'id' | 'title' | 'status'>): ContentJob {
+  return {
+    id: 'j1',
+    title: 'US Visa Update Guide',
+    topic: 'us visa update',
+    content_type: 'article',
+    tone: 'educational',
+    region: 'US',
+    target_repo: 'caseworks',
+    status: 'pending',
+    source_job_id: null,
+    slug: 'us-visa-update-guide',
+    content: '# US Visa Update Guide\n\nBody.',
+    branch_name: null,
+    content_path: null,
+    pr_url: null,
+    pr_number: null,
+    canonical_url: null,
+    merged_at: null,
+    closed_at: null,
+    error_message: null,
+    ai_provider: null,
+    ai_model: null,
+    word_count: 1234,
+    seo_score: 88,
+    primary_keyword: 'us visa',
+    ship_mode: 'auto',
+    indexable: true,
+    created_at: '2026-08-01T00:00:00.000Z',
+    updated_at: '2026-08-01T00:00:00.000Z',
+    ...partial,
+  }
+}
+
+const drafting = job({ id: 'j1', title: 'US Visa Update Guide', status: 'drafting', word_count: 1234, seo_score: 88 })
+const prJob = job({
+  id: 'j2',
+  title: 'Canada Study Permit Guide',
+  topic: 'study permit',
+  region: 'CA',
+  content_type: 'article',
+  status: 'pr_created',
+  pr_url: 'https://github.com/acme/repo/pull/42',
+  pr_number: 42,
+  word_count: 2410,
+  seo_score: 96,
+})
+
+const gateByJob = new Map<string, { score: number | null; passed: boolean | null }>([
+  ['j1', { score: 33, passed: false }],
+  ['j2', { score: 100, passed: true }],
+])
+
+/* ── StudioStageNav ───────────────────────────────────────────────────── */
+
+describe('StudioStageNav — E2E navigation contract', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(StudioStageNav, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tabs: NAV_TABS as any,
+      active: 'research',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      availability: NAV_AVAILABILITY as any,
+      onSelect: () => undefined,
+    }),
+  )
+
+  it('renders all 7 pills with stable ids in pipeline order', () => {
+    for (const t of NAV_TABS) {
+      expect(html).toContain(`id="studio-tab-${t.key}"`)
+    }
+    expect(html).toContain('aria-label="Content Studio pipeline"')
+  })
+
+  it('keeps role=tab + aria-selected/controls wiring', () => {
+    expect(html.match(/role="tab"/g) ?? []).toHaveLength(7)
+    expect(html).toContain('aria-selected="true"')
+    expect(html).toContain('aria-controls="studio-panel-research"')
+    expect(html).toContain('aria-controls="studio-panel-configure"')
+  })
+
+  it('locks unavailable stages with aria-disabled + disabled + reason title', () => {
+    expect(html).toContain('aria-disabled="true"')
+    expect(/<button[^>]*disabled[^>]*>/.test(html)).toBe(true)
+    expect(html).toContain('No drafted job yet')
+  })
+
+  it('paints the active bubble gold and renders all numerals', () => {
+    expect(html).toContain('background:#A07E3A')
+    for (const n of ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']) {
+      expect(html).toContain(`>${n}<`)
+    }
+  })
+})
+
+/* ── ChapterIntro ─────────────────────────────────────────────────────── */
+
+describe('ChapterIntro — stage header contract', () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ChapterIntro, {
+      numeral: 'I',
+      title: 'Discover',
+      subtitle: 'Signal intelligence — gap detection from every source wired into the engine.',
+      chapterKey: 'discover',
+      scope: [
+        { chip: 'Radar', text: 'Live opportunity radar from GSC deltas' },
+        { chip: 'Knowledge', text: 'Planner report of all possible works' },
+      ],
+      next: 'Research',
+      prev: 'Configure',
+      onJump: () => undefined,
+    }),
+  )
+
+  it('preserves the chapter-intro + data-chapter contract', () => {
+    expect(html).toContain('class="chapter-intro"')
+    expect(html).toContain('data-chapter="discover"')
+    expect(html).toContain('<h2')
+    expect(html).toContain('Discover</h2>')
+  })
+
+  it('renders scope chips and jump buttons', () => {
+    expect(html).toContain('Radar')
+    expect(html).toContain('Knowledge')
+    expect(html).toContain('← Configure')
+    expect(html).toContain('Research →')
+  })
+
+  it('renders the mini-pill compass numerals', () => {
+    expect(html).toContain('>I<')
+    expect(html).toContain('>VII<')
+  })
+})
+
+/* ── QueueStats ───────────────────────────────────────────────────────── */
+
+describe('QueueStats — draft queue metric cards', () => {
+  const summary: QueueSummary = { total: 5, drafting: 2, pr_created: 1, merged: 1, failed: 1 }
+
+  it('renders all five metric cards from the summary', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(QueueStats, { jobs: [drafting, prJob], total: 5, summary }),
+    )
+    for (const label of ['Total jobs', 'In progress', 'PR ready', 'Merged', 'Failed']) {
+      expect(html).toContain(label)
+    }
+    // total from the summary override
+    expect(html).toContain('>5<')
+  })
+})
+
+/* ── QueueTable ───────────────────────────────────────────────────────── */
+
+describe('QueueTable — draft queue table', () => {
+  const render = () =>
+    renderToStaticMarkup(
+      React.createElement(QueueTable, {
+        jobs: [drafting, prJob],
+        total: 2,
+        summary: { total: 2, drafting: 1, pr_created: 1 },
+        onSelect: () => undefined,
+        loading: false,
+        mergeIndex: { byPath: new Map(), byStem: new Map() },
+        gateByJob,
+        focusJobId: 'j1',
+        onLoadMore: () => undefined,
+        selectedIds: new Set<string>(),
+        onToggleSelect: () => undefined,
+        onToggleSelectAll: () => undefined,
+        onBulkAction: () => undefined,
+        bulkBusy: false,
+        bulkAction: null,
+      }),
+    )
+
+  it('renders table headers Status / Gate / SEO / PR', () => {
+    const html = render()
+    for (const h of ['Status', 'Gate', 'SEO', 'PR']) {
+      expect(html).toContain(h)
+    }
+  })
+
+  it('renders job rows with status badges, gate badges and PR links', () => {
+    const html = render()
+    expect(html).toContain('US Visa Update Guide')
+    expect(html).toContain('Canada Study Permit Guide')
+    expect(html).toContain('Drafting')
+    expect(html).toContain('PR Ready')
+    expect(html).toContain('✕ BLOCK') // gate 33 blocked
+    expect(html).toContain('✓ PASS') // gate 100 passed
+    expect(html).toContain('PR #42 ↗')
+    expect(html).toContain('aria-label="Select all visible jobs"')
+  })
+
+  it('renders the queue filter strip', () => {
+    const html = render()
+    for (const f of ['All', 'In progress', 'PR ready', 'Merged', 'Failed']) {
+      expect(html).toContain(f)
+    }
+  })
+})
+
+/* ── ReviewDraftsPanel ────────────────────────────────────────────────── */
+
+describe('ReviewDraftsPanel — drafts document list', () => {
+  it('renders the empty state with the studio-review-drafts testid', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ReviewDraftsPanel, {
+        jobs: [],
+        gateByJob,
+        selectedJobId: null,
+        onOpenJob: () => undefined,
+      }),
+    )
+    expect(html).toContain('data-testid="studio-review-drafts"')
+    expect(html).toContain('No drafted documents yet')
+  })
+
+  it('renders per-draft cards with id-scoped testids and an Open in editor action', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ReviewDraftsPanel, {
+        jobs: [drafting, prJob],
+        gateByJob,
+        selectedJobId: 'j1',
+        onOpenJob: () => undefined,
+      }),
+    )
+    expect(html).toContain('data-testid="studio-review-drafts"')
+    expect(html).toContain('data-testid="studio-review-draft-j1"')
+    expect(html).toContain('data-testid="studio-review-draft-j2"')
+    expect(html).toContain('US Visa Update Guide')
+    expect(html).toContain('Canada Study Permit Guide')
+    expect(html).toContain('1234 words') // raw word count format
+    expect(html).toContain('Open in editor →')
+  })
+})
+
+/* ── DefendPanel ──────────────────────────────────────────────────────── */
+
+describe('DefendPanel — gate state + blockers', () => {
+  it('renders the empty state when no draft is selected', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(DefendPanel, {
+        selectedJob: null,
+        gateFor: null,
+        jobs: [],
+        gateByJob,
+        onOpenJob: () => undefined,
+      }),
+    )
+    expect(html).toContain('data-testid="studio-defend-panel"')
+    expect(html).toContain('No draft selected')
+  })
+
+  it('surfaces the gate score badge and blocker remediation for a failed gate', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(DefendPanel, {
+        selectedJob: drafting,
+        gateFor: { score: 33, passed: false },
+        jobs: [drafting],
+        gateByJob,
+        onOpenJob: () => undefined,
+        reviewAuditResult: {
+          score: 33,
+          ok: false,
+          blockers: 2,
+          warnings: 1,
+          summary: 'Depth and voice blockers remain.',
+          annotations: [
+            { code: 'missing_disclaimer', severity: 'blocker', message: 'Add a disclaimer.', fix: 'Insert disclaimer.' },
+            { code: 'outcome_promise', severity: 'blocker', message: 'Remove guarantee language.', fix: 'Rewrite.' },
+          ],
+          shipReady: false,
+          depthGate: { ok: false, message: 'Below depth floor.' },
+        },
+      }),
+    )
+    expect(html).toContain('data-testid="studio-defend-panel"')
+    expect(html).toContain('Score 33/100') // gate score badge
+    expect(html).toContain('Ship gate blocked — Below depth floor.')
+    expect(html).toContain('BLOCKER · MISSING_DISCLAIMER')
+    expect(html).toContain('Add a disclaimer.')
+    expect(html).toContain('BLOCKER · OUTCOME_PROMISE')
+    expect(html).toContain('Remove guarantee language.')
+    expect(html).toContain('Open in inline editor →')
+  })
+})
