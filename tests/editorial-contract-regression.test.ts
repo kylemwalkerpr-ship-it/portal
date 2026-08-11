@@ -15,6 +15,7 @@ import {
   EDITORIAL_FORMATTING_CONTRACT,
   editorialBriefPromptBlock,
 } from '@/lib/seoFactory/editorialContract'
+import { buildFactorySystemPrompt } from '@/lib/seoFactory/prompts'
 
 describe('editorialContract · guardrail regression', () => {
   const contract = EDITORIAL_FORMATTING_CONTRACT
@@ -88,5 +89,40 @@ describe('editorialContract · guardrail regression', () => {
     expect(brief).toContain('BRIEF FORMAT')
     expect(brief).toContain('READER')
     expect(brief).toContain('KEYWORD COVERAGE')
+  })
+})
+
+// ── prompts.ts layer — the system prompt the drafting AI actually sees ───
+
+describe('prompts.ts · system-prompt guardrail regression', () => {
+  const plan = {
+    host: 'legal' as const,
+    canonicalUrl: 'https://legal.yousafeconsultancy.com/us/guardrail-test/',
+    indexable: true,
+    contentType: 'article',
+    routingSource: 'registry_host' as const,
+  }
+
+  // Empty allowlist → triggers the fallback that says "EMPTY — do NOT create"
+  const prompt = buildFactorySystemPrompt({
+    plan,
+    contentType: 'article',
+    minWords: 2200,
+    interlinkAllowlist: [],
+  })
+
+  it('emits "In 60 seconds" in the OUTPUT FORMAT block', () => {
+    expect(prompt).toContain('In 60 seconds')
+  })
+
+  it('emits "≥4 H2" in the heading/body structure rules', () => {
+    expect(prompt).toMatch(/≥4 H2|at least 4 H2/i)
+  })
+
+  it('emits "EMPTY — do NOT create" in the interlink allowlist fallback', () => {
+    // The fallback for an empty allowlist forbids ANY internal link creation.
+    // Removing or softening this line reopens the DEAD_INTERNAL_LINK class.
+    expect(prompt).toContain('EMPTY —')
+    expect(prompt).toContain('do NOT create ANY internal links')
   })
 })
