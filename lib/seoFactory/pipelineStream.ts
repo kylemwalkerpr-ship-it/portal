@@ -25,6 +25,7 @@ import {
 } from './prompts'
 import { countBodyWords, targetWordsForType, maxWordsForType } from './contentDepth'
 import { meetsDepthFloor, meetsShipQuality } from './audit'
+import { runDepthRescue } from './depthRescue'
 import { evaluateContentQuality, qualityToRefineNotes } from './contentQualityGate'
 import type { PipelineInput, PipelineResult, RequestedShipMode } from './pipeline'
 import { stripNoIndex } from './siteHealthFixes'
@@ -546,137 +547,46 @@ export async function* runSeoFactoryPipelineStream(
     }
 
     // ── PASS 2: Depth rescue (expand/append until floor met) ──────────────
-    // The floor is a HARD ship gate, so the rescue keeps working until it is
-    // met or the budget is genuinely exhausted. Never `break` on a single
-    // provider failure (the provider cascade retries internally) and never
-    // `break` on one no-growth append — rotate the append focus so each pass
-    // adds NEW substance. Only stall out after several consecutive
-    // no-growth passes (a model that keeps returning thin output won't be
-    // brute-forced forever).
-    const APPEND_FOCUSES = [
-      'Step-by-step process and timelines',
-      'Document checklist deep dive',
-      'Common refusals / mistakes and avoidance',
-      'Regional or dependent-family nuances',
-      'Practical preparation checklist before you apply',
-      'Costs, fees, or logistics (official schedules only)',
-    ]
-    const maxExpand = contentType === 'marketplace_gig' ? 1 : 10
-    const maxStallPasses = 3
-    let stallPasses = 0
-    let lastWords = countBodyWords(content)
-    // Wall-clock guard: each AI pass can take 30–120s (provider cascade), and
-    // the route caps this stream at ~300s. If the rescue has run too long, save
-    // the best draft so far instead of letting the whole stream time out.
-    const rescueStart = Date.now()
-    const RESCUE_MAX_MS = 220000
-    while (countBodyWords(content) < minWords && expandPasses < maxExpand) {
-      if (Date.now() - rescueStart > RESCUE_MAX_MS) {
-        yield {
-          type: 'progress',
-          stage: 'refine',
-          message: `Depth rescue time budget reached at ${countBodyWords(content)}/${minWords} words — keeping best draft`,
-        }
+    // Extracted to lib/seoFactory/depthRescue.ts so the expand → append →
+    // focus-rotation → stall behavior is regression-tested with mocked
+    // providers. The generator emits the same progress/delta/attempt events
+    // and a final `done` event carries the updated state back to the pipeline.
+    for await (const ev of runDepthRescue({
+      content,
+      audit,
+      title,
+      topic,
+      primaryKeyword,
+      region,
+      contentType,
+      minWords,
+      targetWords,
+      maxWords,
+      minAudit,
+      indexable: plan.indexable,
+      ownershipBlockers: plan.blockers,
+      h2Outline: input.h2Outline as string[] | undefined,
+      aiProvider: input.aiProvider,
+      system,
+      generateText: async (g) =>
+        generateContentText({
+          system: g.system || system,
+          prompt: g.prompt,
+          maxTokens: g.maxTokens,
+          temperature: g.temperature,
+          aiProvider: g.aiProvider,
+        }),
+    })) {
+      if (ev.type === 'done') {
+        content = ev.content
+        audit = ev.audit
+        provider = ev.provider
+        model = ev.model
+        expandPasses = ev.expandPasses
+        attempts = ev.attempts
         break
       }
-      expandPasses++
-      attempts++
-      const currentWords = countBodyWords(content)
-      yield {
-        type: 'progress',
-        stage: 'refine',
-        message: `Depth rescue ${expandPasses}/${maxExpand} · ${currentWords}/${minWords} words (${Math.max(0, minWords - currentWords)} to add)…`,
-      }
-      try {
-        if (expandPasses === 1) {
-          const ai = await generateContentText({
-            system,
-            prompt: buildDepthExpandPrompt({
-              title,
-              topic,
-              primaryKeyword,
-              region,
-              contentType,
-              minWords,
-              targetWords,
-              maxWords,
-              currentWords,
-              draft: content,
-              h2Outline: input.h2Outline as string[] | undefined,
-            }),
-            maxTokens: contentType === 'marketplace_gig' ? 4000 : 16384,
-            temperature: 0.42,
-            aiProvider: input.aiProvider,
-          })
-          if (countBodyWords(ai.text) > currentWords) {
-            content = ai.text
-            provider = ai.provider
-            model = ai.model
-            yield { type: 'delta', text: '\n\n<!-- depth expand applied -->\n\n', attempt: attempts }
-            yield { type: 'delta', text: content.slice(0, 500), attempt: attempts }
-          }
-        } else {
-          const focus = APPEND_FOCUSES[(expandPasses - 2) % APPEND_FOCUSES.length]
-          const ai = await generateContentText({
-            system:
-              'You expand immigration educational guides with concrete practitioner sections. No front matter. No JSON-LD. No AI clichés. No outcome guarantees.',
-            prompt: buildDepthAppendPrompt({
-              primaryKeyword,
-              region,
-              minWords,
-              currentWords,
-              existingH2s: extractH2Titles(content),
-              draftExcerpt: content,
-              h2Outline: input.h2Outline as string[] | undefined,
-              focus,
-            }),
-            maxTokens: 8000,
-            temperature: 0.45,
-            aiProvider: input.aiProvider,
-          })
-          const merged = mergeAppendedSections(content, ai.text)
-          if (countBodyWords(merged) > currentWords) {
-            content = merged
-            provider = ai.provider
-            model = ai.model
-          }
-        }
-      } catch (e) {
-        // Provider cascade already retried internally; keep the rescue alive.
-        yield {
-          type: 'progress',
-          stage: 'refine',
-          message: `Depth rescue pass ${expandPasses} failed (${e instanceof Error ? e.message.slice(0, 140) : 'error'}) — continuing with a different section focus`,
-        }
-      }
-      audit = auditContent({
-        content,
-        contentType,
-        primaryKeyword,
-        indexable: plan.indexable,
-        ownershipBlockers: plan.blockers,
-      })
-      yield {
-        type: 'attempt',
-        attempt: attempts,
-        score: audit.score,
-        wordCount: audit.wordCount,
-        goodEnough: meetsShipQuality(audit) && audit.score >= minAudit,
-        draft: content,
-      }
-      if (meetsDepthFloor(audit) && meetsShipQuality(audit) && audit.score >= minAudit) break
-      const grew = countBodyWords(content) > lastWords
-      lastWords = countBodyWords(content)
-      if (!grew) stallPasses++
-      else stallPasses = 0
-      if (stallPasses >= maxStallPasses) {
-        yield {
-          type: 'progress',
-          stage: 'refine',
-          message: `Depth rescue stalled at ${lastWords}/${minWords} after ${expandPasses} passes — moving on`,
-        }
-        break
-      }
+      yield ev
     }
 
     // ── PASS 3: Quality refine after depth rescue ────────────────────────
