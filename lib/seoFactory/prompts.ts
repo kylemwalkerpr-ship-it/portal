@@ -127,12 +127,14 @@ export function buildFactorySystemPrompt(opts: {
   h2Outline?: string[]
   /** Sources to cite — the AI must reference these authoritative URLs */
   sources?: string[]
+  /** Verified internal links — the AI may use ONLY these exact URLs. */
+  interlinkAllowlist?: Array<{ label?: string; url?: string }>
   /** Admin-specified target slug */
   targetSlug?: string
   /** Keyword → H2 section placement map from the Brief Assembly Panel */
   kwH2Map?: Record<string, string>
 }): string {
-  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map } = opts
+  const { plan, contentType, minWords, strategyBlock, h2Outline, sources, targetSlug, kwH2Map, interlinkAllowlist } = opts
   const target = targetWordsForType(contentType)
   const maxWords = opts.maxWords ?? depthMaxWords(contentType)
   return [
@@ -185,6 +187,15 @@ export function buildFactorySystemPrompt(opts: {
       'Cite these sources where they support a claim. Do not fabricate additional URLs.',
       '',
     ] : []),
+    ...(interlinkAllowlist && interlinkAllowlist.length ? [
+      'INTERNAL LINK ALLOWLIST (use ONLY these exact URLs for internal links — never invent, modify, or shorten them):',
+      ...interlinkAllowlist.map((l, i) => `${i + 1}. ${l.label || l.url} -> ${l.url}`),
+      'NEVER create an internal link to any URL outside this list.',
+      '',
+    ] : [
+      'INTERNAL LINKS: only link to pages that already exist on legal.yousafeconsultancy.com. Never invent URLs and never use example.com or any placeholder domain.',
+      '',
+    ]),
     ...(targetSlug ? [
       `TARGET SLUG: ${targetSlug}`,
       '',

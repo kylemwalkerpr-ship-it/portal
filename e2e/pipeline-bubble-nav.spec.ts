@@ -77,28 +77,17 @@ const STAGES = [
   },
   {
     key: 'draft',
-    label: 'Draft',
-    // Draft tab renders the DraftWorkspace
+    label: 'Draft & Review',
+    // Draft & Review tab renders the DraftWorkspace with the review panels below
     assertHeading: null, // DraftWorkspace has no heading text
     assertTestId: 'studio-draft-workspace',
   },
   {
-    key: 'review',
-    label: 'Review',
-    assertHeading: 'Review',
-    assertTestId: 'studio-defend-panel',
-  },
-  {
     key: 'approve',
-    label: 'Approve',
-    assertHeading: 'Approve',
+    label: 'Approve & Track',
+    // Approve & Track renders ApprovePanel with the publication ledger below
+    assertHeading: null,
     assertTestId: 'studio-approve-panel',
-  },
-  {
-    key: 'track',
-    label: 'Track',
-    assertHeading: 'Track',
-    assertTestId: 'studio-publish-ledger',
   },
   {
     key: 'configure',
@@ -182,8 +171,8 @@ test.describe('Pipeline bubble-pill navigation', () => {
   })
 
   test('clicking a past-stage pill navigates backward correctly', async () => {
-    // First click to Track (VI), then click back to Research (II)
-    await page.locator('#studio-tab-track').click()
+    // First click to Approve & Track (IV), then click back to Research (II)
+    await page.locator('#studio-tab-approve').click()
     await page.waitForTimeout(400)
     await expect(page.locator('[data-testid="studio-publish-ledger"]').first()).toBeVisible()
 

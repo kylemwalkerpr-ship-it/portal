@@ -266,6 +266,7 @@ export async function* runSeoFactoryPipelineStream(
       requiredLongTailKeywords,
       h2Outline: input.h2Outline as string[] | undefined,
       sources: input.sources as string[] | undefined,
+      interlinkAllowlist: radarInterlinks as Array<{ label?: string; url?: string }>,
       targetSlug: input.targetSlug as string | undefined,
       kwH2Map: input.kwH2Map as Record<string, string> | undefined,
     })

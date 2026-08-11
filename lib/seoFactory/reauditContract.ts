@@ -34,6 +34,8 @@ export type ReauditResponse = {
    *  meta description, internal links, AI-answer block…). Every entry is
    *  AI-fixable via the fix_warnings action. */
   warningsData?: Array<{ code: string; message: string; fix?: string }>
+  /** Live link-audit findings (placeholder / dead / unverified internal links). */
+  linkAudit?: Array<{ code: string; severity: 'blocker' | 'warning'; url: string; message: string; status?: number }>
 }
 
 /** Google depth floor — the OTHER hard ship gate. The editor previously only

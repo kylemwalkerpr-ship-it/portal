@@ -13,6 +13,8 @@
  */
 
 import { BANNED_AI_TELLS, VOICE_PLAYBOOK } from '@/lib/seoVoice'
+import { auditLinksSync } from './linkAudit'
+
 import { BANNED_PHRASES } from '@/lib/seoKnowledgeBase'
 import { countBodyWords } from './contentDepth'
 import { EDITORIAL_FORMATTING_CONTRACT } from './editorialContract'
@@ -267,6 +269,8 @@ export function evaluateContentQuality(opts: {
   /** Min counts — defaults match the planner (5 short / 4 long-tail). */
   minShortKeywords?: number
   minLongTailKeywords?: number
+  /** Verified internal URLs from the brief — internal links outside this set are flagged. */
+  linkAllowlist?: string[]
 }): QualityGateResult {
   const contentType = (opts.contentType || 'legal_guide').toLowerCase()
   const indexable = opts.indexable !== false
@@ -707,6 +711,29 @@ export function evaluateContentQuality(opts: {
     })
   }
 
+  // ── Link integrity (2026-08: the AI invented example.com URLs that shipped) ──
+  // Structural checks only (sync): placeholders, malformed URLs, insecure
+  // http:// internal links, and — when the brief supplies a verified set —
+  // internal paths not known to be live. Live HTTP verification runs in the
+  // async audit (auditLinksLive) merged at the reaudit/ship call sites.
+  {
+    const linkFindings = auditLinksSync(opts.content || '', opts.linkAllowlist?.length ? opts.linkAllowlist : undefined)
+    for (const f of linkFindings) {
+      add({
+        code: f.code as QualityFinding['code'],
+        severity: f.severity as QualityFinding['severity'],
+        message: f.message,
+        fix: f.code === 'placeholder_link'
+          ? 'Replace with a verified estate URL from the INTERNAL LINK ALLOWLIST (research stage) or remove the link.'
+          : f.code === 'malformed_link'
+            ? 'Fix the link syntax — full https URL or estate-relative path.'
+            : f.code === 'insecure_internal_link'
+              ? 'Upgrade to https://.'
+              : 'Re-verify the URL against the live site before shipping.',
+      })
+    }
+  }
+
   const blockers = findings.filter((f) => f.severity === 'blocker')
   const warnings = findings.filter((f) => f.severity === 'warning')
   const ok = blockers.length === 0
@@ -731,6 +758,7 @@ export function assertQualityGate(opts: {
   requiredLongTailKeywords?: string[]
   minShortKeywords?: number
   minLongTailKeywords?: number
+  linkAllowlist?: string[]
 }): QualityGateResult {
   const r = evaluateContentQuality(opts)
   if (!r.ok) {

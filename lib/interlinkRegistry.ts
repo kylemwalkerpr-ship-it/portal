@@ -15,6 +15,8 @@
  * Rule of thumb: 2–5 links per generated piece, naturally woven in.
  */
 
+import { filterLiveInternalUrls, normalizeEstateUrl } from './seoFactory/linkAudit'
+
 export interface InterlinkEntry {
   /** Human label shown in the admin panel */
   label: string
@@ -410,6 +412,28 @@ export function suggestInterlinks(
  * Build a prompt-ready interlinks block for the AI system message.
  * The AI is instructed to naturally weave 1–3 of these links into the content.
  */
+
+/**
+ * Live-verified suggestions: registry matches are normalized to the live
+ * estate base and filtered against the live sitemap + on-demand HEAD checks.
+ * Only fully-live URLs ever reach a brief, a prompt, or the admin panel — a
+ * dead registry entry is silently dropped instead of shipping a 404 link.
+ */
+export async function suggestVerifiedInterlinks(
+  topic: string,
+  keywords: string[] = [],
+  maxResults = 5,
+): Promise<InterlinkSuggestion[]> {
+  const suggestions = suggestInterlinks(topic, keywords, maxResults * 2)
+  if (suggestions.length === 0) return []
+  const liveUrls = await filterLiveInternalUrls(suggestions.map((s) => normalizeEstateUrl(s.url)))
+  const live = new Set(liveUrls)
+  return suggestions
+    .filter((s) => live.has(normalizeEstateUrl(s.url)))
+    .slice(0, maxResults)
+    .map((s) => ({ ...s, url: normalizeEstateUrl(s.url) }))
+}
+
 export function buildInterlinksPrompt(
   topic: string,
   keywords: string[] = [],

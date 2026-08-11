@@ -427,6 +427,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       indexable: plan.indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      linkAllowlist: (input.interlinks ?? []).map((l) => l.url).filter(Boolean) as string[],
     })
     refineNotes = [
       auditToRefineNotes({
@@ -641,6 +642,7 @@ export async function runSeoFactoryPipeline(input: PipelineInput): Promise<Pipel
       indexable: plan.indexable,
       requiredShortKeywords,
       requiredLongTailKeywords,
+      linkAllowlist: (input.interlinks ?? []).map((l) => l.url).filter(Boolean) as string[],
     })
     refineNotes = [
       auditToRefineNotes({ ...audit, minWords, targetWords }),

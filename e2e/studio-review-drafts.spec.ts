@@ -281,7 +281,7 @@ test.describe('Studio Review stage — drafts list + warnings block', () => {
     await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
 
     // ── 1 · Draft appears in the Review stage Drafts document list ──
-    const reviewPill = page.locator('#studio-tab-review')
+    const reviewPill = page.locator('#studio-tab-draft')
     await reviewPill.waitFor({ state: 'visible', timeout: 30000 })
     await reviewPill.click()
 
@@ -340,7 +340,7 @@ test.describe('Studio Review stage — drafts list + warnings block', () => {
     await page.goto(`${BASE}/dashboard/admin/content`, { waitUntil: 'domcontentloaded' })
 
     // ── 1 · Open the editor ──
-    const reviewPill = page.locator('#studio-tab-review')
+    const reviewPill = page.locator('#studio-tab-draft')
     await reviewPill.waitFor({ state: 'visible', timeout: 30000 })
     await reviewPill.click()
 

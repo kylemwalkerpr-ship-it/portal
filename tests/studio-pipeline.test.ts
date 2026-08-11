@@ -9,10 +9,10 @@ import {
   transferCompetingWinner,
 } from '@/lib/seoFactory/studioPipeline'
 
-describe('studioPipeline · discover → track order', () => {
-  it('starts with Discover and ends with Track', () => {
+describe('studioPipeline · discover → configure order', () => {
+  it('starts with Discover and ends with Configure (draft+review, approve+track merged)', () => {
     expect(DISSERTATION_STAGES).toEqual([
-      'discover', 'research', 'draft', 'review', 'approve', 'track', 'configure',
+      'discover', 'research', 'draft', 'approve', 'configure',
     ])
     expect(DISSERTATION_STAGES[0]).toBe('discover')
     expect(DISSERTATION_STAGES.at(-1)).toBe('configure')
@@ -24,8 +24,10 @@ describe('studioPipeline · discover → track order', () => {
       define: 'research', investigate: 'research',
       create: 'research', brief: 'research', plan: 'research', question: 'research',
       write: 'draft', pipeline: 'draft', queue: 'draft',
-      defend: 'review',
-      publish: 'track',
+      defend: 'draft',
+      review: 'draft',
+      publish: 'approve',
+      track: 'approve',
     })
     for (const [legacy, canonical] of Object.entries(LEGACY_STAGE_ALIASES)) {
       expect(resolveStudioStage(legacy)).toBe(canonical)
@@ -40,7 +42,8 @@ describe('studioPipeline · discover → track order', () => {
 
   it('recognizes only canonical stages as studio stages', () => {
     expect(isStudioStage('discover')).toBe(true)
-    expect(isStudioStage('track')).toBe(true)
+    expect(isStudioStage('track')).toBe(false)
+    expect(isStudioStage('draft')).toBe(true)
     expect(isStudioStage('configure')).toBe(true)
     expect(isStudioStage('research')).toBe(true)
     expect(isStudioStage('insights')).toBe(false)
@@ -50,16 +53,16 @@ describe('studioPipeline · discover → track order', () => {
   it('provides monotonic stage indexes for readiness guards', () => {
     expect(stageIndex('discover')).toBe(0)
     expect(stageIndex('draft')).toBe(2)
-    expect(stageIndex('track')).toBe(5)
-    expect(stageIndex('configure')).toBe(6)
+    expect(stageIndex('approve')).toBe(3)
+    expect(stageIndex('configure')).toBe(4)
     expect(stageIndex('research')).toBeLessThan(stageIndex('draft'))
     expect(isStageAtOrBefore('research', 'draft')).toBe(true)
-    expect(isStageAtOrBefore('track', 'approve')).toBe(false)
+    expect(isStageAtOrBefore('configure', 'approve')).toBe(false)
   })
 
   it('falls back to the nearest available prerequisite, not an unrelated tab', () => {
-    expect(nearestAvailableStage('track', { discover: true, research: true, draft: true, review: true, approve: false, track: false })).toBe('review')
-    expect(nearestAvailableStage('track', { discover: true, research: true, draft: false, review: false, approve: false, track: false })).toBe('research')
+    expect(nearestAvailableStage('approve', { discover: true, research: true, draft: true, approve: false })).toBe('draft')
+    expect(nearestAvailableStage('approve', { discover: true, research: true, draft: false, approve: false })).toBe('research')
     expect(nearestAvailableStage('discover', { discover: true })).toBe('discover')
   })
 

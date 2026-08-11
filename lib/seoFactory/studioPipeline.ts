@@ -12,10 +12,10 @@
  * VI  Track      — publication ledger, canonical verification, GSC position tracking
  * VII Configure  — AI models, API keys, GSC connection, system settings
  */
-export type StudioStage = 'discover' | 'research' | 'draft' | 'review' | 'approve' | 'track' | 'configure'
+export type StudioStage = 'discover' | 'research' | 'draft' | 'approve' | 'configure'
 
 export const DISSERTATION_STAGES: readonly StudioStage[] = [
-  'discover', 'research', 'draft', 'review', 'approve', 'track', 'configure',
+  'discover', 'research', 'draft', 'approve', 'configure',
 ] as const
 
 /**
@@ -34,9 +34,12 @@ export const LEGACY_STAGE_ALIASES: Readonly<Record<string, StudioStage>> = {
   define: 'research', investigate: 'research',
   create: 'research', brief: 'research', plan: 'research', question: 'research',
   write: 'draft', pipeline: 'draft', queue: 'draft',
-  // v1 academic labels → new canonical keys
-  defend: 'review',
-  publish: 'track',
+  // v1 academic labels + merged-stage names → new canonical keys
+  // (review folded into draft · track folded into approve)
+  defend: 'draft',
+  review: 'draft',
+  publish: 'approve',
+  track: 'approve',
 }
 
 export function isStudioStage(value: string | null | undefined): value is StudioStage {

@@ -3887,9 +3887,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
     discover: { available: true, reason: 'Discover is always the first stage — signals before strategy.' },
     research: { available: true, reason: 'Research keywords and build the brief — always accessible.' },
     draft: { available: hasBriefReady, reason: 'Complete the research brief before drafting.' },
-    review: { available: hasDraft || hasReviewableJob, reason: 'A generated job must exist before review.' },
     approve: { available: hasApproval, reason: 'A PR must exist before approval.' },
-    track: { available: hasPublication, reason: 'A merged or canonical result must exist before the publication ledger.' },
     configure: { available: true, reason: 'System configuration is always accessible.' },
   }), [hasTopic, hasBriefReady, hasDraft, hasReviewableJob, hasApproval, hasPublication])
 
@@ -4203,7 +4201,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   // NOTE: NOT dependent on selectedJob?.content to avoid re-audit on every keystroke
   // in the inline editor. The onScoreChange callback handles live re-audit updates.
   React.useEffect(() => {
-    if (tab !== 'review' || !selectedJob?.content) return
+    if (tab !== 'draft' || !selectedJob?.content) return
     const runGate = async () => {
       try {
         const res = await fetch('/api/content-studio/reaudit', {
@@ -4611,7 +4609,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           : `Generated via ${data.provider || 'AI'} · audit ${data.audit?.score ?? '—'}`
       setActionNotice(notice)
       // Auto-route: blocked ships land in Review for remediation; clean ships stay in Draft
-      selectTab(shipBlocked ? 'review' : 'draft')
+      selectTab('draft')
       const refreshedJobs = await fetchJobs()
       if (generatedJobId) {
         let reviewJob = refreshedJobs.find((candidate) => candidate.id === generatedJobId) || null
@@ -4665,11 +4663,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const TABS: Array<{ key: StudioTab; numeral: string; label: string; sub: string; hint: string }> = [
     { key: 'discover',  numeral: 'I',   label: 'Discover',  sub: 'Signal Intelligence',   hint: 'GSC · radar · gaps · opportunities' },
     { key: 'research',  numeral: 'II',  label: 'Research',  sub: 'Keywords & Brief',       hint: 'Intent · keywords · interlinks · template' },
-    { key: 'draft',     numeral: 'III', label: 'Draft',     sub: 'Generate & Pipeline',    hint: `${jobTotal || jobs.length} jobs · live` },
-    { key: 'review',    numeral: 'IV',  label: 'Review',    sub: 'Quality & Compliance',   hint: 'Re-audit · blockers · gate' },
-    { key: 'approve',   numeral: 'V',   label: 'Approve',   sub: 'PR & Deploy',            hint: 'Merge · deploy · monitor' },
-    { key: 'track',     numeral: 'VI',  label: 'Track',     sub: 'Publication Ledger',     hint: 'Canonical · GSC · forecast vs actual' },
-    { key: 'configure', numeral: 'VII', label: 'Configure', sub: 'System Settings',         hint: 'AI models · API keys · GSC · health' },
+    { key: 'draft',     numeral: 'III', label: 'Draft & Review',   sub: 'Generate · Gate · Fix',    hint: `${jobTotal || jobs.length} jobs · queue · review` },
+    { key: 'approve',   numeral: 'IV',  label: 'Approve & Track',  sub: 'Merge · Deploy · Verify',  hint: 'PR · deploy · ledger · GSC' },
+    { key: 'configure', numeral: 'V',   label: 'Configure',     sub: 'System Settings',        hint: 'AI models · API keys · GSC · health' },
   ]
 
   return (
@@ -4797,16 +4793,16 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'draft' && (
         <ChapterIntro
           numeral="III"
-          title="Draft"
-          subtitle="Generate against the plan: AI-powered content creation with live streaming, pipeline jobs, and parallel quality audits — all in one reproducible pipeline."
+          title="Draft & Review"
+          subtitle="Generate against the plan, then put every claim through the quality gate in one continuous flow: live streaming, the job queue, inline editing, re-audit, and blocker resolution before approval."
           chapterKey="draft"
           scope={[
             { chip: 'Live stream', text: 'SSE-fed, line-by-line generation paired with the SEO-enrichment pass.' },
             { chip: 'Queue',       text: 'Every active job with bulk rerun / resume / abandon / clear; per-job clock + ETA.' },
-            { chip: 'Audit',       text: 'First-pass audit runs in parallel and writes the first-pass score into the gate badge.' },
+            { chip: 'Review',      text: 'Re-audit, inline editor, blocker resolution and link-integrity checks — all gates clear here.' },
           ]}
           prev="II · Research"
-          next="V · Review"
+          next="IV · Approve & Track"
           onJump={selectTab}
         />
       )}
@@ -4823,7 +4819,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             completedJob={generationReviewJob}
             selectedJob={selectedJob}
             setSelectedJob={setSelectedJob}
-            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('review') } }}
+            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('draft') } }}
             selectTab={selectTab}
             error={error}
             setError={setError}
@@ -5155,6 +5151,78 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           />}
         </div>
       )}
+      {tab === 'draft' && (
+        <div id="studio-panel-draft-review" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 2px 0', borderTop: `1px solid ${E.hairline}` }}>
+            <span style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>REVIEW &amp; GATES</span>
+            <span style={{ fontSize: 10.5, color: E.inkSoft, fontFamily: E.mono }}>quality · compliance · depth · link integrity — every gate must clear before approve</span>
+          </div>
+          <ReviewDraftsPanel
+            jobs={jobs}
+            gateByJob={gateByJob}
+            selectedJobId={selectedJob?.id ?? null}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+          />
+          <DefendPanel
+            selectedJob={selectedJob}
+            gateFor={selectedJob ? (gateByJob.get(selectedJob.id) ?? null) : null}
+            jobs={jobs}
+            gateByJob={gateByJob}
+            onOpenJob={(j) => { setSelectedJob(j) }}
+            setActionNotice={setActionNotice}
+            reviewAuditResult={reviewAuditResult}
+            onApprove={() => selectTab('approve')}
+          />
+          {/* AI-enabled inline editor — fix blockers interactively */}
+          {selectedJob?.content && (
+            <div style={{ marginTop: 14, padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
+              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
+                INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
+              </div>
+              <AdminInlineEditor
+                content={selectedJob.content}
+                jobId={selectedJob.id}
+                onChange={(v: string) => {
+                  setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
+                }}
+                contentType={selectedJob.content_type}
+                primaryKeyword={selectedJob.primary_keyword ?? undefined}
+                indexable={selectedJob.indexable}
+                onScoreChange={async (_s) => {
+                  void fetchGateRuns()
+                  const latestContent = latestJobContentRef.current
+                  if (latestContent) {
+                    try {
+                      const res = await fetch('/api/content-studio/reaudit', {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          content: latestContent,
+                          contentType: selectedJob?.content_type,
+                          primaryKeyword: selectedJob?.primary_keyword ?? undefined,
+                          indexable: selectedJob?.indexable,
+                        }),
+                      })
+                      const data = await res.json().catch(() => ({})) as any
+                      if (res.ok) {
+                        setReviewAuditResult({
+                          score: data.score ?? 0,
+                          ok: Boolean(data.ok),
+                          blockers: data.blockers ?? 0,
+                          warnings: data.warnings ?? 0,
+                          summary: data.summary ?? '',
+                          annotations: data.annotations ?? [],
+                        })
+                      }
+                    } catch { /* best-effort */ }
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* ══════════ I · DISCOVER ══════════ */}
       {/* Stage I — scan all signals. GSC, radar, insights, LLM/AEO visibility,
@@ -5219,91 +5287,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       )}
 
       {/* ══════════ V · DEFENSE ══════════ */}
-      {/* Stage V — review quality. Re-audit, blocker resolution, and inline
-          editing. Each gate must clear before advancing to Approval. */}
-      {tab === 'review' && (
-        <>
-          <ChapterIntro
-          numeral="IV"
-          title="Review"
-          subtitle="Every claim must hold against the quality gate. Edit, re-audit, and regenerate until content, format, ownership, and compliance checks are green."
-          chapterKey="review"
-            scope={[
-              { chip: 'Inline edit',  text: 'Edit the draft directly; the gate re-runs on save.' },
-              { chip: 'Re-audit',     text: 'One click audits against the live content quality gate.' },
-              { chip: 'Blockers',     text: 'Each blocker is listed with the exact line that triggered it and the remediation guidance.' },
-            ]}
-            prev="III · Draft"
-            next="V · Approve"
-            onJump={selectTab}
-          />
-          <ReviewDraftsPanel
-            jobs={jobs}
-            gateByJob={gateByJob}
-            selectedJobId={selectedJob?.id ?? null}
-            onOpenJob={(j) => { setSelectedJob(j) }}
-          />
-          <DefendPanel
-            selectedJob={selectedJob}
-            gateFor={selectedJob ? (gateByJob.get(selectedJob.id) ?? null) : null}
-            jobs={jobs}
-            gateByJob={gateByJob}
-            onOpenJob={(j) => { setSelectedJob(j) }}
-            setActionNotice={setActionNotice}
-            reviewAuditResult={reviewAuditResult}
-            onApprove={() => selectTab('approve')}
-          />
-          {/* AI-enabled inline editor — fix blockers interactively */}
-          {selectedJob?.content && (
-            <div style={{ marginTop: 14, padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
-              <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700, marginBottom: 12 }}>
-                INTERACTIVE EDITOR — RE-AUDIT · FIX ALL · FIX PER ISSUE
-              </div>
-              <AdminInlineEditor
-                content={selectedJob.content}
-                jobId={selectedJob.id}
-                onChange={(v: string) => {
-                  setSelectedJob((prev) => prev ? { ...prev, content: v } : prev)
-                }}
-                contentType={selectedJob.content_type}
-                primaryKeyword={selectedJob.primary_keyword ?? undefined}
-                indexable={selectedJob.indexable}
-                onScoreChange={async (_s) => {
-                  void fetchGateRuns()
-                  // Re-fetch detailed gate result so DefendPanel sees updated blockers
-                  const latestContent = latestJobContentRef.current
-                  if (latestContent) {
-                    try {
-                      const res = await fetch('/api/content-studio/reaudit', {
-                        method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          content: latestContent,
-                          contentType: selectedJob?.content_type,
-                          primaryKeyword: selectedJob?.primary_keyword ?? undefined,
-                          indexable: selectedJob?.indexable,
-                        }),
-                      })
-                      const data = await res.json().catch(() => ({})) as any
-                      if (res.ok) {
-                        setReviewAuditResult({
-                          score: data.score ?? 0,
-                          ok: Boolean(data.ok),
-                          blockers: data.blockers ?? 0,
-                          warnings: data.warnings ?? 0,
-                          summary: data.summary ?? '',
-                          annotations: data.annotations ?? [],
-                        })
-                      }
-                    } catch { /* best-effort */ }
-                  }
-                }}
-              />
-            </div>
-          )}
-
-        </>
-      )}
 
       {/* ══════════ VI · APPROVE ══════════ */}
       {/* Stage VI — approve and merge the reviewed draft,
@@ -5312,9 +5295,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       {tab === 'approve' && (
         <>
           <ChapterIntro
-          numeral="V"
-          title="Approve"
-          subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, and record the merge outcome before publication verification."
+          numeral="IV"
+          title="Approve & Track"
+          subtitle="Once review is green, the content earns approval. Push the reviewed PR, watch the deployment, verify the live URL, and record the publication in the ledger."
           chapterKey="approve"
             scope={[
               { chip: 'Push to main',  text: 'Opens the PR to the deployment repo; auto-resolves once the build is green.' },
@@ -5332,28 +5315,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             onOpenJob={(j) => { setSelectedJob(j) }}
             setActionNotice={setActionNotice}
             onApproveAndMerge={runApproveAndMerge}
-            onMerged={() => { void fetchJobs(); selectTab('track') }}
-          />
-        </>
-      )}
-
-      {/* ══════════ VII · TRACK ══════════ */}
-      {/* Stage VII — the publication ledger of every merge, verified URL,
-          live GSC trend, and citation evidence used for reward calibration. */}
-      {tab === 'track' && (
-        <>
-          <ChapterIntro
-          numeral="VI"
-          title="Track"
-          subtitle="The content is live. Verify the canonical URL, record the live result, and preserve the citation and GSC evidence for reward calibration."
-          chapterKey="track"
-            scope={[
-              { chip: 'Merge ledger',  text: 'Every approved draft with merge SHA, deploy time, and live URL.' },
-              { chip: 'Verified URL',  text: 'Each URL is re-checked live: 200 OK + canonical tag intact.' },
-              { chip: 'Citation index', text: 'Blog → regional canonicals → cross-repo hyperlinks: a navigable citation graph.' },
-            ]}
-            prev="V · Approve"
-            onJump={selectTab}
+            onMerged={() => { void fetchJobs(); selectTab('approve') }}
           />
           <PublishLedger
             merges={merges}
@@ -5363,6 +5325,8 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
           />
         </>
       )}
+
+      {/* ══════════ VII · TRACK ══════════ */}
 
       {/* ══════════ VII · CONFIGURE ══════════ */}
       {tab === 'configure' && (

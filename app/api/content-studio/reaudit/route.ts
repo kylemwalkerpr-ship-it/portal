@@ -3,6 +3,7 @@ import { generateContentText } from '@/lib/contentAiProvider'
 import { buildWarningsFixPrompt, type InlineAnnotation } from '@/lib/seoFactory/inlineAnnotations'
 import { applyDeterministicRepairs } from '@/lib/seoFactory/editorialScaffold'
 import { evaluateReauditContract, type ReauditResponse } from '@/lib/seoFactory/reauditContract'
+import { auditLinksLive } from '@/lib/seoFactory/linkAudit'
 
 export type { ReauditResponse }
 
@@ -49,6 +50,40 @@ async function callAiFix(sys: string, prompt: string, maxTokens = 16384): Promis
   return text
 }
 
+
+/** Best-effort live link audit: structural checks already run in the quality
+ *  gate; this adds real HTTP verification of internal links so dead or
+ *  invented links (2026-08 example.com incident) block ship with evidence. */
+async function mergeLinkAudit(response: ReauditResponse, content: string): Promise<void> {
+  try {
+    const findings = await auditLinksLive(content)
+    if (!findings.length) return
+    const blockers = findings.filter((f) => f.severity === 'blocker')
+    const warnings = findings.filter((f) => f.severity === 'warning')
+    if (blockers.length) {
+      response.ok = false
+      response.shipReady = false
+    }
+    response.blockers = (response.blockers || 0) + blockers.length
+    response.warnings = (response.warnings || 0) + warnings.length
+    response.warningsData = [
+      ...(response.warningsData || []),
+      ...[...blockers, ...warnings].map((f) => ({
+        code: f.code,
+        message: f.message,
+        fix: f.code === 'placeholder_link'
+          ? 'Replace with a verified estate URL from the research-stage INTERNAL LINK ALLOWLIST.'
+          : f.code === 'dead_internal_link'
+            ? 'Point the link at a live estate URL (re-verify in the link audit).'
+            : 'Re-verify the URL before shipping.',
+      })),
+    ]
+    response.linkAudit = findings
+  } catch {
+    // Live audit is best-effort; the structural gate still enforces placeholders.
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as {
@@ -84,6 +119,7 @@ export async function POST(request: NextRequest) {
         requiredLongTailKeywords,
       }),
     }
+    await mergeLinkAudit(response, effective)
     if (repaired.applied.length && effective !== content) {
       response.fixedContent = effective
       response.appliedRepairs = repaired.applied
@@ -215,6 +251,7 @@ Fix ONLY this specific issue. Keep everything else exactly the same. Return the 
       }),
       fixedContent,
     }
+    await mergeLinkAudit(response, fixedContent)
     if (repaired.applied.length) response.appliedRepairs = repaired.applied
     return NextResponse.json(response)
   } catch (error) {

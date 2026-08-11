@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { requireAdminUser } from '@/lib/portalAuth'
+import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -175,6 +176,7 @@ export async function POST(request: Request) {
           }
         : null,
       aiProvider: body.aiProvider ? String(body.aiProvider).trim() : undefined,
+      interlinks: undefined as Array<{ label?: string; url?: string; matchedOn?: string[] }> | null,
       resumeContent: undefined as string | undefined,
       // Brief Assembly Panel fields — the full template from Stage II
       h2Outline: Array.isArray(body.h2Outline) ? body.h2Outline.map(String) : undefined,
@@ -186,6 +188,19 @@ export async function POST(request: Request) {
       userId,
     }
     const supersedesJobId = String(body.supersedesJobId || '').trim()
+    // Verified interlink allowlist: brief-supplied links win; otherwise the
+    // engine derives live-verified targets server-side so the model NEVER
+    // invents URLs (2026-08 example.com incident).
+    if (Array.isArray(body.interlinks) && body.interlinks.length) {
+      input.interlinks = body.interlinks
+        .filter((l: any) => l && typeof l.url === 'string' && l.url.trim())
+        .map((l: any) => ({ label: String(l.label || ''), url: String(l.url), matchedOn: Array.isArray(l.matchedOn) ? l.matchedOn.map(String) : undefined }))
+    } else if (input.primaryKeyword) {
+      try {
+        const verified = await suggestVerifiedInterlinks(input.primaryKeyword, (input.keywords || []) as string[], 6)
+        if (verified.length) input.interlinks = verified as Array<{ label?: string; url?: string; matchedOn?: string[] }>
+      } catch { /* sitemap unavailable — prompt fallback rule still guards */ }
+    }
     const resumeRequested = body.resume === true
     // Client is created for every run: the pipeline emits a 'job' event with the
     // early 'drafting' row so live deltas checkpoint into the queue in realtime.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminUser } from '@/lib/portalAuth'
-import { suggestInterlinks } from '@/lib/interlinkRegistry'
+import { suggestVerifiedInterlinks } from '@/lib/interlinkRegistry'
 
 /**
  * POST /api/content-studio/interlinks
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const keywords = Array.isArray(body.keywords) ? body.keywords : []
     const maxResults = typeof body.maxResults === 'number' ? Math.min(body.maxResults, 10) : 5
 
-    const suggestions = suggestInterlinks(topic, keywords, maxResults)
+    const suggestions = await suggestVerifiedInterlinks(topic, keywords, maxResults)
 
     return NextResponse.json({
       topic,

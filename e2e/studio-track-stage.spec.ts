@@ -126,7 +126,7 @@ test.describe('Stage VI · Track — Publication Ledger', () => {
     })
 
     // Navigate to the Track tab via the bubble pill.
-    const trackPill = page.locator('#studio-tab-track')
+    const trackPill = page.locator('#studio-tab-approve')
     await trackPill.waitFor({ state: 'visible', timeout: 15000 })
     await trackPill.click()
 
@@ -219,7 +219,7 @@ test.describe('Stage VI · Track — Publication Ledger', () => {
     })
 
     // Navigate to the Track tab.
-    const trackPill = page.locator('#studio-tab-track')
+    const trackPill = page.locator('#studio-tab-approve')
     await trackPill.waitFor({ state: 'visible', timeout: 15000 })
     await trackPill.click()
 
@@ -303,7 +303,7 @@ test.describe('Stage VI · Track — Publication Ledger', () => {
     ).toBeVisible({ timeout: 8000 })
 
     // Navigate back to Track.
-    const trackPill = page.locator('#studio-tab-track')
+    const trackPill = page.locator('#studio-tab-approve')
     await trackPill.click()
 
     // Assert the publish ledger is visible again.

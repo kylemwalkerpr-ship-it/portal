@@ -28,20 +28,16 @@ import type { ContentJob, QueueSummary } from '@/components/design/studio-ui-sha
 const NAV_TABS = [
   { key: 'discover', numeral: 'I', label: 'Discover', sub: 'Signal Intelligence', hint: 'GSC · radar · gaps · opportunities' },
   { key: 'research', numeral: 'II', label: 'Research', sub: 'Keywords & Brief', hint: 'Intent · keywords · interlinks · template' },
-  { key: 'draft', numeral: 'III', label: 'Draft', sub: 'Generate & Pipeline', hint: '2 jobs · live' },
-  { key: 'review', numeral: 'IV', label: 'Review', sub: 'Quality & Compliance', hint: 'Re-audit · blockers · gate' },
-  { key: 'approve', numeral: 'V', label: 'Approve', sub: 'PR & Deploy', hint: 'Merge · deploy · monitor' },
-  { key: 'track', numeral: 'VI', label: 'Track', sub: 'Publication Ledger', hint: 'Canonical · GSC · forecast vs actual' },
-  { key: 'configure', numeral: 'VII', label: 'Configure', sub: 'System Settings', hint: 'AI models · API keys · GSC · health' },
+  { key: 'draft', numeral: 'III', label: 'Draft & Review', sub: 'Generate · Gate · Fix', hint: '2 jobs · queue · review' },
+  { key: 'approve', numeral: 'IV', label: 'Approve & Track', sub: 'Merge · Deploy · Verify', hint: 'PR · deploy · ledger · GSC' },
+  { key: 'configure', numeral: 'V', label: 'Configure', sub: 'System Settings', hint: 'AI models · API keys · GSC · health' },
 ] as const
 
 const NAV_AVAILABILITY: Record<string, { available: boolean; reason: string }> = {
   discover: { available: true, reason: '' },
   research: { available: true, reason: '' },
-  draft: { available: true, reason: '' },
-  review: { available: false, reason: 'No drafted job yet' },
+  draft: { available: false, reason: 'No brief yet' },
   approve: { available: true, reason: '' },
-  track: { available: true, reason: '' },
   configure: { available: true, reason: '' },
 }
 
@@ -112,7 +108,7 @@ describe('StudioStageNav — E2E navigation contract', () => {
     }),
   )
 
-  it('renders all 7 pills with stable ids in pipeline order', () => {
+  it('renders all 5 pills with stable ids in pipeline order', () => {
     for (const t of NAV_TABS) {
       expect(html).toContain(`id="studio-tab-${t.key}"`)
     }
@@ -120,7 +116,7 @@ describe('StudioStageNav — E2E navigation contract', () => {
   })
 
   it('keeps role=tab + aria-selected/controls wiring', () => {
-    expect(html.match(/role="tab"/g) ?? []).toHaveLength(7)
+    expect(html.match(/role="tab"/g) ?? []).toHaveLength(5)
     expect(html).toContain('aria-selected="true"')
     expect(html).toContain('aria-controls="studio-panel-research"')
     expect(html).toContain('aria-controls="studio-panel-configure"')
@@ -129,12 +125,12 @@ describe('StudioStageNav — E2E navigation contract', () => {
   it('locks unavailable stages with aria-disabled + disabled + reason title', () => {
     expect(html).toContain('aria-disabled="true"')
     expect(/<button[^>]*disabled[^>]*>/.test(html)).toBe(true)
-    expect(html).toContain('No drafted job yet')
+    expect(html).toContain('No brief yet')
   })
 
   it('paints the active bubble gold and renders all numerals', () => {
     expect(html).toContain('background:#A07E3A')
-    for (const n of ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']) {
+    for (const n of ['I', 'II', 'III', 'IV', 'V']) {
       expect(html).toContain(`>${n}<`)
     }
   })
@@ -175,7 +171,7 @@ describe('ChapterIntro — stage header contract', () => {
 
   it('renders the mini-pill compass numerals', () => {
     expect(html).toContain('>I<')
-    expect(html).toContain('>VII<')
+    expect(html).toContain('>V<')
   })
 })
 
