@@ -314,7 +314,7 @@ export default function AiKeyVaultPanel({ onChanged }: { onChanged?: () => void 
         </label>
         <label style={{ display: 'grid', gap: 3 }}>
           <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Default model</span>
-          <input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="gpt-5.6-luna" style={input('100%')} />
+          <input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="gpt-5.6-terra" style={input('100%')} />
         </label>
         <label style={{ display: 'grid', gap: 3 }}>
           <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>Max providers</span>

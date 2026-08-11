@@ -90,6 +90,8 @@ export interface ContentAiOptions {
   temperature?: number
   /** Admin-chosen provider pin (e.g. 'grok', 'openai', 'nvidia-deepseek', 'auto'). */
   aiProvider?: string
+  /** Override the provider's default model (e.g. 'gpt-5.6-terra' for Research). */
+  model?: string
 }
 
 /** Streaming token/chunk from generateContentTextStream. */
@@ -315,7 +317,7 @@ async function openAiCompatFetch(
   // instead of max_tokens (OpenAI rejects max_tokens on these models).
   const isReasoningModel = isReasoningModelId(p.model)
   const body: Record<string, unknown> = {
-    model: p.model,
+    model: opts.model || p.model,
     ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
     ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
     messages: [
@@ -397,24 +399,28 @@ async function openAiCompatibleComplete(
   p: OpenAiCompat,
   opts: ContentAiOptions,
 ): Promise<ContentAiResult> {
+  // gpt-5.6 bare → gpt-5.6-sol (GPT-5.6 flagship alias).
+  // Terra = strong/balanced, Luna = efficient/high-volume.
+  const model = (opts.model || p.model).replace(/^gpt-5\.6$/i, 'gpt-5.6-sol')
+  const patched = { ...p, model }
   return withRetry(p.label, async () => {
     // A cut-off completion is recoverable: continue from the partial text ONCE
     // on the same provider instead of bouncing to the next (which usually hits
     // the same shared cap and is what made whole cascades fail on long guides).
-    const first = await openAiCompatFetch(p, opts, opts.prompt)
+    const first = await openAiCompatFetch(patched, opts, opts.prompt)
     let text = first.text
     let finishReason = first.finishReason
     // Reasoning models (DeepSeek V4 Flash / Nemotron / GLM) occasionally spend
     // the ENTIRE budget on reasoning_content and emit no final prose. Re-ask
     // the same prompt with thinking OFF so the model is forced to write the
     // article text instead of bouncing the whole cascade.
-    if (!text.trim() && isReasoningModelId(p.model)) {
-      const plain = await openAiCompatFetch(p, opts, opts.prompt, { disableThinking: true })
+    if (!text.trim() && isReasoningModelId(model)) {
+      const plain = await openAiCompatFetch(patched, opts, opts.prompt, { disableThinking: true })
       text = plain.text
       finishReason = plain.finishReason
     }
     if (finishReason === 'length' && text.trim()) {
-      const cont = await openAiCompatFetch(p, opts, buildContinuationPrompt(text))
+      const cont = await openAiCompatFetch(patched, opts, buildContinuationPrompt(text))
       text = (text + '\n\n' + cont.text).trim()
       finishReason = cont.finishReason
     }
@@ -423,7 +429,7 @@ async function openAiCompatibleComplete(
     if (finishReason === 'length') {
       throw new Error(`${p.label} output was truncated (token limit) — trying next provider`)
     }
-    return { text, provider: p.label, model: p.model }
+    return { text, provider: p.label, model }
   })
 }
 
@@ -809,7 +815,7 @@ async function* openAiCompatibleStream(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: p.model,
+        model: opts.model || p.model,
         stream: true,
         ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
         ...(isReasoningModel ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
@@ -1193,7 +1199,7 @@ export function listConfiguredContentProviders(): Array<{
     { id: 'openrouter', label: 'OpenRouter free models', configured: isOpenRouterConfigured(), role: 'fallback' },
     { id: 'custom', label: 'Custom OpenAI-compatible', configured: Boolean(env('CUSTOM_AI_BASE_URL') && env('CUSTOM_AI_API_KEY')), role: 'fallback' },
     { id: 'grok', label: 'xAI Grok', configured: Boolean(env('XAI_API_KEY')), role: 'fallback' },
-    { id: 'openai', label: 'OpenAI (GPT-5.6 Luna)', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
+    { id: 'openai', label: 'OpenAI (GPT-5.6 Terra · Sol · Luna)', configured: Boolean(env('OPENAI_API_KEY')), role: 'fallback' },
     { id: 'deepseek', label: 'DeepSeek.com API', configured: Boolean(env('DEEPSEEK_API_KEY')), role: 'fallback' },
   ]
 }

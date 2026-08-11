@@ -140,9 +140,9 @@ export const AI_PROVIDERS: AiProviderDef[] = [
     keyEnv: 'OPENAI_API_KEY',
     modelEnv: 'OPENAI_MODEL',
     fixedBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-5.6-luna',
+    defaultModel: 'gpt-5.6-terra',
     role: 'fallback',
-    hint: 'GPT-5.6 Luna',
+    hint: 'GPT-5.6 Terra (Research/Plan) · Sol (flagship) · Luna (high-volume)',
   },
   {
     id: 'deepseek',

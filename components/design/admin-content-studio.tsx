@@ -81,8 +81,8 @@ const TYPE = {
 
 // ── Provider → default model (mirrors contentAiProvider defaults) ──
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
-  openai: 'gpt-5.6-luna',
-  custom: 'gpt-5.6-luna',
+  openai: 'gpt-5.6-terra',
+  custom: 'gpt-5.6-terra',
   grok: 'grok-3',
   deepseek: 'deepseek-chat',
   'nvidia-nemotron': 'nvidia/nemotron-3-ultra-550b-a55b',

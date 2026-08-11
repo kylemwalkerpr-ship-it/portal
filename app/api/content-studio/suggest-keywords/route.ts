@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
 
     const ai = await generateContentText({
       aiProvider: 'openai',
+      model: 'gpt-5.6-terra',
       system,
       prompt,
       maxTokens: 900,

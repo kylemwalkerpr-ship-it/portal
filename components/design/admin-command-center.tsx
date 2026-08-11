@@ -2311,7 +2311,7 @@ function RecheckDuePanel() {
                    { id: 'baseten-deepseek', label: 'DeepSeek V4 Flash · Baseten', configured: false, model: 'deepseek-ai/DeepSeek-V4-Flash-0731' },
                   { id: 'nvidia-deepseek', label: 'NVIDIA DeepSeek', configured: false, model: 'deepseek-ai/deepseek-v4-flash-0731' },
                   { id: 'grok', label: 'Grok (xAI)', configured: false, model: 'grok-3' },
-                  { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-luna' },
+                  { id: 'openai', label: 'OpenAI', configured: false, model: 'gpt-5.6-terra' },
                   { id: 'cloudflare-ai', label: 'Cloudflare Workers AI', configured: false, model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' },
                   { id: 'groq', label: 'Groq', configured: false, model: 'llama-3.3-70b-versatile' },
                   { id: 'gemini', label: 'Google Gemini', configured: false, model: 'gemini-2.5-flash' },
