@@ -36,46 +36,13 @@ import AdminDeepInterlinkPanel from './admin-deep-interlink-panel'
 import AdminSiteHealthPanel from './admin-site-health-panel'
 import AiKeyVaultPanel from './ai-key-vault-panel'
 import AdminInlineEditor from './admin-inline-editor'
+import { StudioStageNav } from './studio-stage-nav'
+import { ChapterIntro } from './studio-chapter-intro'
+import { studioTokens as E } from './studio-tokens'
+
+const C = E
 
 // ── Color tokens (legacy + new editorial palette) ──
-const C = {
-  bg: '#FBF6EC', surface: '#FFFFFF', surface2: '#F4EFE3', surface3: '#EFE7D6',
-  border: 'rgba(0,0,0,0.08)', border2: 'rgba(0,0,0,0.05)',
-  cyan: '#3C3B6E', red: '#DC2626', green: '#166534', greenSoft: '#ECFDF5',
-  orange: '#D97706', purple: '#7C3AED', text: '#1F2937', textMuted: '#6B7280',
-  textDim: '#9CA3AF', gold: '#A07E3A', goldSoft: '#F2E6C2', navy: '#0F172A',
-  blue: '#2563EB', blueSoft: '#EFF6FF',
-  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Cormorant', 'Garamond', Georgia, 'Times New Roman', serif)",
-  mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
-  shadowCard: '0 1px 3px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04)',
-  radius: 12, radiusSm: 8, radiusXs: 6,
-}
-
-/** Editorial palette & typography for the studio spread. Ivory + gold on ink. */
-const E = {
-  ivory:        '#FBF6EC',  // page background
-  parchment:    '#F5EDDD',  // spread pages
-  cream:        '#FFFBF1',  // rule-heavy regions
-  paper:        '#FFFFFF',  // primary card surface
-  inkBlack:     '#11151C',  // primary body ink
-  ink:          '#1F2937',
-  inkSoft:      '#3F4654',
-  inkMuted:     '#6B7280',
-  inkDim:       '#9CA3AF',
-  gold:         '#A07E3A',  // primary accent
-  goldSoft:     '#F2E6C2',  // callout bg
-  goldDeep:     '#7C5F23',  // hover / pressed
-  ember:        '#C2410C',  // warning ink
-  mossGreen:    '#3F6F3F',  // success ink
-  mossSoft:     '#D8E5D5',
-  hairline:     'rgba(17,21,28,0.10)',
-  hairlineSoft: 'rgba(17,21,28,0.05)',
-  serif: "var(--portal-font-display, 'Cormorant Garamond', 'Cormorant', 'Garamond', Georgia, 'Times New Roman', serif)",
-  mono: "var(--portal-font-mono, 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace)",
-  ivoryShadow:  '0 1px 0 rgba(17,21,28,0.04), 0 12px 30px rgba(17,21,28,0.07)',
-  paperShadow:  '0 1px 2px rgba(17,21,28,0.06), 0 4px 14px rgba(17,21,28,0.04)',
-  inset:        'inset 0 0 0 1px rgba(160,126,58,0.12)',
-} as const
 
 const TYPE = {
   display:   { fontFamily: E.serif, fontSize: 36,  lineHeight: 1.05, fontWeight: 700, color: E.inkBlack, letterSpacing: '-0.01em' },
@@ -677,167 +644,6 @@ function RadarCard({ s, active, onApply }: { s: AISuggestion; active: boolean; o
 // workflow header: roman numeral, serif title, scope chips, and a "next
 // stage" affordance to drive linearity. Also renders the seven-stage
 // compass rail so the admin never loses place.
-function ChapterIntro({
-  numeral, title, subtitle,
-  chapterKey, scope, next,
-  prev,
-  onJump,
-}: {
-  numeral: string
-  title: string
-  subtitle: string
-  chapterKey: StudioTab
-  scope: Array<{ chip: string; text: string }>
-  next?: string
-  prev?: string
-  onJump?: (k: StudioTab) => void
-}) {
-  const order: StudioTab[] = ['discover', 'research', 'draft', 'review', 'approve', 'track', 'configure']
-  const numerals: Record<StudioTab, string> = {
-    discover: 'I', research: 'II', draft: 'III',
-    review: 'IV', approve: 'V', track: 'VI', configure: 'VII',
-  }
-  const titles: Record<StudioTab, string> = {
-    discover: 'Discover', research: 'Research & Plan',
-    draft: 'Draft', review: 'Review', approve: 'Approve', track: 'Track',
-    configure: 'Configure',
-  }
-  return (
-    <div
-      className="chapter-intro"
-      data-chapter={chapterKey}
-      style={{
-        marginBottom: 14, padding: '20px 26px 18px',
-        background: `linear-gradient(180deg, ${E.parchment} 0%, ${E.ivory} 100%)`,
-        borderBottom: `1px solid ${E.hairline}`,
-        fontFamily: C.serif,
-        position: 'relative',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 6 }}>
-        <span style={{
-          fontSize: 38, fontWeight: 700, color: E.gold, lineHeight: 1,
-          fontFamily: C.serif, letterSpacing: '-0.02em',
-        }}>{numeral}</span>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{
-            fontSize: 11, color: E.gold, fontFamily: C.mono, letterSpacing: '0.18em',
-            textTransform: 'uppercase', marginBottom: 2,
-          }}>Chapter {numeral}</span>
-          <h2 style={{
-            margin: 0, fontSize: 26, fontFamily: C.serif, fontWeight: 700,
-            color: E.ink, letterSpacing: '-0.01em',
-          }}>{title}</h2>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {prev && onJump && (
-            <button
-              onClick={() => onJump(order[Math.max(0, order.indexOf(chapterKey) - 1)])}
-              style={{
-                fontFamily: C.serif, fontSize: 11, color: E.inkMuted,
-                background: 'transparent', border: `1px solid ${E.hairline}`, borderRadius: 0,
-                padding: '5px 12px', cursor: 'pointer',
-              }}
-            >← {prev}</button>
-          )}
-          {next && onJump && (
-            <button
-              onClick={() => onJump(order[Math.min(order.length - 1, order.indexOf(chapterKey) + 1)])}
-              style={{
-                fontFamily: C.serif, fontSize: 11, color: E.ivory,
-                background: E.gold, border: `1px solid ${E.gold}`, borderRadius: 0,
-                padding: '5px 12px', cursor: 'pointer', fontWeight: 600,
-              }}
-            >{next} →</button>
-          )}
-        </div>
-      </div>
-      <p style={{
-        margin: '0 0 12px', fontSize: 14, color: E.inkMuted, fontFamily: C.serif,
-        fontStyle: 'italic', maxWidth: 880, lineHeight: 1.5,
-      }}>{subtitle}</p>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        {scope.map((s, i) => (
-          <div key={i} style={{
-            flex: '1 1 240px', minWidth: 220, padding: '8px 12px',
-            borderLeft: `2px solid ${E.goldSoft}`, background: E.ivory,
-          }}>
-            <span style={{
-              fontSize: 9, fontFamily: C.mono, letterSpacing: '0.16em',
-              color: E.gold, textTransform: 'uppercase', fontWeight: 700,
-            }}>{s.chip}</span>
-            <p style={{ margin: '3px 0 0', fontSize: 12, color: E.ink, lineHeight: 1.45, fontFamily: C.serif }}>{s.text}</p>
-          </div>
-        ))}
-      </div>
-      {/* Pipeline bubble pills — horizontal stage navigation with arrows */}
-      <div style={{
-        marginTop: 16, paddingTop: 14,
-        borderTop: `1px dashed ${E.hairline}`,
-        display: 'flex', gap: 0, flexWrap: 'nowrap', alignItems: 'center',
-        overflowX: 'auto', justifyContent: 'center',
-      }}>
-        {order.map((k, i) => {
-          const active = k === chapterKey
-          const currentIdx = order.indexOf(chapterKey)
-          const isPast = currentIdx > i
-          return (
-            <React.Fragment key={k}>
-              {i > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', padding: '0 4px',
-                  opacity: isPast ? 0.35 : 0.15,
-                  transition: 'opacity 0.3s ease',
-                }}>
-                  <svg width="16" height="12" viewBox="0 0 16 12" style={{ display: 'block' }}>
-                    <path d="M9 1l4 5-4 5" stroke={active ? E.gold : E.inkDim} strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M13 6H2" stroke={active ? E.gold : E.inkDim} strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-                  </svg>
-                </span>
-              )}
-              <button key={k}
-                onClick={() => onJump && onJump(k)}
-                disabled={!onJump}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                  padding: '6px 12px', borderRadius: 0,
-                  cursor: onJump ? 'pointer' : 'default',
-                  background: 'transparent',
-                  border: 'none',
-                  opacity: active ? 1 : 0.7,
-                  transition: 'all 0.25s ease',
-                  minWidth: 60,
-                }}
-                title={`${numerals[k]} · ${titles[k]}`}
-              >
-                <span style={{
-                  width: 30, height: 30, borderRadius: '50%',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? E.gold : (isPast ? E.goldSoft : 'transparent'),
-                  border: active ? `1.5px solid ${E.gold}` : (isPast ? `1.5px solid ${E.gold}44` : `1px solid ${E.hairline}`),
-                  fontFamily: C.serif, fontSize: 14, fontWeight: 700,
-                  color: active ? E.ivory : (isPast ? E.goldDeep : E.inkMuted),
-                  boxShadow: active ? `0 2px 8px ${E.gold}33` : 'none',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                }}>
-                  {numerals[k]}
-                </span>
-                <span style={{
-                  fontFamily: C.serif, fontSize: 9, fontWeight: active ? 700 : 500,
-                  color: active ? E.ink : E.inkMuted,
-                  transition: 'color 0.25s ease',
-                }}>
-                  {titles[k]}
-                </span>
-              </button>
-            </React.Fragment>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 // ── VI · DEFEND PANEL ──
 // Surfaces the gate state for the selected job and lists blockers with
 // remediation guidance. Renders inline-editor / re-audit actions.
@@ -5696,88 +5502,12 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       </div>
 
-      {/* ── Pipeline stage pills — horizontal bubble navigation with arrows ── */}
-      <nav aria-label="Content Studio pipeline" style={{
-        display: 'flex', alignItems: 'center', gap: 0, marginBottom: 18,
-        padding: '18px 10px', overflowX: 'auto',
-        background: `linear-gradient(180deg, rgba(251,246,236,0.4) 0%, ${E.ivory} 100%)`,
-        borderBottom: `1px solid ${E.hairline}`,
-        justifyContent: 'center',
-      }}>
-        {TABS.map((t, i) => {
-          const active = tab === t.key
-          const available = stageAvailability[t.key].available
-          const currentIdx = TABS.findIndex(x => x.key === tab)
-          const isPast = currentIdx > i
-          return (
-            <React.Fragment key={t.key}>
-              {i > 0 && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', padding: '0 4px',
-                  opacity: isPast ? 0.4 : 0.18,
-                  transition: 'opacity 0.3s ease',
-                }}>
-                  <svg width="20" height="14" viewBox="0 0 20 14" style={{ display: 'block' }}>
-                    <path d="M12 1l6 6-6 6" stroke={E.inkDim} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M18 7H2" stroke={E.inkDim} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                  </svg>
-                </div>
-              )}
-              <button
-                key={t.key}
-                id={`studio-tab-${t.key}`}
-                role="tab"
-                aria-selected={active}
-                aria-controls={`studio-panel-${t.key}`}
-                aria-disabled={!available}
-                type="button"
-                onClick={() => selectTab(t.key)}
-                disabled={!available}
-                title={available ? `Stage ${t.numeral} · ${t.label}: ${t.hint}` : stageAvailability[t.key].reason}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  padding: '10px 14px', borderRadius: 0,
-                  cursor: available ? 'pointer' : 'not-allowed',
-                  background: 'transparent', border: 'none',
-                  opacity: available ? 1 : 0.4,
-                  transition: 'all 0.25s ease',
-                  minWidth: 88, maxWidth: 124,
-                }}>
-                <span style={{
-                  width: 40, height: 40, borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? E.gold : (isPast ? E.goldSoft : E.ivory),
-                  border: active ? `2px solid ${E.gold}` : (isPast ? `1.5px solid ${E.gold}55` : `1.5px solid ${E.hairline}`),
-                  fontFamily: E.serif, fontSize: 18, fontWeight: 700,
-                  color: active ? E.ivory : (isPast ? E.goldDeep : E.inkMuted),
-                  boxShadow: active ? `0 2px 10px ${E.gold}33` : 'none',
-                  transform: active ? 'scale(1.08)' : 'scale(1)',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                }}>{t.numeral}</span>
-                <span style={{
-                  fontFamily: E.serif, fontSize: 11, fontWeight: 600,
-                  color: active ? E.inkBlack : E.inkMuted,
-                  textAlign: 'center', lineHeight: 1.2,
-                  transition: 'color 0.25s ease',
-                }}>{t.label}</span>
-                <span style={{
-                  fontFamily: E.mono, fontSize: 7.5, fontWeight: 600,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: active ? E.goldDeep : E.inkDim,
-                  textAlign: 'center', lineHeight: 1.2,
-                  maxWidth: 110,
-                }}>{t.sub}</span>
-                {active && (
-                  <span style={{
-                    width: 4, height: 4, borderRadius: '50%',
-                    background: E.gold, marginTop: -2,
-                  }} />
-                )}
-              </button>
-            </React.Fragment>
-          )
-        })}
-      </nav>
+      <StudioStageNav
+        tabs={TABS}
+        active={tab}
+        availability={stageAvailability}
+        onSelect={selectTab}
+      />
       {/* ══════════ IV · DRAFT ══════════ */}
       {/* Stage IV — generate content: the live stream, editor surface,
           jobs clock, and queue stats. Downstream of Discover → Research → Plan. */}
