@@ -57,7 +57,11 @@ const NVIDIA_NEMOTRON_MODEL_DEFAULT = 'nvidia/nemotron-3-ultra-550b-a55b'
 const NVIDIA_NEMOTRON_MAX_TOKENS = 16384
 const BASETEN_BASE_URL = 'https://inference.baseten.co/v1'
 const BASETEN_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731'
-const BASETEN_MAX_TOKENS = 16384
+// Raised from 16384: DeepSeek V4 Flash is a reasoning model that spends part of
+// the budget on reasoning_content. With thinking disabled (extraBody below) the
+// full budget goes to the article, but a 32768 cap leaves headroom for long
+// regional guides without tripping finish_reason:'length'.
+const BASETEN_MAX_TOKENS = 32768
 
 export interface ContentAiResult {
   text: string
@@ -267,7 +271,7 @@ async function openAiCompatibleComplete(
     const maxTokens = resolveMaxTokens(p, opts)
     // GPT-5.x / o-series reasoning models require max_completion_tokens
     // instead of max_tokens (OpenAI rejects max_tokens on these models).
-    const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4)/i.test(p.model)
+    const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
     const body: Record<string, unknown> = {
       model: p.model,
       ...(isReasoningModel ? {} : { temperature: opts.temperature ?? DEFAULT_TEMPERATURE }),
@@ -409,6 +413,13 @@ export function getBasetenProvider(): OpenAiCompat | null {
     apiKey,
     model: env('BASETEN_MODEL') || BASETEN_MODEL,
     maxTokensCap: BASETEN_MAX_TOKENS,
+    // Disable thinking for content generation — same reason as Nemotron: with
+    // enable_thinking the SSE stream emits delta.reasoning_content (not
+    // delta.content), which our parser cannot consume → empty/truncated output
+    // and finish_reason:'length' cascades.
+    extraBody: {
+      chat_template_kwargs: { enable_thinking: false },
+    },
   }
 }
 
@@ -593,8 +604,8 @@ async function* parseOpenAiSse(
         try {
           const json = JSON.parse(payload) as {
             choices?: Array<{
-              delta?: { content?: string }
-              message?: { content?: string }
+              delta?: { content?: string; reasoning_content?: string }
+              message?: { content?: string; reasoning_content?: string }
               text?: string
             }>
             response?: string
@@ -605,6 +616,7 @@ async function* parseOpenAiSse(
             json.choices?.[0]?.text ||
             (typeof json.response === 'string' ? json.response : '')
           if (delta) yield delta
+          else if (json.choices?.[0]?.delta?.reasoning_content) yield json.choices[0].delta.reasoning_content
         } catch {
           /* skip malformed SSE chunks */
         }
@@ -629,9 +641,11 @@ async function* openAiCompatibleStream(
     headers['X-Title'] = 'YouSafe Content Studio'
   }
   const maxTokens = resolveMaxTokens(p, opts)
-  // GPT-5.x / o-series reasoning models require max_completion_tokens
-  // instead of max_tokens (OpenAI rejects max_tokens on these models).
-  const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4)/i.test(p.model)
+  // Reasoning models require max_completion_tokens instead of max_tokens
+  // (OpenAI rejects max_tokens on these models). DeepSeek V4 / GLM / Nemotron
+  // are also reasoning-capable — they consume part of the budget on
+  // reasoning_content, so they get the completion-token param for headroom.
+  const isReasoningModel = /^(gpt-5|o[0-9]|o1|o3|o4|deepseek|z-ai\/glm|nemotron)/i.test(p.model)
   const res = await fetch(url, {
     method: 'POST',
     headers,

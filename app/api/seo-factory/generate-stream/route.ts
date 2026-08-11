@@ -183,7 +183,9 @@ export async function POST(request: Request) {
     }
     const supersedesJobId = String(body.supersedesJobId || '').trim()
     const resumeRequested = body.resume === true
-    const supabase = supersedesJobId ? sb() : null
+    // Client is created for every run: the pipeline emits a 'job' event with the
+    // early 'drafting' row so live deltas checkpoint into the queue in realtime.
+    const supabase = sb()
     if (supabase && supersedesJobId && resumeRequested) {
       const { data: existing } = await supabase.from('content_jobs').select('content').eq('id', supersedesJobId).single()
       if (existing?.content) input.resumeContent = String(existing.content)
@@ -216,9 +218,14 @@ export async function POST(request: Request) {
         let lastCheckpointAt = 0
         let checkpointCount = 0
         const MAX_CHECKPOINTS = 6
+        // Live queue row — the pipeline creates a 'drafting' job at start; we
+        // checkpoint streamed deltas into it so the Draft queue shows content
+        // growing in realtime without waiting for the final insert.
+        let liveJobId = supersedesJobId || null
         try {
           for await (const ev of runSeoFactoryPipelineStream(input)) {
-            if (supabase && supersedesJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
+            if (ev.type === 'job') liveJobId = ev.jobId
+            if (liveJobId && (ev.type === 'delta' || ev.type === 'attempt') && ev.draft && checkpointCount < MAX_CHECKPOINTS) {
               const draft = String(ev.draft)
               const now = Date.now()
             const shouldCheckpoint =
@@ -232,7 +239,7 @@ export async function POST(request: Request) {
                 checkpointCount++
                 await checkpointJob(
                   supabase,
-                  supersedesJobId,
+                  liveJobId!,
                   draft,
                   ev.type === 'attempt' ? `Checkpoint saved after attempt ${ev.attempt}` : undefined,
                 )
@@ -247,16 +254,29 @@ export async function POST(request: Request) {
                 `Replacement job created: ${replacementId}`,
               )
             }
+            // If a live queue row exists but the pipeline failed before writing a
+            // final row (e.g. provider cascade exhausted), fail the early row so
+            // the queue reflects reality instead of a stuck 'drafting'.
+            if (supabase && liveJobId && ev.type === 'error' && !supersedesJobId) {
+              await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: ev.error }, `Generation failed: ${ev.error}`)
+            }
             send(ev)
             if (ev.type === 'error' || ev.type === 'final') break
           }
         } catch (e) {
           const message = e instanceof Error ? e.message : 'Stream failed'
-          if (supabase && supersedesJobId && lastCheckpointDraft) {
-            await checkpointJob(supabase, supersedesJobId, lastCheckpointDraft, 'Checkpoint preserved after stream interruption')
+          if (supabase && liveJobId && lastCheckpointDraft) {
+            await checkpointJob(supabase, liveJobId, lastCheckpointDraft, 'Checkpoint preserved after stream interruption')
           }
           if (supabase && supersedesJobId) {
             await markSupersededJob(supabase, supersedesJobId, { status: 'failed', error_message: message }, `Regeneration failed: ${message}`)
+          } else if (supabase && liveJobId) {
+            await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: message }, `Generation failed: ${message}`)
+          }
+          // Supersede edge: if the replacement row already exists when the stream
+          // dies, fail it too so the queue never shows a stuck 'drafting'.
+          if (supabase && supersedesJobId && liveJobId && liveJobId !== supersedesJobId) {
+            await markSupersededJob(supabase, liveJobId, { status: 'failed', error_message: message }, `Replacement generation failed: ${message}`)
           }
           send({ type: 'error', error: message })
         } finally {

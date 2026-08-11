@@ -30,6 +30,7 @@ import { partitionKeywords } from '@/lib/seoEngine/planner'
 export type PipelineStreamEvent =
   | { type: 'progress'; stage: string; message: string }
   | { type: 'provider'; provider: string; model: string }
+  | { type: 'job'; jobId: string }
   | { type: 'delta'; text: string; attempt: number; draft?: string }
   | { type: 'attempt'; attempt: number; score: number; wordCount: number; goodEnough: boolean; draft?: string }
   | { type: 'ship'; ship: ShipResult | null; shipError: string | null; shipMode: string }
@@ -146,6 +147,67 @@ export async function* runSeoFactoryPipelineStream(
         stage: 'plan',
         message: `New unique page owns a ${input.cluster.keywords.length}-keyword cluster`,
       }
+    }
+
+    // Realtime queue row — create the content_jobs record NOW (status 'drafting')
+    // so the Draft queue + Review stage reflect live progress while the AI writes.
+    // The row is finalized (content/audit/ship) at the end of the stream.
+    let earlyJobId: string | null = null
+    try {
+      const earlySb = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      )
+      const earlyRow: Record<string, unknown> = {
+        user_id: input.userId || 'admin',
+        source_job_id: input.sourceJobId || null,
+        lineage: {
+          modelVersion: 'seo-intelligence-v1',
+          sourceJobId: input.sourceJobId || null,
+          regenerationMode: input.regenerationMode || null,
+        },
+        regeneration_reason: input.regenerationReason || null,
+        regeneration_mode: input.regenerationMode || null,
+        title,
+        topic,
+        content_type: contentType === 'legal_guide' ? 'article' : contentType,
+        tone,
+        region,
+        target_repo: plan.repo,
+        status: 'drafting',
+        slug: plan.filePath.split('/').filter(Boolean).slice(-2, -1)[0] || null,
+        content_path: plan.filePath,
+        ai_provider: input.aiProvider || null,
+        ship_mode: input.shipMode === 'autodeploy' || input.shipMode === 'merge' ? 'autodeploy' : 'pr',
+        indexable: plan.indexable,
+        canonical_url: plan.canonicalUrl,
+        owner_host: plan.host,
+        primary_keyword: primaryKeyword,
+        event_log: [
+          {
+            id: `pipe-start-${Date.now()}`,
+            ts: Date.now(),
+            level: 'info',
+            source: 'pipeline',
+            message: 'Drafting started — queue row created for live progress tracking',
+          },
+        ],
+      }
+      const early = await earlySb.from('content_jobs').insert(earlyRow).select('id').single()
+      if (early.data?.id) {
+        earlyJobId = early.data.id
+        yield { type: 'job', jobId: earlyJobId }
+      } else if (early.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(early.error.message || '')) {
+        // Schema without the newer columns — retry minimal
+        const { lineage: _l, regeneration_reason: _r, regeneration_mode: _m, event_log: _e, ...minimalRow } = earlyRow
+        const retry = await earlySb.from('content_jobs').insert(minimalRow).select('id').single()
+        if (retry.data?.id) {
+          earlyJobId = retry.data.id
+          yield { type: 'job', jobId: earlyJobId }
+        }
+      }
+    } catch (e) {
+      console.warn('[seoFactory/pipelineStream] early job row skipped', e)
     }
 
     yield { type: 'progress', stage: 'gsc', message: 'Building GSC content brief…' }
@@ -847,24 +909,34 @@ export async function* runSeoFactoryPipelineStream(
         error_message: shipError,
       }
 
-      // Prefer with event_log; fall back if migration not applied yet
-      let job: { id: string } | null = null
-      const withLog = await supabase
-        .from('content_jobs')
-        .insert({ ...baseRow, event_log: seedLog })
-        .select('id')
-        .single()
-      if (withLog.data?.id) {
-        job = withLog.data
-      } else if (withLog.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(withLog.error.message || '')) {
-        const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
-        const without = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
-        job = without.data
-        if (without.error) console.warn('[seoFactory/pipelineStream] legacy job insert', without.error.message)
-      } else if (withLog.error) {
-        console.warn('[seoFactory/pipelineStream] job insert', withLog.error.message)
+      // Prefer updating the early-created realtime row; fall back to a fresh insert.
+      let job: { id: string } | null = earlyJobId ? { id: earlyJobId } : null
+      if (job) {
+        const { error: updateErr } = await supabase.from('content_jobs').update({ ...baseRow, event_log: seedLog }).eq('id', job.id)
+        if (updateErr && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(updateErr.message || '')) {
+          const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyPatch } = baseRow
+          const legacyUpdate = await supabase.from('content_jobs').update(legacyPatch).eq('id', job.id)
+          if (legacyUpdate.error) console.warn('[seoFactory/pipelineStream] legacy job update', legacyUpdate.error.message)
+        }
+        jobId = job.id
+      } else {
+        const withLog = await supabase
+          .from('content_jobs')
+          .insert({ ...baseRow, event_log: seedLog })
+          .select('id')
+          .single()
+        if (withLog.data?.id) {
+          job = withLog.data
+        } else if (withLog.error && /event_log|lineage|regeneration_reason|regeneration_mode|column/i.test(withLog.error.message || '')) {
+          const { source_job_id: _sourceJobId, lineage: _lineage, regeneration_reason: _reason, regeneration_mode: _mode, ...legacyRow } = baseRow
+          const without = await supabase.from('content_jobs').insert(legacyRow).select('id').single()
+          job = without.data
+          if (without.error) console.warn('[seoFactory/pipelineStream] legacy job insert', without.error.message)
+        } else if (withLog.error) {
+          console.warn('[seoFactory/pipelineStream] job insert', withLog.error.message)
+        }
+        jobId = job?.id ?? null
       }
-      jobId = job?.id ?? null
     } catch (e) {
       console.warn('[seoFactory/pipelineStream] job persist skipped', e)
     }

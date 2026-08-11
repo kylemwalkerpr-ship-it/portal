@@ -2225,23 +2225,7 @@ function Step1Define(props: Omit<React.ComponentProps<typeof CreateWizard>, 'ste
 // ── II · BRIEF ASSEMBLY PANEL ──
 // The planning stage surface — every element of the AI's instructions
 // is visible and editable here before a single token is generated.
-function BriefAssemblyPanel({
-  generating, onGenerate,
-  contentType, setContentType,
-  region, setRegion,
-  tone, setTone,
-  aiProvider, setAiProvider,
-  title, setTitle,
-  topic, setTopic,
-  audience, setAudience,
-  keywords, setKeywords,
-  suggestions, gscStatus,
-  brief, onClearBrief, briefInterlinks,
-  autoInterlinkBusy, onAutoInterlink,
-  interlinkStage, setInterlinkStage,
-  selectedBrief,
-  setActionNotice,
-}: {
+const BriefAssemblyPanel = React.forwardRef<{ submit: () => void }, {
   generating: boolean
   onGenerate: (fd: Record<string, any>) => void
   contentType: ContentType; setContentType: (v: ContentType) => void
@@ -2259,7 +2243,26 @@ function BriefAssemblyPanel({
   interlinkStage: string; setInterlinkStage: (v: string) => void
   selectedBrief?: AISuggestion | null
   setActionNotice?: (msg: string) => void
-}) {
+}>(function BriefAssemblyPanel(
+  {
+    generating, onGenerate,
+    contentType, setContentType,
+    region, setRegion,
+    tone, setTone,
+    aiProvider, setAiProvider,
+    title, setTitle,
+    topic, setTopic,
+    audience, setAudience,
+    keywords, setKeywords,
+    suggestions, gscStatus,
+    brief, onClearBrief, briefInterlinks,
+    autoInterlinkBusy, onAutoInterlink,
+    interlinkStage, setInterlinkStage,
+    selectedBrief,
+    setActionNotice,
+  },
+  ref,
+) {
   const kwList = React.useMemo(() => keywords.split(',').map(k => k.trim()).filter(Boolean), [keywords])
   const shortKw = React.useMemo(() => kwList.filter(k => k.split(/\s+/).length <= 3), [kwList])
   const longKw = React.useMemo(() => kwList.filter(k => k.split(/\s+/).length >= 4), [kwList])
@@ -2383,6 +2386,11 @@ function BriefAssemblyPanel({
       kwH2Map: Object.keys(kwH2Map).length ? kwH2Map : undefined,
     })
   }
+
+  // Expose submit() so the pinned-topic CTA in the parent (which lives outside
+  // this panel) can advance the full brief — including the H2 outline, sources,
+  // min/max words, and keyword→H2 map — straight into generation.
+  React.useImperativeHandle(ref, () => ({ submit: handleSubmitBrief }))
 
   const fieldSection: React.CSSProperties = { marginBottom: 18 }
   const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }
@@ -2638,7 +2646,7 @@ function BriefAssemblyPanel({
       </div>
     </div>
   )
-}
+})
 
 
 // ── III · DRAFT WORKSPACE ──
@@ -4512,6 +4520,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
   const [interlinkStage, setInterlinkStage] = React.useState('visa')
   const [showRadar, setShowRadar] = React.useState(true)
   const [selectedBrief, setSelectedBrief] = React.useState<AISuggestion | null>(null)
+  // Imperative handle for the Brief Assembly panel — lets the pinned-topic CTA
+  // below the panel trigger the exact same full-brief submit the in-panel
+  // button uses (title, topic, keywords, H2 outline, sources, min/max words,
+  // keyword→H2 map, interlinks) so generation always receives the full template.
+  const briefPanelRef = React.useRef<{ submit: () => void }>(null)
   const [briefInterlinks, setBriefInterlinks] = React.useState<Array<{ label?: string; url?: string; site?: string; matchedOn?: string[] }>>([])
   const [regenerationPlays, setRegenerationPlays] = React.useState<string[]>(['content_gap', 'quick_win', 'refresh'])
   const [regenerationMinScore, setRegenerationMinScore] = React.useState(45)
@@ -5273,6 +5286,9 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       let buffer = ''
       let finalResult: any = null
       let streamChars = 0
+      // Early 'drafting' job row created by the pipeline — lets the Draft queue
+      // show '1 In Progress' in realtime while the AI writes, before the final row.
+      let liveJobId = ''
       const consume = (raw: string) => {
         const dataLine = raw.split(/\r?\n/).find(line => line.startsWith('data:'))
         if (!dataLine) return
@@ -5281,6 +5297,11 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         const event = JSON.parse(payload) as any
         if (event.type === 'progress') record(event.stage || 'pipeline', event.message || 'Working…')
         else if (event.type === 'provider') record('provider', `Using ${event.provider || 'AI'}${event.model ? ` · ${event.model}` : ''}`)
+        else if (event.type === 'job') {
+          liveJobId = String(event.jobId || '')
+          // Refresh immediately so the queue strip flips to '1 In Progress'.
+          fetchJobs().catch(() => {})
+        }
         else if (event.type === 'attempt') record('audit', `Attempt ${event.attempt}: score ${event.score ?? '—'} · ${event.wordCount ?? 0} words${event.goodEnough ? ' · quality threshold met' : ''}`, event.goodEnough ? 'success' : 'info')
         else if (event.type === 'delta') {
           const chunk = String(event.text || '')
@@ -5306,7 +5327,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       if (!finalResult) throw new Error('Generation stream ended before a final result was received')
 
       const data = finalResult
-      const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || '')
+      const generatedJobId = String(data.jobId || data.job?.id || data.ship?.jobId || liveJobId || '')
       const shipBlocked = Boolean(data.shipError)
       const notice = data.ship?.prUrl
         ? `Generated · PR opened · audit ${data.audit?.score ?? '—'}`
@@ -5461,21 +5482,6 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
         </div>
       )}
 
-      {/* ── Draft workspace — inline editor with live streaming ── */}
-      <DraftWorkspace
-        generating={generating}
-        generationEvents={generationEvents}
-        generationStartedAt={generationStartedAt}
-        generationChars={generationChars}
-        generationText={generationText}
-        completedJob={generationReviewJob}
-        selectedJob={selectedJob}
-        setSelectedJob={setSelectedJob}
-        onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('review') } }}
-        selectTab={selectTab}
-        error={error}
-        setError={setError}
-      />
 
 
       {/* ── SEO Master Engine strip ── */}
@@ -5607,13 +5613,28 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
       )}
       {tab === 'draft' && (
         <div id="studio-panel-draft" role="tabpanel" aria-labelledby="studio-tab-draft" style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* ── Draft workspace — inline editor with live streaming ── */}
+          <DraftWorkspace
+            generating={generating}
+            generationEvents={generationEvents}
+            generationStartedAt={generationStartedAt}
+            generationChars={generationChars}
+            generationText={generationText}
+            completedJob={generationReviewJob}
+            selectedJob={selectedJob}
+            setSelectedJob={setSelectedJob}
+            onContinueToReview={() => { if (generationReviewJob) { setSelectedJob(generationReviewJob); selectTab('review') } }}
+            selectTab={selectTab}
+            error={error}
+            setError={setError}
+          />
           <div style={{ padding: 18, background: E.paper, border: `1px solid ${E.hairline}`, boxShadow: E.paperShadow }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontSize: 10, color: E.gold, fontFamily: C.mono, letterSpacing: '0.16em', fontWeight: 700 }}>STAGE III · GENERATE</div>
                 <h3 style={{ margin: '4px 0 6px', fontFamily: C.serif, fontSize: 22, color: E.ink }}>Generate against the plan</h3>
                 <p style={{ margin: 0, color: E.inkMuted, fontFamily: C.serif, fontStyle: 'italic', fontSize: 13 }}>
-                  Generation is deliberately downstream of Discover, Research, and Plan. The live stream above and the queue below are the only execution surfaces in this stage.
+                  Generation is deliberately downstream of Discover, Research, and Plan. The workspace above is where the AI writes live; the queue below is where every job is tracked end-to-end.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -5688,6 +5709,7 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
             </div>
           )}
             <BriefAssemblyPanel
+              ref={briefPanelRef}
               generating={generating}
               onGenerate={handleGenerate}
               contentType={contentType} setContentType={setContentType}
@@ -5717,8 +5739,19 @@ export default function AdminContentStudio({ services: _services, refreshAdminDa
                 <div style={{ fontFamily: C.serif, fontSize: 15, color: E.ink, fontWeight: 600 }}>Topic pinned: <span style={{ color: E.gold }}>{topic}</span></div>
                 <div style={{ fontSize: 11, color: E.inkMuted, marginTop: 2 }}>Your brief is ready. Advance to build the plan.</div>
               </div>
-              <button type="button" onClick={() => selectTab('research')} style={{ padding: '10px 20px', background: E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700 }}>
-                Generate Draft →
+              <button
+                type="button"
+                onClick={() => {
+                  // Advance the full brief into the Draft stage: submit() triggers
+                  // the same generation flow as the in-panel button (which
+                  // auto-navigates to Draft to watch the live stream). The panel
+                  // always renders in this tab before the CTA, so the ref is set.
+                  briefPanelRef.current?.submit()
+                }}
+                disabled={generating}
+                style={{ padding: '10px 20px', background: generating ? E.inkDim : E.gold, color: E.ivory, border: 'none', borderRadius: 0, cursor: generating ? 'not-allowed' : 'pointer', fontFamily: C.serif, fontSize: 14, fontWeight: 700, opacity: generating ? 0.6 : 1 }}
+              >
+                {generating ? '⏳ Generating…' : 'Generate Draft →'}
               </button>
             </div>
           )}
