@@ -198,7 +198,7 @@ export function applyDeterministicRepairs(opts: {
   contentType?: string
 }): { content: string; applied: string[] } {
   const applied: string[] = []
-  const { fm, body } = stripFm(opts.content || '')
+  let { fm, body } = stripFm(opts.content || '')
   let b = (body || `# ${opts.title || 'Guide'}\n\nEditorial draft.`).trim()
 
   const requireDisclaimer =
@@ -238,24 +238,21 @@ export function applyDeterministicRepairs(opts: {
   // The audit checks fm.description || fm.metaDescription in the front matter
   // (120–170 chars). If missing or too short, inject one using the same
   // metaDescriptionFrom helper the schema_article repair already relies on.
-  const fmBlock = b.match(/^---\n([\s\S]*?)\n---/)
-  if (fmBlock) {
-    const fmBody = fmBlock[1]
-    const existingDesc = fmBody.match(/^description:\s*(.+)$/m)
+  // NOTE: fm holds the front matter (stripped from body at function entry).
+  // We modify fm so the re-assembly at line 437 picks up the new field.
+  if (fm) {
+    const existingDesc = fm.match(/^description:\s*(.+)$/m)
     if (!existingDesc || (existingDesc[1] && existingDesc[1].length < 100)) {
       const kw = (opts.primaryKeyword || opts.title || 'Immigration guide').trim()
       const desc = metaDescriptionFrom(opts.title || '', b, kw)
       if (existingDesc) {
-        // Replace the existing short description
-        b = b.replace(existingDesc[0], `description: ${desc}`)
+        fm = fm.replace(existingDesc[0], `description: ${desc}`)
       } else {
-        // Inject after the title line (or after --- if no title)
-        const titleLine = fmBody.match(/^title:\s*.+$/m)
+        const titleLine = fm.match(/^title:\s*.+$/m)
         if (titleLine) {
-          b = b.replace(titleLine[0], `${titleLine[0]}\ndescription: ${desc}`)
+          fm = fm.replace(titleLine[0], `${titleLine[0]}\ndescription: ${desc}`)
         } else {
-          // No title — inject right after the opening ---
-          b = b.replace(/^---\n/, `---\ndescription: ${desc}\n`)
+          fm = `description: ${desc}\n${fm}`
         }
       }
       applied.push('meta_description')
