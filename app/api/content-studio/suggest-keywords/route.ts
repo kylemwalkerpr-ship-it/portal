@@ -80,8 +80,13 @@ export async function POST(req: NextRequest) {
       temperature: 0.4,
     })
 
-    // Strip markdown code fences (```json ... ```) that some models wrap JSON in
+    // Strip markdown code fences + extract JSON object from model response.
     let rawText = (ai.text || '').trim()
+    const firstBrace = rawText.indexOf('{')
+    const lastBrace = rawText.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      rawText = rawText.slice(firstBrace, lastBrace + 1)
+    }
     rawText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '')
     const parsed = JSON.parse(rawText || '{}')
     if (!Array.isArray(parsed.shortTail) || !Array.isArray(parsed.longTail)) {
