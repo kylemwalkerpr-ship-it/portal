@@ -487,6 +487,43 @@ export async function* runSeoFactoryPipelineStream(
       if (!(underDepth && countBodyWords(attemptText) < prevWords)) {
         content = attemptText
       }
+
+      // ── Auto-trim: enforce hard maxWords ceiling ──────────────────────
+      // Models ignore the HARD MAX instruction when depth-rescue expands past
+      // the ceiling. Truncate to the last complete sentence within maxWords
+      // so we never ship a 6,000-word draft where 2,800 was expected.
+      const overMaxBy = countBodyWords(content) - maxWords
+      if (overMaxBy > 0 && !underDepth) {
+        const sentences = content.split(/(?<=[.!?])\s+/)
+        let trimmed = ''
+        let wc = 0
+        for (const s of sentences) {
+          const sw = s.trim().split(/\s+/).filter(Boolean).length
+          if (wc + sw <= maxWords) {
+            trimmed += (trimmed ? ' ' : '') + s
+            wc += sw
+          } else if (wc < minWords && trimmed) {
+            // Still under the minimum — add this sentence anyway to meet the floor
+            trimmed += (trimmed ? ' ' : '') + s
+            wc += sw
+          } else {
+            break
+          }
+        }
+        if (trimmed && countBodyWords(trimmed) >= minWords) {
+          const trimmedWc = countBodyWords(trimmed)
+          yield {
+            type: 'attempt',
+            attempt: attempts,
+            score: 0,
+            wordCount: trimmedWc,
+            goodEnough: false,
+            draft: trimmed,
+          }
+          content = trimmed
+        }
+      }
+
       audit = auditContent({
         content,
         contentType,

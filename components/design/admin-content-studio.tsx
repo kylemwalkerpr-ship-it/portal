@@ -2452,10 +2452,42 @@ function DraftWorkspace({
           }}>
             {draftTitle || '(untitled)'}
           </span>
-          <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, color: E.inkDim }}>
-            {generating
-              ? `${(generationText.split(/\s+/).filter(Boolean).length).toLocaleString()} words · ${generationText.length.toLocaleString()} chars`
-              : `${wordCount} words · ${draftContent.length.toLocaleString()} chars`}
+          <span style={{ marginLeft: 'auto', padding: '0 14px', fontFamily: C.mono, fontSize: 9, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {(() => {
+              const wc = generating
+                ? generationText.split(/\s+/).filter(Boolean).length
+                : wordCount
+              const minW = completedJob?.content_type === 'blog_post' ? 800 : completedJob?.content_type === 'regional_page' ? 1200 : 2200
+              const maxW = completedJob?.content_type === 'blog_post' ? 1500 : completedJob?.content_type === 'regional_page' ? 2000 : 2800
+              const pct = Math.min(100, Math.round((wc / maxW) * 100))
+              const overMax = wc > maxW
+              const underMin = wc < minW
+              const wcColor = overMax ? C.red : underMin ? C.orange : pct >= 80 ? C.mossGreen : C.textDim
+              const barColor = overMax ? C.red : underMin ? C.orange : C.gold
+              return (
+                <>
+                  <span style={{ color: wcColor, fontWeight: 700, minWidth: 48, textAlign: 'right' }}>
+                    {wc.toLocaleString()} w
+                  </span>
+                  <span style={{ color: E.inkDim, fontSize: 8 }}>/ {minW.toLocaleString()}–{maxW.toLocaleString()}</span>
+                  <span style={{
+                    display: 'inline-block', width: 48, height: 3,
+                    background: E.hairline, borderRadius: 2, overflow: 'hidden',
+                  }}>
+                    <span style={{
+                      display: 'block', height: '100%',
+                      width: `${overMax ? 100 : Math.max(2, pct)}%`,
+                      background: barColor,
+                      borderRadius: 2,
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </span>
+                </>
+              )
+            })()}
+            <span style={{ color: E.inkDim, fontSize: 8 }}>
+              {generating ? `${generationText.length.toLocaleString()}c` : `${draftContent.length.toLocaleString()}c`}
+            </span>
           </span>
         </div>
 

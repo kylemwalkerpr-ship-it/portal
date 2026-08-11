@@ -233,7 +233,7 @@ export function buildFactorySystemPrompt(opts: {
     '   - Short disclaimer: educational only, not legal advice',
     '6) Authority: use precise immigration entities (forms, visas, agencies, subclasses). No fluff.',
     '7) Professional voice: calm, accurate, no outcome guarantees, no salesy bait.',
-    `8) HARD MINIMUM ${minWords} words of body prose (not counting YAML, JSON-LD, or code fences). Aim for ~${target} words. This is a measured gate: the audit rejects any page under ${minWords} words, so write until you are comfortably ABOVE it. Going over ${maxWords} is a soft warning only — under-delivering is the hard failure. When in doubt between too short and slightly long, choose slightly long.`,
+    `8) WORD COUNT GATE: ${minWords}–${maxWords} body words (not counting YAML, JSON-LD, or code fences). Target ~${target} words. BOTH under ${minWords} AND over ${maxWords} are hard failures — the audit rejects the page. Under-delivering is missing depth; over-delivering wastes tokens and creates reader fatigue. If you exceed ${maxWords}, stop writing immediately and truncate to the last complete sentence that keeps you within ${maxWords}.`,
     `9) Content type: ${contentType}`,
     '10) Do NOT wrap output in markdown code fences. Emit raw markdown only.',
     '11) Front-matter title must be CTR-ready (≤60 chars ideal); description 140–160 chars with a concrete next step.',

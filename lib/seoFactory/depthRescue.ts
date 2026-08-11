@@ -169,7 +169,9 @@ export async function* runDepthRescue(
             draft: content,
             h2Outline,
           }),
-          maxTokens: contentType === 'marketplace_gig' ? 4000 : 16384,
+          // Cap tokens to ~2x the word deficit (prevents 6,000-word dumps
+          // when the model only needed to add 300 words).
+          maxTokens: Math.min(contentType === 'marketplace_gig' ? 4000 : 16384, Math.max(2000, (minWords - currentWords) * 3)),
           temperature: 0.42,
           aiProvider,
         })
@@ -195,7 +197,7 @@ export async function* runDepthRescue(
             h2Outline,
             focus,
           }),
-          maxTokens: 8000,
+          maxTokens: Math.min(8000, Math.max(1500, (minWords - currentWords) * 3)),
           temperature: 0.45,
           aiProvider,
         })

@@ -137,7 +137,10 @@ describe('runDepthRescue', () => {
     const progress = events.filter((e) => e.type === 'progress' && e.message.includes('Depth rescue 1/10'))
     expect(progress.length).toBe(1)
     // First pass used the full-rewrite expand prompt (16k budget)
-    expect(calls[0].maxTokens).toBe(16384)
+    // maxTokens is now calculated: Math.min(16384, Math.max(2000, (minWords - currentWords) * 3))
+    // should be within the 2000-16384 band
+    expect(calls[0].maxTokens).toBeGreaterThanOrEqual(2000)
+    expect(calls[0].maxTokens).toBeLessThanOrEqual(16384)
     expect(calls[0].prompt).toMatch(/DEPTH EXPANSION PASS/)
 
     expect(done).not.toBeNull()
@@ -165,7 +168,9 @@ describe('runDepthRescue', () => {
 
     // Pass 2 + 3 used the append prompt with the first two rotating focuses
     const appendCall = calls[1]
-    expect(appendCall.maxTokens).toBe(8000)
+    // maxTokens is now calculated: Math.min(8000, Math.max(1500, (minWords - currentWords) * 3))
+    expect(appendCall.maxTokens).toBeGreaterThanOrEqual(1500)
+    expect(appendCall.maxTokens).toBeLessThanOrEqual(8000)
     expect(appendCall.prompt).toMatch(/APPEND SECTIONS ONLY/)
     expect(appendCall.prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[0]}`)
     expect(calls[2].prompt).toContain(`FOCUS THIS PASS ON: ${APPEND_FOCUSES[1]}`)
